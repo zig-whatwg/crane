@@ -165,8 +165,62 @@ pub fn parseHTML(
     return document;
 }
 
+/// Type-safe script loader for external script loading.
+///
+/// This generic provides compile-time type safety for script loader implementations.
+/// Use `makeTypedLoader` to create a typed wrapper function that can be used with
+/// the legacy ScriptLoader interface while maintaining type safety in implementation.
+///
+/// ## Example Usage
+///
+/// ```zig
+/// const BrowserContext = struct {
+///     allocator: std.mem.Allocator,
+///     // ...
+/// };
+///
+/// // Type-safe loader implementation - no anyopaque casts needed!
+/// fn loadScript(ctx: *BrowserContext, url: []const u8) ?[]const u8 {
+///     if (std.mem.endsWith(u8, url, "special.js")) {
+///         return ctx.allocator.dupe(u8, "// special") catch null;
+///     }
+///     return null;
+/// }
+///
+/// // Create legacy-compatible wrapper
+/// const typedLoader = TypedScriptLoader(BrowserContext).makeTypedLoader(loadScript);
+///
+/// // Use with ScriptLoader interface
+/// const loader = ScriptLoader{
+///     .context = &my_context,
+///     .loadScript = typedLoader,
+/// };
+/// ```
+pub fn TypedScriptLoader(comptime Context: type) type {
+    return struct {
+        /// Create a legacy-compatible wrapper function from a typed callback.
+        ///
+        /// The returned function pointer can be used with ScriptLoader.loadScript
+        /// while the actual implementation receives a properly typed context.
+        pub fn makeTypedLoader(
+            comptime typedFn: *const fn (*Context, []const u8) ?[]const u8,
+        ) *const fn (?*anyopaque, []const u8) ?[]const u8 {
+            return struct {
+                fn wrapper(ctx: ?*anyopaque, url: []const u8) ?[]const u8 {
+                    const typed: *Context = @ptrCast(@alignCast(ctx orelse return null));
+                    return typedFn(typed, url);
+                }
+            }.wrapper;
+        }
+    };
+}
+
 /// Script loader interface for external script loading
 /// Used during HTML parsing to load external scripts synchronously
+///
+/// For type-safe loading, prefer TypedScriptLoader(Context) which provides
+/// compile-time type checking. This legacy interface is kept for compatibility
+/// and for cases where the context type cannot be known at compile time.
 pub const ScriptLoader = struct {
     /// Opaque context pointer passed to load callback
     context: ?*anyopaque,

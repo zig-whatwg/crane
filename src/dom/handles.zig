@@ -52,6 +52,94 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 // ============================================================================
+// Generic Handle Operations
+// ============================================================================
+
+/// Generic handle operations for type-safe conversions.
+///
+/// Instead of per-type conversion functions like:
+///   anyopaqueToElement, elementToAnyopaque
+///   anyopaqueToDocument, documentToAnyopaque
+///   ...
+///
+/// Use this generic:
+///   HandleOps(ElementHandle).toAnyopaque(handle)
+///   HandleOps(ElementHandle).fromAnyopaque(ptr)
+///
+/// The per-type functions are kept for backward compatibility but
+/// new code should prefer this generic pattern.
+///
+/// ## Example
+///
+/// ```zig
+/// const handles = @import("handles.zig");
+///
+/// // Old pattern (still works)
+/// const ptr = handles.elementToAnyopaque(element_handle);
+/// const handle = handles.anyopaqueToElement(ptr);
+///
+/// // New pattern (preferred)
+/// const ptr = handles.HandleOps(handles.ElementHandle).toAnyopaque(element_handle);
+/// const handle = handles.HandleOps(handles.ElementHandle).fromAnyopaque(ptr);
+///
+/// // Or use the type-specific alias
+/// const ptr = handles.ElementOps.toAnyopaque(element_handle);
+/// const handle = handles.ElementOps.fromAnyopaque(ptr);
+/// ```
+pub fn HandleOps(comptime Handle: type) type {
+    return struct {
+        const type_name = @typeName(Handle);
+
+        /// Convert a handle to anyopaque (for legacy interop)
+        pub fn toAnyopaque(handle: ?*Handle) ?*anyopaque {
+            if (handle) |h| {
+                return @ptrCast(h);
+            }
+            return null;
+        }
+
+        /// Convert anyopaque to a handle (from legacy interop)
+        pub fn fromAnyopaque(ptr: ?*anyopaque) ?*Handle {
+            if (ptr) |p| {
+                return @ptrCast(@alignCast(p));
+            }
+            return null;
+        }
+
+        /// Convert with debug validation (validates before conversion)
+        pub fn toAnyopaqueChecked(handle: ?*Handle) ?*anyopaque {
+            validate(handle);
+            return toAnyopaque(handle);
+        }
+
+        /// Convert from anyopaque with debug validation
+        pub fn fromAnyopaqueChecked(ptr: ?*anyopaque) ?*Handle {
+            validateHandlePtr(ptr, type_name);
+            return fromAnyopaque(ptr);
+        }
+
+        /// Validate a handle pointer in debug builds
+        pub fn validate(handle: ?*const Handle) void {
+            validateHandlePtr(@ptrCast(handle), type_name);
+        }
+
+        /// Assert that handle is not null (panics in debug if null)
+        pub fn assertNotNullHandle(handle: ?*const Handle) void {
+            assertNotNull(@ptrCast(handle), type_name);
+        }
+    };
+}
+
+// Type-specific aliases for common use
+pub const ElementOps = HandleOps(ElementHandle);
+pub const DocumentOps = HandleOps(DocumentHandle);
+pub const ShadowRootOps = HandleOps(ShadowRootHandle);
+pub const SlotOps = HandleOps(SlotHandle);
+pub const MutationObserverOps = HandleOps(MutationObserverHandle);
+pub const CustomElementRegistryOps = HandleOps(CustomElementRegistryHandle);
+pub const NodeOps = HandleOps(NodeHandle);
+
+// ============================================================================
 // Debug Assertion Helpers
 // ============================================================================
 
@@ -422,5 +510,36 @@ test "handles: all handle types round-trip" {
         validateNodeHandle(handle);
         const back = nodeToAnyopaque(handle);
         try std.testing.expectEqual(ptr, back.?);
+    }
+}
+
+test "handles: generic HandleOps round-trip" {
+    var dummy: u64 align(8) = 0xCAFEBABE;
+    const ptr: *anyopaque = @ptrCast(&dummy);
+
+    // Test ElementOps alias
+    {
+        const handle = ElementOps.fromAnyopaque(ptr);
+        try std.testing.expect(handle != null);
+        const back = ElementOps.toAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
+
+    // Test HandleOps with DocumentHandle directly
+    {
+        const Ops = HandleOps(DocumentHandle);
+        const handle = Ops.fromAnyopaque(ptr);
+        try std.testing.expect(handle != null);
+        Ops.validate(handle);
+        const back = Ops.toAnyopaque(handle);
+        try std.testing.expectEqual(ptr, back.?);
+    }
+
+    // Test null handling via generic
+    {
+        const result = NodeOps.fromAnyopaque(null);
+        try std.testing.expectEqual(@as(?*NodeHandle, null), result);
+        const back = NodeOps.toAnyopaque(null);
+        try std.testing.expectEqual(@as(?*anyopaque, null), back);
     }
 }

@@ -80,7 +80,23 @@ const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 ///   object.SetWeak(instance, onObjectFreed, v8::WeakCallbackType::kParameter);
 ///
 /// Thread safety: Called from GC thread, must not allocate or access shared state
+///
+/// ## Type Safety Note (KEEP - C ABI boundary)
+///
+/// This function uses `?*anyopaque` because it must be compatible with the C ABI
+/// for JavaScript engine callbacks. The `callconv(.c)` calling convention requires
+/// C-compatible types. For type-safe GC callbacks, use `TypedGCCallback(T)` from
+/// `runtime.typed_callback` which provides a typed wrapper that converts to this
+/// C-compatible signature.
+///
+/// Example with TypedGCCallback:
+/// ```zig
+/// const typed_callback = @import("typed_callback.zig");
+/// var cb = TypedGCCallback(MyResource).init(&cleanupFn, resource, allocator);
+/// v8.setWeakCallback(handle, cb.getDataAnyopaque(), TypedGCCallback(MyResource).toLegacyCallbackC());
+/// ```
 pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
+    // KEEP: @ptrCast/@alignCast required at C ABI boundary - use TypedGCCallback for type-safe wrappers
     const inst = @as(*Instance, @ptrCast(@alignCast(user_data orelse return)));
 
     // Step 1: Call type-specific deinit to clean up owned resources
@@ -114,6 +130,9 @@ pub fn onObjectFreed(user_data: ?*anyopaque) callconv(.c) void {
 ///   isolate->AddGCEpilogueCallback(onGCSweep, v8::GCType::kGCTypeAll);
 ///
 /// Thread safety: Called from GC thread, must not allocate
+///
+/// ## KEEP - C ABI boundary
+/// The `callconv(.c)` is required for JavaScript engine interop.
 pub fn onGCSweep() callconv(.c) void {
     // Reset arena to batch-free ALL FullState memory at once
     // This is much faster than individual frees

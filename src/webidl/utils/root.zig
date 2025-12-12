@@ -33,6 +33,13 @@ pub const InstanceRegistry = @import("registry.zig").InstanceRegistry;
 pub const InternalStateAccessor = @import("internal_state.zig").InternalStateAccessor;
 pub const OptionalInternalStateAccessor = @import("internal_state.zig").OptionalInternalStateAccessor;
 
+// Typed dictionary/sequence extraction utilities
+pub const typed_extraction = @import("typed_extraction.zig");
+pub const extractDictionarySlice = typed_extraction.extractDictionarySlice;
+pub const extractOptionalDictionarySlice = typed_extraction.extractOptionalDictionarySlice;
+pub const extractDictionary = typed_extraction.extractDictionary;
+pub const extractOptionalDictionary = typed_extraction.extractOptionalDictionary;
+
 // Note: CollectionMixin and StringCollectionMixin are NOT exported here
 // to avoid module conflicts when impl files try to use them.
 // See collection.zig for the utilities - they're available but must be
@@ -42,5 +49,6 @@ test {
     @import("std").testing.refAllDecls(@This());
     _ = @import("registry.zig");
     _ = @import("internal_state.zig");
+    _ = @import("typed_extraction.zig");
     // Note: collection.zig tests are run separately, not through this root
 }

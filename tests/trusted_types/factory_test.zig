@@ -294,7 +294,7 @@ test "TrustedTypePolicyFactory - full workflow" {
     const factory = try trusted_types.TrustedTypePolicyFactory.init(allocator);
     defer factory.deinit();
 
-    // Create a sanitizing policy
+    // Create a sanitizing policy (legacy pattern)
     const sanitize_callback = struct {
         fn callback(input: []const u8, _: ?*anyopaque) ?[]const u8 {
             if (std.mem.indexOf(u8, input, "javascript:") != null) {
@@ -321,4 +321,61 @@ test "TrustedTypePolicyFactory - full workflow" {
     // Check sink types
     try testing.expectEqualStrings("TrustedHTML", factory.getPropertyType("div", "innerHTML", null).?);
     try testing.expectEqualStrings("TrustedScript", factory.getAttributeType("button", "onclick", null, null).?);
+}
+
+test "TrustedTypePolicyFactory - typed callback workflow" {
+    const allocator = testing.allocator;
+
+    const factory = try trusted_types.TrustedTypePolicyFactory.init(allocator);
+    defer factory.deinit();
+
+    // XSS prevention context with configurable blocked patterns
+    const XSSPreventionContext = struct {
+        blocked_patterns: []const []const u8,
+        block_count: usize = 0,
+
+        pub fn isBlocked(self: *@This(), input: []const u8) bool {
+            for (self.blocked_patterns) |pattern| {
+                if (std.mem.indexOf(u8, input, pattern) != null) {
+                    self.block_count += 1;
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+
+    var ctx = XSSPreventionContext{
+        .blocked_patterns = &[_][]const u8{ "javascript:", "data:", "vbscript:" },
+    };
+
+    // Use typed callback pattern with makeUntypedCallback
+    const untyped = trusted_types.makeUntypedCallback(XSSPreventionContext, struct {
+        fn callback(context: *XSSPreventionContext, input: []const u8) ?[]const u8 {
+            if (context.isBlocked(input)) {
+                return null;
+            }
+            return input;
+        }
+    }.callback);
+
+    const policy = try factory.createPolicy("typed-xss-prevention", .{
+        .createHTML = untyped.callback,
+        .createHTMLContext = @ptrCast(&ctx),
+        .createScriptURL = untyped.callback,
+        .createScriptURLContext = @ptrCast(&ctx),
+    });
+
+    // Create safe content
+    var html = try policy.createHTML("<a href='https://example.com'>Link</a>", null);
+    defer html.deinit();
+    try testing.expectEqualStrings("<a href='https://example.com'>Link</a>", html.toString());
+
+    // Reject XSS attempts - all blocked patterns should be caught
+    try testing.expectError(trusted_types.PolicyError.TypeError, policy.createHTML("<a href='javascript:alert(1)'>XSS</a>", null));
+    try testing.expectError(trusted_types.PolicyError.TypeError, policy.createHTML("<img src='data:text/html,<script>alert(1)</script>'>", null));
+    try testing.expectError(trusted_types.PolicyError.TypeError, policy.createScriptURL("vbscript:msgbox", null));
+
+    // Verify block count
+    try testing.expectEqual(@as(usize, 3), ctx.block_count);
 }

@@ -210,7 +210,7 @@ test "TrustedTypePolicy - sanitization callback rejects dangerous input" {
 // Context Passing Tests
 // ============================================================================
 
-test "TrustedTypePolicy - callback receives context" {
+test "TrustedTypePolicy - callback receives context (legacy pattern)" {
     const allocator = testing.allocator;
 
     const Context = struct {
@@ -238,6 +238,82 @@ test "TrustedTypePolicy - callback receives context" {
     defer html.deinit();
 
     try testing.expectEqualStrings("<safe>", html.toString());
+}
+
+test "TrustedTypePolicy - TypedSanitizeCallback pattern" {
+    const allocator = testing.allocator;
+
+    const Context = struct {
+        prefix: []const u8,
+        call_count: usize = 0,
+    };
+
+    var context = Context{ .prefix = "<typed-safe>" };
+
+    // Use the typed callback pattern with makeUntypedCallback
+    const untyped = trusted_types.makeUntypedCallback(Context, struct {
+        fn callback(ctx: *Context, _: []const u8) ?[]const u8 {
+            ctx.call_count += 1;
+            return ctx.prefix;
+        }
+    }.callback);
+
+    var policy = try trusted_types.TrustedTypePolicy.create(allocator, "typed-context", .{
+        .createHTML = untyped.callback,
+        .createHTMLContext = @ptrCast(&context),
+    });
+    defer policy.deinit();
+
+    // Context is stored in options, no need to pass at call time
+    var html = try policy.createHTML("ignored", null);
+    defer html.deinit();
+
+    try testing.expectEqualStrings("<typed-safe>", html.toString());
+    try testing.expectEqual(@as(usize, 1), context.call_count);
+}
+
+test "TrustedTypePolicy - withTypedHTMLCallback helper" {
+    const allocator = testing.allocator;
+
+    const SanitizerContext = struct {
+        allowed_tags: []const []const u8,
+
+        pub fn sanitize(self: *@This(), input: []const u8) ?[]const u8 {
+            // Simple check - in real code would do proper sanitization
+            for (self.allowed_tags) |tag| {
+                if (std.mem.indexOf(u8, input, tag) != null) {
+                    return input;
+                }
+            }
+            return null;
+        }
+    };
+
+    var ctx = SanitizerContext{
+        .allowed_tags = &[_][]const u8{ "<p>", "<div>", "<span>" },
+    };
+
+    const options = trusted_types.TrustedTypePolicyOptions.withTypedHTMLCallback(
+        SanitizerContext,
+        &ctx,
+        struct {
+            fn callback(context: *SanitizerContext, input: []const u8) ?[]const u8 {
+                return context.sanitize(input);
+            }
+        }.callback,
+    );
+
+    var policy = try trusted_types.TrustedTypePolicy.create(allocator, "sanitizer-typed", options);
+    defer policy.deinit();
+
+    // Allowed tag passes
+    var html = try policy.createHTML("<p>Safe content</p>", null);
+    defer html.deinit();
+    try testing.expectEqualStrings("<p>Safe content</p>", html.toString());
+
+    // Disallowed tag fails
+    const result = policy.createHTML("<script>evil()</script>", null);
+    try testing.expectError(trusted_types.PolicyError.TypeError, result);
 }
 
 // ============================================================================

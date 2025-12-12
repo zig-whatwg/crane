@@ -18,6 +18,9 @@ const cookiestore = @import("cookiestore");
 const ExtendableCookieChangeEvent = interfaces.ExtendableCookieChangeEvent;
 const CookieListItem = cookiestore.CookieListItem;
 
+// Use typed extraction for dictionary arrays
+const extractOptionalDictionarySlice = webidl.extractOptionalDictionarySlice;
+
 pub const State = ExtendableCookieChangeEvent.State;
 
 pub const ImplError = error{
@@ -148,10 +151,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             state.parent.parent.own.composed = composed;
         }
 
-        // Process changed cookies
-        if (init_dict.changed) |changed_ptr| {
-            const changed_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(changed_ptr)));
-            for (changed_list.*) |dict_item| {
+        // Process changed cookies using typed extraction
+        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.changed)) |changed_list| {
+            for (changed_list) |dict_item| {
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
                     .value = try ctx.allocator.dupe(u8, dict_item.value orelse ""),
@@ -161,10 +163,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             }
         }
 
-        // Process deleted cookies
-        if (init_dict.deleted) |deleted_ptr| {
-            const deleted_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(deleted_ptr)));
-            for (deleted_list.*) |dict_item| {
+        // Process deleted cookies using typed extraction
+        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.deleted)) |deleted_list| {
+            for (deleted_list) |dict_item| {
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
                     .value = try ctx.allocator.dupe(u8, dict_item.value orelse ""),

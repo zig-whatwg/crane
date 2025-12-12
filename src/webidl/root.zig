@@ -94,6 +94,12 @@ pub const extractCallback = dictionaries.extractCallback;
 pub const extractDictionaryMemberWithAttrs = dictionaries.extractDictionaryMemberWithAttrs;
 pub const ExtendedAttributeOptions = dictionaries.ExtendedAttributeOptions;
 
+// Re-export typed extraction utilities (for dictionary arrays from opaque pointers)
+pub const extractDictionarySlice = utils.extractDictionarySlice;
+pub const extractOptionalDictionarySlice = utils.extractOptionalDictionarySlice;
+pub const extractDictionary = utils.extractDictionary;
+pub const extractOptionalDictionary = utils.extractOptionalDictionary;
+
 // Re-export record conversion
 pub const toRecord = record_conversion.toRecord;
 

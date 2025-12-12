@@ -59,6 +59,11 @@ pub const PolicyError = policy.PolicyError;
 pub const CreateHTMLCallback = policy.CreateHTMLCallback;
 pub const CreateScriptCallback = policy.CreateScriptCallback;
 pub const CreateScriptURLCallback = policy.CreateScriptURLCallback;
+pub const UntypedSanitizeCallback = policy.UntypedSanitizeCallback;
+
+// Type-safe callback pattern
+pub const TypedSanitizeCallback = policy.TypedSanitizeCallback;
+pub const makeUntypedCallback = policy.makeUntypedCallback;
 
 // Policy factory module - manages policies and provides type checking
 pub const policy_factory = @import("policy_factory.zig");

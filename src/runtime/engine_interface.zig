@@ -39,10 +39,19 @@ const std = @import("std");
 ///
 /// This is the function that will be called on the main thread.
 /// The user_data pointer is passed through from scheduleOnMainThread.
+///
+/// KEEP: user_data is *anyopaque - Required for C ABI callback compatibility.
+/// Cross-thread callbacks need type-erased context because the concrete type
+/// is determined by the caller, not this interface.
 pub const MainThreadCallback = *const fn (user_data: *anyopaque) void;
 
 /// Callback type for promise fulfillment handler
 /// Called when a JS Promise fulfills
+///
+/// KEEP: Uses *anyopaque for both parameters - Required for C ABI compatibility.
+/// - context: Type-erased user data (caller-determined type)
+/// - value: Engine-specific JS value (V8 Value*, JSC JSValue, etc.)
+///
 /// Arguments:
 ///   - context: The context pointer passed when creating the handler
 ///   - value: The fulfillment value (engine-specific), or null for undefined
@@ -50,6 +59,11 @@ pub const PromiseFulfillCallback = *const fn (context: ?*anyopaque, value: ?*any
 
 /// Callback type for promise rejection handler
 /// Called when a JS Promise rejects
+///
+/// KEEP: Uses *anyopaque for both parameters - Required for C ABI compatibility.
+/// - context: Type-erased user data (caller-determined type)
+/// - reason: Engine-specific JS value (V8 Value*, JSC JSValue, etc.)
+///
 /// Arguments:
 ///   - context: The context pointer passed when creating the handler
 ///   - reason: The rejection reason (engine-specific), or null for undefined
@@ -59,6 +73,10 @@ pub const PromiseRejectCallback = *const fn (context: ?*anyopaque, reason: ?*any
 ///
 /// Called for each element in a JS collection (Array, Set, Map, NodeList, etc.).
 /// The callback receives the element value, its index, and user data.
+///
+/// KEEP: Uses *anyopaque for value and user_data - Required for runtime polymorphism.
+/// - value: Engine-specific JS value (type varies by collection element)
+/// - user_data: Type-erased caller context (caller-determined type)
 ///
 /// Arguments:
 ///   - value: Opaque pointer to the element value

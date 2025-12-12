@@ -293,10 +293,21 @@ test "ScriptResult - script state" {
 // InternalState Tests
 // =============================================================================
 
+/// Mock document type for test type safety.
+/// In production, parser_document uses `?*runtime.Instance` (the typed internal
+/// representation of Document). For tests, we use a typed mock instead of anyopaque.
+const MockDocument = struct {
+    /// Mock document URL for testing
+    url: []const u8 = "about:blank",
+};
+
 /// Internal state for HTMLScriptElement (simplified for testing)
+/// NOTE: Production code uses `?*runtime.Instance` for document references.
+/// This test mock uses `?*MockDocument` to maintain type safety in tests
+/// without requiring full runtime infrastructure.
 const InternalState = struct {
-    parser_document: ?*anyopaque,
-    preparation_time_document: ?*anyopaque,
+    parser_document: ?*MockDocument,
+    preparation_time_document: ?*MockDocument,
     force_async: bool,
     from_external_file: bool,
     ready_to_be_parser_executed: bool,
@@ -330,8 +341,8 @@ test "InternalState - default values per spec" {
     // - script_type: initially null
     // - result: initially uninitialized
 
-    try std.testing.expectEqual(@as(?*anyopaque, null), state.parser_document);
-    try std.testing.expectEqual(@as(?*anyopaque, null), state.preparation_time_document);
+    try std.testing.expectEqual(@as(?*MockDocument, null), state.parser_document);
+    try std.testing.expectEqual(@as(?*MockDocument, null), state.preparation_time_document);
     try std.testing.expect(state.force_async);
     try std.testing.expect(!state.from_external_file);
     try std.testing.expect(!state.ready_to_be_parser_executed);
@@ -344,9 +355,9 @@ test "InternalState - default values per spec" {
 test "InternalState - parser insertion modifies force_async" {
     var state = InternalState.init();
 
-    // Simulate parser inserting script
-    var dummy_doc: u8 = 0; // Fake document pointer
-    state.parser_document = @ptrCast(&dummy_doc);
+    // Simulate parser inserting script using typed MockDocument
+    var mock_doc = MockDocument{};
+    state.parser_document = &mock_doc;
 
     // Per spec: if parser-inserted and no async attribute, force_async stays true initially
     // but when async attribute is absent and parser_document is set, we clear force_async

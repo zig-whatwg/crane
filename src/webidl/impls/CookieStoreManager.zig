@@ -17,6 +17,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const CookieStoreManager = interfaces.CookieStoreManager;
 
 pub const State = CookieStoreManager.State;
@@ -217,11 +218,13 @@ pub fn call_subscribe(instance: *runtime.Instance, subscriptions: runtime.JSValu
     }
 
     // The subscriptions parameter is a sequence<CookieStoreGetOptions>
-    // In the V8 bindings layer, this is converted to a slice
-    const subs_ptr = subscriptions.toAnyopaque() orelse return error.TypeError;
-    const subs_slice = @as(*const []const dictionaries.CookieStoreGetOptions, @ptrCast(@alignCast(subs_ptr)));
+    // Use typed extraction for type-safe access to dictionary array
+    const subs_slice = try webidl.extractDictionarySlice(
+        dictionaries.CookieStoreGetOptions,
+        subscriptions.toAnyopaque(),
+    );
 
-    for (subs_slice.*) |sub| {
+    for (subs_slice) |sub| {
         // Validate URL is within scope if provided
         if (sub.url) |url| {
             if (!internal.isWithinScope(url)) {
@@ -262,10 +265,13 @@ pub fn call_unsubscribe(instance: *runtime.Instance, subscriptions: runtime.JSVa
     }
 
     // The subscriptions parameter is a sequence<CookieStoreGetOptions>
-    const unsub_ptr = subscriptions.toAnyopaque() orelse return error.TypeError;
-    const subs_slice = @as(*const []const dictionaries.CookieStoreGetOptions, @ptrCast(@alignCast(unsub_ptr)));
+    // Use typed extraction for type-safe access to dictionary array
+    const subs_slice = try webidl.extractDictionarySlice(
+        dictionaries.CookieStoreGetOptions,
+        subscriptions.toAnyopaque(),
+    );
 
-    for (subs_slice.*) |sub| {
+    for (subs_slice) |sub| {
         // Validate URL is within scope if provided
         if (sub.url) |url| {
             if (!internal.isWithinScope(url)) {

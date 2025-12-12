@@ -53,6 +53,11 @@ const TimerInterface = runtime.TimerInterface;
 const TimerId = runtime.TimerId;
 const TimerCallback = runtime.TimerCallback;
 
+// Typed callback wrappers for type-safe timer contexts
+// Using SelfContainedWorkCallback which stores allocator internally for no-arg destroy()
+const typed_callback = runtime.typed_callback;
+const SelfContainedWorkCallback = typed_callback.SelfContainedWorkCallback;
+
 /// Execution context type
 pub const ContextType = enum {
     /// Window/document context (for .window.js, .html tests)
@@ -1204,13 +1209,14 @@ pub const BrowserContext = struct {
     }
 };
 
-/// WPT script loader callback
+/// Type-safe WPT script loader implementation
 ///
 /// Intercepts testharnessreport.js to return our custom version with result callbacks.
 /// For all other scripts, returns null to trigger the default HTTP fetch behavior.
-fn wptScriptLoader(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
-    const self: *BrowserContext = @ptrCast(@alignCast(ctx_ptr orelse return null));
-
+///
+/// This function receives a typed *BrowserContext pointer, eliminating the need
+/// for manual anyopaque casts. The TypedScriptLoader wrapper handles the conversion.
+fn wptScriptLoaderTyped(self: *BrowserContext, url: []const u8) ?[]const u8 {
     // Intercept testharnessreport.js and return our custom version
     // This ensures our result callbacks are registered with the testharness.js
     // that the HTML test actually loads (not our pre-loaded version)
@@ -1224,6 +1230,10 @@ fn wptScriptLoader(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
     // This ensures proper browser-like loading via wpt serve
     return null;
 }
+
+/// Legacy-compatible wrapper for the typed script loader.
+/// Uses TypedScriptLoader to generate a function that casts anyopaque to *BrowserContext.
+const wptScriptLoader = impls.HTMLParser.TypedScriptLoader(BrowserContext).makeTypedLoader(wptScriptLoaderTyped);
 
 // =============================================================================
 // Iframe Document Loading Support (Phase 4 of whatwg-wv486)
@@ -1454,8 +1464,8 @@ pub const V8CallbackContext = struct {
     test_path: ?[]const u8 = null,
     /// Base URL for Worker constructor
     base_url: ?[]const u8 = null,
-    /// Timer contexts for cleanup tracking
-    timer_contexts: std.AutoHashMap(TimerId, *V8TimerContext),
+    /// Timer contexts for cleanup tracking (stores SelfContainedCallback wrappers)
+    timer_contexts: std.AutoHashMap(TimerId, *V8TimerCallback),
     /// Whether this context is currently active
     is_active: bool = false,
 
@@ -1468,7 +1478,7 @@ pub const V8CallbackContext = struct {
     /// for the lifetime of the context.
     pub fn init(alloc: std.mem.Allocator) V8CallbackContext {
         return .{
-            .timer_contexts = std.AutoHashMap(TimerId, *V8TimerContext).init(alloc),
+            .timer_contexts = std.AutoHashMap(TimerId, *V8TimerCallback).init(alloc),
             .allocator = alloc,
         };
     }
@@ -1591,8 +1601,8 @@ pub fn getCurrentBaseUrl() ?[]const u8 {
 }
 
 // Thread-local storage for ALL timer contexts (for cleanup on clearTimeout/clearInterval and deinit)
-// Maps timer_id -> V8TimerContext* so we can clean up pending timers when context is torn down
-threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerContext) = null;
+// Maps timer_id -> V8TimerCallback* (SelfContainedCallback wrapper) for cleanup tracking
+threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = null;
 
 /// Set the current result collector for V8 callbacks
 pub fn setResultCollector(collector: *test_harness.ResultCollector) void {
@@ -1615,7 +1625,7 @@ pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) vo
     current_allocator = allocator;
     // Initialize timer contexts map if needed
     if (timer_contexts == null) {
-        timer_contexts = std.AutoHashMap(TimerId, *V8TimerContext).init(allocator);
+        timer_contexts = std.AutoHashMap(TimerId, *V8TimerCallback).init(allocator);
     }
 }
 
@@ -1631,13 +1641,13 @@ pub fn clearTimerInterface() void {
     if (timer_contexts) |*map| {
         var iter = map.iterator();
         while (iter.next()) |entry| {
-            const ctx = entry.value_ptr.*;
+            const wrapper = entry.value_ptr.*;
             // Cancel the timer at the libuv level to prevent callback from firing
             // and to properly clean up the libuv timer handle
             if (current_timer_interface) |timer| {
-                timer.clearTimeout(ctx.current_timer_id);
+                timer.clearTimeout(wrapper.getData().current_timer_id);
             }
-            ctx.destroy();
+            wrapper.destroy();
         }
         map.deinit();
         timer_contexts = null;
@@ -1652,13 +1662,13 @@ pub fn clearPendingTimers() void {
     if (timer_contexts) |*map| {
         var iter = map.iterator();
         while (iter.next()) |entry| {
-            const ctx = entry.value_ptr.*;
+            const wrapper = entry.value_ptr.*;
             // Cancel the timer at the libuv level
             if (current_timer_interface) |timer| {
-                timer.clearTimeout(ctx.current_timer_id);
+                timer.clearTimeout(wrapper.getData().current_timer_id);
             }
-            // Destroy the timer context
-            ctx.destroy();
+            // Destroy the timer wrapper
+            wrapper.destroy();
         }
         map.clearRetainingCapacity();
     }
@@ -1719,18 +1729,18 @@ pub fn resetBetweenTests(isolate: ?*v8.ffi.Isolate) void {
 }
 
 /// Register a timer context for cleanup tracking (both one-shot and intervals)
-fn registerTimerContext(timer_id: TimerId, ctx: *V8TimerContext) void {
+fn registerTimerContext(timer_id: TimerId, wrapper: *V8TimerCallback) void {
     if (timer_contexts) |*map| {
-        map.put(timer_id, ctx) catch |err| {
+        map.put(timer_id, wrapper) catch |err| {
             // If we can't track the timer, we must destroy it to prevent leaks
             std.debug.print("Warning: Failed to register timer context {}: {}\n", .{ timer_id, err });
-            ctx.destroy();
+            wrapper.destroy();
         };
     } else {
         // timer_contexts is null - this shouldn't happen if setTimerInterface was called
         // Destroy the context to prevent memory leak
         std.debug.print("Warning: timer_contexts is null, destroying untracked timer {}\n", .{timer_id});
-        ctx.destroy();
+        wrapper.destroy();
     }
 }
 
@@ -1738,36 +1748,35 @@ fn registerTimerContext(timer_id: TimerId, ctx: *V8TimerContext) void {
 fn unregisterTimerContext(timer_id: TimerId) void {
     if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
-            const ctx = kv.value;
+            const wrapper = kv.value;
             // Mark as cancelled so interval callbacks know to stop rescheduling
-            ctx.cancelled = true;
+            wrapper.getData().cancelled = true;
             // Cancel the timer at the libuv level to prevent callback from firing
             if (current_timer_interface) |timer| {
                 timer.clearTimeout(timer_id);
             }
-            // Destroy the context immediately - the timer won't fire anymore
-            ctx.destroy();
+            // Destroy the wrapper immediately - the timer won't fire anymore
+            wrapper.destroy();
         }
     }
 }
 
 // V8 Callback Functions
 
-/// Context for V8 timer callbacks
-/// Stores references needed to invoke the V8 function when the timer fires
+/// V8 Timer Context Data
 ///
-/// NOTE: This stores raw V8 function pointers without proper persistent handles.
-/// The V8 FFI doesn't currently support Persistent/Global handle creation.
+/// Holds the V8 function reference and metadata for timer/interval callbacks.
 /// This works for short-lived WPT tests but could cause issues if V8 GCs
 /// the function before the timer fires. For production use, the V8 FFI
 /// would need to expose v8::Global<v8::Function> creation.
-const V8TimerContext = struct {
+///
+/// NOTE: This stores raw V8 function pointers without proper persistent handles.
+/// The V8 FFI doesn't currently support Persistent/Global handle creation.
+const V8TimerContextData = struct {
     /// Raw pointer to the V8 function (not GC-protected!)
     callback_fn: *v8.ffi.Function,
     /// V8 isolate
     isolate: *v8.ffi.Isolate,
-    /// Allocator for cleanup
-    allocator: std.mem.Allocator,
     /// Whether this is an interval (repeating) timer - affects cleanup
     is_interval: bool,
     /// For intervals: the delay in ms for rescheduling
@@ -1776,113 +1785,126 @@ const V8TimerContext = struct {
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
-
-    /// Create a new timer context
-    fn create(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, callback_value: *v8.ffi.Value, is_interval: bool) !*V8TimerContext {
-        // Verify it's a function
-        if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-            return error.NotAFunction;
-        }
-
-        const ctx = try allocator.create(V8TimerContext);
-        ctx.* = V8TimerContext{
-            .callback_fn = @ptrCast(callback_value),
-            .isolate = isolate,
-            .allocator = allocator,
-            .is_interval = is_interval,
-        };
-        return ctx;
-    }
-
-    /// Free resources
-    fn destroy(self: *V8TimerContext) void {
-        // NOTE: We don't have a way to release the V8 function reference
-        // since we're not using proper persistent handles
-        self.allocator.destroy(self);
-    }
 };
 
-/// Timer callback that invokes the V8 function (one-shot timers)
-fn v8TimerCallback(ctx_ptr: ?*anyopaque) void {
-    const timer_ctx: *V8TimerContext = @ptrCast(@alignCast(ctx_ptr orelse return));
+/// Type-safe timer callback wrapper for V8 timer contexts.
+///
+/// Uses SelfContainedWorkCallback to bundle the callback function and context data
+/// together, providing compile-time type safety and eliminating manual
+/// anyopaque casts in callback functions. The work callback variant stores
+/// the allocator internally for no-argument destroy().
+const V8TimerCallback = SelfContainedWorkCallback(V8TimerContextData);
 
-    // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
-    if (timer_contexts) |*map| {
-        _ = map.remove(timer_ctx.current_timer_id);
+/// Create a new V8 timer context wrapper
+fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, callback_value: *v8.ffi.Value, is_interval: bool) !*V8TimerCallback {
+    // Verify it's a function
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        return error.NotAFunction;
     }
 
-    // Always destroy one-shot timer contexts after execution
-    defer timer_ctx.destroy();
+    const callback_fn = if (is_interval) &v8IntervalHandler else &v8TimerHandler;
+    return try V8TimerCallback.create(
+        allocator,
+        callback_fn,
+        .{
+            .callback_fn = @ptrCast(callback_value),
+            .isolate = isolate,
+            .is_interval = is_interval,
+        },
+    );
+}
 
-    const isolate = timer_ctx.isolate;
+/// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
+fn v8TimerHandler(data: *V8TimerContextData) void {
+    // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
+    if (timer_contexts) |*map| {
+        _ = map.remove(data.current_timer_id);
+    }
+
+    const isolate = data.isolate;
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
     // Invoke the V8 function (stored directly, not via persistent handle)
     var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(timer_ctx.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 }
 
-/// Interval callback that invokes the V8 function and reschedules itself
-fn v8IntervalCallback(ctx_ptr: ?*anyopaque) void {
-    const timer_ctx: *V8TimerContext = @ptrCast(@alignCast(ctx_ptr orelse return));
-
-    // Helper to unregister and destroy the timer context
-    const destroyTimerCtx = struct {
-        fn f(ctx: *V8TimerContext) void {
-            if (timer_contexts) |*map| {
-                _ = map.remove(ctx.current_timer_id);
-            }
-            ctx.destroy();
-        }
-    }.f;
-
+/// Handler function for interval callbacks (invoked via SelfContainedCallback trampoline)
+fn v8IntervalHandler(data: *V8TimerContextData) void {
     // Check if interval was cancelled
-    if (timer_ctx.cancelled) {
-        destroyTimerCtx(timer_ctx);
+    if (data.cancelled) {
+        if (timer_contexts) |*map| {
+            _ = map.remove(data.current_timer_id);
+        }
+        // Note: The SelfContainedCallback wrapper is destroyed after this returns
+        // via invokeAndDestroy() in the trampoline
         return;
     }
 
-    const isolate = timer_ctx.isolate;
+    const isolate = data.isolate;
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
     // Invoke the V8 function
     var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(timer_ctx.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
 
     // Run microtasks after the timer callback
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
     // Reschedule the interval if not cancelled
-    if (!timer_ctx.cancelled) {
+    if (!data.cancelled) {
         if (getTimerInterface()) |timer| {
-            const new_timer_id = timer.setTimeout(timer_ctx.interval_delay_ms, v8IntervalCallback, timer_ctx);
+            // Get the wrapper pointer from the data pointer
+            // The data is embedded in the SelfContainedCallback, so we can calculate the wrapper address
+            const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+
+            const new_timer_id = timer.setTimeout(
+                data.interval_delay_ms,
+                V8TimerCallback.getTrampolineCallback(),
+                wrapper.toAnyopaque(),
+            );
             if (new_timer_id != 0) {
                 // Update the timer ID for potential clearInterval calls
-                const old_id = timer_ctx.current_timer_id;
-                timer_ctx.current_timer_id = new_timer_id;
+                const old_id = data.current_timer_id;
+                data.current_timer_id = new_timer_id;
                 // Update the timer context map with new ID
                 if (timer_contexts) |*map| {
                     _ = map.remove(old_id);
-                    map.put(new_timer_id, timer_ctx) catch {};
+                    map.put(new_timer_id, wrapper) catch {};
                 }
             } else {
                 // Failed to reschedule, clean up
-                destroyTimerCtx(timer_ctx);
+                if (timer_contexts) |*map| {
+                    _ = map.remove(data.current_timer_id);
+                }
+                wrapper.destroy();
             }
         } else {
             // No timer interface, clean up
-            destroyTimerCtx(timer_ctx);
+            if (timer_contexts) |*map| {
+                _ = map.remove(data.current_timer_id);
+            }
+            const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+            wrapper.destroy();
         }
     } else {
         // Cancelled, clean up
-        destroyTimerCtx(timer_ctx);
+        if (timer_contexts) |*map| {
+            _ = map.remove(data.current_timer_id);
+        }
+        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+        wrapper.destroy();
     }
 }
+
+// NOTE: The old v8TimerCallback and v8IntervalCallback functions have been replaced by
+// typed handlers v8TimerHandler and v8IntervalHandler above, which are invoked via the
+// SelfContainedCallback trampoline pattern for type safety.
 
 /// setTimeout callback - schedules callback to run after delay using TimerManager
 fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
@@ -1947,28 +1969,32 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
         return;
     };
 
-    // Create timer context to hold V8 callback reference (not an interval)
-    const timer_ctx = V8TimerContext.create(allocator, isolate, callback_value, false) catch {
+    // Create typed timer context wrapper (one-shot timer)
+    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, false) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     };
 
-    // Schedule the timer using TimerInterface
+    // Schedule the timer using TimerInterface with typed callback trampoline
     const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
-    const timer_id = timer.setTimeout(delay_u64, v8TimerCallback, timer_ctx);
+    const timer_id = timer.setTimeout(
+        delay_u64,
+        V8TimerCallback.getTrampolineCallback(),
+        timer_wrapper.toAnyopaque(),
+    );
     if (timer_id == 0) {
-        timer_ctx.destroy();
+        timer_wrapper.destroy();
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     }
 
     // Store the timer ID in the context so the callback can unregister it
-    timer_ctx.current_timer_id = timer_id;
+    timer_wrapper.getData().current_timer_id = timer_id;
 
     // Register the timer context for cleanup tracking (prevents memory leak on deinit)
-    registerTimerContext(timer_id, timer_ctx);
+    registerTimerContext(timer_id, timer_wrapper);
 
     // Return timer ID (truncate to i32 for V8 Integer)
     const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
@@ -2079,31 +2105,35 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
         return;
     };
 
-    // Create timer context to hold V8 callback reference (this IS an interval)
-    const timer_ctx = V8TimerContext.create(allocator, isolate, callback_value, true) catch {
+    // Create typed timer context wrapper (interval timer)
+    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, true) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     };
 
     // Store the interval delay in the context for re-scheduling
-    timer_ctx.interval_delay_ms = if (delay_ms >= 0) @intCast(delay_ms) else 0;
-
-    // Schedule the first timeout (intervals reschedule themselves in v8IntervalCallback)
     const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
-    const timer_id = timer.setTimeout(delay_u64, v8IntervalCallback, timer_ctx);
+    timer_wrapper.getData().interval_delay_ms = delay_u64;
+
+    // Schedule the first timeout (intervals reschedule themselves in v8IntervalHandler)
+    const timer_id = timer.setTimeout(
+        delay_u64,
+        V8TimerCallback.getTrampolineCallback(),
+        timer_wrapper.toAnyopaque(),
+    );
     if (timer_id == 0) {
-        timer_ctx.destroy();
+        timer_wrapper.destroy();
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     }
 
     // Store the timer ID in the context so it can be used for rescheduling
-    timer_ctx.current_timer_id = timer_id;
+    timer_wrapper.getData().current_timer_id = timer_id;
 
     // Register the interval context for cleanup when clearInterval is called
-    registerTimerContext(timer_id, timer_ctx);
+    registerTimerContext(timer_id, timer_wrapper);
 
     // Return timer ID (truncate to i32 for V8 Integer)
     const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));

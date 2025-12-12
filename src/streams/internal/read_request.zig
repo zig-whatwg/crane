@@ -221,8 +221,11 @@ pub const ReadRequest = struct {
     }
 };
 
-/// Sentinel pointer for null context in legacy init
-const undefined_ptr: *anyopaque = @ptrFromInt(0xDEADBEEF);
+/// Sentinel pointer for null context in legacy init.
+/// Uses a static variable instead of @ptrFromInt to avoid undefined behavior.
+/// The address of this variable serves as a unique sentinel value.
+var sentinel_storage: u8 align(8) = 0;
+const undefined_ptr: *anyopaque = @ptrCast(&sentinel_storage);
 
 // ============================================================================
 // Tests

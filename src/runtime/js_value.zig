@@ -227,7 +227,64 @@ pub const JSValue = union(enum) {
         return .{ .instance = @ptrCast(@alignCast(inst)) };
     }
 
+    // ========================================================================
+    // Type-Safe Factory Methods
+    // ========================================================================
+
+    /// Create a JSValue from a typed global handle.
+    ///
+    /// Use this when you have a concrete global handle type from the engine.
+    /// This is the preferred pattern over fromAnyopaque.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const handle = try v8.createGlobalHandle(isolate, value);
+    /// return JSValue.fromGlobalHandle(handle);
+    /// ```
+    pub fn fromGlobalHandle(handle: *anyopaque) JSValue {
+        return .{ .handle = .{ .ptr = handle, .needs_disposal = true, .handle_scope = .global } };
+    }
+
+    /// Create a JSValue from a typed local value.
+    ///
+    /// Use this when you have a local value within a HandleScope.
+    /// WARNING: The returned JSValue must NOT be stored!
+    ///
+    /// ## Example
+    /// ```zig
+    /// const local_value = v8.ffi.v8_String_NewFromUtf8(isolate, "hello");
+    /// return JSValue.fromLocalValue(local_value);
+    /// ```
+    pub fn fromLocalValue(local_value: *anyopaque) JSValue {
+        return .{ .handle = .{ .ptr = local_value, .needs_disposal = false, .handle_scope = .local } };
+    }
+
+    /// Create a JSValue from any typed pointer.
+    ///
+    /// Generic factory that accepts any pointer type and converts it to a handle.
+    /// Useful for strongly-typed V8/engine types.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const function: *v8.ffi.Function = ...;
+    /// return JSValue.fromTypedPtr(function);
+    /// ```
+    pub fn fromTypedPtr(comptime T: type, ptr: *T) JSValue {
+        return .{ .handle = .{ .ptr = @ptrCast(ptr), .needs_disposal = false } };
+    }
+
+    // ========================================================================
+    // Legacy Anyopaque Methods (Deprecated)
+    // ========================================================================
+
     /// Create from legacy anyopaque pointer
+    ///
+    /// DEPRECATED: Use typed alternatives instead:
+    /// - `fromGlobalHandle()` for global handles
+    /// - `fromLocalValue()` for local values within HandleScope
+    /// - `fromLocalHandle()` for other local handles
+    /// - `fromInstance()` for runtime.Instance pointers
+    /// - `fromPromise()` for V8 Promise pointers
     ///
     /// This is for gradual migration. The pointer is treated as an engine handle.
     /// Use with caution - the type information is lost.
@@ -356,7 +413,34 @@ pub const JSValue = union(enum) {
         };
     }
 
+    /// Get the full EngineHandle struct if this is a handle value.
+    ///
+    /// Returns the typed EngineHandle struct which includes metadata about
+    /// disposal requirements and handle scope. Prefer this over toAnyopaque()
+    /// when you need to know about handle lifecycle.
+    ///
+    /// ## Example
+    /// ```zig
+    /// if (value.getEngineHandle()) |handle| {
+    ///     if (handle.needs_disposal) {
+    ///         // Schedule disposal
+    ///     }
+    /// }
+    /// ```
+    pub fn getEngineHandle(self: JSValue) ?EngineHandle {
+        return switch (self) {
+            .handle => |h| h,
+            else => null,
+        };
+    }
+
     /// Convert to legacy anyopaque pointer
+    ///
+    /// DEPRECATED: Use typed alternatives instead:
+    /// - `asEngineHandle()` to get the raw handle pointer
+    /// - `getEngineHandle()` to get full handle with metadata
+    /// - `toInstance()` to get typed runtime.Instance
+    /// - `asInstance()` for anyopaque instance extraction
     ///
     /// WARNING: This loses type information! Use only for transitional code.
     pub fn toAnyopaque(self: JSValue) ?*const anyopaque {

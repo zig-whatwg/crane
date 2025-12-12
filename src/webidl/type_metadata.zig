@@ -585,6 +585,11 @@ const metadata_undefined = TypeMetadata{
     .conversion = null,
 };
 
+// KEEP: WebIDL 'object' type maps to *anyopaque
+// Per WebIDL spec, 'object' represents "any ECMAScript object value" - it's intentionally
+// untyped because it could be ANY JavaScript object. Using *anyopaque is correct here.
+// Consider: Could add JSObject wrapper type with helper methods (isArray, isFunction, etc.)
+// but the underlying storage would still need type erasure.
 const metadata_object = TypeMetadata{
     .zig_type = *anyopaque,
     .kind = .object,
@@ -594,6 +599,11 @@ const metadata_object = TypeMetadata{
     .conversion = null,
 };
 
+// KEEP: WebIDL 'symbol' type maps to *anyopaque
+// Per WebIDL spec, 'symbol' represents "a Symbol value" - JavaScript symbols are
+// engine-specific opaque values with no Zig equivalent. Using *anyopaque is correct.
+// Consider: Could add JSSymbol wrapper type with description() method,
+// but the underlying storage would still need type erasure.
 const metadata_symbol = TypeMetadata{
     .zig_type = *anyopaque,
     .kind = .symbol,

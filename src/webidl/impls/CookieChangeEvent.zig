@@ -17,6 +17,9 @@ const cookiestore = @import("cookiestore");
 const CookieChangeEvent = interfaces.CookieChangeEvent;
 const CookieListItem = cookiestore.CookieListItem;
 
+// Use typed extraction for dictionary arrays
+const extractOptionalDictionarySlice = webidl.extractOptionalDictionarySlice;
+
 pub const State = CookieChangeEvent.State;
 
 pub const ImplError = error{
@@ -122,11 +125,10 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (eventInitDict.was_passed) {
         const init_dict = eventInitDict.value;
 
-        // Process changed cookies
+        // Process changed cookies using typed extraction
         // The changed field is *const anyopaque which is a pointer to CookieList (sequence<CookieListItem>)
-        if (init_dict.changed) |changed_ptr| {
-            const changed_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(changed_ptr)));
-            for (changed_list.*) |dict_item| {
+        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.changed)) |changed_list| {
+            for (changed_list) |dict_item| {
                 // Convert dictionary CookieListItem to our internal CookieListItem
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
@@ -137,10 +139,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             }
         }
 
-        // Process deleted cookies
-        if (init_dict.deleted) |deleted_ptr| {
-            const deleted_list = @as(*const []const dictionaries.CookieListItem, @ptrCast(@alignCast(deleted_ptr)));
-            for (deleted_list.*) |dict_item| {
+        // Process deleted cookies using typed extraction
+        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.deleted)) |deleted_list| {
+            for (deleted_list) |dict_item| {
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
                     .value = try ctx.allocator.dupe(u8, dict_item.value orelse ""),
