@@ -84,6 +84,8 @@ pub const MicrotaskCheckpointState = struct {
 };
 
 /// Callbacks for microtask checkpoint integration with the environment.
+/// KEEP: anyopaque context is intentional - same pattern as std.mem.Allocator.
+/// This allows the event loop to be used with any environment implementation.
 pub const MicrotaskCheckpointCallbacks = struct {
     /// Notify about rejected promises for a global object.
     /// HTML Standard §8.1.7.2 line 3237:
@@ -108,6 +110,7 @@ pub const MicrotaskCheckpointCallbacks = struct {
     record_timing_info: ?*const fn (context: ?*anyopaque) void,
 
     /// User context for callbacks.
+    /// KEEP: anyopaque is intentional - allows any environment type to use these callbacks.
     context: ?*anyopaque,
 
     /// Default callbacks (no-op).

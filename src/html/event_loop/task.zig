@@ -112,6 +112,9 @@ pub const Task = struct {
     steps: TaskSteps,
 
     /// User-provided context for the task callback.
+    /// KEEP: anyopaque is intentional - same pattern as std.mem.Allocator.context.
+    /// Tasks in a queue have heterogeneous contexts; comptime generics would require
+    /// all tasks to share the same context type, which is impractical.
     context: ?*anyopaque,
 
     /// Whether this task has been cancelled.
@@ -187,6 +190,9 @@ pub const Microtask = struct {
     steps: MicrotaskSteps,
 
     /// User-provided context for the microtask callback.
+    /// KEEP: anyopaque is intentional - same pattern as std.mem.Allocator.context.
+    /// Microtasks in a queue have heterogeneous contexts; comptime generics would require
+    /// all microtasks to share the same context type, which is impractical.
     context: ?*anyopaque,
 
     /// Document associated with the microtask.
