@@ -28,6 +28,9 @@ const WriteRequest = @import("streams_write_request").WriteRequest;
 // Promise utilities for bridging Zig AsyncPromise to V8 Promise
 const promise_utils = v8_engine.promise;
 
+// Typed callback infrastructure for type-safe callbacks
+const typed_callback = runtime.typed_callback;
+
 pub const State = WritableStream.State;
 
 pub const ImplError = error{
@@ -1119,39 +1122,59 @@ pub fn invokePendingStartCallback(
         // Result is a Promise - chain handlers to wait for it to settle
         const promise: *v8.ffi.Promise = @ptrCast(result_value);
 
-        // Create context for the callbacks (store pointers needed for completion)
-        const callback_ctx = controller_internal.allocator.create(WritableStartCallbackContext) catch {
+        // Create type-safe callback wrappers using SelfContainedPromiseCallback
+        // These embed the context and callback, eliminating @ptrCast/@alignCast patterns
+        const context_data = WritableStartCallbackContext{
+            .controller_internal = controller_internal,
+            .stream_instance = instance,
+        };
+
+        // Create fulfill callback wrapper (self-contained - embeds context + callback)
+        const fulfill_cb = WritableStartFulfillCallback.create(
+            controller_internal.allocator,
+            &onWritableStartFulfilled,
+            context_data,
+        ) catch {
             // Allocation failed - fall back to immediate fulfillment
             onWritableStartFulfilledImmediate(controller_internal);
             return;
         };
-        callback_ctx.* = .{
-            .controller_internal = controller_internal,
-            .stream_instance = instance,
-            .allocator = controller_internal.allocator,
-        };
 
-        // Create fulfill handler
-        const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
-            context,
-            onWritableStartPromiseFulfilled,
-            callback_ctx,
-        ) orelse {
-            // Failed to create handler - fall back to immediate fulfillment
-            controller_internal.allocator.destroy(callback_ctx);
+        // Create reject callback wrapper (self-contained - embeds context + callback)
+        const reject_cb = WritableStartRejectCallback.create(
+            controller_internal.allocator,
+            &onWritableStartRejected,
+            context_data,
+        ) catch {
+            // Allocation failed - clean up fulfill callback and fall back
+            fulfill_cb.destroy();
             onWritableStartFulfilledImmediate(controller_internal);
             return;
         };
 
-        // Create reject handler
+        // Create fulfill handler using type-safe trampoline
+        const fulfill_handler = v8.ffi.v8_CreateZigFulfillHandler(
+            context,
+            WritableStartFulfillCallback.getTrampolineC(),
+            fulfill_cb.toAnyopaque(),
+        ) orelse {
+            // Failed to create handler - clean up and fall back
+            fulfill_cb.destroy();
+            reject_cb.destroy();
+            onWritableStartFulfilledImmediate(controller_internal);
+            return;
+        };
+
+        // Create reject handler using type-safe trampoline
         const reject_handler = v8.ffi.v8_CreateZigRejectHandler(
             context,
-            onWritableStartPromiseRejected,
-            callback_ctx,
+            WritableStartRejectCallback.getTrampolineC(),
+            reject_cb.toAnyopaque(),
         ) orelse {
             // Failed to create handler - clean up and fall back
             v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
-            controller_internal.allocator.destroy(callback_ctx);
+            fulfill_cb.destroy();
+            reject_cb.destroy();
             onWritableStartFulfilledImmediate(controller_internal);
             return;
         };
@@ -1162,12 +1185,13 @@ pub fn invokePendingStartCallback(
             // Failed to chain - clean up and fall back
             v8.ffi.v8_DisposeZigCallbackHandler(reject_handler);
             v8.ffi.v8_DisposeZigCallbackHandler(fulfill_handler);
-            controller_internal.allocator.destroy(callback_ctx);
+            fulfill_cb.destroy();
+            reject_cb.destroy();
             onWritableStartFulfilledImmediate(controller_internal);
             return;
         }
         // Promise handlers are now chained - they will be called when the promise settles
-        // The callback context will be freed in the callback handlers
+        // The SelfContainedPromiseCallback trampolines invoke the handler AND destroy the wrapper
     } else {
         // Result is not a Promise - mark as started immediately
         onWritableStartFulfilledImmediate(controller_internal);
@@ -1188,29 +1212,27 @@ const FinishErroringAbortContext = struct {
 const WritableStartCallbackContext = struct {
     controller_internal: *@import("WritableStreamDefaultController.zig").InternalState,
     stream_instance: *runtime.Instance,
-    allocator: std.mem.Allocator,
 };
 
-/// V8 Promise fulfillment callback for start() promise
-/// Called when an async start(controller) function's promise fulfills
-/// Spec: § 4.5.3 SetUpWritableStreamDefaultController - Upon fulfillment of startPromise
-fn onWritableStartPromiseFulfilled(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
-    const callback_ctx: *WritableStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
-    defer callback_ctx.allocator.destroy(callback_ctx);
+/// Type-safe promise callback wrapper for WritableStream start() promise fulfillment
+/// Uses SelfContainedPromiseCallback to eliminate @ptrCast/@alignCast patterns
+const WritableStartFulfillCallback = typed_callback.SelfContainedPromiseCallback(WritableStartCallbackContext);
 
-    // Mark the controller as started
-    onWritableStartFulfilledImmediate(callback_ctx.controller_internal);
+/// Type-safe promise callback wrapper for WritableStream start() promise rejection
+const WritableStartRejectCallback = typed_callback.SelfContainedPromiseCallback(WritableStartCallbackContext);
+
+/// Typed handler for start() promise fulfillment - receives typed context directly
+/// Spec: § 4.5.3 SetUpWritableStreamDefaultController - Upon fulfillment of startPromise
+fn onWritableStartFulfilled(ctx: *WritableStartCallbackContext, _: ?*anyopaque) void {
+    // Mark the controller as started (directly typed access - no cast needed)
+    onWritableStartFulfilledImmediate(ctx.controller_internal);
 }
 
-/// V8 Promise rejection callback for start() promise
-/// Called when an async start(controller) function's promise rejects
+/// Typed handler for start() promise rejection - receives typed context directly
 /// Spec: § 4.5.3 SetUpWritableStreamDefaultController - Upon rejection of startPromise with reason r
-fn onWritableStartPromiseRejected(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
-    const callback_ctx: *WritableStartCallbackContext = @ptrCast(@alignCast(ctx orelse return));
-    defer callback_ctx.allocator.destroy(callback_ctx);
-
-    // Error the stream with the rejection reason
-    writableStreamStartErroring(callback_ctx.stream_instance, runtime.JSValue.fromStringRef("Start callback promise rejected"));
+fn onWritableStartRejected(ctx: *WritableStartCallbackContext, _: ?*anyopaque) void {
+    // Error the stream with the rejection reason (directly typed access - no cast needed)
+    writableStreamStartErroring(ctx.stream_instance, runtime.JSValue.fromStringRef("Start callback promise rejected"));
 }
 
 /// Immediate start fulfillment (no async)
