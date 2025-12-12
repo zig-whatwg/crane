@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765547802917,
-  "time_end": 1765547808260,
+  "time_start": 1765550718194,
+  "time_end": 1765550723559,
   "results": [
     {
       "test": "webidl/ecmascript-binding/sequence-conversion.html",
@@ -203,12 +203,12 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Overriding getter of [PutForwards] attribute", "status": "FAIL", "message": "assert_true: Overridden getter should be called expected true got false"},
+        {"name": "Overriding getter of [PutForwards] attribute", "status": "FAIL", "message": "Cannot set property on null or undefined"},
         {"name": "Overriding setter of [PutForwards] target attribute", "status": "FAIL", "message": "Object.defineProperty called on non-object"},
         {"name": "Overriding target of [PutForwards] attribute", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'cssText')"},
-        {"name": "Exception propagation from getter of [PutForwards] attribute", "status": "FAIL", "message": "assert_throws_js: function \"() => {\n    element.style = \"color: green\";\n  }\" did not throw"},
+        {"name": "Exception propagation from getter of [PutForwards] attribute", "status": "PASS", "message": null},
         {"name": "Exception propagation from setter of [PutForwards] target attribute", "status": "FAIL", "message": "Object.defineProperty called on non-object"},
-        {"name": "TypeError when getter of [PutForwards] attribute returns non-object", "status": "FAIL", "message": "assert_throws_js: function \"() => {\n    element.style = \"color: green\";\n  }\" did not throw"},
+        {"name": "TypeError when getter of [PutForwards] attribute returns non-object", "status": "PASS", "message": null},
         {"name": "Does not throw when setter of [PutForwards] attribute returns false", "status": "FAIL", "message": "Object.defineProperty called on non-object"},
         {"name": "Setting a.relList to noreferrer is reflected in rel", "status": "FAIL", "message": "assert_true: The attribute is a DOMTokenList expected true got false"},
         {"name": "Setting area.relList to noreferrer is reflected in rel", "status": "FAIL", "message": "assert_true: The attribute is a DOMTokenList expected true got false"},
@@ -497,8 +497,8 @@
       "subtests": [
         {"name": "Conversion to a dictionary works", "status": "PASS", "message": null},
         {"name": "Conversion to a sequence works", "status": "FAIL", "message": "TypeError"},
-        {"name": "Can convert a RegExp to a USVString", "status": "FAIL", "message": "assert_equals: expected \"/(?:)/\" but got \"\""},
-        {"name": "Can be used as an object implementing a callback interface", "status": "PASS", "message": null}
+        {"name": "Can be used as an object implementing a callback interface", "status": "FAIL", "message": "assert_true: expected true got false"},
+        {"name": "Can convert a RegExp to a USVString", "status": "FAIL", "message": "assert_equals: expected \"/(?:)/\" but got \"\""}
       ]
     },
     {
