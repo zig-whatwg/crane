@@ -921,14 +921,15 @@ pub fn V8Interface(comptime Interface: type) type {
 
                         const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
-                        // If instance_ptr is null, we're being called on the prototype, not an instance
-                        // This happens when accessing properties via Object.getOwnPropertyDescriptor
-                        // or when accessing properties on the prototype directly
+                        // If instance_ptr is null, this is NOT a valid instance of this interface.
+                        // This happens when:
+                        // 1. Calling getter.apply({}) with a non-interface object
+                        // 2. Calling getter on the prototype directly (DOMException.prototype.name)
+                        //
+                        // Per WebIDL spec, getters must perform brand checks and throw TypeError
+                        // when called with an incompatible this value.
                         if (instance_ptr == null) {
-                            // Return undefined for prototype access
-                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                info.setReturnValue(undef);
-                            }
+                            conv.throwTypeError(isolate_inner, "Illegal invocation");
                             return;
                         }
 
