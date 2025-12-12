@@ -2089,6 +2089,199 @@ pub fn build(b: *std.Build) void {
     lib_full_step.dependOn(&install_full_static.step);
 
     // ========================================================================
+    // CRANE BROWSER (Self-contained browser with static V8)
+    // ========================================================================
+    //
+    // Build: zig build browser
+    // Output: zig-out/bin/crane (executable) + zig-out/lib/libcrane.a (library)
+    //
+    // Requires: Static V8 monolith library. Build V8 with:
+    //   gn gen out/static --args='is_component_build=false v8_monolithic=true v8_use_external_startup_data=false is_debug=false'
+    //   ninja -C out/static v8_monolith
+    //
+    // Set V8_STATIC_PATH environment variable or use -Dv8-static-path=<path>
+
+    const v8_static_path = b.option([]const u8, "v8-static-path", "Path to static V8 monolith library (libv8_monolith.a)") orelse
+        std.process.getEnvVarOwned(b.allocator, "V8_STATIC_PATH") catch null;
+
+    // Only build crane if static V8 path is provided
+    if (v8_static_path) |static_v8| {
+        // Create crane module (same as lib_exports but for static linking)
+        const crane_mod = b.createModule(.{
+            .root_source_file = b.path("src/lib_exports.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+
+        // Add all module imports (same as lib_exports_mod)
+        crane_mod.addImport("runtime", runtime_mod);
+        crane_mod.addImport("webidl", webidl_mod);
+        crane_mod.addImport("infra", infra_mod);
+        crane_mod.addImport("v8", v8_mod);
+        crane_mod.addImport("interfaces", interfaces_mod);
+        crane_mod.addImport("impls", impls_mod);
+        crane_mod.addImport("namespaces", namespaces_mod);
+        crane_mod.addImport("dictionaries", dictionaries_mod);
+        crane_mod.addImport("typedefs", typedefs_mod);
+        crane_mod.addImport("enums", enums_mod);
+        crane_mod.addImport("callbacks", callbacks_mod);
+        crane_mod.addImport("mixins", mixins_mod);
+        crane_mod.addImport("browser", browser_mod);
+        crane_mod.addImport("dom", dom_mod);
+        crane_mod.addImport("encoding", encoding_mod);
+        crane_mod.addImport("url", url_mod);
+        crane_mod.addImport("console", console_mod);
+        crane_mod.addImport("streams", streams_mod);
+        crane_mod.addImport("mimesniff", mimesniff_mod);
+        crane_mod.addImport("fetch", fetch_mod);
+        crane_mod.addImport("html_core", html_core_mod);
+        crane_mod.addImport("html", html_mod);
+        crane_mod.addImport("storage", storage_mod);
+        crane_mod.addImport("trusted_types", trusted_types_mod);
+        crane_mod.addImport("csp", csp_mod);
+        crane_mod.addImport("hr_time", hr_time_mod);
+        crane_mod.addImport("websocket", websocket_mod);
+        crane_mod.addImport("permissions", permissions_mod);
+        crane_mod.addImport("intl", intl_mod);
+        crane_mod.addImport("platform", platform_mod);
+
+        // Configure storage backends
+        configureStorageBackends(crane_mod, target);
+
+        // ---- Crane Static Library (libcrane.a) ----
+        const crane_lib = b.addLibrary(.{
+            .linkage = .static,
+            .name = "crane",
+            .root_module = crane_mod,
+        });
+
+        // Add V8 C++ wrapper
+        crane_lib.addCSourceFile(.{
+            .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+            .flags = &.{
+                "-std=c++20",
+                "-fno-exceptions",
+                "-fno-rtti",
+                "-DV8_COMPRESS_POINTERS",
+                "-DV8_ENABLE_SANDBOX",
+            },
+        });
+
+        // V8 include paths (still needed for headers)
+        crane_lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+
+        // Link static V8 monolith
+        crane_lib.addObjectFile(.{ .cwd_relative = static_v8 });
+
+        // Link libuv statically if available, otherwise dynamic
+        crane_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+        crane_lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+        crane_lib.linkSystemLibrary("uv");
+
+        // Link C++ standard library
+        crane_lib.linkLibCpp();
+
+        // System frameworks (macOS)
+        if (target.result.os.tag == .macos) {
+            crane_lib.linkFramework("CoreFoundation");
+            crane_lib.linkFramework("CoreServices");
+            crane_lib.linkFramework("SystemConfiguration");
+        }
+
+        b.installArtifact(crane_lib);
+
+        // ---- Crane Executable (crane) ----
+        const crane_exe = b.addExecutable(.{
+            .name = "crane",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tools/repl.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+
+        // Add all imports to crane executable
+        crane_exe.root_module.addImport("runtime", runtime_mod);
+        crane_exe.root_module.addImport("v8", v8_mod);
+        crane_exe.root_module.addImport("interfaces", interfaces_mod);
+        crane_exe.root_module.addImport("namespaces", namespaces_mod);
+        crane_exe.root_module.addImport("browser", browser_mod);
+        crane_exe.root_module.addImport("fetch", fetch_mod);
+
+        // Add V8 C++ wrapper
+        crane_exe.addCSourceFile(.{
+            .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+            .flags = &.{
+                "-std=c++20",
+                "-fno-exceptions",
+                "-fno-rtti",
+                "-DV8_COMPRESS_POINTERS",
+                "-DV8_ENABLE_SANDBOX",
+            },
+        });
+
+        // V8 include paths
+        crane_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+
+        // Link static V8 monolith
+        crane_exe.addObjectFile(.{ .cwd_relative = static_v8 });
+
+        // Link libuv
+        crane_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+        crane_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+        crane_exe.linkSystemLibrary("uv");
+
+        // Configure storage backends for executable
+        configureStorageBackends(crane_exe.root_module, target);
+
+        // Link C++ standard library
+        crane_exe.linkLibCpp();
+
+        // System frameworks (macOS)
+        if (target.result.os.tag == .macos) {
+            crane_exe.linkFramework("CoreFoundation");
+            crane_exe.linkFramework("CoreServices");
+            crane_exe.linkFramework("SystemConfiguration");
+        }
+
+        b.installArtifact(crane_exe);
+
+        // Build step
+        const browser_step = b.step("browser", "Build Crane browser (self-contained with static V8)");
+        const install_crane_lib = b.addInstallArtifact(crane_lib, .{});
+        const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
+        browser_step.dependOn(&install_crane_lib.step);
+        browser_step.dependOn(&install_crane_exe.step);
+    } else {
+        // No static V8 path provided - create a step that prints instructions
+        const browser_step = b.step("browser", "Build Crane browser (self-contained with static V8)");
+        const print_instructions = b.addSystemCommand(&.{
+            "echo",
+            \\
+            \\ERROR: Static V8 library path not provided.
+            \\
+            \\To build Crane browser, you need a static V8 monolith library.
+            \\
+            \\Option 1: Set environment variable
+            \\  export V8_STATIC_PATH=/path/to/libv8_monolith.a
+            \\  zig build browser
+            \\
+            \\Option 2: Use build flag
+            \\  zig build browser -Dv8-static-path=/path/to/libv8_monolith.a
+            \\
+            \\To build V8 statically:
+            \\  1. Get V8 source: git clone https://chromium.googlesource.com/v8/v8.git
+            \\  2. Install depot_tools and run: gclient sync
+            \\  3. Generate build files:
+            \\     gn gen out/static --args='is_component_build=false v8_monolithic=true v8_use_external_startup_data=false is_debug=false symbol_level=0'
+            \\  4. Build: ninja -C out/static v8_monolith
+            \\  5. Library will be at: out/static/obj/libv8_monolith.a
+            \\
+        });
+        browser_step.dependOn(&print_instructions.step);
+    }
+
+    // ========================================================================
     // IDL PARSER TOOL
     // ========================================================================
 
