@@ -18,6 +18,13 @@
 //! - FFI boundaries are clearly marked and documented
 //! - Type erasure only happens at documented FFI points
 //! - Callbacks receive correctly typed contexts
+//!
+//! ## NOTE ON anyopaque IN THESE TESTS
+//!
+//! The test "Typed callback with type erasure and recovery" intentionally demonstrates
+//! the anyopaque type erasure/recovery pattern. This is EDUCATIONAL - showing how
+//! FFI boundaries work and why TypedAlgorithm exists to eliminate manual casting.
+//! The TypedAlgorithm.erase() method encapsulates this pattern safely.
 
 const std = @import("std");
 const testing = std.testing;
