@@ -745,13 +745,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     );
 
                     if (proto_name_str) |proto_const_name_v8| {
-                        // Set constant on prototype template with ReadOnly attribute
-                        // Attributes: ReadOnly (1) | DontDelete (2) = 3
+                        // Set constant on prototype template with correct attributes
+                        // V8 PropertyAttribute flags:
+                        //   None = 0, ReadOnly = 1, DontEnum = 2, DontDelete = 4
+                        // Per WebIDL spec, constants must be:
+                        //   writable: false (ReadOnly), enumerable: true (!DontEnum), configurable: false (DontDelete)
+                        // So: ReadOnly (1) | DontDelete (4) = 5
                         v8.v8_ObjectTemplate_SetWithAttributes(
                             proto_tmpl,
                             @ptrCast(proto_const_name_v8),
                             @ptrCast(proto_v8_value),
-                            3, // ReadOnly | DontDelete
+                            5, // ReadOnly | DontDelete (enumerable = true)
                         );
                     }
                 }
