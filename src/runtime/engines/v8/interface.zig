@@ -832,10 +832,27 @@ pub fn V8Interface(comptime Interface: type) type {
                 );
             }
 
-            // Register indexed property handler if interface is iterable
+            // Register indexed property handler if interface has call_item with u32 parameter
             // This enables array-like access: obj[0], obj[1], etc.
             // WebIDL interfaces with "getter" operations support bracket notation
-            if (@hasDecl(Meta, "iterable") and @hasDecl(Interface, "call_item")) {
+            // Examples: HTMLCollection, NodeList, DOMTokenList (all have "getter Element? item()")
+            //
+            // Note: This is separate from iterable support. An interface can have:
+            // - call_item only (like HTMLCollection): supports obj[0] but not for...of
+            // - iterable only: supports for...of but not obj[0]
+            // - both: supports both features
+            //
+            // Only register if call_item takes u32 index (not Opt(DOMString) like HTMLAllCollection)
+            const has_indexed_item = comptime blk: {
+                if (!@hasDecl(Interface, "call_item")) break :blk false;
+                const CallItemFn = @TypeOf(Interface.call_item);
+                const fn_info = @typeInfo(CallItemFn).@"fn";
+                // Expect: fn(instance: *runtime.Instance, index: u32) !ReturnType
+                if (fn_info.params.len != 2) break :blk false;
+                const second_param = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param == u32;
+            };
+            if (has_indexed_item) {
                 v8.v8_ObjectTemplate_SetIndexedPropertyHandler(
                     instance_tmpl,
                     indexedPropertyGetter,
