@@ -1,0 +1,126 @@
+#!/bin/bash
+# Build V8 as a static monolith library for Crane browser
+#
+# Usage: ./scripts/build-v8-static.sh [output-dir]
+#
+# Requirements:
+# - Xcode command line tools (xcode-select --install)
+# - Python 3
+# - ~15GB disk space
+# - ~30-60 minutes build time
+#
+# Output: libv8_monolith.a in the specified output directory
+
+set -e
+
+OUTPUT_DIR="${1:-$(pwd)/deps/v8}"
+V8_VERSION="${V8_VERSION:-13.5.212.10}"  # Match homebrew version
+BUILD_DIR="${BUILD_DIR:-/tmp/v8-build}"
+
+echo "=== V8 Static Build Script ==="
+echo "Output directory: $OUTPUT_DIR"
+echo "V8 version: $V8_VERSION"
+echo "Build directory: $BUILD_DIR"
+echo ""
+
+# Check for required tools
+command -v python3 >/dev/null 2>&1 || { echo "Error: python3 required"; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "Error: git required"; exit 1; }
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Step 1: Install depot_tools if not present
+DEPOT_TOOLS_DIR="$BUILD_DIR/depot_tools"
+if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
+    echo "==> Installing depot_tools..."
+    mkdir -p "$BUILD_DIR"
+    cd "$BUILD_DIR"
+    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+fi
+export PATH="$DEPOT_TOOLS_DIR:$PATH"
+
+# Step 2: Fetch V8 source
+V8_DIR="$BUILD_DIR/v8"
+if [ ! -d "$V8_DIR" ]; then
+    echo "==> Fetching V8 source..."
+    mkdir -p "$V8_DIR"
+    cd "$BUILD_DIR"
+    fetch v8
+    cd v8
+    git checkout "refs/tags/$V8_VERSION" || git checkout "origin/main"
+    gclient sync
+else
+    echo "==> Using existing V8 source at $V8_DIR"
+    cd "$V8_DIR"
+fi
+
+# Step 3: Generate build configuration
+echo "==> Generating build configuration..."
+
+# Detect architecture
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ]; then
+    V8_TARGET_CPU="arm64"
+else
+    V8_TARGET_CPU="x64"
+fi
+
+# Create args.gn for static monolith build
+mkdir -p out/static
+cat > out/static/args.gn << ARGS
+# Static monolith build for Crane browser
+is_component_build = false
+v8_monolithic = true
+v8_use_external_startup_data = false
+is_debug = false
+symbol_level = 0
+v8_enable_sandbox = true
+v8_enable_pointer_compression = true
+
+# Target architecture
+target_cpu = "$V8_TARGET_CPU"
+
+# Disable features we don't need
+v8_enable_gdbjit = false
+v8_enable_disassembler = false
+v8_enable_object_print = false
+v8_enable_verify_heap = false
+v8_enable_trace_maps = false
+v8_enable_test_features = false
+v8_enable_v8_checks = false
+
+# Use system libraries where possible
+use_custom_libcxx = false
+
+# macOS specific
+is_clang = true
+ARGS
+
+# Step 4: Build
+echo "==> Building V8 monolith (this may take 30-60 minutes)..."
+gn gen out/static
+ninja -C out/static v8_monolith
+
+# Step 5: Copy output
+echo "==> Copying output..."
+cp out/static/obj/libv8_monolith.a "$OUTPUT_DIR/"
+
+# Also copy ICU data if built with i18n
+if [ -f out/static/icudtl.dat ]; then
+    cp out/static/icudtl.dat "$OUTPUT_DIR/"
+fi
+
+echo ""
+echo "=== Build Complete ==="
+echo "Static V8 library: $OUTPUT_DIR/libv8_monolith.a"
+echo ""
+echo "To use with Crane browser:"
+echo "  zig build browser -Dv8-static-path=$OUTPUT_DIR/libv8_monolith.a"
+echo ""
+echo "Or set environment variable:"
+echo "  export V8_STATIC_PATH=$OUTPUT_DIR/libv8_monolith.a"
+echo ""
+
+# Show file size
+ls -lh "$OUTPUT_DIR/libv8_monolith.a"
