@@ -36,10 +36,17 @@ pub const ServiceWorker = struct {
 
     /// The containing service worker registration.
     /// Set after construction.
+    ///
+    /// KEEP: anyopaque required - Cross-realm reference to registration object.
+    /// The registration type depends on the runtime environment and may be
+    /// a JS engine object or Zig implementation.
     containing_registration: ?*anyopaque = null,
 
     /// The global object (ServiceWorkerGlobalScope).
     /// Null when the worker is not running.
+    ///
+    /// KEEP: anyopaque required - JS engine global object handle.
+    /// The actual type is V8's Global<Object> or equivalent for other engines.
     global_object: ?*anyopaque = null,
 
     /// Skip waiting flag.

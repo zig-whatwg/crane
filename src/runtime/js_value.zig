@@ -94,7 +94,12 @@ pub const JSValue = union(enum) {
     /// - V8: Global<Value>* (persistent handle)
     /// - JSC: JSValueRef (protected value)
     /// - SpiderMonkey: JS::PersistentRooted<JS::Value>*
+    ///
+    /// KEEP: anyopaque required - JS engine handles are inherently opaque.
+    /// Each JS engine provides different handle types that cannot be unified
+    /// at compile time. The runtime layer casts to the appropriate engine type.
     pub const EngineHandle = struct {
+        /// KEEP: anyopaque required - V8 Global<Value>*, JSC JSValueRef, etc.
         ptr: *anyopaque,
 
         /// Engine-specific disposal flag
@@ -558,6 +563,9 @@ pub const OptionalJSValue = union(enum) {
 /// ```
 pub const LocalValue = struct {
     /// The underlying V8 Local value pointer
+    ///
+    /// KEEP: anyopaque required - V8 Local<Value>* handle from FFI boundary.
+    /// Local handles are stack-bound and engine-specific.
     ptr: *anyopaque,
 
     /// Create a LocalValue from a raw pointer (from V8 FFI)
