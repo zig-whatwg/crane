@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765521927362,
-  "time_end": 1765521933039,
+  "time_start": 1765547802917,
+  "time_end": 1765547808260,
   "results": [
     {
       "test": "webidl/ecmascript-binding/sequence-conversion.html",
@@ -75,6 +75,14 @@
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "window.self setter throws TypeError if called on non-configurable accessor property", "status": "FAIL", "message": "assert_throws_js: function \"() => { window[key] = 1; }\" did not throw"},
+        {"name": "window.parent setter throws TypeError if called on non-configurable accessor property", "status": "FAIL", "message": "assert_throws_js: function \"() => { window[key] = 1; }\" did not throw"},
+        {"name": "window.origin setter throws TypeError if called on non-configurable accessor property", "status": "FAIL", "message": "assert_throws_js: function \"() => { window[key] = 1; }\" did not throw"},
+        {"name": "window.innerWidth setter throws TypeError if called on non-configurable accessor property", "status": "FAIL", "message": "assert_throws_js: function \"() => { window[key] = 1; }\" did not throw"},
+        {"name": "window.screen setter throws TypeError if called on non-configurable non-writable data property", "status": "FAIL", "message": "Cannot destructure property 'set' of 'Object.getOwnPropertyDescriptor(...)' as it is undefined."},
+        {"name": "window.length setter throws TypeError if called on non-configurable non-writable data property", "status": "PASS", "message": null},
+        {"name": "window.event setter throws TypeError if called on non-configurable non-writable data property", "status": "FAIL", "message": "Cannot destructure property 'set' of 'Object.getOwnPropertyDescriptor(...)' as it is undefined."},
+        {"name": "window.outerHeight setter throws TypeError if called on non-configurable non-writable data property", "status": "FAIL", "message": "Cannot destructure property 'set' of 'Object.getOwnPropertyDescriptor(...)' as it is undefined."}
       ]
     },
     {
@@ -83,7 +91,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Legacy factory function property enumeration order of \"length\", \"name\", and \"prototype\"", "status": "FAIL", "message": "Image is not defined"}
+        {"name": "Legacy factory function property enumeration order of \"length\", \"name\", and \"prototype\"", "status": "FAIL", "message": "assert_array_equals: expected property 2 to be \"prototype\" but got \"arguments\" (expected array [\"length\", \"name\", \"prototype\"] got [\"length\", \"name\", \"arguments\"])"}
       ]
     },
     {
@@ -92,14 +100,14 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Global object's getter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(globalThis).self; }\" did not throw"},
-        {"name": "Global object's setter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(globalThis).origin = origin; }\" threw object \"ReferenceError: origin is not defined\" (\"ReferenceError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
-        {"name": "Global object's operation throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(globalThis).setInterval(() => {}, 100); }\" did not throw"},
-        {"name": "Global object's getter throws when called on incompatible object (document.all)", "status": "PASS", "message": null},
+        {"name": "Global object's getter throws when called on incompatible object", "status": "PASS", "message": null},
+        {"name": "Global object's setter throws when called on incompatible object", "status": "PASS", "message": null},
+        {"name": "Global object's operation throws when called on incompatible object", "status": "PASS", "message": null},
+        {"name": "Global object's getter throws when called on incompatible object (document.all)", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.getOwnPropertyDescriptor(window, \"document\").get.call(document.all); }\" threw object \"NotSupportedError: This feature is not yet implemented\" (\"NotSupportedError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
         {"name": "Global object's setter throws when called on incompatible object (document.all)", "status": "PASS", "message": null},
-        {"name": "Global object's operation throws when called on incompatible object (document.all)", "status": "FAIL", "message": "assert_throws_js: function \"() => { focus.call(document.all); }\" threw object \"ReferenceError: focus is not defined\" (\"ReferenceError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
-        {"name": "Global object's getter works when called on null / undefined", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'call')"},
-        {"name": "Global object's setter works when called on null / undefined", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'set')"},
+        {"name": "Global object's operation throws when called on incompatible object (document.all)", "status": "FAIL", "message": "assert_throws_js: function \"() => { focus.call(document.all); }\" threw object \"NotSupportedError: This feature is not yet implemented\" (\"NotSupportedError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "Global object's getter works when called on null / undefined", "status": "PASS", "message": null},
+        {"name": "Global object's setter works when called on null / undefined", "status": "PASS", "message": null},
         {"name": "Global object's operation works when called on null / undefined", "status": "FAIL", "message": "assert_false: expected false got true"}
       ]
     },
@@ -150,7 +158,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "ObservableArray's internals won't leak", "status": "FAIL", "message": "Cannot convert undefined or null to object"}
+        {"name": "ObservableArray's internals won't leak", "status": "PASS", "message": null}
       ]
     },
     {
@@ -186,7 +194,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "ObservableArray's ownKeys trap", "status": "FAIL", "message": "Cannot convert undefined or null to object"}
+        {"name": "ObservableArray's ownKeys trap", "status": "PASS", "message": null}
       ]
     },
     {
@@ -214,7 +222,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Direct [[Set]] preserves [[Enumerable]]: false property attribute", "status": "FAIL", "message": "HTMLDocument is not defined"},
+        {"name": "Direct [[Set]] preserves [[Enumerable]]: false property attribute", "status": "PASS", "message": null},
         {"name": "Prototype chain [[Set]] creates property on receiver", "status": "PASS", "message": null}
       ]
     },
@@ -403,7 +411,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "existence and property descriptor of DOMException", "status": "FAIL", "message": "assert_false: enumerable expected false got true"},
+        {"name": "existence and property descriptor of DOMException", "status": "PASS", "message": null},
         {"name": "existence and property descriptor of DOMException.prototype", "status": "PASS", "message": null},
         {"name": "existence and property descriptor of DOMException.prototype.constructor", "status": "PASS", "message": null}
       ]
@@ -453,7 +461,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Direct [[Set]] preserves [[Enumerable]]: false property attribute", "status": "FAIL", "message": "assert_false: expected false got true"},
+        {"name": "Direct [[Set]] preserves [[Enumerable]]: false property attribute", "status": "PASS", "message": null},
         {"name": "Prototype chain [[Set]] creates property on receiver", "status": "PASS", "message": null}
       ]
     },
@@ -489,8 +497,8 @@
       "subtests": [
         {"name": "Conversion to a dictionary works", "status": "PASS", "message": null},
         {"name": "Conversion to a sequence works", "status": "FAIL", "message": "TypeError"},
-        {"name": "Can be used as an object implementing a callback interface", "status": "FAIL", "message": "assert_true: expected true got false"},
-        {"name": "Can convert a RegExp to a USVString", "status": "FAIL", "message": "assert_equals: expected \"/(?:)/\" but got \"\""}
+        {"name": "Can convert a RegExp to a USVString", "status": "FAIL", "message": "assert_equals: expected \"/(?:)/\" but got \"\""},
+        {"name": "Can be used as an object implementing a callback interface", "status": "PASS", "message": null}
       ]
     },
     {
@@ -520,12 +528,12 @@
       "subtests": [
         {"name": "Must be a function according to typeof", "status": "PASS", "message": null},
         {"name": "Must have the correct [[Prototype]]", "status": "PASS", "message": null},
-        {"name": "Must have the correct property descriptor", "status": "FAIL", "message": "assert_false: enumerable expected false got true"},
-        {"name": "Must throw a TypeError when called or constructed", "status": "FAIL", "message": "assert_throws_js: call function \"() => NodeFilter()\" threw object \"Error: Illegal constructor: NodeFilter is not constructible\" (\"Error\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
-        {"name": "Must not have a .prototype property", "status": "FAIL", "message": "assert_false: expected false got true"},
+        {"name": "Must have the correct property descriptor", "status": "PASS", "message": null},
+        {"name": "Must throw a TypeError when called or constructed", "status": "PASS", "message": null},
+        {"name": "Must not have a .prototype property", "status": "PASS", "message": null},
         {"name": "Must have an own name property equal to the interface name and with the correct descriptors", "status": "PASS", "message": null},
         {"name": "Must have an own length property with value zero and the correct descriptors", "status": "PASS", "message": null},
-        {"name": "instanceof must throw but only when we don't bail out early", "status": "FAIL", "message": "assert_throws_js: function \"() => {\n    (function () { }) instanceof NodeFilter;\n  }\" did not throw"}
+        {"name": "instanceof must throw but only when we don't bail out early", "status": "PASS", "message": null}
       ]
     },
     {
@@ -548,7 +556,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "[LegacyFactoryFunction] can be subclassed and correctly handles NewTarget", "status": "FAIL", "message": "Image is not defined"}
+        {"name": "[LegacyFactoryFunction] can be subclassed and correctly handles NewTarget", "status": "PASS", "message": null}
       ]
     },
     {
@@ -561,10 +569,27 @@
     },
     {
       "test": "webidl/ecmascript-binding/setter-argument.html",
-      "status": "ERROR",
-      "message": "done() was called without first defining any tests",
+      "status": "OK",
+      "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "String attribute setter should throw if this value is invalid", "status": "FAIL", "message": "assert_throws_js: function \"() => { setter.call(thisValue); }\" threw object \"Error: Cannot set property on prototype\" (\"Error\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "String attribute setter should treat no arguments as undefined", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "String attribute setter called with undefined should behave in the same way as no arguments", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "String attribute setter called with string should just work", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "Object attribute setter should throw if this value is invalid", "status": "FAIL", "message": "assert_throws_js: function \"() => { setter.call(thisValue); }\" threw object \"Error: Cannot set property on prototype\" (\"Error\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "Object attribute setter should treat no arguments as undefined", "status": "FAIL", "message": "assert_throws_dom: function \"() => { setter.call(thisValue); }\" threw object \"TypeError: TypeError\" that is not a DOMException HierarchyRequestError: property \"code\" is equal to undefined, expected 3"},
+        {"name": "Object attribute setter called with undefined should behave in the same way as no arguments", "status": "FAIL", "message": "assert_throws_dom: function \"() => { setter.call(thisValue, undefined); }\" threw object \"TypeError: TypeError\" that is not a DOMException HierarchyRequestError: property \"code\" is equal to undefined, expected 3"},
+        {"name": "[Replaceable] setter should treat no arguments as undefined", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'set')"},
+        {"name": "[Replaceable] setter called with undefined should behave in the same way as no arguments", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'set')"},
+        {"name": "[Replaceable] setter called with other value should just work", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'set')"},
+        {"name": "[LegacyLenientThis] setter should not throw even if this value is invalid, regardless of the arguments count", "status": "FAIL", "message": "Cannot set property on prototype"},
+        {"name": "[LegacyLenientThis] setter should treat no arguments as undefined", "status": "FAIL", "message": "InvalidStateError"},
+        {"name": "[LegacyLenientThis] setter called with undefined should behave in the same way as no arguments", "status": "FAIL", "message": "InvalidStateError"},
+        {"name": "[LegacyLenientSetter] setter should treat no arguments as undefined", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'call')"},
+        {"name": "[LegacyLenientSetter] setter called with undefined should behave in the same way as no arguments", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'call')"},
+        {"name": "[PutForward] setter should treat no arguments as undefined", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'length')"},
+        {"name": "[PutForward] setter called with undefined should behave in the same way as no arguments", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'length')"}
       ]
     },
     {
@@ -681,23 +706,18 @@
       "duration": 0,
       "subtests": [
         {"name": "idl_test validation", "status": "PASS", "message": null},
-        {"name": "QuotaExceededError interface: existence and properties of interface object", "status": "FAIL", "message": "assert_false: self's property \"QuotaExceededError\" should not be enumerable expected false got true"},
+        {"name": "QuotaExceededError interface: existence and properties of interface object", "status": "PASS", "message": null},
         {"name": "QuotaExceededError interface object length", "status": "PASS", "message": null},
         {"name": "QuotaExceededError interface object name", "status": "PASS", "message": null},
         {"name": "QuotaExceededError interface: existence and properties of interface prototype object", "status": "PASS", "message": null},
         {"name": "QuotaExceededError interface: existence and properties of interface prototype object's \"constructor\" property", "status": "PASS", "message": null},
         {"name": "QuotaExceededError interface: existence and properties of interface prototype object's @@unscopables property", "status": "PASS", "message": null},
-        {"name": "QuotaExceededError interface: attribute quota", "status": "FAIL", "message": "assert_equals: getter must have the name 'get quota' expected \"get quota\" but got \"\""},
-        {"name": "QuotaExceededError interface: attribute requested", "status": "FAIL", "message": "assert_equals: getter must have the name 'get requested' expected \"get requested\" but got \"\""},
-        {"name": "DOMException interface: existence and properties of interface object", "status": "FAIL", "message": "assert_false: self's property \"DOMException\" should not be enumerable expected false got true"},
+        {"name": "DOMException interface: existence and properties of interface object", "status": "PASS", "message": null},
         {"name": "DOMException interface object length", "status": "PASS", "message": null},
         {"name": "DOMException interface object name", "status": "PASS", "message": null},
         {"name": "DOMException interface: existence and properties of interface prototype object", "status": "PASS", "message": null},
         {"name": "DOMException interface: existence and properties of interface prototype object's \"constructor\" property", "status": "PASS", "message": null},
         {"name": "DOMException interface: existence and properties of interface prototype object's @@unscopables property", "status": "PASS", "message": null},
-        {"name": "DOMException interface: attribute name", "status": "FAIL", "message": "assert_equals: getter must have the name 'get name' expected \"get name\" but got \"\""},
-        {"name": "DOMException interface: attribute message", "status": "FAIL", "message": "assert_equals: getter must have the name 'get message' expected \"get message\" but got \"\""},
-        {"name": "DOMException interface: attribute code", "status": "FAIL", "message": "assert_equals: getter must have the name 'get code' expected \"get code\" but got \"\""},
         {"name": "DOMException interface: constant INDEX_SIZE_ERR on interface object", "status": "PASS", "message": null},
         {"name": "DOMException interface: constant INDEX_SIZE_ERR on interface prototype object", "status": "PASS", "message": null},
         {"name": "DOMException interface: constant DOMSTRING_SIZE_ERR on interface object", "status": "PASS", "message": null},
@@ -838,6 +858,11 @@
         {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"TIMEOUT_ERR\" with the proper type", "status": "PASS", "message": null},
         {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INVALID_NODE_TYPE_ERR\" with the proper type", "status": "PASS", "message": null},
         {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"DATA_CLONE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: attribute quota", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: attribute requested", "status": "PASS", "message": null},
+        {"name": "DOMException interface: attribute name", "status": "PASS", "message": null},
+        {"name": "DOMException interface: attribute message", "status": "PASS", "message": null},
+        {"name": "DOMException interface: attribute code", "status": "PASS", "message": null},
         {"name": "idl_test setup", "status": "PASS", "message": null}
       ]
     },
