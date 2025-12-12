@@ -2756,7 +2756,9 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 v8.v8_Undefined(isolate) orelse return;
 
-            // Get entries using getEntriesForIterable
+            // Get entries using getEntriesForIterable with live iteration
+            // Per WebIDL spec, forEach must iterate live - modifications during iteration
+            // should be visible (deletions skip items, additions are visited)
             if (comptime @hasDecl(Interface, "getEntriesForIterable")) {
                 const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
                 if (instance_ptr) |ptr| {
@@ -2771,43 +2773,66 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                     const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
 
-                    if (Interface.getEntriesForIterable(instance)) |entries| {
-                        // Call callback for each entry: callback(value, key, map)
-                        for (entries) |entry| {
-                            // Create V8 strings for key and value
-                            const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)) orelse continue;
+                    // Use index-based iteration for live behavior
+                    // Re-fetch entries on each iteration so modifications are visible
+                    var index: usize = 0;
+                    while (true) {
+                        // Get entries fresh on each iteration to see modifications
+                        const entries = Interface.getEntriesForIterable(instance) orelse break;
 
-                            // Handle the value - check if it's a union type or simple string
-                            const ValueType = @TypeOf(entry.value);
-                            const val_v8: *v8.Value = val_blk: {
-                                if (@typeInfo(ValueType) == .@"union") {
-                                    // It's a union - try to get the usvstring variant
-                                    switch (entry.value) {
-                                        .usvstring => |s| {
-                                            break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)) orelse continue);
-                                        },
-                                        else => continue, // Skip non-string variants for now
-                                    }
-                                } else {
-                                    // Simple string type - use directly
-                                    break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse continue);
+                        // Check if we've reached the end (length may have changed)
+                        if (index >= entries.len) break;
+
+                        const entry = entries[index];
+
+                        // Create V8 strings for key and value
+                        const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)) orelse {
+                            index += 1;
+                            continue;
+                        };
+
+                        // Handle the value - check if it's a union type or simple string
+                        const ValueType = @TypeOf(entry.value);
+                        const val_v8: *v8.Value = val_blk: {
+                            if (@typeInfo(ValueType) == .@"union") {
+                                // It's a union - try to get the usvstring variant
+                                switch (entry.value) {
+                                    .usvstring => |s| {
+                                        break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)) orelse {
+                                            index += 1;
+                                            continue;
+                                        });
+                                    },
+                                    else => {
+                                        index += 1;
+                                        continue;
+                                    }, // Skip non-string variants for now
                                 }
-                            };
+                            } else {
+                                // Simple string type - use directly
+                                break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse {
+                                    index += 1;
+                                    continue;
+                                });
+                            }
+                        };
 
-                            // Call: callback(value, key, map)
-                            var args = [_]*v8.Value{
-                                val_v8,
-                                @ptrCast(key_str),
-                                @ptrCast(this_obj),
-                            };
-                            _ = v8.v8_Function_Call(
-                                callback_fn,
-                                v8_context,
-                                this_arg,
-                                3,
-                                @ptrCast(&args),
-                            );
-                        }
+                        // Call: callback(value, key, map)
+                        var args = [_]*v8.Value{
+                            val_v8,
+                            @ptrCast(key_str),
+                            @ptrCast(this_obj),
+                        };
+                        _ = v8.v8_Function_Call(
+                            callback_fn,
+                            v8_context,
+                            this_arg,
+                            3,
+                            @ptrCast(&args),
+                        );
+
+                        // Increment index after callback (callback may modify collection)
+                        index += 1;
                     }
                 }
             }
