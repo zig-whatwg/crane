@@ -12,6 +12,7 @@
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
 #include <cstring>
+#include <string>
 #include <vector>
 #include <execinfo.h>  // For backtrace on macOS/Linux
 
@@ -2351,6 +2352,7 @@ void v8_ObjectTemplate_SetAccessor(
 // Uses FunctionCallback directly (same as methods) to avoid PropertyCallbackInfo issues.
 // Getter: receives no arguments, returns value via info.GetReturnValue()
 // Setter: receives new value as info[0], sets it on the object
+// Per WebIDL spec, getter functions must have name "get <propname>" and setter "set <propname>"
 void v8_ObjectTemplate_SetAccessorProperty(
     Global<ObjectTemplate>* tpl,
     Global<String>* name,
@@ -2360,7 +2362,11 @@ void v8_ObjectTemplate_SetAccessorProperty(
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
-    Local<Name> key = name->Get(isolate).As<Name>();
+    Local<String> key = name->Get(isolate);
+    
+    // Get property name as UTF-8 for building "get <name>" / "set <name>"
+    String::Utf8Value prop_name_utf8(isolate, key);
+    const char* prop_name = *prop_name_utf8;
     
     // Create FunctionTemplate for getter using the callback directly
     // No wrapping or casting needed - FunctionCallback is the native type
@@ -2370,6 +2376,14 @@ void v8_ObjectTemplate_SetAccessorProperty(
         Local<Value>()  // No data needed
     );
     
+    // Per WebIDL spec, getter function name must be "get <attribute name>"
+    // Build the getter name: "get " + property name
+    std::string getter_name = std::string("get ") + prop_name;
+    Local<String> getter_name_str = String::NewFromUtf8(
+        isolate, getter_name.c_str(), NewStringType::kNormal
+    ).ToLocalChecked();
+    getter_tpl->SetClassName(getter_name_str);
+    
     // Create FunctionTemplate for setter (if provided)
     Local<FunctionTemplate> setter_tpl;
     if (setter != nullptr) {
@@ -2378,12 +2392,19 @@ void v8_ObjectTemplate_SetAccessorProperty(
             setter,
             Local<Value>()  // No data needed
         );
+        
+        // Per WebIDL spec, setter function name must be "set <attribute name>"
+        std::string setter_name = std::string("set ") + prop_name;
+        Local<String> setter_name_str = String::NewFromUtf8(
+            isolate, setter_name.c_str(), NewStringType::kNormal
+        ).ToLocalChecked();
+        setter_tpl->SetClassName(setter_name_str);
     }
     
     // Set as accessor property with proper attributes
     // PropertyAttribute::None means enumerable=true, configurable=true (WebIDL default)
     local_tpl->SetAccessorProperty(
-        key,
+        key.As<Name>(),
         getter_tpl,
         setter ? setter_tpl : Local<FunctionTemplate>(),
         PropertyAttribute::None
