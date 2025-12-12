@@ -1,6 +1,19 @@
 //! Trusted Types - Policy Tests
 //!
 //! Tests for TrustedTypePolicy callback invocation, error handling, and name management.
+//!
+//! ## NOTE ON anyopaque IN THESE TESTS
+//!
+//! Some tests use `?*anyopaque` for callback context parameters. This is INTENTIONAL:
+//!
+//! 1. **Legacy pattern tests** - Verify backward compatibility with the original API
+//! 2. **Typed pattern tests** - Show the preferred `makeUntypedCallback` approach
+//!
+//! The anyopaque usage demonstrates both patterns so developers understand the migration
+//! path from the legacy pattern to the type-safe pattern. See:
+//! - "callback receives context (legacy pattern)" test
+//! - "TypedSanitizeCallback pattern" test
+//! - "withTypedHTMLCallback helper" test
 
 const std = @import("std");
 const testing = std.testing;

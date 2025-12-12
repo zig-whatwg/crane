@@ -2,6 +2,15 @@
 //!
 //! Tests for TrustedTypePolicyFactory - policy creation, management,
 //! type checking, default policy, and sink type introspection.
+//!
+//! ## NOTE ON anyopaque IN THESE TESTS
+//!
+//! Some tests use `?*anyopaque` for callback context parameters. This is INTENTIONAL:
+//!
+//! 1. **Legacy pattern** (line ~83, ~298) - Shows the original API for backward compatibility
+//! 2. **Typed pattern** (line ~326+) - Shows the preferred `makeUntypedCallback` approach
+//!
+//! Both patterns are tested to demonstrate the migration path from legacy to type-safe.
 
 const std = @import("std");
 const testing = std.testing;
