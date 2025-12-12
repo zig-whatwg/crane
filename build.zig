@@ -1747,7 +1747,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "platform", .module = platform_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, false) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
         };
     }

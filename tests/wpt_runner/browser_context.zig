@@ -1849,6 +1849,11 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // Destroy the wrapper - this is a one-shot timer, so clean up after execution
+    // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedCallback)
+    const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+    wrapper.destroy();
 }
 
 /// Handler function for interval callbacks (invoked via SelfContainedCallback trampoline)
