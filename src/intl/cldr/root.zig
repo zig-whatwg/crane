@@ -88,7 +88,7 @@ pub fn getLocaleDataWithFallback(allocator: Allocator, locale_tag: []const u8) !
     var tag_copy: [64]u8 = undefined;
     const tag_len = @min(locale_tag.len, tag_copy.len);
     @memcpy(tag_copy[0..tag_len], locale_tag[0..tag_len]);
-    var current_len = tag_len;
+    var current_len: usize = tag_len;
 
     while (current_len > 0) {
         // Find last hyphen

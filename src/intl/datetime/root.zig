@@ -63,6 +63,11 @@ pub const TimeZoneError = timezone.TimeZoneError;
 // Pattern-based formatting
 pub const pattern = @import("pattern.zig");
 
+// Intl.DateTimeFormat implementation
+pub const format = @import("format.zig");
+pub const DateTimeFormat = format.DateTimeFormat;
+pub const DateTimeFormatOptions = format.Options;
+
 // Re-export pattern types for convenience
 pub const PatternToken = pattern.PatternToken;
 pub const PatternError = pattern.PatternError;
@@ -99,4 +104,5 @@ pub const freeParts = pattern.freeParts;
 test {
     _ = datetime;
     _ = pattern;
+    _ = format;
 }
