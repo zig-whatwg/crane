@@ -49,6 +49,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
+const List = infra.List;
 const DateTime = @import("datetime.zig").DateTime;
 
 // ============================================================================
@@ -241,9 +243,9 @@ pub const PatternError = error{
 /// ## Returns
 /// Array of PatternTokens. Caller owns the memory.
 pub fn parsePattern(allocator: Allocator, pattern: []const u8) PatternError![]PatternToken {
-    var tokens = std.ArrayList(PatternToken).init(allocator);
+    var tokens = List(PatternToken).init(allocator);
     errdefer {
-        for (tokens.items) |token| {
+        for (tokens.items()) |token| {
             switch (token) {
                 .literal => |s| allocator.free(s),
                 else => {},
@@ -324,7 +326,7 @@ fn parseQuotedLiteral(allocator: Allocator, pattern: []const u8, pos: *usize) Pa
     }
 
     // Find closing quote
-    var literal_parts = std.ArrayList(u8).init(allocator);
+    var literal_parts = List(u8).init(allocator);
     defer literal_parts.deinit();
 
     while (i < pattern.len) {
@@ -780,7 +782,7 @@ pub fn formatDateTime(
     datetime: DateTime,
     locale_data: *const LocaleData,
 ) Allocator.Error![]u8 {
-    var result = std.ArrayList(u8).init(allocator);
+    var result = List(u8).init(allocator);
     errdefer result.deinit();
 
     for (tokens) |token| {
@@ -792,7 +794,7 @@ pub fn formatDateTime(
 
 /// Format a single token
 fn formatToken(
-    result: *std.ArrayList(u8),
+    result: *List(u8),
     token: PatternToken,
     datetime: DateTime,
     locale_data: *const LocaleData,
@@ -849,7 +851,7 @@ fn formatToken(
     }
 }
 
-fn formatYear(result: *std.ArrayList(u8), year: i32, format: YearFormat) Allocator.Error!void {
+fn formatYear(result: *List(u8), year: i32, format: YearFormat) Allocator.Error!void {
     var buf: [16]u8 = undefined;
     const abs_year: u32 = @intCast(if (year < 0) -year else year);
 
@@ -873,7 +875,7 @@ fn formatYear(result: *std.ArrayList(u8), year: i32, format: YearFormat) Allocat
     }
 }
 
-fn formatMonth(result: *std.ArrayList(u8), month: u8, format: MonthFormat, locale_data: *const LocaleData) Allocator.Error!void {
+fn formatMonth(result: *List(u8), month: u8, format: MonthFormat, locale_data: *const LocaleData) Allocator.Error!void {
     switch (format) {
         .numeric => {
             var buf: [4]u8 = undefined;
@@ -903,7 +905,7 @@ fn formatMonth(result: *std.ArrayList(u8), month: u8, format: MonthFormat, local
     }
 }
 
-fn formatDay(result: *std.ArrayList(u8), day: u8, format: DayFormat) Allocator.Error!void {
+fn formatDay(result: *List(u8), day: u8, format: DayFormat) Allocator.Error!void {
     var buf: [4]u8 = undefined;
     switch (format) {
         .numeric => {
@@ -917,7 +919,7 @@ fn formatDay(result: *std.ArrayList(u8), day: u8, format: DayFormat) Allocator.E
     }
 }
 
-fn formatWeekday(result: *std.ArrayList(u8), dow: u8, format: WeekdayFormat, locale_data: *const LocaleData) Allocator.Error!void {
+fn formatWeekday(result: *List(u8), dow: u8, format: WeekdayFormat, locale_data: *const LocaleData) Allocator.Error!void {
     if (dow >= 7) return;
 
     switch (format) {
@@ -928,7 +930,7 @@ fn formatWeekday(result: *std.ArrayList(u8), dow: u8, format: WeekdayFormat, loc
     }
 }
 
-fn formatHour(result: *std.ArrayList(u8), hour: u8, format: HourFormat) Allocator.Error!void {
+fn formatHour(result: *List(u8), hour: u8, format: HourFormat) Allocator.Error!void {
     var display_hour: u8 = hour;
 
     switch (format.cycle) {
@@ -959,7 +961,7 @@ fn formatHour(result: *std.ArrayList(u8), hour: u8, format: HourFormat) Allocato
     }
 }
 
-fn formatMinute(result: *std.ArrayList(u8), minute: u8, format: MinuteFormat) Allocator.Error!void {
+fn formatMinute(result: *List(u8), minute: u8, format: MinuteFormat) Allocator.Error!void {
     var buf: [4]u8 = undefined;
     switch (format) {
         .numeric => {
@@ -973,7 +975,7 @@ fn formatMinute(result: *std.ArrayList(u8), minute: u8, format: MinuteFormat) Al
     }
 }
 
-fn formatSecond(result: *std.ArrayList(u8), second: u8, format: SecondFormat) Allocator.Error!void {
+fn formatSecond(result: *List(u8), second: u8, format: SecondFormat) Allocator.Error!void {
     var buf: [4]u8 = undefined;
     switch (format) {
         .numeric => {
@@ -987,7 +989,7 @@ fn formatSecond(result: *std.ArrayList(u8), second: u8, format: SecondFormat) Al
     }
 }
 
-fn formatFractionalSecond(result: *std.ArrayList(u8), nanosecond: u32, format: FractionalSecondFormat) Allocator.Error!void {
+fn formatFractionalSecond(result: *List(u8), nanosecond: u32, format: FractionalSecondFormat) Allocator.Error!void {
     // Convert nanoseconds to the requested precision
     var buf: [16]u8 = undefined;
     const len = std.fmt.formatIntBuf(&buf, nanosecond, 10, .lower, .{ .width = 9, .fill = '0' });
@@ -997,7 +999,7 @@ fn formatFractionalSecond(result: *std.ArrayList(u8), nanosecond: u32, format: F
     try result.appendSlice(buf[0..digits]);
 }
 
-fn formatDayPeriod(result: *std.ArrayList(u8), hour: u8, format: DayPeriodFormat, locale_data: *const LocaleData) Allocator.Error!void {
+fn formatDayPeriod(result: *List(u8), hour: u8, format: DayPeriodFormat, locale_data: *const LocaleData) Allocator.Error!void {
     const is_pm = hour >= 12;
     _ = format; // All formats use same names for now (simplified)
 
@@ -1008,7 +1010,7 @@ fn formatDayPeriod(result: *std.ArrayList(u8), hour: u8, format: DayPeriodFormat
     }
 }
 
-fn formatEra(result: *std.ArrayList(u8), year: i32, format: EraFormat, locale_data: *const LocaleData) Allocator.Error!void {
+fn formatEra(result: *List(u8), year: i32, format: EraFormat, locale_data: *const LocaleData) Allocator.Error!void {
     const era_index: usize = if (year < 1) 0 else 1; // BC = 0, AD = 1
 
     switch (format) {
@@ -1018,7 +1020,7 @@ fn formatEra(result: *std.ArrayList(u8), year: i32, format: EraFormat, locale_da
     }
 }
 
-fn formatTimeZone(result: *std.ArrayList(u8), format: TimeZoneFormat) Allocator.Error!void {
+fn formatTimeZone(result: *List(u8), format: TimeZoneFormat) Allocator.Error!void {
     // For now, output UTC since we don't have timezone data
     // This will be expanded when timezone support is added
     switch (format) {
@@ -1090,9 +1092,9 @@ pub fn formatToParts(
     datetime: DateTime,
     locale_data: *const LocaleData,
 ) Allocator.Error![]Part {
-    var parts = std.ArrayList(Part).init(allocator);
+    var parts = List(Part).init(allocator);
     errdefer {
-        for (parts.items) |part| {
+        for (parts.items()) |part| {
             allocator.free(part.value);
         }
         parts.deinit();
@@ -1100,12 +1102,12 @@ pub fn formatToParts(
 
     for (tokens) |token| {
         // Format the token to a temporary buffer
-        var temp = std.ArrayList(u8).init(allocator);
+        var temp = List(u8).init(allocator);
         defer temp.deinit();
 
         try formatToken(&temp, token, datetime, locale_data);
 
-        if (temp.items.len > 0) {
+        if (temp.len > 0) {
             const value = try temp.toOwnedSlice();
             errdefer allocator.free(value);
 
