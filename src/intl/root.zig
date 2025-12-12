@@ -99,6 +99,21 @@ pub const ResolvedLocale = locale.ResolvedLocale;
 pub const cldr = @import("cldr/root.zig");
 
 // ============================================================================
+// TimeZone Module - IANA time zones
+// ============================================================================
+
+pub const timezone = @import("timezone/root.zig");
+
+/// Time zone type for UTC offset calculation and DST handling
+pub const TimeZone = timezone.TimeZone;
+
+/// IANA time zone with transition data
+pub const IanaZone = timezone.IanaZone;
+
+/// Time zone errors
+pub const TimeZoneError = timezone.TimeZoneError;
+
+// ============================================================================
 // DateTime Module - Intl.DateTimeFormat
 // ============================================================================
 
@@ -201,6 +216,7 @@ pub const FormatError = error{
 test {
     // Import all test modules
     _ = locale;
+    _ = timezone;
     _ = datetime;
     _ = cldr;
 }

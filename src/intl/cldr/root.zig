@@ -28,14 +28,16 @@ const Allocator = std.mem.Allocator;
 pub const loader = @import("loader.zig");
 pub const types = @import("types.zig");
 
-// Re-export common types
-pub const LocaleData = types.LocaleData;
-pub const MonthNames = types.MonthNames;
-pub const WeekdayNames = types.WeekdayNames;
-pub const DayPeriodNames = types.DayPeriodNames;
-pub const EraNames = types.EraNames;
-pub const DateTimePatterns = types.DateTimePatterns;
-pub const NumberSymbols = types.NumberSymbols;
+// Re-export common types from embedded_data (the generated file)
+// This ensures type consistency since embedded_data defines its own types
+pub const embedded = loader.embedded;
+pub const LocaleData = loader.LocaleData;
+pub const MonthNames = embedded.MonthNames;
+pub const WeekdayNames = embedded.WeekdayNames;
+pub const DayPeriodNames = embedded.DayPeriodNames;
+pub const EraNames = embedded.EraNames;
+pub const DateTimePatterns = embedded.DateTimePatterns;
+pub const NumberSymbols = embedded.NumberSymbols;
 
 /// Check if a locale is embedded (Tier 1)
 pub fn isEmbedded(locale_tag: []const u8) bool {
@@ -56,8 +58,8 @@ pub fn isEmbedded(locale_tag: []const u8) bool {
 /// LocaleData for the requested locale, or null if not found.
 pub fn getLocaleData(allocator: Allocator, locale_tag: []const u8) !?*const LocaleData {
     // Try embedded data first (zero allocation)
-    if (loader.getEmbeddedLocale(locale_tag)) |embedded| {
-        return embedded;
+    if (loader.getEmbeddedLocale(locale_tag)) |embedded_data| {
+        return embedded_data;
     }
 
     // Try to load from file

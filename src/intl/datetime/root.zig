@@ -7,6 +7,7 @@
 //! - `DateTime`: Core date/time representation with calendar calculations
 //! - `pattern`: CLDR pattern parsing and formatting engine
 //! - `LocaleData`: Locale-specific month/weekday/era names
+//! - `TimeZone`: Time zone support (see `timezone` module)
 //!
 //! ## Supported Locales
 //!
@@ -23,6 +24,7 @@
 //! const datetime = @import("datetime");
 //! const DateTime = datetime.DateTime;
 //! const pattern = datetime.pattern;
+//! const TimeZone = datetime.TimeZone;
 //!
 //! const allocator = std.testing.allocator;
 //!
@@ -30,21 +32,20 @@
 //! const tokens = try pattern.parsePattern(allocator, "yyyy-MM-dd HH:mm:ss");
 //! defer pattern.freeTokens(allocator, tokens);
 //!
-//! // Create a DateTime
-//! const dt = DateTime.fromTimestamp(1699964445); // 2023-11-14 12:30:45
+//! // Create a DateTime (UTC)
+//! const dt = DateTime.fromTimestamp(1699964445); // 2023-11-14 12:30:45 UTC
+//!
+//! // Convert to local time in a specific timezone
+//! const ny_tz = try TimeZone.fromName("America/New_York");
+//! const local_dt = ny_tz.toLocal(dt);
 //!
 //! // Format to string
-//! const result = try pattern.formatDateTime(allocator, tokens, dt, &pattern.LocaleData.english);
+//! const result = try pattern.formatDateTime(allocator, tokens, local_dt, &pattern.LocaleData.english);
 //! defer allocator.free(result);
-//! // result = "2023-11-14 12:30:45"
 //!
 //! // Or format to parts
 //! const parts = try pattern.formatToParts(allocator, tokens, dt, &pattern.LocaleData.english);
 //! defer pattern.freeParts(allocator, parts);
-//!
-//! // Use different locale
-//! const de_result = try pattern.formatDateTime(allocator, tokens, dt, &pattern.LocaleData.german);
-//! defer allocator.free(de_result);
 //! ```
 
 const std = @import("std");
@@ -52,6 +53,12 @@ const std = @import("std");
 // Core DateTime type
 pub const datetime = @import("datetime.zig");
 pub const DateTime = datetime.DateTime;
+
+// Time zone support (re-exported from timezone module)
+pub const timezone = @import("../timezone/root.zig");
+pub const TimeZone = timezone.TimeZone;
+pub const IanaZone = timezone.IanaZone;
+pub const TimeZoneError = timezone.TimeZoneError;
 
 // Pattern-based formatting
 pub const pattern = @import("pattern.zig");
