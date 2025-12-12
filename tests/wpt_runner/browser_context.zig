@@ -769,6 +769,17 @@ pub const BrowserContext = struct {
             const perf_key = v8.ffi.v8_String_NewFromUtf8(isolate, "performance", 11) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), context, @ptrCast(perf_key), @ptrCast(v8_performance));
         }
+
+        // Register HTMLDocument as legacy alias for Document
+        // Per HTML spec, HTMLDocument is a historical alias that maps to Document
+        {
+            const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Document", 8) orelse return error.StringCreateFailed;
+            const doc_ctor = v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(doc_key));
+            if (doc_ctor) |ctor| {
+                const html_doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "HTMLDocument", 12) orelse return error.StringCreateFailed;
+                _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(html_doc_key), ctor);
+            }
+        }
     }
 
     /// Register Worker context globals

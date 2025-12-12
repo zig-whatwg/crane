@@ -242,6 +242,62 @@ pub fn initializeBindings(
 
     // Step 2: Set up constructor inheritance chain
     setupConstructorInheritance(isolate, context);
+
+    // Step 3: Register legacy factory functions
+    // These are separate constructors that create instances of other interfaces
+    // e.g., Image creates HTMLImageElement, Audio creates HTMLAudioElement
+    registerLegacyFactoryFunctions(isolate, context);
+}
+
+/// Register legacy factory function aliases
+///
+/// Per WebIDL spec, [LegacyFactoryFunction=Name] creates a separate constructor
+/// that creates instances of the interface. For example:
+/// - Image creates HTMLImageElement instances
+/// - Audio creates HTMLAudioElement instances
+/// - Option creates HTMLOptionElement instances
+fn registerLegacyFactoryFunctions(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const global = v8.v8_Context_Global(context) orelse return;
+
+    inline for (iface_decls) |decl| {
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            const Meta = InterfaceType.Meta;
+
+            // Check for LegacyFactoryFunction extended attribute
+            if (@hasDecl(Meta, "extended_attributes")) {
+                const ext_attrs = Meta.extended_attributes;
+                inline for (ext_attrs) |attr| {
+                    if (comptime std.mem.eql(u8, attr.name, "LegacyFactoryFunction")) {
+                        // Get the factory function name
+                        const factory_name = comptime attr.value.identifier;
+
+                        // Get the existing constructor for this interface
+                        const iface_name = Meta.name;
+                        const iface_key = v8.v8_String_NewFromUtf8(isolate, iface_name.ptr, @intCast(iface_name.len));
+                        if (iface_key) |key| {
+                            const ctor = v8.v8_Object_Get(global, context, @ptrCast(key));
+                            if (ctor) |constructor| {
+                                // Register the constructor under the legacy factory name
+                                const factory_key = v8.v8_String_NewFromUtf8(isolate, factory_name.ptr, @intCast(factory_name.len));
+                                if (factory_key) |fkey| {
+                                    _ = v8.v8_Object_Set(global, context, @ptrCast(fkey), constructor);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Register all WebIDL namespaces as global objects (generic version)

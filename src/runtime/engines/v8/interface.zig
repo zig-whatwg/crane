@@ -2453,19 +2453,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 return; // Let V8 handle symbols normally
             }
 
-            // Cast Name to String
-            const property_str: *v8.String = @ptrCast(property);
+            // Cast Name to String (use const pointer for Raw functions)
+            const property_str: *const v8.String = @ptrCast(property);
 
-            // Get UTF-8 length
-            const utf8_length = v8.v8_String_Utf8Length(property_str);
-            if (utf8_length <= 0) return;
+            // Use raw pointer functions (not Global<> functions) since property comes from callback
+            const utf8_length = v8.v8_String_Utf8Length_Raw(property_str);
+            if (utf8_length <= 0 or utf8_length >= 256) return; // Invalid or too long
 
             // Stack-allocated buffer for property name
             var buf: [256]u8 = undefined;
-            if (utf8_length >= buf.len) return;
 
             // Convert to UTF-8
-            const bytes_written = v8.v8_String_WriteUtf8(
+            const bytes_written = v8.v8_String_WriteUtf8_Raw(
                 property_str,
                 &buf,
                 @intCast(utf8_length + 1),
