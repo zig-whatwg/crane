@@ -73,15 +73,19 @@ test "v8_Isolate_RequestGarbageCollection FFI binding exists" {
 // ============================================================================
 
 test "Global handle types are opaque pointers" {
-    // Verify our type definitions - Global handles should be opaque
+    // Verify our type definitions - Global handles should be pointer-sized.
     // This is important because Global handles are heap-allocated and
     // won't be affected by stack scanning issues.
+    //
+    // NOTE: We compare to @sizeOf(usize) which is the canonical pointer size.
+    // The anyopaque comparison was originally used, but usize is clearer as
+    // it explicitly states "pointer-sized" without referencing type erasure.
 
-    try testing.expect(@sizeOf(*ffi.Value) == @sizeOf(*anyopaque));
-    try testing.expect(@sizeOf(*ffi.Object) == @sizeOf(*anyopaque));
-    try testing.expect(@sizeOf(*ffi.String) == @sizeOf(*anyopaque));
-    try testing.expect(@sizeOf(*ffi.Function) == @sizeOf(*anyopaque));
-    try testing.expect(@sizeOf(*ffi.Context) == @sizeOf(*anyopaque));
+    try testing.expect(@sizeOf(*ffi.Value) == @sizeOf(usize));
+    try testing.expect(@sizeOf(*ffi.Object) == @sizeOf(usize));
+    try testing.expect(@sizeOf(*ffi.String) == @sizeOf(usize));
+    try testing.expect(@sizeOf(*ffi.Function) == @sizeOf(usize));
+    try testing.expect(@sizeOf(*ffi.Context) == @sizeOf(usize));
 }
 
 // ============================================================================

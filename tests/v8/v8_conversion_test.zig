@@ -338,10 +338,15 @@ test "toV8Value - handles optional present values" {
 // ============================================================================
 // Special Type Tests
 // ============================================================================
+// NOTE ON anyopaque IN V8 CONVERSION:
+// The fromV8Any/toV8Any functions intentionally use type erasure to handle
+// JavaScript's dynamic `any` type. Per WebIDL spec, `any` can hold any JS value.
+// This is a LEGITIMATE use of anyopaque - it represents JavaScript's dynamic
+// typing at the FFI boundary. See docs/legitimate-anyopaque.md for details.
 
 test "fromV8Any - type-erases V8 values" {
     // Test V8 Value → runtime.Any conversion
-    // Expected: Cast to *anyopaque
+    // Expected: Wrap V8 handle for JavaScript's dynamic `any` type
 
     // Verify logic at conversions.zig:148-154
     _ = conv.fromV8Any;
@@ -349,7 +354,7 @@ test "fromV8Any - type-erases V8 values" {
 
 test "fromV8Object - type-erases V8 objects" {
     // Test V8 Object → runtime.Object conversion
-    // Expected: Cast to *anyopaque
+    // Expected: Wrap V8 object handle for JavaScript object type
 
     // Verify logic at conversions.zig:156-159
     _ = conv.fromV8Object;
@@ -357,7 +362,7 @@ test "fromV8Object - type-erases V8 objects" {
 
 test "toV8Any - converts opaque pointers" {
     // Test runtime.Any → V8 Value conversion
-    // Expected: Cast and align
+    // Expected: Unwrap to V8 handle
 
     // Verify logic at conversions.zig:344-347
     _ = conv.toV8Any;
@@ -365,7 +370,7 @@ test "toV8Any - converts opaque pointers" {
 
 test "toV8Object - converts opaque objects" {
     // Test runtime.Object → V8 Object conversion
-    // Expected: Cast and align
+    // Expected: Unwrap to V8 object handle
 
     // Verify logic at conversions.zig:349-352
     _ = conv.toV8Object;
