@@ -335,8 +335,8 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
 /// Spec: § 5.3.6 "Start erroring a writable stream"
 /// Arguments:
 ///   instance: WritableStream instance
-///   reason: Error reason
-pub fn writableStreamStartErroring(instance: *runtime.Instance, reason: *const anyopaque) void {
+///   reason: Error reason (WebIDL `any` type)
+pub fn writableStreamStartErroring(instance: *runtime.Instance, reason: runtime.JSValue) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
 
@@ -356,7 +356,15 @@ pub fn writableStreamStartErroring(instance: *runtime.Instance, reason: *const a
     internal.state = .erroring;
 
     // 6. Set stream.[[storedError]] to reason
-    internal.stored_error.storeRawPtr(@constCast(reason));
+    // Convert runtime.JSValue to StoredError
+    if (reason.asEngineHandle()) |handle| {
+        internal.stored_error.storeGlobalPtr(handle);
+    } else if (reason == .undefined or reason == .null) {
+        internal.stored_error.storeMessage("Stream errored");
+    } else {
+        // For primitives, store as message
+        internal.stored_error.storeMessage("Stream errored");
+    }
 
     // 7. Let writer be stream.[[writer]]
     // 8. If writer is not undefined, perform WritableStreamDefaultWriterEnsureReadyPromiseRejected
@@ -960,16 +968,7 @@ fn writableStreamAbort(
 
     // Step 11: If wasAlreadyErroring is false, perform WritableStreamStartErroring(stream, reason)
     if (!was_already_erroring) {
-        // Convert JSValue to anyopaque for writableStreamStartErroring
-        // TODO: Update writableStreamStartErroring to use JSValue directly
-        const reason_ptr: *const anyopaque = if (abort_reason.asEngineHandle()) |handle|
-            handle
-        else if (reason.asEngineHandle()) |handle|
-            handle
-        else
-            // For non-handle JSValues (undefined, null, primitives), use a sentinel
-            &runtime.JSValue.jsUndefined;
-        writableStreamStartErroring(instance, reason_ptr);
+        writableStreamStartErroring(instance, abort_reason);
     }
 
     // Step 12: Return promise (bridge Zig AsyncPromise to V8 Promise)
@@ -1102,8 +1101,7 @@ pub fn invokePendingStartCallback(
     // Check if call succeeded
     if (result == null) {
         // Call threw an exception - error the stream
-        const js_error = streams_common.JSValue{ .string = "Start callback threw an exception" };
-        writableStreamStartErroring(instance, @ptrCast(&js_error));
+        writableStreamStartErroring(instance, runtime.JSValue.fromStringRef("Start callback threw an exception"));
         return;
     }
 
@@ -1212,8 +1210,7 @@ fn onWritableStartPromiseRejected(ctx: ?*anyopaque, _: ?*anyopaque) callconv(.c)
     defer callback_ctx.allocator.destroy(callback_ctx);
 
     // Error the stream with the rejection reason
-    const js_error = streams_common.JSValue{ .string = "Start callback promise rejected" };
-    writableStreamStartErroring(callback_ctx.stream_instance, @ptrCast(&js_error));
+    writableStreamStartErroring(callback_ctx.stream_instance, runtime.JSValue.fromStringRef("Start callback promise rejected"));
 }
 
 /// Immediate start fulfillment (no async)

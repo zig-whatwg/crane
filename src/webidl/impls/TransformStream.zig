@@ -593,9 +593,20 @@ pub fn errorWritableAndUnblockWrite(instance: *runtime.Instance, e: JSValue) voi
     // Spec step 2: Perform ! WritableStreamDefaultControllerErrorIfNeeded(stream.[[writable]].[[controller]], e)
     if (internal.writableStream) |writable| {
         const WritableStreamImpl = @import("WritableStream.zig");
-        // Convert JSValue to anyopaque for WritableStream API
-        const error_ptr: *const anyopaque = @ptrCast(&e);
-        WritableStreamImpl.writableStreamStartErroring(writable, error_ptr);
+        // Convert streams_common.JSValue to runtime.JSValue for WritableStream API
+        const runtime_js_value: runtime.JSValue = switch (e) {
+            .undefined => runtime.JSValue.jsUndefined,
+            .null => runtime.JSValue.jsNull,
+            .boolean => |b| runtime.JSValue.fromBoolean(b),
+            .number => |n| runtime.JSValue.fromNumber(n),
+            .string => |s| runtime.JSValue.fromStringRef(s),
+            .managed_handle => |mh| runtime.JSValue.fromHandleNonOwning(mh.get()),
+            .bytes => runtime.JSValue.jsUndefined, // No direct equivalent
+            .object => runtime.JSValue.jsUndefined,
+            .close_sentinel => runtime.JSValue.jsUndefined,
+            .error_value => runtime.JSValue.jsUndefined, // TODO: Convert error properly
+        };
+        WritableStreamImpl.writableStreamStartErroring(writable, runtime_js_value);
     }
 
     // Spec step 3: Perform ! TransformStreamUnblockWrite(stream)
