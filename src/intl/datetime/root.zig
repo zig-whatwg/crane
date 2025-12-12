@@ -6,6 +6,16 @@
 //!
 //! - `DateTime`: Core date/time representation with calendar calculations
 //! - `pattern`: CLDR pattern parsing and formatting engine
+//! - `LocaleData`: Locale-specific month/weekday/era names
+//!
+//! ## Supported Locales
+//!
+//! Built-in locale data for:
+//! - `LocaleData.english` (en-US)
+//! - `LocaleData.german` (de-DE)
+//! - `LocaleData.japanese` (ja-JP)
+//! - `LocaleData.french` (fr-FR)
+//! - `LocaleData.spanish` (es-ES)
 //!
 //! ## Example
 //!
@@ -31,6 +41,10 @@
 //! // Or format to parts
 //! const parts = try pattern.formatToParts(allocator, tokens, dt, &pattern.LocaleData.english);
 //! defer pattern.freeParts(allocator, parts);
+//!
+//! // Use different locale
+//! const de_result = try pattern.formatDateTime(allocator, tokens, dt, &pattern.LocaleData.german);
+//! defer allocator.free(de_result);
 //! ```
 
 const std = @import("std");
