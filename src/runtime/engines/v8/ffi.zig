@@ -341,6 +341,20 @@ pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandler(
     getter: IndexedPropertyGetterCallback,
 ) void;
 
+/// Indexed property enumerator callback for Reflect.ownKeys and for...in enumeration
+/// Should return an array of indices that exist on the object
+pub const IndexedPropertyEnumeratorCallback = *const fn (
+    info: *const PropertyCallbackInfo,
+) callconv(.c) void;
+
+/// Set an indexed property handler with enumerator support on the ObjectTemplate
+/// This intercepts indexed property access and enables Reflect.ownKeys enumeration
+pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
+    self: *ObjectTemplate,
+    getter: IndexedPropertyGetterCallback,
+    enumerator: IndexedPropertyEnumeratorCallback,
+) void;
+
 // ============================================================================
 // OLD API REMOVED - See unified API below
 // ============================================================================

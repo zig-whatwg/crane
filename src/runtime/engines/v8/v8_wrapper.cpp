@@ -2412,6 +2412,32 @@ void v8_ObjectTemplate_SetIndexedPropertyHandler(
     ));
 }
 
+// IndexedPropertyEnumeratorCallbackV2 matches V8's expected signature
+using IndexedPropertyEnumeratorCallbackV2 = void (*)(const PropertyCallbackInfo<Array>&);
+
+// ObjectTemplate - set indexed property handler with enumerator (for array-like access with Reflect.ownKeys support)
+void v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
+    Global<ObjectTemplate>* tpl,
+    IndexedPropertyGetterCallbackV2 getter,
+    IndexedPropertyEnumeratorCallbackV2 enumerator
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    
+    local_tpl->SetHandler(IndexedPropertyHandlerConfiguration(
+        getter,
+        nullptr,  // setter callback (read-only for now)
+        nullptr,  // query callback (not needed)
+        nullptr,  // deleter callback (not needed)
+        enumerator,  // enumerator callback for Reflect.ownKeys
+        nullptr,  // definer callback (not needed)
+        nullptr,  // descriptor callback (not needed)
+        Local<Value>(),  // data (not needed)
+        PropertyHandlerFlags::kNone
+    ));
+}
+
 // ObjectTemplate - create instance from template
 Global<Object>* v8_ObjectTemplate_NewInstance(Global<ObjectTemplate>* tpl, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();

@@ -852,11 +852,23 @@ pub fn V8Interface(comptime Interface: type) type {
                 const second_param = fn_info.params[1].type orelse break :blk false;
                 break :blk second_param == u32;
             };
+            // Check if interface has get_length for enumerator support
+            const has_length = comptime @hasDecl(Interface, "get_length");
             if (has_indexed_item) {
-                v8.v8_ObjectTemplate_SetIndexedPropertyHandler(
-                    instance_tmpl,
-                    indexedPropertyGetter,
-                );
+                if (has_length) {
+                    // Use indexed property handler with enumerator for Reflect.ownKeys support
+                    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
+                        instance_tmpl,
+                        indexedPropertyGetter,
+                        indexedPropertyEnumerator,
+                    );
+                } else {
+                    // No length property - just use getter without enumerator
+                    v8.v8_ObjectTemplate_SetIndexedPropertyHandler(
+                        instance_tmpl,
+                        indexedPropertyGetter,
+                    );
+                }
             }
 
             // Register only own methods on prototype (not inherited methods)
@@ -2568,6 +2580,63 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
                 info.setReturnValue(@ptrCast(v8_value));
             }
+        }
+
+        /// Indexed property enumerator for Reflect.ownKeys and Object.keys support
+        /// Returns an array of indices as integers for enumeration
+        /// Called when JavaScript needs to enumerate indexed properties
+        fn indexedPropertyEnumerator(
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) void {
+            // Only compile this function body if Interface has get_length
+            if (comptime !@hasDecl(Interface, "get_length")) {
+                // No length property - can't enumerate
+                return;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                return;
+            };
+
+            // Get the 'this' object (the interface instance)
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                // Called on prototype, not an instance - return empty array
+                const empty_arr = v8.v8_Array_New(isolate, 0);
+                info.setReturnValue(@ptrCast(empty_arr));
+                return;
+            }
+
+            // Safety check: detect use-after-free by checking for poison patterns
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Get the length of the collection
+            const length = Interface.get_length(instance) catch {
+                return;
+            };
+
+            // Create an array of indices
+            const indices_arr = v8.v8_Array_New(isolate, @intCast(length));
+            // Populate array with indices as integers (V8 converts to strings for ownKeys)
+            var i: u32 = 0;
+            while (i < length) : (i += 1) {
+                const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
+                _ = v8.v8_Array_Set(indices_arr, v8_context, i, @ptrCast(v8_idx));
+            }
+            info.setReturnValue(@ptrCast(indices_arr));
         }
 
         /// Iterator callback for Symbol.iterator
