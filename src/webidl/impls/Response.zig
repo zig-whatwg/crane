@@ -680,6 +680,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Get Content-Type header
     const content_type = internal.response.header_list.get(internal.allocator, "content-type") catch null;
+    defer if (content_type) |ct| internal.allocator.free(ct);
 
     // Check for disturbed body
     if (internal.response.body) |body| {

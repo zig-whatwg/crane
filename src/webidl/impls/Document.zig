@@ -645,8 +645,8 @@ pub fn get_implementation(instance: *runtime.Instance) anyerror!*runtime.Instanc
 /// DOM §4.6 - Returns document's URL
 pub fn get_URL(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // USVString is just []const u8
-    return internal.url;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try instance.ctx.allocator.dupe(u8, internal.url);
 }
 
 /// Getter for documentURI
@@ -836,7 +836,8 @@ pub fn get_location(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-document-domain
 pub fn get_domain(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.domain;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try instance.ctx.allocator.dupe(u8, internal.domain);
 }
 
 /// Getter for referrer
@@ -844,7 +845,8 @@ pub fn get_domain(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-referrer
 pub fn get_referrer(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.referrer;
+    // Clone to transfer ownership to caller (interface layer will free)
+    return try instance.ctx.allocator.dupe(u8, internal.referrer);
 }
 
 /// Getter for cookie
@@ -5301,4 +5303,3 @@ pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-

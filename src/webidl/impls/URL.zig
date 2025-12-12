@@ -34,7 +34,20 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         self.url_record.deinit();
-        // URLSearchParams instance is managed separately
+        // Clean up the URLSearchParams instance we own.
+        //
+        // BIDIRECTIONAL CLEANUP COORDINATION:
+        // - If wrapper_cache cleaned up URLSearchParams first, it will have:
+        //   1. Set self.query_params_instance = null (via URLSearchParams.deinit's back-reference)
+        //   2. Freed the URLSearchParams Instance via SlabAllocator
+        // - So we only clean up if query_params_instance is still set.
+        //
+        // - If we're cleaned up first, URLSearchParams.deinit is safe to call
+        //   because it checks its own internal state before doing anything.
+        if (self.query_params_instance) |params_instance| {
+            URLSearchParams.deinit(params_instance);
+            self.query_params_instance = null;
+        }
         allocator.destroy(self);
     }
 };
@@ -54,7 +67,9 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit(state.own._internal.?.allocator);
+        const allocator = internal.allocator;
+        internal.deinit(allocator);
+        state.own._internal = null; // Mark as cleaned up to prevent double-free
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }

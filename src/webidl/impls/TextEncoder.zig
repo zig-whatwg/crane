@@ -322,9 +322,13 @@ const Uint8ArrayDescriptor = extern struct {
 /// The descriptor is allocated and the pointer is returned as runtime.JSValue
 fn createUint8ArrayDescriptor(allocator: std.mem.Allocator, data: []const u8) !runtime.JSValue {
     // TODO: Return proper V8 Uint8Array - need typed array creation utility
-    // For now, just allocate and discard since V8 typed array creation isn't available
-    _ = allocator;
-    _ = data;
+    // For now, free any allocated data to prevent memory leaks
+    // The data is unused since we can't create a real Uint8Array yet
+    if (data.len > 0) {
+        // Only free if it's not a static string (like "")
+        // Since callers allocate with allocator.dupe, we need to free it
+        allocator.free(@constCast(data));
+    }
     return runtime.JSValue.jsUndefined;
 }
 

@@ -1184,8 +1184,8 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
     const start = internal.start_container orelse return error.InvalidStateError;
     const end = internal.end_container orelse return error.InvalidStateError;
 
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer result.deinit(allocator);
 
     const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
 
@@ -1197,8 +1197,8 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
         // Return substring from start offset to end offset
         if (internal.end_offset >= internal.start_offset and internal.end_offset <= data.len) {
             const substring = data[internal.start_offset..internal.end_offset];
-            try result.appendSlice(substring);
-            return result.toOwnedSlice();
+            try result.appendSlice(allocator, substring);
+            return result.toOwnedSlice(allocator);
         }
     }
 
@@ -1208,13 +1208,13 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
         const data = CharacterDataImpl.getData(start) orelse "";
         if (internal.start_offset <= data.len) {
             const substring = data[internal.start_offset..];
-            try result.appendSlice(substring);
+            try result.appendSlice(allocator, substring);
         }
     }
 
     // Step 4: Append text content of all contained Text nodes
     const commonAncestor = (try get_commonAncestorContainer(instance));
-    try appendContainedTextNodes(internal, commonAncestor, &result);
+    try appendContainedTextNodes(allocator, internal, commonAncestor, &result);
 
     // Step 5: If end node is a Text node, append from start to end offset
     const end_type = NodeImpl.getNodeType(end) orelse return error.InvalidStateError;
@@ -1223,30 +1223,39 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
         const data = CharacterDataImpl.getData(end) orelse "";
         if (internal.end_offset <= data.len) {
             const substring = data[0..internal.end_offset];
-            try result.appendSlice(substring);
+            try result.appendSlice(allocator, substring);
         }
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// Helper for toString: Recursively append contained Text node data
-fn appendContainedTextNodes(internal: *InternalState, node: *runtime.Instance, result: *std.ArrayList(u8)) !void {
+fn appendContainedTextNodes(allocator: std.mem.Allocator, internal: *InternalState, node: *runtime.Instance, result: *std.ArrayListUnmanaged(u8)) !void {
     // If this node is contained and is a Text node, append its data
     const node_type = NodeImpl.getNodeType(node) orelse return;
     if (isNodeContained(internal, node) and node_type == NodeImpl.NodeType.TEXT_NODE) {
         const CharacterDataImpl = @import("CharacterData.zig");
         const data = CharacterDataImpl.getData(node) orelse "";
-        try result.appendSlice(data);
+        try result.appendSlice(allocator, data);
         return;
     }
 
     // Recursively process children in tree order
     var child = NodeImpl.getFirstChild(node);
     while (child) |c| {
-        try appendContainedTextNodes(internal, c, result);
+        try appendContainedTextNodes(allocator, internal, c, result);
         child = NodeImpl.getNextSibling(c);
     }
+}
+
+// =============================================================================
+// Stringifier (serialize -> toString mapping)
+// =============================================================================
+
+/// Stringifier - called by interface as "serialize" (mapped from toString in WebIDL)
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    return try toString(instance, instance.ctx.allocator);
 }
 
 // =============================================================================

@@ -69,3 +69,8 @@ pub fn call_parse(instance: *runtime.Instance, property: runtime.USVString, cssT
     _ = cssText;
     return error.NotImplemented;
 }
+/// Stringifier - serialize method for toString
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    _ = instance;
+    return "[object]";
+}

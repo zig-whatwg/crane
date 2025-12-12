@@ -64,3 +64,9 @@ pub fn get_body(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Stringifier - serialize method for toString
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    _ = instance;
+    return "[object]";
+}

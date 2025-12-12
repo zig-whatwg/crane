@@ -99,3 +99,9 @@ pub fn isValid(instance: *runtime.Instance) bool {
     const internal = state.own._internal orelse return false;
     return internal.inner != null;
 }
+
+/// Stringifier - serialize method for toString
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    _ = instance;
+    return "[object]";
+}

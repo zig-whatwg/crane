@@ -57,3 +57,9 @@ pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Stringifier - serialize method for toString
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    _ = instance;
+    return "[object]";
+}

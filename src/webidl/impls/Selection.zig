@@ -1131,3 +1131,9 @@ fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
 
     return range;
 }
+
+/// Stringifier - serialize method for toString
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    _ = instance;
+    return "[object]";
+}

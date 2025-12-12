@@ -375,12 +375,9 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
                         // String body - USVString is []const u8
                         const body_bytes = body_string;
                         if (body_bytes.len > 0) {
-                            // Create Body from bytes - need to copy since body_string may not be owned
-                            const owned_bytes = ctx.allocator.dupe(u8, body_bytes) catch {
-                                return instance;
-                            };
-                            const fetch_body = fetch.internal.Body.fromBytes(ctx.allocator, owned_bytes) catch {
-                                ctx.allocator.free(owned_bytes);
+                            // Create Body from bytes - Body.fromBytes copies internally,
+                            // so no need to dupe first (which would leak)
+                            const fetch_body = fetch.internal.Body.fromBytes(ctx.allocator, body_bytes) catch {
                                 return instance;
                             };
                             internal.request.body = .{ .body = fetch_body };
@@ -1017,6 +1014,7 @@ pub fn call_formData(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Get Content-Type header
     const content_type = internal.request.header_list.get(internal.allocator, "content-type") catch null;
+    defer if (content_type) |ct| internal.allocator.free(ct);
 
     // Check for disturbed body (already read)
     if (internal.request.body) |body| {

@@ -365,3 +365,9 @@ pub fn call_fromFloat64Array(instance: *runtime.Instance, array64: runtime.JSVal
     _ = array64;
     return error.NotImplemented;
 }
+
+/// Stringifier - serialize method for toString
+pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    _ = instance;
+    return "[object]";
+}
