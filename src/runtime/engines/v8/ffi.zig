@@ -499,6 +499,8 @@ pub extern fn v8_Object_Delete(object: *Object, context: *Context, key: *Value) 
 pub extern fn v8_Object_CreateDataProperty(object: *Object, context: *Context, key: *String, value: *Value) bool;
 pub extern fn v8_Object_Get(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
+pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Object) ?*Array;
+pub extern fn v8_Object_GetOwnPropertySymbols(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: *anyopaque) void;
 pub extern fn v8_Object_InternalFieldCount(object: *Object) c_int;
@@ -1913,3 +1915,60 @@ pub extern fn v8_HandleScope_New(isolate: *Isolate) ?*HandleScope;
 ///
 /// @param scope - Pointer from v8_HandleScope_New
 pub extern fn v8_HandleScope_Dispose(scope: ?*HandleScope) void;
+
+// ============================================================================
+// V8 Proxy API - For ObservableArray Exotic Objects
+// ============================================================================
+//
+// The Proxy API allows creating JavaScript Proxy objects from native code.
+// This is required for implementing WebIDL ObservableArray which is specified
+// as an exotic object backed by a Proxy.
+//
+// Spec: https://webidl.spec.whatwg.org/#idl-observable-array
+//       https://webidl.spec.whatwg.org/#es-observable-array
+//
+// Key Requirements:
+// - Proxy internals (target, handler) must NOT leak to JavaScript
+// - Must support custom traps: get, set, deleteProperty, ownKeys, getPrototypeOf
+// - ownKeys must return keys in order: indices (ascending) → "length" → strings (insertion)
+
+/// Create a new V8 Proxy object
+///
+/// Creates a JavaScript Proxy with the specified target and handler.
+///
+/// @param context - The V8 context
+/// @param target - The target object the proxy wraps
+/// @param handler - The handler object with trap functions
+/// @return Global handle to new Proxy object, or null on error
+pub extern fn v8_Proxy_New(context: *Context, target: *Object, handler: *Object) ?*Object;
+
+/// Check if a value is a Proxy
+///
+/// @param value - The value to check
+/// @return true if the value is a Proxy, false otherwise
+pub extern fn v8_Value_IsProxy(value: *Value) bool;
+
+/// Get the target of a Proxy
+///
+/// @param proxy - The Proxy object
+/// @return Global handle to the target, or null if not a Proxy
+pub extern fn v8_Proxy_GetTarget(proxy: *Object) ?*Value;
+
+/// Get the handler of a Proxy
+///
+/// @param proxy - The Proxy object
+/// @return Global handle to the handler, or null if not a Proxy
+pub extern fn v8_Proxy_GetHandler(proxy: *Object) ?*Value;
+
+/// Revoke a Proxy (make it unusable)
+///
+/// After revocation, any operation on the Proxy will throw TypeError.
+///
+/// @param proxy - The Proxy object to revoke
+pub extern fn v8_Proxy_Revoke(proxy: *Object) void;
+
+/// Check if a Proxy has been revoked
+///
+/// @param proxy - The Proxy object to check
+/// @return true if revoked, false otherwise or if not a Proxy
+pub extern fn v8_Proxy_IsRevoked(proxy: *Object) bool;

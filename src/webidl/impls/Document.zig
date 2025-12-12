@@ -287,6 +287,13 @@ pub const InternalState = struct {
     /// Spec: https://w3c.github.io/selection-api/#dom-document-getselection
     selection: ?*runtime.Instance,
 
+    // === Adopted Style Sheets (CSSOM) ===
+
+    /// Adopted style sheets (ObservableArray exotic object)
+    /// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
+    /// Stored as V8 handle pointer (Proxy object), not a runtime.Instance
+    adopted_style_sheets: ?*anyopaque,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -361,6 +368,8 @@ pub const InternalState = struct {
             .stylesheet_tracker = StylesheetBlockingTracker.init(allocator),
             // Selection
             .selection = null,
+            // Adopted style sheets (ObservableArray exotic object)
+            .adopted_style_sheets = null,
         };
     }
 
@@ -1280,11 +1289,40 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for adoptedStyleSheets
 /// Returns the adopted stylesheets for this document.
-/// Returns an empty array sentinel for now.
+/// Spec: https://drafts.csswg.org/cssom/#dom-documentorshadowroot-adoptedstylesheets
+///
+/// Returns an ObservableArray exotic object (Proxy-based) per WebIDL spec.
+/// Uses [SameObject] semantics - returns the same array on each access.
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    // Return undefined for empty array (no adopted stylesheets)
-    return runtime.JSValue.jsUndefined;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available ([SameObject] semantics)
+    if (internal.adopted_style_sheets) |sheets| {
+        // Return the cached V8 handle wrapped as JSValue
+        return runtime.JSValue{
+            .handle = .{
+                .ptr = sheets,
+                .needs_disposal = false, // Already tracked by ObservableArrayExotic
+                .handle_scope = .global,
+            },
+        };
+    }
+
+    // Create new ObservableArray exotic object
+    const observable_array = runtime.ObservableArrayExotic.create(instance.ctx) catch {
+        // If we can't create the ObservableArray (e.g., no V8 context), return undefined
+        // This gracefully degrades for testing scenarios without full V8 setup
+        return runtime.JSValue.jsUndefined;
+    };
+
+    // Cache the raw V8 object pointer for future access
+    // Extract the handle pointer from the JSValue union
+    internal.adopted_style_sheets = switch (observable_array) {
+        .handle => |h| h.ptr,
+        else => null,
+    };
+
+    return observable_array;
 }
 
 /// Getter for activeElement

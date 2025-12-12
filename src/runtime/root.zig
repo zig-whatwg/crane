@@ -76,6 +76,7 @@ pub const FrozenArray = types.FrozenArray;
 pub const sequence = types.sequence;
 pub const Promise = types.Promise;
 pub const ObservableArray = types.ObservableArray;
+pub const ObservableArrayExotic = @import("observable_array_exotic.zig");
 pub const record = types.record;
 
 // JavaScript built-in types (V8 provides these, we define Zig-side wrappers)

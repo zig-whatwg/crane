@@ -1212,6 +1212,30 @@ Global<Array>* v8_Object_GetOwnPropertyNames(Global<Context>* context, Global<Ob
     return trackHandle(new Global<Array>(isolate, names));
 }
 
+// Get own property names with numeric indices converted to strings
+// Required for Proxy ownKeys trap which must return only strings/symbols
+Global<Array>* v8_Object_GetOwnPropertyNamesAsStrings(Global<Context>* context, Global<Object>* obj) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<Object> local_obj = obj->Get(isolate);
+    
+    // Use GetOwnPropertyNames with kConvertToString to ensure all keys are strings
+    // PropertyFilter::ALL_PROPERTIES (value 0) includes both enumerable and non-enumerable
+    MaybeLocal<Array> maybe_names = local_obj->GetOwnPropertyNames(
+        local_context,
+        PropertyFilter::ALL_PROPERTIES,
+        KeyConversionMode::kConvertToString
+    );
+    if (maybe_names.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Array> names = maybe_names.ToLocalChecked();
+    return trackHandle(new Global<Array>(isolate, names));
+}
+
 // Get all property names including prototype chain and non-enumerable
 Global<Array>* v8_Object_GetPropertyNames(Global<Context>* context, Global<Object>* obj) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -1227,6 +1251,28 @@ Global<Array>* v8_Object_GetPropertyNames(Global<Context>* context, Global<Objec
         static_cast<PropertyFilter>(PropertyFilter::ALL_PROPERTIES | PropertyFilter::SKIP_SYMBOLS),
         IndexFilter::kIncludeIndices,
         KeyConversionMode::kConvertToString
+    );
+    if (maybe_names.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Array> names = maybe_names.ToLocalChecked();
+    return trackHandle(new Global<Array>(isolate, names));
+}
+
+// Get own property symbols (for Object.getOwnPropertySymbols)
+Global<Array>* v8_Object_GetOwnPropertySymbols(Global<Context>* context, Global<Object>* obj) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> local_context = context->Get(isolate);
+    Local<Object> local_obj = obj->Get(isolate);
+    
+    // Get only symbol properties, own only
+    MaybeLocal<Array> maybe_names = local_obj->GetOwnPropertyNames(
+        local_context,
+        static_cast<PropertyFilter>(PropertyFilter::ALL_PROPERTIES | PropertyFilter::SKIP_STRINGS),
+        KeyConversionMode::kKeepNumbers  // Doesn't matter for symbols
     );
     if (maybe_names.IsEmpty()) {
         return nullptr;
@@ -4881,6 +4927,142 @@ void v8_HandleScope_Dispose(void* scope_ptr) {
     
     HeapHandleScope* scope = static_cast<HeapHandleScope*>(scope_ptr);
     delete scope;
+}
+
+// ============================================================================
+// V8 Proxy API - For ObservableArray Exotic Objects
+// ============================================================================
+//
+// The Proxy API allows creating JavaScript Proxy objects from native code.
+// This is required for implementing WebIDL ObservableArray which is specified
+// as an exotic object backed by a Proxy.
+//
+// Spec: https://webidl.spec.whatwg.org/#idl-observable-array
+//       https://webidl.spec.whatwg.org/#es-observable-array
+//
+// Key Requirements:
+// - Proxy internals (target, handler) must NOT leak to JavaScript
+// - Must support custom traps: get, set, deleteProperty, ownKeys, getPrototypeOf
+// - ownKeys must return keys in order: indices (ascending) → "length" → strings (insertion)
+
+/// Create a new V8 Proxy object
+///
+/// Creates a JavaScript Proxy with the specified target and handler.
+///
+/// @param context - The V8 context
+/// @param target - The target object the proxy wraps
+/// @param handler - The handler object with trap functions
+/// @return Global handle to new Proxy object, or nullptr on error
+Global<Object>* v8_Proxy_New(
+    Global<Context>* context,
+    Global<Object>* target,
+    Global<Object>* handler
+) {
+    if (!context || !target || !handler) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> local_target = target->Get(isolate);
+    Local<Object> local_handler = handler->Get(isolate);
+    
+    MaybeLocal<Proxy> maybe_proxy = Proxy::New(ctx, local_target, local_handler);
+    if (maybe_proxy.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Proxy> proxy = maybe_proxy.ToLocalChecked();
+    
+    // Proxy inherits from Object, so we can cast
+    return trackHandle(new Global<Object>(isolate, proxy.As<Object>()));
+}
+
+/// Check if a value is a Proxy
+///
+/// @param value - The value to check
+/// @return true if the value is a Proxy, false otherwise
+bool v8_Value_IsProxy(Global<Value>* value) {
+    if (!value) return false;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    
+    return val->IsProxy();
+}
+
+/// Get the target of a Proxy
+///
+/// @param proxy - The Proxy object
+/// @return Global handle to the target, or nullptr if not a Proxy
+Global<Value>* v8_Proxy_GetTarget(Global<Object>* proxy) {
+    if (!proxy) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> obj = proxy->Get(isolate);
+    
+    if (!obj->IsProxy()) return nullptr;
+    
+    Local<Proxy> proxy_obj = obj.As<Proxy>();
+    Local<Value> target = proxy_obj->GetTarget();
+    
+    return trackHandle(new Global<Value>(isolate, target));
+}
+
+/// Get the handler of a Proxy
+///
+/// @param proxy - The Proxy object
+/// @return Global handle to the handler, or nullptr if not a Proxy
+Global<Value>* v8_Proxy_GetHandler(Global<Object>* proxy) {
+    if (!proxy) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> obj = proxy->Get(isolate);
+    
+    if (!obj->IsProxy()) return nullptr;
+    
+    Local<Proxy> proxy_obj = obj.As<Proxy>();
+    Local<Value> handler = proxy_obj->GetHandler();
+    
+    return trackHandle(new Global<Value>(isolate, handler));
+}
+
+/// Revoke a Proxy (make it unusable)
+///
+/// After revocation, any operation on the Proxy will throw TypeError.
+///
+/// @param proxy - The Proxy object to revoke
+void v8_Proxy_Revoke(Global<Object>* proxy) {
+    if (!proxy) return;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> obj = proxy->Get(isolate);
+    
+    if (!obj->IsProxy()) return;
+    
+    Local<Proxy> proxy_obj = obj.As<Proxy>();
+    proxy_obj->Revoke();
+}
+
+/// Check if a Proxy has been revoked
+///
+/// @param proxy - The Proxy object to check
+/// @return true if revoked, false otherwise or if not a Proxy
+bool v8_Proxy_IsRevoked(Global<Object>* proxy) {
+    if (!proxy) return true;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> obj = proxy->Get(isolate);
+    
+    if (!obj->IsProxy()) return true;
+    
+    Local<Proxy> proxy_obj = obj.As<Proxy>();
+    return proxy_obj->IsRevoked();
 }
 
 } // extern "C"
