@@ -2240,6 +2240,13 @@ void v8_External_Dispose(Global<External>* external) {
     }
 }
 
+// ObjectTemplate - create a new ObjectTemplate
+Global<ObjectTemplate>* v8_ObjectTemplate_New(Isolate* isolate) {
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> tpl = ObjectTemplate::New(isolate);
+    return trackHandle(new Global<ObjectTemplate>(isolate, tpl));
+}
+
 // ObjectTemplate - set property (uses current isolate from the template's context)
 void v8_ObjectTemplate_Set(Global<ObjectTemplate>* tpl, Global<String>* name, Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();

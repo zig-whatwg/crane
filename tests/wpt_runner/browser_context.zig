@@ -223,8 +223,13 @@ pub const BrowserContext = struct {
         event_loop_ptr.* = try V8EventLoop.init(isolate, self.allocator);
         self.v8_event_loop = event_loop_ptr;
 
-        // Create V8 context
-        const context = v8.ffi.v8_Context_New(isolate) orelse return error.ContextCreateFailed;
+        // Create V8 context with immutable prototype on global object
+        // Per WebIDL spec, global objects (Window, WorkerGlobalScope) must have
+        // immutable [[Prototype]] - Object.setPrototypeOf(window, {}) must throw TypeError
+        // but Object.setPrototypeOf(window, window.__proto__) must succeed (same prototype)
+        const global_template = v8.ffi.v8_ObjectTemplate_New(isolate);
+        v8.ffi.v8_ObjectTemplate_SetImmutableProto(global_template);
+        const context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse return error.ContextCreateFailed;
         self.context = context;
 
         v8.ffi.v8_Context_Enter(context);
