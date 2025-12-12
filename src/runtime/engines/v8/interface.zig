@@ -694,6 +694,15 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Check if interface has a constructor (from Meta.has_constructor hint)
         const has_constructor = Meta.has_constructor;
 
+        /// Check if this is a callback interface (from Meta.is_callback_interface hint)
+        /// Callback interfaces have special behavior per WebIDL §3.12:
+        /// - Must NOT have a .prototype property
+        /// - instanceof should throw TypeError
+        const is_callback_interface = if (@hasDecl(Meta, "is_callback_interface"))
+            Meta.is_callback_interface
+        else
+            false;
+
         /// Create a FunctionTemplate for this interface
         ///
         /// Returns a V8 FunctionTemplate with:
@@ -761,11 +770,19 @@ pub fn V8Interface(comptime Interface: type) type {
             // Set constructor length to 0 (non-constructible or no required params)
             v8.v8_FunctionTemplate_SetLength(template, 0);
 
-            // Make the "prototype" property read-only.
-            // Per WebIDL spec, Constructor.prototype should be non-writable.
-            // Note: This does NOT remove legacy "arguments"/"caller" properties -
-            // that's a V8 limitation we cannot work around without V8 internal APIs.
-            v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
+            // Handle callback interfaces differently per WebIDL §3.12
+            // Legacy callback interface objects do NOT have a .prototype property
+            if (is_callback_interface) {
+                // Remove the prototype property entirely for callback interfaces
+                // This makes Object.getOwnPropertyDescriptor(NodeFilter, 'prototype') return undefined
+                v8.v8_FunctionTemplate_RemovePrototype(template);
+            } else {
+                // Make the "prototype" property read-only for regular interfaces.
+                // Per WebIDL spec, Constructor.prototype should be non-writable.
+                // Note: This does NOT remove legacy "arguments"/"caller" properties -
+                // that's a V8 limitation we cannot work around without V8 internal APIs.
+                v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
+            }
 
             // Get instance template and set internal field count
             // Field 0: pointer to Zig instance (*runtime.Instance)
@@ -773,7 +790,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
             v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, 2);
 
-            // Get prototype template
+            // Get prototype template (only used for non-callback interfaces)
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
 
             // Register EAGER properties as accessors on prototype (defined upfront)
