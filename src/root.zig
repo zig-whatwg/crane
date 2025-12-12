@@ -15,6 +15,7 @@
 //! - HR-Time (W3C High Resolution Time)
 //! - WebSocket (WHATWG WebSockets API)
 //! - Permissions (W3C Permissions API)
+//! - Intl (ECMA-402 Internationalization APIs)
 
 const std = @import("std");
 
@@ -38,6 +39,7 @@ pub const hr_time = @import("hr_time");
 pub const websocket = @import("websocket");
 pub const permissions = @import("permissions");
 pub const browser = @import("browser");
+pub const intl = @import("intl");
 
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");
@@ -62,6 +64,7 @@ test {
     _ = websocket;
     _ = permissions;
     _ = browser;
+    _ = intl;
     _ = v8;
     _ = js_bindings;
     _ = codegen;

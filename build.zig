@@ -391,6 +391,7 @@ pub fn build(b: *std.Build) void {
             "csp",
             "permissions",
             "html",
+            "intl",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -401,7 +402,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html, intl\n", .{});
             std.process.exit(1);
         }
     }
@@ -1489,6 +1490,13 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("namespaces", namespaces_mod);
     browser_mod.addImport("fetch", fetch_mod);
 
+    // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
+    const intl_mod = b.addModule("intl", .{
+        .root_source_file = b.path("src/intl/root.zig"),
+        .target = target,
+    });
+    intl_mod.addImport("infra", infra_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -1513,6 +1521,7 @@ pub fn build(b: *std.Build) void {
     whatwg_mod.addImport("permissions", permissions_mod);
     whatwg_mod.addImport("html", html_mod);
     whatwg_mod.addImport("browser", browser_mod);
+    whatwg_mod.addImport("intl", intl_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1896,6 +1905,13 @@ pub fn build(b: *std.Build) void {
         addTestFilesFromDir(b, test_step, "tests/codegen", target, &codegen_imports, false) catch |err| {
             std.debug.print("Warning: Failed to add codegen test files: {}\n", .{err});
         };
+    }
+
+    // Intl tests (ECMA-402 Internationalization APIs)
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "intl")) {
+        const intl_tests = b.addTest(.{ .root_module = intl_mod });
+        const run_intl_tests = b.addRunArtifact(intl_tests);
+        test_step.dependOn(&run_intl_tests.step);
     }
 
     // Platform tests
