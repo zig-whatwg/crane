@@ -26,20 +26,10 @@ pub const CldrRelease = struct {
 };
 
 /// Default CLDR version to download
-pub const DEFAULT_VERSION = "45";
+pub const DEFAULT_VERSION = "46.0.0";
 
 /// Base URL for CLDR JSON releases
 pub const CLDR_BASE_URL = "https://github.com/unicode-org/cldr-json/releases/download";
-
-/// CLDR packages needed for Intl APIs
-pub const REQUIRED_PACKAGES = [_][]const u8{
-    "cldr-dates-full",
-    "cldr-numbers-full",
-    "cldr-localenames-full",
-    "cldr-misc-full",
-    "cldr-units-full",
-    "cldr-core",
-};
 
 /// Download state tracking
 pub const DownloadState = struct {
@@ -57,25 +47,26 @@ pub const DownloadState = struct {
         };
     }
 
-    /// Get the URL for a specific package
-    pub fn getPackageUrl(self: *const DownloadState, package_name: []const u8) ![]u8 {
+    /// Get the URL for the full CLDR JSON package
+    /// Modern releases use format: cldr-VERSION-json-full.zip
+    pub fn getFullPackageUrl(self: *const DownloadState) ![]u8 {
         return std.fmt.allocPrint(
             self.allocator,
-            "{s}/{s}/{s}.zip",
-            .{ CLDR_BASE_URL, self.version, package_name },
+            "{s}/{s}/cldr-{s}-json-full.zip",
+            .{ CLDR_BASE_URL, self.version, self.version },
         );
     }
 
-    /// Get the local path for a downloaded package
-    pub fn getPackagePath(self: *const DownloadState, package_name: []const u8) ![]u8 {
+    /// Get the local path for the downloaded full package
+    pub fn getFullPackagePath(self: *const DownloadState) ![]u8 {
         return std.fmt.allocPrint(
             self.allocator,
-            "{s}/{s}.zip",
-            .{ self.output_dir, package_name },
+            "{s}/cldr-{s}-json-full.zip",
+            .{ self.output_dir, self.version },
         );
     }
 
-    /// Get the extraction directory for a package
+    /// Get the extraction directory for the full package
     pub fn getExtractDir(self: *const DownloadState, package_name: []const u8) ![]u8 {
         return std.fmt.allocPrint(
             self.allocator,
@@ -167,27 +158,18 @@ pub fn extractZip(allocator: Allocator, zip_path: []const u8, output_dir: []cons
     }
 }
 
-/// Download all required CLDR packages
-pub fn downloadAllPackages(state: *const DownloadState) ![]DownloadResult {
-    var results = try state.allocator.alloc(DownloadResult, REQUIRED_PACKAGES.len);
-
-    for (REQUIRED_PACKAGES, 0..) |package, i| {
-        results[i] = try downloadPackage(state, package);
-    }
-
-    return results;
-}
-
-/// Download a single CLDR package
-pub fn downloadPackage(state: *const DownloadState, package_name: []const u8) !DownloadResult {
-    const url = try state.getPackageUrl(package_name);
+/// Download the full CLDR JSON package (new format since CLDR 46+)
+pub fn downloadFullPackage(state: *const DownloadState) !DownloadResult {
+    const url = try state.getFullPackageUrl();
     defer state.allocator.free(url);
 
-    const output_path = try state.getPackagePath(package_name);
+    const output_path = try state.getFullPackagePath();
     defer state.allocator.free(output_path);
 
+    const package_name = "cldr-json-full";
+
     if (state.verbose) {
-        std.log.info("Downloading {s}...", .{package_name});
+        std.log.info("Downloading {s}...", .{url});
     }
 
     downloadFile(state.allocator, url, output_path) catch |err| {
@@ -216,11 +198,8 @@ pub fn downloadPackage(state: *const DownloadState, package_name: []const u8) !D
         std.log.info("Downloaded {s} ({d} bytes)", .{ package_name, stat.size });
     }
 
-    // Extract the package
-    const extract_dir = try state.getExtractDir(package_name);
-    defer state.allocator.free(extract_dir);
-
-    extractZip(state.allocator, output_path, extract_dir) catch |err| {
+    // Extract the package to the output directory
+    extractZip(state.allocator, output_path, state.output_dir) catch |err| {
         return .{
             .package = package_name,
             .success = false,
@@ -282,33 +261,19 @@ pub fn main() !void {
 
     std.log.info("Downloading CLDR v{s} to {s}...", .{ version, output_dir });
 
-    const results = try downloadAllPackages(&state);
-    defer allocator.free(results);
+    const result = try downloadFullPackage(&state);
 
-    // Report results
-    var success_count: usize = 0;
-    var total_bytes: usize = 0;
-
-    for (results) |result| {
-        if (result.success) {
-            success_count += 1;
-            total_bytes += result.bytes_downloaded;
-        } else {
-            std.log.err("Failed to download {s}: {s}", .{
-                result.package,
-                result.error_message orelse "unknown error",
-            });
-        }
-    }
-
-    std.log.info("Downloaded {d}/{d} packages ({d} bytes total)", .{
-        success_count,
-        results.len,
-        total_bytes,
-    });
-
-    if (success_count < results.len) {
-        return error.PartialDownloadFailure;
+    if (result.success) {
+        std.log.info("Successfully downloaded CLDR {s} ({d} bytes)", .{
+            version,
+            result.bytes_downloaded,
+        });
+        std.log.info("Data extracted to: {s}", .{output_dir});
+    } else {
+        std.log.err("Failed to download: {s}", .{
+            result.error_message orelse "unknown error",
+        });
+        return error.DownloadFailed;
     }
 }
 
@@ -322,43 +287,38 @@ fn printHelp() void {
         \\  cldr-download [options]
         \\
         \\Options:
-        \\  -v, --version <VERSION>   CLDR version to download (default: 45)
+        \\  -v, --version <VERSION>   CLDR version to download (default: 46.0.0)
         \\  -o, --output <DIR>        Output directory (default: data/cldr/)
         \\  --verbose                 Show verbose output
         \\  -h, --help                Show this help
         \\
-        \\Required packages:
-        \\  - cldr-dates-full         Date/time formatting patterns
-        \\  - cldr-numbers-full       Number formatting patterns
-        \\  - cldr-localenames-full   Locale display names
-        \\  - cldr-misc-full          Miscellaneous data
-        \\  - cldr-units-full         Unit formatting data
-        \\  - cldr-core               Core CLDR data
+        \\Downloads the full CLDR JSON package (cldr-VERSION-json-full.zip) which
+        \\contains all locale data for dates, numbers, names, units, and more.
         \\
     ;
     const stdout_file = std.fs.File.stdout();
     stdout_file.writeAll(help) catch {};
 }
 
-test "DownloadState.getPackageUrl" {
+test "DownloadState.getFullPackageUrl" {
     const allocator = std.testing.allocator;
-    const state = DownloadState.init(allocator, "45", "data/cldr", false);
+    const state = DownloadState.init(allocator, "46.0.0", "data/cldr", false);
 
-    const url = try state.getPackageUrl("cldr-dates-full");
+    const url = try state.getFullPackageUrl();
     defer allocator.free(url);
 
     try std.testing.expectEqualStrings(
-        "https://github.com/unicode-org/cldr-json/releases/download/45/cldr-dates-full.zip",
+        "https://github.com/unicode-org/cldr-json/releases/download/46.0.0/cldr-46.0.0-json-full.zip",
         url,
     );
 }
 
-test "DownloadState.getPackagePath" {
+test "DownloadState.getFullPackagePath" {
     const allocator = std.testing.allocator;
-    const state = DownloadState.init(allocator, "45", "data/cldr", false);
+    const state = DownloadState.init(allocator, "46.0.0", "data/cldr", false);
 
-    const path = try state.getPackagePath("cldr-dates-full");
+    const path = try state.getFullPackagePath();
     defer allocator.free(path);
 
-    try std.testing.expectEqualStrings("data/cldr/cldr-dates-full.zip", path);
+    try std.testing.expectEqualStrings("data/cldr/cldr-46.0.0-json-full.zip", path);
 }

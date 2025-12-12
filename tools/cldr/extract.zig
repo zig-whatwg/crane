@@ -688,7 +688,6 @@ pub fn writeZigSource(state: *const ExtractState, locales: []const ExtractedLoca
     defer state.allocator.free(output_path);
 
     const file = try std.fs.cwd().createFile(output_path, .{});
-    defer file.close();
 
     var write_buffer: [8192]u8 = undefined;
     var buffered_writer = file.writer(&write_buffer);
@@ -809,6 +808,12 @@ pub fn writeZigSource(state: *const ExtractState, locales: []const ExtractedLoca
         \\};
         \\
     );
+
+    // Flush the buffer to ensure all data is written
+    try writer.flush();
+
+    // Close the file before logging
+    file.close();
 
     std.log.info("Wrote {s} with {d} locales", .{ output_path, locales.len });
 }
