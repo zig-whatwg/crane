@@ -1,4 +1,17 @@
 //! Tests for WebIDL Type Metadata System
+//!
+//! ## NOTE ON anyopaque FOR object AND symbol TYPES
+//!
+//! Tests for `object` and `symbol` types verify they map to `*anyopaque`. This is CORRECT:
+//!
+//! - **WebIDL `object`** = Any JavaScript object (opaque to Zig)
+//! - **WebIDL `symbol`** = JavaScript Symbol primitive (opaque to Zig)
+//!
+//! These types are inherently opaque because they represent arbitrary JS values
+//! that cannot be typed at compile time. The V8/JSC/SpiderMonkey engines provide
+//! opaque handles for these values. Using `*anyopaque` is the correct Zig mapping.
+//!
+//! Compare with `any` type which maps to `JSValue` (our tagged union for known types).
 
 const std = @import("std");
 const testing = std.testing;

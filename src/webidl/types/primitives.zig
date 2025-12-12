@@ -480,7 +480,13 @@ pub const double_type = f64;
 pub const unrestricted_double_type = f64;
 
 /// WebIDL 'object' type - any JavaScript object reference
+/// KEEP: anyopaque is intentional. Per WebIDL spec, 'object' represents any JS object,
+/// which is inherently opaque from Zig's perspective. The JS engine (V8/JSC/SM) provides
+/// opaque handles for arbitrary JS objects that cannot be typed at compile time.
 pub const object_type = *anyopaque;
 
 /// WebIDL 'symbol' type - JavaScript symbol value
+/// KEEP: anyopaque is intentional. Symbols are opaque primitive values in JavaScript.
+/// Unlike other primitives (numbers, strings, booleans), symbols cannot be represented
+/// as Zig types - they're unique identifiers managed by the JS engine.
 pub const symbol_type = *anyopaque;
