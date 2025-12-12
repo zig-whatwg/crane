@@ -28,6 +28,7 @@ const AsyncPromise = @import("streams_async_promise").AsyncPromise;
 const QueueWithSizes = @import("streams_queue").QueueWithSizes;
 const algorithm_mod = @import("streams_algorithm");
 const Algorithm = algorithm_mod.Algorithm;
+const createTypedAlgorithm = algorithm_mod.createTypedAlgorithm;
 const IteratorRecord = @import("streams_iterator_record").IteratorRecord;
 const from_iterable = @import("streams_from_iterable_algorithm");
 
@@ -1452,27 +1453,25 @@ pub const TeeBranches = struct {
 /// - Create read request that distributes chunks to both branches
 /// - Perform ReadableStreamDefaultReaderRead(reader, readRequest)
 /// - Return resolved promise
+///
+/// Uses createTypedAlgorithm for compile-time type safety.
 fn createTeePullAlgorithm(allocator: std.mem.Allocator, tee_state: *TeeState) !*Algorithm {
-    const algo = try allocator.create(Algorithm);
-    algo.* = .{
-        .context = tee_state,
-        .vtable = &tee_pull_vtable,
-        .allocator = allocator,
-    };
-    return algo;
+    return createTypedAlgorithm(
+        TeeState,
+        allocator,
+        tee_state,
+        teePullInvokeTyped,
+        teePullInvokeWithArgTyped,
+        teePullDestroyTyped,
+    );
 }
 
-const tee_pull_vtable = Algorithm.VTable{
-    .invoke = teePullInvoke,
-    .invoke_with_arg = teePullInvokeWithArg,
-    .destroy = teePullDestroy,
-};
-
-fn teePullInvoke(
+/// Typed pull algorithm implementation
+/// Receives *TeeState directly - no anyopaque casting needed.
+fn teePullInvokeTyped(
     controller: *runtime.Instance,
-    context: ?*anyopaque,
+    tee_state: *TeeState,
 ) anyerror!*AsyncPromise(void) {
-    const tee_state: *TeeState = @ptrCast(@alignCast(context orelse return error.InvalidState));
     const allocator = tee_state.allocator;
     const loop = tee_state.event_loop;
 
@@ -1504,16 +1503,18 @@ fn teePullInvoke(
     return promise;
 }
 
-fn teePullInvokeWithArg(
+/// Typed pull with arg implementation
+fn teePullInvokeWithArgTyped(
     controller: *runtime.Instance,
-    context: ?*anyopaque,
+    tee_state: *TeeState,
     arg: *const anyopaque,
 ) anyerror!*AsyncPromise(void) {
     _ = arg;
-    return teePullInvoke(controller, context);
+    return teePullInvokeTyped(controller, tee_state);
 }
 
-fn teePullDestroy(context: ?*anyopaque, allocator: std.mem.Allocator) void {
+/// Typed destroy implementation
+fn teePullDestroyTyped(context: *TeeState, allocator: std.mem.Allocator) void {
     _ = context;
     _ = allocator;
     // TeeState lifecycle is managed separately
@@ -1680,28 +1681,26 @@ fn teeClosedPromiseRejectionHandler(ctx: *anyopaque, exception: webidl.errors.Ex
 /// - Set reason1 to reason
 /// - If canceled2 is true, create composite reason and cancel source
 /// - Return cancelPromise
+///
+/// Uses createTypedAlgorithm for compile-time type safety.
 fn createTeeCancel1Algorithm(allocator: std.mem.Allocator, tee_state: *TeeState) !*Algorithm {
-    const algo = try allocator.create(Algorithm);
-    algo.* = .{
-        .context = tee_state,
-        .vtable = &tee_cancel1_vtable,
-        .allocator = allocator,
-    };
-    return algo;
+    return createTypedAlgorithm(
+        TeeState,
+        allocator,
+        tee_state,
+        teeCancel1InvokeTyped,
+        teeCancel1InvokeWithArgTyped,
+        teeCancelDestroyTyped,
+    );
 }
 
-const tee_cancel1_vtable = Algorithm.VTable{
-    .invoke = teeCancel1Invoke,
-    .invoke_with_arg = teeCancel1InvokeWithArg,
-    .destroy = teeCancelDestroy,
-};
-
-fn teeCancel1Invoke(
+/// Typed cancel1 algorithm implementation
+/// Receives *TeeState directly - no anyopaque casting needed.
+fn teeCancel1InvokeTyped(
     controller: *runtime.Instance,
-    context: ?*anyopaque,
+    tee_state: *TeeState,
 ) anyerror!*AsyncPromise(void) {
     _ = controller;
-    const tee_state: *TeeState = @ptrCast(@alignCast(context orelse return error.InvalidState));
 
     // Step 14.1: Set canceled1 to true
     tee_state.canceled1 = true;
@@ -1718,12 +1717,13 @@ fn teeCancel1Invoke(
     return tee_state.cancel_promise;
 }
 
-fn teeCancel1InvokeWithArg(
+/// Typed cancel1 with arg implementation
+fn teeCancel1InvokeWithArgTyped(
     controller: *runtime.Instance,
-    context: ?*anyopaque,
+    tee_state: *TeeState,
     arg: *const anyopaque,
 ) anyerror!*AsyncPromise(void) {
-    const tee_state: *TeeState = @ptrCast(@alignCast(context orelse return error.InvalidState));
+    _ = controller;
 
     // Step 14.1: Set canceled1 to true
     tee_state.canceled1 = true;
@@ -1737,8 +1737,6 @@ fn teeCancel1InvokeWithArg(
         try teePerformCompositeCancel(tee_state);
     }
 
-    _ = controller;
-
     // Step 14.4: Return cancelPromise
     return tee_state.cancel_promise;
 }
@@ -1750,28 +1748,26 @@ fn teeCancel1InvokeWithArg(
 /// - Set reason2 to reason
 /// - If canceled1 is true, create composite reason and cancel source
 /// - Return cancelPromise
+///
+/// Uses createTypedAlgorithm for compile-time type safety.
 fn createTeeCancel2Algorithm(allocator: std.mem.Allocator, tee_state: *TeeState) !*Algorithm {
-    const algo = try allocator.create(Algorithm);
-    algo.* = .{
-        .context = tee_state,
-        .vtable = &tee_cancel2_vtable,
-        .allocator = allocator,
-    };
-    return algo;
+    return createTypedAlgorithm(
+        TeeState,
+        allocator,
+        tee_state,
+        teeCancel2InvokeTyped,
+        teeCancel2InvokeWithArgTyped,
+        teeCancelDestroyTyped,
+    );
 }
 
-const tee_cancel2_vtable = Algorithm.VTable{
-    .invoke = teeCancel2Invoke,
-    .invoke_with_arg = teeCancel2InvokeWithArg,
-    .destroy = teeCancelDestroy,
-};
-
-fn teeCancel2Invoke(
+/// Typed cancel2 algorithm implementation
+/// Receives *TeeState directly - no anyopaque casting needed.
+fn teeCancel2InvokeTyped(
     controller: *runtime.Instance,
-    context: ?*anyopaque,
+    tee_state: *TeeState,
 ) anyerror!*AsyncPromise(void) {
     _ = controller;
-    const tee_state: *TeeState = @ptrCast(@alignCast(context orelse return error.InvalidState));
 
     // Step 15.1: Set canceled2 to true
     tee_state.canceled2 = true;
@@ -1788,12 +1784,13 @@ fn teeCancel2Invoke(
     return tee_state.cancel_promise;
 }
 
-fn teeCancel2InvokeWithArg(
+/// Typed cancel2 with arg implementation
+fn teeCancel2InvokeWithArgTyped(
     controller: *runtime.Instance,
-    context: ?*anyopaque,
+    tee_state: *TeeState,
     arg: *const anyopaque,
 ) anyerror!*AsyncPromise(void) {
-    const tee_state: *TeeState = @ptrCast(@alignCast(context orelse return error.InvalidState));
+    _ = controller;
 
     // Step 15.1: Set canceled2 to true
     tee_state.canceled2 = true;
@@ -1807,13 +1804,12 @@ fn teeCancel2InvokeWithArg(
         try teePerformCompositeCancel(tee_state);
     }
 
-    _ = controller;
-
     // Step 15.4: Return cancelPromise
     return tee_state.cancel_promise;
 }
 
-fn teeCancelDestroy(context: ?*anyopaque, allocator: std.mem.Allocator) void {
+/// Typed destroy implementation (shared by both cancel algorithms)
+fn teeCancelDestroyTyped(context: *TeeState, allocator: std.mem.Allocator) void {
     _ = context;
     _ = allocator;
     // TeeState lifecycle is managed separately
