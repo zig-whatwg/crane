@@ -65,8 +65,9 @@ pub const Writer = union(enum) {
 pub const AbortRequest = struct {
     /// Promise that will be resolved/rejected when abort completes
     promise: *AsyncPromise(void),
-    /// Reason for the abort (optional)
-    reason: ?*const anyopaque,
+    /// Reason for the abort - per spec this is `any` type
+    /// Uses runtime.JSValue for type safety (jsUndefined if no reason provided)
+    reason: runtime.JSValue,
     /// Whether the stream was already erroring when abort was called
     was_already_erroring: bool,
 };
@@ -321,13 +322,12 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
     }
 
     // Step 2: Return WritableStreamAbort(this, reason)
-    // If reason is not passed, use a default undefined-like value
-    const default_reason: u8 = 0;
-    const reason_ptr: *const anyopaque = if (reason.was_passed)
-        reason.value.toAnyopaque() orelse @ptrCast(&default_reason)
+    // If reason is not passed, use jsUndefined (spec says `any` with default undefined)
+    const abort_reason: runtime.JSValue = if (reason.was_passed)
+        reason.value
     else
-        @ptrCast(&default_reason);
-    return writableStreamAbort(instance, internal, reason_ptr);
+        runtime.JSValue.jsUndefined;
+    return writableStreamAbort(instance, internal, abort_reason);
 }
 
 /// WritableStreamStartErroring - Begin error process
@@ -459,15 +459,18 @@ pub fn writableStreamFinishErroring(instance: *runtime.Instance, internal: *Inte
     if (internal.controller) |controller| {
         const WritableStreamDefaultControllerImpl = @import("WritableStreamDefaultController.zig");
 
-        // Get the abort reason as a type-safe JSValue
-        // Convert the anyopaque abort reason to streams_common.JSValue
-        const reason: streams_common.JSValue = if (abort_request.reason) |reason_ptr|
-            streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(reason_ptr)) catch
-                streams_common.JSValue{ .undefined = {} }
-        else
-            // Use stored exception as default reason
-            streams_common.JSValue.fromEnginePtr(internal.allocator, @constCast(@as(*const anyopaque, @ptrCast(&stored_exception)))) catch
-                streams_common.JSValue{ .undefined = {} };
+        // Get the abort reason as streams_common.JSValue
+        // abort_request.reason is now already a runtime.JSValue
+        const reason: streams_common.JSValue = if (!abort_request.reason.isNullOrUndefined())
+            // Convert runtime.JSValue to streams_common.JSValue
+            blk: {
+                if (abort_request.reason.asEngineHandle()) |handle| {
+                    break :blk streams_common.JSValue.fromEnginePtr(internal.allocator, handle) catch
+                        streams_common.JSValue{ .undefined = {} };
+                } else {
+                    break :blk streams_common.JSValue{ .undefined = {} };
+                }
+            } else streams_common.JSValue{ .undefined = {} };
 
         // Call abortSteps which properly invokes the V8 abort callback
         const abort_promise = WritableStreamDefaultControllerImpl.abortSteps(controller, reason) catch {
@@ -873,7 +876,7 @@ pub fn writableStreamCloseQueuedOrInFlight(internal: *const InternalState) bool 
 fn writableStreamAbort(
     instance: *runtime.Instance,
     internal: *InternalState,
-    reason: *const anyopaque,
+    reason: runtime.JSValue,
 ) !runtime.JSValue {
     // Step 1: If stream.[[state]] is "closed" or "errored", return resolved promise
     if (internal.state == .closed or internal.state == .errored) {
@@ -893,8 +896,8 @@ fn writableStreamAbort(
         if (controller_state.own._internal) |controller_internal_ptr| {
             const controller_internal: *WritableStreamDefaultControllerImpl.InternalState = @ptrCast(@alignCast(controller_internal_ptr));
             if (controller_internal.abort_controller) |abort_controller| {
-                // Signal abort on the AbortController - reason is a V8 handle from JS
-                interfaces.AbortController.call_abort(abort_controller, webidl.Opt(runtime.JSValue).passed(runtime.JSValue.fromHandleNonOwning(@constCast(reason)))) catch {};
+                // Signal abort on the AbortController - reason is now a proper JSValue
+                interfaces.AbortController.call_abort(abort_controller, webidl.Opt(runtime.JSValue).passed(reason)) catch {};
             }
         }
     }
@@ -934,10 +937,10 @@ fn writableStreamAbort(
     var was_already_erroring = false;
 
     // Step 8: If state is "erroring", set wasAlreadyErroring = true and reason = undefined
-    var abort_reason: ?*const anyopaque = reason;
+    var abort_reason: runtime.JSValue = reason;
     if (internal.state == .erroring) {
         was_already_erroring = true;
-        abort_reason = null;
+        abort_reason = runtime.JSValue.jsUndefined;
     }
 
     // Step 9: Let promise be a new promise
@@ -957,7 +960,16 @@ fn writableStreamAbort(
 
     // Step 11: If wasAlreadyErroring is false, perform WritableStreamStartErroring(stream, reason)
     if (!was_already_erroring) {
-        writableStreamStartErroring(instance, abort_reason orelse reason);
+        // Convert JSValue to anyopaque for writableStreamStartErroring
+        // TODO: Update writableStreamStartErroring to use JSValue directly
+        const reason_ptr: *const anyopaque = if (abort_reason.asEngineHandle()) |handle|
+            handle
+        else if (reason.asEngineHandle()) |handle|
+            handle
+        else
+            // For non-handle JSValues (undefined, null, primitives), use a sentinel
+            &runtime.JSValue.jsUndefined;
+        writableStreamStartErroring(instance, reason_ptr);
     }
 
     // Step 12: Return promise (bridge Zig AsyncPromise to V8 Promise)
