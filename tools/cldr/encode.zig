@@ -53,21 +53,19 @@ pub const BinaryHeader = extern struct {
 pub const StringTable = struct {
     allocator: Allocator,
     strings: std.StringHashMap(u32),
-    buffer: std.ArrayList(u8),
-    next_offset: u32,
+    buffer: std.ArrayList(u8) = .{},
+    next_offset: u32 = 0,
 
     pub fn init(allocator: Allocator) StringTable {
         return .{
             .allocator = allocator,
             .strings = std.StringHashMap(u32).init(allocator),
-            .buffer = std.ArrayList(u8).init(allocator),
-            .next_offset = 0,
         };
     }
 
     pub fn deinit(self: *StringTable) void {
         self.strings.deinit();
-        self.buffer.deinit();
+        self.buffer.deinit(self.allocator);
     }
 
     /// Add a string and return its offset
@@ -83,16 +81,16 @@ pub const StringTable = struct {
 
         // Write length (varint-style)
         if (len < 128) {
-            try self.buffer.append(@intCast(len));
+            try self.buffer.append(self.allocator, @intCast(len));
             self.next_offset += 1;
         } else {
-            try self.buffer.append(@as(u8, @intCast(len & 0x7F)) | 0x80);
-            try self.buffer.append(@as(u8, @intCast(len >> 7)));
+            try self.buffer.append(self.allocator, @as(u8, @intCast(len & 0x7F)) | 0x80);
+            try self.buffer.append(self.allocator, @as(u8, @intCast(len >> 7)));
             self.next_offset += 2;
         }
 
         // Write string content
-        try self.buffer.appendSlice(string);
+        try self.buffer.appendSlice(self.allocator, string);
         self.next_offset += len;
 
         // Record in map (need to dupe the key)
@@ -269,7 +267,8 @@ fn printHelp() void {
         \\compact binary files for runtime loading of Tier 2 locales.
         \\
     ;
-    std.io.getStdOut().writeAll(help) catch {};
+    const stdout_file = std.fs.File.stdout();
+    stdout_file.writeAll(help) catch {};
 }
 
 // ============================================================================

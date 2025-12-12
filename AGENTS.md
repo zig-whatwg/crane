@@ -1646,6 +1646,125 @@ Agent: "I want to first try to regenerate all of the files,
 
 ---
 
+### Zig 0.15: ArrayList API Changes (Unmanaged by Default)
+
+**Date**: 2025-12-12  
+**Lesson**: In Zig 0.15, `std.ArrayList(T)` is now **unmanaged by default** - it no longer stores the allocator internally.
+
+**Old Pattern (Pre-0.15) - NO LONGER WORKS:**
+```zig
+// ❌ WRONG - This no longer compiles in Zig 0.15
+var list = std.ArrayList(u8).init(allocator);
+defer list.deinit();
+try list.append('a');
+```
+
+**New Pattern (Zig 0.15+) - Unmanaged:**
+```zig
+// ✅ CORRECT - Initialize with empty struct, pass allocator to methods
+var list: std.ArrayList(u8) = .{};
+defer list.deinit(allocator);
+try list.append(allocator, 'a');
+try list.appendSlice(allocator, "hello");
+const owned = try list.toOwnedSlice(allocator);
+```
+
+**Alternative - Use ArrayListUnmanaged explicitly:**
+```zig
+// ✅ ALSO CORRECT - Same thing, more explicit
+var list: std.ArrayListUnmanaged(u8) = .{};
+defer list.deinit(allocator);
+try list.append(allocator, 'a');
+```
+
+**Key Differences:**
+| Aspect | Old (Pre-0.15) | New (0.15+) |
+|--------|----------------|-------------|
+| Initialization | `.init(allocator)` | `.{}` or `= .{}` |
+| Stores allocator | Yes | No |
+| `deinit()` | `list.deinit()` | `list.deinit(allocator)` |
+| `append()` | `list.append(item)` | `list.append(allocator, item)` |
+| `toOwnedSlice()` | `list.toOwnedSlice()` | `list.toOwnedSlice(allocator)` |
+
+**Why This Change:**
+- Reduces struct size (no allocator pointer stored)
+- More explicit about which operations need allocation
+- Consistent with other unmanaged data structures
+- The old managed version exists but is **deprecated**: `std.array_list.AlignedManaged`
+
+**Codebase Migration:**
+When fixing old code, replace:
+```zig
+// Old
+var results = std.ArrayList(T).init(allocator);
+defer results.deinit();
+try results.append(item);
+
+// New
+var results: std.ArrayList(T) = .{};
+defer results.deinit(allocator);
+try results.append(allocator, item);
+```
+
+**Takeaway**: Always pass the allocator to ArrayList methods in Zig 0.15+. The allocator is no longer stored in the struct.
+
+---
+
+### Zig 0.15: std.io.getStdOut() Removed
+
+**Date**: 2025-12-12  
+**Lesson**: In Zig 0.15, `std.io.getStdOut()` and `std.io.getStdErr()` no longer exist. Use `std.fs.File.stdout()` instead.
+
+**Old Pattern (Pre-0.15) - NO LONGER WORKS:**
+```zig
+// ❌ WRONG - This no longer compiles in Zig 0.15
+std.io.getStdOut().writeAll("hello\n") catch {};
+const stderr = std.io.getStdErr();
+```
+
+**New Pattern (Zig 0.15+):**
+```zig
+// ✅ CORRECT - Use std.fs.File static methods
+const stdout = std.fs.File.stdout();
+stdout.writeAll("hello\n") catch {};
+
+const stderr = std.fs.File.stderr();
+stderr.writeAll("error\n") catch {};
+
+// For buffered writing
+var buffer: [4096]u8 = undefined;
+var stdout_writer = stdout.writer(&buffer);
+try stdout_writer.interface.print("formatted: {d}\n", .{42});
+```
+
+**Takeaway**: Replace `std.io.getStdOut()` with `std.fs.File.stdout()` and `std.io.getStdErr()` with `std.fs.File.stderr()`.
+
+---
+
+### Zig 0.15: std.fmt.formatIntBuf Removed
+
+**Date**: 2025-12-12  
+**Lesson**: In Zig 0.15, `std.fmt.formatIntBuf` no longer exists. Use `std.fmt.bufPrint` instead.
+
+**Old Pattern (Pre-0.15) - NO LONGER WORKS:**
+```zig
+// ❌ WRONG - This no longer compiles in Zig 0.15
+var buf: [20]u8 = undefined;
+const len = std.fmt.formatIntBuf(&buf, value, 10, .lower, .{});
+const str = buf[0..len];
+```
+
+**New Pattern (Zig 0.15+):**
+```zig
+// ✅ CORRECT - Use std.fmt.bufPrint
+var buf: [20]u8 = undefined;
+const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
+```
+
+**Takeaway**: Replace `std.fmt.formatIntBuf` with `std.fmt.bufPrint` using format strings.
+
+---
+
 ## ⚠️ DIRECTIVE: Expand AGENTS.md When You Learn
 
 **When you learn something new or find a better way to do something, you MUST update this file.**

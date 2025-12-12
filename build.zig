@@ -2609,4 +2609,59 @@ pub fn build(b: *std.Build) void {
         ,
     });
     help_engines_step.dependOn(&help_engines_cmd.step);
+
+    // ========================================================================
+    // CLDR DATA PIPELINE TOOLS
+    // ========================================================================
+
+    // CLDR Downloader - fetches CLDR JSON from Unicode
+    const cldr_download_exe = b.addExecutable(.{
+        .name = "cldr-download",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/cldr/download.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(cldr_download_exe);
+
+    const run_cldr_download = b.addRunArtifact(cldr_download_exe);
+    if (b.args) |args| run_cldr_download.addArgs(args);
+
+    const cldr_download_step = b.step("cldr-download", "Download CLDR JSON data from Unicode");
+    cldr_download_step.dependOn(&run_cldr_download.step);
+
+    // CLDR Extractor - extracts locale data to Zig source
+    const cldr_extract_exe = b.addExecutable(.{
+        .name = "cldr-extract",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/cldr/extract.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(cldr_extract_exe);
+
+    const run_cldr_extract = b.addRunArtifact(cldr_extract_exe);
+    if (b.args) |args| run_cldr_extract.addArgs(args);
+
+    const cldr_extract_step = b.step("cldr-extract", "Extract CLDR data to Zig source");
+    cldr_extract_step.dependOn(&run_cldr_extract.step);
+
+    // CLDR Encoder - encodes to binary format for Tier 2 locales
+    const cldr_encode_exe = b.addExecutable(.{
+        .name = "cldr-encode",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/cldr/encode.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(cldr_encode_exe);
+
+    const run_cldr_encode = b.addRunArtifact(cldr_encode_exe);
+    if (b.args) |args| run_cldr_encode.addArgs(args);
+
+    const cldr_encode_step = b.step("cldr-encode", "Encode CLDR data to binary format");
+    cldr_encode_step.dependOn(&run_cldr_encode.step);
 }

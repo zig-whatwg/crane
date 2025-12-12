@@ -336,7 +336,8 @@ fn printHelp() void {
         \\  - cldr-core               Core CLDR data
         \\
     ;
-    std.io.getStdOut().writeAll(help) catch {};
+    const stdout_file = std.fs.File.stdout();
+    stdout_file.writeAll(help) catch {};
 }
 
 test "DownloadState.getPackageUrl" {

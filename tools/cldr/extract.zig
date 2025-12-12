@@ -135,12 +135,15 @@ pub const LikelySubtags = struct {
 // JSON Parsing
 // ============================================================================
 
+// Month number keys for CLDR JSON lookup (1-indexed as strings)
+const month_keys = [_][]const u8{ "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" };
+
 /// Extract month names from CLDR JSON
 fn extractMonthNames(allocator: Allocator, months_obj: json.Value) !MonthNames {
     var result: MonthNames = undefined;
 
     // Initialize with empty strings
-    inline for (0..12) |i| {
+    for (0..12) |i| {
         result.wide[i] = "";
         result.abbreviated[i] = "";
         result.narrow[i] = "";
@@ -154,11 +157,10 @@ fn extractMonthNames(allocator: Allocator, months_obj: json.Value) !MonthNames {
     if (months.get("wide")) |wide| {
         if (wide == .object) {
             const wide_obj = wide.object;
-            inline for (1..13) |month| {
-                const key = std.fmt.comptimePrint("{d}", .{month});
+            for (month_keys, 0..) |key, i| {
                 if (wide_obj.get(key)) |val| {
                     if (val == .string) {
-                        result.wide[month - 1] = try allocator.dupe(u8, val.string);
+                        result.wide[i] = try allocator.dupe(u8, val.string);
                     }
                 }
             }
@@ -169,11 +171,10 @@ fn extractMonthNames(allocator: Allocator, months_obj: json.Value) !MonthNames {
     if (months.get("abbreviated")) |abbr| {
         if (abbr == .object) {
             const abbr_obj = abbr.object;
-            inline for (1..13) |month| {
-                const key = std.fmt.comptimePrint("{d}", .{month});
+            for (month_keys, 0..) |key, i| {
                 if (abbr_obj.get(key)) |val| {
                     if (val == .string) {
-                        result.abbreviated[month - 1] = try allocator.dupe(u8, val.string);
+                        result.abbreviated[i] = try allocator.dupe(u8, val.string);
                     }
                 }
             }
@@ -184,11 +185,10 @@ fn extractMonthNames(allocator: Allocator, months_obj: json.Value) !MonthNames {
     if (months.get("narrow")) |narrow| {
         if (narrow == .object) {
             const narrow_obj = narrow.object;
-            inline for (1..13) |month| {
-                const key = std.fmt.comptimePrint("{d}", .{month});
+            for (month_keys, 0..) |key, i| {
                 if (narrow_obj.get(key)) |val| {
                     if (val == .string) {
-                        result.narrow[month - 1] = try allocator.dupe(u8, val.string);
+                        result.narrow[i] = try allocator.dupe(u8, val.string);
                     }
                 }
             }
@@ -206,7 +206,7 @@ fn extractWeekdayNames(allocator: Allocator, days_obj: json.Value) !WeekdayNames
     const day_keys = [_][]const u8{ "sun", "mon", "tue", "wed", "thu", "fri", "sat" };
 
     // Initialize with empty strings
-    inline for (0..7) |i| {
+    for (0..7) |i| {
         result.wide[i] = "";
         result.abbreviated[i] = "";
         result.narrow[i] = "";
@@ -661,21 +661,21 @@ pub fn extractLocaleData(state: *const ExtractState, locale_tag: []const u8) !?E
 
 /// Extract all Tier 1 locales
 pub fn extractAllTier1Locales(state: *const ExtractState) ![]ExtractedLocaleData {
-    var results = std.ArrayList(ExtractedLocaleData).init(state.allocator);
+    var results: std.ArrayList(ExtractedLocaleData) = .{};
     errdefer {
         for (results.items) |*item| {
             item.deinit(state.allocator);
         }
-        results.deinit();
+        results.deinit(state.allocator);
     }
 
     for (TIER1_LOCALES) |locale| {
         if (try extractLocaleData(state, locale)) |data| {
-            try results.append(data);
+            try results.append(state.allocator, data);
         }
     }
 
-    return results.toOwnedSlice();
+    return results.toOwnedSlice(state.allocator);
 }
 
 /// Write extracted data to a Zig source file for compile-time embedding
@@ -690,7 +690,9 @@ pub fn writeZigSource(state: *const ExtractState, locales: []const ExtractedLoca
     const file = try std.fs.cwd().createFile(output_path, .{});
     defer file.close();
 
-    var writer = file.writer();
+    var write_buffer: [8192]u8 = undefined;
+    var buffered_writer = file.writer(&write_buffer);
+    const writer = &buffered_writer.interface;
 
     // Write header
     try writer.writeAll(
@@ -997,7 +999,8 @@ fn printHelp() void {
         \\  Run 'zig build cldr-download' first to download CLDR JSON data.
         \\
     ;
-    std.io.getStdOut().writeAll(help) catch {};
+    const stdout_file = std.fs.File.stdout();
+    stdout_file.writeAll(help) catch {};
 }
 
 // ============================================================================
