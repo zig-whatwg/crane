@@ -104,6 +104,7 @@ pub fn AsyncPromise(comptime T: type) type {
         event_loop: event_loop.EventLoop,
         state: State,
         reactions: infra.List(Reaction),
+        fire_and_forget_reactions: infra.List(FireAndForgetReaction),
 
         const Self = @This();
 
@@ -126,7 +127,7 @@ pub fn AsyncPromise(comptime T: type) type {
             rejected: webidl.errors.Exception,
         };
 
-        /// Reaction - A then/catch/finally handler
+        /// Reaction - A then/catch/finally handler that chains to another promise
         ///
         /// When a promise settles, all pending reactions are queued as microtasks.
         ///
@@ -154,8 +155,26 @@ pub fn AsyncPromise(comptime T: type) type {
             /// Context pointer for context-aware handlers
             context: ?*anyopaque,
 
-            /// Promise to settle with the handler result (null for onSettleCtx reactions)
-            target_promise: ?*Self,
+            /// Promise to settle with the handler result
+            target_promise: *Self,
+        };
+
+        /// Fire-and-forget reaction - handlers that don't chain to another promise
+        ///
+        /// These handlers return void and are used for side effects only.
+        /// This is separate from Reaction to maintain type safety - we don't
+        /// cast void-returning functions to T-returning functions.
+        pub const FireAndForgetReaction = struct {
+            /// Context-aware fulfillment handler (may be null)
+            /// Signature: fn(*anyopaque, T) anyerror!void
+            on_fulfilled_ctx: ?*const fn (*anyopaque, T) anyerror!void,
+
+            /// Context-aware rejection handler (may be null)
+            /// Signature: fn(*anyopaque, webidl.errors.Exception) anyerror!void
+            on_rejected_ctx: ?*const fn (*anyopaque, webidl.errors.Exception) anyerror!void,
+
+            /// Context pointer for handlers
+            context: *anyopaque,
         };
 
         /// Initialize a new pending promise
@@ -184,6 +203,7 @@ pub fn AsyncPromise(comptime T: type) type {
                 .event_loop = loop,
                 .state = .pending,
                 .reactions = infra.List(Reaction).init(allocator),
+                .fire_and_forget_reactions = infra.List(FireAndForgetReaction).init(allocator),
             };
             return self;
         }
@@ -201,6 +221,7 @@ pub fn AsyncPromise(comptime T: type) type {
         /// not be used (all operations will fail or panic).
         pub fn deinit(self: *Self) void {
             self.reactions.deinit();
+            self.fire_and_forget_reactions.deinit();
             // NOTE: Don't free self - arena owns it
         }
 
@@ -221,12 +242,18 @@ pub fn AsyncPromise(comptime T: type) type {
 
             self.state = .{ .fulfilled = value };
 
-            // Queue microtask for each reaction
+            // Queue microtask for each chained reaction
             for (self.reactions.toSlice()) |reaction| {
                 self.queueReaction(reaction, self.state);
             }
 
+            // Queue microtask for each fire-and-forget reaction
+            for (self.fire_and_forget_reactions.toSlice()) |reaction| {
+                self.queueFireAndForgetReaction(reaction, self.state);
+            }
+
             self.reactions.clear();
+            self.fire_and_forget_reactions.clear();
         }
 
         /// Reject the promise with an error
@@ -249,12 +276,18 @@ pub fn AsyncPromise(comptime T: type) type {
 
             self.state = .{ .rejected = error_value };
 
-            // Queue microtask for each reaction
+            // Queue microtask for each chained reaction
             for (self.reactions.toSlice()) |reaction| {
                 self.queueReaction(reaction, self.state);
             }
 
+            // Queue microtask for each fire-and-forget reaction
+            for (self.fire_and_forget_reactions.toSlice()) |reaction| {
+                self.queueFireAndForgetReaction(reaction, self.state);
+            }
+
             self.reactions.clear();
+            self.fire_and_forget_reactions.clear();
         }
 
         /// Execute close steps for ReadResult promises
@@ -410,6 +443,9 @@ pub fn AsyncPromise(comptime T: type) type {
         /// settles, but don't care about chaining another promise. This avoids
         /// memory leaks from unreferenced chained promises.
         ///
+        /// The handlers return void (fire-and-forget) - they're used for side effects
+        /// only and don't produce values for promise chaining.
+        ///
         /// Example:
         /// ```zig
         /// try promise.onSettleCtx(myOnFulfilled, myOnRejected, &my_context);
@@ -420,23 +456,20 @@ pub fn AsyncPromise(comptime T: type) type {
             on_rejected: ?*const fn (*anyopaque, webidl.errors.Exception) anyerror!void,
             context: *anyopaque,
         ) !void {
-            const reaction = Reaction{
-                .on_fulfilled = null,
-                .on_rejected = null,
-                .on_fulfilled_ctx = if (on_fulfilled) |f| @ptrCast(f) else null,
-                .on_rejected_ctx = if (on_rejected) |r| @ptrCast(r) else null,
+            const reaction = FireAndForgetReaction{
+                .on_fulfilled_ctx = on_fulfilled,
+                .on_rejected_ctx = on_rejected,
                 .context = context,
-                .target_promise = null, // No chained promise
             };
 
             switch (self.state) {
                 .pending => {
-                    // Add to reaction list
-                    try self.reactions.append(reaction);
+                    // Add to fire-and-forget reaction list
+                    try self.fire_and_forget_reactions.append(reaction);
                 },
                 .fulfilled, .rejected => {
                     // Already settled - queue immediately
-                    self.queueReaction(reaction, self.state);
+                    self.queueFireAndForgetReaction(reaction, self.state);
                 },
             }
         }
@@ -479,7 +512,7 @@ pub fn AsyncPromise(comptime T: type) type {
         // Internal Implementation
         // ====================================================================
 
-        /// Queue a reaction as a microtask
+        /// Queue a chained reaction as a microtask
         fn queueReaction(self: *Self, reaction: Reaction, state: State) void {
             // Create context for microtask
             // IMPORTANT: Allocate from event loop's promise arena, not regular allocator.
@@ -499,16 +532,99 @@ pub fn AsyncPromise(comptime T: type) type {
             });
         }
 
-        /// Context passed to microtask
+        /// Queue a fire-and-forget reaction as a microtask
+        fn queueFireAndForgetReaction(self: *Self, reaction: FireAndForgetReaction, state: State) void {
+            const promise_alloc = self.event_loop.promiseAllocator();
+            const ctx = promise_alloc.create(FireAndForgetReactionContext) catch @panic("AsyncPromise: OOM in queueFireAndForgetReaction");
+            ctx.* = .{
+                .promise_alloc = promise_alloc,
+                .reaction = reaction,
+                .state = state,
+            };
+
+            self.event_loop.queueMicrotask(.{
+                .callback = executeFireAndForgetReaction,
+                .context = ctx,
+            });
+        }
+
+        /// Context passed to microtask for chained reactions
         const ReactionContext = struct {
             promise_alloc: Allocator,
             reaction: Reaction,
             state: State,
         };
 
-        /// Execute a reaction (called as microtask)
+        /// Context passed to microtask for fire-and-forget reactions
+        const FireAndForgetReactionContext = struct {
+            promise_alloc: Allocator,
+            reaction: FireAndForgetReaction,
+            state: State,
+        };
+
+        /// Execute a chained reaction (called as microtask)
         fn executeReaction(ctx_ptr: ?*anyopaque) void {
             const ctx: *ReactionContext = @ptrCast(@alignCast(ctx_ptr.?));
+            const promise_alloc = ctx.promise_alloc;
+            defer promise_alloc.destroy(ctx);
+
+            const reaction = ctx.reaction;
+            const state = ctx.state;
+            const target = reaction.target_promise;
+
+            switch (state) {
+                .fulfilled => |value| {
+                    // Check for context-aware handler first
+                    if (reaction.on_fulfilled_ctx) |handler| {
+                        const result = handler(reaction.context.?, value) catch |err| {
+                            const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
+                            target.reject(exception);
+                            return;
+                        };
+                        target.fulfill(result);
+                    } else if (reaction.on_fulfilled) |handler| {
+                        const result = handler(value) catch |err| {
+                            const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
+                            target.reject(exception);
+                            return;
+                        };
+                        target.fulfill(result);
+                    } else {
+                        // No handler - forward fulfillment
+                        target.fulfill(value);
+                    }
+                },
+                .rejected => |error_value| {
+                    // Check for context-aware handler first
+                    if (reaction.on_rejected_ctx) |handler| {
+                        const result = handler(reaction.context.?, error_value) catch |err| {
+                            const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
+                            target.reject(exception);
+                            return;
+                        };
+                        target.fulfill(result);
+                    } else if (reaction.on_rejected) |handler| {
+                        const result = handler(error_value) catch |err| {
+                            const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
+                            target.reject(exception);
+                            return;
+                        };
+                        target.fulfill(result);
+                    } else {
+                        // No handler - forward rejection
+                        target.reject(error_value);
+                    }
+                },
+                .pending => unreachable, // Should never queue a reaction for pending state
+            }
+        }
+
+        /// Execute a fire-and-forget reaction (called as microtask)
+        ///
+        /// These handlers return void and are used for side effects only.
+        /// No promise chaining - just call the handler and ignore any errors.
+        fn executeFireAndForgetReaction(ctx_ptr: ?*anyopaque) void {
+            const ctx: *FireAndForgetReactionContext = @ptrCast(@alignCast(ctx_ptr.?));
             const promise_alloc = ctx.promise_alloc;
             defer promise_alloc.destroy(ctx);
 
@@ -517,73 +633,15 @@ pub fn AsyncPromise(comptime T: type) type {
 
             switch (state) {
                 .fulfilled => |value| {
-                    // Check for context-aware handler first
                     if (reaction.on_fulfilled_ctx) |handler| {
-                        if (reaction.target_promise) |target| {
-                            // Chained promise - capture result and forward it
-                            const result = handler(reaction.context.?, value) catch |err| {
-                                const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
-                                target.reject(exception);
-                                return;
-                            };
-                            target.fulfill(result);
-                        } else {
-                            // No chained promise - just execute handler and discard result
-                            _ = handler(reaction.context.?, value) catch {};
-                        }
-                    } else if (reaction.on_fulfilled) |handler| {
-                        if (reaction.target_promise) |target| {
-                            // Chained promise - capture result and forward it
-                            const result = handler(value) catch |err| {
-                                const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
-                                target.reject(exception);
-                                return;
-                            };
-                            target.fulfill(result);
-                        } else {
-                            // No chained promise - just execute handler and discard result
-                            _ = handler(value) catch {};
-                        }
-                    } else {
-                        // No handler - forward fulfillment if target exists
-                        if (reaction.target_promise) |target| {
-                            target.fulfill(value);
-                        }
+                        // Execute handler, ignore errors (fire-and-forget)
+                        handler(reaction.context, value) catch {};
                     }
                 },
                 .rejected => |error_value| {
-                    // Check for context-aware handler first
                     if (reaction.on_rejected_ctx) |handler| {
-                        if (reaction.target_promise) |target| {
-                            // Chained promise - capture result and forward it
-                            const result = handler(reaction.context.?, error_value) catch |err| {
-                                const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
-                                target.reject(exception);
-                                return;
-                            };
-                            target.fulfill(result);
-                        } else {
-                            // No chained promise - just execute handler and discard result
-                            _ = handler(reaction.context.?, error_value) catch {};
-                        }
-                    } else if (reaction.on_rejected) |handler| {
-                        if (reaction.target_promise) |target| {
-                            // Chained promise - capture result and forward it
-                            const result = handler(error_value) catch |err| {
-                                const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
-                                target.reject(exception);
-                                return;
-                            };
-                            target.fulfill(result);
-                        } else {
-                            // No chained promise - just execute handler and discard result
-                            _ = handler(error_value) catch {};
-                        }
-                    } else {
-                        // No handler - forward rejection if target exists
-                        if (reaction.target_promise) |target| {
-                            target.reject(error_value);
-                        }
+                        // Execute handler, ignore errors (fire-and-forget)
+                        handler(reaction.context, error_value) catch {};
                     }
                 },
                 .pending => unreachable, // Should never queue a reaction for pending state
