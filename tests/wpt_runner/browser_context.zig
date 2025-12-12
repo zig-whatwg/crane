@@ -1233,6 +1233,11 @@ fn wptScriptLoaderTyped(self: *BrowserContext, url: []const u8) ?[]const u8 {
 
 /// Legacy-compatible wrapper for the typed script loader.
 /// Uses TypedScriptLoader to generate a function that casts anyopaque to *BrowserContext.
+///
+/// PATTERN: TypedScriptLoader demonstrates the comptime generic pattern for type-safe
+/// callbacks. The HTMLParser needs a generic callback type for script loading, and
+/// TypedScriptLoader provides compile-time type safety while generating an anyopaque-
+/// compatible callback for the C/FFI boundary.
 const wptScriptLoader = impls.HTMLParser.TypedScriptLoader(BrowserContext).makeTypedLoader(wptScriptLoaderTyped);
 
 // =============================================================================
@@ -1762,6 +1767,13 @@ fn unregisterTimerContext(timer_id: TimerId) void {
 }
 
 // V8 Callback Functions
+//
+// NOTE ON V8 FFI @ptrCast USAGE:
+// The @ptrCast calls in this file are legitimate C FFI boundary casts.
+// V8's C API uses generic Value* pointers for all JavaScript values, so we must
+// cast between specific types (String*, Function*, Integer*, Object*) and Value*.
+// These casts cannot be avoided without changing the V8 FFI layer itself.
+// See docs/legitimate-anyopaque.md for more details on FFI boundary patterns.
 
 /// V8 Timer Context Data
 ///
@@ -1793,6 +1805,12 @@ const V8TimerContextData = struct {
 /// together, providing compile-time type safety and eliminating manual
 /// anyopaque casts in callback functions. The work callback variant stores
 /// the allocator internally for no-argument destroy().
+///
+/// PATTERN: This demonstrates the typed callback pattern recommended for
+/// anyopaque refactoring. The SelfContainedWorkCallback provides:
+/// - Type-safe context data (V8TimerContextData)
+/// - Automatic memory management (allocator stored internally)
+/// - A trampoline callback that handles the anyopaque->typed conversion at the FFI boundary
 const V8TimerCallback = SelfContainedWorkCallback(V8TimerContextData);
 
 /// Create a new V8 timer context wrapper
