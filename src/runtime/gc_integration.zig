@@ -164,6 +164,56 @@ pub fn registerCallbacks() GCError!void {
     return GCError.NotImplemented;
 }
 
+// ============================================================================
+// Typed Wrapper for Internal Use
+// ============================================================================
+
+/// Create a typed finalizer function from a cleanup callback.
+///
+/// This is a convenience wrapper for internal Zig code that wants type safety
+/// when registering GC finalizers. The underlying C ABI callback (`onObjectFreed`)
+/// must still use `?*anyopaque` for engine compatibility.
+///
+/// ## Example
+///
+/// ```zig
+/// const MyResource = struct {
+///     buffer: []u8,
+///     allocator: std.mem.Allocator,
+///
+///     pub fn cleanup(self: *MyResource) void {
+///         self.allocator.free(self.buffer);
+///     }
+/// };
+///
+/// // Register with typed safety
+/// const finalizer = TypedFinalizer(MyResource).init(&MyResource.cleanup);
+/// // The finalizer can be stored and invoked with type safety
+/// // For actual GC registration, use onObjectFreed which handles the C ABI
+/// ```
+pub fn TypedFinalizer(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        /// The typed cleanup function
+        cleanup_fn: *const fn (*T) void,
+
+        /// Initialize with a typed cleanup function
+        pub fn init(cleanup_fn: *const fn (*T) void) Self {
+            return .{ .cleanup_fn = cleanup_fn };
+        }
+
+        /// Invoke the cleanup function on a typed pointer
+        pub fn invoke(self: Self, instance: *T) void {
+            self.cleanup_fn(instance);
+        }
+    };
+}
+
+// ============================================================================
+// Statistics
+// ============================================================================
+
 /// Statistics for GC integration
 pub const GCStats = struct {
     /// Total objects finalized
@@ -188,12 +238,18 @@ pub const GCStats = struct {
 };
 
 /// Instrumented version of onObjectFreed for testing/debugging
+///
+/// KEEP: anyopaque required - extern "C" callback for JavaScript engine GC.
+/// See onObjectFreed for full documentation.
 pub fn onObjectFreedInstrumented(user_data: ?*anyopaque) callconv(.c) void {
     GCStats.get().objects_finalized += 1;
     onObjectFreed(user_data);
 }
 
 /// Instrumented version of onGCSweep for testing/debugging
+///
+/// KEEP: callconv(.c) required - extern "C" callback for JavaScript engine GC.
+/// See onGCSweep for full documentation.
 pub fn onGCSweepInstrumented() callconv(.c) void {
     const stats = GCStats.get();
     stats.gc_sweeps += 1;
