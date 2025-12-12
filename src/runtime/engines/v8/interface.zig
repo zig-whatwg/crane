@@ -2163,11 +2163,16 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Callback for non-constructible interfaces
+        /// Callback for non-constructible interfaces (has_constructor = false)
         ///
         /// Throws TypeError when JavaScript tries: new NonConstructibleInterface()
+        /// or NonConstructibleInterface() (called as function)
+        ///
+        /// Per WebIDL spec §3.12 (Legacy callback interface objects):
+        /// - Must throw TypeError, NOT a generic Error
         fn nonConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
-            conv.throwError(isolate, "Illegal constructor: " ++ name ++ " is not constructible");
+            conv.throwTypeError(isolate, "Illegal constructor: " ++ name ++ " is not constructible");
         }
 
         /// Lazy property getter interceptor
