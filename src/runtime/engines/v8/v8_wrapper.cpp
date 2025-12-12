@@ -2587,6 +2587,20 @@ bool v8_Object_SetPrototype(Global<Object>* object, Global<Context>* context, Gl
     return obj->SetPrototype(ctx, proto).FromMaybe(false);
 }
 
+Global<Value>* v8_Object_GetPrototype(Global<Object>* object) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Object> obj = object->Get(isolate);
+    Local<Value> proto = obj->GetPrototype();
+    
+    if (proto.IsEmpty()) {
+        return nullptr;
+    }
+    
+    return new Global<Value>(isolate, proto);
+}
+
 // ============================================================================
 // Object Extensibility Functions
 // ============================================================================

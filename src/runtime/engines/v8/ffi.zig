@@ -446,6 +446,7 @@ pub extern fn v8_Object_GetAlignedPointerFromInternalField_Raw(object: *const an
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
 pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototype: *Value) bool;
+pub extern fn v8_Object_GetPrototype(object: *Object) ?*Value;
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
 pub extern fn v8_Object_GetPropertyWithSymbol(context: *Context, obj: *Object, symbol: *Symbol) ?*Value;

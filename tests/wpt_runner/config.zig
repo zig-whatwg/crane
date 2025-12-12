@@ -88,6 +88,7 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "dom", .description = "DOM Standard" },
     .{ .name = "html", .description = "HTML Standard (non-rendering)" },
     .{ .name = "cookiestore", .description = "Cookie Store API" },
+    .{ .name = "webidl", .description = "WebIDL bindings" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
