@@ -2615,6 +2615,14 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
         defer v8.ffi.v8_FreeScriptRunResult(run_result);
 
         if (run_result.error_info != null) {
+            // Log the error for debugging
+            std.log.warn("importScripts: Script execution failed for '{s}'", .{url_str});
+            if (run_result.error_info) |err_info| {
+                if (err_info.message) |err_msg| {
+                    const err_len = std.mem.len(err_msg);
+                    std.log.warn("  Error: {s}", .{err_msg[0..err_len]});
+                }
+            }
             const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "importScripts: Script execution failed", 38) orelse return;
             if (v8.ffi.v8_Exception_Error(msg)) |exc| {
                 v8.ffi.v8_Isolate_ThrowException(isolate, exc);

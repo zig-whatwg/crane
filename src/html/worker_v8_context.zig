@@ -38,6 +38,12 @@ const Allocator = std.mem.Allocator;
 const v8 = @import("v8");
 const runtime = @import("runtime");
 
+// V8Interface for registering constructors
+const V8Interface = v8.V8Interface;
+
+// Interfaces needed in worker context
+const interfaces = @import("interfaces");
+
 // Worker types from html_core
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -131,6 +137,10 @@ pub const WorkerV8Context = struct {
         // Set up basic worker globals (self, globalThis)
         try self.setupWorkerGlobals();
 
+        // Register essential WebIDL interfaces needed for worker scripts
+        // This is a minimal subset needed for WPT tests
+        self.registerWorkerInterfaces();
+
         // Exit worker context/isolate after setup - we'll re-enter when executing scripts
         // This allows the main isolate to remain active during Worker construction
         v8.ffi.v8_Context_Exit(context);
@@ -204,6 +214,41 @@ pub const WorkerV8Context = struct {
             return error.StringCreationFailed;
         };
         _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(global_this_key), @ptrCast(global_obj));
+    }
+
+    /// Register essential WebIDL interfaces needed in worker context
+    ///
+    /// This registers a minimal subset of interfaces commonly used by WPT tests:
+    /// - URL, URLSearchParams (for URL manipulation)
+    /// - Event, EventTarget (for event handling)
+    /// - DOMException (for error handling)
+    ///
+    /// Full interface registration (initializeBindings) can't be used directly
+    /// because it requires the main isolate's context manager state.
+    fn registerWorkerInterfaces(self: *Self) void {
+        // Create HandleScope for interface registration
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+        // Register URL interface
+        const URL = V8Interface(interfaces.URL);
+        URL.registerGlobal(self.isolate, self.context, "URL");
+
+        // Register URLSearchParams interface
+        const URLSearchParams = V8Interface(interfaces.URLSearchParams);
+        URLSearchParams.registerGlobal(self.isolate, self.context, "URLSearchParams");
+
+        // Register Event interface
+        const Event = V8Interface(interfaces.Event);
+        Event.registerGlobal(self.isolate, self.context, "Event");
+
+        // Register EventTarget interface
+        const EventTarget = V8Interface(interfaces.EventTarget);
+        EventTarget.registerGlobal(self.isolate, self.context, "EventTarget");
+
+        // Register DOMException interface
+        const DOMException = V8Interface(interfaces.DOMException);
+        DOMException.registerGlobal(self.isolate, self.context, "DOMException");
     }
 
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
