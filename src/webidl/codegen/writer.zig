@@ -425,13 +425,30 @@ pub fn writeMetadata(
     }
 
     // Add toString method for stringifier interfaces (per WebIDL spec)
-    // Bare stringifier declarations generate a toString() method
+    // Bare stringifier declarations generate a toString() method that calls serialize
+    // Stringifier attribute declarations generate a toString() method that returns the attribute
+    var has_stringifier = false;
     for (own_operations) |op| {
         if (op.special) |special| {
             if (special == .stringifier and op.name == null) {
                 try writer.writeAll("            .{ \"toString\", \"serialize\", 0 },\n");
+                has_stringifier = true;
                 break;
             }
+        }
+    }
+    // Check for stringifier attribute (e.g., stringifier attribute USVString href)
+    if (!has_stringifier) {
+        for (own_attributes) |attr| {
+            for (attr.extAttrs) |ext_attr| {
+                if (std.mem.eql(u8, ext_attr.name, "Stringifier")) {
+                    // toString() returns the stringifier attribute's getter
+                    try writer.print("            .{{ \"toString\", \"get_{s}\", 0 }},\n", .{attr.name});
+                    has_stringifier = true;
+                    break;
+                }
+            }
+            if (has_stringifier) break;
         }
     }
 
@@ -511,13 +528,28 @@ pub fn writeMetadata(
         }
     }
 
-    // Add toString for stringifier interfaces
+    // Add toString for stringifier interfaces (both bare stringifier and stringifier attribute)
+    var has_tostring = false;
     for (own_operations) |op| {
         if (op.special) |special| {
             if (special == .stringifier and op.name == null) {
                 try writer.writeAll("            \"toString\",\n");
+                has_tostring = true;
                 break;
             }
+        }
+    }
+    // Check for stringifier attribute
+    if (!has_tostring) {
+        for (own_attributes) |attr| {
+            for (attr.extAttrs) |ext_attr| {
+                if (std.mem.eql(u8, ext_attr.name, "Stringifier")) {
+                    try writer.writeAll("            \"toString\",\n");
+                    has_tostring = true;
+                    break;
+                }
+            }
+            if (has_tostring) break;
         }
     }
 

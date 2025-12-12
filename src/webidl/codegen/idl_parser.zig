@@ -880,8 +880,16 @@ pub const Parser = struct {
             // Check for stringifier attribute (e.g., stringifier attribute DOMString value;)
             // or stringifier readonly attribute (e.g., stringifier readonly attribute USVString href;)
             if (self.current_token.type == .keyword_attribute or self.current_token.type == .keyword_readonly) {
-                // Parse as an attribute, the stringifier aspect is in the extended attributes
-                return try self.parseAttribute(ext_attrs);
+                // Parse the attribute normally, but add a Stringifier extended attribute
+                // to mark that this attribute is the stringifier
+                var stringifier_ext_attrs = std.ArrayList(types.ExtendedAttribute).empty;
+                defer stringifier_ext_attrs.deinit(self.allocator);
+                try stringifier_ext_attrs.appendSlice(self.allocator, ext_attrs);
+                try stringifier_ext_attrs.append(self.allocator, types.ExtendedAttribute{
+                    .name = "Stringifier",
+                    .rhs = null,
+                });
+                return try self.parseAttribute(try stringifier_ext_attrs.toOwnedSlice(self.allocator));
             }
         }
 
