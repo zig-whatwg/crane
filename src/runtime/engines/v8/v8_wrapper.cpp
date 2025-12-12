@@ -1143,6 +1143,18 @@ bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Valu
     return result.FromMaybe(false);
 }
 
+bool v8_Object_Delete(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> obj = object->Get(isolate);
+    Local<Value> k = key->Get(isolate);
+    
+    Maybe<bool> result = obj->Delete(ctx, k);
+    return result.FromMaybe(false);
+}
+
 bool v8_Object_CreateDataProperty(Global<Object>* object, Global<Context>* context, Global<String>* key, Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -2045,6 +2057,26 @@ void v8_FunctionTemplate_SetLength(Global<FunctionTemplate>* tpl, int length) {
     HandleScope handle_scope(isolate);
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
     local_tpl->SetLength(length);
+}
+
+void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
+    // ReadOnlyPrototype() makes the "prototype" property non-writable
+    // and also removes "arguments" and "caller" properties from functions
+    // created from this template, making them behave like strict mode functions.
+    local_tpl->ReadOnlyPrototype();
+}
+
+void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
+    // RemovePrototype() removes the "prototype" property entirely.
+    // This also removes "arguments" and "caller" properties.
+    // Use for methods and getters which should not have prototype.
+    local_tpl->RemovePrototype();
 }
 
 // FunctionCallbackInfo accessors

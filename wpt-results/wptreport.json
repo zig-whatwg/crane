@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765518308962,
-  "time_end": 1765518314565,
+  "time_start": 1765521927362,
+  "time_end": 1765521933039,
   "results": [
     {
       "test": "webidl/ecmascript-binding/sequence-conversion.html",
@@ -119,7 +119,7 @@
       "subtests": [
         {"name": "Has %IteratorPrototype% as prototype", "status": "PASS", "message": null},
         {"name": "next() exists and is writable, enumerable, and configurable", "status": "PASS", "message": null},
-        {"name": "next() throws TypeError when called on ineligible receiver", "status": "FAIL", "message": "assert_throws_js: function \"() => {\n    iteratorProto.next();\n  }\" did not throw"},
+        {"name": "next() throws TypeError when called on ineligible receiver", "status": "PASS", "message": null},
         {"name": "Is specific to an interface", "status": "PASS", "message": null}
       ]
     },
@@ -129,9 +129,9 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "forEach will not iterate over elements removed during iteration", "status": "FAIL", "message": "assert_array_equals: lengths differ, expected array [\"1\", \"3\"] length 2, got [\"1\", \"3\", \"3\"] length 3"},
-        {"name": "Removing elements already iterated over during forEach will cause iterator to skip an element", "status": "FAIL", "message": "assert_array_equals: lengths differ, expected array [\"1\", \"2\", \"4\"] length 3, got [\"1\", \"2\", \"4\", \"4\"] length 4"},
-        {"name": "Elements added during iteration with forEach will be reached", "status": "FAIL", "message": "assert_array_equals: lengths differ, expected array [\"1\", \"2\", \"3\", \"4\", \"5\"] length 5, got [\"1\", \"2\", \"3\", \"4\"] length 4"}
+        {"name": "forEach will not iterate over elements removed during iteration", "status": "PASS", "message": null},
+        {"name": "Removing elements already iterated over during forEach will cause iterator to skip an element", "status": "PASS", "message": null},
+        {"name": "Elements added during iteration with forEach will be reached", "status": "PASS", "message": null}
       ]
     },
     {
@@ -343,7 +343,7 @@
       "subtests": [
         {"name": "new DOMException()", "status": "PASS", "message": null},
         {"name": "new DOMException(): inherited-ness", "status": "PASS", "message": null},
-        {"name": "new DOMException(null)", "status": "FAIL", "message": "assert_equals: Passing null as message should end up with stringified 'null' as the message expected \"null\" but got \"\""},
+        {"name": "new DOMException(null)", "status": "PASS", "message": null},
         {"name": "new DOMException(undefined)", "status": "PASS", "message": null},
         {"name": "new DOMException(undefined): inherited-ness", "status": "PASS", "message": null},
         {"name": "new DOMException(\"foo\")", "status": "PASS", "message": null},
@@ -573,7 +573,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "must enumerate property indices in ascending numerical order", "status": "FAIL", "message": "assert_array_equals:  actual [] expected [\"0\",\"1\",\"2\"] lengths differ, expected array [\"0\", \"1\", \"2\"] length 3, got [] length 0"},
+        {"name": "must enumerate property indices in ascending numerical order", "status": "PASS", "message": null},
         {"name": "must enumerate property names in list order", "status": "FAIL", "message": "Reflect.ownKeys called on non-object"},
         {"name": "must first enumerate property indices in ascending numerical order, then named properties in list order", "status": "FAIL", "message": "OutOfMemory"},
         {"name": "must enumerate own properties after indexed and named properties even when they're added first", "status": "FAIL", "message": "assert_array_equals:  actual [\"foo\",\"bar\"] expected [\"0\",\"1\",\"id\",\"class\",\"foo\",\"bar\"] lengths differ, expected array [\"0\", \"1\", \"id\", \"class\", \"foo\", \"bar\"] length 6, got [\"foo\", \"bar\"] length 2"},
@@ -586,7 +586,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "[[GetOwnProperty]] with getters and no setters", "status": "FAIL", "message": "TypeError"},
+        {"name": "[[GetOwnProperty]] with getters and no setters", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'hasOwnProperty')"},
         {"name": "[[GetOwnProperty]] with named property getters and setters", "status": "FAIL", "message": "Cannot set properties of undefined (setting 'foo')"},
         {"name": "[[GetOwnProperty]] with indexed property getters and setters", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'hasOwnProperty')"}
       ]
@@ -597,7 +597,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Test [[DefineOwnProperty]] with no indexed property setter support.", "status": "FAIL", "message": "assert_equals: (assert_prop_desc_equals: property 'writable') expected false but got true"},
+        {"name": "Test [[DefineOwnProperty]] with no indexed property setter support.", "status": "FAIL", "message": "assert_throws_js: function \"() =>\n      Object.defineProperty(domTokenList, \"0\", {value: true, writable: true})\" did not throw"},
         {"name": "Test [[DefineOwnProperty]] with indexed property setter support.", "status": "FAIL", "message": "assert_equals: expected (number) 0 but got (undefined) undefined"},
         {"name": "Test [[DefineOwnProperty]] with no named property setter support.", "status": "FAIL", "message": "TypeError"},
         {"name": "Test [[DefineOwnProperty]] with named property setter support.", "status": "FAIL", "message": "Cannot convert undefined or null to object"}

@@ -495,6 +495,7 @@ pub extern fn v8_Value_StringWriteUtf8_Raw(value: *const anyopaque, buffer: [*]u
 pub extern fn v8_Object_New(isolate: *Isolate) ?*Object;
 pub extern fn v8_Object_NewWithNullPrototype(context: *Context) ?*Object;
 pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, value: *Value) bool;
+pub extern fn v8_Object_Delete(object: *Object, context: *Context, key: *Value) bool;
 pub extern fn v8_Object_CreateDataProperty(object: *Object, context: *Context, key: *String, value: *Value) bool;
 pub extern fn v8_Object_Get(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
@@ -958,6 +959,17 @@ pub extern fn v8_FunctionTemplate_InstanceTemplate(tpl: *FunctionTemplate) *Obje
 pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;
+
+/// Mark this function template as having a read-only "prototype" property.
+/// This also removes the legacy "arguments" and "caller" properties, making
+/// the function behave like a strict mode ES6+ function.
+/// Call this for WebIDL interface constructors.
+pub extern fn v8_FunctionTemplate_ReadOnlyPrototype(tpl: *FunctionTemplate) void;
+
+/// Remove the "prototype" property from functions created by this template.
+/// Use for methods and getters which should not have a prototype property.
+/// This also removes "arguments" and "caller".
+pub extern fn v8_FunctionTemplate_RemovePrototype(tpl: *FunctionTemplate) void;
 
 // Function
 pub extern fn v8_Function_Dispose(fn_ptr: *Function) void;

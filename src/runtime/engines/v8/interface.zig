@@ -383,6 +383,20 @@ pub fn V8Interface(comptime Interface: type) type {
                 @ptrCast(constructor),
             );
 
+            // Note: Per WebIDL spec, interface constructors should not have legacy
+            // "arguments" and "caller" properties. However, V8's FunctionTemplate creates
+            // functions with these as non-configurable accessor properties that cannot be
+            // deleted. This is a V8 limitation - we attempt deletion but it will fail.
+            // The properties will still exist in property enumeration order.
+            const arguments_key = v8.v8_String_NewFromUtf8(isolate, "arguments", 9);
+            if (arguments_key) |args_key| {
+                _ = v8.v8_Object_Delete(@ptrCast(constructor.?), context, @ptrCast(args_key));
+            }
+            const caller_key = v8.v8_String_NewFromUtf8(isolate, "caller", 6);
+            if (caller_key) |call_key| {
+                _ = v8.v8_Object_Delete(@ptrCast(constructor.?), context, @ptrCast(call_key));
+            }
+
             // Fix the "prototype" property to be non-writable (spec-compliant)
             // By default V8 makes constructor.prototype writable, but in browsers it's read-only
             const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9).?;
@@ -739,6 +753,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Set constructor length to 0 (non-constructible or no required params)
             v8.v8_FunctionTemplate_SetLength(template, 0);
+
+            // Make the "prototype" property read-only.
+            // Per WebIDL spec, Constructor.prototype should be non-writable.
+            // Note: This does NOT remove legacy "arguments"/"caller" properties -
+            // that's a V8 limitation we cannot work around without V8 internal APIs.
+            v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
 
             // Get instance template and set internal field count
             // Field 0: pointer to Zig instance (*runtime.Instance)
@@ -1792,6 +1812,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Set method length (arity) - number of required parameters
             v8.v8_FunctionTemplate_SetLength(method_tmpl, arity);
+
+            // Remove prototype property from method functions.
+            // Per WebIDL spec, methods are not constructible and should not have
+            // the legacy "arguments"/"caller" properties.
+            // This ensures Reflect.ownKeys(method) returns ["length", "name"].
+            v8.v8_FunctionTemplate_RemovePrototype(method_tmpl);
 
             // Add FunctionTemplate to prototype (not the function itself)
             // ObjectTemplate::Set accepts Templates or primitives
