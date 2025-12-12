@@ -58,6 +58,7 @@ pub const Selection = struct {
             .{ "modify", "call_modify", 0 },
             .{ "deleteFromDocument", "call_deleteFromDocument", 0 },
             .{ "containsNode", "call_containsNode", 1 },
+            .{ "toString", "serialize", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -78,6 +79,7 @@ pub const Selection = struct {
             "modify",
             "deleteFromDocument",
             "containsNode",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -282,6 +284,12 @@ pub const Selection = struct {
 
     pub fn call_removeAllRanges(instance: *runtime.Instance) anyerror!void {
         return try SelectionImpl.call_removeAllRanges(instance);
+    }
+
+    /// Stringifier delegate - toString() implementation
+    /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
+    pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try SelectionImpl.serialize(instance);
     }
 
 };

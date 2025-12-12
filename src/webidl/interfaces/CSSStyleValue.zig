@@ -36,6 +36,7 @@ pub const CSSStyleValue = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "toString", "serialize", 0 },
         };
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
@@ -48,6 +49,7 @@ pub const CSSStyleValue = struct {
         pub const own_methods = .{
             "parse",
             "parseAll",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -110,6 +112,12 @@ pub const CSSStyleValue = struct {
     pub fn call_static_parse(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!*runtime.Instance {
         
         return try CSSStyleValueImpl.call_static_parse(instance, property, cssText);
+    }
+
+    /// Stringifier delegate - toString() implementation
+    /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
+    pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try CSSStyleValueImpl.serialize(instance);
     }
 
 };

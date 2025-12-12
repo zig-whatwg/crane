@@ -80,6 +80,7 @@ pub const DOMMatrixReadOnly = struct {
             .{ "toFloat32Array", "call_toFloat32Array", 0 },
             .{ "toFloat64Array", "call_toFloat64Array", 0 },
             .{ "toJSON", "call_toJSON", 0 },
+            .{ "toString", "serialize", 0 },
         };
         
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
@@ -111,6 +112,7 @@ pub const DOMMatrixReadOnly = struct {
             "toFloat32Array",
             "toFloat64Array",
             "toJSON",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -489,6 +491,12 @@ pub const DOMMatrixReadOnly = struct {
         // [NewObject] - Caller owns the returned object
         
         return try DOMMatrixReadOnlyImpl.call_scaleNonUniform(instance, scaleX, scaleY);
+    }
+
+    /// Stringifier delegate - toString() implementation
+    /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
+    pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try DOMMatrixReadOnlyImpl.serialize(instance);
     }
 
 };

@@ -109,6 +109,13 @@ pub const DocumentFragment = struct {
         };
         
         pub const has_constructor = true;
+        
+        /// Members marked with [Unscopable] extended attribute
+        pub const unscopables = .{
+            "prepend",
+            "append",
+            "replaceChildren",
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -34,10 +34,12 @@ pub const CSSParserFunction = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "toString", "serialize", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -111,6 +113,12 @@ pub const CSSParserFunction = struct {
 
     pub fn get_args(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CSSParserFunctionImpl.get_args(instance);
+    }
+
+    /// Stringifier delegate - toString() implementation
+    /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
+    pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try CSSParserFunctionImpl.serialize(instance);
     }
 
 };

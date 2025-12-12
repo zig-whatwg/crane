@@ -61,6 +61,7 @@ pub const Range = struct {
             .{ "createContextualFragment", "call_createContextualFragment", 1 },
             .{ "getClientRects", "call_getClientRects", 0 },
             .{ "getBoundingClientRect", "call_getBoundingClientRect", 0 },
+            .{ "toString", "serialize", 0 },
         };
         
         /// Constants binding hints for V8Interface (JS name, getter fn name)
@@ -96,6 +97,7 @@ pub const Range = struct {
             "createContextualFragment",
             "getClientRects",
             "getBoundingClientRect",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -359,6 +361,12 @@ pub const Range = struct {
     pub fn call_cloneRange(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
         return try RangeImpl.call_cloneRange(instance);
+    }
+
+    /// Stringifier delegate - toString() implementation
+    /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
+    pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+        return try RangeImpl.serialize(instance);
     }
 
 };

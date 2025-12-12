@@ -648,6 +648,14 @@ pub const Document = struct {
         };
         
         pub const has_constructor = true;
+        
+        /// Members marked with [Unscopable] extended attribute
+        pub const unscopables = .{
+            "fullscreen",
+            "prepend",
+            "append",
+            "replaceChildren",
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -443,6 +443,18 @@ pub const Element = struct {
         };
         
         pub const has_constructor = false;
+        
+        /// Members marked with [Unscopable] extended attribute
+        pub const unscopables = .{
+            "slot",
+            "prepend",
+            "append",
+            "replaceChildren",
+            "before",
+            "after",
+            "replaceWith",
+            "remove",
+        };
     };
 
     pub const State = runtime.FlattenedState(

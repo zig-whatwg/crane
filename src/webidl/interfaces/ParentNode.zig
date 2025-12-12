@@ -68,6 +68,13 @@ pub const ParentNode = struct {
         };
         
         pub const has_constructor = false;
+        
+        /// Members marked with [Unscopable] extended attribute
+        pub const unscopables = .{
+            "prepend",
+            "append",
+            "replaceChildren",
+        };
     };
 
     pub const State = runtime.FlattenedState(
