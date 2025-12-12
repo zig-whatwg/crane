@@ -376,11 +376,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 @intCast(global_name.len),
             );
 
-            _ = v8.v8_Object_Set(
+            // Per WebIDL spec, interface constructors on global object must be:
+            // - writable: true
+            // - enumerable: false (not in for...in loops or Object.keys)
+            // - configurable: true
+            _ = v8.v8_Object_DefineProperty(
                 global.?,
                 context,
                 @ptrCast(key_str),
                 @ptrCast(constructor),
+                true, // writable = true
+                false, // enumerable = false (per WebIDL spec)
+                true, // configurable = true
             );
 
             // Note: Per WebIDL spec, interface constructors should not have legacy

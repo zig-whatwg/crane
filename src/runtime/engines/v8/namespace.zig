@@ -166,11 +166,18 @@ pub fn V8Namespace(comptime Namespace: type) type {
                 @intCast(name.len),
             ) orelse return;
 
-            _ = v8.v8_Object_Set(
+            // Per WebIDL spec, namespaces on global object must be:
+            // - writable: true
+            // - enumerable: false (not in for...in loops or Object.keys)
+            // - configurable: true
+            _ = v8.v8_Object_DefineProperty(
                 global,
                 context,
                 @ptrCast(key_str),
                 @ptrCast(ns_object),
+                true, // writable = true
+                false, // enumerable = false (per WebIDL spec)
+                true, // configurable = true
             );
         }
 
