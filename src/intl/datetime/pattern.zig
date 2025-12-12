@@ -859,18 +859,18 @@ fn formatYear(result: *List(u8), year: i32, format: YearFormat) Allocator.Error!
         .two_digit => {
             // Last 2 digits
             const two_digit = @mod(abs_year, 100);
-            const len = std.fmt.formatIntBuf(&buf, two_digit, 10, .lower, .{ .width = 2, .fill = '0' });
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d:0>2}", .{two_digit}) catch unreachable;
+            try result.appendSlice(slice);
         },
         .full => {
             // 4+ digits
-            const len = std.fmt.formatIntBuf(&buf, abs_year, 10, .lower, .{ .width = 4, .fill = '0' });
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d:0>4}", .{abs_year}) catch unreachable;
+            try result.appendSlice(slice);
         },
         .numeric => {
             // Minimum digits
-            const len = std.fmt.formatIntBuf(&buf, abs_year, 10, .lower, .{});
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d}", .{abs_year}) catch unreachable;
+            try result.appendSlice(slice);
         },
     }
 }
@@ -879,13 +879,13 @@ fn formatMonth(result: *List(u8), month: u8, format: MonthFormat, locale_data: *
     switch (format) {
         .numeric => {
             var buf: [4]u8 = undefined;
-            const len = std.fmt.formatIntBuf(&buf, month, 10, .lower, .{});
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d}", .{month}) catch unreachable;
+            try result.appendSlice(slice);
         },
         .two_digit => {
             var buf: [4]u8 = undefined;
-            const len = std.fmt.formatIntBuf(&buf, month, 10, .lower, .{ .width = 2, .fill = '0' });
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d:0>2}", .{month}) catch unreachable;
+            try result.appendSlice(slice);
         },
         .abbreviated => {
             if (month >= 1 and month <= 12) {
@@ -909,12 +909,12 @@ fn formatDay(result: *List(u8), day: u8, format: DayFormat) Allocator.Error!void
     var buf: [4]u8 = undefined;
     switch (format) {
         .numeric => {
-            const len = std.fmt.formatIntBuf(&buf, day, 10, .lower, .{});
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d}", .{day}) catch unreachable;
+            try result.appendSlice(slice);
         },
         .two_digit => {
-            const len = std.fmt.formatIntBuf(&buf, day, 10, .lower, .{ .width = 2, .fill = '0' });
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d:0>2}", .{day}) catch unreachable;
+            try result.appendSlice(slice);
         },
     }
 }
@@ -953,11 +953,11 @@ fn formatHour(result: *List(u8), hour: u8, format: HourFormat) Allocator.Error!v
 
     var buf: [4]u8 = undefined;
     if (format.two_digit) {
-        const len = std.fmt.formatIntBuf(&buf, display_hour, 10, .lower, .{ .width = 2, .fill = '0' });
-        try result.appendSlice(buf[0..len]);
+        const slice = std.fmt.bufPrint(&buf, "{d:0>2}", .{display_hour}) catch unreachable;
+        try result.appendSlice(slice);
     } else {
-        const len = std.fmt.formatIntBuf(&buf, display_hour, 10, .lower, .{});
-        try result.appendSlice(buf[0..len]);
+        const slice = std.fmt.bufPrint(&buf, "{d}", .{display_hour}) catch unreachable;
+        try result.appendSlice(slice);
     }
 }
 
@@ -965,12 +965,12 @@ fn formatMinute(result: *List(u8), minute: u8, format: MinuteFormat) Allocator.E
     var buf: [4]u8 = undefined;
     switch (format) {
         .numeric => {
-            const len = std.fmt.formatIntBuf(&buf, minute, 10, .lower, .{});
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d}", .{minute}) catch unreachable;
+            try result.appendSlice(slice);
         },
         .two_digit => {
-            const len = std.fmt.formatIntBuf(&buf, minute, 10, .lower, .{ .width = 2, .fill = '0' });
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d:0>2}", .{minute}) catch unreachable;
+            try result.appendSlice(slice);
         },
     }
 }
@@ -979,24 +979,24 @@ fn formatSecond(result: *List(u8), second: u8, format: SecondFormat) Allocator.E
     var buf: [4]u8 = undefined;
     switch (format) {
         .numeric => {
-            const len = std.fmt.formatIntBuf(&buf, second, 10, .lower, .{});
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d}", .{second}) catch unreachable;
+            try result.appendSlice(slice);
         },
         .two_digit => {
-            const len = std.fmt.formatIntBuf(&buf, second, 10, .lower, .{ .width = 2, .fill = '0' });
-            try result.appendSlice(buf[0..len]);
+            const slice = std.fmt.bufPrint(&buf, "{d:0>2}", .{second}) catch unreachable;
+            try result.appendSlice(slice);
         },
     }
 }
 
 fn formatFractionalSecond(result: *List(u8), nanosecond: u32, format: FractionalSecondFormat) Allocator.Error!void {
-    // Convert nanoseconds to the requested precision
+    // Convert nanoseconds to the requested precision (always 9 digits, zero-padded)
     var buf: [16]u8 = undefined;
-    const len = std.fmt.formatIntBuf(&buf, nanosecond, 10, .lower, .{ .width = 9, .fill = '0' });
+    const slice = std.fmt.bufPrint(&buf, "{d:0>9}", .{nanosecond}) catch unreachable;
 
     // Take only the requested number of digits
-    const digits = @min(format.digits, @as(u8, @intCast(len)));
-    try result.appendSlice(buf[0..digits]);
+    const digits = @min(format.digits, @as(u8, @intCast(slice.len)));
+    try result.appendSlice(slice[0..digits]);
 }
 
 fn formatDayPeriod(result: *List(u8), hour: u8, format: DayPeriodFormat, locale_data: *const LocaleData) Allocator.Error!void {
