@@ -7,6 +7,12 @@
 //! - Inheritance handling
 //! - Mixin handling
 //! - Type conversion
+//!
+//! NOTE ON BaseType = ?*anyopaque:
+//! The mock interfaces use `BaseType = ?*anyopaque` because they're testing the
+//! current binding generator behavior. This reflects the actual interface metadata
+//! pattern. If the source is refactored to use typed BaseType, these mocks should
+//! be updated to match. For now, they correctly test the existing code paths.
 
 const std = @import("std");
 const testing = std.testing;

@@ -6,6 +6,13 @@
 //! - GC finalizer callback (onObjectFreed)
 //! - VTable deinit_fn invocation
 //! - Memory cleanup
+//!
+//! NOTE ON anyopaque USAGE:
+//! The `instance.state` field is typed as `*anyopaque` in the runtime because
+//! it stores type-erased state for arbitrary WebIDL interface types. The casts
+//! in these tests (e.g., `@as(*anyopaque, @ptrCast(state))`) are testing this
+//! runtime behavior. This is a legitimate use case - the runtime layer intentionally
+//! uses type erasure for heterogeneous instance storage.
 
 const std = @import("std");
 const testing = std.testing;

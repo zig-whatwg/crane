@@ -5,6 +5,12 @@
 //! - Interface registration
 //! - Error handling
 //! - Memory management
+//!
+//! NOTE ON anyopaque USAGE:
+//! The `*anyopaque` pointers in these tests are LEGITIMATE - they're testing the
+//! C ABI boundary of the EngineBinding VTable. The stub binding functions require
+//! generic void* (anyopaque) contexts because they're part of the C FFI interface.
+//! See docs/legitimate-anyopaque.md for details on FFI boundary patterns.
 
 const std = @import("std");
 const testing = std.testing;
