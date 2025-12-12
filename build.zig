@@ -2000,6 +2000,95 @@ pub fn build(b: *std.Build) void {
     lib_step.dependOn(&install_shared.step);
 
     // ========================================================================
+    // FULL BROWSER RUNTIME LIBRARY (includes all WebIDL interfaces + V8)
+    // ========================================================================
+
+    // Create lib_exports module with all necessary imports
+    const lib_exports_mod = b.createModule(.{
+        .root_source_file = b.path("src/lib_exports.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Add all the imports that lib_exports.zig needs
+    lib_exports_mod.addImport("runtime", runtime_mod);
+    lib_exports_mod.addImport("webidl", webidl_mod);
+    lib_exports_mod.addImport("infra", infra_mod);
+    lib_exports_mod.addImport("v8", v8_mod);
+    lib_exports_mod.addImport("interfaces", interfaces_mod);
+    lib_exports_mod.addImport("impls", impls_mod);
+    lib_exports_mod.addImport("namespaces", namespaces_mod);
+    lib_exports_mod.addImport("dictionaries", dictionaries_mod);
+    lib_exports_mod.addImport("typedefs", typedefs_mod);
+    lib_exports_mod.addImport("enums", enums_mod);
+    lib_exports_mod.addImport("callbacks", callbacks_mod);
+    lib_exports_mod.addImport("mixins", mixins_mod);
+    lib_exports_mod.addImport("browser", browser_mod);
+    lib_exports_mod.addImport("dom", dom_mod);
+    lib_exports_mod.addImport("encoding", encoding_mod);
+    lib_exports_mod.addImport("url", url_mod);
+    lib_exports_mod.addImport("console", console_mod);
+    lib_exports_mod.addImport("streams", streams_mod);
+    lib_exports_mod.addImport("mimesniff", mimesniff_mod);
+    lib_exports_mod.addImport("fetch", fetch_mod);
+    lib_exports_mod.addImport("html_core", html_core_mod);
+    lib_exports_mod.addImport("html", html_mod);
+    lib_exports_mod.addImport("storage", storage_mod);
+    lib_exports_mod.addImport("trusted_types", trusted_types_mod);
+    lib_exports_mod.addImport("csp", csp_mod);
+    lib_exports_mod.addImport("hr_time", hr_time_mod);
+    lib_exports_mod.addImport("websocket", websocket_mod);
+    lib_exports_mod.addImport("permissions", permissions_mod);
+    lib_exports_mod.addImport("intl", intl_mod);
+    lib_exports_mod.addImport("platform", platform_mod);
+
+    // Static library with full browser runtime (libwhatwg_full.a)
+    const full_static_lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "whatwg_full",
+        .root_module = lib_exports_mod,
+    });
+
+    // Add V8 C++ wrapper source
+    full_static_lib.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+
+    // Add V8 include paths
+    full_static_lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+
+    // Link V8 libraries
+    full_static_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
+    full_static_lib.linkSystemLibrary("v8");
+    full_static_lib.linkSystemLibrary("v8_libplatform");
+    full_static_lib.linkSystemLibrary("v8_libbase");
+
+    // Link libuv for timer support
+    full_static_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    full_static_lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    full_static_lib.linkSystemLibrary("uv");
+
+    // Link C++ standard library
+    full_static_lib.linkLibCpp();
+
+    // Configure storage backends
+    configureStorageBackends(lib_exports_mod, target);
+
+    b.installArtifact(full_static_lib);
+
+    // Build step for the full browser runtime library
+    const lib_full_step = b.step("lib-full", "Build the full browser runtime library with all WebIDL interfaces");
+    const install_full_static = b.addInstallArtifact(full_static_lib, .{});
+    lib_full_step.dependOn(&install_full_static.step);
+
+    // ========================================================================
     // IDL PARSER TOOL
     // ========================================================================
 
