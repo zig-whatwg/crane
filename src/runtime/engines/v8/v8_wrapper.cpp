@@ -834,6 +834,34 @@ Global<Object>* v8_Context_Global(Global<Context>* context) {
     return trackHandle(new Global<Object>(isolate, global));
 }
 
+// Set the security token of a context
+// Contexts with the same security token are considered same-origin
+void v8_Context_SetSecurityToken(Global<Context>* context, Global<Value>* token) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    Local<Value> local_token = token->Get(isolate);
+    local_context->SetSecurityToken(local_token);
+}
+
+// Get the security token of a context
+Global<Value>* v8_Context_GetSecurityToken(Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    Local<Value> token = local_context->GetSecurityToken();
+    return trackHandle(new Global<Value>(isolate, token));
+}
+
+// Use the default security token for a context
+// This makes the context same-origin with itself only
+void v8_Context_UseDefaultSecurityToken(Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    local_context->UseDefaultSecurityToken();
+}
+
 // ============================================================================
 // String Functions
 // ============================================================================

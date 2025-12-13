@@ -824,6 +824,14 @@ pub fn createChildContext(
     const child_raw_addr = v8.v8_Context_GetRawAddress(child_context) orelse return error.InvalidContext;
     const child_key = @intFromPtr(child_raw_addr);
 
+    // 2b. Set security token to match parent context (same-origin for iframes)
+    // This allows cross-context property access without "no access" errors.
+    // In a real browser, this would only be done for same-origin iframes.
+    // For now, we treat all iframes as same-origin for testing purposes.
+    if (v8.v8_Context_GetSecurityToken(options.parent_context)) |parent_token| {
+        v8.v8_Context_SetSecurityToken(child_context, parent_token);
+    }
+
     // 3. Enter the new context for initialization
     v8.v8_Context_Enter(child_context);
     defer v8.v8_Context_Exit(child_context);
