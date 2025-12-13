@@ -2233,6 +2233,432 @@ fn collatorSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) call
 }
 
 // ============================================================================
+// toLocaleString Methods
+// ============================================================================
+
+/// Format a number for toLocaleString (standalone, doesn't require registry entry)
+fn formatNumberForLocale(
+    buf: []u8,
+    value: f64,
+    style: NumberStyle,
+    currency: ?[]const u8,
+    use_grouping: bool,
+    min_frac: u8,
+    max_frac: u8,
+    locale_data: *const cldr.LocaleData,
+) []const u8 {
+    const symbols = locale_data.number_symbols;
+    var idx: usize = 0;
+
+    // Handle special cases
+    if (std.math.isNan(value)) {
+        idx = writeSliceTo(buf, idx, symbols.nan);
+        return buf[0..idx];
+    }
+    if (std.math.isInf(value)) {
+        if (value < 0) {
+            idx = writeSliceTo(buf, idx, symbols.minus);
+        }
+        idx = writeSliceTo(buf, idx, symbols.infinity);
+        return buf[0..idx];
+    }
+
+    // Handle negative numbers
+    var abs_value = value;
+    if (value < 0) {
+        idx = writeSliceTo(buf, idx, symbols.minus);
+        abs_value = -value;
+    }
+
+    // Handle percent
+    if (style == .percent) {
+        abs_value *= 100;
+    }
+
+    // Add currency symbol (prepend)
+    if (style == .currency) {
+        if (currency) |curr| {
+            const currency_symbol = getCurrencySymbol(curr);
+            idx = writeSliceTo(buf, idx, currency_symbol);
+        }
+    }
+
+    // Format the number
+    const formatted = formatDecimalNumber(
+        buf[idx..],
+        abs_value,
+        min_frac,
+        max_frac,
+        use_grouping,
+        symbols.decimal,
+        symbols.group,
+    );
+    idx += formatted.len;
+
+    // Add percent sign
+    if (style == .percent) {
+        idx = writeSliceTo(buf, idx, symbols.percent);
+    }
+
+    return buf[0..idx];
+}
+
+/// Callback for `Number.prototype.toLocaleString(locales, options)`
+fn numberToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get the number value from 'this'
+    // For Number.prototype methods, 'this' can be a primitive or boxed Number
+    const this_val = info.getThis();
+    const number = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
+    if (std.math.isNan(number)) {
+        // If we got NaN and the original wasn't a number, return "NaN"
+        const nan_str = v8.v8_String_NewFromUtf8(isolate, "NaN", 3) orelse return;
+        info.setReturnValue(@ptrCast(nan_str));
+        return;
+    }
+
+    // Get locale argument (optional)
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Get locale data (fallback to English if locale not found)
+    const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
+
+    // Parse options for style, currency, etc.
+    var style: NumberStyle = .decimal;
+    var currency: ?[]const u8 = null;
+    var minimum_fraction_digits: u8 = 0;
+    var maximum_fraction_digits: u8 = 3;
+    const use_grouping: bool = true;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // style
+            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
+            if (style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "currency")) {
+                                style = .currency;
+                                minimum_fraction_digits = 2;
+                                maximum_fraction_digits = 2;
+                            } else if (std.mem.eql(u8, s, "percent")) {
+                                style = .percent;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // currency
+            const currency_key = v8.v8_String_NewFromUtf8(isolate, "currency", 8);
+            if (currency_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var c_buf: [8]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &c_buf)) |c| {
+                            currency = c;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Format the number
+    var buf: [128]u8 = undefined;
+    const formatted = formatNumberForLocale(&buf, number, style, currency, use_grouping, minimum_fraction_digits, maximum_fraction_digits, locale_data);
+
+    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+/// Callback for `Date.prototype.toLocaleString(locales, options)`
+fn dateToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get the date value from 'this'
+    // Date objects have an internal [[DateValue]] accessible via valueOf()
+    const this_val = info.getThis();
+    const timestamp = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
+    if (std.math.isNan(timestamp)) {
+        const invalid_str = v8.v8_String_NewFromUtf8(isolate, "Invalid Date", 12) orelse return;
+        info.setReturnValue(@ptrCast(invalid_str));
+        return;
+    }
+
+    // Get locale argument (optional)
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Get locale data (fallback to English if locale not found)
+    const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
+
+    // Parse options for dateStyle and timeStyle
+    var date_style: ?DateStyle = .medium;
+    var time_style: ?TimeStyle = .medium;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // dateStyle
+            const date_style_key = v8.v8_String_NewFromUtf8(isolate, "dateStyle", 9);
+            if (date_style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "full")) date_style = .full else if (std.mem.eql(u8, s, "long")) date_style = .long else if (std.mem.eql(u8, s, "medium")) date_style = .medium else if (std.mem.eql(u8, s, "short")) date_style = .short;
+                        }
+                    }
+                }
+            }
+
+            // timeStyle
+            const time_style_key = v8.v8_String_NewFromUtf8(isolate, "timeStyle", 9);
+            if (time_style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "full")) time_style = .full else if (std.mem.eql(u8, s, "long")) time_style = .long else if (std.mem.eql(u8, s, "medium")) time_style = .medium else if (std.mem.eql(u8, s, "short")) time_style = .short;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Format the date
+    const dt = DateTime.fromTimestampMillis(@intFromFloat(timestamp));
+    var buf: [256]u8 = undefined;
+    const formatted = formatDateTime(&buf, dt, locale_data, date_style, time_style);
+
+    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+/// Callback for `Date.prototype.toLocaleDateString(locales, options)`
+fn dateToLocaleDateStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get the date value from 'this'
+    const this_val = info.getThis();
+    const timestamp = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
+    if (std.math.isNan(timestamp)) {
+        const invalid_str = v8.v8_String_NewFromUtf8(isolate, "Invalid Date", 12) orelse return;
+        info.setReturnValue(@ptrCast(invalid_str));
+        return;
+    }
+
+    // Get locale argument (optional)
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Get locale data (fallback to English if locale not found)
+    const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
+
+    // Parse options for dateStyle (default to medium, no time)
+    var date_style: ?DateStyle = .medium;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            const date_style_key = v8.v8_String_NewFromUtf8(isolate, "dateStyle", 9);
+            if (date_style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "full")) date_style = .full else if (std.mem.eql(u8, s, "long")) date_style = .long else if (std.mem.eql(u8, s, "medium")) date_style = .medium else if (std.mem.eql(u8, s, "short")) date_style = .short;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Format date only (no time)
+    const dt = DateTime.fromTimestampMillis(@intFromFloat(timestamp));
+    var buf: [256]u8 = undefined;
+    const formatted = formatDateTime(&buf, dt, locale_data, date_style, null);
+
+    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+/// Callback for `Date.prototype.toLocaleTimeString(locales, options)`
+fn dateToLocaleTimeStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get the date value from 'this'
+    const this_val = info.getThis();
+    const timestamp = v8.v8_Value_NumberValue(@ptrCast(this_val), context);
+    if (std.math.isNan(timestamp)) {
+        const invalid_str = v8.v8_String_NewFromUtf8(isolate, "Invalid Date", 12) orelse return;
+        info.setReturnValue(@ptrCast(invalid_str));
+        return;
+    }
+
+    // Get locale argument (optional)
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Get locale data (fallback to English if locale not found)
+    const locale_data = resolveLocale(locale) orelse cldr_embedded.getLocale("en").?;
+
+    // Parse options for timeStyle (default to medium, no date)
+    var time_style: ?TimeStyle = .medium;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            const time_style_key = v8.v8_String_NewFromUtf8(isolate, "timeStyle", 9);
+            if (time_style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "full")) time_style = .full else if (std.mem.eql(u8, s, "long")) time_style = .long else if (std.mem.eql(u8, s, "medium")) time_style = .medium else if (std.mem.eql(u8, s, "short")) time_style = .short;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Format time only (no date)
+    const dt = DateTime.fromTimestampMillis(@intFromFloat(timestamp));
+    var buf: [256]u8 = undefined;
+    const formatted = formatDateTime(&buf, dt, locale_data, null, time_style);
+
+    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+/// Register toLocaleString methods on built-in prototypes
+pub fn registerToLocaleStringMethods(isolate: *v8.Isolate, context: *v8.Context) void {
+    const global = v8.v8_Context_Global(context) orelse return;
+
+    // ========================================================================
+    // Number.prototype.toLocaleString
+    // ========================================================================
+    const number_key = v8.v8_String_NewFromUtf8(isolate, "Number", 6) orelse return;
+    const number_constructor = v8.v8_Object_Get(global, context, @ptrCast(number_key)) orelse return;
+    if (!v8.v8_Value_IsFunction(number_constructor)) return;
+
+    const number_proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return;
+    const number_proto = v8.v8_Object_Get(@ptrCast(number_constructor), context, @ptrCast(number_proto_key)) orelse return;
+    if (!v8.v8_Value_IsObject(number_proto)) return;
+
+    const to_locale_string_key = v8.v8_String_NewFromUtf8(isolate, "toLocaleString", 14) orelse return;
+    const num_locale_fn = v8.v8_FunctionTemplate_New(isolate, numberToLocaleStringCallback, null) orelse return;
+    const num_locale_fn_obj = v8.v8_FunctionTemplate_GetFunction(num_locale_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(number_proto), context, @ptrCast(to_locale_string_key), @ptrCast(num_locale_fn_obj));
+
+    // ========================================================================
+    // Date.prototype.toLocaleString, toLocaleDateString, toLocaleTimeString
+    // ========================================================================
+    const date_key = v8.v8_String_NewFromUtf8(isolate, "Date", 4) orelse return;
+    const date_constructor = v8.v8_Object_Get(global, context, @ptrCast(date_key)) orelse return;
+    if (!v8.v8_Value_IsFunction(date_constructor)) return;
+
+    const date_proto = v8.v8_Object_Get(@ptrCast(date_constructor), context, @ptrCast(number_proto_key)) orelse return;
+    if (!v8.v8_Value_IsObject(date_proto)) return;
+
+    // toLocaleString
+    const date_locale_fn = v8.v8_FunctionTemplate_New(isolate, dateToLocaleStringCallback, null) orelse return;
+    const date_locale_fn_obj = v8.v8_FunctionTemplate_GetFunction(date_locale_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(date_proto), context, @ptrCast(to_locale_string_key), @ptrCast(date_locale_fn_obj));
+
+    // toLocaleDateString
+    const to_locale_date_key = v8.v8_String_NewFromUtf8(isolate, "toLocaleDateString", 18) orelse return;
+    const date_locale_date_fn = v8.v8_FunctionTemplate_New(isolate, dateToLocaleDateStringCallback, null) orelse return;
+    const date_locale_date_fn_obj = v8.v8_FunctionTemplate_GetFunction(date_locale_date_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(date_proto), context, @ptrCast(to_locale_date_key), @ptrCast(date_locale_date_fn_obj));
+
+    // toLocaleTimeString
+    const to_locale_time_key = v8.v8_String_NewFromUtf8(isolate, "toLocaleTimeString", 18) orelse return;
+    const date_locale_time_fn = v8.v8_FunctionTemplate_New(isolate, dateToLocaleTimeStringCallback, null) orelse return;
+    const date_locale_time_fn_obj = v8.v8_FunctionTemplate_GetFunction(date_locale_time_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(date_proto), context, @ptrCast(to_locale_time_key), @ptrCast(date_locale_time_fn_obj));
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -2327,6 +2753,12 @@ pub fn registerExternalReferences() void {
     ext_refs.registerCallbackRuntime(collatorCompareCallback);
     ext_refs.registerCallbackRuntime(collatorResolvedOptionsCallback);
     ext_refs.registerCallbackRuntime(collatorSupportedLocalesOfCallback);
+
+    // toLocaleString methods
+    ext_refs.registerCallbackRuntime(numberToLocaleStringCallback);
+    ext_refs.registerCallbackRuntime(dateToLocaleStringCallback);
+    ext_refs.registerCallbackRuntime(dateToLocaleDateStringCallback);
+    ext_refs.registerCallbackRuntime(dateToLocaleTimeStringCallback);
 }
 
 // ============================================================================

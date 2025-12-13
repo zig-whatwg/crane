@@ -251,6 +251,9 @@ pub fn initializeBindings(
     // Step 4: Register Intl namespace (pure Zig i18n - replaces ICU)
     const intl_binding = @import("intl_binding.zig");
     intl_binding.registerGlobal(isolate, context);
+
+    // Step 5: Register toLocaleString methods on built-in prototypes
+    intl_binding.registerToLocaleStringMethods(isolate, context);
 }
 
 /// Register legacy factory function aliases
