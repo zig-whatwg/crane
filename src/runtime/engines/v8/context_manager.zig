@@ -758,6 +758,11 @@ pub fn createChildContext(
     });
     errdefer realm.deinit();
 
+    // 5b. Populate realm intrinsics for cross-realm support
+    // This caches the realm's built-in constructors (TypeError, Object, Array, etc.)
+    // which are needed for proper cross-realm object/error creation.
+    _ = realm.populateIntrinsics();
+
     // 6. Create runtime context data
     // Optionally inherit event loop from parent
     var timer_interface: ?runtime.TimerInterface = null;

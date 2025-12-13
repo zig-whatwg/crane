@@ -494,6 +494,19 @@ pub extern fn v8_Value_StringWriteUtf8_Raw(value: *const anyopaque, buffer: [*]u
 // Object operations
 pub extern fn v8_Object_New(isolate: *Isolate) ?*Object;
 pub extern fn v8_Object_NewWithNullPrototype(context: *Context) ?*Object;
+
+/// Create a plain object {} in a specific context (for cross-realm support).
+/// The object's prototype will be the target context's Object.prototype,
+/// which is essential for correct cross-realm toJSON behavior per WebIDL spec.
+///
+/// Example: When calling other.DOMRectReadOnly.prototype.toJSON.call(rect),
+/// the result object must have other's Object.prototype, not the caller's.
+pub extern fn v8_Object_NewInContext(context: *Context) ?*Object;
+
+/// Create an array [] in a specific context (for cross-realm support).
+/// The array's prototype will be the target context's Array.prototype.
+pub extern fn v8_Array_NewInContext(context: *Context, length: c_int) ?*Array;
+
 pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, value: *Value) bool;
 pub extern fn v8_Object_Delete(object: *Object, context: *Context, key: *Value) bool;
 pub extern fn v8_Object_CreateDataProperty(object: *Object, context: *Context, key: *String, value: *Value) bool;

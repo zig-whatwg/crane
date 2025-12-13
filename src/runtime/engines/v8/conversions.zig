@@ -1577,7 +1577,8 @@ pub fn toV8Record(
     context: *v8.Context,
     rec: runtime.record(K, V),
 ) ConversionError!*v8.Object {
-    const object = v8.v8_Object_New(isolate);
+    // CROSS-REALM SUPPORT: Create object in specified context for correct prototype chain
+    const object = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
 
     for (rec.entries) |entry| {
         const key_str = if (K == runtime.DOMString)
@@ -1724,7 +1725,8 @@ pub fn toV8Value(
             const field_count = std.meta.fields(ElemType).len;
             if (has_key and has_value and field_count == 2) {
                 // This is a record-like type - convert to object
-                const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
+                // CROSS-REALM SUPPORT: Create object in specified context
+                const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
                 for (value) |entry| {
                     // Get key as string
                     const key_v8 = try toV8Value(@TypeOf(entry.key), isolate, context, entry.key);
@@ -1804,7 +1806,10 @@ pub fn toV8Value(
     // WebIDL dictionaries: optional fields that are null should NOT be set on the object
     // (accessing them returns undefined, not null)
     if (type_info == .@"struct") {
-        const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
+        // CROSS-REALM SUPPORT: Use v8_Object_NewInContext to create object in the specified context.
+        // This ensures the object's prototype is context.Object.prototype, not current context's.
+        // Critical for WPT test: default-toJSON-cross-realm.html
+        const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
         inline for (std.meta.fields(T)) |field| {
             const field_value = @field(value, field.name);
             const field_type_info = @typeInfo(field.type);
@@ -2661,7 +2666,8 @@ pub fn toV8(
             // Check if it's an IteratorResult-like struct
             if (@hasField(T, "value") and @hasField(T, "done")) {
                 // Create { value: X, done: Y } object
-                const obj = v8.v8_Object_New(isolate) orelse return ConversionError.OutOfMemory;
+                // CROSS-REALM SUPPORT: Create object in specified context
+                const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
 
                 // Set "done" property
                 const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse

@@ -223,6 +223,14 @@ pub const initializeV8FromSnapshot = snapshot_loader.initializeV8;
 pub const SnapshotInitResult = snapshot_loader.InitResult;
 pub const SnapshotInitOptions = snapshot_loader.InitOptions;
 
+/// V8-specific Realm Operations (cross-realm object/error creation)
+pub const realm_v8 = @import("realm_v8.zig");
+pub const createObjectInRealm = realm_v8.createObjectInRealm;
+pub const createArrayInRealm = realm_v8.createArrayInRealm;
+pub const createTypeErrorInRealm = realm_v8.createTypeErrorInRealm;
+pub const throwTypeErrorFromRealm = realm_v8.throwTypeErrorFromRealm;
+pub const populateRealmIntrinsics = realm_v8.populateIntrinsics;
+
 /// Bfcache (Back-Forward Cache) Frozen Context Manager
 pub const frozen_context_manager = @import("frozen_context_manager.zig");
 pub const FrozenContextManager = frozen_context_manager.FrozenContextManager;

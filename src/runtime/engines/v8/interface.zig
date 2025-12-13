@@ -1389,11 +1389,27 @@ pub fn V8Interface(comptime Interface: type) type {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                     const isolate = info.getIsolate();
 
-                    // Get V8 context
-                    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                    // Get V8 context - for arguments parsing, we use the current context
+                    const current_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                         conv.throwError(isolate, "No current V8 context");
                         return;
                     };
+
+                    // CROSS-REALM SUPPORT: For return value conversion, we need the METHOD's realm.
+                    // When calling other.SomeInterface.prototype.method.call(obj), the result object
+                    // should have its prototype from 'other' (the method's realm), not the caller's realm.
+                    // This is critical for WPT test: default-toJSON-cross-realm.html
+                    //
+                    // The holder is the object on which the method is defined (the prototype),
+                    // so its creation context is the method's realm.
+                    const method_holder = info.getHolder();
+                    const method_context = v8.v8_Object_GetPrototypeCreationContext(method_holder) orelse
+                        v8.v8_Object_GetCreationContext(method_holder) orelse
+                        current_context;
+
+                    // Use current_context for argument parsing (input comes from caller's realm)
+                    // Use method_context for return value conversion (output goes to method's realm)
+                    const v8_context = current_context;
 
                     // Get allocator
                     const isolate_alloc = @import("isolate_allocator.zig");
@@ -1463,6 +1479,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     const webidl_param_count = params.len - 1;
 
                     // Call the method with appropriate arguments
+                    // CROSS-REALM SUPPORT: Pass method_context for return value object creation
                     const result = callMethodWithArgs(
                         method_fn,
                         params,
@@ -1473,6 +1490,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         allocator,
                         isolate,
                         v8_context,
+                        method_context, // Use method's realm for return value
                     ) catch |err| {
                         // Throw proper DOMException for WebIDL errors
                         conv.throwWebIDLError(isolate, @errorName(err));
@@ -1531,6 +1549,10 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Call method with arguments parsed using comptime reflection
+        ///
+        /// Supports cross-realm object creation via return_context parameter:
+        /// - v8_context: Context for parsing input arguments (caller's realm)
+        /// - return_context: Context for creating return value objects (method's realm)
         fn callMethodWithArgs(
             comptime method_fn: anytype,
             comptime params: anytype,
@@ -1541,6 +1563,7 @@ pub fn V8Interface(comptime Interface: type) type {
             allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
             v8_context: *v8.Context,
+            return_context: *v8.Context,
         ) !?*v8.Value {
             const js_arg_count = info.length();
 
@@ -1807,7 +1830,8 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Convert return value to V8
-            return try convertReturnValue(ReturnType, zig_result, allocator, isolate, v8_context);
+            // CROSS-REALM SUPPORT: Use return_context (method's realm) for object creation
+            return try convertReturnValue(ReturnType, zig_result, allocator, isolate, return_context);
         }
 
         /// Convert Zig return value to V8 Value
@@ -4241,6 +4265,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     const webidl_param_count = params.len - 1;
 
                     // Call the static method with appropriate arguments
+                    // For indexed callbacks, return_context is same as v8_context (no cross-realm)
                     const result = callMethodWithArgs(
                         method_fn,
                         params,
@@ -4251,6 +4276,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         allocator,
                         isolate,
                         v8_context,
+                        v8_context, // return_context: same as caller context for indexed callbacks
                     ) catch |err| {
                         conv.throwWebIDLError(isolate, @errorName(err));
                         return;

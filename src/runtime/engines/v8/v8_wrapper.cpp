@@ -1126,6 +1126,37 @@ Global<Object>* v8_Object_NewWithNullPrototype(Global<Context>* context) {
     return trackHandle(new Global<Object>(isolate, obj));
 }
 
+// Create a plain object {} in a specific context (for cross-realm support).
+// The object's prototype will be the target context's Object.prototype,
+// which is essential for correct cross-realm toJSON behavior per WebIDL spec.
+Global<Object>* v8_Object_NewInContext(Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Enter the target context to ensure the object is created
+    // with that context's Object.prototype
+    Context::Scope context_scope(ctx);
+    
+    Local<Object> obj = Object::New(isolate);
+    return trackHandle(new Global<Object>(isolate, obj));
+}
+
+// Create an array [] in a specific context (for cross-realm support).
+// The array's prototype will be the target context's Array.prototype.
+Global<Array>* v8_Array_NewInContext(Global<Context>* context, int length) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Enter the target context to ensure the array is created
+    // with that context's Array.prototype
+    Context::Scope context_scope(ctx);
+    
+    Local<Array> arr = Array::New(isolate, length);
+    return trackHandle(new Global<Array>(isolate, arr));
+}
+
 bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Value>* key, Global<Value>* value) {
     CHECK_ALIGNMENT_LOG(object, Global<Object>, "v8_Object_Set");
     CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Object_Set");

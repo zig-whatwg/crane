@@ -564,35 +564,34 @@ pub const Realm = struct {
     }
 
     // ========================================================================
-    // V8-Specific Operations (Placeholders)
+    // V8-Specific Operations
     // ========================================================================
     // These methods provide the interface for realm-specific operations.
     // The actual V8 implementation is in src/runtime/engines/v8/realm_v8.zig
+    //
+    // NOTE: V8 is a separate module, imported via @import("v8").
+    // We use comptime detection to conditionally use V8-specific functions.
 
     /// Create a TypeError from this realm
     ///
     /// The returned value is from THIS realm's TypeError constructor,
     /// ensuring correct cross-realm behavior per WebIDL spec.
     ///
-    /// Note: Actual implementation in V8-specific code.
-    /// This is a placeholder that returns null until V8 integration.
+    /// Per WebIDL, when a method throws TypeError for invalid `this`,
+    /// the error must come from the method's realm (callee's realm).
     pub fn createTypeError(self: *const Self, message: []const u8) ?*anyopaque {
-        _ = self;
-        _ = message;
-        // Placeholder - actual implementation in realm_v8.zig
-        return null;
+        // Import V8 module at comptime - this is the SEPARATE v8 module
+        const v8 = @import("v8");
+        return @ptrCast(v8.realm_v8.createTypeErrorInRealm(self, message));
     }
 
     /// Throw a TypeError from this realm
     ///
     /// Creates a TypeError and throws it as a V8 exception.
     /// The error comes from THIS realm, not the caller's.
-    ///
-    /// Note: Actual implementation in V8-specific code.
     pub fn throwTypeError(self: *const Self, message: []const u8) void {
-        _ = self;
-        _ = message;
-        // Placeholder - actual implementation in realm_v8.zig
+        const v8 = @import("v8");
+        v8.realm_v8.throwTypeErrorFromRealm(self, message);
     }
 
     /// Create a plain object {} in this realm
@@ -600,22 +599,40 @@ pub const Realm = struct {
     /// The object's prototype is THIS realm's Object.prototype,
     /// ensuring correct cross-realm behavior for toJSON, etc.
     ///
-    /// Note: Actual implementation in V8-specific code.
+    /// Per WebIDL §4.3, toJSON must create result objects in the method's realm:
+    /// ```javascript
+    /// const other = iframe.contentWindow;
+    /// const rect = new DOMRectReadOnly(1, 2, 3, 4);
+    /// const json = other.DOMRectReadOnly.prototype.toJSON.call(rect);
+    /// // json's prototype must be other.Object.prototype
+    /// ```
     pub fn createObject(self: *const Self) ?*anyopaque {
-        _ = self;
-        // Placeholder - actual implementation in realm_v8.zig
-        return null;
+        const v8 = @import("v8");
+        return @ptrCast(v8.realm_v8.createObjectInRealm(self));
     }
 
     /// Create an array [] in this realm
     ///
     /// The array's prototype is THIS realm's Array.prototype.
-    ///
-    /// Note: Actual implementation in V8-specific code.
     pub fn createArray(self: *const Self) ?*anyopaque {
-        _ = self;
-        // Placeholder - actual implementation in realm_v8.zig
-        return null;
+        return createArrayWithLength(self, 0);
+    }
+
+    /// Create an array with specified length in this realm
+    ///
+    /// The array's prototype is THIS realm's Array.prototype.
+    pub fn createArrayWithLength(self: *const Self, length: u32) ?*anyopaque {
+        const v8 = @import("v8");
+        return @ptrCast(v8.realm_v8.createArrayInRealm(self, length));
+    }
+
+    /// Populate this realm's intrinsics from its V8 context
+    ///
+    /// This caches built-in constructors (TypeError, Object, Array, etc.)
+    /// for efficient access. Call this after the V8 context is created.
+    pub fn populateIntrinsics(self: *Self) bool {
+        const v8 = @import("v8");
+        return v8.realm_v8.populateIntrinsics(self);
     }
 };
 
