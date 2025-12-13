@@ -1944,6 +1944,127 @@ Global<Value>* v8_Exception_Error(Global<String>* message) {
     return trackHandle(new Global<Value>(isolate, exception));
 }
 
+// ============================================================================
+// Cross-Realm Exception Functions
+// ============================================================================
+//
+// These functions support throwing exceptions from a specific context/realm.
+// Per WebIDL spec, when a method throws TypeError for invalid `this`, the
+// TypeError must come from the method's realm (where it was defined), not
+// the caller's realm. This is essential for cross-realm iframe support.
+
+/// Get the context in which an object was created (for cross-realm support).
+/// Returns nullptr if the object's creation context is unavailable.
+Global<Context>* v8_Object_GetCreationContext(Global<Object>* obj) {
+    if (!obj) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> local_obj = obj->Get(isolate);
+    
+    MaybeLocal<Context> maybe_ctx = local_obj->GetCreationContext();
+    if (maybe_ctx.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Context> ctx = maybe_ctx.ToLocalChecked();
+    return trackHandle(new Global<Context>(isolate, ctx));
+}
+
+/// Get the context in which a Global<Object> was created.
+/// This is used in callbacks after converting the `this` object to a Global handle.
+/// Returns nullptr if the object's creation context is unavailable.
+///
+/// Note: For FunctionCallbackInfo callbacks, use v8_FunctionCallbackInfo_Holder to get
+/// the holder object, then call v8_Object_GetCreationContext on it.
+///
+/// This function is kept for compatibility but v8_Object_GetCreationContext (for Global handles)
+/// should be preferred when possible.
+Global<Context>* v8_Object_GetCreationContext_Raw(const void* obj_ptr) {
+    // This function is deprecated - use v8_Object_GetCreationContext with a Global handle instead.
+    // The raw pointer approach doesn't work reliably in modern V8.
+    return nullptr;
+}
+
+/// Create TypeError in a specific context (for cross-realm errors).
+/// This enters the context before creating the error, ensuring the
+/// TypeError constructor comes from the correct realm.
+///
+/// @param context - The context/realm where the TypeError should originate
+/// @param message - The error message as a V8 string
+/// @returns A TypeError from the specified context's realm
+Global<Value>* v8_Exception_TypeErrorInContext(Global<Context>* context, Global<String>* message) {
+    if (!context || !message) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<String> msg = message->Get(isolate);
+    
+    // Enter the context to ensure TypeError comes from this realm
+    Context::Scope context_scope(ctx);
+    
+    Local<Value> exception = Exception::TypeError(msg);
+    return trackHandle(new Global<Value>(isolate, exception));
+}
+
+/// Get the holder object from FunctionCallbackInfo.
+/// The holder is the object where the property was found in the prototype chain.
+/// For methods called on an instance, this is typically the prototype object
+/// where the method is defined.
+///
+/// Note: In modern V8, FunctionCallbackInfo doesn't have Holder() directly.
+/// We return This() which is the receiver object. For cross-realm TypeError
+/// purposes, we can then get its creation context.
+Global<Object>* v8_FunctionCallbackInfo_Holder(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handle_scope(isolate);
+    
+    // Return the receiver object (this). For getter/setter/method callbacks,
+    // we can then get its creation context or walk up the prototype chain.
+    Local<Object> this_obj = info->This();
+    
+    return trackHandle(new Global<Object>(isolate, this_obj));
+}
+
+/// Get the creation context of an object's prototype.
+/// This walks up the prototype chain to find the first object with a
+/// creation context different from the current context.
+///
+/// This is useful for cross-realm error handling, where we need to find
+/// the context where the method/property was defined (on the prototype),
+/// not the context where the `this` object was created.
+///
+/// For example:
+///   const notElement = Object.create(other.HTMLElement.prototype);
+///   // notElement is created in main context
+///   // but its prototype is from iframe's context
+///   // We want to throw TypeError from iframe's context
+Global<Context>* v8_Object_GetPrototypeCreationContext(Global<Object>* obj) {
+    if (!obj) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Object> local_obj = obj->Get(isolate);
+    
+    // Get the prototype of the object
+    Local<Value> proto_val = local_obj->GetPrototype();
+    if (proto_val.IsEmpty() || !proto_val->IsObject()) {
+        return nullptr;
+    }
+    
+    Local<Object> proto = proto_val.As<Object>();
+    
+    // Get the prototype's creation context
+    MaybeLocal<Context> maybe_ctx = proto->GetCreationContext();
+    if (maybe_ctx.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Context> ctx = maybe_ctx.ToLocalChecked();
+    return trackHandle(new Global<Context>(isolate, ctx));
+}
+
 Global<Value>* v8_TryCatch_Exception(Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

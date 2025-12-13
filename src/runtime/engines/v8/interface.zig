@@ -1140,8 +1140,27 @@ pub fn V8Interface(comptime Interface: type) type {
                         //
                         // Per WebIDL spec, getters must perform brand checks and throw TypeError
                         // when called with an incompatible this value.
+                        //
+                        // IMPORTANT: For cross-realm support, the TypeError must come from the
+                        // method's realm (where the getter is defined), not the caller's realm.
+                        // This is verified by WPT test: invalid-this-value-cross-realm.html
+                        //
+                        // The method is defined on the prototype, so we need to get the
+                        // prototype's creation context, not the `this` object's creation context.
+                        // Example: Object.create(other.HTMLElement.prototype) creates an object
+                        // in the main context, but its prototype is from another context.
                         if (instance_ptr == null) {
-                            conv.throwTypeError(isolate_inner, "Illegal invocation");
+                            // Get the prototype's creation context for cross-realm TypeError
+                            const holder = info.getHolder();
+                            if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
+                                conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
+                            } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                                // Fallback: try the object's own creation context
+                                conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
+                            } else {
+                                // Final fallback to current context
+                                conv.throwTypeError(isolate_inner, "Illegal invocation");
+                            }
                             return;
                         }
 
@@ -1387,18 +1406,43 @@ pub fn V8Interface(comptime Interface: type) type {
                     const this_obj = info.getThis();
 
                     // Try type-safe unwrapping first if we have WrapperTypeInfo for this interface
+                    // Per WebIDL spec, methods must perform brand checks and throw TypeError
+                    // when called with an incompatible this value.
+                    //
+                    // IMPORTANT: For cross-realm support, the TypeError must come from the
+                    // method's realm (where it is defined), not the caller's realm.
+                    // This is verified by WPT test: invalid-this-value-cross-realm.html
+                    //
+                    // The method is defined on the prototype, so we need to get the
+                    // prototype's creation context, not the `this` object's creation context.
                     const dom_type_info_mod = @import("dom_type_info.zig");
                     const instance = blk: {
                         if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
                             // Type-safe unwrapping - validates the V8 object is the correct type
                             break :blk getInstanceTypeSafe(runtime.Instance, this_obj, expected_type) orelse {
-                                conv.throwError(isolate, "Invalid instance - type mismatch or no internal data");
+                                // Get the prototype's creation context for cross-realm TypeError
+                                const holder = info.getHolder();
+                                if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
+                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                                } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                                } else {
+                                    conv.throwTypeError(isolate, "Illegal invocation");
+                                }
                                 return;
                             };
                         } else {
                             // Fall back to legacy unwrapping (no type validation)
                             break :blk getInstance(runtime.Instance, this_obj) orelse {
-                                conv.throwError(isolate, "Invalid instance - no internal data");
+                                // Get the prototype's creation context for cross-realm TypeError
+                                const holder = info.getHolder();
+                                if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
+                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                                } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                                } else {
+                                    conv.throwTypeError(isolate, "Illegal invocation");
+                                }
                                 return;
                             };
                         }
@@ -3878,8 +3922,25 @@ pub fn V8Interface(comptime Interface: type) type {
                     const this_obj = info.getThis();
                     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
+                    // Per WebIDL spec, setters must perform brand checks and throw TypeError
+                    // when called with an incompatible this value.
+                    //
+                    // IMPORTANT: For cross-realm support, the TypeError must come from the
+                    // setter's realm (where it is defined), not the caller's realm.
+                    // This is verified by WPT test: invalid-this-value-cross-realm.html
+                    //
+                    // The setter is defined on the prototype, so we need to get the
+                    // prototype's creation context, not the `this` object's creation context.
                     if (instance_ptr == null) {
-                        conv.throwError(isolate_inner, "Cannot set property on prototype");
+                        // Get the prototype's creation context for cross-realm TypeError
+                        const holder = info.getHolder();
+                        if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
+                            conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
+                        } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                            conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
+                        } else {
+                            conv.throwTypeError(isolate_inner, "Illegal invocation");
+                        }
                         return;
                     }
 

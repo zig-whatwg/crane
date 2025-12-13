@@ -931,6 +931,31 @@ pub extern fn v8_Exception_SyntaxError(message: *String) ?*Value;
 pub extern fn v8_Exception_Error(message: *String) ?*Value;
 pub extern fn v8_TryCatch_Exception(context: *Context) ?*Value;
 
+// Cross-realm exception handling
+// These functions support throwing exceptions from a specific context/realm.
+// Per WebIDL spec, when a method throws TypeError for invalid `this`, the
+// TypeError must come from the method's realm (where it was defined), not
+// the caller's realm.
+
+/// Get the context in which an object was created (for cross-realm support).
+/// Returns null if the object's creation context is unavailable.
+pub extern fn v8_Object_GetCreationContext(obj: *Object) ?*Context;
+
+/// Get the context in which an object was created (raw pointer version).
+/// Used in callbacks where we have raw Local<Object> pointers, not Global handles.
+/// Returns null if the object's creation context is unavailable.
+pub extern fn v8_Object_GetCreationContext_Raw(obj_ptr: *const anyopaque) ?*Context;
+
+/// Create TypeError in a specific context (for cross-realm errors).
+/// This enters the context before creating the error, ensuring the
+/// TypeError constructor comes from the correct realm.
+pub extern fn v8_Exception_TypeErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Get the creation context of an object's prototype.
+/// This walks up the prototype chain to find the context where the method/property
+/// was defined, which is needed for cross-realm error handling.
+pub extern fn v8_Object_GetPrototypeCreationContext(obj: *Object) ?*Context;
+
 // Special values
 pub extern fn v8_Undefined(isolate: *Isolate) ?*Value;
 pub extern fn v8_Null(isolate: *Isolate) ?*Value;

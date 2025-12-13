@@ -2066,6 +2066,47 @@ pub fn throwTypeError(
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
+/// Throw a TypeError from a specific context's realm (for cross-realm support).
+///
+/// Per WebIDL spec, when a method throws TypeError for invalid `this`,
+/// the error must come from the method's realm (callee's realm), not the caller's realm.
+/// This is essential for cross-realm scenarios like:
+///
+/// ```javascript
+/// const other = iframe.contentWindow;
+/// const notElement = Object.create(other.HTMLElement.prototype);
+/// // This must throw other.TypeError (iframe's TypeError), NOT main window's TypeError
+/// Object.getOwnPropertyDescriptor(other.HTMLElement.prototype, "title").get.call(notElement);
+/// ```
+///
+/// @param isolate - The V8 isolate
+/// @param context - The context/realm where the TypeError should originate (callee's realm)
+/// @param message - The error message
+pub fn throwTypeErrorFromContext(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    message: []const u8,
+) void {
+    // Log error through context if available
+    if (namespace.getGlobalContext()) |ctx| {
+        ctx.logger.@"error"("V8 TypeError (cross-realm): {s}", .{message}) catch {};
+    }
+
+    const msg_str = v8.v8_String_NewFromUtf8(
+        isolate,
+        message.ptr,
+        @intCast(message.len),
+    ) orelse return; // Failed to create string, can't throw
+
+    const exception = v8.v8_Exception_TypeErrorInContext(context, msg_str) orelse {
+        // Fallback to regular TypeError if context-specific creation fails
+        const fallback = v8.v8_Exception_TypeError(msg_str) orelse return;
+        v8.v8_Isolate_ThrowException(isolate, fallback);
+        return;
+    };
+    v8.v8_Isolate_ThrowException(isolate, exception);
+}
+
 /// Throw a RangeError in V8
 pub fn throwRangeError(
     isolate: *v8.Isolate,
