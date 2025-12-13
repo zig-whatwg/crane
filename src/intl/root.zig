@@ -174,6 +174,36 @@ pub const Part = datetime.Part;
 pub const PartType = datetime.PartType;
 
 // ============================================================================
+// Segmenter Module - Intl.Segmenter (ECMA-402 §17)
+// ============================================================================
+
+pub const segmenter = @import("segmenter/root.zig");
+
+/// Intl.Segmenter for locale-sensitive text segmentation
+pub const Segmenter = segmenter.Segmenter;
+
+/// Iterator over text segments
+pub const Segments = segmenter.Segments;
+
+/// A single segment from segmentation
+pub const Segment = segmenter.Segment;
+
+/// Segmentation granularity (grapheme, word, sentence)
+pub const SegmenterGranularity = segmenter.Granularity;
+
+/// Options for Segmenter initialization
+pub const SegmenterOptions = segmenter.Options;
+
+/// Low-level grapheme cluster iterator
+pub const GraphemeIterator = segmenter.GraphemeIterator;
+
+/// Low-level word segment iterator
+pub const WordIterator = segmenter.WordIterator;
+
+/// Low-level sentence segment iterator
+pub const SentenceIterator = segmenter.SentenceIterator;
+
+// ============================================================================
 // Number Module - Intl.NumberFormat
 // ============================================================================
 
@@ -241,4 +271,5 @@ test {
     _ = timezone;
     _ = datetime;
     _ = cldr;
+    _ = segmenter;
 }

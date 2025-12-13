@@ -4309,6 +4309,552 @@ fn displayNamesSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) 
 }
 
 // ============================================================================
+// Phase 4: Intl.Segmenter (ECMA-402 §17)
+// ============================================================================
+
+// Import the segmenter module
+const segmenter_module = @import("intl").segmenter;
+
+/// Segmenter granularity
+const SegmenterGranularity = enum {
+    grapheme,
+    word,
+    sentence,
+};
+
+/// Internal storage for Segmenter instances
+const SegmenterRegistry = struct {
+    const Entry = struct {
+        locale: []const u8,
+        granularity: SegmenterGranularity,
+        allocator: std.mem.Allocator,
+
+        fn deinit(self: *Entry) void {
+            self.allocator.free(self.locale);
+        }
+    };
+
+    entries: std.ArrayList(?Entry) = .{},
+    free_list: std.ArrayList(usize) = .{},
+    allocator: std.mem.Allocator,
+    mutex: std.Thread.Mutex = .{},
+
+    fn init(allocator: std.mem.Allocator) SegmenterRegistry {
+        return .{
+            .allocator = allocator,
+        };
+    }
+
+    fn deinit(self: *SegmenterRegistry) void {
+        for (self.entries.items) |*entry_opt| {
+            if (entry_opt.*) |*entry| {
+                entry.deinit();
+            }
+        }
+        self.entries.deinit(self.allocator);
+        self.free_list.deinit(self.allocator);
+    }
+
+    fn register(self: *SegmenterRegistry, entry: Entry) !usize {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.free_list.items.len > 0) {
+            const idx = self.free_list.pop().?;
+            self.entries.items[idx] = entry;
+            return idx;
+        }
+
+        const idx = self.entries.items.len;
+        try self.entries.append(self.allocator, entry);
+        return idx;
+    }
+
+    fn get(self: *SegmenterRegistry, idx: usize) ?*Entry {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (idx >= self.entries.items.len) return null;
+        if (self.entries.items[idx]) |*entry| {
+            return entry;
+        }
+        return null;
+    }
+
+    fn remove(self: *SegmenterRegistry, idx: usize) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (idx >= self.entries.items.len) return;
+        if (self.entries.items[idx]) |*entry| {
+            entry.deinit();
+            self.entries.items[idx] = null;
+            self.free_list.append(self.allocator, idx) catch {};
+        }
+    }
+};
+
+var segmenter_registry: ?SegmenterRegistry = null;
+
+fn getOrInitSegmenterRegistry() *SegmenterRegistry {
+    if (segmenter_registry == null) {
+        segmenter_registry = SegmenterRegistry.init(std.heap.page_allocator);
+    }
+    return &segmenter_registry.?;
+}
+
+/// Get the Segmenter registry index from an object
+fn getSegmenterIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object) ?usize {
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__seg_idx__", 11) orelse return null;
+    const idx_value = v8.v8_Object_Get(obj, context, @ptrCast(idx_key)) orelse return null;
+
+    if (!v8.v8_Value_IsNumber(idx_value)) return null;
+
+    const num = v8.v8_Value_NumberValue(idx_value, context);
+    if (num < 0) return null;
+    return @intFromFloat(num);
+}
+
+/// Callback for `new Intl.Segmenter(locales, options)`
+fn segmenterConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get locale argument
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Parse options
+    var granularity: SegmenterGranularity = .grapheme;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // granularity
+            const gran_key = v8.v8_String_NewFromUtf8(isolate, "granularity", 11);
+            if (gran_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var g_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &g_buf)) |g| {
+                            if (std.mem.eql(u8, g, "grapheme")) granularity = .grapheme else if (std.mem.eql(u8, g, "word")) granularity = .word else if (std.mem.eql(u8, g, "sentence")) granularity = .sentence;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Create entry in registry
+    const registry = getOrInitSegmenterRegistry();
+    const allocator = std.heap.page_allocator;
+
+    const locale_copy = allocator.dupe(u8, locale) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    const entry = SegmenterRegistry.Entry{
+        .locale = locale_copy,
+        .granularity = granularity,
+        .allocator = allocator,
+    };
+
+    const idx = registry.register(entry) catch {
+        allocator.free(locale_copy);
+        conv.throwTypeError(isolate, "Failed to register Segmenter");
+        return;
+    };
+
+    // Create the result object
+    const result = v8.v8_Object_New(isolate) orelse {
+        registry.remove(idx);
+        conv.throwTypeError(isolate, "Failed to create Segmenter object");
+        return;
+    };
+
+    // Store the registry index (hidden property)
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__seg_idx__", 11) orelse {
+        registry.remove(idx);
+        conv.throwTypeError(isolate, "Failed to create index key");
+        return;
+    };
+    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(idx));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
+
+    // Add methods
+    addSegmenterMethod(isolate, context, result, "segment", segmenterSegmentCallback) catch {
+        registry.remove(idx);
+        return;
+    };
+    addSegmenterMethod(isolate, context, result, "resolvedOptions", segmenterResolvedOptionsCallback) catch {
+        registry.remove(idx);
+        return;
+    };
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn addSegmenterMethod(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    obj: *v8.Object,
+    name: []const u8,
+    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
+) !void {
+    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
+    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
+    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
+}
+
+/// Callback for `segmenter.segment(text)`
+/// Returns a Segments object (which is an iterable)
+fn segmenterSegmentCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    const this_obj = info.getThis();
+    const idx = getSegmenterIndex(isolate, context, this_obj) orelse {
+        conv.throwTypeError(isolate, "Invalid Segmenter object");
+        return;
+    };
+
+    const registry = getOrInitSegmenterRegistry();
+    const entry = registry.get(idx) orelse {
+        conv.throwTypeError(isolate, "Segmenter not found in registry");
+        return;
+    };
+
+    // Get text argument
+    if (info.length() < 1) {
+        conv.throwTypeError(isolate, "segment() requires a string argument");
+        return;
+    }
+
+    var text_buf: [4096]u8 = undefined;
+    const text_arg = info.get(0);
+    if (!v8.v8_Value_IsString(text_arg)) {
+        conv.throwTypeError(isolate, "segment() argument must be a string");
+        return;
+    }
+
+    const text = readV8String(v8.v8_Value_ToString(text_arg, context), context, &text_buf) orelse {
+        conv.throwTypeError(isolate, "Failed to read text");
+        return;
+    };
+
+    // Create Segments object - contains the text and granularity
+    const segments_obj = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create Segments object");
+        return;
+    };
+
+    // Store text in the Segments object
+    const text_key = v8.v8_String_NewFromUtf8(isolate, "__text__", 8) orelse return;
+    const text_val = v8.v8_String_NewFromUtf8(isolate, text.ptr, @intCast(text.len)) orelse return;
+    _ = v8.v8_Object_Set(segments_obj, context, @ptrCast(text_key), @ptrCast(text_val));
+
+    // Store granularity
+    const gran_key = v8.v8_String_NewFromUtf8(isolate, "__granularity__", 15) orelse return;
+    const gran_str: []const u8 = switch (entry.granularity) {
+        .grapheme => "grapheme",
+        .word => "word",
+        .sentence => "sentence",
+    };
+    const gran_val = v8.v8_String_NewFromUtf8(isolate, gran_str.ptr, @intCast(gran_str.len)) orelse return;
+    _ = v8.v8_Object_Set(segments_obj, context, @ptrCast(gran_key), @ptrCast(gran_val));
+
+    // Add containing() method
+    addSegmenterMethod(isolate, context, segments_obj, "containing", segmentsContainingCallback) catch return;
+
+    // Add [Symbol.iterator]() method for iterable protocol
+    // For simplicity, we'll iterate and return an array that JS can iterate
+    // A full implementation would create a proper iterator object
+    const iter_fn = v8.v8_FunctionTemplate_New(isolate, segmentsIteratorCallback, @ptrCast(segments_obj)) orelse return;
+    const iter_fn_obj = v8.v8_FunctionTemplate_GetFunction(iter_fn, context) orelse return;
+
+    // Get Symbol.iterator
+    const global = v8.v8_Context_Global(context) orelse return;
+    const symbol_key = v8.v8_String_NewFromUtf8(isolate, "Symbol", 6) orelse return;
+    const symbol_obj = v8.v8_Object_Get(global, context, @ptrCast(symbol_key)) orelse return;
+    if (!v8.v8_Value_IsObject(symbol_obj)) return;
+    const iter_symbol_key = v8.v8_String_NewFromUtf8(isolate, "iterator", 8) orelse return;
+    const iter_symbol = v8.v8_Object_Get(@ptrCast(symbol_obj), context, @ptrCast(iter_symbol_key)) orelse return;
+
+    _ = v8.v8_Object_Set(segments_obj, context, @ptrCast(iter_symbol), @ptrCast(iter_fn_obj));
+
+    info.setReturnValue(@ptrCast(segments_obj));
+}
+
+/// Callback for Segments[Symbol.iterator]()
+/// Returns an iterator object with next() method
+fn segmentsIteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+
+    // Get text and granularity from Segments object
+    var text_buf: [4096]u8 = undefined;
+    const text_key = v8.v8_String_NewFromUtf8(isolate, "__text__", 8) orelse return;
+    const text_val = v8.v8_Object_Get(this_obj, context, @ptrCast(text_key)) orelse return;
+    const text = readV8String(v8.v8_Value_ToString(text_val, context), context, &text_buf) orelse return;
+
+    var gran_buf: [16]u8 = undefined;
+    const gran_key = v8.v8_String_NewFromUtf8(isolate, "__granularity__", 15) orelse return;
+    const gran_val = v8.v8_Object_Get(this_obj, context, @ptrCast(gran_key)) orelse return;
+    const gran_str = readV8String(v8.v8_Value_ToString(gran_val, context), context, &gran_buf) orelse return;
+
+    // Determine granularity
+    const granularity: segmenter_module.Granularity = if (std.mem.eql(u8, gran_str, "word"))
+        .word
+    else if (std.mem.eql(u8, gran_str, "sentence"))
+        .sentence
+    else
+        .grapheme;
+
+    // Create iterator object that pre-computes all segments
+    // (Full implementation would lazily compute)
+    const iter_obj = v8.v8_Object_New(isolate) orelse return;
+
+    // Collect all segments into an array
+    const allocator = std.heap.page_allocator;
+    const text_copy = allocator.dupe(u8, text) catch return;
+    defer allocator.free(text_copy);
+
+    var segments = segmenter_module.Segments.init(text_copy, granularity);
+    const segments_arr = v8.v8_Array_New(isolate, 0);
+    var arr_idx: u32 = 0;
+
+    while (segments.next()) |seg| {
+        const seg_obj = v8.v8_Object_New(isolate) orelse continue;
+
+        // segment property
+        const seg_key = v8.v8_String_NewFromUtf8(isolate, "segment", 7) orelse continue;
+        const seg_val = v8.v8_String_NewFromUtf8(isolate, seg.segment.ptr, @intCast(seg.segment.len)) orelse continue;
+        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(seg_key), @ptrCast(seg_val));
+
+        // index property
+        const idx_key = v8.v8_String_NewFromUtf8(isolate, "index", 5) orelse continue;
+        const idx_val = v8.v8_Number_New(isolate, @floatFromInt(seg.index));
+        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(idx_key), @ptrCast(idx_val));
+
+        // input property
+        const input_key = v8.v8_String_NewFromUtf8(isolate, "input", 5) orelse continue;
+        const input_val = v8.v8_String_NewFromUtf8(isolate, text_copy.ptr, @intCast(text_copy.len)) orelse continue;
+        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(input_key), @ptrCast(input_val));
+
+        // isWordLike property (only for word granularity)
+        if (seg.is_word_like) |is_word_like| {
+            const iwl_key = v8.v8_String_NewFromUtf8(isolate, "isWordLike", 10) orelse continue;
+            const iwl_val = v8.v8_Boolean_New(isolate, is_word_like);
+            _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(iwl_key), @ptrCast(iwl_val));
+        }
+
+        _ = v8.v8_Array_Set(segments_arr, context, arr_idx, @ptrCast(seg_obj));
+        arr_idx += 1;
+    }
+
+    // Store array and current index in iterator
+    const arr_key = v8.v8_String_NewFromUtf8(isolate, "__arr__", 7) orelse return;
+    _ = v8.v8_Object_Set(iter_obj, context, @ptrCast(arr_key), @ptrCast(segments_arr));
+
+    const pos_key = v8.v8_String_NewFromUtf8(isolate, "__pos__", 7) orelse return;
+    _ = v8.v8_Object_Set(iter_obj, context, @ptrCast(pos_key), @ptrCast(v8.v8_Number_New(isolate, 0)));
+
+    // Add next() method
+    const next_fn = v8.v8_FunctionTemplate_New(isolate, segmentsIteratorNextCallback, @ptrCast(iter_obj)) orelse return;
+    const next_fn_obj = v8.v8_FunctionTemplate_GetFunction(next_fn, context) orelse return;
+    const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return;
+    _ = v8.v8_Object_Set(iter_obj, context, @ptrCast(next_key), @ptrCast(next_fn_obj));
+
+    info.setReturnValue(@ptrCast(iter_obj));
+}
+
+/// Callback for iterator.next()
+fn segmentsIteratorNextCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+
+    // Get array and position
+    const arr_key = v8.v8_String_NewFromUtf8(isolate, "__arr__", 7) orelse return;
+    const arr_val = v8.v8_Object_Get(this_obj, context, @ptrCast(arr_key)) orelse return;
+    if (!v8.v8_Value_IsArray(arr_val)) return;
+    const arr: *v8.Array = @ptrCast(arr_val);
+    const len = v8.v8_Array_Length(arr);
+
+    const pos_key = v8.v8_String_NewFromUtf8(isolate, "__pos__", 7) orelse return;
+    const pos_val = v8.v8_Object_Get(this_obj, context, @ptrCast(pos_key)) orelse return;
+    const pos: u32 = @intFromFloat(v8.v8_Value_NumberValue(pos_val, context));
+
+    // Create iterator result
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    if (pos >= len) {
+        // Done
+        const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+        _ = v8.v8_Object_Set(result, context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
+        const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+        _ = v8.v8_Object_Set(result, context, @ptrCast(value_key), @ptrCast(v8.v8_Undefined(isolate)));
+    } else {
+        // Get current segment
+        const seg_val = v8.v8_Array_Get(context, arr, pos) orelse return;
+
+        const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
+        _ = v8.v8_Object_Set(result, context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
+        const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+        _ = v8.v8_Object_Set(result, context, @ptrCast(value_key), @ptrCast(seg_val));
+
+        // Increment position
+        _ = v8.v8_Object_Set(this_obj, context, @ptrCast(pos_key), @ptrCast(v8.v8_Number_New(isolate, @floatFromInt(pos + 1))));
+    }
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Callback for `segments.containing(index)`
+fn segmentsContainingCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+
+    // Get index argument
+    if (info.length() < 1) {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        return;
+    }
+
+    const index_arg = info.get(0);
+    if (!v8.v8_Value_IsNumber(index_arg)) {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        return;
+    }
+    const index: usize = @intFromFloat(v8.v8_Value_NumberValue(index_arg, context));
+
+    // Get text and granularity
+    var text_buf: [4096]u8 = undefined;
+    const text_key = v8.v8_String_NewFromUtf8(isolate, "__text__", 8) orelse return;
+    const text_val = v8.v8_Object_Get(this_obj, context, @ptrCast(text_key)) orelse return;
+    const text = readV8String(v8.v8_Value_ToString(text_val, context), context, &text_buf) orelse return;
+
+    var gran_buf: [16]u8 = undefined;
+    const gran_key = v8.v8_String_NewFromUtf8(isolate, "__granularity__", 15) orelse return;
+    const gran_val = v8.v8_Object_Get(this_obj, context, @ptrCast(gran_key)) orelse return;
+    const gran_str = readV8String(v8.v8_Value_ToString(gran_val, context), context, &gran_buf) orelse return;
+
+    // Determine granularity
+    const granularity: segmenter_module.Granularity = if (std.mem.eql(u8, gran_str, "word"))
+        .word
+    else if (std.mem.eql(u8, gran_str, "sentence"))
+        .sentence
+    else
+        .grapheme;
+
+    // Find segment containing the index
+    const allocator = std.heap.page_allocator;
+    const text_copy = allocator.dupe(u8, text) catch return;
+    defer allocator.free(text_copy);
+
+    var segments = segmenter_module.Segments.init(text_copy, granularity);
+
+    if (segments.containing(index)) |seg| {
+        const seg_obj = v8.v8_Object_New(isolate) orelse return;
+
+        // segment property
+        const seg_key_str = v8.v8_String_NewFromUtf8(isolate, "segment", 7) orelse return;
+        const seg_val_str = v8.v8_String_NewFromUtf8(isolate, seg.segment.ptr, @intCast(seg.segment.len)) orelse return;
+        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(seg_key_str), @ptrCast(seg_val_str));
+
+        // index property
+        const idx_key_str = v8.v8_String_NewFromUtf8(isolate, "index", 5) orelse return;
+        const idx_val_num = v8.v8_Number_New(isolate, @floatFromInt(seg.index));
+        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(idx_key_str), @ptrCast(idx_val_num));
+
+        // input property
+        const input_key = v8.v8_String_NewFromUtf8(isolate, "input", 5) orelse return;
+        const input_val = v8.v8_String_NewFromUtf8(isolate, text_copy.ptr, @intCast(text_copy.len)) orelse return;
+        _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(input_key), @ptrCast(input_val));
+
+        // isWordLike property (only for word granularity)
+        if (seg.is_word_like) |is_word_like| {
+            const iwl_key = v8.v8_String_NewFromUtf8(isolate, "isWordLike", 10) orelse return;
+            const iwl_val = v8.v8_Boolean_New(isolate, is_word_like);
+            _ = v8.v8_Object_Set(seg_obj, context, @ptrCast(iwl_key), @ptrCast(iwl_val));
+        }
+
+        info.setReturnValue(@ptrCast(seg_obj));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+/// Callback for `segmenter.resolvedOptions()`
+fn segmenterResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    const this_obj = info.getThis();
+    const idx = getSegmenterIndex(isolate, context, this_obj) orelse {
+        conv.throwTypeError(isolate, "Invalid Segmenter object");
+        return;
+    };
+
+    const registry = getOrInitSegmenterRegistry();
+    const entry = registry.get(idx) orelse {
+        conv.throwTypeError(isolate, "Segmenter not found");
+        return;
+    };
+
+    // Create options object
+    const result = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create options object");
+        return;
+    };
+
+    // Set locale
+    setStringProperty(isolate, context, result, "locale", entry.locale);
+
+    // Set granularity
+    const gran_str: []const u8 = switch (entry.granularity) {
+        .grapheme => "grapheme",
+        .word => "word",
+        .sentence => "sentence",
+    };
+    setStringProperty(isolate, context, result, "granularity", gran_str);
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Callback for `Intl.Segmenter.supportedLocalesOf(locales)`
+fn segmenterSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    // Return all supported locale tags (same as other Intl objects)
+    supportedLocalesOfCallback(info);
+}
+
+// ============================================================================
 // Phase 3: Intl.Locale
 // ============================================================================
 
@@ -5324,6 +5870,21 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
     _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(locale_key), @ptrCast(locale_constructor));
 
     // ========================================================================
+    // Segmenter
+    // ========================================================================
+    const seg_template = v8.v8_FunctionTemplate_New(isolate, segmenterConstructorCallback, null) orelse return;
+    const seg_constructor = v8.v8_FunctionTemplate_GetFunction(seg_template, context) orelse return;
+
+    // Add supportedLocalesOf static method
+    const seg_supported_fn = v8.v8_FunctionTemplate_New(isolate, segmenterSupportedLocalesOfCallback, null) orelse return;
+    const seg_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(seg_supported_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(seg_constructor), context, @ptrCast(supported_key), @ptrCast(seg_supported_fn_obj));
+
+    // Add Segmenter to Intl object
+    const seg_key = v8.v8_String_NewFromUtf8(isolate, "Segmenter", 9) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(seg_key), @ptrCast(seg_constructor));
+
+    // ========================================================================
     // Intl.supportedValuesOf (static method on Intl object)
     // ========================================================================
     const svo_fn = v8.v8_FunctionTemplate_New(isolate, supportedValuesOfCallback, null) orelse return;
@@ -5427,6 +5988,15 @@ pub fn registerExternalReferences() void {
 
     // Intl.supportedValuesOf
     ext_refs.registerCallbackRuntime(supportedValuesOfCallback);
+
+    // Segmenter
+    ext_refs.registerCallbackRuntime(segmenterConstructorCallback);
+    ext_refs.registerCallbackRuntime(segmenterSegmentCallback);
+    ext_refs.registerCallbackRuntime(segmentsIteratorCallback);
+    ext_refs.registerCallbackRuntime(segmentsIteratorNextCallback);
+    ext_refs.registerCallbackRuntime(segmentsContainingCallback);
+    ext_refs.registerCallbackRuntime(segmenterResolvedOptionsCallback);
+    ext_refs.registerCallbackRuntime(segmenterSupportedLocalesOfCallback);
 }
 
 /// Deinitialize all Intl registries, freeing any remaining entries.
@@ -5500,6 +6070,12 @@ pub fn deinitAllRegistries() void {
     if (locale_registry) |*reg| {
         reg.deinit();
         locale_registry = null;
+    }
+
+    // Segmenter registry
+    if (segmenter_registry) |*reg| {
+        reg.deinit();
+        segmenter_registry = null;
     }
 }
 
