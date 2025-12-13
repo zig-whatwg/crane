@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765605951456,
-  "time_end": 1765605967241,
+  "time_start": 1765615320848,
+  "time_end": 1765615338113,
   "results": [
     {
       "test": "infrastructure/testharness/full.stop/full-stop.html",
@@ -16,7 +16,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "", "status": "FAIL", "message": "assert_equals: Check that test name does not contain part of the path (.stop) expected \"full-stop\" but got \"\""}
+        {"name": "full-stop", "status": "PASS", "message": null}
       ]
     },
     {
@@ -54,13 +54,13 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "functions in the absence of a `body` element", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"},
-        {"name": "user activation", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"},
-        {"name": "no action function provided", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"},
-        {"name": "synchronous return value", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"},
-        {"name": "synchronous error", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"},
-        {"name": "asynchronous return value", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"},
-        {"name": "asynchronous error", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"}
+        {"name": "functions in the absence of a `body` element", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: element click intercepted error\""},
+        {"name": "user activation", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: element click intercepted error\""},
+        {"name": "no action function provided", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: element click intercepted error\""},
+        {"name": "synchronous return value", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: element click intercepted error\""},
+        {"name": "synchronous error", "status": "FAIL", "message": "assert_equals: the promise should be rejected with the thrown value expected object \"Error\" but got object \"Error: element click intercepted error\""},
+        {"name": "asynchronous return value", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: element click intercepted error\""},
+        {"name": "asynchronous error", "status": "FAIL", "message": "assert_equals: the promise should be rejected with the rejected value expected object \"Error\" but got object \"Error: element click intercepted error\""}
       ]
     },
     {
@@ -254,7 +254,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "TestDriver multiple consecutive clicks", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: Cannot read properties of undefined (reading 'left')\""}
+        {"name": "TestDriver multiple consecutive clicks", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: element click intercepted error\""}
       ]
     },
     {
@@ -307,7 +307,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "TestDriver click method", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"}
+        {"name": "TestDriver click method", "status": "FAIL", "message": "assert_unreached: click failed Reached unreachable code"}
       ]
     },
     {
@@ -325,7 +325,7 @@
       "duration": 0,
       "subtests": [
         {"name": "TestDriver actions: event order", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: action_sequence() is not implemented by testdriver-vendor.js\""},
-        {"name": "indivisible actions on the same track dispatch events in series", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"}
+        {"name": "indivisible actions on the same track dispatch events in series", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: element click intercepted error\""}
       ]
     },
     {
@@ -567,7 +567,6 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "File upload using testdriver", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"}
       ]
     },
     {
@@ -584,7 +583,6 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "TestDriver send keys method", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'left')"}
       ]
     },
     {
@@ -611,7 +609,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "foobar", "status": "FAIL", "message": "assert_equals: expected \"foobar\" but got \"\""}
+        {"name": "foobar", "status": "PASS", "message": null}
       ]
     },
     {
@@ -644,8 +642,8 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Use of .https file name flag implies secure context", "status": "FAIL", "message": "assert_true: expected true got undefined"},
-        {"name": "Use of .https file name flag implies HTTPS scheme", "status": "FAIL", "message": "assert_equals: expected \"https:\" but got \"about:\""}
+        {"name": "Use of .https file name flag implies secure context", "status": "PASS", "message": null},
+        {"name": "Use of .https file name flag implies HTTPS scheme", "status": "PASS", "message": null}
       ]
     },
     {
@@ -678,9 +676,9 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Use of .h2. file name flag implies secure context", "status": "FAIL", "message": "assert_true: expected true got undefined"},
-        {"name": "Use of .h2. file name flag implies HTTPS scheme", "status": "FAIL", "message": "assert_equals: expected \"https:\" but got \"about:\""},
-        {"name": "Use of .h2. file name flag implies correct port", "status": "FAIL", "message": "assert_equals: expected \"9000\" but got \"\""}
+        {"name": "Use of .h2. file name flag implies secure context", "status": "PASS", "message": null},
+        {"name": "Use of .h2. file name flag implies HTTPS scheme", "status": "PASS", "message": null},
+        {"name": "Use of .h2. file name flag implies correct port", "status": "FAIL", "message": "assert_equals: expected \"9000\" but got \"8443\""}
       ]
     },
     {
@@ -706,7 +704,7 @@
       "duration": 0,
       "subtests": [
         {"name": "add_completion_callback exists", "status": "PASS", "message": null},
-        {"name": "<title> exists", "status": "FAIL", "message": "assert_equals: expected \"foo\" but got \"\""},
+        {"name": "<title> exists", "status": "PASS", "message": null},
         {"name": "<meta name=timeout> exists", "status": "PASS", "message": null},
         {"name": "order of scripts", "status": "PASS", "message": null}
       ]
@@ -744,7 +742,7 @@
       "subtests": [
         {"name": "add_completion_callback exists", "status": "PASS", "message": null},
         {"name": "GLOBAL exists", "status": "PASS", "message": null},
-        {"name": "<title> exists", "status": "FAIL", "message": "assert_equals: expected \"foo\" but got \"\""},
+        {"name": "<title> exists", "status": "PASS", "message": null},
         {"name": "<meta name=timeout> exists", "status": "PASS", "message": null},
         {"name": "order of scripts", "status": "PASS", "message": null}
       ]
@@ -763,7 +761,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "", "status": "FAIL", "message": "assert_false: expected false got undefined"}
+        {"name": "context", "status": "FAIL", "message": "assert_false: expected false got true"}
       ]
     },
     {
@@ -780,7 +778,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Use of .www. file name flag implies www subdomain", "status": "FAIL", "message": "assert_equals: expected \"www.localhost\" but got \"\""}
+        {"name": "Use of .www. file name flag implies www subdomain", "status": "FAIL", "message": "assert_equals: expected \"www.localhost\" but got \"localhost\""}
       ]
     },
     {
@@ -1254,8 +1252,8 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Lack of .https file name flag implies non-secure context", "status": "FAIL", "message": "assert_false: expected false got undefined"},
-        {"name": "Lack of .https file name flag implies HTTP scheme", "status": "FAIL", "message": "assert_equals: expected \"http:\" but got \"about:\""}
+        {"name": "Lack of .https file name flag implies non-secure context", "status": "FAIL", "message": "assert_false: expected false got true"},
+        {"name": "Lack of .https file name flag implies HTTP scheme", "status": "PASS", "message": null}
       ]
     },
     {
@@ -1272,7 +1270,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "document.fonts.ready resolves after layout depending on loaded fonts", "status": "FAIL", "message": "This feature is not yet implemented"}
+        {"name": "document.fonts.ready resolves after layout depending on loaded fonts", "status": "FAIL", "message": "assert_equals: one font is pending expected (number) 1 but got (undefined) undefined"}
       ]
     },
     {
@@ -1289,7 +1287,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "<audio> autoplay", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "<audio> autoplay", "status": "FAIL", "message": "assert_false: expected false got true"},
         {"name": "<video> autoplay", "status": "FAIL", "message": "v.play is not a function"}
       ]
     },
@@ -1348,11 +1346,10 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Fetch from https-local port works.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: TypeError\""},
-        {"name": "Fetch from http-local port works.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: TypeError\""},
-        {"name": "Fetch from https-public port works.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: TypeError\""},
-        {"name": "Fetch from http-public port works.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: TypeError\""},
-        {"name": "Fetch from http-public to local http fails.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: TypeError\""}
+        {"name": "Fetch from https-local port works.", "status": "FAIL", "message": "assert_true: expected true got false"},
+        {"name": "Fetch from http-local port works.", "status": "PASS", "message": null},
+        {"name": "Fetch from https-public port works.", "status": "FAIL", "message": "assert_true: expected true got false"},
+        {"name": "Fetch from http-public port works.", "status": "PASS", "message": null}
       ]
     },
     {

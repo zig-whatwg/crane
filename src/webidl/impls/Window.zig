@@ -1595,6 +1595,32 @@ pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
     return internal.is_secure_context;
 }
 
+/// Set the secure context flag
+/// Called by browser context when URL changes to update security state.
+/// Per Secure Contexts spec, a context is secure if:
+/// - URL scheme is https, wss, or file
+/// - URL host is localhost or 127.0.0.1
+pub fn setIsSecureContext(instance: *runtime.Instance, is_secure: bool) void {
+    if (getInternal(instance)) |internal| {
+        internal.is_secure_context = is_secure;
+    }
+}
+
+/// Check if a URL scheme indicates a secure context
+/// Per https://w3c.github.io/webappsec-secure-contexts/
+pub fn isSecureScheme(scheme: []const u8) bool {
+    return std.mem.eql(u8, scheme, "https") or
+        std.mem.eql(u8, scheme, "wss") or
+        std.mem.eql(u8, scheme, "file");
+}
+
+/// Check if a host is a secure localhost
+pub fn isSecureLocalhost(host: []const u8) bool {
+    return std.mem.eql(u8, host, "localhost") or
+        std.mem.eql(u8, host, "127.0.0.1") or
+        std.mem.eql(u8, host, "::1");
+}
+
 /// Getter for crossOriginIsolated
 /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#dom-crossoriginisolated
 ///

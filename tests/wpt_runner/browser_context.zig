@@ -364,6 +364,8 @@ pub const BrowserContext = struct {
             \\  history: null,
             \\  performance: null,
             \\  origin: 'null',
+            \\  isSecureContext: false,
+            \\  crossOriginIsolated: false,
             \\  onerror: null,
             \\  onoffline: null,
             \\  ononline: null,
@@ -395,6 +397,14 @@ pub const BrowserContext = struct {
             \\Object.defineProperty(globalThis, 'origin', {
             \\  get: function() { __checkGlobalThis(this, 'origin'); return globalThis.__internal.origin; },
             \\  set: function(v) { __checkGlobalThis(this, 'origin'); globalThis.__internal.origin = v; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'isSecureContext', {
+            \\  get: function() { __checkGlobalThis(this, 'isSecureContext'); return globalThis.__internal.isSecureContext; },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\Object.defineProperty(globalThis, 'crossOriginIsolated', {
+            \\  get: function() { __checkGlobalThis(this, 'crossOriginIsolated'); return globalThis.__internal.crossOriginIsolated; },
             \\  enumerable: true, configurable: true
             \\});
             \\Object.defineProperty(globalThis, 'onerror', {
@@ -1148,17 +1158,97 @@ pub const BrowserContext = struct {
         }
     }
 
-    /// Set the test URL (updates location object)
+    /// Set the test URL (updates location object and secure context flag)
+    /// For WPT tests with .https. in filename, rewrites URL to use https:// scheme
+    /// to properly simulate secure context behavior.
     pub fn setTestUrl(self: *BrowserContext, url: []const u8) !void {
         self.allocator.free(self.test_url);
         self.test_url = try self.allocator.dupe(u8, url);
 
-        // Update location object with new URL
+        // Determine if this should be treated as an HTTPS URL
+        // WPT tests with .https. or .h2. in filename should use https:// scheme
+        const effective_url = blk: {
+            if (std.mem.indexOf(u8, url, ".https.") != null or
+                std.mem.indexOf(u8, url, ".h2.") != null)
+            {
+                // Rewrite http:// to https:// for location object
+                if (std.mem.startsWith(u8, url, "http://localhost:8000")) {
+                    // Replace http://localhost:8000 with https://localhost:8443
+                    const rest = url["http://localhost:8000".len..];
+                    break :blk try std.fmt.allocPrint(self.allocator, "https://localhost:8443{s}", .{rest});
+                } else if (std.mem.startsWith(u8, url, "http://")) {
+                    // Generic http:// to https:// replacement
+                    const rest = url["http://".len..];
+                    break :blk try std.fmt.allocPrint(self.allocator, "https://{s}", .{rest});
+                }
+            }
+            break :blk try self.allocator.dupe(u8, url);
+        };
+        defer if (effective_url.ptr != url.ptr) self.allocator.free(effective_url);
+
+        // Update location object with effective URL (may be https:// for .https. tests)
         if (self.location_instance) |loc| {
-            impls.Location.setURLFromString(loc, url) catch |err| {
+            impls.Location.setURLFromString(loc, effective_url) catch |err| {
                 std.debug.print("Warning: Failed to update location URL: {}\n", .{err});
             };
         }
+
+        // Update secure context flag based on URL scheme
+        // Per Secure Contexts spec: https, wss, file schemes are secure
+        // localhost is also considered secure
+        const is_secure = isSecureUrl(url);
+
+        // Update the Zig-side Window instance (if exists)
+        if (self.window_instance) |win| {
+            impls.Window.setIsSecureContext(win, is_secure);
+        }
+
+        // Also update the JavaScript __internal.isSecureContext property
+        // This is what JavaScript code actually reads via the accessor property
+        if (self.isolate != null and self.context != null) {
+            const js_script = if (is_secure)
+                "globalThis.__internal.isSecureContext = true;"
+            else
+                "globalThis.__internal.isSecureContext = false;";
+
+            self.executeScript(js_script) catch |err| {
+                std.debug.print("Warning: Failed to update isSecureContext: {}\n", .{err});
+            };
+        }
+    }
+
+    /// Check if a URL indicates a secure context
+    /// Per WPT convention, tests with .https. in the filename should be treated
+    /// as secure contexts even when served over HTTP for testing purposes.
+    fn isSecureUrl(url: []const u8) bool {
+        // Check for secure schemes
+        if (std.mem.startsWith(u8, url, "https://") or
+            std.mem.startsWith(u8, url, "wss://") or
+            std.mem.startsWith(u8, url, "file://"))
+        {
+            return true;
+        }
+
+        // HTTP localhost is also considered secure
+        if (std.mem.startsWith(u8, url, "http://localhost") or
+            std.mem.startsWith(u8, url, "http://127.0.0.1") or
+            std.mem.startsWith(u8, url, "http://[::1]"))
+        {
+            return true;
+        }
+
+        // WPT convention: .https. in filename indicates secure context test
+        // These tests are meant to be run over HTTPS but we serve them over HTTP
+        if (std.mem.indexOf(u8, url, ".https.") != null) {
+            return true;
+        }
+
+        // Also check for .h2. (HTTP/2 tests which require secure context)
+        if (std.mem.indexOf(u8, url, ".h2.") != null) {
+            return true;
+        }
+
+        return false;
     }
 
     /// Start tracking results for a new test file
