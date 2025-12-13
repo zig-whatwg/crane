@@ -71,9 +71,11 @@ pub fn get_crossOrigin(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 }
 
 /// Getter for networkState
+/// Per HTML spec: Returns the network state of the media.
+/// Stub: Returns NETWORK_EMPTY (0) - no data yet
 pub fn get_networkState(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
-    return error.NotImplemented;
+    return 0; // NETWORK_EMPTY
 }
 
 /// Getter for preload
@@ -89,9 +91,11 @@ pub fn get_buffered(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for readyState
+/// Per HTML spec: Returns the ready state of the media.
+/// Stub: Returns HAVE_NOTHING (0) - no data available
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     _ = instance;
-    return error.NotImplemented;
+    return 0; // HAVE_NOTHING
 }
 
 /// Getter for seeking
@@ -101,21 +105,27 @@ pub fn get_seeking(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Getter for currentTime
+/// Per HTML spec: Returns the current playback position in seconds.
+/// Stub: Returns 0 (beginning of media)
 pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
-    return error.NotImplemented;
+    return 0.0;
 }
 
 /// Getter for duration
+/// Per HTML spec: Returns the length of the media in seconds, or NaN.
+/// Stub: Returns NaN (no media loaded)
 pub fn get_duration(instance: *runtime.Instance) anyerror!f64 {
     _ = instance;
-    return error.NotImplemented;
+    return std.math.nan(f64);
 }
 
 /// Getter for paused
+/// Per HTML spec: Returns true if playback is paused.
+/// Stub: Always returns true (not playing)
 pub fn get_paused(instance: *runtime.Instance) anyerror!bool {
     _ = instance;
-    return error.NotImplemented;
+    return true; // Always paused in stub
 }
 
 /// Getter for defaultPlaybackRate
@@ -371,9 +381,11 @@ pub fn call_setSinkId(instance: *runtime.Instance, sinkId: runtime.DOMString) an
 }
 
 /// Operation: load
+/// Per HTML spec: Resets the element to its initial state and selects a media resource.
+/// Stub: No-op
 pub fn call_load(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
+    // No-op in stub - no actual media loading
 }
 
 /// Operation: setMediaKeys
@@ -384,16 +396,20 @@ pub fn call_setMediaKeys(instance: *runtime.Instance, mediaKeys: ?*runtime.Insta
 }
 
 /// Operation: pause
+/// Per HTML spec: Pauses the media resource.
+/// Stub: No-op (already paused)
 pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     _ = instance;
-    return error.NotImplemented;
+    // No-op - already paused in stub implementation
 }
 
 /// Operation: canPlayType
+/// Per HTML spec: Returns how confident the user agent is it can play the given type.
+/// Stub: Returns empty string ("" - cannot play anything)
 pub fn call_canPlayType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!enums.CanPlayTypeResult {
     _ = instance;
     _ = @"type";
-    return error.NotImplemented;
+    return .__; // Empty string = cannot play
 }
 
 /// Operation: fastSeek
@@ -410,9 +426,19 @@ pub fn call_captureStream(instance: *runtime.Instance) anyerror!*runtime.Instanc
 }
 
 /// Operation: play
+/// Per HTML spec: Starts playback of the media resource.
+/// Stub: Returns undefined - in a real implementation this would return
+/// a Promise that rejects with NotSupportedError since media playback
+/// is not implemented.
+///
+/// Note: Returning undefined instead of rejected Promise is a simplification.
+/// Tests expecting proper Promise rejection may still fail, but at least
+/// the method is callable and doesn't throw "not a function" error.
 pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
-    return error.NotImplemented;
+    // Return undefined as a stub - ideally would return rejected Promise
+    // with NotSupportedError, but that requires Promise infrastructure
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: getStartDate
