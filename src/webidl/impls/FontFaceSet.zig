@@ -59,15 +59,24 @@ pub fn get_onloadingerror(instance: *runtime.Instance) anyerror!typedefs.EventHa
 }
 
 /// Getter for ready
+/// Returns a Promise that resolves when the FontFaceSet is done loading fonts.
+/// Stub: Returns undefined as a placeholder for a resolved promise.
+/// Per CSS Font Loading spec §4.3, this should return a Promise<FontFaceSet>.
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
-    return error.NotImplemented;
+    // Stub: Return undefined as placeholder for resolved promise
+    // Real implementation would return a Promise that resolves to this FontFaceSet
+    return .{ .undefined = {} };
 }
 
 /// Getter for status
+/// Returns the loading status of the FontFaceSet.
+/// Stub: Returns "loaded" since we don't actually load fonts.
+/// Per CSS Font Loading spec §4.3, this is either "loading" or "loaded".
 pub fn get_status(instance: *runtime.Instance) anyerror!enums.FontFaceSetLoadStatus {
     _ = instance;
-    return error.NotImplemented;
+    // Stub: Return "loaded" since we have no fonts to load
+    return ._loaded_;
 }
 
 /// Setter for onloading

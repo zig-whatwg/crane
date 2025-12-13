@@ -294,6 +294,10 @@ pub const InternalState = struct {
     /// Stored as V8 handle pointer (Proxy object), not a runtime.Instance
     adopted_style_sheets: ?*anyopaque,
 
+    /// Cached FontFaceSet instance ([SameObject])
+    /// Spec: https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts
+    fonts: ?*runtime.Instance,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -370,6 +374,8 @@ pub const InternalState = struct {
             .selection = null,
             // Adopted style sheets (ObservableArray exotic object)
             .adopted_style_sheets = null,
+            // FontFaceSet (CSS Font Loading)
+            .fonts = null,
         };
     }
 
@@ -1338,9 +1344,19 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
 }
 
 /// Getter for fonts
+/// Returns the FontFaceSet associated with this document.
+/// Spec: https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts
+/// Lazily creates a FontFaceSet on first access ([SameObject] semantics).
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.fonts) |fonts| {
+        return fonts;
+    }
+    // Lazily create FontFaceSet
+    const FontFaceSet = interfaces.FontFaceSet;
+    const fonts = FontFaceSet.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    internal.fonts = fonts;
+    return fonts;
 }
 
 /// Getter for customElementRegistry
