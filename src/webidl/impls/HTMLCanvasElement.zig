@@ -86,10 +86,26 @@ pub fn call_captureStream(instance: *runtime.Instance, frameRequestRate: webidl.
 }
 
 /// Operation: getContext
+/// Returns a rendering context for the canvas, or null if the contextId is not supported.
+/// Per HTML spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-canvas-getcontext
 pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!?typedefs.RenderingContext {
-    _ = instance;
-    _ = contextId;
-    _ = options;
+    _ = options; // Options are context-specific, ignored for basic stub
+
+    const ctx = instance.ctx;
+
+    // Get the context ID as a slice for comparison
+    const context_id_str = contextId.asSlice();
+
+    // Check for "2d" context
+    if (std.mem.eql(u8, context_id_str, "2d")) {
+        // Create a CanvasRenderingContext2D instance
+        const CanvasRenderingContext2D = interfaces.CanvasRenderingContext2D;
+        const context_instance = try CanvasRenderingContext2D.init(ctx.allocator, ctx);
+        return typedefs.RenderingContext{ .canvas_rendering_context2d = context_instance };
+    }
+
+    // Other context types (webgl, webgl2, bitmaprenderer, webgpu) not implemented yet
+    // Return null for unsupported context types
     return null;
 }
 

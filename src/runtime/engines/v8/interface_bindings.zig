@@ -254,6 +254,36 @@ pub fn initializeBindings(
 
     // Step 5: Register toLocaleString methods on built-in prototypes
     intl_binding.registerToLocaleStringMethods(isolate, context);
+
+    // Step 6: Register legacy interface aliases
+    // These are historical aliases that map to other interfaces
+    // e.g., HTMLDocument is an alias for Document per HTML spec
+    registerLegacyInterfaceAliases(isolate, context);
+}
+
+/// Register legacy interface aliases
+///
+/// Per HTML spec, some interfaces have historical aliases that should be
+/// available on the global object. For example:
+/// - HTMLDocument is an alias for Document
+fn registerLegacyInterfaceAliases(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    const global = v8.v8_Context_Global(context) orelse return;
+
+    // HTMLDocument is a legacy alias for Document
+    // Per HTML spec: "The HTMLDocument interface is an historical alias for Document."
+    const doc_key = v8.v8_String_NewFromUtf8(isolate, "Document", 8);
+    if (doc_key) |key| {
+        const doc_ctor = v8.v8_Object_Get(global, context, @ptrCast(key));
+        if (doc_ctor) |ctor| {
+            const html_doc_key = v8.v8_String_NewFromUtf8(isolate, "HTMLDocument", 12);
+            if (html_doc_key) |hkey| {
+                _ = v8.v8_Object_Set(global, context, @ptrCast(hkey), ctor);
+            }
+        }
+    }
 }
 
 /// Register legacy factory function aliases
