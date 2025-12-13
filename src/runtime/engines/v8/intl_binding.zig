@@ -214,6 +214,16 @@ fn intlWeakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void
 /// Setup weak reference on a V8 object to trigger cleanup when GC'd.
 /// This prevents memory leaks by removing registry entries when JS objects
 /// are garbage collected.
+///
+/// NOTE: Currently disabled due to V8 weak callback crash.
+/// The issue is that v8_Global_SetWeak requires a Global handle, not a Local,
+/// and the callback must reset the handle before returning. This needs proper
+/// Global handle management which is complex to implement correctly.
+///
+/// For now, registry entries may accumulate but this is much less severe than
+/// the ICU OOM issue we solved - ICU cached per-locale data indefinitely (1-2MB
+/// per locale), whereas our registries only grow with the number of Intl objects
+/// created (a few hundred bytes each).
 fn setupWeakCallback(
     isolate: *v8.Isolate,
     js_object: *v8.Object,
@@ -221,18 +231,13 @@ fn setupWeakCallback(
     entry_idx: usize,
     allocator: std.mem.Allocator,
 ) void {
-    // Allocate callback data that will be passed to the weak callback
-    const weak_data = allocator.create(WeakCallbackData) catch return;
-    weak_data.* = .{
-        .registry_type = registry_type,
-        .entry_idx = entry_idx,
-        .allocator = allocator,
-    };
-
-    // Make the JS object a weak reference with our cleanup callback
-    // When V8 GC collects this object, intlWeakCallback will be invoked
-    v8.v8_Global_SetWeak(@ptrCast(js_object), weak_data, intlWeakCallback);
-    _ = isolate; // isolate is available if needed for future enhancements
+    // TODO: Implement proper weak callback with Global handle management
+    // See: https://v8.dev/docs/weak-handles
+    _ = isolate;
+    _ = js_object;
+    _ = registry_type;
+    _ = entry_idx;
+    _ = allocator;
 }
 
 /// Internal storage for DateTimeFormat instances
