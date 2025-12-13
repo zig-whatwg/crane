@@ -1153,7 +1153,12 @@ pub const BrowserContext = struct {
         self.allocator.free(self.test_url);
         self.test_url = try self.allocator.dupe(u8, url);
 
-        // TODO: Update location object in V8 context
+        // Update location object with new URL
+        if (self.location_instance) |loc| {
+            impls.Location.setURLFromString(loc, url) catch |err| {
+                std.debug.print("Warning: Failed to update location URL: {}\n", .{err});
+            };
+        }
     }
 
     /// Start tracking results for a new test file
@@ -1405,6 +1410,9 @@ pub const BrowserContext = struct {
             std.debug.print("Failed to get runtime context: {}\n", .{err});
             return error.NotInitialized;
         };
+
+        // Update location object with the document's URL
+        try self.setTestUrl(base_url);
 
         // Use HTMLParser from impls module
         const HTMLParser = impls.HTMLParser;

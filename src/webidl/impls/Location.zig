@@ -138,6 +138,30 @@ pub fn init(
     return instance;
 }
 
+/// Update the Location's URL from a URL string
+/// Called when navigating or when setting document URL
+pub fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const allocator = internal.allocator;
+
+    // Free old URL if exists
+    if (internal.url) |old_url| {
+        old_url.deinit();
+        allocator.destroy(old_url);
+    }
+
+    // Parse new URL
+    const parsed_url = try allocator.create(url_record.URLRecord);
+    errdefer allocator.destroy(parsed_url);
+    parsed_url.* = try basic_parser.parse(allocator, url_string, null);
+    internal.url = parsed_url;
+}
+
+/// Get internal state (exposed for Window impl to set URL)
+pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return getInternal(instance);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);

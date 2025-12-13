@@ -1566,9 +1566,13 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Getter for isSecureContext
+/// Per HTML spec §7.1.1: Returns true if this window's global object is in a secure context.
+/// A secure context is one where the top-level document was loaded over HTTPS,
+/// from localhost, or from a file:// URL.
+/// Spec: https://w3c.github.io/webappsec-secure-contexts/#is-settings-object-contextually-secure
 pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return false;
+    return internal.is_secure_context;
 }
 
 /// Getter for crossOriginIsolated
