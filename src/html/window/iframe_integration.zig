@@ -260,6 +260,10 @@ pub const IFrameIntegration = struct {
     /// Set by the module that created the context
     cleanup_callback: ?*const fn (*IFrameIntegration) void,
 
+    /// Guard flag to prevent recursive cleanup during context teardown
+    /// Set to true when cleanupRealmContext is entered
+    cleanup_in_progress: bool,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -279,6 +283,7 @@ pub const IFrameIntegration = struct {
             .realm = null,
             .context_cleanup_data = null,
             .cleanup_callback = null,
+            .cleanup_in_progress = false,
         };
     }
 
@@ -336,6 +341,17 @@ pub const IFrameIntegration = struct {
 
     /// Clean up the realm and engine context
     fn cleanupRealmContext(self: *IFrameIntegration) void {
+        // Guard against recursive cleanup during context teardown
+        // This can happen when:
+        // 1. context_manager.deinit() cleans up wrapper cache
+        // 2. Wrapper cache cleanup triggers HTMLIFrameElement.deinit()
+        // 3. HTMLIFrameElement.deinit() calls integration.deinit()
+        // 4. integration.deinit() calls cleanupRealmContext()
+        // 5. cleanupRealmContext() tries to call destroyChildContext()
+        //    which is already being torn down by context_manager.deinit()
+        if (self.cleanup_in_progress) return;
+        self.cleanup_in_progress = true;
+
         if (self.cleanup_callback) |callback| {
             callback(self);
         }
@@ -343,6 +359,7 @@ pub const IFrameIntegration = struct {
         self.realm = null;
         self.context_cleanup_data = null;
         self.cleanup_callback = null;
+        // Note: cleanup_in_progress stays true to prevent any further cleanup attempts
     }
 
     /// Get the realm for this iframe (as opaque pointer)

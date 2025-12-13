@@ -101,6 +101,11 @@ const ManagerState = struct {
 
     /// Default allocator to use for new contexts
     default_allocator: std.mem.Allocator,
+
+    /// Flag indicating we're in the middle of full teardown (deinit)
+    /// When true, destroyChildContext should be a no-op since all contexts
+    /// are being torn down anyway
+    is_tearing_down: bool = false,
 };
 
 /// Initialize the context manager for this thread
@@ -130,6 +135,12 @@ pub fn init(allocator: std.mem.Allocator) !void {
 pub fn deinit() void {
     if (manager_state) |*state| {
         const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+
+        // Set teardown flag to prevent nested cleanup attempts
+        // When wrapper_cache.deinit() triggers onObjectFreed for iframes,
+        // the iframe cleanup will try to call destroyChildContext. We need
+        // to skip those calls since we're already tearing everything down.
+        state.is_tearing_down = true;
 
         // Clean up Intl registries (safety net for entries not GC'd)
         // This must be done before contexts are destroyed since weak callbacks
@@ -921,6 +932,21 @@ pub fn createChildContext(
 pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) void {
     const state = &(manager_state orelse return);
 
+    // 0. Skip if we're in the middle of full teardown (context_manager.deinit)
+    // This happens when wrapper_cache.deinit() triggers onObjectFreed for iframes,
+    // which then tries to clean up child contexts. Since deinit() already cleans
+    // up all contexts, we don't need to do it again here.
+    if (state.is_tearing_down) return;
+
+    // 0b. Check if already removed (guard against double-cleanup)
+    const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
+    if (raw_addr == null) return;
+    const key = @intFromPtr(raw_addr);
+    if (state.contexts.get(key) == null) {
+        // Already cleaned up, nothing to do
+        return;
+    }
+
     // 1. Recursively destroy all children first
     // Make a copy of items since we're modifying while iterating
     var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .{};
@@ -944,12 +970,7 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
     // 3. Clean up our children list
     entry.children.deinit(allocator);
 
-    // 4. Get the key for removal
-    const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
-    if (raw_addr == null) return;
-    const key = @intFromPtr(raw_addr);
-
-    // 5. Clean up owned resources
+    // 4. Clean up owned resources (key already computed at top of function)
     if (entry.owns_context) {
         var ctx_data = entry.runtime_ctx;
 
