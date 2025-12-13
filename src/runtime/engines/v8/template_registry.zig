@@ -542,6 +542,19 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "URLSearchParams";
     }
 
+    // Geometry types (CSSOM View)
+    if (inst_vtable == &interfaces.DOMRect.vtable) {
+        return "DOMRect";
+    }
+
+    if (inst_vtable == &interfaces.DOMRectReadOnly.vtable) {
+        return "DOMRectReadOnly";
+    }
+
+    if (inst_vtable == &interfaces.DOMRectList.vtable) {
+        return "DOMRectList";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }
