@@ -891,10 +891,113 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.DocumentReadyS
 
 /// Getter for title
 /// HTML §3.1.3 - Returns the document's title
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#document.title
+///
+/// For HTML documents: Returns the text content of the first <title> element
+/// in the document (in document order), with whitespace stripped and collapsed.
+/// Returns empty string if no <title> element exists.
 pub fn get_title(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Step 1: If this is an HTML document, find the title element
+    // The title element is the first <title> element in document tree order
+    if (internal.doc_type == .html) {
+        // Find the first <title> element in the document
+        if (findTitleElement(instance)) |title_element| {
+            // Get the text content of the title element
+            if (try interfaces.Node.get_textContent(title_element)) |tc| {
+                var text_content = tc;
+                defer text_content.deinit(instance.ctx.allocator);
+                // Strip and collapse whitespace per spec
+                const stripped = stripAndCollapseWhitespace(instance.ctx.allocator, text_content.asSlice()) catch {
+                    return runtime.DOMString.initEmpty();
+                };
+                return runtime.DOMString.initOwned(stripped);
+            }
+        }
+        // No title element found - return empty string
+        return runtime.DOMString.initEmpty();
+    }
+
+    // For non-HTML documents (XML, SVG), return the cached title
+    // (SVG documents have different title element semantics)
     // Clone to transfer ownership to caller (interface layer will free)
     return try internal.title.clone(instance.ctx.allocator);
+}
+
+/// Find the first <title> element in the document tree
+fn findTitleElement(document: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(document) orelse return null;
+    const ElementImpl = @import("Element.zig");
+
+    // Start from document element (usually <html>)
+    const doc_element = internal.document_element orelse return null;
+
+    // Recursively search for the first <title> element
+    return findTitleElementInSubtree(doc_element, ElementImpl, internal.doc_type == .html);
+}
+
+/// Recursively search for <title> element in subtree
+fn findTitleElementInSubtree(node: *runtime.Instance, comptime ElementImpl: type, is_html: bool) ?*runtime.Instance {
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            // Check if this is a <title> element
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const tag_name = elem_internal.local_name.asSlice();
+                const is_title = if (is_html)
+                    std.ascii.eqlIgnoreCase(tag_name, "title")
+                else
+                    std.mem.eql(u8, tag_name, "title");
+
+                if (is_title) {
+                    return c;
+                }
+            }
+
+            // Recursively search descendants
+            if (findTitleElementInSubtree(c, ElementImpl, is_html)) |found| {
+                return found;
+            }
+        }
+        child = NodeImpl.getNextSibling(c);
+    }
+    return null;
+}
+
+/// Strip leading/trailing whitespace and collapse internal whitespace to single spaces
+/// Per HTML spec: https://html.spec.whatwg.org/multipage/dom.html#document.title
+fn stripAndCollapseWhitespace(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    if (input.len == 0) {
+        return try allocator.dupe(u8, "");
+    }
+
+    var result = std.ArrayListUnmanaged(u8){};
+    errdefer result.deinit(allocator);
+
+    var in_whitespace = true; // Skip leading whitespace
+    for (input) |c| {
+        const is_ws = (c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == '\x0C');
+        if (is_ws) {
+            if (!in_whitespace) {
+                // First whitespace after non-whitespace: add single space
+                try result.append(allocator, ' ');
+                in_whitespace = true;
+            }
+            // Otherwise skip additional whitespace
+        } else {
+            try result.append(allocator, c);
+            in_whitespace = false;
+        }
+    }
+
+    // Remove trailing whitespace (if result ends with space)
+    if (result.items.len > 0 and result.items[result.items.len - 1] == ' ') {
+        _ = result.pop();
+    }
+
+    return result.toOwnedSlice(allocator);
 }
 
 /// Getter for dir
