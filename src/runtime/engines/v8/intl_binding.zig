@@ -1016,6 +1016,747 @@ fn supportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c)
 }
 
 // ============================================================================
+// NumberFormat Instance Storage
+// ============================================================================
+
+/// NumberFormat style enum
+const NumberStyle = enum { decimal, currency, percent, unit };
+
+/// NumberFormat notation enum
+const NumberNotation = enum { standard, scientific, engineering, compact };
+
+/// Internal storage for NumberFormat instances
+const NumberFormatRegistry = struct {
+    const Entry = struct {
+        locale: []const u8,
+        locale_data: ?*const cldr.LocaleData,
+        style: NumberStyle,
+        notation: NumberNotation,
+        currency: ?[]const u8,
+        minimum_integer_digits: u8,
+        minimum_fraction_digits: u8,
+        maximum_fraction_digits: u8,
+        use_grouping: bool,
+        allocator: std.mem.Allocator,
+
+        fn deinit(self: *Entry) void {
+            self.allocator.free(self.locale);
+            if (self.currency) |c| self.allocator.free(c);
+        }
+    };
+
+    entries: std.ArrayList(?Entry) = .{},
+    free_list: std.ArrayList(usize) = .{},
+    allocator: std.mem.Allocator,
+    mutex: std.Thread.Mutex = .{},
+
+    fn init(allocator: std.mem.Allocator) NumberFormatRegistry {
+        return .{
+            .allocator = allocator,
+        };
+    }
+
+    fn deinit(self: *NumberFormatRegistry) void {
+        for (self.entries.items) |*entry_opt| {
+            if (entry_opt.*) |*entry| {
+                entry.deinit();
+            }
+        }
+        self.entries.deinit(self.allocator);
+        self.free_list.deinit(self.allocator);
+    }
+
+    fn register(self: *NumberFormatRegistry, entry: Entry) !usize {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.free_list.items.len > 0) {
+            const idx = self.free_list.pop().?;
+            self.entries.items[idx] = entry;
+            return idx;
+        }
+
+        const idx = self.entries.items.len;
+        try self.entries.append(self.allocator, entry);
+        return idx;
+    }
+
+    fn get(self: *NumberFormatRegistry, idx: usize) ?*Entry {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (idx >= self.entries.items.len) return null;
+        if (self.entries.items[idx]) |*entry| {
+            return entry;
+        }
+        return null;
+    }
+
+    fn remove(self: *NumberFormatRegistry, idx: usize) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (idx >= self.entries.items.len) return;
+        if (self.entries.items[idx]) |*entry| {
+            entry.deinit();
+            self.entries.items[idx] = null;
+            self.free_list.append(self.allocator, idx) catch {};
+        }
+    }
+};
+
+var nf_registry: ?NumberFormatRegistry = null;
+
+fn getOrInitNumberFormatRegistry() *NumberFormatRegistry {
+    if (nf_registry == null) {
+        nf_registry = NumberFormatRegistry.init(std.heap.page_allocator);
+    }
+    return &nf_registry.?;
+}
+
+// ============================================================================
+// NumberFormat Constructor Callback
+// ============================================================================
+
+/// Callback for `new Intl.NumberFormat(locales, options)`
+fn numberFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get locale argument
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Parse options
+    var style: NumberStyle = .decimal;
+    var notation: NumberNotation = .standard;
+    var currency: ?[]const u8 = null;
+    const minimum_integer_digits: u8 = 1; // TODO: parse from options
+    var minimum_fraction_digits: u8 = 0;
+    var maximum_fraction_digits: u8 = 3;
+    var use_grouping: bool = true;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // style
+            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
+            if (style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "decimal")) style = .decimal else if (std.mem.eql(u8, s, "currency")) style = .currency else if (std.mem.eql(u8, s, "percent")) style = .percent else if (std.mem.eql(u8, s, "unit")) style = .unit;
+                        }
+                    }
+                }
+            }
+
+            // notation
+            const notation_key = v8.v8_String_NewFromUtf8(isolate, "notation", 8);
+            if (notation_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var n_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &n_buf)) |n| {
+                            if (std.mem.eql(u8, n, "standard")) notation = .standard else if (std.mem.eql(u8, n, "scientific")) notation = .scientific else if (std.mem.eql(u8, n, "engineering")) notation = .engineering else if (std.mem.eql(u8, n, "compact")) notation = .compact;
+                        }
+                    }
+                }
+            }
+
+            // currency
+            const currency_key = v8.v8_String_NewFromUtf8(isolate, "currency", 8);
+            if (currency_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var c_buf: [8]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &c_buf)) |c| {
+                            currency = std.heap.page_allocator.dupe(u8, c) catch null;
+                        }
+                    }
+                }
+            }
+
+            // useGrouping
+            const grouping_key = v8.v8_String_NewFromUtf8(isolate, "useGrouping", 11);
+            if (grouping_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsBoolean(v)) {
+                        use_grouping = v8.v8_Value_BooleanValue(v, isolate);
+                    }
+                }
+            }
+
+            // minimumFractionDigits
+            const min_frac_key = v8.v8_String_NewFromUtf8(isolate, "minimumFractionDigits", 21);
+            if (min_frac_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsNumber(v)) {
+                        const num = v8.v8_Value_NumberValue(v, context);
+                        if (num >= 0 and num <= 20) {
+                            minimum_fraction_digits = @intFromFloat(num);
+                        }
+                    }
+                }
+            }
+
+            // maximumFractionDigits
+            const max_frac_key = v8.v8_String_NewFromUtf8(isolate, "maximumFractionDigits", 21);
+            if (max_frac_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsNumber(v)) {
+                        const num = v8.v8_Value_NumberValue(v, context);
+                        if (num >= 0 and num <= 20) {
+                            maximum_fraction_digits = @intFromFloat(num);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Set defaults based on style
+    if (style == .currency) {
+        minimum_fraction_digits = 2;
+        maximum_fraction_digits = 2;
+    } else if (style == .percent) {
+        maximum_fraction_digits = 0;
+    }
+
+    // Resolve locale
+    const locale_data = resolveLocale(locale);
+
+    // Create entry in registry
+    const registry = getOrInitNumberFormatRegistry();
+    const allocator = std.heap.page_allocator;
+
+    const locale_copy = allocator.dupe(u8, locale) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    const entry = NumberFormatRegistry.Entry{
+        .locale = locale_copy,
+        .locale_data = locale_data,
+        .style = style,
+        .notation = notation,
+        .currency = currency,
+        .minimum_integer_digits = minimum_integer_digits,
+        .minimum_fraction_digits = minimum_fraction_digits,
+        .maximum_fraction_digits = maximum_fraction_digits,
+        .use_grouping = use_grouping,
+        .allocator = allocator,
+    };
+
+    const idx = registry.register(entry) catch {
+        allocator.free(locale_copy);
+        if (currency) |c| allocator.free(c);
+        conv.throwTypeError(isolate, "Failed to register NumberFormat");
+        return;
+    };
+
+    // Create the result object
+    const result = v8.v8_Object_New(isolate) orelse {
+        registry.remove(idx);
+        conv.throwTypeError(isolate, "Failed to create NumberFormat object");
+        return;
+    };
+
+    // Store the registry index
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__nf_idx__", 10) orelse {
+        registry.remove(idx);
+        conv.throwTypeError(isolate, "Failed to create index key");
+        return;
+    };
+    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(idx));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
+
+    // Add methods
+    addNumberFormatMethod(isolate, context, result, "format", numberFormatFormatCallback) catch {
+        registry.remove(idx);
+        return;
+    };
+    addNumberFormatMethod(isolate, context, result, "formatToParts", numberFormatToPartsCallback) catch {
+        registry.remove(idx);
+        return;
+    };
+    addNumberFormatMethod(isolate, context, result, "resolvedOptions", numberFormatResolvedOptionsCallback) catch {
+        registry.remove(idx);
+        return;
+    };
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn addNumberFormatMethod(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    obj: *v8.Object,
+    name: []const u8,
+    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
+) !void {
+    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
+    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
+    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
+}
+
+/// Get the NumberFormat registry index from an object
+fn getNumberFormatIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object) ?usize {
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__nf_idx__", 10) orelse return null;
+    const idx_value = v8.v8_Object_Get(obj, context, @ptrCast(idx_key)) orelse return null;
+
+    if (!v8.v8_Value_IsNumber(idx_value)) return null;
+
+    const num = v8.v8_Value_NumberValue(idx_value, context);
+    if (num < 0) return null;
+    return @intFromFloat(num);
+}
+
+// ============================================================================
+// NumberFormat.format() Callback
+// ============================================================================
+
+/// Format a number with locale-specific formatting
+fn formatNumber(
+    buf: []u8,
+    value: f64,
+    entry: *const NumberFormatRegistry.Entry,
+) []const u8 {
+    const locale_data = entry.locale_data orelse cldr_embedded.getLocale("en").?;
+    const symbols = locale_data.number_symbols;
+
+    var idx: usize = 0;
+
+    // Handle special cases
+    if (std.math.isNan(value)) {
+        idx = writeSliceTo(buf, idx, symbols.nan);
+        return buf[0..idx];
+    }
+    if (std.math.isInf(value)) {
+        if (value < 0) {
+            idx = writeSliceTo(buf, idx, symbols.minus);
+        }
+        idx = writeSliceTo(buf, idx, symbols.infinity);
+        return buf[0..idx];
+    }
+
+    // Handle negative numbers
+    var abs_value = value;
+    if (value < 0) {
+        idx = writeSliceTo(buf, idx, symbols.minus);
+        abs_value = -value;
+    }
+
+    // Handle percent
+    if (entry.style == .percent) {
+        abs_value *= 100;
+    }
+
+    // Add currency symbol (prepend)
+    if (entry.style == .currency) {
+        if (entry.currency) |curr| {
+            const currency_symbol = getCurrencySymbol(curr);
+            idx = writeSliceTo(buf, idx, currency_symbol);
+        }
+    }
+
+    // Format the number
+    const formatted = formatDecimalNumber(
+        buf[idx..],
+        abs_value,
+        entry.minimum_fraction_digits,
+        entry.maximum_fraction_digits,
+        entry.use_grouping,
+        symbols.decimal,
+        symbols.group,
+    );
+    idx += formatted.len;
+
+    // Add percent sign
+    if (entry.style == .percent) {
+        idx = writeSliceTo(buf, idx, symbols.percent);
+    }
+
+    return buf[0..idx];
+}
+
+fn writeSliceTo(buf: []u8, start: usize, s: []const u8) usize {
+    var idx = start;
+    for (s) |c| {
+        if (idx >= buf.len) break;
+        buf[idx] = c;
+        idx += 1;
+    }
+    return idx;
+}
+
+fn formatDecimalNumber(
+    buf: []u8,
+    value: f64,
+    min_frac: u8,
+    max_frac: u8,
+    use_grouping: bool,
+    decimal_sep: []const u8,
+    group_sep: []const u8,
+) []const u8 {
+    var idx: usize = 0;
+
+    // Split into integer and fractional parts
+    const int_part: u64 = @intFromFloat(@floor(value));
+    var frac_part = value - @floor(value);
+
+    // Format integer part with grouping
+    var int_buf: [32]u8 = undefined;
+    const int_str = std.fmt.bufPrint(&int_buf, "{d}", .{int_part}) catch "0";
+
+    if (use_grouping and int_str.len > 3) {
+        // Insert group separators
+        var pos: usize = 0;
+        const first_group = int_str.len % 3;
+        if (first_group > 0) {
+            for (int_str[0..first_group]) |c| {
+                if (idx >= buf.len) break;
+                buf[idx] = c;
+                idx += 1;
+            }
+            pos = first_group;
+            if (pos < int_str.len) {
+                for (group_sep) |c| {
+                    if (idx >= buf.len) break;
+                    buf[idx] = c;
+                    idx += 1;
+                }
+            }
+        }
+        while (pos < int_str.len) {
+            for (int_str[pos .. pos + 3]) |c| {
+                if (idx >= buf.len) break;
+                buf[idx] = c;
+                idx += 1;
+            }
+            pos += 3;
+            if (pos < int_str.len) {
+                for (group_sep) |c| {
+                    if (idx >= buf.len) break;
+                    buf[idx] = c;
+                    idx += 1;
+                }
+            }
+        }
+    } else {
+        for (int_str) |c| {
+            if (idx >= buf.len) break;
+            buf[idx] = c;
+            idx += 1;
+        }
+    }
+
+    // Format fractional part
+    if (max_frac > 0 or min_frac > 0) {
+        // Round to max_frac digits
+        var multiplier: f64 = 1;
+        for (0..max_frac) |_| multiplier *= 10;
+        frac_part = @round(frac_part * multiplier) / multiplier;
+
+        if (frac_part > 0 or min_frac > 0) {
+            for (decimal_sep) |c| {
+                if (idx >= buf.len) break;
+                buf[idx] = c;
+                idx += 1;
+            }
+
+            // Output fractional digits
+            var frac_digits: u8 = 0;
+            var remaining = frac_part;
+            while (frac_digits < max_frac and (remaining > 0.000001 or frac_digits < min_frac)) {
+                remaining *= 10;
+                const digit: u8 = @intFromFloat(@floor(remaining));
+                remaining -= @floor(remaining);
+                if (idx >= buf.len) break;
+                buf[idx] = '0' + digit;
+                idx += 1;
+                frac_digits += 1;
+            }
+        }
+    }
+
+    return buf[0..idx];
+}
+
+fn getCurrencySymbol(currency_code: []const u8) []const u8 {
+    // Common currency symbols
+    if (std.mem.eql(u8, currency_code, "USD")) return "$";
+    if (std.mem.eql(u8, currency_code, "EUR")) return "€";
+    if (std.mem.eql(u8, currency_code, "GBP")) return "£";
+    if (std.mem.eql(u8, currency_code, "JPY")) return "¥";
+    if (std.mem.eql(u8, currency_code, "CNY")) return "¥";
+    if (std.mem.eql(u8, currency_code, "KRW")) return "₩";
+    if (std.mem.eql(u8, currency_code, "INR")) return "₹";
+    if (std.mem.eql(u8, currency_code, "RUB")) return "₽";
+    if (std.mem.eql(u8, currency_code, "BRL")) return "R$";
+    if (std.mem.eql(u8, currency_code, "CAD")) return "CA$";
+    if (std.mem.eql(u8, currency_code, "AUD")) return "A$";
+    if (std.mem.eql(u8, currency_code, "CHF")) return "CHF";
+    if (std.mem.eql(u8, currency_code, "MXN")) return "MX$";
+    // Default to currency code
+    return currency_code;
+}
+
+/// Callback for `nf.format(number)`
+fn numberFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    const this_obj = info.getThis();
+    const idx = getNumberFormatIndex(isolate, context, this_obj) orelse {
+        conv.throwTypeError(isolate, "Invalid NumberFormat object");
+        return;
+    };
+
+    const registry = getOrInitNumberFormatRegistry();
+    const entry = registry.get(idx) orelse {
+        conv.throwTypeError(isolate, "NumberFormat not found in registry");
+        return;
+    };
+
+    // Get number argument
+    var value: f64 = 0;
+    if (info.length() > 0) {
+        const num_arg = info.get(0);
+        if (v8.v8_Value_IsNumber(num_arg)) {
+            value = v8.v8_Value_NumberValue(num_arg, context);
+        }
+    }
+
+    // Format the number
+    var buf: [256]u8 = undefined;
+    const formatted = formatNumber(&buf, value, entry);
+
+    // Create V8 string result
+    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse {
+        conv.throwTypeError(isolate, "Failed to create result string");
+        return;
+    };
+
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+// ============================================================================
+// NumberFormat.formatToParts() Callback
+// ============================================================================
+
+/// Callback for `nf.formatToParts(number)`
+fn numberFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    const this_obj = info.getThis();
+    const idx = getNumberFormatIndex(isolate, context, this_obj) orelse {
+        conv.throwTypeError(isolate, "Invalid NumberFormat object");
+        return;
+    };
+
+    const registry = getOrInitNumberFormatRegistry();
+    const entry = registry.get(idx) orelse {
+        conv.throwTypeError(isolate, "NumberFormat not found");
+        return;
+    };
+
+    // Get number argument
+    var value: f64 = 0;
+    if (info.length() > 0) {
+        const num_arg = info.get(0);
+        if (v8.v8_Value_IsNumber(num_arg)) {
+            value = v8.v8_Value_NumberValue(num_arg, context);
+        }
+    }
+
+    const locale_data = entry.locale_data orelse cldr_embedded.getLocale("en").?;
+    const symbols = locale_data.number_symbols;
+
+    // Create parts array
+    const result_array = v8.v8_Array_New(isolate, 10);
+    var part_idx: u32 = 0;
+
+    // Handle negative
+    if (value < 0) {
+        addPart(isolate, context, result_array, &part_idx, "minusSign", symbols.minus);
+        value = -value;
+    }
+
+    // Handle percent
+    if (entry.style == .percent) {
+        value *= 100;
+    }
+
+    // Currency symbol
+    if (entry.style == .currency) {
+        if (entry.currency) |curr| {
+            addPart(isolate, context, result_array, &part_idx, "currency", getCurrencySymbol(curr));
+        }
+    }
+
+    // Integer part
+    const int_part: u64 = @intFromFloat(@floor(value));
+    var int_buf: [32]u8 = undefined;
+    const int_str = std.fmt.bufPrint(&int_buf, "{d}", .{int_part}) catch "0";
+    addPart(isolate, context, result_array, &part_idx, "integer", int_str);
+
+    // Decimal and fraction
+    const frac_part = value - @floor(value);
+    if (entry.maximum_fraction_digits > 0 and (frac_part > 0.000001 or entry.minimum_fraction_digits > 0)) {
+        addPart(isolate, context, result_array, &part_idx, "decimal", symbols.decimal);
+
+        var frac_buf: [32]u8 = undefined;
+        var frac_idx: usize = 0;
+        var remaining = frac_part;
+        var digits: u8 = 0;
+        while (digits < entry.maximum_fraction_digits and (remaining > 0.000001 or digits < entry.minimum_fraction_digits)) {
+            remaining *= 10;
+            const digit: u8 = @intFromFloat(@floor(remaining));
+            remaining -= @floor(remaining);
+            frac_buf[frac_idx] = '0' + digit;
+            frac_idx += 1;
+            digits += 1;
+        }
+        addPart(isolate, context, result_array, &part_idx, "fraction", frac_buf[0..frac_idx]);
+    }
+
+    // Percent sign
+    if (entry.style == .percent) {
+        addPart(isolate, context, result_array, &part_idx, "percentSign", symbols.percent);
+    }
+
+    info.setReturnValue(@ptrCast(result_array));
+}
+
+// ============================================================================
+// NumberFormat.resolvedOptions() Callback
+// ============================================================================
+
+/// Callback for `nf.resolvedOptions()`
+fn numberFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    const this_obj = info.getThis();
+    const idx = getNumberFormatIndex(isolate, context, this_obj) orelse {
+        conv.throwTypeError(isolate, "Invalid NumberFormat object");
+        return;
+    };
+
+    const registry = getOrInitNumberFormatRegistry();
+    const entry = registry.get(idx) orelse {
+        conv.throwTypeError(isolate, "NumberFormat not found");
+        return;
+    };
+
+    // Create options object
+    const result = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create options object");
+        return;
+    };
+
+    // Set properties
+    setStringProperty(isolate, context, result, "locale", entry.locale);
+    setStringProperty(isolate, context, result, "numberingSystem", "latn");
+
+    const style_str = switch (entry.style) {
+        .decimal => "decimal",
+        .currency => "currency",
+        .percent => "percent",
+        .unit => "unit",
+    };
+    setStringProperty(isolate, context, result, "style", style_str);
+
+    const notation_str = switch (entry.notation) {
+        .standard => "standard",
+        .scientific => "scientific",
+        .engineering => "engineering",
+        .compact => "compact",
+    };
+    setStringProperty(isolate, context, result, "notation", notation_str);
+
+    if (entry.currency) |curr| {
+        setStringProperty(isolate, context, result, "currency", curr);
+    }
+
+    // Set numeric properties
+    setNumberProperty(isolate, context, result, "minimumIntegerDigits", entry.minimum_integer_digits);
+    setNumberProperty(isolate, context, result, "minimumFractionDigits", entry.minimum_fraction_digits);
+    setNumberProperty(isolate, context, result, "maximumFractionDigits", entry.maximum_fraction_digits);
+
+    // Set useGrouping
+    const grouping_key = v8.v8_String_NewFromUtf8(isolate, "useGrouping", 11) orelse return;
+    const grouping_val = v8.v8_Boolean_New(isolate, entry.use_grouping);
+    _ = v8.v8_Object_Set(result, context, @ptrCast(grouping_key), @ptrCast(grouping_val));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn setNumberProperty(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key: []const u8, value: u8) void {
+    const k = v8.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return;
+    const v = v8.v8_Number_New(isolate, @floatFromInt(value));
+    _ = v8.v8_Object_Set(obj, context, @ptrCast(k), @ptrCast(v));
+}
+
+// ============================================================================
+// Intl.NumberFormat.supportedLocalesOf() Callback
+// ============================================================================
+
+/// Callback for `Intl.NumberFormat.supportedLocalesOf(locales)`
+fn numberFormatSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Return all supported locale tags (same as DateTimeFormat)
+    const tags = cldr_embedded.locale_tags;
+    const result = v8.v8_Array_New(isolate, @intCast(tags.len));
+
+    for (tags, 0..) |tag, i| {
+        const tag_str = v8.v8_String_NewFromUtf8(isolate, tag.ptr, @intCast(tag.len)) orelse continue;
+        _ = v8.v8_Array_Set(result, context, @intCast(i), @ptrCast(tag_str));
+    }
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -1024,21 +1765,40 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
     // Create Intl namespace object
     const intl_obj = v8.v8_Object_New(isolate) orelse return;
 
-    // Create DateTimeFormat constructor
+    // ========================================================================
+    // DateTimeFormat
+    // ========================================================================
     const dtf_template = v8.v8_FunctionTemplate_New(isolate, dateTimeFormatConstructorCallback, null) orelse return;
     const dtf_constructor = v8.v8_FunctionTemplate_GetFunction(dtf_template, context) orelse return;
 
     // Add supportedLocalesOf static method
-    const supported_fn = v8.v8_FunctionTemplate_New(isolate, supportedLocalesOfCallback, null) orelse return;
-    const supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(supported_fn, context) orelse return;
+    const dtf_supported_fn = v8.v8_FunctionTemplate_New(isolate, supportedLocalesOfCallback, null) orelse return;
+    const dtf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(dtf_supported_fn, context) orelse return;
     const supported_key = v8.v8_String_NewFromUtf8(isolate, "supportedLocalesOf", 18) orelse return;
-    _ = v8.v8_Object_Set(@ptrCast(dtf_constructor), context, @ptrCast(supported_key), @ptrCast(supported_fn_obj));
+    _ = v8.v8_Object_Set(@ptrCast(dtf_constructor), context, @ptrCast(supported_key), @ptrCast(dtf_supported_fn_obj));
 
     // Add DateTimeFormat to Intl object
     const dtf_key = v8.v8_String_NewFromUtf8(isolate, "DateTimeFormat", 14) orelse return;
     _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(dtf_key), @ptrCast(dtf_constructor));
 
+    // ========================================================================
+    // NumberFormat
+    // ========================================================================
+    const nf_template = v8.v8_FunctionTemplate_New(isolate, numberFormatConstructorCallback, null) orelse return;
+    const nf_constructor = v8.v8_FunctionTemplate_GetFunction(nf_template, context) orelse return;
+
+    // Add supportedLocalesOf static method
+    const nf_supported_fn = v8.v8_FunctionTemplate_New(isolate, numberFormatSupportedLocalesOfCallback, null) orelse return;
+    const nf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(nf_supported_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(nf_constructor), context, @ptrCast(supported_key), @ptrCast(nf_supported_fn_obj));
+
+    // Add NumberFormat to Intl object
+    const nf_key = v8.v8_String_NewFromUtf8(isolate, "NumberFormat", 12) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(nf_key), @ptrCast(nf_constructor));
+
+    // ========================================================================
     // Add Intl to global object
+    // ========================================================================
     const global = v8.v8_Context_Global(context) orelse return;
     const intl_key = v8.v8_String_NewFromUtf8(isolate, "Intl", 4) orelse return;
 
@@ -1057,11 +1817,19 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
 pub fn registerExternalReferences() void {
     const ext_refs = @import("external_references.zig");
 
+    // DateTimeFormat
     ext_refs.registerCallbackRuntime(dateTimeFormatConstructorCallback);
     ext_refs.registerCallbackRuntime(dateTimeFormatFormatCallback);
     ext_refs.registerCallbackRuntime(dateTimeFormatToPartsCallback);
     ext_refs.registerCallbackRuntime(dateTimeFormatResolvedOptionsCallback);
     ext_refs.registerCallbackRuntime(supportedLocalesOfCallback);
+
+    // NumberFormat
+    ext_refs.registerCallbackRuntime(numberFormatConstructorCallback);
+    ext_refs.registerCallbackRuntime(numberFormatFormatCallback);
+    ext_refs.registerCallbackRuntime(numberFormatToPartsCallback);
+    ext_refs.registerCallbackRuntime(numberFormatResolvedOptionsCallback);
+    ext_refs.registerCallbackRuntime(numberFormatSupportedLocalesOfCallback);
 }
 
 // ============================================================================
