@@ -1980,6 +1980,66 @@ pub fn getCurrentBaseUrl() ?[]const u8 {
 // Maps timer_id -> V8TimerCallback* (SelfContainedCallback wrapper) for cleanup tracking
 threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = null;
 
+// ============================================================================
+// Event Listener Storage (for dispatchEvent)
+// ============================================================================
+
+/// Event listener entry - stores either a function or an object with handleEvent
+/// NOTE: This is a simplified implementation for WPT tests that run synchronously.
+/// The listener_value is a raw pointer that's only valid during the script execution.
+/// For production use, this would need proper persistent handle management.
+const EventListenerEntry = struct {
+    /// Event type (e.g., "testevent", "load")
+    event_type: []const u8,
+    /// The listener value (function or object with handleEvent method)
+    /// Raw V8 Value pointer - only valid during same script execution
+    listener_value: ?*v8.ffi.Value,
+    /// Capture phase flag
+    capture: bool,
+    /// Once flag (auto-remove after first invocation)
+    once: bool,
+
+    /// Check if this listener matches the given criteria for removal
+    fn matches(self: *const EventListenerEntry, event_type: []const u8, listener_ptr: *v8.ffi.Value, capture: bool) bool {
+        if (!std.mem.eql(u8, self.event_type, event_type)) return false;
+        if (self.capture != capture) return false;
+        // Compare the stored value pointer with the provided one
+        if (self.listener_value) |stored| {
+            return v8.ffi.v8_Value_StrictEquals(stored, listener_ptr);
+        }
+        return false;
+    }
+
+    fn deinit(self: *EventListenerEntry, allocator: std.mem.Allocator) void {
+        allocator.free(self.event_type);
+        // Note: We don't own the V8 value, just storing the pointer
+    }
+};
+
+/// Thread-local storage for event listeners on the global object
+threadlocal var global_event_listeners: ?std.ArrayList(EventListenerEntry) = null;
+
+/// Initialize event listener storage
+fn initEventListenerStorage(allocator: std.mem.Allocator) void {
+    _ = allocator;
+    if (global_event_listeners == null) {
+        // Zig 0.15: ArrayList is unmanaged - no allocator in init
+        global_event_listeners = .{};
+    }
+}
+
+/// Clear all event listeners (called on context cleanup)
+fn clearEventListeners(allocator: std.mem.Allocator) void {
+    if (global_event_listeners) |*listeners| {
+        for (listeners.items) |*entry| {
+            entry.deinit(allocator);
+        }
+        // Zig 0.15: deinit takes allocator
+        listeners.deinit(allocator);
+        global_event_listeners = null;
+    }
+}
+
 /// Set the current result collector for V8 callbacks
 pub fn setResultCollector(collector: *test_harness.ResultCollector) void {
     current_result_collector = collector;
@@ -2028,6 +2088,12 @@ pub fn clearTimerInterface() void {
         map.deinit();
         timer_contexts = null;
     }
+
+    // Clean up event listeners
+    if (current_allocator) |allocator| {
+        clearEventListeners(allocator);
+    }
+
     current_timer_interface = null;
     current_allocator = null;
 }
@@ -2047,6 +2113,16 @@ pub fn clearPendingTimers() void {
             wrapper.destroy();
         }
         map.clearRetainingCapacity();
+    }
+
+    // Also clear event listeners between tests
+    if (current_allocator) |allocator| {
+        if (global_event_listeners) |*listeners| {
+            for (listeners.items) |*entry| {
+                entry.deinit(allocator);
+            }
+            listeners.clearRetainingCapacity();
+        }
     }
 }
 
@@ -2537,40 +2613,328 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
 /// Mock addEventListener callback - stores event listeners for the global object
 /// The WPT testharness.js calls window.addEventListener('load', callback) to register
 /// callbacks that should fire when the document is loaded.
-/// For our mock environment, we just store them and they'll be called when we trigger 'load'.
+/// Per DOM spec, addEventListener(type, callback, options) stores the listener for later dispatch.
 fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    // For now, just return undefined - we don't actually need event handling
-    // The testharness.js just needs this function to exist and not throw.
-    // In the future, we could store listeners and dispatch events properly.
+
+    // Need at least event type and callback
+    if (info.v8_FunctionCallbackInfo_Length() < 2) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    const allocator = current_allocator orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    // Initialize storage if needed
+    initEventListenerStorage(allocator);
+
+    // Get event type (first argument)
+    const type_value = info.get(0);
+    const event_type = extractString(allocator, isolate, context, type_value) catch {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+    // event_type ownership transferred to EventListenerEntry
+
+    // Get callback (second argument) - can be function or object with handleEvent
+    const callback_value = info.get(1);
+    if (v8.ffi.v8_Value_IsNull(callback_value) or v8.ffi.v8_Value_IsUndefined(callback_value)) {
+        allocator.free(event_type);
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    // Parse options (third argument) - can be boolean (capture) or object
+    var capture = false;
+    var once = false;
+    if (info.v8_FunctionCallbackInfo_Length() >= 3) {
+        const options_value = info.get(2);
+        if (v8.ffi.v8_Value_IsBoolean(options_value)) {
+            capture = v8.ffi.v8_Value_BooleanValue(options_value, isolate);
+        } else if (v8.ffi.v8_Value_IsObject(options_value)) {
+            const options_obj: *v8.ffi.Object = @ptrCast(options_value);
+            const capture_key = v8.ffi.v8_String_NewFromUtf8(isolate, "capture", 7);
+            const once_key = v8.ffi.v8_String_NewFromUtf8(isolate, "once", 4);
+            if (capture_key) |ck| {
+                if (v8.ffi.v8_Object_Get(options_obj, context, @ptrCast(ck))) |cap_val| {
+                    if (v8.ffi.v8_Value_IsBoolean(cap_val)) {
+                        capture = v8.ffi.v8_Value_BooleanValue(cap_val, isolate);
+                    }
+                }
+            }
+            if (once_key) |ok| {
+                if (v8.ffi.v8_Object_Get(options_obj, context, @ptrCast(ok))) |once_val| {
+                    if (v8.ffi.v8_Value_IsBoolean(once_val)) {
+                        once = v8.ffi.v8_Value_BooleanValue(once_val, isolate);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check if this exact listener already exists (per spec: duplicates are ignored)
+    if (global_event_listeners) |*listeners| {
+        for (listeners.items) |*entry| {
+            if (entry.matches(event_type, callback_value, capture)) {
+                // Duplicate - free resources and return
+                allocator.free(event_type);
+                if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+                    info.setReturnValue(undef_value);
+                }
+                return;
+            }
+        }
+
+        // Add new listener
+        // NOTE: We store the raw pointer - this is safe for synchronous WPT tests
+        // but would need persistent handles for production use with async/GC
+        // Zig 0.15: append takes allocator
+        listeners.append(allocator, .{
+            .event_type = event_type,
+            .listener_value = callback_value,
+            .capture = capture,
+            .once = once,
+        }) catch {
+            allocator.free(event_type);
+        };
+    }
+
     if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
         info.setReturnValue(undef_value);
     }
 }
 
-/// Mock removeEventListener callback - no-op for now
+/// removeEventListener callback - removes event listeners from the global object
+/// Per DOM spec, removeEventListener(type, callback, options) removes a matching listener.
 fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Need at least event type and callback
+    if (info.v8_FunctionCallbackInfo_Length() < 2) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    const allocator = current_allocator orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    // Get event type (first argument)
+    const type_value = info.get(0);
+    const event_type = extractString(allocator, isolate, context, type_value) catch {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+    defer allocator.free(event_type);
+
+    // Get callback (second argument)
+    const callback_value = info.get(1);
+    if (v8.ffi.v8_Value_IsNull(callback_value) or v8.ffi.v8_Value_IsUndefined(callback_value)) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    // Parse options (third argument) - can be boolean (capture) or object
+    var capture = false;
+    if (info.v8_FunctionCallbackInfo_Length() >= 3) {
+        const options_value = info.get(2);
+        if (v8.ffi.v8_Value_IsBoolean(options_value)) {
+            capture = v8.ffi.v8_Value_BooleanValue(options_value, isolate);
+        } else if (v8.ffi.v8_Value_IsObject(options_value)) {
+            const options_obj: *v8.ffi.Object = @ptrCast(options_value);
+            const capture_key = v8.ffi.v8_String_NewFromUtf8(isolate, "capture", 7);
+            if (capture_key) |ck| {
+                if (v8.ffi.v8_Object_Get(options_obj, context, @ptrCast(ck))) |cap_val| {
+                    if (v8.ffi.v8_Value_IsBoolean(cap_val)) {
+                        capture = v8.ffi.v8_Value_BooleanValue(cap_val, isolate);
+                    }
+                }
+            }
+        }
+    }
+
+    // Find and remove the listener
+    if (global_event_listeners) |*listeners| {
+        var i: usize = 0;
+        while (i < listeners.items.len) {
+            if (listeners.items[i].matches(event_type, callback_value, capture)) {
+                var entry = listeners.orderedRemove(i);
+                entry.deinit(allocator);
+                // Don't increment i, as we removed the item
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
         info.setReturnValue(undef_value);
     }
 }
 
-/// dispatchEvent callback - dispatches event using the real EventTarget implementation
-/// TODO: Currently this is a partial implementation that doesn't properly invoke
-/// event listeners. Full implementation requires:
-/// 1. Proper Window/WorkerGlobalScope setup with EventTarget internal state
-/// 2. Correct event target extraction from 'this'
-/// See issue for full implementation plan.
+/// dispatchEvent callback - dispatches event to registered listeners
+/// Per DOM spec, dispatchEvent(event) invokes matching event listeners.
+/// Uses direct V8 function calls to avoid CallbackWrapper issues with Global handles.
 fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
 
-    // Return true (event not cancelled) - partial implementation
-    // Full implementation would:
-    // 1. Extract target EventTarget from 'this'
-    // 2. Extract Event from argument
-    // 3. Call EventTarget.call_dispatchEvent
-    // 4. Invoke registered callbacks
+    // Need event argument
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        // Per spec: throw TypeError if no argument
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'dispatchEvent': 1 argument required", 55);
+        if (msg) |m| {
+            if (v8.ffi.v8_Exception_TypeError(m)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+        }
+        return;
+    }
+
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+
+    const allocator = current_allocator orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+
+    // Get event argument
+    const event_value = info.get(0);
+    if (v8.ffi.v8_Value_IsNull(event_value) or v8.ffi.v8_Value_IsUndefined(event_value)) {
+        // Per spec: throw TypeError if event is null/undefined
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'dispatchEvent': parameter 1 is not of type 'Event'", 69);
+        if (msg) |m| {
+            if (v8.ffi.v8_Exception_TypeError(m)) |exc| {
+                v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+            }
+        }
+        return;
+    }
+
+    // Get event type from the event object
+    const event_obj: *v8.ffi.Object = @ptrCast(event_value);
+    const type_key = v8.ffi.v8_String_NewFromUtf8(isolate, "type", 4) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+    const type_value = v8.ffi.v8_Object_Get(event_obj, context, @ptrCast(type_key)) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+    const event_type = extractString(allocator, isolate, context, type_value) catch {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+    defer allocator.free(event_type);
+
+    // Get global object for 'this' in callback invocations
+    const global = v8.ffi.v8_Context_Global(context) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+
+    // Track listeners to remove (for once:true)
+    var to_remove: std.ArrayList(usize) = .{};
+    defer to_remove.deinit(allocator);
+
+    // Invoke matching listeners
+    if (global_event_listeners) |*listeners| {
+        for (listeners.items, 0..) |*entry, idx| {
+            if (std.mem.eql(u8, entry.event_type, event_type)) {
+                // Get the listener value from stored pointer
+                if (entry.listener_value) |listener_value| {
+                    // Prepare argument array with event
+                    var args: [1]*v8.ffi.Value = .{event_value};
+
+                    if (v8.ffi.v8_Value_IsFunction(listener_value)) {
+                        // Listener is a function - call it directly
+                        const listener_fn: *v8.ffi.Function = @ptrCast(listener_value);
+                        _ = v8.ffi.v8_Function_Call(listener_fn, context, @ptrCast(global), 1, &args);
+                    } else if (v8.ffi.v8_Value_IsObject(listener_value)) {
+                        // Listener is an object - call handleEvent method (per EventListener callback interface)
+                        const listener_obj: *v8.ffi.Object = @ptrCast(listener_value);
+                        const handleEvent_key = v8.ffi.v8_String_NewFromUtf8(isolate, "handleEvent", 11);
+                        if (handleEvent_key) |hk| {
+                            if (v8.ffi.v8_Object_Get(listener_obj, context, @ptrCast(hk))) |handleEvent_value| {
+                                if (v8.ffi.v8_Value_IsFunction(handleEvent_value)) {
+                                    // Call handleEvent with listener object as 'this'
+                                    const handleEvent_fn: *v8.ffi.Function = @ptrCast(handleEvent_value);
+                                    _ = v8.ffi.v8_Function_Call(handleEvent_fn, context, listener_value, 1, &args);
+                                }
+                            }
+                        }
+                    }
+
+                    // Track for removal if once:true
+                    if (entry.once) {
+                        to_remove.append(allocator, idx) catch {};
+                    }
+                }
+            }
+        }
+
+        // Remove once listeners (in reverse order to maintain indices)
+        var i = to_remove.items.len;
+        while (i > 0) {
+            i -= 1;
+            const idx = to_remove.items[i];
+            var removed = listeners.orderedRemove(idx);
+            removed.deinit(allocator);
+        }
+    }
+
+    // Run microtasks after event dispatch (per event loop semantics)
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // Return true (event not cancelled) - we don't track cancellation for now
     if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
         info.setReturnValue(result);
     }
