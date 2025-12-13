@@ -722,7 +722,7 @@ pub fn createChildContext(
 
     // 1. Create new global template with immutable prototype
     // Per HTML spec, Window's [[SetPrototypeOf]] always returns false
-    const global_template = v8.v8_ObjectTemplate_New(options.isolate) orelse return error.TemplateCreationFailed;
+    const global_template = v8.v8_ObjectTemplate_New(options.isolate);
 
     // Set internal field count for Window binding (2 fields: impl pointer + destructor type)
     v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);

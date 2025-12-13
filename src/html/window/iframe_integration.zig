@@ -237,6 +237,29 @@ pub const IFrameIntegration = struct {
     /// Whether this iframe is sandboxed
     is_sandboxed: bool,
 
+    // ========================================================================
+    // Cross-Realm Support (Phase 3)
+    // ========================================================================
+    //
+    // Engine-agnostic fields for cross-realm support.
+    // V8-specific context creation is handled by the module with V8 access
+    // (e.g., HTMLIFrameElement impl) using the setRealmContext method.
+
+    /// Opaque pointer to the engine-specific context (e.g., V8 Context*)
+    /// Set by modules with engine access (e.g., impls/HTMLIFrameElement.zig)
+    engine_context: ?*anyopaque,
+
+    /// Opaque pointer to the realm (e.g., runtime.Realm*)
+    /// Contains intrinsics, global object, etc.
+    realm: ?*anyopaque,
+
+    /// Opaque pointer to cleanup data (e.g., ContextEntry* for cleanup)
+    context_cleanup_data: ?*anyopaque,
+
+    /// Callback to clean up the realm and context
+    /// Set by the module that created the context
+    cleanup_callback: ?*const fn (*IFrameIntegration) void,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -251,11 +274,19 @@ pub const IFrameIntegration = struct {
             .container_origin = Origin.createOpaque(),
             .sandbox_flags = null,
             .is_sandboxed = false,
+            // Cross-realm fields (engine-agnostic)
+            .engine_context = null,
+            .realm = null,
+            .context_cleanup_data = null,
+            .cleanup_callback = null,
         };
     }
 
     /// Clean up resources
     pub fn deinit(self: *IFrameIntegration) void {
+        // Clean up engine-specific context (Phase 3)
+        self.cleanupRealmContext();
+
         // Destroy the browsing context if it exists
         if (self.browsing_context) |ctx| {
             ctx.deinit();
@@ -271,6 +302,68 @@ pub const IFrameIntegration = struct {
         if (self.name.len > 0) {
             self.allocator.free(self.name);
         }
+    }
+
+    // ========================================================================
+    // Realm and Context Management (Phase 3: Cross-Realm Support)
+    // ========================================================================
+    //
+    // Engine-agnostic interface for realm/context management.
+    // Actual V8-specific implementation is in HTMLIFrameElement impl.
+
+    /// Set the realm context data (called from engine-specific code)
+    ///
+    /// This is called by modules with V8 access (e.g., HTMLIFrameElement impl)
+    /// to associate engine-specific context data with this integration.
+    ///
+    /// Parameters:
+    /// - context: Opaque pointer to engine context (e.g., V8 Context*)
+    /// - realm_ptr: Opaque pointer to realm (e.g., runtime.Realm*)
+    /// - cleanup_data: Opaque pointer to cleanup data (e.g., ContextEntry*)
+    /// - cleanup_fn: Callback to clean up context when iframe is removed
+    pub fn setRealmContext(
+        self: *IFrameIntegration,
+        context: ?*anyopaque,
+        realm_ptr: ?*anyopaque,
+        cleanup_data: ?*anyopaque,
+        cleanup_fn: ?*const fn (*IFrameIntegration) void,
+    ) void {
+        self.engine_context = context;
+        self.realm = realm_ptr;
+        self.context_cleanup_data = cleanup_data;
+        self.cleanup_callback = cleanup_fn;
+    }
+
+    /// Clean up the realm and engine context
+    fn cleanupRealmContext(self: *IFrameIntegration) void {
+        if (self.cleanup_callback) |callback| {
+            callback(self);
+        }
+        self.engine_context = null;
+        self.realm = null;
+        self.context_cleanup_data = null;
+        self.cleanup_callback = null;
+    }
+
+    /// Get the realm for this iframe (as opaque pointer)
+    ///
+    /// Returns the Realm associated with this iframe's browsing context.
+    /// The caller is responsible for casting to the correct type.
+    pub fn getRealmOpaque(self: *IFrameIntegration) ?*anyopaque {
+        return self.realm;
+    }
+
+    /// Get the engine context (as opaque pointer)
+    ///
+    /// Returns the engine-specific context (e.g., V8 Context).
+    /// The caller is responsible for casting to the correct type.
+    pub fn getEngineContext(self: *IFrameIntegration) ?*anyopaque {
+        return self.engine_context;
+    }
+
+    /// Check if this iframe has a realm context
+    pub fn hasRealmContext(self: *const IFrameIntegration) bool {
+        return self.realm != null;
     }
 
     /// Called when iframe is inserted into a document
@@ -314,6 +407,9 @@ pub const IFrameIntegration = struct {
     /// Called when iframe is removed from a document
     /// Destroys the nested browsing context per HTML §7.1
     pub fn onRemovedFromDocument(self: *IFrameIntegration) void {
+        // Clean up engine-specific realm context first (Phase 3)
+        self.cleanupRealmContext();
+
         if (self.browsing_context) |ctx| {
             // Close the browsing context (marks as discarded)
             ctx.close();

@@ -34,6 +34,10 @@ const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
 const SandboxFlags = html_core.SandboxFlags;
 
+// V8 imports for cross-realm support (Phase 3)
+const v8 = @import("v8");
+const context_manager = v8.context_manager;
+
 pub const State = HTMLIFrameElement.State;
 
 pub const ImplError = error{
@@ -153,12 +157,74 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // Content Accessors (§4.8.5)
 // ============================================================================
 
+/// Cleanup callback for iframe context
+/// Called when the iframe is removed from the document to clean up V8 resources
+fn iframeContextCleanup(integration: *IFrameIntegration) void {
+    if (integration.context_cleanup_data) |data| {
+        const entry: *context_manager.ContextEntry = @ptrCast(@alignCast(data));
+        context_manager.destroyChildContext(entry, integration.allocator);
+    }
+}
+
 /// Getter for contentWindow
 /// Returns the WindowProxy for the nested browsing context, or null if none.
+///
+/// Per HTML Standard §4.8.5, the contentWindow getter returns the WindowProxy
+/// for the nested browsing context. This WindowProxy provides access to the
+/// Window object in the iframe's realm.
+///
+/// Phase 3 (Cross-Realm Support): The iframe has its own V8 context with
+/// separate interface bindings and intrinsics. This enables proper cross-realm
+/// behavior (e.g., TypeError thrown from iframe's realm, not parent's).
 pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
 
+    // Ensure the realm and V8 context are created (lazy initialization)
+    // This creates a child V8 context with all interface bindings
+    if (!internal.integration.hasRealmContext()) {
+        // Get the current V8 isolate and context
+        const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
+            // Fall back to WindowProxy if no V8 isolate
+            if (internal.integration.getContentWindow()) |proxy| {
+                return @ptrCast(proxy);
+            }
+            return null;
+        };
+
+        const parent_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+            // Fall back to WindowProxy if no current context
+            if (internal.integration.getContentWindow()) |proxy| {
+                return @ptrCast(proxy);
+            }
+            return null;
+        };
+
+        // Create child V8 context with all interface bindings
+        const entry = context_manager.createChildContext(.{
+            .parent_context = parent_ctx,
+            .isolate = isolate,
+            .context_type = .window,
+            .inherit_event_loop = true,
+        }, internal.allocator) catch {
+            // Fall back to WindowProxy if context creation fails
+            if (internal.integration.getContentWindow()) |proxy| {
+                return @ptrCast(proxy);
+            }
+            return null;
+        };
+
+        // Store the realm context in the integration for cleanup on removal
+        internal.integration.setRealmContext(
+            @ptrCast(entry.v8_ctx),
+            @ptrCast(entry.realm),
+            @ptrCast(entry),
+            iframeContextCleanup,
+        );
+    }
+
     // Get the WindowProxy from the integration
+    // Note: In Phase 4+, we'll return the actual Window instance from the child realm
+    // For now, we still return the WindowProxy for backward compatibility
     if (internal.integration.getContentWindow()) |proxy| {
         // WindowProxy typedef is *const anyopaque
         return @ptrCast(proxy);
