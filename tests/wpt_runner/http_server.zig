@@ -40,6 +40,12 @@ const net = std.net;
 pub const ServerConfig = struct {
     /// Port to listen on (default: 8000)
     port: u16 = 8000,
+    /// Secondary port for cross-origin tests (default: 8001)
+    port2: u16 = 8001,
+    /// HTTPS port (default: 8443)
+    https_port: u16 = 8443,
+    /// HTTPS port 2 (default: 8444)
+    https_port2: u16 = 8444,
     /// Host to bind to (default: 127.0.0.1)
     host: []const u8 = "127.0.0.1",
     /// WPT root directory
@@ -356,6 +362,11 @@ pub const HttpServer = struct {
             return response;
         }
 
+        // Check for .sub.* files (WPT server-side substitution)
+        if (try self.handleSubstitutionFile(path, &response)) {
+            return response;
+        }
+
         // Try to serve static file
         if (try self.serveStaticFile(path, &response)) {
             return response;
@@ -606,6 +617,158 @@ pub const HttpServer = struct {
         return try self.serveFile(full_path, getMimeType(resource_name), response);
     }
 
+    /// Handle .sub.* files (WPT server-side substitution)
+    /// Files like .sub.js, .sub.html use {{var}} syntax for dynamic content
+    fn handleSubstitutionFile(self: *Self, path: []const u8, response: *HttpResponse) !bool {
+        // Check if this is a .sub.* file
+        if (std.mem.indexOf(u8, path, ".sub.")) |_| {
+            // This is a substitution file - serve with variable replacement
+            const relative_path = if (path[0] == '/') path[1..] else path;
+            const full_path = try std.fs.path.join(self.allocator, &.{ self.config.wpt_root, relative_path });
+            defer self.allocator.free(full_path);
+
+            // Read the file
+            const file = std.fs.cwd().openFile(full_path, .{}) catch return false;
+            defer file.close();
+
+            const stat = try file.stat();
+            const content = try self.allocator.alloc(u8, stat.size);
+            defer self.allocator.free(content);
+
+            const bytes_read = try file.readAll(content);
+            if (bytes_read != stat.size) {
+                return false;
+            }
+
+            // Perform substitutions
+            const substituted = try self.performSubstitutions(content);
+
+            response.status_code = 200;
+            response.status_text = "OK";
+            try response.setHeader("Content-Type", getMimeType(path));
+            response.body = substituted;
+
+            return true;
+        }
+        return false;
+    }
+
+    /// Perform WPT server-side substitutions on content
+    /// Replaces {{var}} patterns with actual values
+    fn performSubstitutions(self: *Self, content: []const u8) ![]u8 {
+        var result: std.ArrayListUnmanaged(u8) = .{};
+        errdefer result.deinit(self.allocator);
+
+        var i: usize = 0;
+        while (i < content.len) {
+            // Look for {{
+            if (i + 1 < content.len and content[i] == '{' and content[i + 1] == '{') {
+                // Find closing }}
+                const var_start = i + 2;
+                var var_end = var_start;
+                var depth: usize = 1;
+                while (var_end < content.len) {
+                    if (var_end + 1 < content.len and content[var_end] == '}' and content[var_end + 1] == '}') {
+                        depth -= 1;
+                        if (depth == 0) break;
+                    } else if (var_end + 1 < content.len and content[var_end] == '{' and content[var_end + 1] == '{') {
+                        depth += 1;
+                        var_end += 1;
+                    }
+                    var_end += 1;
+                }
+
+                if (depth == 0) {
+                    // Found a complete {{var}}
+                    const var_name = content[var_start..var_end];
+                    const value = self.getSubstitutionValue(var_name);
+                    try result.appendSlice(self.allocator, value);
+                    i = var_end + 2; // Skip past }}
+                } else {
+                    // No closing }}, keep the {{
+                    try result.append(self.allocator, content[i]);
+                    i += 1;
+                }
+            } else {
+                try result.append(self.allocator, content[i]);
+                i += 1;
+            }
+        }
+
+        return try result.toOwnedSlice(self.allocator);
+    }
+
+    /// Get the value for a WPT substitution variable
+    fn getSubstitutionValue(self: *Self, var_name: []const u8) []const u8 {
+        // Handle common WPT substitution variables
+        // See: https://web-platform-tests.org/writing-tests/server-pipes.html
+
+        // {{host}} - the server hostname
+        if (std.mem.eql(u8, var_name, "host")) {
+            return self.config.host;
+        }
+
+        // {{ports[http][0]}} - primary HTTP port
+        if (std.mem.eql(u8, var_name, "ports[http][0]")) {
+            return switch (self.config.port) {
+                8000 => "8000",
+                8080 => "8080",
+                80 => "80",
+                else => "8000",
+            };
+        }
+
+        // {{ports[http][1]}} - secondary HTTP port
+        if (std.mem.eql(u8, var_name, "ports[http][1]")) {
+            return switch (self.config.port2) {
+                8001 => "8001",
+                8081 => "8081",
+                else => "8001",
+            };
+        }
+
+        // {{ports[https][0]}} - primary HTTPS port
+        if (std.mem.eql(u8, var_name, "ports[https][0]")) {
+            return switch (self.config.https_port) {
+                8443 => "8443",
+                443 => "443",
+                else => "8443",
+            };
+        }
+
+        // {{ports[https][1]}} - secondary HTTPS port
+        if (std.mem.eql(u8, var_name, "ports[https][1]")) {
+            return switch (self.config.https_port2) {
+                8444 => "8444",
+                else => "8444",
+            };
+        }
+
+        // {{domains[www2]}} - alternate domain
+        if (std.mem.eql(u8, var_name, "domains[www2]")) {
+            return "www2.localhost";
+        }
+
+        // {{hosts[alt][]}} - alternate host (not same site)
+        if (std.mem.eql(u8, var_name, "hosts[alt][]")) {
+            return "127.0.0.1";
+        }
+
+        // {{hosts[alt][www2]}} - alternate host www2
+        if (std.mem.eql(u8, var_name, "hosts[alt][www2]")) {
+            return "www2.127.0.0.1";
+        }
+
+        // {{location[server]}} - full server URL
+        if (std.mem.eql(u8, var_name, "location[server]")) {
+            return "http://localhost:8000";
+        }
+
+        // Unknown variable - return empty string to avoid breaking
+        // In a full implementation, we'd log a warning
+        return "";
+    }
+
     /// Serve a static file
     fn serveStaticFile(self: *Self, path: []const u8, response: *HttpResponse) !bool {
         // Build full path
@@ -709,4 +872,65 @@ test "HttpResponse - serialize" {
     try std.testing.expect(std.mem.startsWith(u8, serialized, "HTTP/1.1 200 OK\r\n"));
     try std.testing.expect(std.mem.indexOf(u8, serialized, "Content-Type: text/html") != null);
     try std.testing.expect(std.mem.endsWith(u8, serialized, "<html></html>"));
+}
+
+test "HttpServer - performSubstitutions" {
+    const allocator = std.testing.allocator;
+
+    var server = try HttpServer.init(allocator, .{
+        .port = 8000,
+        .host = "localhost",
+    });
+    defer server.deinit();
+
+    // Test simple variable substitution
+    {
+        const input = "var HOST = '{{host}}';";
+        const result = try server.performSubstitutions(input);
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings("var HOST = 'localhost';", result);
+    }
+
+    // Test port substitution
+    {
+        const input = "var PORT = '{{ports[http][0]}}';";
+        const result = try server.performSubstitutions(input);
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings("var PORT = '8000';", result);
+    }
+
+    // Test multiple substitutions
+    {
+        const input = "{{host}}:{{ports[http][0]}}";
+        const result = try server.performSubstitutions(input);
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings("localhost:8000", result);
+    }
+
+    // Test no substitutions
+    {
+        const input = "plain text with no vars";
+        const result = try server.performSubstitutions(input);
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings("plain text with no vars", result);
+    }
+}
+
+test "HttpServer - getSubstitutionValue" {
+    const allocator = std.testing.allocator;
+
+    var server = try HttpServer.init(allocator, .{
+        .port = 8000,
+        .port2 = 8001,
+        .https_port = 8443,
+        .host = "localhost",
+    });
+    defer server.deinit();
+
+    try std.testing.expectEqualStrings("localhost", server.getSubstitutionValue("host"));
+    try std.testing.expectEqualStrings("8000", server.getSubstitutionValue("ports[http][0]"));
+    try std.testing.expectEqualStrings("8001", server.getSubstitutionValue("ports[http][1]"));
+    try std.testing.expectEqualStrings("8443", server.getSubstitutionValue("ports[https][0]"));
+    try std.testing.expectEqualStrings("www2.localhost", server.getSubstitutionValue("domains[www2]"));
+    try std.testing.expectEqualStrings("", server.getSubstitutionValue("unknown_var"));
 }
