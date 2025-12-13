@@ -788,12 +788,17 @@ fn dateTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.
         return;
     };
 
-    // Get timestamp
+    // Get timestamp from argument (can be number or Date object)
     var timestamp_ms: i64 = std.time.milliTimestamp();
     if (info.length() > 0) {
         const date_arg = info.get(0);
-        if (v8.v8_Value_IsNumber(date_arg)) {
-            timestamp_ms = @intFromFloat(v8.v8_Value_NumberValue(date_arg, context));
+        // Use v8_Value_NumberValue which handles both numbers and Date objects
+        // (Date objects implement valueOf() which returns the timestamp)
+        if (!v8.v8_Value_IsNullOrUndefined(date_arg)) {
+            const num_val = v8.v8_Value_NumberValue(date_arg, context);
+            if (!std.math.isNan(num_val)) {
+                timestamp_ms = @intFromFloat(num_val);
+            }
         }
     }
 
@@ -949,12 +954,15 @@ fn dateTimeFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(
         return;
     };
 
-    // Get timestamp
+    // Get timestamp from argument (can be number or Date object)
     var timestamp_ms: i64 = std.time.milliTimestamp();
     if (info.length() > 0) {
         const date_arg = info.get(0);
-        if (v8.v8_Value_IsNumber(date_arg)) {
-            timestamp_ms = @intFromFloat(v8.v8_Value_NumberValue(date_arg, context));
+        if (!v8.v8_Value_IsNullOrUndefined(date_arg)) {
+            const num_val = v8.v8_Value_NumberValue(date_arg, context);
+            if (!std.math.isNan(num_val)) {
+                timestamp_ms = @intFromFloat(num_val);
+            }
         }
     }
 
