@@ -83,6 +83,42 @@ git submodule update --init
 
 The WPT tests will be located at `tests/wpt/`.
 
+### WPT Server Configuration
+
+Some WPT tests use server-side template substitution (files ending in `.sub.js`, `.sub.html`, etc.). These require the Python WPT server to be running with proper port configuration.
+
+Create `tests/wpt/config.json` with the following content:
+
+```json
+{
+  "browser_host": "localhost",
+  "bind_address": true,
+  "alternate_hosts": {},
+  "check_subdomains": false,
+  "ports": {
+    "http": [8000, 8001],
+    "https": [8443, 8444],
+    "ws": [9001],
+    "wss": [9443],
+    "h2": [9000]
+  },
+  "ssl": {
+    "type": "pregenerated",
+    "pregenerated": {
+      "host_key_path": "tools/certs/web-platform.test.key",
+      "host_cert_path": "tools/certs/web-platform.test.pem"
+    }
+  }
+}
+```
+
+**Why these settings?**
+- **WebSocket ports (`ws`, `wss`)**: Required for tests that use `{{ports[ws][0]}}` substitution
+- **HTTPS ports**: Required for secure context tests (`.https.html` files)
+- **SSL with pregenerated certs**: Enables HTTPS/WSS without generating certificates
+
+**Note**: This file is gitignored in the WPT submodule by design - it's local configuration.
+
 ## Running Tests
 
 ### Basic Usage
