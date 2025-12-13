@@ -74,6 +74,18 @@ pub const PerformanceServerTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceServerTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceServerTimingToJSON = struct {
+        name: runtime.DOMString,
+        duration: DOMHighResTimeStamp,
+        description: runtime.DOMString,
+    };
+
     const delegates = .{
 
         .get_description = &get_description,

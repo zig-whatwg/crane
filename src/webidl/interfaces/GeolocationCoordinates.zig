@@ -82,6 +82,22 @@ pub const GeolocationCoordinates = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for GeolocationCoordinates
+    /// Generated from [Default] toJSON extended attribute
+    pub const GeolocationCoordinatesToJSON = struct {
+        accuracy: f64,
+        latitude: f64,
+        longitude: f64,
+        altitude: f64,
+        altitudeAccuracy: f64,
+        heading: f64,
+        speed: f64,
+    };
+
     const delegates = .{
 
         .get_accuracy = &get_accuracy,

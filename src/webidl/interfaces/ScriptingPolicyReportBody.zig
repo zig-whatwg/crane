@@ -82,6 +82,20 @@ pub const ScriptingPolicyReportBody = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for ScriptingPolicyReportBody
+    /// Generated from [Default] toJSON extended attribute
+    pub const ScriptingPolicyReportBodyToJSON = struct {
+        violationType: runtime.DOMString,
+        violationURL: runtime.USVString,
+        violationSample: runtime.USVString,
+        lineno: u32,
+        colno: u32,
+    };
+
     const delegates = .{
 
         .get_colno = &get_colno,

@@ -87,6 +87,19 @@ pub const DOMPointReadOnly = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for DOMPointReadOnly
+    /// Generated from [Default] toJSON extended attribute
+    pub const DOMPointReadOnlyToJSON = struct {
+        x: f64,
+        y: f64,
+        z: f64,
+        w: f64,
+    };
+
     const delegates = .{
 
         .get_w = &get_w,

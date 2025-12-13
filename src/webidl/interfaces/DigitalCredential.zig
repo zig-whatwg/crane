@@ -80,6 +80,19 @@ pub const DigitalCredential = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for DigitalCredential
+    /// Generated from [Default] toJSON extended attribute
+    pub const DigitalCredentialToJSON = struct {
+        id: runtime.USVString,
+        type: runtime.DOMString,
+        protocol: runtime.DOMString,
+        data: runtime.JSValue,
+    };
+
     const delegates = .{
 
         .get_data = &get_data,

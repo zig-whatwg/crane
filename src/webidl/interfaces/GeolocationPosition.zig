@@ -69,6 +69,17 @@ pub const GeolocationPosition = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for GeolocationPosition
+    /// Generated from [Default] toJSON extended attribute
+    pub const GeolocationPositionToJSON = struct {
+        coords: GeolocationCoordinates,
+        timestamp: EpochTimeStamp,
+    };
+
     const delegates = .{
 
         .get_coords = &get_coords,

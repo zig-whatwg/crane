@@ -110,6 +110,24 @@ pub const PaymentResponse = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PaymentResponse
+    /// Generated from [Default] toJSON extended attribute
+    pub const PaymentResponseToJSON = struct {
+        requestId: runtime.DOMString,
+        methodName: runtime.DOMString,
+        details: runtime.JSValue,
+        shippingAddress: ContactAddress,
+        shippingOption: runtime.DOMString,
+        payerName: runtime.DOMString,
+        payerEmail: runtime.DOMString,
+        payerPhone: runtime.DOMString,
+        onpayerdetailchange: EventHandler,
+    };
+
     const delegates = .{
 
         .get_details = &get_details,

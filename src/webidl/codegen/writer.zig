@@ -6,6 +6,7 @@ const std = @import("std");
 const types = @import("types.zig");
 const overload = @import("overload.zig");
 const property_classifier = @import("property_classifier.zig");
+const ir = @import("ir.zig");
 
 /// Check if a union type is a (TrustedType or DOMString/USVString) pattern
 /// These unions are used for Trusted Types API integration but since TrustedTypes
@@ -1211,6 +1212,13 @@ fn idlTypeToZig(idl_type_name: []const u8) []const u8 {
         return "runtime.BigInt64Array";
     } else if (std.mem.eql(u8, idl_type_name, "BigUint64Array")) {
         return "runtime.BigUint64Array";
+        // FrozenArray<T> - immutable array type in WebIDL
+        // For toJSON, these serialize as JavaScript arrays
+    } else if (std.mem.eql(u8, idl_type_name, "FrozenArray")) {
+        return "runtime.JSValue";
+        // sequence<T> - also maps to array
+    } else if (std.mem.eql(u8, idl_type_name, "sequence")) {
+        return "runtime.JSValue";
     } else {
         // Interface types - preserve exact casing from WebIDL
         // These will be forward references (e.g., Node, Element, etc.)
@@ -1590,6 +1598,49 @@ pub fn writeConstants(
         try writer.writeAll(";\n");
         try writer.writeAll("    }\n\n");
     }
+}
+
+/// Write ToJSON struct for an interface with [Default] toJSON
+///
+/// Per WebIDL spec, [Default] toJSON() returns an object with all exposed
+/// regular (non-static) attributes from the interface and its inherited interfaces.
+///
+/// Example output for DOMRectReadOnly:
+/// ```zig
+/// /// ToJSON result struct for DOMRectReadOnly
+/// /// Generated from [Default] toJSON extended attribute
+/// pub const DOMRectReadOnlyToJSON = struct {
+///     x: f64,
+///     y: f64,
+///     width: f64,
+///     height: f64,
+///     top: f64,
+///     right: f64,
+///     bottom: f64,
+///     left: f64,
+/// };
+/// ```
+pub fn writeToJSONStruct(
+    writer: anytype,
+    interface_name: []const u8,
+    attrs: []const ir.ToJSONAttribute,
+) !void {
+    if (attrs.len == 0) return;
+
+    try writer.writeAll("    // ========================================\n");
+    try writer.writeAll("    // ToJSON Struct ([Default] toJSON result)\n");
+    try writer.writeAll("    // ========================================\n\n");
+
+    try writer.print("    /// ToJSON result struct for {s}\n", .{interface_name});
+    try writer.writeAll("    /// Generated from [Default] toJSON extended attribute\n");
+    try writer.print("    pub const {s}ToJSON = struct {{\n", .{interface_name});
+
+    for (attrs) |attr| {
+        const zig_type = idlTypeToZig(attr.idl_type.type);
+        try writer.print("        {s}: {s},\n", .{ attr.name, zig_type });
+    }
+
+    try writer.writeAll("    };\n\n");
 }
 
 /// Write VTable constant

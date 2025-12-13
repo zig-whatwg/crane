@@ -75,6 +75,19 @@ pub const MediaDeviceInfo = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for MediaDeviceInfo
+    /// Generated from [Default] toJSON extended attribute
+    pub const MediaDeviceInfoToJSON = struct {
+        deviceId: runtime.DOMString,
+        kind: MediaDeviceKind,
+        label: runtime.DOMString,
+        groupId: runtime.DOMString,
+    };
+
     const delegates = .{
 
         .get_deviceId = &get_deviceId,

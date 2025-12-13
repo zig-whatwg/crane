@@ -578,3 +578,75 @@ pub const Interface = struct {
         self.mixins.deinit(allocator);
     }
 };
+
+/// Information about attributes to include in a ToJSON struct
+pub const ToJSONAttribute = struct {
+    name: []const u8,
+    idl_type: types.IDLType,
+};
+
+/// Collect all attributes that should be serialized by [Default] toJSON
+/// Per WebIDL spec, this includes all regular (non-static) attributes
+/// from the interface AND its inherited interfaces.
+///
+/// Returns a list of ToJSONAttribute structs with attribute names and types.
+/// Caller must free the returned slice.
+pub fn collectToJSONAttributes(
+    allocator: std.mem.Allocator,
+    interface_name: []const u8,
+    ir: *const IR,
+) ![]ToJSONAttribute {
+    var attrs: std.ArrayList(ToJSONAttribute) = .{};
+    errdefer attrs.deinit(allocator);
+
+    // Track seen attribute names to handle overrides
+    // Child attributes with same name replace parent attributes
+    var seen_names = std.StringHashMap(usize).init(allocator);
+    defer seen_names.deinit();
+
+    // Walk the inheritance chain (parent first, then child)
+    // This gives us attributes in the order they should appear
+    try collectToJSONAttributesRecursive(allocator, interface_name, ir, &attrs, &seen_names);
+
+    return try attrs.toOwnedSlice(allocator);
+}
+
+/// Recursively collect attributes from inheritance chain (parent first, then child)
+/// Child attributes with the same name override parent attributes (per WebIDL spec)
+fn collectToJSONAttributesRecursive(
+    allocator: std.mem.Allocator,
+    interface_name: []const u8,
+    ir: *const IR,
+    attrs: *std.ArrayList(ToJSONAttribute),
+    seen_names: *std.StringHashMap(usize),
+) !void {
+    const iface = ir.interfaces.get(interface_name) orelse return;
+
+    // First, collect parent attributes (if any)
+    if (iface.inheritance) |parent_name| {
+        try collectToJSONAttributesRecursive(allocator, parent_name, ir, attrs, seen_names);
+    }
+
+    // Then add this interface's own regular (non-static) attributes
+    // Child attributes override parent attributes with the same name
+    for (iface.members.items) |member| {
+        if (member.asAttribute()) |attr| {
+            // Skip static attributes - they're not serialized by toJSON
+            if (attr.static) continue;
+
+            const new_attr = ToJSONAttribute{
+                .name = attr.name,
+                .idl_type = attr.idlType,
+            };
+
+            if (seen_names.get(attr.name)) |existing_index| {
+                // Replace parent's attribute with child's (child overrides)
+                attrs.items[existing_index] = new_attr;
+            } else {
+                // New attribute - add it and track its index
+                try seen_names.put(attr.name, attrs.items.len);
+                try attrs.append(allocator, new_attr);
+            }
+        }
+    }
+}

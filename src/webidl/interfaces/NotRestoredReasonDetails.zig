@@ -64,6 +64,16 @@ pub const NotRestoredReasonDetails = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for NotRestoredReasonDetails
+    /// Generated from [Default] toJSON extended attribute
+    pub const NotRestoredReasonDetailsToJSON = struct {
+        reason: runtime.DOMString,
+    };
+
     const delegates = .{
 
         .get_reason = &get_reason,

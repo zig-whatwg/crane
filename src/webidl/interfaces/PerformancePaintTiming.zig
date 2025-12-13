@@ -73,6 +73,23 @@ pub const PerformancePaintTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformancePaintTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformancePaintTimingToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        paintTime: DOMHighResTimeStamp,
+        presentationTime: DOMHighResTimeStamp,
+    };
+
     const delegates = .{
 
         .get_paintTime = &get_paintTime,

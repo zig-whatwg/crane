@@ -77,6 +77,25 @@ pub const LayoutShift = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for LayoutShift
+    /// Generated from [Default] toJSON extended attribute
+    pub const LayoutShiftToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        value: f64,
+        hadRecentInput: bool,
+        lastInputTime: DOMHighResTimeStamp,
+        sources: runtime.JSValue,
+    };
+
     const delegates = .{
 
         .get_hadRecentInput = &get_hadRecentInput,

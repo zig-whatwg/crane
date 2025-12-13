@@ -108,6 +108,59 @@ pub const PerformanceNavigationTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceNavigationTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceNavigationTimingToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        initiatorType: runtime.DOMString,
+        deliveryType: runtime.DOMString,
+        nextHopProtocol: runtime.ByteString,
+        workerStart: DOMHighResTimeStamp,
+        redirectStart: DOMHighResTimeStamp,
+        redirectEnd: DOMHighResTimeStamp,
+        fetchStart: DOMHighResTimeStamp,
+        domainLookupStart: DOMHighResTimeStamp,
+        domainLookupEnd: DOMHighResTimeStamp,
+        connectStart: DOMHighResTimeStamp,
+        connectEnd: DOMHighResTimeStamp,
+        secureConnectionStart: DOMHighResTimeStamp,
+        requestStart: DOMHighResTimeStamp,
+        finalResponseHeadersStart: DOMHighResTimeStamp,
+        firstInterimResponseStart: DOMHighResTimeStamp,
+        responseStart: DOMHighResTimeStamp,
+        responseEnd: DOMHighResTimeStamp,
+        transferSize: u64,
+        encodedBodySize: u64,
+        decodedBodySize: u64,
+        responseStatus: u16,
+        renderBlockingStatus: RenderBlockingStatusType,
+        contentType: runtime.DOMString,
+        contentEncoding: runtime.DOMString,
+        serverTiming: runtime.JSValue,
+        unloadEventStart: DOMHighResTimeStamp,
+        unloadEventEnd: DOMHighResTimeStamp,
+        domInteractive: DOMHighResTimeStamp,
+        domContentLoadedEventStart: DOMHighResTimeStamp,
+        domContentLoadedEventEnd: DOMHighResTimeStamp,
+        domComplete: DOMHighResTimeStamp,
+        loadEventStart: DOMHighResTimeStamp,
+        loadEventEnd: DOMHighResTimeStamp,
+        type: NavigationTimingType,
+        redirectCount: u16,
+        criticalCHRestart: DOMHighResTimeStamp,
+        notRestoredReasons: NotRestoredReasons,
+        activationStart: DOMHighResTimeStamp,
+    };
+
     const delegates = .{
 
         .get_activationStart = &get_activationStart,

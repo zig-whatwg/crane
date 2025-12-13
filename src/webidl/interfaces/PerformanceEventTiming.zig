@@ -83,6 +83,27 @@ pub const PerformanceEventTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceEventTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceEventTimingToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        processingStart: DOMHighResTimeStamp,
+        processingEnd: DOMHighResTimeStamp,
+        cancelable: bool,
+        target: Node,
+        targetSelector: runtime.DOMString,
+        interactionId: u64,
+    };
+
     const delegates = .{
 
         .get_cancelable = &get_cancelable,

@@ -77,6 +77,18 @@ pub const PressureRecord = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PressureRecord
+    /// Generated from [Default] toJSON extended attribute
+    pub const PressureRecordToJSON = struct {
+        source: PressureSource,
+        state: PressureState,
+        time: DOMHighResTimeStamp,
+    };
+
     const delegates = .{
 
         .get_source = &get_source,

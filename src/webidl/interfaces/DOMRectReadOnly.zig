@@ -95,6 +95,23 @@ pub const DOMRectReadOnly = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for DOMRectReadOnly
+    /// Generated from [Default] toJSON extended attribute
+    pub const DOMRectReadOnlyToJSON = struct {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+        left: f64,
+    };
+
     const delegates = .{
 
         .get_bottom = &get_bottom,

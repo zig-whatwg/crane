@@ -91,6 +91,25 @@ pub const ContactAddress = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for ContactAddress
+    /// Generated from [Default] toJSON extended attribute
+    pub const ContactAddressToJSON = struct {
+        city: runtime.DOMString,
+        country: runtime.DOMString,
+        dependentLocality: runtime.DOMString,
+        organization: runtime.DOMString,
+        phone: runtime.DOMString,
+        postalCode: runtime.DOMString,
+        recipient: runtime.DOMString,
+        region: runtime.DOMString,
+        sortingCode: runtime.DOMString,
+        addressLine: runtime.JSValue,
+    };
+
     const delegates = .{
 
         .get_addressLine = &get_addressLine,

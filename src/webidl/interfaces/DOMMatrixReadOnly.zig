@@ -186,6 +186,39 @@ pub const DOMMatrixReadOnly = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for DOMMatrixReadOnly
+    /// Generated from [Default] toJSON extended attribute
+    pub const DOMMatrixReadOnlyToJSON = struct {
+        a: f64,
+        b: f64,
+        c: f64,
+        d: f64,
+        e: f64,
+        f: f64,
+        m11: f64,
+        m12: f64,
+        m13: f64,
+        m14: f64,
+        m21: f64,
+        m22: f64,
+        m23: f64,
+        m24: f64,
+        m31: f64,
+        m32: f64,
+        m33: f64,
+        m34: f64,
+        m41: f64,
+        m42: f64,
+        m43: f64,
+        m44: f64,
+        is2D: bool,
+        isIdentity: bool,
+    };
+
     const delegates = .{
 
         .get_a = &get_a,

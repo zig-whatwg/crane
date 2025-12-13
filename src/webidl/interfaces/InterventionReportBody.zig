@@ -80,6 +80,20 @@ pub const InterventionReportBody = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for InterventionReportBody
+    /// Generated from [Default] toJSON extended attribute
+    pub const InterventionReportBodyToJSON = struct {
+        id: runtime.DOMString,
+        message: runtime.DOMString,
+        sourceFile: runtime.DOMString,
+        lineNumber: u32,
+        columnNumber: u32,
+    };
+
     const delegates = .{
 
         .get_columnNumber = &get_columnNumber,

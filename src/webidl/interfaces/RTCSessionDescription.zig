@@ -69,6 +69,17 @@ pub const RTCSessionDescription = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for RTCSessionDescription
+    /// Generated from [Default] toJSON extended attribute
+    pub const RTCSessionDescriptionToJSON = struct {
+        type: RTCSdpType,
+        sdp: runtime.DOMString,
+    };
+
     const delegates = .{
 
         .get_sdp = &get_sdp,

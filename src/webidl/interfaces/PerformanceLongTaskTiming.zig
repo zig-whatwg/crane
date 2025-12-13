@@ -80,6 +80,22 @@ pub const PerformanceLongTaskTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceLongTaskTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceLongTaskTimingToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        attribution: runtime.JSValue,
+    };
+
     const delegates = .{
 
         .get_attribution = &get_attribution,

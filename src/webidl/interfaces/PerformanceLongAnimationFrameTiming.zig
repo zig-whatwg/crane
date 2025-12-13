@@ -102,6 +102,28 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceLongAnimationFrameTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceLongAnimationFrameTimingToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        renderStart: DOMHighResTimeStamp,
+        styleAndLayoutStart: DOMHighResTimeStamp,
+        blockingDuration: DOMHighResTimeStamp,
+        firstUIEventTimestamp: DOMHighResTimeStamp,
+        scripts: runtime.JSValue,
+        paintTime: DOMHighResTimeStamp,
+        presentationTime: DOMHighResTimeStamp,
+    };
+
     const delegates = .{
 
         .get_blockingDuration = &get_blockingDuration,

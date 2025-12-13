@@ -83,6 +83,21 @@ pub const PerformanceEntry = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceEntry
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceEntryToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+    };
+
     const delegates = .{
 
         .get_duration = &get_duration,

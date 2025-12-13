@@ -98,6 +98,17 @@ pub const PerformanceNavigation = struct {
         return 255;
     }
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceNavigation
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceNavigationToJSON = struct {
+        type: u16,
+        redirectCount: u16,
+    };
+
     const delegates = .{
 
         .get_TYPE_BACK_FORWARD = &get_TYPE_BACK_FORWARD,

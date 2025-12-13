@@ -1366,6 +1366,16 @@ fn generateInterfaceFile(
     // Only generate OWN constants - inherited constants accessed via parent vtable
     try writer.writeConstants(w, own_constants.items);
 
+    // Generate ToJSON struct if interface has [Default] toJSON operation
+    // Per WebIDL spec, [Default] toJSON serializes all regular attributes (own + inherited)
+    if (types.findDefaultToJSON(interface.members)) |_| {
+        if (ir) |ir_ptr| {
+            const to_json_attrs = try ir_mod.collectToJSONAttributes(allocator, interface.name, ir_ptr);
+            defer allocator.free(to_json_attrs);
+            try writer.writeToJSONStruct(w, interface.name, to_json_attrs);
+        }
+    }
+
     // Deduplicate attributes, operations, and constants before generating VTable and delegate functions
     // This prevents duplicate vtable entries and delegate functions from multiple inheritance/mixins
     try deduplicateAttributes(allocator, &all_attrs);

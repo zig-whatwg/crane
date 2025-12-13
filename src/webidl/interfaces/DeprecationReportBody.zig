@@ -83,6 +83,21 @@ pub const DeprecationReportBody = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for DeprecationReportBody
+    /// Generated from [Default] toJSON extended attribute
+    pub const DeprecationReportBodyToJSON = struct {
+        id: runtime.DOMString,
+        anticipatedRemoval: runtime.JSValue,
+        message: runtime.DOMString,
+        sourceFile: runtime.DOMString,
+        lineNumber: u32,
+        columnNumber: u32,
+    };
+
     const delegates = .{
 
         .get_anticipatedRemoval = &get_anticipatedRemoval,

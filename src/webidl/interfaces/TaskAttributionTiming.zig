@@ -88,6 +88,25 @@ pub const TaskAttributionTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for TaskAttributionTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const TaskAttributionTimingToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        containerType: runtime.DOMString,
+        containerSrc: runtime.DOMString,
+        containerId: runtime.DOMString,
+        containerName: runtime.DOMString,
+    };
+
     const delegates = .{
 
         .get_containerId = &get_containerId,

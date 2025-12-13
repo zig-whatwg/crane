@@ -109,6 +109,31 @@ pub const PerformanceScriptTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceScriptTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceScriptTimingToJSON = struct {
+        id: u64,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        invokerType: ScriptInvokerType,
+        invoker: runtime.DOMString,
+        executionStart: DOMHighResTimeStamp,
+        sourceURL: runtime.DOMString,
+        sourceFunctionName: runtime.DOMString,
+        sourceCharPosition: i64,
+        pauseDuration: DOMHighResTimeStamp,
+        forcedStyleAndLayoutDuration: DOMHighResTimeStamp,
+        window: Window,
+        windowAttribution: ScriptWindowAttribution,
+    };
+
     const delegates = .{
 
         .get_duration = &get_duration,

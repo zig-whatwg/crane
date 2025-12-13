@@ -130,6 +130,21 @@ pub const Performance = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for Performance
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceToJSON = struct {
+        timeOrigin: DOMHighResTimeStamp,
+        eventCounts: EventCounts,
+        interactionCount: u64,
+        timing: PerformanceTiming,
+        navigation: PerformanceNavigation,
+        onresourcetimingbufferfull: EventHandler,
+    };
+
     const delegates = .{
 
         .get_eventCounts = &get_eventCounts,

@@ -95,6 +95,19 @@ pub const DOMQuad = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for DOMQuad
+    /// Generated from [Default] toJSON extended attribute
+    pub const DOMQuadToJSON = struct {
+        p1: DOMPoint,
+        p2: DOMPoint,
+        p3: DOMPoint,
+        p4: DOMPoint,
+    };
+
     const delegates = .{
 
         .get_p1 = &get_p1,

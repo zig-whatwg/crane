@@ -103,6 +103,31 @@ pub const PerformanceElementTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceElementTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceElementTimingToJSON = struct {
+        id: runtime.DOMString,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        renderTime: DOMHighResTimeStamp,
+        loadTime: DOMHighResTimeStamp,
+        intersectionRect: DOMRectReadOnly,
+        identifier: runtime.DOMString,
+        naturalWidth: u32,
+        naturalHeight: u32,
+        element: Element,
+        url: runtime.USVString,
+        paintTime: DOMHighResTimeStamp,
+        presentationTime: DOMHighResTimeStamp,
+    };
+
     const delegates = .{
 
         .get_element = &get_element,

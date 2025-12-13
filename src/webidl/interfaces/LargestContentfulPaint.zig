@@ -92,6 +92,28 @@ pub const LargestContentfulPaint = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for LargestContentfulPaint
+    /// Generated from [Default] toJSON extended attribute
+    pub const LargestContentfulPaintToJSON = struct {
+        id: runtime.DOMString,
+        name: runtime.DOMString,
+        entryType: runtime.DOMString,
+        startTime: DOMHighResTimeStamp,
+        duration: DOMHighResTimeStamp,
+        navigationId: u64,
+        loadTime: DOMHighResTimeStamp,
+        renderTime: DOMHighResTimeStamp,
+        size: u32,
+        url: runtime.DOMString,
+        element: Element,
+        paintTime: DOMHighResTimeStamp,
+        presentationTime: DOMHighResTimeStamp,
+    };
+
     const delegates = .{
 
         .get_element = &get_element,

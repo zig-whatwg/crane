@@ -123,6 +123,36 @@ pub const PerformanceTiming = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for PerformanceTiming
+    /// Generated from [Default] toJSON extended attribute
+    pub const PerformanceTimingToJSON = struct {
+        navigationStart: u64,
+        unloadEventStart: u64,
+        unloadEventEnd: u64,
+        redirectStart: u64,
+        redirectEnd: u64,
+        fetchStart: u64,
+        domainLookupStart: u64,
+        domainLookupEnd: u64,
+        connectStart: u64,
+        connectEnd: u64,
+        secureConnectionStart: u64,
+        requestStart: u64,
+        responseStart: u64,
+        responseEnd: u64,
+        domLoading: u64,
+        domInteractive: u64,
+        domContentLoadedEventStart: u64,
+        domContentLoadedEventEnd: u64,
+        domComplete: u64,
+        loadEventStart: u64,
+        loadEventEnd: u64,
+    };
+
     const delegates = .{
 
         .get_connectEnd = &get_connectEnd,

@@ -331,6 +331,32 @@ pub const SpecialOperation = enum {
     stringifier,
 };
 
+/// Check if an operation has the [Default] extended attribute
+/// Used to detect [Default] toJSON() operations per WebIDL spec
+pub fn hasDefaultExtAttr(op: Operation) bool {
+    for (op.extAttrs) |attr| {
+        if (std.mem.eql(u8, attr.name, "Default")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Check if an interface has a [Default] toJSON() operation
+/// Returns the operation if found, null otherwise
+pub fn findDefaultToJSON(members: []const Member) ?Operation {
+    for (members) |member| {
+        if (member.asOperation()) |op| {
+            if (op.name) |name| {
+                if (std.mem.eql(u8, name, "toJSON") and hasDefaultExtAttr(op)) {
+                    return op;
+                }
+            }
+        }
+    }
+    return null;
+}
+
 /// WebIDL constant definition
 pub const Constant = struct {
     /// Constant name
