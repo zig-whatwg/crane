@@ -99,6 +99,27 @@ pub const ResolvedLocale = locale.ResolvedLocale;
 pub const cldr = @import("cldr/root.zig");
 
 // ============================================================================
+// Calendar Module - Non-Gregorian calendar systems
+// ============================================================================
+
+pub const calendar = @import("calendar/root.zig");
+
+/// Calendar date with year, month, day components
+pub const CalendarDate = calendar.CalendarDate;
+
+/// Supported calendar types (gregorian, buddhist, japanese, islamic, etc.)
+pub const CalendarType = calendar.CalendarType;
+
+/// Calendar interface for conversions and calculations
+pub const Calendar = calendar.Calendar;
+
+/// Calendar era definition
+pub const Era = calendar.Era;
+
+/// Calendar-related errors
+pub const CalendarError = calendar.CalendarError;
+
+// ============================================================================
 // TimeZone Module - IANA time zones
 // ============================================================================
 
@@ -216,6 +237,7 @@ pub const FormatError = error{
 test {
     // Import all test modules
     _ = locale;
+    _ = calendar;
     _ = timezone;
     _ = datetime;
     _ = cldr;
