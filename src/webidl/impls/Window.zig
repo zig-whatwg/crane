@@ -683,9 +683,29 @@ pub fn get_external(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for screen
+/// Per CSSOM View spec: Returns the Screen object for this window.
 pub fn get_screen(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached instance if available (SameObject behavior)
+    if (internal.screen) |screen_instance| {
+        return screen_instance;
+    }
+
+    // Create the Screen WebIDL instance
+    const ScreenImpl = @import("Screen.zig");
+    const Screen = interfaces.Screen;
+
+    const screen_instance = try ScreenImpl.init(
+        internal.allocator,
+        Screen.State,
+        &Screen.vtable,
+        instance.ctx,
+    );
+
+    // Cache and return the instance
+    internal.screen = screen_instance;
+    return screen_instance;
 }
 
 /// Getter for visualViewport
