@@ -1,4 +1,5 @@
 //! Implementation for HTMLDivElement interface
+//! Spec: https://html.spec.whatwg.org/multipage/grouping-content.html#the-div-element
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,6 +9,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLDivElement = interfaces.HTMLDivElement;
+const HTMLElementImpl = @import("HTMLElement.zig");
 
 pub const State = HTMLDivElement.State;
 
@@ -16,27 +18,28 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// HTMLDivElement has no additional internal state beyond HTMLElement
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    // Chain to parent class (HTMLElement)
+    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    // HTMLDivElement has no additional initialization
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // HTMLDivElement has no additional cleanup
+    // Parent cleanup happens via inheritance chain
+    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
@@ -45,9 +48,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &HTMLDivElement.vtable, ctx);
     errdefer deinit(instance);
-
-    // TODO: Implement constructor logic with parameters
-
     return instance;
 }
 

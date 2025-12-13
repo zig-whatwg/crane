@@ -22,21 +22,26 @@ pub const ImplError = error{
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    // Chain to parent class (HTMLElement)
+    const HTMLElementImpl = @import("HTMLElement.zig");
+    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    // HTMLDetailsElement has no additional initialization
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // HTMLDetailsElement has no additional cleanup
+    // Chain to parent class
+    const HTMLElementImpl = @import("HTMLElement.zig");
+    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation

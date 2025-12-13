@@ -121,14 +121,17 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (HTMLElement)
+    const HTMLElementImpl = @import("HTMLElement.zig");
+    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    errdefer HTMLElementImpl.deinit(instance);
 
     // Initialize internal state
     const state = instance.getState(StateType);
@@ -143,7 +146,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinit();
     }
-    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // Chain to parent class cleanup
+    const HTMLElementImpl = @import("HTMLElement.zig");
+    HTMLElementImpl.deinit(instance);
 }
 
 /// Constructor implementation
@@ -173,9 +178,11 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
 /// for the nested browsing context. This WindowProxy provides access to the
 /// Window object in the iframe's realm.
 ///
-/// Phase 3 (Cross-Realm Support): The iframe has its own V8 context with
-/// separate interface bindings and intrinsics. This enables proper cross-realm
-/// behavior (e.g., TypeError thrown from iframe's realm, not parent's).
+/// Phase 4 (Window-as-V8-Global): The Window instance IS bound to the V8 global
+/// object, enabling proper cross-realm access:
+/// - `iframe.contentWindow.DOMRectReadOnly` returns the constructor
+/// - `iframe.contentWindow === iframe.contentWindow.window` is true
+/// - Cross-realm toJSON tests pass (result objects use the method's realm)
 pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
 
@@ -199,7 +206,8 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
-        // Create child V8 context with all interface bindings
+        // Create child V8 context with all interface bindings AND Window instance
+        // The Window instance IS the V8 global, enabling cross-realm access
         const entry = context_manager.createChildContext(.{
             .parent_context = parent_ctx,
             .isolate = isolate,
@@ -222,11 +230,19 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         );
     }
 
-    // Get the WindowProxy from the integration
-    // Note: In Phase 4+, we'll return the actual Window instance from the child realm
-    // For now, we still return the WindowProxy for backward compatibility
+    // Return the Window instance from the child context
+    // The Window IS bound to the V8 global, so accessing properties on it
+    // (like DOMRectReadOnly) works correctly for cross-realm scenarios.
+    if (internal.integration.getEngineContext()) |engine_ctx| {
+        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+        if (context_manager.getWindowForContext(v8_ctx)) |window| {
+            // WindowProxy typedef is *runtime.Instance
+            return window;
+        }
+    }
+
+    // Fall back to old WindowProxy behavior if no Window instance available
     if (internal.integration.getContentWindow()) |proxy| {
-        // WindowProxy typedef is *const anyopaque
         return @ptrCast(proxy);
     }
     return null;
