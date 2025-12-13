@@ -267,46 +267,8 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // Messages are queued until start() is called
         dedicated_worker.startMessageQueue();
 
-        // Create V8 context for worker execution
-        // This creates a separate V8 isolate for the worker with its own context
-        const v8_context = WorkerV8Context.init(
-            ctx.allocator,
-            url_copy,
-            worker_type,
-        ) catch |err| {
-            std.log.warn("Failed to create WorkerV8Context: {}", .{err});
-            return instance;
-        };
-        internal_state.v8_context = v8_context;
-
-        // IMPORTANT: Create the WorkerContext FIRST before wiring up engine context
-        // This calls agent.startWithContext() which creates the worker_context
-        dedicated_worker.startWithContext() catch |err| {
-            std.log.warn("Failed to start worker context: {}", .{err});
-            return instance;
-        };
-
-        // Now wire up the V8 context to the WorkerAgent's WorkerContext
-        // This connects the engine callbacks (compileAndRunScript, etc.) to V8 FFI
-        if (dedicated_worker.agent.worker_context) |worker_ctx| {
-            worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
-        } else {
-            std.log.warn("WorkerContext not created after startWithContext", .{});
-            return instance;
-        }
-
-        // Set up DedicatedWorkerGlobalScope with proper globals
-        // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
-        v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
-            std.log.warn("Failed to set up worker global scope: {}", .{err});
-            return instance;
-        };
-
-        // Start the worker's message queue so messages can be dispatched
-        dedicated_worker.startWorkerMessageQueue();
-
-        // Fetch and execute the worker script
-        // This is the "run a worker" algorithm per HTML Standard § 10.2.5
+        // Fetch the worker script FIRST to get the resolved URL
+        // Per HTML Standard § 10.2.5 "Run a worker": resolve URL before creating context
         // For WPT tests, scripts are fetched from the WPT server or resolved as data: URLs
         const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
             .worker_type = worker_type,
@@ -317,7 +279,50 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             std.log.warn("Failed to fetch worker script: {}", .{err});
             return instance;
         };
-        defer @constCast(&fetched_script).deinit();
+        // Don't defer deinit yet - we need to use final_url for V8Context
+
+        // Create V8 context for worker execution using the RESOLVED URL
+        // This creates a separate V8 isolate for the worker with its own context
+        // Using fetched_script.final_url ensures importScripts can resolve relative paths
+        const v8_context = WorkerV8Context.init(
+            ctx.allocator,
+            fetched_script.final_url, // Use resolved URL, not original relative URL
+            worker_type,
+        ) catch |err| {
+            std.log.warn("Failed to create WorkerV8Context: {}", .{err});
+            @constCast(&fetched_script).deinit();
+            return instance;
+        };
+        internal_state.v8_context = v8_context;
+
+        // IMPORTANT: Create the WorkerContext FIRST before wiring up engine context
+        // This calls agent.startWithContext() which creates the worker_context
+        dedicated_worker.startWithContext() catch |err| {
+            std.log.warn("Failed to start worker context: {}", .{err});
+            @constCast(&fetched_script).deinit();
+            return instance;
+        };
+
+        // Now wire up the V8 context to the WorkerAgent's WorkerContext
+        // This connects the engine callbacks (compileAndRunScript, etc.) to V8 FFI
+        if (dedicated_worker.agent.worker_context) |worker_ctx| {
+            worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
+        } else {
+            std.log.warn("WorkerContext not created after startWithContext", .{});
+            @constCast(&fetched_script).deinit();
+            return instance;
+        }
+
+        // Set up DedicatedWorkerGlobalScope with proper globals
+        // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
+        v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
+            std.log.warn("Failed to set up worker global scope: {}", .{err});
+            @constCast(&fetched_script).deinit();
+            return instance;
+        };
+
+        // Start the worker's message queue so messages can be dispatched
+        dedicated_worker.startWorkerMessageQueue();
 
         // Execute the fetched script
         dedicated_worker.executeScript(fetched_script.source) catch |err| {
@@ -325,6 +330,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             // TODO: Fire error event on Worker object
         };
         // Note: executeScript now handles enter/exit of worker isolate internally
+
+        // Clean up fetched script now that we're done with it
+        @constCast(&fetched_script).deinit();
 
         // Schedule message processing via setTimeout(0)
         // Per HTML spec, messages should be delivered asynchronously via the event loop.

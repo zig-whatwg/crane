@@ -704,10 +704,13 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
         const url = buf[0..@intCast(actual_len)];
 
         // Fetch the script
+        // Per HTML Standard § 10.2.4.2 importScripts(urls):
+        // "For each url of urls: Let urlRecord be the result of parsing url with worker global scope's url"
+        // The worker's script_url is the base for resolving relative URLs
         var fetched_script = script_fetch.fetchWorkerScript(self.allocator, url, .{
             .is_import_scripts = true,
             .worker_type = .classic,
-            .origin = null,
+            .origin = self.script_url, // Base URL for relative path resolution
         }) catch |err| {
             std.log.warn("importScripts: failed to fetch '{s}': {}", .{ url, err });
             // Per spec, throw NetworkError on fetch failure
