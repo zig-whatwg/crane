@@ -33,6 +33,27 @@ const cldr = intl.cldr;
 const cldr_embedded = cldr.embedded;
 
 // ============================================================================
+// Timezone Helper
+// ============================================================================
+
+/// Get the local timezone offset in minutes from UTC
+/// Uses V8's Date.prototype.getTimezoneOffset() via JavaScript evaluation
+/// Returns negative offset for timezones ahead of UTC (e.g., -60 for UTC+1)
+fn getLocalTimezoneOffset(isolate: *v8.Isolate, context: *v8.Context) i32 {
+    // Create a Date object and get its timezone offset
+    // getTimezoneOffset() returns the offset in minutes from UTC
+    // For UTC-5, it returns +300 (positive). For UTC+1, it returns -60 (negative).
+    const script_str = v8.v8_String_NewFromUtf8(isolate, "new Date().getTimezoneOffset()", 30) orelse return 0;
+    const script = v8.v8_Script_Compile(context, script_str) orelse return 0;
+    const result = v8.v8_Script_Run(context, script) orelse return 0;
+    const offset = v8.v8_Value_NumberValue(result, context);
+    if (std.math.isNan(offset)) return 0;
+    // getTimezoneOffset returns minutes from local to UTC
+    // We need the inverse (UTC to local), so negate it
+    return -@as(i32, @intFromFloat(offset));
+}
+
+// ============================================================================
 // DateTime Helper (simplified from src/intl/datetime/datetime.zig)
 // ============================================================================
 
@@ -46,9 +67,16 @@ const DateTime = struct {
     second: u8, // 0-59
     nanosecond: u32 = 0,
 
-    /// Create DateTime from Unix timestamp in milliseconds
+    /// Create DateTime from Unix timestamp in milliseconds (UTC)
     fn fromTimestampMillis(ts: i64) DateTime {
-        const ns = @as(i128, ts) * std.time.ns_per_ms;
+        return fromTimestampMillisWithOffset(ts, 0);
+    }
+
+    /// Create DateTime from Unix timestamp in milliseconds with timezone offset in minutes
+    fn fromTimestampMillisWithOffset(ts: i64, offset_minutes: i32) DateTime {
+        // Apply timezone offset (convert UTC to local time)
+        const adjusted_ts = ts + @as(i64, offset_minutes) * 60 * 1000;
+        const ns = @as(i128, adjusted_ts) * std.time.ns_per_ms;
         var remaining_ns = ns;
         var year: i32 = 1970;
 
@@ -807,8 +835,9 @@ fn dateTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.
         }
     }
 
-    // Format using CLDR patterns
-    const dt = DateTime.fromTimestampMillis(timestamp_ms);
+    // Format using CLDR patterns with local timezone
+    const tz_offset = getLocalTimezoneOffset(isolate, context);
+    const dt = DateTime.fromTimestampMillisWithOffset(timestamp_ms, tz_offset);
     var buf: [256]u8 = undefined;
 
     const locale_data = entry.locale_data orelse cldr_embedded.getLocale("en").?;
@@ -869,8 +898,15 @@ fn formatDateTime(
         return formatWithPattern(buf, pattern, dt, locale_data);
     }
 
-    // Default: medium date
-    return formatWithPattern(buf, locale_data.datetime_patterns.date_medium, dt, locale_data);
+    // Default date format - most locales use medium, but some prefer short (ISO format)
+    // Per WPT locale-compat.html: sv-SE and en-CA should default to short (yyyy-mm-dd)
+    const default_pattern = if (std.mem.eql(u8, locale_data.tag, "sv-SE") or
+        std.mem.eql(u8, locale_data.tag, "en-CA"))
+        locale_data.datetime_patterns.date_short
+    else
+        locale_data.datetime_patterns.date_medium;
+
+    return formatWithPattern(buf, default_pattern, dt, locale_data);
 }
 
 fn getDatePattern(locale_data: *const cldr.LocaleData, style: DateStyle) []const u8 {
@@ -971,7 +1007,9 @@ fn dateTimeFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(
         }
     }
 
-    const dt = DateTime.fromTimestampMillis(timestamp_ms);
+    // Convert to local timezone
+    const tz_offset = getLocalTimezoneOffset(isolate, context);
+    const dt = DateTime.fromTimestampMillisWithOffset(timestamp_ms, tz_offset);
     const locale_data = entry.locale_data orelse cldr_embedded.getLocale("en").?;
 
     // Create parts array
@@ -2584,8 +2622,9 @@ fn dateToLocaleStringCallback(info: *const v8.FunctionCallbackInfo) callconv(.c)
         }
     }
 
-    // Format the date
-    const dt = DateTime.fromTimestampMillis(@intFromFloat(timestamp));
+    // Format the date with local timezone
+    const tz_offset = getLocalTimezoneOffset(isolate, context);
+    const dt = DateTime.fromTimestampMillisWithOffset(@intFromFloat(timestamp), tz_offset);
     var buf: [256]u8 = undefined;
     const formatted = formatDateTime(&buf, dt, locale_data, date_style, time_style);
 
@@ -2650,8 +2689,9 @@ fn dateToLocaleDateStringCallback(info: *const v8.FunctionCallbackInfo) callconv
         }
     }
 
-    // Format date only (no time)
-    const dt = DateTime.fromTimestampMillis(@intFromFloat(timestamp));
+    // Format date only (no time) with local timezone
+    const tz_offset = getLocalTimezoneOffset(isolate, context);
+    const dt = DateTime.fromTimestampMillisWithOffset(@intFromFloat(timestamp), tz_offset);
     var buf: [256]u8 = undefined;
     const formatted = formatDateTime(&buf, dt, locale_data, date_style, null);
 
@@ -2716,8 +2756,9 @@ fn dateToLocaleTimeStringCallback(info: *const v8.FunctionCallbackInfo) callconv
         }
     }
 
-    // Format time only (no date)
-    const dt = DateTime.fromTimestampMillis(@intFromFloat(timestamp));
+    // Format time only (no date) with local timezone
+    const tz_offset = getLocalTimezoneOffset(isolate, context);
+    const dt = DateTime.fromTimestampMillisWithOffset(@intFromFloat(timestamp), tz_offset);
     var buf: [256]u8 = undefined;
     const formatted = formatDateTime(&buf, dt, locale_data, null, time_style);
 

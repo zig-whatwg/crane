@@ -31,6 +31,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
+const intl_binding = @import("intl_binding.zig");
 
 /// Result of V8 initialization
 pub const InitResult = struct {
@@ -256,6 +257,9 @@ pub fn registerExternalReferences() void {
     // Register Zig callbacks used by streams and promise handlers
     const zig_callbacks = @import("zig_callbacks.zig");
     ext_refs.registerCallbackRuntime(zig_callbacks.genericZigCallback);
+
+    // Register Intl callbacks for V8 snapshot compatibility
+    intl_binding.registerExternalReferences();
 
     // Note: Interface-specific callbacks are registered dynamically when
     // interface_bindings.initializeBindings() is called. For snapshot loading,

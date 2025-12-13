@@ -344,6 +344,28 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             continue;
                         }
 
+                        // Handle slice of JSValue (used for variadic any[] parameters like console.log)
+                        if (ParamType == []const runtime.JSValue) {
+                            // Convert remaining JS arguments to JSValues
+                            const remaining = argc - js_arg_idx;
+                            const remaining_args: usize = if (remaining > 0) @intCast(remaining) else 0;
+                            const arg_slice = allocator.alloc(runtime.JSValue, remaining_args) catch {
+                                conv.throwTypeError(isolate, "Failed to allocate JSValue arguments");
+                                return;
+                            };
+                            for (0..remaining_args) |j| {
+                                const v8_value = info.get(@intCast(js_arg_idx + @as(c_int, @intCast(j))));
+                                // Convert V8 value to runtime.JSValue using proper conversion
+                                arg_slice[j] = conv.fromV8Value(runtime.JSValue, allocator, isolate, context, v8_value) catch {
+                                    conv.throwTypeError(isolate, "Failed to convert value to JSValue");
+                                    return;
+                                };
+                            }
+                            args[i] = arg_slice;
+                            js_arg_idx += @intCast(remaining_args);
+                            continue;
+                        }
+
                         // Handle slice of anyopaque (used for variadic ...any parameters)
                         if (ParamType == []const *const anyopaque) {
                             // Collect remaining JS arguments into a slice
