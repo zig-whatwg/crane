@@ -1915,6 +1915,14 @@ pub fn build(b: *std.Build) void {
         const intl_tests = b.addTest(.{ .root_module = intl_mod });
         const run_intl_tests = b.addRunArtifact(intl_tests);
         test_step.dependOn(&run_intl_tests.step);
+
+        // Add dedicated test files from tests/intl/
+        const intl_imports = [_]std.Build.Module.Import{
+            .{ .name = "intl", .module = intl_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/intl", target, &intl_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add intl test files: {}\n", .{err});
+        };
     }
 
     // Platform tests
