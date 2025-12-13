@@ -3592,7 +3592,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             if (!has_correct_type) {
                 // Throw TypeError: iterator from different interface type
-                conv.throwTypeError(isolate, "Illegal invocation");
+                // Use prototype's creation context for cross-realm support
+                if (v8.v8_Object_GetPrototypeCreationContext(iterator_obj)) |creation_ctx| {
+                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                } else {
+                    conv.throwTypeError(isolate, "Illegal invocation");
+                }
                 return;
             }
 
@@ -3688,7 +3693,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             if (!has_valid_target or !has_valid_index or !has_valid_kind) {
                 // Throw TypeError: next() called on ineligible receiver
-                conv.throwTypeError(isolate, "Illegal invocation");
+                // Use prototype's creation context for cross-realm support
+                if (v8.v8_Object_GetPrototypeCreationContext(iterator_obj)) |creation_ctx| {
+                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                } else {
+                    conv.throwTypeError(isolate, "Illegal invocation");
+                }
                 return;
             }
 
@@ -3710,7 +3720,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             if (!has_correct_type) {
                 // Throw TypeError: iterator from different interface type
-                conv.throwTypeError(isolate, "Illegal invocation");
+                // Use prototype's creation context for cross-realm support
+                if (v8.v8_Object_GetPrototypeCreationContext(iterator_obj)) |creation_ctx| {
+                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                } else {
+                    conv.throwTypeError(isolate, "Illegal invocation");
+                }
                 return;
             }
 
