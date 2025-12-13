@@ -2467,6 +2467,17 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
     // Get interface name from instance vtable
     const interface_name = template_registry.getInstanceInterfaceName(instance);
 
+    // Special handling for Window instances with bound V8 global
+    // This enables cross-realm support: iframe.contentWindow returns the V8 global
+    // which has DOMRectReadOnly and other constructors on it.
+    if (std.mem.eql(u8, interface_name, "Window")) {
+        const WindowImpl = @import("impls").Window;
+        if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
+            // Return the bound global directly - this is the key for cross-realm!
+            return @ptrCast(bound_global);
+        }
+    }
+
     // Get current context
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
         // No context available, return undefined

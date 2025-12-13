@@ -2889,27 +2889,205 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerr
 /// Operation: createElement
 /// DOM §4.6 - Creates an element with the given local name
 /// Spec: https://dom.spec.whatwg.org/#dom-document-createelement
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#elements-in-the-dom
+///
+/// Creates an element with the correct interface based on tag name.
+/// HTML tag names dispatch to their corresponding interfaces (e.g., "iframe" → HTMLIFrameElement).
+/// Unknown tag names create HTMLUnknownElement.
 pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     _ = options; // TODO: Handle ElementCreationOptions (custom elements)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     const local_name_slice = localName.asSlice();
 
-    // Use interface instead of impl (per Golden Rule #13)
-    const ElementImpl = @import("Element.zig");
-    const element = try interfaces.Element.init(internal.allocator, instance.ctx);
-    errdefer interfaces.Element.deinit(element);
-
-    // Set node type to ELEMENT_NODE via Node impl (internal initialization)
-    try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
+    // Use HTML element factory to dispatch to the correct interface
+    // This creates HTMLIFrameElement for "iframe", HTMLDivElement for "div", etc.
+    const element = try createHTMLElement(
+        internal.allocator,
+        instance.ctx,
+        local_name_slice,
+    );
+    errdefer {
+        // Clean up on error - all HTML elements have deinit via their interface
+        // We can't know which interface it is at runtime, but Instance.deinit works
+        runtime.Instance.deinit(element);
+    }
 
     // Set the local name (internal method)
+    // Note: Node type is already set by the inheritance chain (HTMLElement -> Element -> Node)
+    const ElementImpl = @import("Element.zig");
     try ElementImpl.setLocalName(element, local_name_slice);
 
     // Set owner document
     try NodeImpl.setOwnerDocument(element, instance);
 
     return element;
+}
+
+/// Create an HTML element with the correct interface based on tag name.
+///
+/// This implements the HTML Standard's element creation algorithm:
+/// - Known HTML tag names create specific element types (HTMLDivElement, etc.)
+/// - Unknown tag names create HTMLUnknownElement
+///
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#htmlunknownelement
+fn createHTMLElement(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    local_name: []const u8,
+) !*runtime.Instance {
+    // Convert to lowercase for case-insensitive matching (HTML is case-insensitive)
+    var lower_buf: [64]u8 = undefined;
+    const len = @min(local_name.len, lower_buf.len);
+    for (local_name[0..len], 0..) |c, i| {
+        lower_buf[i] = std.ascii.toLower(c);
+    }
+    const lower_name = lower_buf[0..len];
+
+    // Most common elements first for faster lookup
+    if (std.mem.eql(u8, lower_name, "div")) return try interfaces.HTMLDivElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "span")) return try interfaces.HTMLSpanElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "a")) return try interfaces.HTMLAnchorElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "p")) return try interfaces.HTMLParagraphElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "img")) return try interfaces.HTMLImageElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "input")) return try interfaces.HTMLInputElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "button")) return try interfaces.HTMLButtonElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "form")) return try interfaces.HTMLFormElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "script")) return try interfaces.HTMLScriptElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "style")) return try interfaces.HTMLStyleElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "link")) return try interfaces.HTMLLinkElement.init(allocator, ctx);
+
+    // Structural elements
+    if (std.mem.eql(u8, lower_name, "html")) return try interfaces.HTMLHtmlElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "head")) return try interfaces.HTMLHeadElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "body")) return try interfaces.HTMLBodyElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "title")) return try interfaces.HTMLTitleElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "base")) return try interfaces.HTMLBaseElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "meta")) return try interfaces.HTMLMetaElement.init(allocator, ctx);
+
+    // Headings
+    if (std.mem.eql(u8, lower_name, "h1") or
+        std.mem.eql(u8, lower_name, "h2") or
+        std.mem.eql(u8, lower_name, "h3") or
+        std.mem.eql(u8, lower_name, "h4") or
+        std.mem.eql(u8, lower_name, "h5") or
+        std.mem.eql(u8, lower_name, "h6")) return try interfaces.HTMLHeadingElement.init(allocator, ctx);
+
+    // Pre-formatted text
+    if (std.mem.eql(u8, lower_name, "pre") or
+        std.mem.eql(u8, lower_name, "listing") or
+        std.mem.eql(u8, lower_name, "xmp")) return try interfaces.HTMLPreElement.init(allocator, ctx);
+
+    // Quote elements
+    if (std.mem.eql(u8, lower_name, "blockquote") or
+        std.mem.eql(u8, lower_name, "q")) return try interfaces.HTMLQuoteElement.init(allocator, ctx);
+
+    // List elements
+    if (std.mem.eql(u8, lower_name, "ul")) return try interfaces.HTMLUListElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "ol")) return try interfaces.HTMLOListElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "li")) return try interfaces.HTMLLIElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "dl")) return try interfaces.HTMLDListElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "menu")) return try interfaces.HTMLMenuElement.init(allocator, ctx);
+
+    // Table elements
+    if (std.mem.eql(u8, lower_name, "table")) return try interfaces.HTMLTableElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "caption")) return try interfaces.HTMLTableCaptionElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "colgroup") or
+        std.mem.eql(u8, lower_name, "col")) return try interfaces.HTMLTableColElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "thead") or
+        std.mem.eql(u8, lower_name, "tbody") or
+        std.mem.eql(u8, lower_name, "tfoot")) return try interfaces.HTMLTableSectionElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "tr")) return try interfaces.HTMLTableRowElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "td") or
+        std.mem.eql(u8, lower_name, "th")) return try interfaces.HTMLTableCellElement.init(allocator, ctx);
+
+    // Form elements
+    if (std.mem.eql(u8, lower_name, "label")) return try interfaces.HTMLLabelElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "select")) return try interfaces.HTMLSelectElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "datalist")) return try interfaces.HTMLDataListElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "optgroup")) return try interfaces.HTMLOptGroupElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "option")) return try interfaces.HTMLOptionElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "textarea")) return try interfaces.HTMLTextAreaElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "output")) return try interfaces.HTMLOutputElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "progress")) return try interfaces.HTMLProgressElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "meter")) return try interfaces.HTMLMeterElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "fieldset")) return try interfaces.HTMLFieldSetElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "legend")) return try interfaces.HTMLLegendElement.init(allocator, ctx);
+
+    // Embedded content
+    if (std.mem.eql(u8, lower_name, "iframe")) return try interfaces.HTMLIFrameElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "embed")) return try interfaces.HTMLEmbedElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "object")) return try interfaces.HTMLObjectElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "param")) return try interfaces.HTMLParamElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "video")) return try interfaces.HTMLVideoElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "audio")) return try interfaces.HTMLAudioElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "source")) return try interfaces.HTMLSourceElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "track")) return try interfaces.HTMLTrackElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "canvas")) return try interfaces.HTMLCanvasElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "map")) return try interfaces.HTMLMapElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "area")) return try interfaces.HTMLAreaElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "picture")) return try interfaces.HTMLPictureElement.init(allocator, ctx);
+
+    // Interactive elements
+    if (std.mem.eql(u8, lower_name, "details")) return try interfaces.HTMLDetailsElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "dialog")) return try interfaces.HTMLDialogElement.init(allocator, ctx);
+
+    // Scripting
+    if (std.mem.eql(u8, lower_name, "template")) return try interfaces.HTMLTemplateElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "slot")) return try interfaces.HTMLSlotElement.init(allocator, ctx);
+
+    // Other specific elements
+    if (std.mem.eql(u8, lower_name, "br")) return try interfaces.HTMLBRElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "hr")) return try interfaces.HTMLHRElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "time")) return try interfaces.HTMLTimeElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "data")) return try interfaces.HTMLDataElement.init(allocator, ctx);
+    if (std.mem.eql(u8, lower_name, "ins") or
+        std.mem.eql(u8, lower_name, "del")) return try interfaces.HTMLModElement.init(allocator, ctx);
+
+    // Elements that use HTMLElement directly (no specific interface)
+    // Per spec, these are "element interface for this element" = HTMLElement
+    if (std.mem.eql(u8, lower_name, "abbr") or
+        std.mem.eql(u8, lower_name, "address") or
+        std.mem.eql(u8, lower_name, "article") or
+        std.mem.eql(u8, lower_name, "aside") or
+        std.mem.eql(u8, lower_name, "b") or
+        std.mem.eql(u8, lower_name, "bdi") or
+        std.mem.eql(u8, lower_name, "bdo") or
+        std.mem.eql(u8, lower_name, "cite") or
+        std.mem.eql(u8, lower_name, "code") or
+        std.mem.eql(u8, lower_name, "dd") or
+        std.mem.eql(u8, lower_name, "dfn") or
+        std.mem.eql(u8, lower_name, "dt") or
+        std.mem.eql(u8, lower_name, "em") or
+        std.mem.eql(u8, lower_name, "figcaption") or
+        std.mem.eql(u8, lower_name, "figure") or
+        std.mem.eql(u8, lower_name, "footer") or
+        std.mem.eql(u8, lower_name, "header") or
+        std.mem.eql(u8, lower_name, "hgroup") or
+        std.mem.eql(u8, lower_name, "i") or
+        std.mem.eql(u8, lower_name, "kbd") or
+        std.mem.eql(u8, lower_name, "main") or
+        std.mem.eql(u8, lower_name, "mark") or
+        std.mem.eql(u8, lower_name, "nav") or
+        std.mem.eql(u8, lower_name, "noscript") or
+        std.mem.eql(u8, lower_name, "rp") or
+        std.mem.eql(u8, lower_name, "rt") or
+        std.mem.eql(u8, lower_name, "ruby") or
+        std.mem.eql(u8, lower_name, "s") or
+        std.mem.eql(u8, lower_name, "samp") or
+        std.mem.eql(u8, lower_name, "search") or
+        std.mem.eql(u8, lower_name, "section") or
+        std.mem.eql(u8, lower_name, "small") or
+        std.mem.eql(u8, lower_name, "strong") or
+        std.mem.eql(u8, lower_name, "sub") or
+        std.mem.eql(u8, lower_name, "summary") or
+        std.mem.eql(u8, lower_name, "sup") or
+        std.mem.eql(u8, lower_name, "u") or
+        std.mem.eql(u8, lower_name, "var") or
+        std.mem.eql(u8, lower_name, "wbr")) return try interfaces.HTMLElement.init(allocator, ctx);
+
+    // Unknown element - per spec returns HTMLUnknownElement
+    return try interfaces.HTMLUnknownElement.init(allocator, ctx);
 }
 
 /// Operation: releaseEvents

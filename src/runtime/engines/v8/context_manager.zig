@@ -78,6 +78,12 @@ pub const ContextEntry = struct {
 
     /// Allocator used for this entry (needed for children list)
     allocator: std.mem.Allocator,
+
+    /// Window instance for this context (for cross-realm support)
+    /// This Window instance IS bound to the V8 global object, enabling
+    /// `iframe.contentWindow.DOMRectReadOnly` to work correctly.
+    /// Set during createChildContext() for iframe contexts.
+    window_instance: ?*runtime.Instance = null,
 };
 
 /// Thread-local context manager state
@@ -675,6 +681,73 @@ fn resolveModuleSpecifier(
 // Child Context Management (Cross-Realm Support)
 // ============================================================================
 
+/// Create a Window instance bound to the V8 global object
+///
+/// This is the key function for cross-realm support. Instead of creating a
+/// separate V8 wrapper for the Window, we bind the Window instance directly
+/// to the V8 global object. This ensures that:
+///
+/// 1. `iframe.contentWindow` returns the V8 global (which has DOMRectReadOnly, etc.)
+/// 2. `iframe.contentWindow === iframe.contentWindow.window` is true
+/// 3. Cross-realm tests like `default-toJSON-cross-realm.html` work correctly
+///
+/// The binding works by:
+/// 1. Creating a Window runtime.Instance
+/// 2. Setting the V8 global's internal fields to point to the Window instance
+/// 3. Caching the V8 global as the wrapper for the Window instance
+fn createWindowBoundToGlobal(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    v8_ctx: *v8.Context,
+    isolate: *v8.Isolate,
+) !*runtime.Instance {
+    const interfaces = @import("interfaces");
+    const Window = interfaces.Window;
+    const WindowImpl = @import("impls").Window;
+    const dom_type_info = @import("dom_type_info.zig");
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+
+    // 1. Create Window instance
+    const window_instance = try Window.init(allocator, ctx);
+    errdefer Window.deinit(window_instance);
+
+    // 2. Get the V8 global object
+    const global = v8.v8_Context_Global(v8_ctx) orelse return error.GlobalNotFound;
+
+    // 3. Set internal fields on the global to point to our Window instance
+    // Field 0: instance pointer
+    // Field 1: type info pointer (for type-safe unwrapping)
+    v8.v8_Object_SetAlignedPointerInInternalField(
+        global,
+        0,
+        @ptrCast(window_instance),
+    );
+
+    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
+        v8.v8_Object_SetAlignedPointerInInternalField(
+            global,
+            1,
+            @ptrCast(@constCast(type_info)),
+        );
+    }
+
+    // 4. Store the V8 global in the Window's internal state
+    // This is the KEY change for cross-realm support:
+    // When instanceToV8 is called on this Window, it returns this global
+    // directly instead of creating a new wrapper. This makes
+    // `iframe.contentWindow.DOMRectReadOnly` work correctly.
+    WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
+
+    // 5. Also cache the V8 global as the wrapper for this Window instance
+    // This is for consistency with the wrapper cache system
+    if (ctx.getV8WrapperCacheStorage()) |cache_storage| {
+        const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+        try cache.set(window_instance, global, isolate);
+    }
+
+    return window_instance;
+}
+
 /// Options for creating a child context
 pub const ChildContextOptions = struct {
     /// Parent V8 context (required)
@@ -796,7 +869,23 @@ pub fn createChildContext(
 
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
 
-    // 8. Store in map
+    // 8. Create Window instance bound to the V8 global
+    // This is critical for cross-realm support: the Window instance IS the V8 global,
+    // so `iframe.contentWindow.DOMRectReadOnly` works correctly.
+    const runtime_ctx: runtime.Context = &ctx_data;
+    const window_instance = try createWindowBoundToGlobal(
+        allocator,
+        runtime_ctx,
+        child_context,
+        options.isolate,
+    );
+    errdefer {
+        // Clean up Window instance on error
+        const interfaces = @import("interfaces");
+        interfaces.Window.deinit(window_instance);
+    }
+
+    // 9. Store in map
     try state.contexts.put(child_key, ContextEntry{
         .v8_ctx = child_context,
         .runtime_ctx = ctx_data,
@@ -806,12 +895,13 @@ pub fn createChildContext(
         .parent_entry = parent_entry,
         .children = .{},
         .allocator = allocator,
+        .window_instance = window_instance,
     });
 
-    // 9. Get pointer to entry in map
+    // 10. Get pointer to entry in map
     const child_entry = state.contexts.getPtr(child_key).?;
 
-    // 10. Link to parent's children list
+    // 11. Link to parent's children list
     try parent_entry.children.append(allocator, child_entry);
 
     return child_entry;
@@ -863,13 +953,19 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
     if (entry.owns_context) {
         var ctx_data = entry.runtime_ctx;
 
-        // Clean up V8 wrapper cache
+        // Clean up V8 wrapper cache (must be before Window deinit)
         if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
             const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
             cache_ptr.deinit();
             ctx_data.getAllocator().destroy(cache_ptr);
             ctx_data.clearV8WrapperCacheStorage();
+        }
+
+        // Clean up Window instance (must be after wrapper cache cleanup)
+        if (entry.window_instance) |window| {
+            const interfaces = @import("interfaces");
+            interfaces.Window.deinit(window);
         }
 
         // Clean up realm
@@ -928,6 +1024,26 @@ pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
     const key = @intFromPtr(raw_addr);
 
     return state.contexts.getPtr(key);
+}
+
+/// Get the Window instance for a V8 context
+///
+/// Returns the Window *runtime.Instance that IS the V8 global object.
+/// This is used by HTMLIFrameElement.get_contentWindow to return the
+/// correct Window for cross-realm access.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
+    const state = &(manager_state orelse return null);
+
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    const key = @intFromPtr(raw_addr);
+
+    if (state.contexts.getPtr(key)) |entry| {
+        return entry.window_instance;
+    }
+
+    return null;
 }
 
 /// Associate a realm with an existing context

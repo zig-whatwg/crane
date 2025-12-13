@@ -171,6 +171,13 @@ pub const InternalState = struct {
     scroll_y: f64 = 0.0,
     device_pixel_ratio: f64 = 1.0,
 
+    /// V8 global object that this Window IS bound to (for cross-realm support)
+    /// When this is set, `instanceToV8` returns this global directly instead of
+    /// creating a new wrapper. This enables `iframe.contentWindow.DOMRectReadOnly`
+    /// to work correctly because the global has all interface constructors.
+    /// Set by context_manager.createWindowBoundToGlobal().
+    bound_v8_global: ?*anyopaque = null,
+
     pub fn init(allocator: Allocator) !InternalState {
         return .{
             .allocator = allocator,
@@ -315,6 +322,21 @@ pub fn hasOpener(instance: *runtime.Instance) bool {
 pub fn getBrowsingContext(instance: *runtime.Instance) ?*BrowsingContext {
     const internal = getInternal(instance) orelse return null;
     return internal.browsing_context;
+}
+
+/// Set the V8 global object that this Window IS bound to (for cross-realm support)
+/// Called by context_manager.createWindowBoundToGlobal().
+pub fn setBoundV8Global(instance: *runtime.Instance, v8_global: *anyopaque) void {
+    if (getInternal(instance)) |internal| {
+        internal.bound_v8_global = v8_global;
+    }
+}
+
+/// Get the V8 global object that this Window IS bound to
+/// Returns null if this Window was not created via createWindowBoundToGlobal().
+pub fn getBoundV8Global(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    return internal.bound_v8_global;
 }
 
 /// Get the WindowProxy for this window
