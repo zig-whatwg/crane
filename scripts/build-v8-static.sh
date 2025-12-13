@@ -93,8 +93,9 @@ v8_enable_v8_checks = false
 # Disable ICU - we use our own pure Zig intl implementation
 v8_enable_i18n_support = false
 
-# Use system libraries where possible
+# Use bundled libc++ but allow warnings (for newer SDK compatibility)
 use_custom_libcxx = false
+treat_warnings_as_errors = false
 
 # macOS specific
 is_clang = true
