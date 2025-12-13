@@ -314,10 +314,35 @@ pub fn call_skewX(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*ru
     return error.NotImplemented;
 }
 
-/// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+/// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMMatrixReadOnly.DOMMatrixReadOnlyToJSON {
+    const state = instance.getState(State);
+    return .{
+        .a = state.own.a,
+        .b = state.own.b,
+        .c = state.own.c,
+        .d = state.own.d,
+        .e = state.own.e,
+        .f = state.own.f,
+        .m11 = state.own.m11,
+        .m12 = state.own.m12,
+        .m13 = state.own.m13,
+        .m14 = state.own.m14,
+        .m21 = state.own.m21,
+        .m22 = state.own.m22,
+        .m23 = state.own.m23,
+        .m24 = state.own.m24,
+        .m31 = state.own.m31,
+        .m32 = state.own.m32,
+        .m33 = state.own.m33,
+        .m34 = state.own.m34,
+        .m41 = state.own.m41,
+        .m42 = state.own.m42,
+        .m43 = state.own.m43,
+        .m44 = state.own.m44,
+        .is2D = state.own.is2D,
+        .isIdentity = state.own.isIdentity,
+    };
 }
 
 /// Operation: scaleNonUniform

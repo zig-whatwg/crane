@@ -65,7 +65,7 @@ pub fn get_sdp(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.RTCSessionDescriptionInit {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!RTCSessionDescription.RTCSessionDescriptionToJSON {
     _ = instance;
     return error.NotImplemented;
 }

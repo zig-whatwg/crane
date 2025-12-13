@@ -2289,31 +2289,53 @@ fn writeSingleOperation(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     _: bool, // has_static_collision - no longer used
 ) !void {
+    const allocator = std.heap.page_allocator;
     const name = op.name orelse return; // Skip unnamed operations
 
     // Static methods always use call_static_<name> convention
     // Instance methods use call_<name> convention
     const is_static = op.static;
 
-    // Check if return type is an interface - if so, use *runtime.Instance
-    // Callback interfaces use ?*runtime.CallbackWrapper
-    const return_type_kind = if (type_registry) |reg| reg.lookup(op.idlType.type) else null;
-    const is_interface_return = return_type_kind != null and return_type_kind.? == .interface;
-    const is_callback_interface_return = return_type_kind != null and return_type_kind.? == .callback_interface;
+    // Check for [Default] toJSON - returns {InterfaceName}ToJSON struct
+    const is_default_to_json = std.mem.eql(u8, name, "toJSON") and types.hasDefaultExtAttr(op);
 
-    var return_type = if (is_callback_interface_return)
-        "?*runtime.CallbackWrapper"
-    else if (is_interface_return)
-        "*runtime.Instance"
-    else if (type_registry) |reg|
-        mapWebIDLTypeWithRegistry(op.idlType, reg).type_name
+    // Derive interface name from impl_name (strip "Impl" suffix)
+    const interface_name = if (std.mem.endsWith(u8, impl_name, "Impl"))
+        impl_name[0 .. impl_name.len - 4]
     else
-        mapWebIDLType(op.idlType);
+        impl_name;
 
-    // Convert bare anyopaque to JSValue (for sequences, promises, union types, etc.)
-    // These are truly unknown/dynamic types that need runtime handling
-    if (std.mem.eql(u8, return_type, "anyopaque")) {
-        return_type = "runtime.JSValue";
+    // For [Default] toJSON, allocate the struct type name
+    var to_json_type_buf: ?[]u8 = null;
+    defer if (to_json_type_buf) |buf| allocator.free(buf);
+
+    var return_type: []const u8 = undefined;
+
+    if (is_default_to_json) {
+        // Return the ToJSON struct type for [Default] toJSON operations
+        to_json_type_buf = try std.fmt.allocPrint(allocator, "{s}ToJSON", .{interface_name});
+        return_type = to_json_type_buf.?;
+    } else {
+        // Check if return type is an interface - if so, use *runtime.Instance
+        // Callback interfaces use ?*runtime.CallbackWrapper
+        const return_type_kind = if (type_registry) |reg| reg.lookup(op.idlType.type) else null;
+        const is_interface_return = return_type_kind != null and return_type_kind.? == .interface;
+        const is_callback_interface_return = return_type_kind != null and return_type_kind.? == .callback_interface;
+
+        return_type = if (is_callback_interface_return)
+            "?*runtime.CallbackWrapper"
+        else if (is_interface_return)
+            "*runtime.Instance"
+        else if (type_registry) |reg|
+            mapWebIDLTypeWithRegistry(op.idlType, reg).type_name
+        else
+            mapWebIDLType(op.idlType);
+
+        // Convert bare anyopaque to JSValue (for sequences, promises, union types, etc.)
+        // These are truly unknown/dynamic types that need runtime handling
+        if (std.mem.eql(u8, return_type, "anyopaque")) {
+            return_type = "runtime.JSValue";
+        }
     }
 
     // Check if return type is nullable (WebIDL T? type)

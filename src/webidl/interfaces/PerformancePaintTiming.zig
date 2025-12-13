@@ -131,7 +131,7 @@ pub const PerformancePaintTiming = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformancePaintTimingToJSON {
         return try PerformancePaintTimingImpl.call_toJSON(instance);
     }
 

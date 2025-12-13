@@ -70,7 +70,7 @@ pub fn get_attribution(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceLongTaskTiming.PerformanceLongTaskTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

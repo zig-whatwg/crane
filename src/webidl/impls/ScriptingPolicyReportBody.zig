@@ -70,7 +70,7 @@ pub fn get_colno(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!ScriptingPolicyReportBody.ScriptingPolicyReportBodyToJSON {
     _ = instance;
     return error.NotImplemented;
 }

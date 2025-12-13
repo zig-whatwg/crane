@@ -989,6 +989,9 @@ fn generateImplFile(
             const op_name = op.name orelse "unnamed";
             const is_nullable_return = op.idlType.nullable;
 
+            // Check for [Default] toJSON - needs special return type
+            const is_default_to_json = std.mem.eql(u8, op_name, "toJSON") and types.hasDefaultExtAttr(op);
+
             try w.print("/// Operation: {s}\n", .{op_name});
             try w.print("pub fn call_{s}(instance: *runtime.Instance", .{op_name});
             for (op.arguments) |arg| {
@@ -998,11 +1001,16 @@ fn generateImplFile(
                 try writeParamType(w, arg, type_reg);
             }
             try w.writeAll(") anyerror!");
-            // For nullable return types, return ?T instead of T
-            if (is_nullable_return) {
-                try w.writeAll("?");
+            // For [Default] toJSON, return the ToJSON struct type
+            if (is_default_to_json) {
+                try w.print("interfaces.{s}.{s}ToJSON", .{ interface.name, interface.name });
+            } else {
+                // For nullable return types, return ?T instead of T
+                if (is_nullable_return) {
+                    try w.writeAll("?");
+                }
+                try writeTypeSimple(w, op.idlType, type_reg);
             }
-            try writeTypeSimple(w, op.idlType, type_reg);
             try w.writeAll(" {\n");
             try w.writeAll("    _ = instance;\n");
             for (op.arguments) |arg| {
@@ -1010,8 +1018,12 @@ fn generateImplFile(
                 try writeEscapedImplParamName(w, arg.name);
                 try w.writeAll(";\n");
             }
-            // For nullable types, return null instead of error.NotImplemented
-            if (is_nullable_return) {
+            // For [Default] toJSON, return a stub struct
+            if (is_default_to_json) {
+                try w.writeAll("    // TODO: Populate ToJSON struct from instance state\n");
+                try w.writeAll("    return error.NotImplemented;\n");
+            } else if (is_nullable_return) {
+                // For nullable types, return null instead of error.NotImplemented
                 try w.writeAll("    return null;\n");
             } else {
                 try w.writeAll("    return error.NotImplemented;\n");

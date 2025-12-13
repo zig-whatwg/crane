@@ -82,7 +82,7 @@ pub fn get_speed(instance: *runtime.Instance) anyerror!?f64 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!GeolocationCoordinates.GeolocationCoordinatesToJSON {
     _ = instance;
     return error.NotImplemented;
 }

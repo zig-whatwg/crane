@@ -80,10 +80,15 @@ pub fn get_w(instance: *runtime.Instance) anyerror!f64 {
     return error.NotImplemented;
 }
 
-/// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+/// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMPointReadOnly.DOMPointReadOnlyToJSON {
+    const state = instance.getState(State);
+    return .{
+        .x = state.own.x,
+        .y = state.own.y,
+        .z = state.own.z,
+        .w = state.own.w,
+    };
 }
 
 /// Operation: matrixTransform
@@ -99,7 +104,6 @@ pub fn call_static_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dict
     _ = other;
     return error.NotImplemented;
 }
-
 
 pub fn call_fromPoint(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMPointInit)) anyerror!*runtime.Instance {
     _ = instance;

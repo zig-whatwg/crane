@@ -271,7 +271,7 @@ pub const Performance = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceToJSON {
         return try PerformanceImpl.call_toJSON(instance);
     }
 

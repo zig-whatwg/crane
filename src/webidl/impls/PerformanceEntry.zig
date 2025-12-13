@@ -76,7 +76,7 @@ pub fn get_navigationId(instance: *runtime.Instance) anyerror!u64 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceEntry.PerformanceEntryToJSON {
     _ = instance;
     return error.NotImplemented;
 }

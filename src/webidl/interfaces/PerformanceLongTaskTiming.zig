@@ -152,7 +152,7 @@ pub const PerformanceLongTaskTiming = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceLongTaskTimingToJSON {
         return try PerformanceLongTaskTimingImpl.call_toJSON(instance);
     }
 

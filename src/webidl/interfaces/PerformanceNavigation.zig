@@ -154,7 +154,7 @@ pub const PerformanceNavigation = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceNavigationToJSON {
         return try PerformanceNavigationImpl.call_toJSON(instance);
     }
 

@@ -159,7 +159,7 @@ pub const DeprecationReportBody = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!DeprecationReportBodyToJSON {
         return try DeprecationReportBodyImpl.call_toJSON(instance);
     }
 

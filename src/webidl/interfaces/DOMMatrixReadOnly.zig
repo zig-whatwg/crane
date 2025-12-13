@@ -502,7 +502,7 @@ pub const DOMMatrixReadOnly = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMMatrixReadOnlyToJSON {
         return try DOMMatrixReadOnlyImpl.call_toJSON(instance);
     }
 

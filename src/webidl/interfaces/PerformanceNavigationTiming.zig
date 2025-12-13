@@ -257,7 +257,7 @@ pub const PerformanceNavigationTiming = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceNavigationTimingToJSON {
         return try PerformanceNavigationTimingImpl.call_toJSON(instance);
     }
 

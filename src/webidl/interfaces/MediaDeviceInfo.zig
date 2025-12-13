@@ -139,7 +139,7 @@ pub const MediaDeviceInfo = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!MediaDeviceInfoToJSON {
         return try MediaDeviceInfoImpl.call_toJSON(instance);
     }
 

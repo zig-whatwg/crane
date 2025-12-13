@@ -147,7 +147,7 @@ pub const LayoutShift = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!LayoutShiftToJSON {
         return try LayoutShiftImpl.call_toJSON(instance);
     }
 

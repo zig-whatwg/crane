@@ -185,7 +185,7 @@ pub const LargestContentfulPaint = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!LargestContentfulPaintToJSON {
         return try LargestContentfulPaintImpl.call_toJSON(instance);
     }
 

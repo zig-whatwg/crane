@@ -167,7 +167,7 @@ pub const DOMPointReadOnly = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMPointReadOnlyToJSON {
         return try DOMPointReadOnlyImpl.call_toJSON(instance);
     }
 

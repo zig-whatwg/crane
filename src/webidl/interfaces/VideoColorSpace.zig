@@ -151,7 +151,7 @@ pub const VideoColorSpace = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!VideoColorSpaceInit {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!VideoColorSpaceToJSON {
         return try VideoColorSpaceImpl.call_toJSON(instance);
     }
 

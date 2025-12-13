@@ -147,7 +147,7 @@ pub const DigitalCredential = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!DigitalCredentialToJSON {
         return try DigitalCredentialImpl.call_toJSON(instance);
     }
 

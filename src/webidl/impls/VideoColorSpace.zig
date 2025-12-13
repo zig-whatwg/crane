@@ -78,7 +78,7 @@ pub fn get_fullRange(instance: *runtime.Instance) anyerror!?bool {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!dictionaries.VideoColorSpaceInit {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!VideoColorSpace.VideoColorSpaceToJSON {
     _ = instance;
     return error.NotImplemented;
 }

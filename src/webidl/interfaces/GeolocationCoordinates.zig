@@ -164,7 +164,7 @@ pub const GeolocationCoordinates = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!GeolocationCoordinatesToJSON {
         return try GeolocationCoordinatesImpl.call_toJSON(instance);
     }
 

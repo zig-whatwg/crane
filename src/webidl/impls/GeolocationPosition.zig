@@ -52,7 +52,7 @@ pub fn get_timestamp(instance: *runtime.Instance) anyerror!typedefs.EpochTimeSta
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!GeolocationPosition.GeolocationPositionToJSON {
     _ = instance;
     return error.NotImplemented;
 }

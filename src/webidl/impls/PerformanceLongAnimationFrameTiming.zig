@@ -106,7 +106,7 @@ pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMH
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceLongAnimationFrameTiming.PerformanceLongAnimationFrameTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

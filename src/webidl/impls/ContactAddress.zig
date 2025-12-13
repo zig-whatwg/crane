@@ -100,7 +100,7 @@ pub fn get_addressLine(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!ContactAddress.ContactAddressToJSON {
     _ = instance;
     return error.NotImplemented;
 }

@@ -100,12 +100,15 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
     return error.NotImplemented;
 }
 
-/// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
+/// Note: p1-p4 are DOMPoint objects which requires recursive toJSON calls.
+/// TODO: Implement proper recursive toJSON for interface-typed attributes.
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMQuad.DOMQuadToJSON {
     _ = instance;
+    // DOMQuad's toJSON serializes p1-p4 which are DOMPoint interfaces
+    // This requires recursive toJSON calls which is complex to implement
     return error.NotImplemented;
 }
-
 
 pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
     _ = instance;

@@ -218,7 +218,7 @@ pub const PerformanceLongAnimationFrameTiming = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceLongAnimationFrameTimingToJSON {
         return try PerformanceLongAnimationFrameTimingImpl.call_toJSON(instance);
     }
 

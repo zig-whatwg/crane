@@ -152,7 +152,7 @@ pub const ScriptingPolicyReportBody = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!ScriptingPolicyReportBodyToJSON {
         return try ScriptingPolicyReportBodyImpl.call_toJSON(instance);
     }
 

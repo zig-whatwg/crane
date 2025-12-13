@@ -52,7 +52,7 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!DigitalCredential.DigitalCredentialToJSON {
     _ = instance;
     return error.NotImplemented;
 }

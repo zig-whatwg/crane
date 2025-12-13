@@ -76,7 +76,7 @@ pub fn get_children(instance: *runtime.Instance) anyerror!?runtime.JSValue {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!NotRestoredReasons.NotRestoredReasonsToJSON {
     _ = instance;
     return error.NotImplemented;
 }

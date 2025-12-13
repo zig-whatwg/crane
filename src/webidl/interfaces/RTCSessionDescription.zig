@@ -129,7 +129,7 @@ pub const RTCSessionDescription = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!RTCSessionDescriptionInit {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!RTCSessionDescriptionToJSON {
         return try RTCSessionDescriptionImpl.call_toJSON(instance);
     }
 

@@ -212,7 +212,7 @@ pub const PaymentResponse = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PaymentResponseToJSON {
         return try PaymentResponseImpl.call_toJSON(instance);
     }
 

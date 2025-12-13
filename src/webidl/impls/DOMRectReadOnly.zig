@@ -153,34 +153,22 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
 /// should come from the method's realm (not the caller's realm).
 ///
 /// The binding layer handles creating the object in the correct realm's context
-/// when converting the returned struct to a JavaScript object.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
+/// The conversion layer will convert this struct to a JavaScript object using the
+/// correct realm context for proper cross-realm support.
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMRectReadOnly.DOMRectReadOnlyToJSON {
     const state = instance.getState(State);
 
-    // We need to return something that the conversion layer can turn into
-    // a plain JavaScript object. The JSValue type doesn't directly support
-    // struct-to-object conversion, so we use the handle mechanism.
-    //
-    // However, for proper cross-realm support, the object creation needs
-    // to happen in the conversion layer using the correct context.
-    // For now, we return the values that would need to be put into the object.
-    //
-    // TODO: The proper solution is to either:
-    // 1. Change the interface signature to return a struct type
-    // 2. Have the conversion layer create the object when it sees a special JSValue variant
-    // 3. Pass the realm context to the impl and create the object here
-    //
-    // For now, return an object-like structure via runtime APIs.
-
-    // Since runtime.JSValue doesn't have a good way to represent a struct
-    // that should become an object, let's use the dictionary type.
-    // The conversion layer handles dictionaries properly.
-    _ = state;
-
-    // Return undefined for now - this needs codegen changes to work properly
-    // The interface signature should return DOMRectInit or a similar struct
-    // for proper cross-realm object creation.
-    return runtime.JSValue{ .undefined = {} };
+    return .{
+        .x = state.own.x,
+        .y = state.own.y,
+        .width = state.own.width,
+        .height = state.own.height,
+        .top = state.own.top,
+        .right = state.own.right,
+        .bottom = state.own.bottom,
+        .left = state.own.left,
+    };
 }
 
 pub fn call_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {

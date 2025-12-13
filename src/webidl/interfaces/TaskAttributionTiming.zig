@@ -178,7 +178,7 @@ pub const TaskAttributionTiming = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!TaskAttributionTimingToJSON {
         return try TaskAttributionTimingImpl.call_toJSON(instance);
     }
 

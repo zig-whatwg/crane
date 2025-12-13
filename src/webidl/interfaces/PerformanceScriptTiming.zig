@@ -235,7 +235,7 @@ pub const PerformanceScriptTiming = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceScriptTimingToJSON {
         return try PerformanceScriptTimingImpl.call_toJSON(instance);
     }
 

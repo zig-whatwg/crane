@@ -110,7 +110,7 @@ pub const NotRestoredReasonDetails = struct {
     }
 
     /// Extended attributes: [Default]
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!NotRestoredReasonDetailsToJSON {
         return try NotRestoredReasonDetailsImpl.call_toJSON(instance);
     }
 
