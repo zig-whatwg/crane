@@ -471,4 +471,3 @@ pub fn deleteDataRange(instance: *runtime.Instance, offset: u32, count: u32) !vo
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-

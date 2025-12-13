@@ -55,7 +55,6 @@ pub fn call_static_parse(instance: *runtime.Instance, property: runtime.USVStrin
     return error.NotImplemented;
 }
 
-
 pub fn call_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!runtime.JSValue {
     _ = instance;
     _ = property;

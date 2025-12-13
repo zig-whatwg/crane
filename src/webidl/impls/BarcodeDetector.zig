@@ -66,7 +66,6 @@ pub fn call_detect(instance: *runtime.Instance, image: typedefs.ImageBitmapSourc
     return error.NotImplemented;
 }
 
-
 pub fn call_getSupportedFormats(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;

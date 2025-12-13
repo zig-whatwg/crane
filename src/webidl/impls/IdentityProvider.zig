@@ -61,7 +61,6 @@ pub fn call_static_close(instance: *runtime.Instance) anyerror!void {
     return error.NotImplemented;
 }
 
-
 pub fn call_getUserInfo(instance: *runtime.Instance, config: dictionaries.IdentityProviderConfig) anyerror!runtime.JSValue {
     _ = instance;
     _ = config;

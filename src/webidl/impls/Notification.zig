@@ -227,7 +227,6 @@ pub fn call_static_requestPermission(instance: *runtime.Instance, deprecatedCall
     return error.NotImplemented;
 }
 
-
 pub fn call_requestPermission(instance: *runtime.Instance, deprecatedCallback: webidl.Opt(callbacks.NotificationPermissionCallback)) anyerror!runtime.JSValue {
     _ = instance;
     _ = deprecatedCallback;

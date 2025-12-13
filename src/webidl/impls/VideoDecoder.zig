@@ -116,7 +116,6 @@ pub fn call_flush(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return error.NotImplemented;
 }
 
-
 pub fn call_isConfigSupported(instance: *runtime.Instance, config: dictionaries.VideoDecoderConfig) anyerror!runtime.JSValue {
     _ = instance;
     _ = config;

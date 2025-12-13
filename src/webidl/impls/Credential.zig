@@ -63,7 +63,6 @@ pub fn call_static_isConditionalMediationAvailable(instance: *runtime.Instance) 
     return error.NotImplemented;
 }
 
-
 pub fn call_willRequestConditionalCreation(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;

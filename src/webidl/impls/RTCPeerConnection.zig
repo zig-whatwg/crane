@@ -397,7 +397,6 @@ pub fn call_getTransceivers(instance: *runtime.Instance) anyerror!runtime.JSValu
     return error.NotImplemented;
 }
 
-
 pub fn call_generateCertificate(instance: *runtime.Instance, keygenAlgorithm: typedefs.AlgorithmIdentifier) anyerror!runtime.JSValue {
     _ = instance;
     _ = keygenAlgorithm;

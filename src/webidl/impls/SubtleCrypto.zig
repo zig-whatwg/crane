@@ -213,7 +213,6 @@ pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmId
     return error.NotImplemented;
 }
 
-
 pub fn call_supports(instance: *runtime.Instance, operation: runtime.DOMString, algorithm: typedefs.AlgorithmIdentifier, length: webidl.Opt(?u32)) anyerror!bool {
     _ = instance;
     _ = operation;

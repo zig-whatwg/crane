@@ -317,7 +317,6 @@ pub fn call_static_install(instance: *runtime.Instance, options: dictionaries.Sp
     return error.NotImplemented;
 }
 
-
 pub fn call_available(instance: *runtime.Instance, options: dictionaries.SpeechRecognitionOptions) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;

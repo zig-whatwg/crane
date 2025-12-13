@@ -132,7 +132,6 @@ pub fn call_static_create(instance: *runtime.Instance, options: webidl.Opt(dicti
     return error.NotImplemented;
 }
 
-
 pub fn call_availability(instance: *runtime.Instance, options: webidl.Opt(dictionaries.RewriterCreateCoreOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = options;

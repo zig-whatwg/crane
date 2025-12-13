@@ -46,7 +46,6 @@ pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.In
     return error.NotImplemented;
 }
 
-
 pub fn call_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     _ = element;

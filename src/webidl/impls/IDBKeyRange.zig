@@ -360,7 +360,6 @@ fn convertFromJSValue(jsvalue: runtime.JSValue) !BackendKey {
     }
 }
 
-
 pub fn call_lowerBound(instance: *runtime.Instance, lower: runtime.JSValue, open: webidl.Opt(bool)) anyerror!*runtime.Instance {
     _ = instance;
     _ = lower;

@@ -100,4 +100,3 @@ pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-

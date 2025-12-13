@@ -112,7 +112,6 @@ pub fn call_setParameters(instance: *runtime.Instance, parameters: dictionaries.
     return error.NotImplemented;
 }
 
-
 pub fn call_getCapabilities(instance: *runtime.Instance, kind: runtime.DOMString) anyerror!?dictionaries.RTCRtpCapabilities {
     _ = instance;
     _ = kind;

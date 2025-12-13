@@ -84,7 +84,6 @@ pub fn call_static_requestPermission(instance: *runtime.Instance) anyerror!runti
     return error.NotImplemented;
 }
 
-
 pub fn call_requestPermission(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;

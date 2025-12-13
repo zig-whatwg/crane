@@ -243,4 +243,3 @@ pub fn createDocumentType(
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-

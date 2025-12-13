@@ -103,7 +103,6 @@ pub fn call_static_frame(instance: *runtime.Instance, input: typedefs.JsonLdInpu
     return error.NotImplemented;
 }
 
-
 pub fn call_flatten(instance: *runtime.Instance, input: typedefs.JsonLdInput, context: webidl.Opt(typedefs.JsonLdContext), options: webidl.Opt(dictionaries.JsonLdOptions)) anyerror!runtime.JSValue {
     _ = instance;
     _ = input;

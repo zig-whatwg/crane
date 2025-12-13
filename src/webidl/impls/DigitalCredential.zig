@@ -64,7 +64,6 @@ pub fn call_static_userAgentAllowsProtocol(instance: *runtime.Instance, protocol
     return error.NotImplemented;
 }
 
-
 pub fn call_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: runtime.DOMString) anyerror!bool {
     _ = instance;
     _ = protocol;

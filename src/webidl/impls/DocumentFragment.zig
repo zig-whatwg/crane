@@ -306,4 +306,3 @@ pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMSt
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-
