@@ -690,7 +690,27 @@ fn invokeMessageListeners(
                 // listener.callback is actually a *CallbackWrapper
                 if (listener.callback) |callback_instance| {
                     const callback_wrapper: *CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                    _ = callback_wrapper.call1(v8_context, @ptrCast(v8_event));
+
+                    // NOTE: We can't use callback_wrapper.call1() here because v8_event is
+                    // already a Global<Object>*, and call1's v8_Value_ToGlobal() assumes
+                    // the argument is a Local handle. Instead, we directly invoke the V8
+                    // function using v8_Function_Call which expects Global handles.
+                    //
+                    // callback_function_global.ptr is already a Global<Function>*
+                    if (callback_wrapper.callback_function_global) |func_global| {
+                        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+
+                        // Both func_global.ptr and v8_event are Global handles,
+                        // which is exactly what v8_Function_Call expects
+                        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+                        _ = v8_engine.ffi.v8_Function_Call(
+                            @ptrCast(func_global.ptr),
+                            v8_context,
+                            @ptrCast(undefined_recv),
+                            1,
+                            &args,
+                        );
+                    }
                 }
             }
         }
