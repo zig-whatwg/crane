@@ -1237,6 +1237,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         // IMPORTANT: Getters that return internal references (not newly allocated)
                         // MUST be updated to dupe the string first, or the cleanup will double-free.
                         const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
+
                         defer if (needs_cleanup) {
                             // Re-validate allocator before cleanup - it could have been invalidated
                             const cleanup_vtable_int = @intFromPtr(cleanup_allocator.vtable);

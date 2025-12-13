@@ -483,8 +483,9 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Reflects the src content attribute (URL-valued).
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
     // For ReflectURL, we should return the resolved URL, but for now return raw value
+    // IMPORTANT: Clone the value - the interface layer will free the returned slice
     if (getContentAttribute(instance, "src")) |attr| {
-        return attr.asSlice();
+        return try instance.ctx.allocator.dupe(u8, attr.asSlice());
     }
     return "";
 }
@@ -599,8 +600,9 @@ pub fn get_htmlFor(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Spec: [CEReactions, Reflect] attribute USVString attributionSrc;
 /// Reflects the attributionsrc content attribute.
 pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // IMPORTANT: Clone the value - the interface layer will free the returned slice
     if (getContentAttribute(instance, "attributionsrc")) |attr| {
-        return attr.asSlice();
+        return try instance.ctx.allocator.dupe(u8, attr.asSlice());
     }
     return "";
 }
@@ -799,4 +801,3 @@ pub fn call_supports(instance: *runtime.Instance, @"type": runtime.DOMString) an
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();
 }
-

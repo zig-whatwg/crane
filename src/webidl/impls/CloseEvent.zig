@@ -138,7 +138,8 @@ pub fn get_code(instance: *runtime.Instance) anyerror!u16 {
 /// Returns empty string if no reason was provided.
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
-    return state.own.reason;
+    // IMPORTANT: Clone the value - the interface layer will free the returned slice
+    return try instance.ctx.allocator.dupe(u8, state.own.reason);
 }
 
 // =============================================================================

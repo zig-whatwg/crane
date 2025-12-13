@@ -192,7 +192,8 @@ pub fn get_message(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Spec: "The filename attribute must return the value it was initialized to."
 pub fn get_filename(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
-    return internal.filename;
+    // IMPORTANT: Clone the value - the interface layer will free the returned slice
+    return try instance.ctx.allocator.dupe(u8, internal.filename);
 }
 
 /// Getter for lineno
