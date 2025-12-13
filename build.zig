@@ -3029,4 +3029,25 @@ pub fn build(b: *std.Build) void {
 
     const cldr_encode_step = b.step("cldr-encode", "Encode CLDR data to binary format");
     cldr_encode_step.dependOn(&run_cldr_encode.step);
+
+    // ========================================================================
+    // INTL BENCHMARKING TOOL
+    // ========================================================================
+
+    // Intl Benchmark - performance benchmarks for pure Zig internationalization library
+    const intl_bench_exe = b.addExecutable(.{
+        .name = "intl-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/intl_bench.zig"),
+            .target = target,
+            .optimize = .ReleaseFast, // Always optimize for benchmarks
+        }),
+    });
+    intl_bench_exe.root_module.addImport("intl", intl_mod);
+    b.installArtifact(intl_bench_exe);
+
+    const run_intl_bench = b.addRunArtifact(intl_bench_exe);
+
+    const intl_bench_step = b.step("intl-bench", "Run Intl performance benchmarks");
+    intl_bench_step.dependOn(&run_intl_bench.step);
 }
