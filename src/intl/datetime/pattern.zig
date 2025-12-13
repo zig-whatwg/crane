@@ -1180,10 +1180,12 @@ test "parsePattern - time pattern" {
 test "parsePattern - quoted literal" {
     const allocator = std.testing.allocator;
 
+    // Pattern: "yyyy 'at' HH:mm"
+    // Tokens: yyyy, " ", "at", " ", HH, ":", mm = 7 tokens
     const tokens = try parsePattern(allocator, "yyyy 'at' HH:mm");
     defer freeTokens(allocator, tokens);
 
-    try std.testing.expectEqual(@as(usize, 6), tokens.len);
+    try std.testing.expectEqual(@as(usize, 7), tokens.len); // Fixed: was incorrectly 6
     try std.testing.expectEqualStrings("at", tokens[2].literal);
 }
 

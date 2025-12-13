@@ -342,7 +342,7 @@ test "DateTime - fromTimestamp roundtrip" {
 }
 
 test "DateTime - specific dates" {
-    // 2023-11-14 12:30:45
+    // 1699964445 = 2023-11-14 12:20:45 UTC
     const ts: i64 = 1699964445;
     const dt = DateTime.fromTimestamp(ts);
 
@@ -350,7 +350,7 @@ test "DateTime - specific dates" {
     try std.testing.expectEqual(@as(u8, 11), dt.month);
     try std.testing.expectEqual(@as(u8, 14), dt.day);
     try std.testing.expectEqual(@as(u8, 12), dt.hour);
-    try std.testing.expectEqual(@as(u8, 30), dt.minute);
+    try std.testing.expectEqual(@as(u8, 20), dt.minute); // Fixed: was incorrectly 30
     try std.testing.expectEqual(@as(u8, 45), dt.second);
 }
 
@@ -449,14 +449,15 @@ test "DateTime - ISO week number" {
 
 test "DateTime - milliseconds precision" {
     // Test timestamp with milliseconds (JavaScript style)
-    const ts_ms: i64 = 1699964445123; // 2023-11-14 12:30:45.123
+    // 1699964445123 = 2023-11-14 12:20:45.123 UTC
+    const ts_ms: i64 = 1699964445123;
     const dt = DateTime.fromTimestampMillis(ts_ms);
 
     try std.testing.expectEqual(@as(i32, 2023), dt.year);
     try std.testing.expectEqual(@as(u8, 11), dt.month);
     try std.testing.expectEqual(@as(u8, 14), dt.day);
     try std.testing.expectEqual(@as(u8, 12), dt.hour);
-    try std.testing.expectEqual(@as(u8, 30), dt.minute);
+    try std.testing.expectEqual(@as(u8, 20), dt.minute); // Fixed: was incorrectly 30
     try std.testing.expectEqual(@as(u8, 45), dt.second);
     try std.testing.expectEqual(@as(u32, 123000000), dt.nanosecond);
 
