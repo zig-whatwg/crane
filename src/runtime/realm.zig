@@ -19,6 +19,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// Import environment settings object (circular reference avoided via opaque pointers)
+const EnvironmentSettingsObject = @import("environment_settings.zig").EnvironmentSettingsObject;
+
 /// JavaScript execution context type
 ///
 /// Per HTML spec, these correspond to different global object types.
@@ -360,6 +363,11 @@ pub const Realm = struct {
     /// Opaque pointer to BrowsingContext*
     browsing_context: ?*anyopaque,
 
+    /// Environment settings object for this realm
+    /// Provides origin, API base URL, policies, etc.
+    /// This is created lazily when needed.
+    settings_object: ?*EnvironmentSettingsObject,
+
     const Self = @This();
 
     /// Realm initialization options
@@ -404,6 +412,7 @@ pub const Realm = struct {
                 .unknown => RealmInfo.forTesting(),
             },
             .browsing_context = options.browsing_context,
+            .settings_object = null, // Lazily created when needed
         };
 
         return realm;
@@ -414,6 +423,11 @@ pub const Realm = struct {
     /// Note: V8 handles (context, global, intrinsics) must be disposed
     /// by the V8-specific code before calling this.
     pub fn deinit(self: *Self) void {
+        // Free environment settings object if we created it
+        if (self.settings_object) |settings| {
+            settings.deinit();
+        }
+
         self.intrinsics.deinit();
         self.allocator.destroy(self);
     }
@@ -507,6 +521,46 @@ pub const Realm = struct {
     /// Get human-readable context name
     pub fn contextName(self: *const Self) []const u8 {
         return self.info.contextName();
+    }
+
+    // ========================================================================
+    // Environment Settings Object
+    // ========================================================================
+
+    /// Get or create the environment settings object for this realm
+    ///
+    /// Per HTML §8.1.5, each realm has an associated environment settings object.
+    /// This is created lazily on first access.
+    pub fn getSettingsObject(self: *Self) !*EnvironmentSettingsObject {
+        if (self.settings_object) |settings| {
+            return settings;
+        }
+
+        // Create a new settings object for this realm
+        const settings = try EnvironmentSettingsObject.init(self.allocator, .{
+            .realm = self,
+            // Other options will be set based on the context type
+        });
+        errdefer settings.deinit();
+
+        self.settings_object = settings;
+        return settings;
+    }
+
+    /// Get the settings object if already created (no allocation)
+    pub fn getExistingSettingsObject(self: *const Self) ?*EnvironmentSettingsObject {
+        return self.settings_object;
+    }
+
+    /// Set a pre-created settings object
+    ///
+    /// This takes ownership of the settings object.
+    /// Any existing settings object will be freed.
+    pub fn setSettingsObject(self: *Self, settings: *EnvironmentSettingsObject) void {
+        if (self.settings_object) |old| {
+            old.deinit();
+        }
+        self.settings_object = settings;
     }
 
     // ========================================================================

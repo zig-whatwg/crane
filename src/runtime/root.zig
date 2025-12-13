@@ -41,7 +41,15 @@ pub const realm = @import("realm.zig");
 pub const ContextType = realm.ContextType;
 pub const Exposure = realm.Exposure;
 pub const RealmInfo = realm.RealmInfo;
+pub const Realm = realm.Realm;
+pub const Intrinsics = realm.Intrinsics;
 pub const LogLevel = @import("logger.zig").LogLevel;
+
+// Environment Settings Object (WHATWG HTML §8.1.5)
+pub const environment_settings = @import("environment_settings.zig");
+pub const EnvironmentSettingsObject = environment_settings.EnvironmentSettingsObject;
+pub const Origin = environment_settings.Origin;
+pub const PolicyContainer = environment_settings.PolicyContainer;
 pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 
 // Engine-agnostic callback wrapper for callback interfaces
