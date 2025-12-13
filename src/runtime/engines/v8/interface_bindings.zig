@@ -247,6 +247,10 @@ pub fn initializeBindings(
     // These are separate constructors that create instances of other interfaces
     // e.g., Image creates HTMLImageElement, Audio creates HTMLAudioElement
     registerLegacyFactoryFunctions(isolate, context);
+
+    // Step 4: Register Intl namespace (pure Zig i18n - replaces ICU)
+    const intl_binding = @import("intl_binding.zig");
+    intl_binding.registerGlobal(isolate, context);
 }
 
 /// Register legacy factory function aliases
