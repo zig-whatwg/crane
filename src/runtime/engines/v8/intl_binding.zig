@@ -142,6 +142,99 @@ const DateTime = struct {
 const DateStyle = enum { full, long, medium, short };
 const TimeStyle = enum { full, long, medium, short };
 
+// ============================================================================
+// Weak Callback Data Structures for GC Cleanup
+// ============================================================================
+
+/// Data passed to weak callbacks to identify registry entries for cleanup
+const WeakCallbackData = struct {
+    registry_type: RegistryType,
+    entry_idx: usize,
+    allocator: std.mem.Allocator,
+
+    const RegistryType = enum {
+        datetime_format,
+        number_format,
+        collator,
+        plural_rules,
+        relative_time_format,
+        list_format,
+        display_names,
+    };
+};
+
+/// Weak callback invoked when a V8 Intl object is garbage collected.
+/// Removes the corresponding registry entry to prevent memory leaks.
+fn intlWeakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
+    _ = length_in_bytes;
+
+    const weak_data: *WeakCallbackData = @ptrCast(@alignCast(data orelse return));
+    defer weak_data.allocator.destroy(weak_data);
+
+    // Remove the entry from the appropriate registry
+    switch (weak_data.registry_type) {
+        .datetime_format => {
+            if (dtf_registry) |*reg| {
+                reg.remove(weak_data.entry_idx);
+            }
+        },
+        .number_format => {
+            if (nf_registry) |*reg| {
+                reg.remove(weak_data.entry_idx);
+            }
+        },
+        .collator => {
+            if (collator_registry) |*reg| {
+                reg.remove(weak_data.entry_idx);
+            }
+        },
+        .plural_rules => {
+            if (plural_rules_registry) |*reg| {
+                _ = reg.entries.remove(weak_data.entry_idx);
+            }
+        },
+        .relative_time_format => {
+            if (relative_time_format_registry) |*reg| {
+                _ = reg.entries.remove(weak_data.entry_idx);
+            }
+        },
+        .list_format => {
+            if (list_format_registry) |*reg| {
+                _ = reg.entries.remove(weak_data.entry_idx);
+            }
+        },
+        .display_names => {
+            if (display_names_registry) |*reg| {
+                _ = reg.entries.remove(weak_data.entry_idx);
+            }
+        },
+    }
+}
+
+/// Setup weak reference on a V8 object to trigger cleanup when GC'd.
+/// This prevents memory leaks by removing registry entries when JS objects
+/// are garbage collected.
+fn setupWeakCallback(
+    isolate: *v8.Isolate,
+    js_object: *v8.Object,
+    registry_type: WeakCallbackData.RegistryType,
+    entry_idx: usize,
+    allocator: std.mem.Allocator,
+) void {
+    // Allocate callback data that will be passed to the weak callback
+    const weak_data = allocator.create(WeakCallbackData) catch return;
+    weak_data.* = .{
+        .registry_type = registry_type,
+        .entry_idx = entry_idx,
+        .allocator = allocator,
+    };
+
+    // Make the JS object a weak reference with our cleanup callback
+    // When V8 GC collects this object, intlWeakCallback will be invoked
+    v8.v8_Global_SetWeak(@ptrCast(js_object), weak_data, intlWeakCallback);
+    _ = isolate; // isolate is available if needed for future enhancements
+}
+
 /// Internal storage for DateTimeFormat instances
 const DateTimeFormatRegistry = struct {
     const Entry = struct {
@@ -635,6 +728,9 @@ fn dateTimeFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callc
         registry.remove(idx);
         return;
     };
+
+    // Setup weak callback to clean up registry entry when JS object is GC'd
+    setupWeakCallback(isolate, result, .datetime_format, idx, allocator);
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -1306,6 +1402,9 @@ fn numberFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
         registry.remove(idx);
         return;
     };
+
+    // Setup weak callback to clean up registry entry when JS object is GC'd
+    setupWeakCallback(isolate, result, .number_format, idx, allocator);
 
     info.setReturnValue(@ptrCast(result));
 }
@@ -2000,6 +2099,9 @@ fn collatorConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c
     const opts_fn = v8.v8_FunctionTemplate_New(isolate, collatorResolvedOptionsCallback, null) orelse return;
     const opts_fn_obj = v8.v8_FunctionTemplate_GetFunction(opts_fn, context) orelse return;
     _ = v8.v8_Object_Set(collator_obj, context, @ptrCast(opts_key), @ptrCast(opts_fn_obj));
+
+    // Setup weak callback to clean up registry entry when JS object is GC'd
+    setupWeakCallback(isolate, collator_obj, .collator, idx, std.heap.page_allocator);
 
     info.setReturnValue(@ptrCast(collator_obj));
 }
@@ -2877,6 +2979,9 @@ fn pluralRulesConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv
     const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
     _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
 
+    // Setup weak callback to clean up registry entry when JS object is GC'd
+    setupWeakCallback(isolate, result_obj, .plural_rules, id, allocator);
+
     info.setReturnValue(@ptrCast(result_obj));
 }
 
@@ -3284,6 +3389,9 @@ fn relativeTimeFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) c
     const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
     _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
 
+    // Setup weak callback to clean up registry entry when JS object is GC'd
+    setupWeakCallback(isolate, result_obj, .relative_time_format, id, allocator);
+
     info.setReturnValue(@ptrCast(result_obj));
 }
 
@@ -3605,6 +3713,9 @@ fn listFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(
     const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
     const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
     _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
+
+    // Setup weak callback to clean up registry entry when JS object is GC'd
+    setupWeakCallback(isolate, result_obj, .list_format, id, allocator);
 
     info.setReturnValue(@ptrCast(result_obj));
 }
@@ -4029,6 +4140,9 @@ fn displayNamesConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
     const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
     _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
 
+    // Setup weak callback to clean up registry entry when JS object is GC'd
+    setupWeakCallback(isolate, result_obj, .display_names, id, allocator);
+
     info.setReturnValue(@ptrCast(result_obj));
 }
 
@@ -4396,6 +4510,74 @@ pub fn registerExternalReferences() void {
 
     // Intl.supportedValuesOf
     ext_refs.registerCallbackRuntime(supportedValuesOfCallback);
+}
+
+/// Deinitialize all Intl registries, freeing any remaining entries.
+/// Call this during runtime shutdown to clean up resources.
+/// Note: With weak callbacks enabled, most entries should already be cleaned
+/// up via GC. This is a safety net for any entries that weren't GC'd.
+pub fn deinitAllRegistries() void {
+    // DateTimeFormat registry
+    if (dtf_registry) |*reg| {
+        reg.deinit();
+        dtf_registry = null;
+    }
+
+    // NumberFormat registry
+    if (nf_registry) |*reg| {
+        reg.deinit();
+        nf_registry = null;
+    }
+
+    // Collator registry
+    if (collator_registry) |*reg| {
+        reg.deinit();
+        collator_registry = null;
+    }
+
+    // PluralRules registry
+    if (plural_rules_registry) |*reg| {
+        // Free locale strings for remaining entries
+        var iter = reg.entries.iterator();
+        while (iter.next()) |kv| {
+            kv.value_ptr.allocator.free(kv.value_ptr.locale);
+        }
+        reg.entries.deinit();
+        plural_rules_registry = null;
+    }
+
+    // RelativeTimeFormat registry
+    if (relative_time_format_registry) |*reg| {
+        // Free locale strings for remaining entries
+        var iter = reg.entries.iterator();
+        while (iter.next()) |kv| {
+            kv.value_ptr.allocator.free(kv.value_ptr.locale);
+        }
+        reg.entries.deinit();
+        relative_time_format_registry = null;
+    }
+
+    // ListFormat registry
+    if (list_format_registry) |*reg| {
+        // Free locale strings for remaining entries
+        var iter = reg.entries.iterator();
+        while (iter.next()) |kv| {
+            kv.value_ptr.allocator.free(kv.value_ptr.locale);
+        }
+        reg.entries.deinit();
+        list_format_registry = null;
+    }
+
+    // DisplayNames registry
+    if (display_names_registry) |*reg| {
+        // Free locale strings for remaining entries
+        var iter = reg.entries.iterator();
+        while (iter.next()) |kv| {
+            kv.value_ptr.allocator.free(kv.value_ptr.locale);
+        }
+        reg.entries.deinit();
+        display_names_registry = null;
+    }
 }
 
 // ============================================================================

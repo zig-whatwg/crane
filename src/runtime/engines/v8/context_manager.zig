@@ -47,6 +47,7 @@ const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const V8EventLoop = @import("event_loop.zig").V8EventLoop;
 const v8_engine = @import("engine.zig");
+const intl_binding = @import("intl_binding.zig");
 
 /// Context mapping entry
 const ContextEntry = struct {
@@ -108,6 +109,11 @@ pub fn init(allocator: std.mem.Allocator) !void {
 pub fn deinit() void {
     if (manager_state) |*state| {
         const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+
+        // Clean up Intl registries (safety net for entries not GC'd)
+        // This must be done before contexts are destroyed since weak callbacks
+        // may still reference registry data
+        intl_binding.deinitAllRegistries();
 
         // Deinit all owned runtime contexts
         var it = state.contexts.valueIterator();
