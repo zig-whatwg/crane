@@ -55,6 +55,8 @@ const realm_mod = @import("realm.zig");
 pub const RealmInfo = realm_mod.RealmInfo;
 pub const ContextType = realm_mod.ContextType;
 pub const Exposure = realm_mod.Exposure;
+pub const Realm = realm_mod.Realm;
+pub const Intrinsics = realm_mod.Intrinsics;
 
 // Import event loop for streams and async operations
 // Note: This is an optional dependency - event_loop is only needed for async features
@@ -199,6 +201,12 @@ pub const ContextData = struct {
     /// Used for WebIDL [Exposed] attribute checking
     realm_info: RealmInfo,
 
+    /// Full Realm object for cross-realm support
+    /// Contains V8 context, intrinsics, and global object references.
+    /// Optional - only set for contexts that need cross-realm functionality.
+    /// This enables proper cross-realm TypeError throwing, object creation, etc.
+    realm: ?*Realm,
+
     const Self = @This();
 
     /// Context initialization options
@@ -239,6 +247,10 @@ pub const ContextData = struct {
         /// Realm information for this context
         /// Defaults to unknown (for testing)
         realm_info: ?RealmInfo = null,
+
+        /// Full Realm object for cross-realm support
+        /// Optional - only needed for multi-context scenarios (iframes, etc.)
+        realm: ?*Realm = null,
     };
 
     /// Initialize a new runtime context
@@ -282,6 +294,7 @@ pub const ContextData = struct {
             ._engine_event_loop_storage = engine_event_loop_storage,
             ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
             .realm_info = options.realm_info orelse RealmInfo.forTesting(),
+            .realm = options.realm,
         };
     }
 
@@ -469,6 +482,74 @@ pub const ContextData = struct {
     pub fn contextName(self: *const Self) []const u8 {
         return self.realm_info.contextName();
     }
+
+    // ========================================================================
+    // Full Realm Access (Cross-Realm Support)
+    // ========================================================================
+
+    /// Check if this context has a full Realm object
+    ///
+    /// Returns true if cross-realm functionality is available.
+    pub fn hasRealm(self: *const Self) bool {
+        return self.realm != null;
+    }
+
+    /// Get the full Realm object
+    ///
+    /// Returns the Realm for cross-realm operations (creating errors,
+    /// objects in correct realm, etc.), or null if not available.
+    pub fn getRealm(self: *const Self) ?*Realm {
+        return self.realm;
+    }
+
+    /// Set the Realm object
+    ///
+    /// Called during context setup to associate a Realm with this context.
+    pub fn setRealm(self: *Self, realm: *Realm) void {
+        self.realm = realm;
+        // Sync realm_info with the realm's info
+        self.realm_info = realm.info;
+    }
+
+    /// Clear the Realm object
+    ///
+    /// Called during cleanup. Does NOT deinit the Realm - that must be
+    /// done separately by the owner.
+    pub fn clearRealm(self: *Self) void {
+        self.realm = null;
+    }
+
+    /// Create a TypeError from this context's realm
+    ///
+    /// If a full Realm is available, creates the error from that realm.
+    /// Otherwise returns null.
+    pub fn createTypeError(self: *const Self, message: []const u8) ?*anyopaque {
+        if (self.realm) |realm| {
+            return realm.createTypeError(message);
+        }
+        return null;
+    }
+
+    /// Throw a TypeError from this context's realm
+    ///
+    /// If a full Realm is available, throws from that realm.
+    /// Otherwise does nothing.
+    pub fn throwTypeError(self: *const Self, message: []const u8) void {
+        if (self.realm) |realm| {
+            realm.throwTypeError(message);
+        }
+    }
+
+    /// Create a plain object in this context's realm
+    ///
+    /// If a full Realm is available, creates the object in that realm
+    /// (with correct prototype chain). Otherwise returns null.
+    pub fn createObject(self: *const Self) ?*anyopaque {
+        if (self.realm) |realm| {
+            return realm.createObject();
+        }
+        return null;
+    }
 };
 
 /// Runtime context - pointer to ContextData
@@ -625,4 +706,110 @@ test "createNullContext - has testing realm" {
     defer ctx.deinit();
 
     try testing.expectEqual(ContextType.unknown, ctx.realm_info.context_type);
+}
+
+// ============================================================================
+// Full Realm Integration Tests
+// ============================================================================
+
+test "ContextData - realm default is null" {
+    var ctx = try ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+
+    try testing.expect(!ctx.hasRealm());
+    try testing.expect(ctx.getRealm() == null);
+}
+
+test "ContextData - set and get realm" {
+    var ctx = try ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+
+    // Create a realm
+    var realm = try Realm.init(testing.allocator, .{
+        .context_type = .window,
+    });
+    defer realm.deinit();
+
+    // Initially no realm
+    try testing.expect(!ctx.hasRealm());
+
+    // Set the realm
+    ctx.setRealm(realm);
+
+    // Now has realm
+    try testing.expect(ctx.hasRealm());
+    try testing.expect(ctx.getRealm() != null);
+    try testing.expect(ctx.getRealm() == realm);
+
+    // Realm info should be synced
+    try testing.expect(ctx.isWindow());
+}
+
+test "ContextData - realm syncs context type" {
+    var ctx = try ContextData.init(testing.allocator, .{
+        .realm_info = RealmInfo.forTesting(), // unknown context
+    });
+    defer ctx.deinit();
+
+    // Initially unknown
+    try testing.expectEqual(ContextType.unknown, ctx.realm_info.context_type);
+
+    // Create worker realm
+    var realm = try Realm.init(testing.allocator, .{
+        .context_type = .dedicated_worker,
+    });
+    defer realm.deinit();
+
+    // Set realm syncs the context type
+    ctx.setRealm(realm);
+    try testing.expectEqual(ContextType.dedicated_worker, ctx.realm_info.context_type);
+    try testing.expect(ctx.isWorker());
+}
+
+test "ContextData - clear realm" {
+    var ctx = try ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+
+    var realm = try Realm.init(testing.allocator, .{});
+    defer realm.deinit();
+
+    ctx.setRealm(realm);
+    try testing.expect(ctx.hasRealm());
+
+    ctx.clearRealm();
+    try testing.expect(!ctx.hasRealm());
+    try testing.expect(ctx.getRealm() == null);
+}
+
+test "ContextData - init with realm option" {
+    var realm = try Realm.init(testing.allocator, .{
+        .context_type = .service_worker,
+    });
+    defer realm.deinit();
+
+    var ctx = try ContextData.init(testing.allocator, .{
+        .realm = realm,
+    });
+    defer ctx.deinit();
+
+    try testing.expect(ctx.hasRealm());
+    try testing.expect(ctx.getRealm() == realm);
+}
+
+test "ContextData - createTypeError without realm returns null" {
+    var ctx = try ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+
+    // No realm, should return null
+    const error_obj = ctx.createTypeError("test error");
+    try testing.expect(error_obj == null);
+}
+
+test "ContextData - createObject without realm returns null" {
+    var ctx = try ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+
+    // No realm, should return null
+    const obj = ctx.createObject();
+    try testing.expect(obj == null);
 }
