@@ -1390,6 +1390,12 @@ pub const TreeBuilder = struct {
                     // Create html element and append to document
                     const html = try self.createElementForToken(tag, .html);
                     self.document.appendChild(html);
+
+                    // Notify DOM adapter of parent-child relationship
+                    if (self.dom_adapter_on_child_appended) |callback| {
+                        callback(self.document, html, self.dom_adapter_context);
+                    }
+
                     try self.open_elements.append(html);
                     self.insertion_mode = .before_head;
                 } else {

@@ -42,6 +42,10 @@ const impls = @import("impls");
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const DocumentImpl = impls.Document;
 
+// DOM internals for document_element setting
+const dom = @import("dom");
+const document_internals = dom.document_internals;
+
 /// Script loader function type for external scripts.
 /// Takes a context pointer and URL, returns script content or null on failure.
 pub const ScriptLoaderFn = *const fn (?*anyopaque, []const u8) ?[]const u8;
@@ -473,11 +477,22 @@ pub const DomTreeAdapter = struct {
 
     /// Called when a child is appended to a parent during parsing.
     /// Updates the DOM tree structure.
+    /// When appending <html> to document, also sets document.documentElement.
     pub fn onChildAppended(self: *DomTreeAdapter, parent: *TreeNode, child: *TreeNode) !void {
         const parent_dom = self.node_map.get(parent) orelse return;
         const child_dom = self.node_map.get(child) orelse return;
 
         _ = interfaces.Node.call_appendChild(parent_dom, child_dom) catch {};
+
+        // CRITICAL: If appending <html> to document, set documentElement
+        // Per DOM spec, documentElement is the first Element child of the Document
+        if (parent.node_type == .document and child.node_type == .element) {
+            if (child.local_name) |name| {
+                if (std.mem.eql(u8, name, "html") and child.namespace == .html) {
+                    document_internals.setDocumentElement(self.document, child_dom);
+                }
+            }
+        }
     }
 
     /// Called when a node's text content changes during parsing.

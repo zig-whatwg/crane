@@ -201,6 +201,7 @@ pub const DomTreeAdapter = struct {
     /// Called when tree builder appends a child to a parent.
     ///
     /// This establishes the parent-child relationship in the DOM.
+    /// When appending an <html> element to the document, also sets document.documentElement.
     ///
     /// @param parent The parent TreeNode
     /// @param child The child TreeNode being appended
@@ -213,6 +214,16 @@ pub const DomTreeAdapter = struct {
         _ = Node.call_appendChild(parent_dom, child_dom) catch {
             return DomTreeAdapterError.DomOperationFailed;
         };
+
+        // CRITICAL: If appending <html> to document, set documentElement
+        // Per DOM spec, documentElement is the first Element child of the Document
+        if (parent.node_type == .document and child.node_type == .element) {
+            if (child.local_name) |name| {
+                if (std.mem.eql(u8, name, "html") and child.namespace == .html) {
+                    document_internals.setDocumentElement(self.document, child_dom);
+                }
+            }
+        }
     }
 
     /// Called when tree builder removes a node from its parent.

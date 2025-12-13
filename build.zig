@@ -1452,6 +1452,8 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("csp", csp_mod);
     html_mod.addImport("v8", v8_mod);
     html_mod.addImport("dictionaries", dictionaries_mod);
+    // DOM module for document_internals access in parser_script_execution.zig
+    html_mod.addImport("dom", dom_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
