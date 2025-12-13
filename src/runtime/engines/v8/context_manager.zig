@@ -50,7 +50,7 @@ const v8_engine = @import("engine.zig");
 const intl_binding = @import("intl_binding.zig");
 
 /// Context mapping entry
-const ContextEntry = struct {
+pub const ContextEntry = struct {
     /// V8 context pointer (key)
     v8_ctx: *v8.Context,
 
@@ -63,6 +63,21 @@ const ContextEntry = struct {
 
     /// V8 event loop with timer support (owned if owns_context is true)
     event_loop: ?*V8EventLoop,
+
+    /// Associated realm for this context (for cross-realm support)
+    /// Each V8 context has its own realm with intrinsics, global object, etc.
+    realm: ?*runtime.Realm,
+
+    /// Parent context entry (for iframe hierarchy)
+    /// Null for top-level/main contexts
+    parent_entry: ?*ContextEntry,
+
+    /// Child context entries (iframes, workers, etc.)
+    /// Uses unmanaged ArrayList for Zig 0.15+ API
+    children: std.ArrayListUnmanaged(*ContextEntry),
+
+    /// Allocator used for this entry (needed for children list)
+    allocator: std.mem.Allocator,
 };
 
 /// Thread-local context manager state
@@ -133,6 +148,15 @@ pub fn deinit() void {
                     ev_loop.deinit();
                     ctx_data.getAllocator().destroy(ev_loop);
                 }
+
+                // Clean up realm
+                if (entry.realm) |realm| {
+                    realm.deinit();
+                }
+
+                // Clean up children list (entries themselves are in the map)
+                var children = entry.children;
+                children.deinit(entry.allocator);
 
                 ctx_data.deinit();
             }
@@ -224,6 +248,10 @@ pub fn getOrCreateWithExternalEventLoop(
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = null, // We don't own the external event loop
+        .realm = null,
+        .parent_entry = null,
+        .children = .{},
+        .allocator = allocator,
     });
 
     const entry = state.contexts.getPtr(key).?;
@@ -316,6 +344,10 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = event_loop_ptr,
+        .realm = null,
+        .parent_entry = null,
+        .children = .{},
+        .allocator = allocator,
     });
 
     // Return pointer to context data in the hash map
@@ -365,6 +397,10 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
         .runtime_ctx = ctx.*, // Copy the context data
         .owns_context = false, // Don't deinit this one
         .event_loop = null, // Registered contexts don't have event loop
+        .realm = null,
+        .parent_entry = null,
+        .children = .{},
+        .allocator = state.allocator,
     });
 }
 
@@ -380,8 +416,9 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
     const key = @intFromPtr(v8_ctx);
 
     if (state.contexts.fetchRemove(key)) |kv| {
-        if (kv.value.owns_context) {
-            var ctx_data = kv.value.runtime_ctx;
+        var entry = kv.value;
+        if (entry.owns_context) {
+            var ctx_data = entry.runtime_ctx;
 
             // Clean up V8 wrapper cache before deinit
             if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
@@ -393,10 +430,18 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             }
 
             // Clean up V8 event loop
-            if (kv.value.event_loop) |ev_loop| {
+            if (entry.event_loop) |ev_loop| {
                 ev_loop.deinit();
                 ctx_data.getAllocator().destroy(ev_loop);
             }
+
+            // Clean up realm
+            if (entry.realm) |realm| {
+                realm.deinit();
+            }
+
+            // Clean up children list
+            entry.children.deinit(entry.allocator);
 
             ctx_data.deinit();
         }
@@ -627,6 +672,283 @@ fn resolveModuleSpecifier(
 }
 
 // ============================================================================
+// Child Context Management (Cross-Realm Support)
+// ============================================================================
+
+/// Options for creating a child context
+pub const ChildContextOptions = struct {
+    /// Parent V8 context (required)
+    parent_context: *v8.Context,
+
+    /// V8 isolate (required)
+    isolate: *v8.Isolate,
+
+    /// Context type for the child realm (defaults to window for iframes)
+    context_type: runtime.ContextType = .window,
+
+    /// Whether to inherit the event loop from parent
+    inherit_event_loop: bool = true,
+};
+
+/// Create a new V8 context for a child browsing context (iframe)
+///
+/// This creates a new V8 context with:
+/// - Its own global object template with immutable prototype
+/// - All interface bindings initialized
+/// - A new realm associated with the context
+/// - Parent-child relationship tracked
+///
+/// The child context is registered in the context manager and will be
+/// cleaned up when destroyChildContext is called or when the manager
+/// is deinitialized.
+///
+/// Thread safety: Thread-local, no synchronization needed
+///
+/// Arguments:
+/// - options: Configuration for the child context
+/// - allocator: Allocator for child context resources
+///
+/// Returns: Pointer to the created ContextEntry
+pub fn createChildContext(
+    options: ChildContextOptions,
+    allocator: std.mem.Allocator,
+) !*ContextEntry {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    // Get parent entry
+    const parent_raw_addr = v8.v8_Context_GetRawAddress(options.parent_context) orelse return error.InvalidContext;
+    const parent_key = @intFromPtr(parent_raw_addr);
+    const parent_entry = state.contexts.getPtr(parent_key) orelse return error.ParentNotFound;
+
+    // 1. Create new global template with immutable prototype
+    // Per HTML spec, Window's [[SetPrototypeOf]] always returns false
+    const global_template = v8.v8_ObjectTemplate_New(options.isolate) orelse return error.TemplateCreationFailed;
+
+    // Set internal field count for Window binding (2 fields: impl pointer + destructor type)
+    v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+
+    // Set immutable prototype per spec
+    v8.v8_ObjectTemplate_SetImmutableProto(global_template);
+
+    // 2. Create new V8 context with the global template
+    const child_context = v8.v8_Context_NewWithGlobalTemplate(
+        options.isolate,
+        global_template,
+    ) orelse return error.ContextCreationFailed;
+
+    // Get stable address for map key
+    const child_raw_addr = v8.v8_Context_GetRawAddress(child_context) orelse return error.InvalidContext;
+    const child_key = @intFromPtr(child_raw_addr);
+
+    // 3. Enter the new context for initialization
+    v8.v8_Context_Enter(child_context);
+    defer v8.v8_Context_Exit(child_context);
+
+    // 4. Initialize all interface bindings in new context
+    // This registers all WebIDL interfaces as global constructors
+    const interface_bindings = @import("interface_bindings.zig");
+    interface_bindings.initializeBindings(options.isolate, child_context);
+
+    // 5. Create realm for new context
+    const realm = try runtime.Realm.init(allocator, .{
+        .v8_context = @ptrCast(child_context),
+        .isolate = @ptrCast(options.isolate),
+        .context_type = options.context_type,
+        .global_object = @ptrCast(v8.v8_Context_Global(child_context)),
+    });
+    errdefer realm.deinit();
+
+    // 6. Create runtime context data
+    // Optionally inherit event loop from parent
+    var timer_interface: ?runtime.TimerInterface = null;
+    var event_loop_interface: ?@import("event_loop").EventLoop = null;
+
+    if (options.inherit_event_loop) {
+        if (parent_entry.event_loop) |parent_ev_loop| {
+            timer_interface = parent_ev_loop.timerInterface();
+            event_loop_interface = parent_ev_loop.eventLoop();
+        }
+    }
+
+    var ctx_data = try runtime.ContextData.init(allocator, .{
+        .colored = false,
+        .show_timestamp = false,
+        .show_labels = false,
+        .engine = &v8_engine.v8_engine_interface,
+        .engine_ctx = @ptrCast(child_context),
+        .timer = timer_interface,
+        .event_loop = event_loop_interface,
+    });
+    errdefer ctx_data.deinit();
+
+    // 7. Initialize V8 wrapper cache for child context
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+    const cache_ptr = try allocator.create(WrapperCache);
+    errdefer allocator.destroy(cache_ptr);
+
+    cache_ptr.* = try WrapperCache.init(allocator, child_context);
+    errdefer cache_ptr.deinit();
+
+    ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+
+    // 8. Store in map
+    try state.contexts.put(child_key, ContextEntry{
+        .v8_ctx = child_context,
+        .runtime_ctx = ctx_data,
+        .owns_context = true,
+        .event_loop = null, // Child doesn't own event loop (inherits from parent or none)
+        .realm = realm,
+        .parent_entry = parent_entry,
+        .children = .{},
+        .allocator = allocator,
+    });
+
+    // 9. Get pointer to entry in map
+    const child_entry = state.contexts.getPtr(child_key).?;
+
+    // 10. Link to parent's children list
+    try parent_entry.children.append(allocator, child_entry);
+
+    return child_entry;
+}
+
+/// Destroy a child context and clean up resources
+///
+/// This recursively destroys all child contexts, removes from parent's
+/// children list, cleans up the realm and runtime context, and removes
+/// from the context manager.
+///
+/// Thread safety: Thread-local, no synchronization needed
+///
+/// Arguments:
+/// - entry: The context entry to destroy
+/// - allocator: Allocator used for the entry
+pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) void {
+    const state = &(manager_state orelse return);
+
+    // 1. Recursively destroy all children first
+    // Make a copy of items since we're modifying while iterating
+    var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .{};
+    children_copy.appendSlice(allocator, entry.children.items) catch {};
+
+    for (children_copy.items) |child| {
+        destroyChildContext(child, allocator);
+    }
+    children_copy.deinit(allocator);
+
+    // 2. Remove from parent's children list
+    if (entry.parent_entry) |parent| {
+        for (parent.children.items, 0..) |child, i| {
+            if (child == entry) {
+                _ = parent.children.swapRemove(i);
+                break;
+            }
+        }
+    }
+
+    // 3. Clean up our children list
+    entry.children.deinit(allocator);
+
+    // 4. Get the key for removal
+    const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
+    if (raw_addr == null) return;
+    const key = @intFromPtr(raw_addr);
+
+    // 5. Clean up owned resources
+    if (entry.owns_context) {
+        var ctx_data = entry.runtime_ctx;
+
+        // Clean up V8 wrapper cache
+        if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+            const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+            const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+            cache_ptr.deinit();
+            ctx_data.getAllocator().destroy(cache_ptr);
+            ctx_data.clearV8WrapperCacheStorage();
+        }
+
+        // Clean up realm
+        if (entry.realm) |realm| {
+            realm.deinit();
+        }
+
+        ctx_data.deinit();
+    }
+
+    // 6. Remove from context map
+    _ = state.contexts.remove(key);
+}
+
+/// Get the realm for a V8 context
+///
+/// Returns the Realm associated with the given V8 context, or null
+/// if no realm is associated or the context is not registered.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn getRealmForContext(v8_ctx: *v8.Context) ?*runtime.Realm {
+    const state = &(manager_state orelse return null);
+
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    const key = @intFromPtr(raw_addr);
+
+    if (state.contexts.getPtr(key)) |entry| {
+        return entry.realm;
+    }
+
+    return null;
+}
+
+/// Get the realm for the current V8 context
+///
+/// Returns the Realm for the currently entered V8 context, or null
+/// if no context is entered or no realm is associated.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn getCurrentRealm() ?*runtime.Realm {
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+    return getRealmForContext(context);
+}
+
+/// Get the ContextEntry for a V8 context
+///
+/// Returns the full ContextEntry for the given V8 context, allowing
+/// access to parent/child relationships.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
+    const state = &(manager_state orelse return null);
+
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    const key = @intFromPtr(raw_addr);
+
+    return state.contexts.getPtr(key);
+}
+
+/// Associate a realm with an existing context
+///
+/// This is used when a context was created via getOrCreate but a realm
+/// needs to be associated with it later.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn setRealmForContext(v8_ctx: *v8.Context, realm: *runtime.Realm) !void {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
+    const key = @intFromPtr(raw_addr);
+
+    if (state.contexts.getPtr(key)) |entry| {
+        // Free existing realm if any
+        if (entry.realm) |old_realm| {
+            old_realm.deinit();
+        }
+        entry.realm = realm;
+    } else {
+        return error.ContextNotFound;
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -751,4 +1073,65 @@ test "ContextManager - multiple contexts" {
 
     // Should be different contexts
     try testing.expect(ctx1 != ctx2);
+}
+
+test "ContextManager - getEntry returns entry with parent/children" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    _ = try getOrCreate(v8_ctx, testing.allocator);
+
+    const entry = getEntry(v8_ctx);
+    try testing.expect(entry != null);
+
+    // Top-level context should have no parent
+    try testing.expect(entry.?.parent_entry == null);
+
+    // Top-level context should have empty children list
+    try testing.expectEqual(@as(usize, 0), entry.?.children.items.len);
+
+    // Top-level context created via getOrCreate should have no realm initially
+    try testing.expect(entry.?.realm == null);
+}
+
+test "ContextManager - getRealmForContext returns null for context without realm" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    _ = try getOrCreate(v8_ctx, testing.allocator);
+
+    // Contexts created via getOrCreate don't have realms initially
+    const realm = getRealmForContext(v8_ctx);
+    try testing.expect(realm == null);
+}
+
+test "ContextManager - setRealmForContext associates realm with context" {
+    try init(testing.allocator);
+    defer deinit();
+
+    var dummy_v8_ctx: u64 = 0x1000;
+    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
+
+    _ = try getOrCreate(v8_ctx, testing.allocator);
+
+    // Create a realm
+    const realm = try runtime.Realm.init(testing.allocator, .{
+        .context_type = .window,
+    });
+    // Note: realm will be cleaned up by context manager
+
+    // Associate realm with context
+    try setRealmForContext(v8_ctx, realm);
+
+    // Should now be retrievable
+    const retrieved_realm = getRealmForContext(v8_ctx);
+    try testing.expect(retrieved_realm != null);
+    try testing.expect(retrieved_realm == realm);
+    try testing.expect(retrieved_realm.?.isWindow());
 }
