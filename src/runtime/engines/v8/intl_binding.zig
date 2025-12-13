@@ -4309,6 +4309,836 @@ fn displayNamesSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) 
 }
 
 // ============================================================================
+// Phase 3: Intl.Locale
+// ============================================================================
+
+/// Internal storage for Locale instances
+const LocaleRegistry = struct {
+    const Entry = struct {
+        locale_tag: []const u8,
+        language: []const u8,
+        script: ?[]const u8,
+        region: ?[]const u8,
+        calendar: ?[]const u8,
+        collation: ?[]const u8,
+        hour_cycle: ?[]const u8,
+        numbering_system: ?[]const u8,
+        case_first: ?[]const u8,
+        numeric: bool,
+        base_name: []const u8,
+        allocator: std.mem.Allocator,
+
+        fn deinit(self: *Entry) void {
+            self.allocator.free(self.locale_tag);
+            self.allocator.free(self.language);
+            if (self.script) |s| self.allocator.free(s);
+            if (self.region) |r| self.allocator.free(r);
+            if (self.calendar) |c| self.allocator.free(c);
+            if (self.collation) |c| self.allocator.free(c);
+            if (self.hour_cycle) |h| self.allocator.free(h);
+            if (self.numbering_system) |n| self.allocator.free(n);
+            if (self.case_first) |c| self.allocator.free(c);
+            self.allocator.free(self.base_name);
+        }
+    };
+
+    entries: std.AutoHashMap(usize, Entry),
+    next_id: usize = 0,
+    allocator: std.mem.Allocator,
+    mutex: std.Thread.Mutex = .{},
+
+    fn init(allocator: std.mem.Allocator) LocaleRegistry {
+        return .{
+            .entries = std.AutoHashMap(usize, Entry).init(allocator),
+            .allocator = allocator,
+        };
+    }
+
+    fn deinit(self: *LocaleRegistry) void {
+        var iter = self.entries.iterator();
+        while (iter.next()) |kv| {
+            var entry = kv.value_ptr;
+            entry.deinit();
+        }
+        self.entries.deinit();
+    }
+
+    fn register(self: *LocaleRegistry, entry: Entry) !usize {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const id = self.next_id;
+        self.next_id += 1;
+        try self.entries.put(id, entry);
+        return id;
+    }
+
+    fn get(self: *LocaleRegistry, id: usize) ?*Entry {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        return self.entries.getPtr(id);
+    }
+
+    fn remove(self: *LocaleRegistry, id: usize) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.entries.getPtr(id)) |entry| {
+            entry.deinit();
+            _ = self.entries.remove(id);
+        }
+    }
+};
+
+var locale_registry: ?LocaleRegistry = null;
+
+fn getOrInitLocaleRegistry() *LocaleRegistry {
+    if (locale_registry == null) {
+        locale_registry = LocaleRegistry.init(std.heap.page_allocator);
+    }
+    return &locale_registry.?;
+}
+
+/// Get the Locale registry index from an object
+fn getLocaleIndex(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object) ?usize {
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__locale_idx__", 14) orelse return null;
+    const idx_value = v8.v8_Object_Get(obj, context, @ptrCast(idx_key)) orelse return null;
+
+    if (!v8.v8_Value_IsNumber(idx_value)) return null;
+
+    const num = v8.v8_Value_NumberValue(idx_value, context);
+    if (num < 0) return null;
+    return @intFromFloat(num);
+}
+
+/// Callback for `new Intl.Locale(tag, options)`
+fn localeConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get locale tag argument (required)
+    if (info.length() < 1) {
+        conv.throwTypeError(isolate, "Intl.Locale requires a locale tag");
+        return;
+    }
+
+    var tag_buf: [128]u8 = undefined;
+    const tag_arg = info.get(0);
+    if (!v8.v8_Value_IsString(tag_arg)) {
+        conv.throwTypeError(isolate, "First argument must be a string");
+        return;
+    }
+
+    const tag = readV8String(v8.v8_Value_ToString(tag_arg, context), context, &tag_buf) orelse {
+        conv.throwRangeError(isolate, "Invalid locale tag");
+        return;
+    };
+
+    const allocator = std.heap.page_allocator;
+
+    // Parse the locale tag using our Zig parser
+    const locale_parser = @import("intl").locale;
+    var parsed = locale_parser.Locale.parse(allocator, tag) catch {
+        conv.throwRangeError(isolate, "Invalid locale identifier");
+        return;
+    };
+    defer parsed.deinit();
+
+    // Extract options if provided
+    var calendar: ?[]const u8 = null;
+    var collation: ?[]const u8 = null;
+    var hour_cycle: ?[]const u8 = null;
+    var numbering_system: ?[]const u8 = null;
+    var case_first: ?[]const u8 = null;
+    var numeric: bool = false;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg) and !v8.v8_Value_IsNullOrUndefined(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // calendar
+            if (getStringOption(isolate, context, options_obj, "calendar")) |val| {
+                calendar = allocator.dupe(u8, val) catch null;
+            }
+            // collation
+            if (getStringOption(isolate, context, options_obj, "collation")) |val| {
+                collation = allocator.dupe(u8, val) catch null;
+            }
+            // hourCycle
+            if (getStringOption(isolate, context, options_obj, "hourCycle")) |val| {
+                hour_cycle = allocator.dupe(u8, val) catch null;
+            }
+            // numberingSystem
+            if (getStringOption(isolate, context, options_obj, "numberingSystem")) |val| {
+                numbering_system = allocator.dupe(u8, val) catch null;
+            }
+            // caseFirst
+            if (getStringOption(isolate, context, options_obj, "caseFirst")) |val| {
+                case_first = allocator.dupe(u8, val) catch null;
+            }
+            // numeric
+            const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7);
+            if (numeric_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsBoolean(v)) {
+                        numeric = v8.v8_Value_BooleanValue(v, isolate);
+                    }
+                }
+            }
+        }
+    }
+
+    // Override from unicode extensions if not provided in options
+    if (calendar == null and parsed.unicode_extensions.calendar != null) {
+        calendar = allocator.dupe(u8, parsed.unicode_extensions.calendar.?) catch null;
+    }
+    if (collation == null and parsed.unicode_extensions.collation != null) {
+        collation = allocator.dupe(u8, parsed.unicode_extensions.collation.?) catch null;
+    }
+    if (hour_cycle == null and parsed.unicode_extensions.hour_cycle != null) {
+        hour_cycle = allocator.dupe(u8, parsed.unicode_extensions.hour_cycle.?.toString()) catch null;
+    }
+    if (numbering_system == null and parsed.unicode_extensions.numbering_system != null) {
+        numbering_system = allocator.dupe(u8, parsed.unicode_extensions.numbering_system.?) catch null;
+    }
+    if (parsed.unicode_extensions.case_first) |cf| {
+        case_first = allocator.dupe(u8, cf.toString()) catch null;
+    }
+    if (parsed.unicode_extensions.numeric) |n| {
+        numeric = n;
+    }
+
+    // Build the base name (language[-script][-region])
+    const base_name = parsed.toBaseName(allocator) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    // Build the full locale tag
+    const locale_tag = parsed.toString(allocator) catch {
+        allocator.free(base_name);
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    // Create registry entry
+    const registry = getOrInitLocaleRegistry();
+    const entry = LocaleRegistry.Entry{
+        .locale_tag = locale_tag,
+        .language = allocator.dupe(u8, parsed.language) catch {
+            allocator.free(locale_tag);
+            allocator.free(base_name);
+            conv.throwTypeError(isolate, "Out of memory");
+            return;
+        },
+        .script = if (parsed.script) |s| allocator.dupe(u8, s) catch null else null,
+        .region = if (parsed.region) |r| allocator.dupe(u8, r) catch null else null,
+        .calendar = calendar,
+        .collation = collation,
+        .hour_cycle = hour_cycle,
+        .numbering_system = numbering_system,
+        .case_first = case_first,
+        .numeric = numeric,
+        .base_name = base_name,
+        .allocator = allocator,
+    };
+
+    const idx = registry.register(entry) catch {
+        conv.throwTypeError(isolate, "Failed to register Locale");
+        return;
+    };
+
+    // Create the result object
+    const result = v8.v8_Object_New(isolate) orelse {
+        registry.remove(idx);
+        conv.throwTypeError(isolate, "Failed to create Locale object");
+        return;
+    };
+
+    // Store the registry index
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__locale_idx__", 14) orelse {
+        registry.remove(idx);
+        conv.throwTypeError(isolate, "Failed to create index key");
+        return;
+    };
+    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(idx));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
+
+    // Add property getters
+    addLocaleGetter(isolate, context, result, "baseName", localeGetBaseName) catch {};
+    addLocaleGetter(isolate, context, result, "language", localeGetLanguage) catch {};
+    addLocaleGetter(isolate, context, result, "script", localeGetScript) catch {};
+    addLocaleGetter(isolate, context, result, "region", localeGetRegion) catch {};
+    addLocaleGetter(isolate, context, result, "calendar", localeGetCalendar) catch {};
+    addLocaleGetter(isolate, context, result, "collation", localeGetCollation) catch {};
+    addLocaleGetter(isolate, context, result, "hourCycle", localeGetHourCycle) catch {};
+    addLocaleGetter(isolate, context, result, "numberingSystem", localeGetNumberingSystem) catch {};
+    addLocaleGetter(isolate, context, result, "caseFirst", localeGetCaseFirst) catch {};
+    addLocaleGetter(isolate, context, result, "numeric", localeGetNumeric) catch {};
+
+    // Add methods
+    addLocaleMethod(isolate, context, result, "maximize", localeMaximize) catch {};
+    addLocaleMethod(isolate, context, result, "minimize", localeMinimize) catch {};
+    addLocaleMethod(isolate, context, result, "toString", localeToString) catch {};
+    addLocaleMethod(isolate, context, result, "getCalendars", localeGetCalendars) catch {};
+    addLocaleMethod(isolate, context, result, "getCollations", localeGetCollations) catch {};
+    addLocaleMethod(isolate, context, result, "getHourCycles", localeGetHourCycles) catch {};
+    addLocaleMethod(isolate, context, result, "getNumberingSystems", localeGetNumberingSystems) catch {};
+    addLocaleMethod(isolate, context, result, "getTimeZones", localeGetTimeZones) catch {};
+    addLocaleMethod(isolate, context, result, "getTextInfo", localeGetTextInfo) catch {};
+    addLocaleMethod(isolate, context, result, "getWeekInfo", localeGetWeekInfo) catch {};
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn getStringOption(isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, key_name: []const u8) ?[]const u8 {
+    const key = v8.v8_String_NewFromUtf8(isolate, key_name.ptr, @intCast(key_name.len)) orelse return null;
+    const val = v8.v8_Object_Get(obj, context, @ptrCast(key)) orelse return null;
+    if (!v8.v8_Value_IsString(val)) return null;
+
+    var buf: [64]u8 = undefined;
+    return readV8String(v8.v8_Value_ToString(val, context), context, &buf);
+}
+
+fn addLocaleGetter(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    obj: *v8.Object,
+    name: []const u8,
+    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
+) !void {
+    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
+    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
+    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
+}
+
+fn addLocaleMethod(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    obj: *v8.Object,
+    name: []const u8,
+    callback: *const fn (*const v8.FunctionCallbackInfo) callconv(.c) void,
+) !void {
+    const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, @ptrCast(obj)) orelse return error.Failed;
+    const fn_obj = v8.v8_FunctionTemplate_GetFunction(fn_template, context) orelse return error.Failed;
+    const key = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return error.Failed;
+    _ = v8.v8_Object_Set(obj, context, @ptrCast(key), @ptrCast(fn_obj));
+}
+
+// Property getters
+fn localeGetBaseName(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const result = v8.v8_String_NewFromUtf8(isolate, entry.base_name.ptr, @intCast(entry.base_name.len)) orelse return;
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn localeGetLanguage(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const result = v8.v8_String_NewFromUtf8(isolate, entry.language.ptr, @intCast(entry.language.len)) orelse return;
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn localeGetScript(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    if (entry.script) |script| {
+        const result = v8.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse return;
+        info.setReturnValue(@ptrCast(result));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+fn localeGetRegion(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    if (entry.region) |region| {
+        const result = v8.v8_String_NewFromUtf8(isolate, region.ptr, @intCast(region.len)) orelse return;
+        info.setReturnValue(@ptrCast(result));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+fn localeGetCalendar(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    if (entry.calendar) |calendar| {
+        const result = v8.v8_String_NewFromUtf8(isolate, calendar.ptr, @intCast(calendar.len)) orelse return;
+        info.setReturnValue(@ptrCast(result));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+fn localeGetCollation(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    if (entry.collation) |collation| {
+        const result = v8.v8_String_NewFromUtf8(isolate, collation.ptr, @intCast(collation.len)) orelse return;
+        info.setReturnValue(@ptrCast(result));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+fn localeGetHourCycle(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    if (entry.hour_cycle) |hc| {
+        const result = v8.v8_String_NewFromUtf8(isolate, hc.ptr, @intCast(hc.len)) orelse return;
+        info.setReturnValue(@ptrCast(result));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+fn localeGetNumberingSystem(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    if (entry.numbering_system) |ns| {
+        const result = v8.v8_String_NewFromUtf8(isolate, ns.ptr, @intCast(ns.len)) orelse return;
+        info.setReturnValue(@ptrCast(result));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+fn localeGetCaseFirst(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    if (entry.case_first) |cf| {
+        const result = v8.v8_String_NewFromUtf8(isolate, cf.ptr, @intCast(cf.len)) orelse return;
+        info.setReturnValue(@ptrCast(result));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+fn localeGetNumeric(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const result = v8.v8_Boolean_New(isolate, entry.numeric);
+    info.setReturnValue(@ptrCast(result));
+}
+
+// Helper to create a new Locale object from a parsed locale
+// This replicates the object creation logic from localeConstructorCallback
+fn createLocaleObject(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    parsed: *const @import("intl").locale.Locale,
+    original_entry: *const LocaleRegistry.Entry,
+    allocator: std.mem.Allocator,
+) ?*v8.Object {
+    // Build the locale tag
+    const locale_tag = parsed.toString(allocator) catch return null;
+    errdefer allocator.free(locale_tag);
+
+    // Build base name (language-script-region)
+    var base_name_buf: [64]u8 = undefined;
+    var base_name_len: usize = 0;
+
+    // Copy language
+    for (parsed.language) |c| {
+        if (base_name_len >= base_name_buf.len) break;
+        base_name_buf[base_name_len] = c;
+        base_name_len += 1;
+    }
+
+    // Add script if present
+    if (parsed.script) |script| {
+        if (base_name_len < base_name_buf.len) {
+            base_name_buf[base_name_len] = '-';
+            base_name_len += 1;
+        }
+        for (script) |c| {
+            if (base_name_len >= base_name_buf.len) break;
+            base_name_buf[base_name_len] = c;
+            base_name_len += 1;
+        }
+    }
+
+    // Add region if present
+    if (parsed.region) |region| {
+        if (base_name_len < base_name_buf.len) {
+            base_name_buf[base_name_len] = '-';
+            base_name_len += 1;
+        }
+        for (region) |c| {
+            if (base_name_len >= base_name_buf.len) break;
+            base_name_buf[base_name_len] = c;
+            base_name_len += 1;
+        }
+    }
+
+    const base_name = allocator.dupe(u8, base_name_buf[0..base_name_len]) catch {
+        allocator.free(locale_tag);
+        return null;
+    };
+    errdefer allocator.free(base_name);
+
+    // Create registry entry - preserve Unicode extension options from original
+    const registry = getOrInitLocaleRegistry();
+    const entry = LocaleRegistry.Entry{
+        .locale_tag = locale_tag,
+        .language = allocator.dupe(u8, parsed.language) catch {
+            allocator.free(locale_tag);
+            allocator.free(base_name);
+            return null;
+        },
+        .script = if (parsed.script) |s| allocator.dupe(u8, s) catch null else null,
+        .region = if (parsed.region) |r| allocator.dupe(u8, r) catch null else null,
+        .calendar = if (original_entry.calendar) |c| allocator.dupe(u8, c) catch null else null,
+        .collation = if (original_entry.collation) |c| allocator.dupe(u8, c) catch null else null,
+        .hour_cycle = if (original_entry.hour_cycle) |h| allocator.dupe(u8, h) catch null else null,
+        .numbering_system = if (original_entry.numbering_system) |n| allocator.dupe(u8, n) catch null else null,
+        .case_first = if (original_entry.case_first) |c| allocator.dupe(u8, c) catch null else null,
+        .numeric = original_entry.numeric,
+        .base_name = base_name,
+        .allocator = allocator,
+    };
+
+    const new_idx = registry.register(entry) catch {
+        allocator.free(locale_tag);
+        allocator.free(base_name);
+        return null;
+    };
+
+    // Create the result object
+    const result = v8.v8_Object_New(isolate) orelse {
+        registry.remove(new_idx);
+        return null;
+    };
+
+    // Store the registry index
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__locale_idx__", 14) orelse {
+        registry.remove(new_idx);
+        return null;
+    };
+    const idx_value = v8.v8_Number_New(isolate, @floatFromInt(new_idx));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(idx_key), @ptrCast(idx_value));
+
+    // Add property getters
+    addLocaleGetter(isolate, context, result, "baseName", localeGetBaseName) catch {};
+    addLocaleGetter(isolate, context, result, "language", localeGetLanguage) catch {};
+    addLocaleGetter(isolate, context, result, "script", localeGetScript) catch {};
+    addLocaleGetter(isolate, context, result, "region", localeGetRegion) catch {};
+    addLocaleGetter(isolate, context, result, "calendar", localeGetCalendar) catch {};
+    addLocaleGetter(isolate, context, result, "collation", localeGetCollation) catch {};
+    addLocaleGetter(isolate, context, result, "hourCycle", localeGetHourCycle) catch {};
+    addLocaleGetter(isolate, context, result, "numberingSystem", localeGetNumberingSystem) catch {};
+    addLocaleGetter(isolate, context, result, "caseFirst", localeGetCaseFirst) catch {};
+    addLocaleGetter(isolate, context, result, "numeric", localeGetNumeric) catch {};
+
+    // Add methods
+    addLocaleMethod(isolate, context, result, "maximize", localeMaximize) catch {};
+    addLocaleMethod(isolate, context, result, "minimize", localeMinimize) catch {};
+    addLocaleMethod(isolate, context, result, "toString", localeToString) catch {};
+    addLocaleMethod(isolate, context, result, "getCalendars", localeGetCalendars) catch {};
+    addLocaleMethod(isolate, context, result, "getCollations", localeGetCollations) catch {};
+    addLocaleMethod(isolate, context, result, "getHourCycles", localeGetHourCycles) catch {};
+    addLocaleMethod(isolate, context, result, "getNumberingSystems", localeGetNumberingSystems) catch {};
+    addLocaleMethod(isolate, context, result, "getTimeZones", localeGetTimeZones) catch {};
+    addLocaleMethod(isolate, context, result, "getTextInfo", localeGetTextInfo) catch {};
+    addLocaleMethod(isolate, context, result, "getWeekInfo", localeGetWeekInfo) catch {};
+
+    return result;
+}
+
+// Methods
+fn localeMaximize(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const allocator = std.heap.page_allocator;
+    const locale_parser = @import("intl").locale;
+
+    // Parse and maximize
+    var parsed = locale_parser.Locale.parse(allocator, entry.locale_tag) catch return;
+    defer parsed.deinit();
+    parsed.maximize() catch return;
+
+    // Create new Locale object directly
+    const new_locale = createLocaleObject(isolate, context, &parsed, entry, allocator) orelse return;
+    info.setReturnValue(@ptrCast(new_locale));
+}
+
+fn localeMinimize(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const allocator = std.heap.page_allocator;
+    const locale_parser = @import("intl").locale;
+
+    // Parse and minimize
+    var parsed = locale_parser.Locale.parse(allocator, entry.locale_tag) catch return;
+    defer parsed.deinit();
+    parsed.minimize();
+
+    // Create new Locale object directly
+    const new_locale = createLocaleObject(isolate, context, &parsed, entry, allocator) orelse return;
+    info.setReturnValue(@ptrCast(new_locale));
+}
+
+fn localeToString(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const result = v8.v8_String_NewFromUtf8(isolate, entry.locale_tag.ptr, @intCast(entry.locale_tag.len)) orelse return;
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn localeGetCalendars(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Return common calendars (actual per-locale data would come from CLDR)
+    const calendars = [_][]const u8{ "gregory", "buddhist", "chinese", "coptic", "ethiopic", "hebrew", "indian", "islamic", "islamic-civil", "japanese", "persian" };
+    const arr = v8.v8_Array_New(isolate, @intCast(calendars.len));
+    for (calendars, 0..) |cal, i| {
+        const str = v8.v8_String_NewFromUtf8(isolate, cal.ptr, @intCast(cal.len)) orelse continue;
+        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
+    }
+    info.setReturnValue(@ptrCast(arr));
+}
+
+fn localeGetCollations(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    const collations = [_][]const u8{ "standard", "search", "phonebk", "pinyin", "stroke" };
+    const arr = v8.v8_Array_New(isolate, @intCast(collations.len));
+    for (collations, 0..) |col, i| {
+        const str = v8.v8_String_NewFromUtf8(isolate, col.ptr, @intCast(col.len)) orelse continue;
+        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
+    }
+    info.setReturnValue(@ptrCast(arr));
+}
+
+fn localeGetHourCycles(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    const hour_cycles = [_][]const u8{ "h11", "h12", "h23", "h24" };
+    const arr = v8.v8_Array_New(isolate, @intCast(hour_cycles.len));
+    for (hour_cycles, 0..) |hc, i| {
+        const str = v8.v8_String_NewFromUtf8(isolate, hc.ptr, @intCast(hc.len)) orelse continue;
+        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
+    }
+    info.setReturnValue(@ptrCast(arr));
+}
+
+fn localeGetNumberingSystems(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    const systems = [_][]const u8{ "latn", "arab", "arabext", "beng", "deva", "fullwide", "gujr", "guru", "hanidec", "khmr", "knda", "laoo", "mlym", "mong", "mymr", "orya", "tamldec", "telu", "thai", "tibt" };
+    const arr = v8.v8_Array_New(isolate, @intCast(systems.len));
+    for (systems, 0..) |sys, i| {
+        const str = v8.v8_String_NewFromUtf8(isolate, sys.ptr, @intCast(sys.len)) orelse continue;
+        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
+    }
+    info.setReturnValue(@ptrCast(arr));
+}
+
+fn localeGetTimeZones(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    // Return time zones based on region (simplified)
+    var time_zones: []const []const u8 = &[_][]const u8{};
+
+    if (entry.region) |region| {
+        if (std.mem.eql(u8, region, "US")) {
+            time_zones = &[_][]const u8{ "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu" };
+        } else if (std.mem.eql(u8, region, "GB")) {
+            time_zones = &[_][]const u8{"Europe/London"};
+        } else if (std.mem.eql(u8, region, "DE")) {
+            time_zones = &[_][]const u8{"Europe/Berlin"};
+        } else if (std.mem.eql(u8, region, "FR")) {
+            time_zones = &[_][]const u8{"Europe/Paris"};
+        } else if (std.mem.eql(u8, region, "JP")) {
+            time_zones = &[_][]const u8{"Asia/Tokyo"};
+        } else if (std.mem.eql(u8, region, "CN")) {
+            time_zones = &[_][]const u8{"Asia/Shanghai"};
+        } else if (std.mem.eql(u8, region, "AU")) {
+            time_zones = &[_][]const u8{ "Australia/Sydney", "Australia/Melbourne", "Australia/Perth" };
+        }
+    }
+
+    if (time_zones.len == 0) {
+        // Return undefined for locales without region
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        return;
+    }
+
+    const arr = v8.v8_Array_New(isolate, @intCast(time_zones.len));
+    for (time_zones, 0..) |tz, i| {
+        const str = v8.v8_String_NewFromUtf8(isolate, tz.ptr, @intCast(tz.len)) orelse continue;
+        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
+    }
+    info.setReturnValue(@ptrCast(arr));
+}
+
+fn localeGetTextInfo(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    // Determine text direction based on language
+    const direction: []const u8 = if (std.mem.eql(u8, entry.language, "ar") or
+        std.mem.eql(u8, entry.language, "he") or
+        std.mem.eql(u8, entry.language, "fa") or
+        std.mem.eql(u8, entry.language, "ur"))
+        "rtl"
+    else
+        "ltr";
+
+    const dir_key = v8.v8_String_NewFromUtf8(isolate, "direction", 9) orelse return;
+    const dir_val = v8.v8_String_NewFromUtf8(isolate, direction.ptr, @intCast(direction.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(dir_key), @ptrCast(dir_val));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+fn localeGetWeekInfo(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const this_obj = info.getThis();
+    const idx = getLocaleIndex(isolate, context, this_obj) orelse return;
+    const registry = getOrInitLocaleRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    // Default values (would come from CLDR supplemental data)
+    var first_day: u8 = 1; // Monday
+    var weekend: []const u8 = "6,7"; // Sat, Sun
+    const min_days: u8 = 4;
+
+    // Customize based on region
+    if (entry.region) |region| {
+        if (std.mem.eql(u8, region, "US") or
+            std.mem.eql(u8, region, "CA") or
+            std.mem.eql(u8, region, "AU") or
+            std.mem.eql(u8, region, "JP"))
+        {
+            first_day = 7; // Sunday
+        }
+        if (std.mem.eql(u8, region, "SA") or
+            std.mem.eql(u8, region, "AE") or
+            std.mem.eql(u8, region, "EG"))
+        {
+            first_day = 6; // Saturday
+            weekend = "5,6"; // Fri, Sat
+        }
+    }
+
+    const first_key = v8.v8_String_NewFromUtf8(isolate, "firstDay", 8) orelse return;
+    const first_val = v8.v8_Number_New(isolate, @floatFromInt(first_day));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(first_key), @ptrCast(first_val));
+
+    const min_key = v8.v8_String_NewFromUtf8(isolate, "minimalDays", 11) orelse return;
+    const min_val = v8.v8_Number_New(isolate, @floatFromInt(min_days));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(min_key), @ptrCast(min_val));
+
+    // Create weekend array
+    const weekend_arr = v8.v8_Array_New(isolate, 2);
+    if (std.mem.eql(u8, weekend, "5,6")) {
+        _ = v8.v8_Array_Set(weekend_arr, context, 0, @ptrCast(v8.v8_Number_New(isolate, 5)));
+        _ = v8.v8_Array_Set(weekend_arr, context, 1, @ptrCast(v8.v8_Number_New(isolate, 6)));
+    } else {
+        _ = v8.v8_Array_Set(weekend_arr, context, 0, @ptrCast(v8.v8_Number_New(isolate, 6)));
+        _ = v8.v8_Array_Set(weekend_arr, context, 1, @ptrCast(v8.v8_Number_New(isolate, 7)));
+    }
+    const weekend_key = v8.v8_String_NewFromUtf8(isolate, "weekend", 7) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(weekend_key), @ptrCast(weekend_arr));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+// ============================================================================
 // Phase 3: Intl.supportedValuesOf
 // ============================================================================
 
@@ -4484,6 +5314,16 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
     _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(dn_key), @ptrCast(dn_constructor));
 
     // ========================================================================
+    // Locale
+    // ========================================================================
+    const locale_template = v8.v8_FunctionTemplate_New(isolate, localeConstructorCallback, null) orelse return;
+    const locale_constructor = v8.v8_FunctionTemplate_GetFunction(locale_template, context) orelse return;
+
+    // Add Locale to Intl object
+    const locale_key = v8.v8_String_NewFromUtf8(isolate, "Locale", 6) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(locale_key), @ptrCast(locale_constructor));
+
+    // ========================================================================
     // Intl.supportedValuesOf (static method on Intl object)
     // ========================================================================
     const svo_fn = v8.v8_FunctionTemplate_New(isolate, supportedValuesOfCallback, null) orelse return;
@@ -4562,6 +5402,29 @@ pub fn registerExternalReferences() void {
     ext_refs.registerCallbackRuntime(displayNamesResolvedOptionsCallback);
     ext_refs.registerCallbackRuntime(displayNamesSupportedLocalesOfCallback);
 
+    // Locale
+    ext_refs.registerCallbackRuntime(localeConstructorCallback);
+    ext_refs.registerCallbackRuntime(localeGetBaseName);
+    ext_refs.registerCallbackRuntime(localeGetLanguage);
+    ext_refs.registerCallbackRuntime(localeGetScript);
+    ext_refs.registerCallbackRuntime(localeGetRegion);
+    ext_refs.registerCallbackRuntime(localeGetCalendar);
+    ext_refs.registerCallbackRuntime(localeGetCollation);
+    ext_refs.registerCallbackRuntime(localeGetHourCycle);
+    ext_refs.registerCallbackRuntime(localeGetNumberingSystem);
+    ext_refs.registerCallbackRuntime(localeGetCaseFirst);
+    ext_refs.registerCallbackRuntime(localeGetNumeric);
+    ext_refs.registerCallbackRuntime(localeMaximize);
+    ext_refs.registerCallbackRuntime(localeMinimize);
+    ext_refs.registerCallbackRuntime(localeToString);
+    ext_refs.registerCallbackRuntime(localeGetCalendars);
+    ext_refs.registerCallbackRuntime(localeGetCollations);
+    ext_refs.registerCallbackRuntime(localeGetHourCycles);
+    ext_refs.registerCallbackRuntime(localeGetNumberingSystems);
+    ext_refs.registerCallbackRuntime(localeGetTimeZones);
+    ext_refs.registerCallbackRuntime(localeGetTextInfo);
+    ext_refs.registerCallbackRuntime(localeGetWeekInfo);
+
     // Intl.supportedValuesOf
     ext_refs.registerCallbackRuntime(supportedValuesOfCallback);
 }
@@ -4631,6 +5494,12 @@ pub fn deinitAllRegistries() void {
         }
         reg.entries.deinit();
         display_names_registry = null;
+    }
+
+    // Locale registry
+    if (locale_registry) |*reg| {
+        reg.deinit();
+        locale_registry = null;
     }
 }
 
