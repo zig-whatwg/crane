@@ -90,6 +90,9 @@ v8_enable_trace_maps = false
 v8_enable_test_features = false
 v8_enable_v8_checks = false
 
+# Disable ICU - we use our own pure Zig intl implementation
+v8_enable_i18n_support = false
+
 # Use system libraries where possible
 use_custom_libcxx = false
 
@@ -106,10 +109,8 @@ ninja -C out/static v8_monolith
 echo "==> Copying output..."
 cp out/static/obj/libv8_monolith.a "$OUTPUT_DIR/"
 
-# Also copy ICU data if built with i18n
-if [ -f out/static/icudtl.dat ]; then
-    cp out/static/icudtl.dat "$OUTPUT_DIR/"
-fi
+# Note: ICU is disabled - we use our own pure Zig intl implementation
+# No icudtl.dat file will be generated
 
 echo ""
 echo "=== Build Complete ==="
