@@ -2100,7 +2100,6 @@ pub fn build(b: *std.Build) void {
     // Subsequent builds use cached artifacts.
 
     const v8_dir = "jsengines/v8/v8";
-    const v8_static_lib = v8_dir ++ "/out/static/obj/libv8_monolith.a";
 
     // Step 1: Fetch V8 source if not present (also installs depot_tools if needed)
     const fetch_v8 = b.addSystemCommand(&.{
@@ -2171,12 +2170,23 @@ pub fn build(b: *std.Build) void {
         \\v8_enable_i18n_support = false
         \\clang_use_chrome_plugins = false
         \\treat_warnings_as_errors = false
+        \\use_custom_libcxx = false
         \\ARGS
         \\  echo "target_cpu = \"$V8_TARGET_CPU\"" >> out/static/args.gn
         \\  
         \\  # Build
         \\  gn gen out/static
-        \\  ninja -C out/static v8_monolith
+        \\  ninja -C out/static v8_monolith v8_libplatform v8_libbase
+        \\  
+        \\  # Convert thin archives to fat archives (Zig can't parse thin archives)
+        \\  LLVM_AR="$(pwd)/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
+        \\  cd out/static
+        \\  echo "==> Converting thin archives to fat archives..."
+        \\  $LLVM_AR -t obj/libv8_libplatform.a > /tmp/platform_objs.txt
+        \\  $LLVM_AR rcs obj/libv8_libplatform_fat.a $(cat /tmp/platform_objs.txt)
+        \\  $LLVM_AR -t obj/libv8_libbase.a > /tmp/base_objs.txt
+        \\  $LLVM_AR rcs obj/libv8_libbase_fat.a $(cat /tmp/base_objs.txt)
+        \\  cd ../..
         \\  
         \\  echo "==> V8 static library built: $V8_LIB"
         \\else
@@ -2250,8 +2260,12 @@ pub fn build(b: *std.Build) void {
     // V8 include paths - use local V8 headers
     crane_lib.addIncludePath(b.path(v8_dir ++ "/include"));
 
-    // Link static V8 monolith
-    crane_lib.addObjectFile(b.path(v8_static_lib));
+    // Link static V8 libraries
+    // Note: libv8_libplatform and libv8_libbase are converted from thin archives to fat archives
+    // using llvm-ar (the original thin archives can't be parsed by Zig's linker)
+    crane_lib.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_monolith.a" });
+    crane_lib.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
+    crane_lib.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
     crane_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2301,8 +2315,12 @@ pub fn build(b: *std.Build) void {
     // V8 include paths - use local V8 headers
     crane_exe.addIncludePath(b.path(v8_dir ++ "/include"));
 
-    // Link static V8 monolith
-    crane_exe.addObjectFile(b.path(v8_static_lib));
+    // Link static V8 libraries
+    // Note: libv8_libplatform and libv8_libbase are converted from thin archives to fat archives
+    // using llvm-ar (the original thin archives can't be parsed by Zig's linker)
+    crane_exe.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_monolith.a" });
+    crane_exe.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
+    crane_exe.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
     crane_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });

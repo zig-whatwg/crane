@@ -97,6 +97,9 @@ v8_enable_i18n_support = false
 clang_use_chrome_plugins = false
 treat_warnings_as_errors = false
 
+# Use system libc++ for ABI compatibility
+use_custom_libcxx = false
+
 # macOS specific
 is_clang = true
 ARGS
@@ -104,25 +107,37 @@ ARGS
 # Step 4: Build
 echo "==> Building V8 monolith (this may take 30-60 minutes)..."
 gn gen out/static
-ninja -C out/static v8_monolith
+ninja -C out/static v8_monolith v8_libplatform v8_libbase
 
-# Step 5: Copy output
+# Step 5: Convert thin archives to fat archives (for linker compatibility)
+echo "==> Converting thin archives to fat archives..."
+LLVM_AR="$(pwd)/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
+cd out/static
+$LLVM_AR -t obj/libv8_libplatform.a > /tmp/platform_objs.txt
+$LLVM_AR rcs obj/libv8_libplatform_fat.a $(cat /tmp/platform_objs.txt)
+$LLVM_AR -t obj/libv8_libbase.a > /tmp/base_objs.txt
+$LLVM_AR rcs obj/libv8_libbase_fat.a $(cat /tmp/base_objs.txt)
+cd ../..
+
+# Step 6: Copy output
 echo "==> Copying output..."
 cp out/static/obj/libv8_monolith.a "$OUTPUT_DIR/"
+cp out/static/obj/libv8_libplatform_fat.a "$OUTPUT_DIR/"
+cp out/static/obj/libv8_libbase_fat.a "$OUTPUT_DIR/"
 
 # Note: ICU is disabled - we use our own pure Zig intl implementation
 # No icudtl.dat file will be generated
 
 echo ""
 echo "=== Build Complete ==="
-echo "Static V8 library: $OUTPUT_DIR/libv8_monolith.a"
+echo "Static V8 libraries:"
+echo "  $OUTPUT_DIR/libv8_monolith.a"
+echo "  $OUTPUT_DIR/libv8_libplatform_fat.a"
+echo "  $OUTPUT_DIR/libv8_libbase_fat.a"
 echo ""
 echo "To use with Crane browser:"
-echo "  zig build browser -Dv8-static-path=$OUTPUT_DIR/libv8_monolith.a"
-echo ""
-echo "Or set environment variable:"
-echo "  export V8_STATIC_PATH=$OUTPUT_DIR/libv8_monolith.a"
+echo "  zig build browser"
 echo ""
 
-# Show file size
-ls -lh "$OUTPUT_DIR/libv8_monolith.a"
+# Show file sizes
+ls -lh "$OUTPUT_DIR"/libv8_*.a
