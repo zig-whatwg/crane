@@ -1497,6 +1497,9 @@ pub fn build(b: *std.Build) void {
     });
     intl_mod.addImport("infra", infra_mod);
 
+    // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
+    v8_mod.addImport("intl", intl_mod);
+
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
