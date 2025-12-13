@@ -1,0 +1,16 @@
+{
+  "main": {
+    "skr": {
+      "identity": {
+        "language": "skr"
+      },
+      "localeDisplayNames": {
+        "measurementSystemNames": {
+          "metric": "Metric",
+          "UK": "UK",
+          "US": "US"
+        }
+      }
+    }
+  }
+}

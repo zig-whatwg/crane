@@ -1,0 +1,15 @@
+{
+  "main": {
+    "ab": {
+      "identity": {
+        "language": "ab"
+      },
+      "posix": {
+        "messages": {
+          "yesstr": "yes:y",
+          "nostr": "no:n"
+        }
+      }
+    }
+  }
+}

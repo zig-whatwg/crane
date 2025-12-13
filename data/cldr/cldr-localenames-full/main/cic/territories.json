@@ -1,0 +1,15 @@
+{
+  "main": {
+    "cic": {
+      "identity": {
+        "language": "cic"
+      },
+      "localeDisplayNames": {
+        "territories": {
+          "US": "United States",
+          "US-alt-short": "United States"
+        }
+      }
+    }
+  }
+}

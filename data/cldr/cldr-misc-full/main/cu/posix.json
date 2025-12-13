@@ -1,0 +1,15 @@
+{
+  "main": {
+    "cu": {
+      "identity": {
+        "language": "cu"
+      },
+      "posix": {
+        "messages": {
+          "yesstr": "yes:y",
+          "nostr": "no:n"
+        }
+      }
+    }
+  }
+}

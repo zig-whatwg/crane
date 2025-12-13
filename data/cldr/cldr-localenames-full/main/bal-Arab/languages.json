@@ -1,0 +1,19 @@
+{
+  "main": {
+    "bal-Arab": {
+      "identity": {
+        "language": "bal",
+        "script": "Arab"
+      },
+      "localeDisplayNames": {
+        "languages": {
+          "bal": "بلۆچی",
+          "zh": "چینی",
+          "zh-alt-menu": "چینی",
+          "zh-Hans": "ساده کرتگێن چینی",
+          "zh-Hans-alt-long": "ساده کرتگێن چینی"
+        }
+      }
+    }
+  }
+}

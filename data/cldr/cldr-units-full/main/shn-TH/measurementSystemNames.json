@@ -1,0 +1,17 @@
+{
+  "main": {
+    "shn-TH": {
+      "identity": {
+        "language": "shn",
+        "territory": "TH"
+      },
+      "localeDisplayNames": {
+        "measurementSystemNames": {
+          "metric": "Metric",
+          "UK": "UK",
+          "US": "US"
+        }
+      }
+    }
+  }
+}

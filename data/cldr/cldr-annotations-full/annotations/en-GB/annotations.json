@@ -1,0 +1,24 @@
+{
+  "annotations": {
+    "identity": {
+      "language": "en",
+      "territory": "GB"
+    },
+    "annotations": {
+      "🔄": {
+        "default": [
+          "again",
+          "anticlockwise",
+          "arrow",
+          "arrows",
+          "button",
+          "counterclockwise",
+          "deja",
+          "refresh",
+          "rewindershins",
+          "vu"
+        ]
+      }
+    }
+  }
+}

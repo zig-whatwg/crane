@@ -1,0 +1,18 @@
+{
+  "annotations": {
+    "identity": {
+      "language": "ar",
+      "territory": "SA"
+    },
+    "annotations": {
+      "🍷": {
+        "default": [
+          "كأس عصير"
+        ],
+        "tts": [
+          "كأس عصير"
+        ]
+      }
+    }
+  }
+}

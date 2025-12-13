@@ -1,0 +1,19 @@
+{
+  "annotationsDerived": {
+    "identity": {
+      "language": "ckb"
+    },
+    "annotations": {
+      "؋": {
+        "tts": [
+          "ئەفغانیی ئەفغانستان"
+        ]
+      },
+      "₺": {
+        "tts": [
+          "لیرەی تورکیا"
+        ]
+      }
+    }
+  }
+}

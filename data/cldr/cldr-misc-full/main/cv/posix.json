@@ -1,0 +1,15 @@
+{
+  "main": {
+    "cv": {
+      "identity": {
+        "language": "cv"
+      },
+      "posix": {
+        "messages": {
+          "yesstr": "yes:y",
+          "nostr": "no:n"
+        }
+      }
+    }
+  }
+}

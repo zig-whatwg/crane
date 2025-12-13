@@ -1,0 +1,16 @@
+{
+  "main": {
+    "ss-SZ": {
+      "identity": {
+        "language": "ss",
+        "territory": "SZ"
+      },
+      "localeDisplayNames": {
+        "territories": {
+          "SZ": "eSwatini",
+          "SZ-alt-variant": "eSwatini"
+        }
+      }
+    }
+  }
+}

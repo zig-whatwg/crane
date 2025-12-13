@@ -1,0 +1,125 @@
+{
+  "license": "Unicode-3.0",
+  "bugs": "https://cldr.unicode.org/index/bug-reports#TOC-Filing-a-Ticket",
+  "homepage": "https://cldr.unicode.org",
+  "version": "46.0.0",
+  "packages": [
+    {
+      "description": "Character annotation data",
+      "tier": "full",
+      "name": "cldr-annotations-full"
+    },
+    {
+      "description": "Character annotation data, including derived data.",
+      "tier": "full",
+      "name": "cldr-annotations-derived-full"
+    },
+    {
+      "description": "BCP 47 metadata",
+      "name": "cldr-bcp47"
+    },
+    {
+      "description": "CLDR data for Buddhist calendars.",
+      "tier": "full",
+      "name": "cldr-cal-buddhist-full"
+    },
+    {
+      "description": "CLDR data for Chinese calendars.",
+      "tier": "full",
+      "name": "cldr-cal-chinese-full"
+    },
+    {
+      "description": "CLDR data for Coptic calendars.",
+      "tier": "full",
+      "name": "cldr-cal-coptic-full"
+    },
+    {
+      "description": "CLDR data for Dangi calendars.",
+      "tier": "full",
+      "name": "cldr-cal-dangi-full"
+    },
+    {
+      "description": "CLDR data for Ethiopic calendars.",
+      "tier": "full",
+      "name": "cldr-cal-ethiopic-full"
+    },
+    {
+      "description": "CLDR data for Hebrew calendars.",
+      "tier": "full",
+      "name": "cldr-cal-hebrew-full"
+    },
+    {
+      "description": "CLDR data for Indian calendars.",
+      "tier": "full",
+      "name": "cldr-cal-indian-full"
+    },
+    {
+      "description": "CLDR data for Islamic calendars.",
+      "tier": "full",
+      "name": "cldr-cal-islamic-full"
+    },
+    {
+      "description": "CLDR data for Japanese calendars.",
+      "tier": "full",
+      "name": "cldr-cal-japanese-full"
+    },
+    {
+      "description": "CLDR data for Persian calendars.",
+      "tier": "full",
+      "name": "cldr-cal-persian-full"
+    },
+    {
+      "description": "CLDR data for ROC calendars.",
+      "tier": "full",
+      "name": "cldr-cal-roc-full"
+    },
+    {
+      "description": "Basic CLDR supplemental data",
+      "name": "cldr-core"
+    },
+    {
+      "description": "Data for date/time formatting, including data for Gregorian calendar.",
+      "tier": "full",
+      "name": "cldr-dates-full"
+    },
+    {
+      "description": "Translated versions of locale display name elements: languages, scripts, territories, and variants.",
+      "tier": "full",
+      "name": "cldr-localenames-full"
+    },
+    {
+      "description": "Other CLDR data not defined elsewhere",
+      "tier": "full",
+      "name": "cldr-misc-full"
+    },
+    {
+      "description": "Data for number formatting.",
+      "tier": "full",
+      "name": "cldr-numbers-full"
+    },
+    {
+      "description": "Personal Name Formatting (tech preview)",
+      "tier": "full",
+      "name": "cldr-person-names-full"
+    },
+    {
+      "description": "Rule Based Number Formatting data",
+      "name": "cldr-rbnf"
+    },
+    {
+      "description": "Text Segmentation data",
+      "tier": "full",
+      "name": "cldr-segments-full"
+    },
+    {
+      "description": "Transform data",
+      "tier": "full",
+      "name": "cldr-transforms-full"
+    },
+    {
+      "description": "Data for units formatting.",
+      "tier": "full",
+      "name": "cldr-units-full"
+    }
+  ]
+}

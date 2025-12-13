@@ -1,0 +1,15 @@
+{
+  "main": {
+    "osa": {
+      "identity": {
+        "language": "osa"
+      },
+      "localeDisplayNames": {
+        "territories": {
+          "US": "United States",
+          "US-alt-short": "United States"
+        }
+      }
+    }
+  }
+}

@@ -286,7 +286,7 @@ fn fetchHttpWorkerScript(
     const internal_request = fetch.internal.InternalRequest.init(allocator, url) catch {
         return WorkerScriptError.OutOfMemory;
     };
-    errdefer internal_request.deinit();
+    defer internal_request.deinit();
 
     // Step 2: Set request properties per HTML Standard §10.2.5
     // Set destination based on worker type
@@ -314,7 +314,6 @@ fn fetchHttpWorkerScript(
 
     // Step 3: Execute fetch
     var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
-        internal_request.deinit();
         return switch (err) {
             fetch.FetchError.OutOfMemory => WorkerScriptError.OutOfMemory,
             fetch.FetchError.NetworkError => WorkerScriptError.NetworkError,
@@ -322,7 +321,6 @@ fn fetchHttpWorkerScript(
         };
     };
     defer fetch_result.timing_info.deinit();
-    internal_request.deinit();
 
     const response = fetch_result.response;
     defer response.deinit();

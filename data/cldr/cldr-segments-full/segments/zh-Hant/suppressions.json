@@ -1,0 +1,20 @@
+{
+  "segments": {
+    "identity": {
+      "language": "zh",
+      "script": "Hant"
+    },
+    "segmentations": {
+      "LineBreak": {
+        "variables": [
+          {
+            "$ID": "[[\\p{Line_Break=Ideographic}] [$CJ]]"
+          },
+          {
+            "$NS": "\\p{Line_Break=Nonstarter}"
+          }
+        ]
+      }
+    }
+  }
+}
