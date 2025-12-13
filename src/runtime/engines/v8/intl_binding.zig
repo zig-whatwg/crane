@@ -1757,6 +1757,482 @@ fn numberFormatSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) 
 }
 
 // ============================================================================
+// Collator Instance Storage
+// ============================================================================
+
+/// Collator usage enum
+const CollatorUsage = enum { sort, search };
+
+/// Collator sensitivity enum
+const CollatorSensitivity = enum { base, accent, case, variant };
+
+/// Collator caseFirst enum
+const CollatorCaseFirst = enum { upper, lower, false };
+
+/// Internal storage for Collator instances
+const CollatorRegistry = struct {
+    const Entry = struct {
+        locale: []const u8,
+        usage: CollatorUsage,
+        sensitivity: CollatorSensitivity,
+        ignore_punctuation: bool,
+        numeric: bool,
+        case_first: CollatorCaseFirst,
+        allocator: std.mem.Allocator,
+
+        fn deinit(self: *Entry) void {
+            self.allocator.free(self.locale);
+        }
+    };
+
+    entries: std.ArrayList(?Entry) = .{},
+    free_list: std.ArrayList(usize) = .{},
+    allocator: std.mem.Allocator,
+    mutex: std.Thread.Mutex = .{},
+
+    fn init(allocator: std.mem.Allocator) CollatorRegistry {
+        return .{
+            .allocator = allocator,
+        };
+    }
+
+    fn deinit(self: *CollatorRegistry) void {
+        for (self.entries.items) |*entry_opt| {
+            if (entry_opt.*) |*entry| {
+                entry.deinit();
+            }
+        }
+        self.entries.deinit(self.allocator);
+        self.free_list.deinit(self.allocator);
+    }
+
+    fn register(self: *CollatorRegistry, entry: Entry) !usize {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.free_list.items.len > 0) {
+            const idx = self.free_list.pop().?;
+            self.entries.items[idx] = entry;
+            return idx;
+        }
+
+        const idx = self.entries.items.len;
+        try self.entries.append(self.allocator, entry);
+        return idx;
+    }
+
+    fn get(self: *CollatorRegistry, idx: usize) ?*Entry {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (idx >= self.entries.items.len) return null;
+        if (self.entries.items[idx]) |*entry| {
+            return entry;
+        }
+        return null;
+    }
+
+    fn remove(self: *CollatorRegistry, idx: usize) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (idx >= self.entries.items.len) return;
+        if (self.entries.items[idx]) |*entry| {
+            entry.deinit();
+            self.entries.items[idx] = null;
+            self.free_list.append(self.allocator, idx) catch {};
+        }
+    }
+};
+
+var collator_registry: ?CollatorRegistry = null;
+
+fn getOrInitCollatorRegistry() *CollatorRegistry {
+    if (collator_registry == null) {
+        collator_registry = CollatorRegistry.init(std.heap.page_allocator);
+    }
+    return &collator_registry.?;
+}
+
+// ============================================================================
+// Collator Constructor Callback
+// ============================================================================
+
+/// Callback for `new Intl.Collator(locales, options)`
+fn collatorConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get locale argument
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Parse options
+    var usage: CollatorUsage = .sort;
+    var sensitivity: CollatorSensitivity = .variant;
+    var ignore_punctuation: bool = false;
+    var numeric: bool = false;
+    var case_first: CollatorCaseFirst = .false;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // usage
+            const usage_key = v8.v8_String_NewFromUtf8(isolate, "usage", 5);
+            if (usage_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var u_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &u_buf)) |u| {
+                            if (std.mem.eql(u8, u, "sort")) usage = .sort else if (std.mem.eql(u8, u, "search")) usage = .search;
+                        }
+                    }
+                }
+            }
+
+            // sensitivity
+            const sens_key = v8.v8_String_NewFromUtf8(isolate, "sensitivity", 11);
+            if (sens_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "base")) sensitivity = .base else if (std.mem.eql(u8, s, "accent")) sensitivity = .accent else if (std.mem.eql(u8, s, "case")) sensitivity = .case else if (std.mem.eql(u8, s, "variant")) sensitivity = .variant;
+                        }
+                    }
+                }
+            }
+
+            // ignorePunctuation
+            const punct_key = v8.v8_String_NewFromUtf8(isolate, "ignorePunctuation", 17);
+            if (punct_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsBoolean(v)) {
+                        ignore_punctuation = v8.v8_Value_BooleanValue(v, isolate);
+                    }
+                }
+            }
+
+            // numeric
+            const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7);
+            if (numeric_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsBoolean(v)) {
+                        numeric = v8.v8_Value_BooleanValue(v, isolate);
+                    }
+                }
+            }
+
+            // caseFirst
+            const case_first_key = v8.v8_String_NewFromUtf8(isolate, "caseFirst", 9);
+            if (case_first_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v| {
+                    if (v8.v8_Value_IsString(v)) {
+                        var cf_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v, context), context, &cf_buf)) |cf| {
+                            if (std.mem.eql(u8, cf, "upper")) case_first = .upper else if (std.mem.eql(u8, cf, "lower")) case_first = .lower else if (std.mem.eql(u8, cf, "false")) case_first = .false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Create and register collator entry
+    const registry = getOrInitCollatorRegistry();
+    const entry = CollatorRegistry.Entry{
+        .locale = std.heap.page_allocator.dupe(u8, locale) catch {
+            conv.throwTypeError(isolate, "Failed to allocate locale");
+            return;
+        },
+        .usage = usage,
+        .sensitivity = sensitivity,
+        .ignore_punctuation = ignore_punctuation,
+        .numeric = numeric,
+        .case_first = case_first,
+        .allocator = std.heap.page_allocator,
+    };
+
+    const idx = registry.register(entry) catch {
+        conv.throwTypeError(isolate, "Failed to register Collator");
+        return;
+    };
+
+    // Create the Collator object
+    const collator_obj = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create Collator object");
+        return;
+    };
+
+    // Store the index
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__collatorIdx", 13) orelse return;
+    const idx_val = v8.v8_Integer_New(isolate, @intCast(idx));
+    _ = v8.v8_Object_Set(collator_obj, context, @ptrCast(idx_key), @ptrCast(idx_val));
+
+    // Add compare method (uses 'this' to get the collator object)
+    const compare_key = v8.v8_String_NewFromUtf8(isolate, "compare", 7) orelse return;
+    const compare_fn = v8.v8_FunctionTemplate_New(isolate, collatorCompareCallback, null) orelse return;
+    const compare_fn_obj = v8.v8_FunctionTemplate_GetFunction(compare_fn, context) orelse return;
+    _ = v8.v8_Object_Set(collator_obj, context, @ptrCast(compare_key), @ptrCast(compare_fn_obj));
+
+    // Add resolvedOptions method (uses 'this' to get the collator object)
+    const opts_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
+    const opts_fn = v8.v8_FunctionTemplate_New(isolate, collatorResolvedOptionsCallback, null) orelse return;
+    const opts_fn_obj = v8.v8_FunctionTemplate_GetFunction(opts_fn, context) orelse return;
+    _ = v8.v8_Object_Set(collator_obj, context, @ptrCast(opts_key), @ptrCast(opts_fn_obj));
+
+    info.setReturnValue(@ptrCast(collator_obj));
+}
+
+// ============================================================================
+// Collator.prototype.compare
+// ============================================================================
+
+/// Compare two strings with locale awareness
+fn collatorCompare(entry: *const CollatorRegistry.Entry, a: []const u8, b: []const u8) i32 {
+    // For base sensitivity, we only compare the base characters (ignore case and accents)
+    // For now, use a simple comparison with sensitivity handling
+
+    switch (entry.sensitivity) {
+        .base => {
+            // Case-insensitive, accent-insensitive comparison
+            // Simple ASCII case-folding for now
+            return compareIgnoreCase(a, b);
+        },
+        .accent => {
+            // Case-insensitive but accent-sensitive
+            // For now, just do case-insensitive
+            return compareIgnoreCase(a, b);
+        },
+        .case => {
+            // Case-sensitive but accent-insensitive
+            return compareBytes(a, b);
+        },
+        .variant => {
+            // Full comparison (case and accent sensitive)
+            return compareBytes(a, b);
+        },
+    }
+}
+
+fn compareBytes(a: []const u8, b: []const u8) i32 {
+    const min_len = @min(a.len, b.len);
+    for (a[0..min_len], b[0..min_len]) |ac, bc| {
+        if (ac < bc) return -1;
+        if (ac > bc) return 1;
+    }
+    if (a.len < b.len) return -1;
+    if (a.len > b.len) return 1;
+    return 0;
+}
+
+fn compareIgnoreCase(a: []const u8, b: []const u8) i32 {
+    const min_len = @min(a.len, b.len);
+    for (a[0..min_len], b[0..min_len]) |ac, bc| {
+        const ac_lower = if (ac >= 'A' and ac <= 'Z') ac + 32 else ac;
+        const bc_lower = if (bc >= 'A' and bc <= 'Z') bc + 32 else bc;
+        if (ac_lower < bc_lower) return -1;
+        if (ac_lower > bc_lower) return 1;
+    }
+    if (a.len < b.len) return -1;
+    if (a.len > b.len) return 1;
+    return 0;
+}
+
+/// Callback for `collator.compare(a, b)`
+fn collatorCompareCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        return;
+    };
+
+    // Get the collator object (this)
+    const this_obj: *v8.Object = @ptrCast(info.getThis());
+
+    // Get the collator index
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__collatorIdx", 13) orelse {
+        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        return;
+    };
+
+    const idx_val = v8.v8_Object_Get(this_obj, context, @ptrCast(idx_key)) orelse {
+        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        return;
+    };
+
+    if (!v8.v8_Value_IsNumber(idx_val)) {
+        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        return;
+    }
+
+    const idx: usize = @intFromFloat(v8.v8_Value_NumberValue(idx_val, context));
+
+    const registry = getOrInitCollatorRegistry();
+    const entry = registry.get(idx) orelse {
+        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        return;
+    };
+
+    // Get the two string arguments
+    if (info.length() < 2) {
+        info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, 0)));
+        return;
+    }
+
+    var a_buf: [1024]u8 = undefined;
+    var b_buf: [1024]u8 = undefined;
+
+    const a_arg = info.get(0);
+    const b_arg = info.get(1);
+
+    var a_str: []const u8 = "";
+    var b_str: []const u8 = "";
+
+    if (v8.v8_Value_IsString(a_arg)) {
+        if (readV8String(v8.v8_Value_ToString(a_arg, context), context, &a_buf)) |s| {
+            a_str = s;
+        }
+    }
+
+    if (v8.v8_Value_IsString(b_arg)) {
+        if (readV8String(v8.v8_Value_ToString(b_arg, context), context, &b_buf)) |s| {
+            b_str = s;
+        }
+    }
+
+    // Compare the strings
+    const result = collatorCompare(entry, a_str, b_str);
+    info.setReturnValue(@ptrCast(v8.v8_Integer_New(isolate, result)));
+}
+
+// ============================================================================
+// Collator.prototype.resolvedOptions
+// ============================================================================
+
+/// Callback for `collator.resolvedOptions()`
+fn collatorResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Get the collator object (this)
+    const this_obj: *v8.Object = @ptrCast(info.getThis());
+
+    // Get the collator index
+    const idx_key = v8.v8_String_NewFromUtf8(isolate, "__collatorIdx", 13) orelse return;
+    const idx_val = v8.v8_Object_Get(this_obj, context, @ptrCast(idx_key)) orelse return;
+
+    if (!v8.v8_Value_IsNumber(idx_val)) return;
+
+    const idx: usize = @intFromFloat(v8.v8_Value_NumberValue(idx_val, context));
+
+    const registry = getOrInitCollatorRegistry();
+    const entry = registry.get(idx) orelse return;
+
+    // Create result object
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    // locale
+    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
+    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
+
+    // usage
+    const usage_key = v8.v8_String_NewFromUtf8(isolate, "usage", 5) orelse return;
+    const usage_str = switch (entry.usage) {
+        .sort => "sort",
+        .search => "search",
+    };
+    const usage_val = v8.v8_String_NewFromUtf8(isolate, usage_str.ptr, @intCast(usage_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(usage_key), @ptrCast(usage_val));
+
+    // sensitivity
+    const sens_key = v8.v8_String_NewFromUtf8(isolate, "sensitivity", 11) orelse return;
+    const sens_str = switch (entry.sensitivity) {
+        .base => "base",
+        .accent => "accent",
+        .case => "case",
+        .variant => "variant",
+    };
+    const sens_val = v8.v8_String_NewFromUtf8(isolate, sens_str.ptr, @intCast(sens_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(sens_key), @ptrCast(sens_val));
+
+    // ignorePunctuation
+    const punct_key = v8.v8_String_NewFromUtf8(isolate, "ignorePunctuation", 17) orelse return;
+    const punct_val = v8.v8_Boolean_New(isolate, entry.ignore_punctuation);
+    _ = v8.v8_Object_Set(result, context, @ptrCast(punct_key), @ptrCast(punct_val));
+
+    // numeric
+    const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7) orelse return;
+    const numeric_val = v8.v8_Boolean_New(isolate, entry.numeric);
+    _ = v8.v8_Object_Set(result, context, @ptrCast(numeric_key), @ptrCast(numeric_val));
+
+    // caseFirst
+    const case_first_key = v8.v8_String_NewFromUtf8(isolate, "caseFirst", 9) orelse return;
+    const case_first_str = switch (entry.case_first) {
+        .upper => "upper",
+        .lower => "lower",
+        .false => "false",
+    };
+    const case_first_val = v8.v8_String_NewFromUtf8(isolate, case_first_str.ptr, @intCast(case_first_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(case_first_key), @ptrCast(case_first_val));
+
+    // collation
+    const collation_key = v8.v8_String_NewFromUtf8(isolate, "collation", 9) orelse return;
+    const collation_val = v8.v8_String_NewFromUtf8(isolate, "default", 7) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(collation_key), @ptrCast(collation_val));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+// ============================================================================
+// Collator.supportedLocalesOf
+// ============================================================================
+
+/// Callback for `Intl.Collator.supportedLocalesOf(locales)`
+fn collatorSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Return all supported locale tags (same as other Intl objects)
+    const tags = cldr_embedded.locale_tags;
+    const result = v8.v8_Array_New(isolate, @intCast(tags.len));
+
+    for (tags, 0..) |tag, i| {
+        const tag_str = v8.v8_String_NewFromUtf8(isolate, tag.ptr, @intCast(tag.len)) orelse continue;
+        _ = v8.v8_Array_Set(result, context, @intCast(i), @ptrCast(tag_str));
+    }
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -1797,6 +2273,21 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
     _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(nf_key), @ptrCast(nf_constructor));
 
     // ========================================================================
+    // Collator
+    // ========================================================================
+    const col_template = v8.v8_FunctionTemplate_New(isolate, collatorConstructorCallback, null) orelse return;
+    const col_constructor = v8.v8_FunctionTemplate_GetFunction(col_template, context) orelse return;
+
+    // Add supportedLocalesOf static method
+    const col_supported_fn = v8.v8_FunctionTemplate_New(isolate, collatorSupportedLocalesOfCallback, null) orelse return;
+    const col_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(col_supported_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(col_constructor), context, @ptrCast(supported_key), @ptrCast(col_supported_fn_obj));
+
+    // Add Collator to Intl object
+    const col_key = v8.v8_String_NewFromUtf8(isolate, "Collator", 8) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(col_key), @ptrCast(col_constructor));
+
+    // ========================================================================
     // Add Intl to global object
     // ========================================================================
     const global = v8.v8_Context_Global(context) orelse return;
@@ -1830,6 +2321,12 @@ pub fn registerExternalReferences() void {
     ext_refs.registerCallbackRuntime(numberFormatToPartsCallback);
     ext_refs.registerCallbackRuntime(numberFormatResolvedOptionsCallback);
     ext_refs.registerCallbackRuntime(numberFormatSupportedLocalesOfCallback);
+
+    // Collator
+    ext_refs.registerCallbackRuntime(collatorConstructorCallback);
+    ext_refs.registerCallbackRuntime(collatorCompareCallback);
+    ext_refs.registerCallbackRuntime(collatorResolvedOptionsCallback);
+    ext_refs.registerCallbackRuntime(collatorSupportedLocalesOfCallback);
 }
 
 // ============================================================================
