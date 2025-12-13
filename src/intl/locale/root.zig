@@ -23,6 +23,7 @@ pub const UnicodeExtensions = extensions.UnicodeExtensions;
 pub const TransformExtensions = extensions.TransformExtensions;
 pub const LocaleMatcher = negotiation.LocaleMatcher;
 pub const ResolvedLocale = negotiation.ResolvedLocale;
+pub const bestAvailableLocale = negotiation.bestAvailableLocale;
 
 test {
     _ = parser;
