@@ -755,6 +755,11 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
 
     // Steps 4-5: Parse and fetch each script in order
     // Per spec, scripts are fetched and executed synchronously in order
+
+    // Get the worker's script URL for resolving relative URLs
+    // Per HTML spec, relative URLs in importScripts() resolve against worker's location
+    const base_url: ?[]const u8 = if (internal.internal_location) |loc| loc.getHref() else null;
+
     for (urls) |url| {
         const url_str = url.asSlice();
         if (url_str.len == 0) {
@@ -762,9 +767,10 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         }
 
         // Fetch the script using the script_fetch module
+        // Pass base_url (worker's script URL) for relative URL resolution
         var fetched = script_fetch.fetchWorkerScript(internal.allocator, url_str, .{
             .worker_type = .classic,
-            .origin = internal.origin,
+            .origin = base_url orelse internal.origin,
             .credentials = .same_origin,
             .is_import_scripts = true,
         }) catch |err| {

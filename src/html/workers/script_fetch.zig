@@ -182,17 +182,14 @@ pub fn fetchWorkerScript(
         return fetchHttpWorkerScript(allocator, url, options);
     }
 
-    // Step 4: Handle path-relative URLs (starting with /)
-    // If origin is provided, resolve against it; otherwise try thread-local document origin
-    if (url[0] == '/') {
-        const origin = options.origin orelse current_document_origin;
-        if (origin != null) {
-            const full_url = std.mem.concat(allocator, u8, &.{ origin.?, url }) catch {
-                return WorkerScriptError.OutOfMemory;
-            };
-            defer allocator.free(full_url);
-            return fetchHttpWorkerScript(allocator, full_url, options);
-        }
+    // Step 4: Handle relative URLs - resolve against base URL or origin
+    // This handles: "/path", "./relative", "../parent", "bare-name.js"
+    const resolved_url = resolveRelativeUrl(allocator, url, options.origin) catch {
+        return WorkerScriptError.OutOfMemory;
+    };
+    if (resolved_url) |full_url| {
+        defer allocator.free(full_url);
+        return fetchHttpWorkerScript(allocator, full_url, options);
     }
 
     // Step 5: Check for import scripts mode (stricter)
@@ -389,6 +386,87 @@ fn extractOrigin(url: []const u8) ?[]const u8 {
     return url;
 }
 
+/// Resolve a relative URL against a base URL
+/// Handles: "/path", "./relative", "../parent", "bare-name.js"
+/// Returns null if no base URL is available
+fn resolveRelativeUrl(allocator: Allocator, url: []const u8, base_url: ?[]const u8) !?[]u8 {
+    // Get base URL - try provided base, then thread-local document origin
+    const base = base_url orelse current_document_origin orelse return null;
+
+    // Base must be an absolute URL (http:// or https://)
+    if (!std.mem.startsWith(u8, base, "http://") and !std.mem.startsWith(u8, base, "https://")) {
+        return null;
+    }
+
+    // Handle absolute path (starts with /)
+    if (url.len > 0 and url[0] == '/') {
+        // Extract origin from base URL
+        const origin = extractOrigin(base) orelse return null;
+        return try std.mem.concat(allocator, u8, &.{ origin, url });
+    }
+
+    // Handle relative path (./foo, ../foo, or bare name)
+    // We need to resolve against the base URL's directory
+
+    // Find the last / in the base URL path to get the directory
+    const scheme_end = std.mem.indexOf(u8, base, "://") orelse return null;
+    const after_scheme = base[scheme_end + 3 ..];
+    const host_end = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
+    const origin_len = scheme_end + 3 + host_end;
+
+    // Get the path portion of base URL
+    const base_path = if (origin_len < base.len) base[origin_len..] else "/";
+
+    // Find the directory (everything up to and including last /)
+    const last_slash = std.mem.lastIndexOf(u8, base_path, "/") orelse 0;
+    const base_dir = base_path[0 .. last_slash + 1];
+
+    // Handle ./ prefix (current directory)
+    var relative_path = url;
+    if (std.mem.startsWith(u8, relative_path, "./")) {
+        relative_path = relative_path[2..];
+    }
+
+    // Handle ../ prefix (parent directory) - may be repeated
+    var dir_components: std.ArrayList([]const u8) = .{};
+    defer dir_components.deinit(allocator);
+
+    // Split base_dir into components
+    var dir_iter = std.mem.splitScalar(u8, base_dir, '/');
+    while (dir_iter.next()) |component| {
+        if (component.len > 0) {
+            try dir_components.append(allocator, component);
+        }
+    }
+
+    // Process ../ in relative path
+    while (std.mem.startsWith(u8, relative_path, "../")) {
+        if (dir_components.items.len > 0) {
+            _ = dir_components.pop();
+        }
+        relative_path = relative_path[3..];
+    }
+
+    // Build the resolved path
+    var result: std.ArrayList(u8) = .{};
+    errdefer result.deinit(allocator);
+
+    // Add origin
+    try result.appendSlice(allocator, base[0..origin_len]);
+
+    // Add directory components
+    for (dir_components.items) |component| {
+        try result.append(allocator, '/');
+        try result.appendSlice(allocator, component);
+    }
+
+    // Add the relative path
+    try result.append(allocator, '/');
+    try result.appendSlice(allocator, relative_path);
+
+    return try result.toOwnedSlice(allocator);
+}
+
 /// Simple percent-decoding for data URLs
 fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
     // Count output size first
@@ -442,8 +520,6 @@ pub fn fetchImportScripts(
     base_url: []const u8,
     origin: ?[]const u8,
 ) WorkerScriptError![]FetchedScript {
-    _ = base_url; // For URL resolution
-
     var scripts = allocator.alloc(FetchedScript, urls.len) catch {
         return WorkerScriptError.OutOfMemory;
     };
@@ -455,9 +531,11 @@ pub fn fetchImportScripts(
     }
 
     for (urls, 0..) |url, i| {
+        // For importScripts(), resolve relative URLs against the worker's script URL (base_url)
+        // This ensures ./helper.js resolves correctly when called from a worker
         scripts[i] = try fetchWorkerScript(allocator, url, .{
             .is_import_scripts = true,
-            .origin = origin,
+            .origin = if (base_url.len > 0) base_url else origin,
         });
     }
 
@@ -573,4 +651,62 @@ test "percentDecode" {
     defer allocator.free(result);
 
     try std.testing.expectEqualStrings("hello world", result);
+}
+
+test "resolveRelativeUrl - absolute path" {
+    const allocator = std.testing.allocator;
+
+    const base_url = "http://localhost:8080/workers/worker.js";
+    const result = try resolveRelativeUrl(allocator, "/scripts/helper.js", base_url);
+    defer if (result) |r| allocator.free(r);
+
+    try std.testing.expectEqualStrings("http://localhost:8080/scripts/helper.js", result.?);
+}
+
+test "resolveRelativeUrl - current directory" {
+    const allocator = std.testing.allocator;
+
+    const base_url = "http://localhost:8080/workers/worker.js";
+    const result = try resolveRelativeUrl(allocator, "./helper.js", base_url);
+    defer if (result) |r| allocator.free(r);
+
+    try std.testing.expectEqualStrings("http://localhost:8080/workers/helper.js", result.?);
+}
+
+test "resolveRelativeUrl - parent directory" {
+    const allocator = std.testing.allocator;
+
+    const base_url = "http://localhost:8080/workers/sub/worker.js";
+    const result = try resolveRelativeUrl(allocator, "../helper.js", base_url);
+    defer if (result) |r| allocator.free(r);
+
+    try std.testing.expectEqualStrings("http://localhost:8080/workers/helper.js", result.?);
+}
+
+test "resolveRelativeUrl - bare name" {
+    const allocator = std.testing.allocator;
+
+    const base_url = "http://localhost:8080/workers/worker.js";
+    const result = try resolveRelativeUrl(allocator, "helper.js", base_url);
+    defer if (result) |r| allocator.free(r);
+
+    try std.testing.expectEqualStrings("http://localhost:8080/workers/helper.js", result.?);
+}
+
+test "resolveRelativeUrl - multiple parent directories" {
+    const allocator = std.testing.allocator;
+
+    const base_url = "http://localhost:8080/a/b/c/worker.js";
+    const result = try resolveRelativeUrl(allocator, "../../helper.js", base_url);
+    defer if (result) |r| allocator.free(r);
+
+    try std.testing.expectEqualStrings("http://localhost:8080/a/helper.js", result.?);
+}
+
+test "resolveRelativeUrl - no base URL returns null" {
+    const allocator = std.testing.allocator;
+
+    const result = try resolveRelativeUrl(allocator, "./helper.js", null);
+
+    try std.testing.expect(result == null);
 }
