@@ -34,3 +34,7 @@ history/
 src/webidl/impls_tmp/
 erl_crash.dump
 wpt.fyi/
+
+# V8 build dependencies (downloaded by zig build browser)
+jsengines/depot_tools/
+jsengines/v8/
