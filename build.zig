@@ -2168,9 +2168,8 @@ pub fn build(b: *std.Build) void {
         \\v8_enable_trace_maps = false
         \\v8_enable_test_features = false
         \\v8_enable_v8_checks = false
-        \\is_clang = true
         \\v8_enable_i18n_support = false
-        \\use_custom_libcxx = false
+        \\clang_use_chrome_plugins = false
         \\treat_warnings_as_errors = false
         \\ARGS
         \\  echo "target_cpu = \"$V8_TARGET_CPU\"" >> out/static/args.gn
