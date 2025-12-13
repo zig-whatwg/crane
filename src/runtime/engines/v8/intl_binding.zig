@@ -2659,6 +2659,1548 @@ pub fn registerToLocaleStringMethods(isolate: *v8.Isolate, context: *v8.Context)
 }
 
 // ============================================================================
+// Phase 3: PluralRules
+// ============================================================================
+
+/// Plural categories as defined by ECMA-402
+const PluralCategory = enum {
+    zero,
+    one,
+    two,
+    few,
+    many,
+    other,
+
+    fn toString(self: PluralCategory) []const u8 {
+        return switch (self) {
+            .zero => "zero",
+            .one => "one",
+            .two => "two",
+            .few => "few",
+            .many => "many",
+            .other => "other",
+        };
+    }
+};
+
+/// Plural rules type
+const PluralRulesType = enum {
+    cardinal,
+    ordinal,
+};
+
+/// PluralRules registry entry
+const PluralRulesRegistry = struct {
+    const Entry = struct {
+        locale: []const u8,
+        locale_data: ?*const cldr.LocaleData,
+        type: PluralRulesType,
+        minimum_integer_digits: u8,
+        minimum_fraction_digits: u8,
+        maximum_fraction_digits: u8,
+        allocator: std.mem.Allocator,
+    };
+
+    entries: std.AutoHashMap(usize, Entry),
+    next_id: usize,
+    allocator: std.mem.Allocator,
+};
+
+var plural_rules_registry: ?PluralRulesRegistry = null;
+
+fn getOrInitPluralRulesRegistry() *PluralRulesRegistry {
+    if (plural_rules_registry == null) {
+        const allocator = std.heap.page_allocator;
+        plural_rules_registry = .{
+            .entries = std.AutoHashMap(usize, PluralRulesRegistry.Entry).init(allocator),
+            .next_id = 1,
+            .allocator = allocator,
+        };
+    }
+    return &plural_rules_registry.?;
+}
+
+/// Get plural category for a number (simplified CLDR rules)
+fn getPluralCategory(n: f64, locale: []const u8, rule_type: PluralRulesType) PluralCategory {
+    // Handle NaN and infinity
+    if (std.math.isNan(n) or std.math.isInf(n)) return .other;
+
+    const abs_n = @abs(n);
+    const i: u64 = @intFromFloat(@floor(abs_n)); // Integer part
+
+    // Ordinal rules
+    if (rule_type == .ordinal) {
+        // English ordinal rules
+        if (std.mem.startsWith(u8, locale, "en")) {
+            const mod10 = i % 10;
+            const mod100 = i % 100;
+            if (mod10 == 1 and mod100 != 11) return .one; // 1st, 21st, 31st...
+            if (mod10 == 2 and mod100 != 12) return .two; // 2nd, 22nd, 32nd...
+            if (mod10 == 3 and mod100 != 13) return .few; // 3rd, 23rd, 33rd...
+            return .other;
+        }
+        return .other;
+    }
+
+    // Cardinal rules (simplified for major locales)
+    // Arabic
+    if (std.mem.startsWith(u8, locale, "ar")) {
+        if (abs_n == 0) return .zero;
+        if (abs_n == 1) return .one;
+        if (abs_n == 2) return .two;
+        const mod100 = i % 100;
+        if (mod100 >= 3 and mod100 <= 10) return .few;
+        if (mod100 >= 11 and mod100 <= 99) return .many;
+        return .other;
+    }
+
+    // Polish, Russian and other Slavic languages
+    if (std.mem.startsWith(u8, locale, "pl") or std.mem.startsWith(u8, locale, "ru")) {
+        const mod10 = i % 10;
+        const mod100 = i % 100;
+        if (abs_n == 1) return .one;
+        if (mod10 >= 2 and mod10 <= 4 and (mod100 < 12 or mod100 > 14)) return .few;
+        if (mod10 == 0 or (mod10 >= 5 and mod10 <= 9) or (mod100 >= 11 and mod100 <= 14)) return .many;
+        return .other;
+    }
+
+    // French, Spanish, Portuguese, Italian - simple rule
+    if (std.mem.startsWith(u8, locale, "fr") or
+        std.mem.startsWith(u8, locale, "es") or
+        std.mem.startsWith(u8, locale, "pt") or
+        std.mem.startsWith(u8, locale, "it"))
+    {
+        if (i == 0 or i == 1) return .one;
+        return .other;
+    }
+
+    // Default: English and most Germanic languages
+    if (abs_n == 1) return .one;
+    return .other;
+}
+
+/// Intl.PluralRules constructor callback
+fn pluralRulesConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Parse locale
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Parse options
+    var rule_type: PluralRulesType = .cardinal;
+    const minimum_integer_digits: u8 = 1;
+    const minimum_fraction_digits: u8 = 0;
+    const maximum_fraction_digits: u8 = 3;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // type
+            const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4);
+            if (type_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var t_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &t_buf)) |t| {
+                            if (std.mem.eql(u8, t, "ordinal")) rule_type = .ordinal;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Store in registry
+    const registry = getOrInitPluralRulesRegistry();
+    const allocator = std.heap.page_allocator;
+
+    const locale_copy = allocator.dupe(u8, locale) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    const entry = PluralRulesRegistry.Entry{
+        .locale = locale_copy,
+        .locale_data = resolveLocale(locale),
+        .type = rule_type,
+        .minimum_integer_digits = minimum_integer_digits,
+        .minimum_fraction_digits = minimum_fraction_digits,
+        .maximum_fraction_digits = maximum_fraction_digits,
+        .allocator = allocator,
+    };
+
+    const id = registry.next_id;
+    registry.next_id += 1;
+    registry.entries.put(id, entry) catch {
+        conv.throwTypeError(isolate, "Failed to store PluralRules");
+        return;
+    };
+
+    // Create result object with methods
+    const result_obj = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create result object");
+        return;
+    };
+
+    // Store ID in internal field
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__pr_id__", 9) orelse return;
+    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
+
+    // Add select method
+    const select_fn = v8.v8_FunctionTemplate_New(isolate, pluralRulesSelectCallback, null) orelse return;
+    const select_fn_obj = v8.v8_FunctionTemplate_GetFunction(select_fn, context) orelse return;
+    const select_key = v8.v8_String_NewFromUtf8(isolate, "select", 6) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(select_key), @ptrCast(select_fn_obj));
+
+    // Add resolvedOptions method
+    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, pluralRulesResolvedOptionsCallback, null) orelse return;
+    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
+    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
+
+    info.setReturnValue(@ptrCast(result_obj));
+}
+
+/// Intl.PluralRules.prototype.select callback
+fn pluralRulesSelectCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__pr_id__", 9) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitPluralRulesRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Get number argument
+    if (info.length() < 1) {
+        const result_str = v8.v8_String_NewFromUtf8(isolate, "other", 5) orelse return;
+        info.setReturnValue(@ptrCast(result_str));
+        return;
+    }
+
+    const num_arg = info.get(0);
+    const num = v8.v8_Value_NumberValue(num_arg, context);
+
+    // Get plural category
+    const category = getPluralCategory(num, entry.locale, entry.type);
+    const category_str = category.toString();
+
+    const result_str = v8.v8_String_NewFromUtf8(isolate, category_str.ptr, @intCast(category_str.len)) orelse return;
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+/// Intl.PluralRules.prototype.resolvedOptions callback
+fn pluralRulesResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__pr_id__", 9) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitPluralRulesRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Create result object
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    // locale
+    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
+    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
+
+    // type
+    const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return;
+    const type_str: []const u8 = if (entry.type == .ordinal) "ordinal" else "cardinal";
+    const type_val = v8.v8_String_NewFromUtf8(isolate, type_str.ptr, @intCast(type_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(type_key), @ptrCast(type_val));
+
+    // minimumIntegerDigits
+    const mid_key = v8.v8_String_NewFromUtf8(isolate, "minimumIntegerDigits", 20) orelse return;
+    const mid_val = v8.v8_Number_New(isolate, @floatFromInt(entry.minimum_integer_digits));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(mid_key), @ptrCast(mid_val));
+
+    // minimumFractionDigits
+    const mfd_key = v8.v8_String_NewFromUtf8(isolate, "minimumFractionDigits", 21) orelse return;
+    const mfd_val = v8.v8_Number_New(isolate, @floatFromInt(entry.minimum_fraction_digits));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(mfd_key), @ptrCast(mfd_val));
+
+    // maximumFractionDigits
+    const xfd_key = v8.v8_String_NewFromUtf8(isolate, "maximumFractionDigits", 21) orelse return;
+    const xfd_val = v8.v8_Number_New(isolate, @floatFromInt(entry.maximum_fraction_digits));
+    _ = v8.v8_Object_Set(result, context, @ptrCast(xfd_key), @ptrCast(xfd_val));
+
+    // pluralCategories
+    const categories_key = v8.v8_String_NewFromUtf8(isolate, "pluralCategories", 16) orelse return;
+    const categories = v8.v8_Array_New(isolate, 6);
+
+    const cat_strs = [_][]const u8{ "zero", "one", "two", "few", "many", "other" };
+    for (cat_strs, 0..) |cat_str, idx| {
+        const cat_val = v8.v8_String_NewFromUtf8(isolate, cat_str.ptr, @intCast(cat_str.len)) orelse continue;
+        _ = v8.v8_Array_Set(categories, context, @intCast(idx), @ptrCast(cat_val));
+    }
+    _ = v8.v8_Object_Set(result, context, @ptrCast(categories_key), @ptrCast(categories));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Intl.PluralRules.supportedLocalesOf callback
+fn pluralRulesSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    // Same implementation as other supportedLocalesOf
+    supportedLocalesOfCallback(info);
+}
+
+// ============================================================================
+// Phase 3: RelativeTimeFormat
+// ============================================================================
+
+/// Time unit for relative time formatting
+const RelativeTimeUnit = enum {
+    year,
+    quarter,
+    month,
+    week,
+    day,
+    hour,
+    minute,
+    second,
+
+    fn fromString(s: []const u8) ?RelativeTimeUnit {
+        if (std.mem.eql(u8, s, "year") or std.mem.eql(u8, s, "years")) return .year;
+        if (std.mem.eql(u8, s, "quarter") or std.mem.eql(u8, s, "quarters")) return .quarter;
+        if (std.mem.eql(u8, s, "month") or std.mem.eql(u8, s, "months")) return .month;
+        if (std.mem.eql(u8, s, "week") or std.mem.eql(u8, s, "weeks")) return .week;
+        if (std.mem.eql(u8, s, "day") or std.mem.eql(u8, s, "days")) return .day;
+        if (std.mem.eql(u8, s, "hour") or std.mem.eql(u8, s, "hours")) return .hour;
+        if (std.mem.eql(u8, s, "minute") or std.mem.eql(u8, s, "minutes")) return .minute;
+        if (std.mem.eql(u8, s, "second") or std.mem.eql(u8, s, "seconds")) return .second;
+        return null;
+    }
+
+    fn singular(self: RelativeTimeUnit) []const u8 {
+        return switch (self) {
+            .year => "year",
+            .quarter => "quarter",
+            .month => "month",
+            .week => "week",
+            .day => "day",
+            .hour => "hour",
+            .minute => "minute",
+            .second => "second",
+        };
+    }
+
+    fn plural(self: RelativeTimeUnit) []const u8 {
+        return switch (self) {
+            .year => "years",
+            .quarter => "quarters",
+            .month => "months",
+            .week => "weeks",
+            .day => "days",
+            .hour => "hours",
+            .minute => "minutes",
+            .second => "seconds",
+        };
+    }
+};
+
+/// Relative time format style
+const RelativeTimeStyle = enum {
+    long,
+    short,
+    narrow,
+};
+
+/// Relative time numeric option
+const RelativeTimeNumeric = enum {
+    always,
+    auto,
+};
+
+/// RelativeTimeFormat registry entry
+const RelativeTimeFormatRegistry = struct {
+    const Entry = struct {
+        locale: []const u8,
+        locale_data: ?*const cldr.LocaleData,
+        style: RelativeTimeStyle,
+        numeric: RelativeTimeNumeric,
+        allocator: std.mem.Allocator,
+    };
+
+    entries: std.AutoHashMap(usize, Entry),
+    next_id: usize,
+    allocator: std.mem.Allocator,
+};
+
+var relative_time_format_registry: ?RelativeTimeFormatRegistry = null;
+
+fn getOrInitRelativeTimeFormatRegistry() *RelativeTimeFormatRegistry {
+    if (relative_time_format_registry == null) {
+        const allocator = std.heap.page_allocator;
+        relative_time_format_registry = .{
+            .entries = std.AutoHashMap(usize, RelativeTimeFormatRegistry.Entry).init(allocator),
+            .next_id = 1,
+            .allocator = allocator,
+        };
+    }
+    return &relative_time_format_registry.?;
+}
+
+/// Format relative time (simplified implementation)
+fn formatRelativeTime(buf: []u8, value: f64, unit: RelativeTimeUnit, locale: []const u8, numeric: RelativeTimeNumeric) []const u8 {
+    var idx: usize = 0;
+    const abs_value = @abs(value);
+    const is_past = value < 0;
+    const int_value: i64 = @intFromFloat(abs_value);
+
+    // Auto mode: use special forms for -1, 0, 1
+    if (numeric == .auto) {
+        if (int_value == 0) {
+            // "now", "this year", "today", etc.
+            const now_str = switch (unit) {
+                .second => "now",
+                .minute => "this minute",
+                .hour => "this hour",
+                .day => "today",
+                .week => "this week",
+                .month => "this month",
+                .quarter => "this quarter",
+                .year => "this year",
+            };
+            for (now_str) |c| {
+                if (idx >= buf.len) break;
+                buf[idx] = c;
+                idx += 1;
+            }
+            return buf[0..idx];
+        }
+        if (int_value == 1) {
+            // "yesterday", "last week", "next year", etc.
+            const one_str = if (is_past) switch (unit) {
+                .day => "yesterday",
+                .week => "last week",
+                .month => "last month",
+                .year => "last year",
+                else => null,
+            } else switch (unit) {
+                .day => "tomorrow",
+                .week => "next week",
+                .month => "next month",
+                .year => "next year",
+                else => null,
+            };
+            if (one_str) |s| {
+                for (s) |c| {
+                    if (idx >= buf.len) break;
+                    buf[idx] = c;
+                    idx += 1;
+                }
+                return buf[0..idx];
+            }
+        }
+    }
+
+    // Numeric format: "X units ago" or "in X units"
+    _ = locale; // Would use for localized strings
+
+    if (!is_past) {
+        // "in X units"
+        for ("in ") |c| {
+            if (idx >= buf.len) break;
+            buf[idx] = c;
+            idx += 1;
+        }
+    }
+
+    // Format number
+    var num_buf: [20]u8 = undefined;
+    const num_str = std.fmt.bufPrint(&num_buf, "{d}", .{int_value}) catch "0";
+    for (num_str) |c| {
+        if (idx >= buf.len) break;
+        buf[idx] = c;
+        idx += 1;
+    }
+
+    // Add space
+    if (idx < buf.len) {
+        buf[idx] = ' ';
+        idx += 1;
+    }
+
+    // Add unit
+    const unit_str = if (int_value == 1) unit.singular() else unit.plural();
+    for (unit_str) |c| {
+        if (idx >= buf.len) break;
+        buf[idx] = c;
+        idx += 1;
+    }
+
+    if (is_past) {
+        // " ago"
+        for (" ago") |c| {
+            if (idx >= buf.len) break;
+            buf[idx] = c;
+            idx += 1;
+        }
+    }
+
+    return buf[0..idx];
+}
+
+/// Intl.RelativeTimeFormat constructor callback
+fn relativeTimeFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Parse locale
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Parse options
+    var style: RelativeTimeStyle = .long;
+    var numeric: RelativeTimeNumeric = .always;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // style
+            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
+            if (style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
+                        }
+                    }
+                }
+            }
+
+            // numeric
+            const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7);
+            if (numeric_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var n_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &n_buf)) |n| {
+                            if (std.mem.eql(u8, n, "auto")) numeric = .auto;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Store in registry
+    const registry = getOrInitRelativeTimeFormatRegistry();
+    const allocator = std.heap.page_allocator;
+
+    const locale_copy = allocator.dupe(u8, locale) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    const entry = RelativeTimeFormatRegistry.Entry{
+        .locale = locale_copy,
+        .locale_data = resolveLocale(locale),
+        .style = style,
+        .numeric = numeric,
+        .allocator = allocator,
+    };
+
+    const id = registry.next_id;
+    registry.next_id += 1;
+    registry.entries.put(id, entry) catch {
+        conv.throwTypeError(isolate, "Failed to store RelativeTimeFormat");
+        return;
+    };
+
+    // Create result object with methods
+    const result_obj = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create result object");
+        return;
+    };
+
+    // Store ID
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__rtf_id__", 10) orelse return;
+    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
+
+    // Add format method
+    const format_fn = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatFormatCallback, null) orelse return;
+    const format_fn_obj = v8.v8_FunctionTemplate_GetFunction(format_fn, context) orelse return;
+    const format_key = v8.v8_String_NewFromUtf8(isolate, "format", 6) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(format_key), @ptrCast(format_fn_obj));
+
+    // Add resolvedOptions method
+    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatResolvedOptionsCallback, null) orelse return;
+    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
+    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
+
+    info.setReturnValue(@ptrCast(result_obj));
+}
+
+/// Intl.RelativeTimeFormat.prototype.format callback
+fn relativeTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__rtf_id__", 10) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitRelativeTimeFormatRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Get arguments: value, unit
+    if (info.length() < 2) {
+        conv.throwTypeError(isolate, "RelativeTimeFormat.format requires value and unit");
+        return;
+    }
+
+    const value = v8.v8_Value_NumberValue(info.get(0), context);
+
+    var unit_buf: [16]u8 = undefined;
+    const unit_arg = info.get(1);
+    if (!v8.v8_Value_IsString(unit_arg)) {
+        conv.throwTypeError(isolate, "Unit must be a string");
+        return;
+    }
+
+    const unit_str = readV8String(v8.v8_Value_ToString(unit_arg, context), context, &unit_buf) orelse {
+        conv.throwTypeError(isolate, "Failed to read unit");
+        return;
+    };
+
+    const unit = RelativeTimeUnit.fromString(unit_str) orelse {
+        conv.throwTypeError(isolate, "Invalid unit");
+        return;
+    };
+
+    // Format
+    var buf: [128]u8 = undefined;
+    const formatted = formatRelativeTime(&buf, value, unit, entry.locale, entry.numeric);
+
+    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+/// Intl.RelativeTimeFormat.prototype.resolvedOptions callback
+fn relativeTimeFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__rtf_id__", 10) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitRelativeTimeFormatRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Create result object
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    // locale
+    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
+    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
+
+    // style
+    const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5) orelse return;
+    const style_str: []const u8 = switch (entry.style) {
+        .long => "long",
+        .short => "short",
+        .narrow => "narrow",
+    };
+    const style_val = v8.v8_String_NewFromUtf8(isolate, style_str.ptr, @intCast(style_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(style_key), @ptrCast(style_val));
+
+    // numeric
+    const numeric_key = v8.v8_String_NewFromUtf8(isolate, "numeric", 7) orelse return;
+    const numeric_str: []const u8 = if (entry.numeric == .auto) "auto" else "always";
+    const numeric_val = v8.v8_String_NewFromUtf8(isolate, numeric_str.ptr, @intCast(numeric_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(numeric_key), @ptrCast(numeric_val));
+
+    // numberingSystem
+    const ns_key = v8.v8_String_NewFromUtf8(isolate, "numberingSystem", 15) orelse return;
+    const ns_val = v8.v8_String_NewFromUtf8(isolate, "latn", 4) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(ns_key), @ptrCast(ns_val));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Intl.RelativeTimeFormat.supportedLocalesOf callback
+fn relativeTimeFormatSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    supportedLocalesOfCallback(info);
+}
+
+// ============================================================================
+// Phase 3: ListFormat
+// ============================================================================
+
+/// List format type
+const ListFormatType = enum {
+    conjunction, // "A, B, and C"
+    disjunction, // "A, B, or C"
+    unit, // "A, B, C"
+};
+
+/// List format style
+const ListFormatStyle = enum {
+    long,
+    short,
+    narrow,
+};
+
+/// ListFormat registry entry
+const ListFormatRegistry = struct {
+    const Entry = struct {
+        locale: []const u8,
+        locale_data: ?*const cldr.LocaleData,
+        type: ListFormatType,
+        style: ListFormatStyle,
+        allocator: std.mem.Allocator,
+    };
+
+    entries: std.AutoHashMap(usize, Entry),
+    next_id: usize,
+    allocator: std.mem.Allocator,
+};
+
+var list_format_registry: ?ListFormatRegistry = null;
+
+fn getOrInitListFormatRegistry() *ListFormatRegistry {
+    if (list_format_registry == null) {
+        const allocator = std.heap.page_allocator;
+        list_format_registry = .{
+            .entries = std.AutoHashMap(usize, ListFormatRegistry.Entry).init(allocator),
+            .next_id = 1,
+            .allocator = allocator,
+        };
+    }
+    return &list_format_registry.?;
+}
+
+/// Format a list
+fn formatList(allocator: std.mem.Allocator, items: []const []const u8, format_type: ListFormatType, locale: []const u8) ![]u8 {
+    if (items.len == 0) return allocator.dupe(u8, "");
+    if (items.len == 1) return allocator.dupe(u8, items[0]);
+
+    // Get conjunction/disjunction based on locale
+    const conjunction = getListConjunction(locale, format_type);
+
+    // Calculate total size
+    var total_size: usize = 0;
+    for (items) |item| {
+        total_size += item.len;
+    }
+    // Add separators: ", " between all except last, " and/or " before last
+    total_size += (items.len - 2) * 2 + conjunction.len + 2; // ", " * (n-2) + " and " or " or "
+
+    var result = try allocator.alloc(u8, total_size + 16); // Extra buffer
+    var idx: usize = 0;
+
+    for (items, 0..) |item, i| {
+        // Copy item
+        for (item) |c| {
+            if (idx >= result.len) break;
+            result[idx] = c;
+            idx += 1;
+        }
+
+        if (i < items.len - 2) {
+            // Add ", "
+            if (idx + 2 <= result.len) {
+                result[idx] = ',';
+                result[idx + 1] = ' ';
+                idx += 2;
+            }
+        } else if (i == items.len - 2) {
+            // Add conjunction
+            if (idx + conjunction.len + 2 <= result.len) {
+                result[idx] = ',';
+                result[idx + 1] = ' ';
+                idx += 2;
+                for (conjunction) |c| {
+                    result[idx] = c;
+                    idx += 1;
+                }
+                result[idx] = ' ';
+                idx += 1;
+            }
+        }
+    }
+
+    return result[0..idx];
+}
+
+fn getListConjunction(locale: []const u8, format_type: ListFormatType) []const u8 {
+    _ = locale; // Would use for localized conjunctions
+    return switch (format_type) {
+        .conjunction => "and",
+        .disjunction => "or",
+        .unit => "",
+    };
+}
+
+/// Intl.ListFormat constructor callback
+fn listFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Parse locale
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Parse options
+    var format_type: ListFormatType = .conjunction;
+    var style: ListFormatStyle = .long;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // type
+            const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4);
+            if (type_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var t_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &t_buf)) |t| {
+                            if (std.mem.eql(u8, t, "disjunction")) format_type = .disjunction else if (std.mem.eql(u8, t, "unit")) format_type = .unit;
+                        }
+                    }
+                }
+            }
+
+            // style
+            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
+            if (style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Store in registry
+    const registry = getOrInitListFormatRegistry();
+    const allocator = std.heap.page_allocator;
+
+    const locale_copy = allocator.dupe(u8, locale) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    const entry = ListFormatRegistry.Entry{
+        .locale = locale_copy,
+        .locale_data = resolveLocale(locale),
+        .type = format_type,
+        .style = style,
+        .allocator = allocator,
+    };
+
+    const id = registry.next_id;
+    registry.next_id += 1;
+    registry.entries.put(id, entry) catch {
+        conv.throwTypeError(isolate, "Failed to store ListFormat");
+        return;
+    };
+
+    // Create result object with methods
+    const result_obj = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create result object");
+        return;
+    };
+
+    // Store ID
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__lf_id__", 9) orelse return;
+    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
+
+    // Add format method
+    const format_fn = v8.v8_FunctionTemplate_New(isolate, listFormatFormatCallback, null) orelse return;
+    const format_fn_obj = v8.v8_FunctionTemplate_GetFunction(format_fn, context) orelse return;
+    const format_key = v8.v8_String_NewFromUtf8(isolate, "format", 6) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(format_key), @ptrCast(format_fn_obj));
+
+    // Add resolvedOptions method
+    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, listFormatResolvedOptionsCallback, null) orelse return;
+    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
+    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
+
+    info.setReturnValue(@ptrCast(result_obj));
+}
+
+/// Intl.ListFormat.prototype.format callback
+fn listFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__lf_id__", 9) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitListFormatRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Get array argument
+    if (info.length() < 1) {
+        const empty_str = v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+        info.setReturnValue(@ptrCast(empty_str));
+        return;
+    }
+
+    const list_arg = info.get(0);
+    if (!v8.v8_Value_IsArray(list_arg)) {
+        conv.throwTypeError(isolate, "ListFormat.format requires an array");
+        return;
+    }
+
+    const arr: *v8.Array = @ptrCast(list_arg);
+    const len = v8.v8_Array_Length(arr);
+
+    if (len == 0) {
+        const empty_str = v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+        info.setReturnValue(@ptrCast(empty_str));
+        return;
+    }
+
+    // Collect strings from array
+    const allocator = std.heap.page_allocator;
+    var items = allocator.alloc([]const u8, len) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+    defer allocator.free(items);
+
+    var string_bufs = allocator.alloc([256]u8, len) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+    defer allocator.free(string_bufs);
+
+    for (0..len) |i| {
+        const elem = v8.v8_Array_Get(context, arr, @intCast(i)) orelse {
+            items[i] = "";
+            continue;
+        };
+        if (v8.v8_Value_IsString(elem)) {
+            if (readV8String(v8.v8_Value_ToString(elem, context), context, &string_bufs[i])) |s| {
+                items[i] = s;
+            } else {
+                items[i] = "";
+            }
+        } else {
+            // Convert to string
+            const str = v8.v8_Value_ToString(elem, context);
+            if (readV8String(str, context, &string_bufs[i])) |s| {
+                items[i] = s;
+            } else {
+                items[i] = "";
+            }
+        }
+    }
+
+    // Format list
+    const formatted = formatList(allocator, items, entry.type, entry.locale) catch {
+        conv.throwTypeError(isolate, "Failed to format list");
+        return;
+    };
+    defer allocator.free(formatted);
+
+    const result_str = v8.v8_String_NewFromUtf8(isolate, formatted.ptr, @intCast(formatted.len)) orelse return;
+    info.setReturnValue(@ptrCast(result_str));
+}
+
+/// Intl.ListFormat.prototype.resolvedOptions callback
+fn listFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__lf_id__", 9) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitListFormatRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Create result object
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    // locale
+    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
+    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
+
+    // type
+    const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return;
+    const type_str: []const u8 = switch (entry.type) {
+        .conjunction => "conjunction",
+        .disjunction => "disjunction",
+        .unit => "unit",
+    };
+    const type_val = v8.v8_String_NewFromUtf8(isolate, type_str.ptr, @intCast(type_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(type_key), @ptrCast(type_val));
+
+    // style
+    const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5) orelse return;
+    const style_str2: []const u8 = switch (entry.style) {
+        .long => "long",
+        .short => "short",
+        .narrow => "narrow",
+    };
+    const style_val = v8.v8_String_NewFromUtf8(isolate, style_str2.ptr, @intCast(style_str2.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(style_key), @ptrCast(style_val));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Intl.ListFormat.supportedLocalesOf callback
+fn listFormatSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    supportedLocalesOfCallback(info);
+}
+
+// ============================================================================
+// Phase 3: DisplayNames
+// ============================================================================
+
+/// DisplayNames type
+const DisplayNamesType = enum {
+    language,
+    region,
+    script,
+    currency,
+    calendar,
+    dateTimeField,
+};
+
+/// DisplayNames fallback mode
+const DisplayNamesFallback = enum { code, none };
+
+/// DisplayNames registry entry
+const DisplayNamesRegistry = struct {
+    const Entry = struct {
+        locale: []const u8,
+        locale_data: ?*const cldr.LocaleData,
+        type: DisplayNamesType,
+        style: ListFormatStyle,
+        fallback: DisplayNamesFallback,
+        allocator: std.mem.Allocator,
+    };
+
+    entries: std.AutoHashMap(usize, Entry),
+    next_id: usize,
+    allocator: std.mem.Allocator,
+};
+
+var display_names_registry: ?DisplayNamesRegistry = null;
+
+fn getOrInitDisplayNamesRegistry() *DisplayNamesRegistry {
+    if (display_names_registry == null) {
+        const allocator = std.heap.page_allocator;
+        display_names_registry = .{
+            .entries = std.AutoHashMap(usize, DisplayNamesRegistry.Entry).init(allocator),
+            .next_id = 1,
+            .allocator = allocator,
+        };
+    }
+    return &display_names_registry.?;
+}
+
+/// Get display name for a code
+fn getDisplayName(code: []const u8, display_type: DisplayNamesType, locale: []const u8) ?[]const u8 {
+    _ = locale; // Would use for localized names
+    return switch (display_type) {
+        .language => getLanguageDisplayName(code),
+        .region => getRegionDisplayName(code),
+        .currency => getCurrencyDisplayName(code),
+        .script => getScriptDisplayName(code),
+        .calendar => getCalendarDisplayName(code),
+        .dateTimeField => getDateTimeFieldDisplayName(code),
+    };
+}
+
+fn getLanguageDisplayName(code: []const u8) ?[]const u8 {
+    // Common language codes
+    if (std.mem.eql(u8, code, "en")) return "English";
+    if (std.mem.eql(u8, code, "de")) return "German";
+    if (std.mem.eql(u8, code, "fr")) return "French";
+    if (std.mem.eql(u8, code, "es")) return "Spanish";
+    if (std.mem.eql(u8, code, "it")) return "Italian";
+    if (std.mem.eql(u8, code, "pt")) return "Portuguese";
+    if (std.mem.eql(u8, code, "zh")) return "Chinese";
+    if (std.mem.eql(u8, code, "ja")) return "Japanese";
+    if (std.mem.eql(u8, code, "ko")) return "Korean";
+    if (std.mem.eql(u8, code, "ar")) return "Arabic";
+    if (std.mem.eql(u8, code, "ru")) return "Russian";
+    if (std.mem.eql(u8, code, "nl")) return "Dutch";
+    if (std.mem.eql(u8, code, "pl")) return "Polish";
+    if (std.mem.eql(u8, code, "tr")) return "Turkish";
+    if (std.mem.eql(u8, code, "vi")) return "Vietnamese";
+    if (std.mem.eql(u8, code, "th")) return "Thai";
+    if (std.mem.eql(u8, code, "id")) return "Indonesian";
+    if (std.mem.eql(u8, code, "hi")) return "Hindi";
+    return null;
+}
+
+fn getRegionDisplayName(code: []const u8) ?[]const u8 {
+    // Common region codes
+    if (std.mem.eql(u8, code, "US")) return "United States";
+    if (std.mem.eql(u8, code, "GB")) return "United Kingdom";
+    if (std.mem.eql(u8, code, "DE")) return "Germany";
+    if (std.mem.eql(u8, code, "FR")) return "France";
+    if (std.mem.eql(u8, code, "ES")) return "Spain";
+    if (std.mem.eql(u8, code, "IT")) return "Italy";
+    if (std.mem.eql(u8, code, "JP")) return "Japan";
+    if (std.mem.eql(u8, code, "CN")) return "China";
+    if (std.mem.eql(u8, code, "KR")) return "South Korea";
+    if (std.mem.eql(u8, code, "BR")) return "Brazil";
+    if (std.mem.eql(u8, code, "IN")) return "India";
+    if (std.mem.eql(u8, code, "RU")) return "Russia";
+    if (std.mem.eql(u8, code, "AU")) return "Australia";
+    if (std.mem.eql(u8, code, "CA")) return "Canada";
+    if (std.mem.eql(u8, code, "MX")) return "Mexico";
+    return null;
+}
+
+fn getCurrencyDisplayName(code: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, code, "USD")) return "US Dollar";
+    if (std.mem.eql(u8, code, "EUR")) return "Euro";
+    if (std.mem.eql(u8, code, "GBP")) return "British Pound";
+    if (std.mem.eql(u8, code, "JPY")) return "Japanese Yen";
+    if (std.mem.eql(u8, code, "CNY")) return "Chinese Yuan";
+    if (std.mem.eql(u8, code, "KRW")) return "South Korean Won";
+    if (std.mem.eql(u8, code, "INR")) return "Indian Rupee";
+    if (std.mem.eql(u8, code, "RUB")) return "Russian Ruble";
+    if (std.mem.eql(u8, code, "BRL")) return "Brazilian Real";
+    if (std.mem.eql(u8, code, "CAD")) return "Canadian Dollar";
+    if (std.mem.eql(u8, code, "AUD")) return "Australian Dollar";
+    if (std.mem.eql(u8, code, "CHF")) return "Swiss Franc";
+    return null;
+}
+
+fn getScriptDisplayName(code: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, code, "Latn")) return "Latin";
+    if (std.mem.eql(u8, code, "Cyrl")) return "Cyrillic";
+    if (std.mem.eql(u8, code, "Arab")) return "Arabic";
+    if (std.mem.eql(u8, code, "Hans")) return "Simplified Han";
+    if (std.mem.eql(u8, code, "Hant")) return "Traditional Han";
+    if (std.mem.eql(u8, code, "Jpan")) return "Japanese";
+    if (std.mem.eql(u8, code, "Kore")) return "Korean";
+    if (std.mem.eql(u8, code, "Deva")) return "Devanagari";
+    if (std.mem.eql(u8, code, "Grek")) return "Greek";
+    if (std.mem.eql(u8, code, "Hebr")) return "Hebrew";
+    return null;
+}
+
+fn getCalendarDisplayName(code: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, code, "gregory")) return "Gregorian Calendar";
+    if (std.mem.eql(u8, code, "buddhist")) return "Buddhist Calendar";
+    if (std.mem.eql(u8, code, "chinese")) return "Chinese Calendar";
+    if (std.mem.eql(u8, code, "hebrew")) return "Hebrew Calendar";
+    if (std.mem.eql(u8, code, "islamic")) return "Islamic Calendar";
+    if (std.mem.eql(u8, code, "japanese")) return "Japanese Calendar";
+    if (std.mem.eql(u8, code, "persian")) return "Persian Calendar";
+    return null;
+}
+
+fn getDateTimeFieldDisplayName(code: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, code, "era")) return "era";
+    if (std.mem.eql(u8, code, "year")) return "year";
+    if (std.mem.eql(u8, code, "month")) return "month";
+    if (std.mem.eql(u8, code, "week")) return "week";
+    if (std.mem.eql(u8, code, "day")) return "day";
+    if (std.mem.eql(u8, code, "hour")) return "hour";
+    if (std.mem.eql(u8, code, "minute")) return "minute";
+    if (std.mem.eql(u8, code, "second")) return "second";
+    if (std.mem.eql(u8, code, "weekday")) return "day of the week";
+    if (std.mem.eql(u8, code, "dayPeriod")) return "AM/PM";
+    if (std.mem.eql(u8, code, "timeZoneName")) return "time zone";
+    return null;
+}
+
+/// Intl.DisplayNames constructor callback
+fn displayNamesConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to get context");
+        return;
+    };
+
+    // Parse locale
+    var locale_buf: [64]u8 = undefined;
+    var locale: []const u8 = "en";
+
+    if (info.length() > 0) {
+        const locale_arg = info.get(0);
+        if (v8.v8_Value_IsString(locale_arg)) {
+            const str = v8.v8_Value_ToString(locale_arg, context);
+            if (readV8String(str, context, &locale_buf)) |loc| {
+                locale = loc;
+            }
+        }
+    }
+
+    // Parse options (required for type)
+    var display_type: DisplayNamesType = .language;
+    var style: ListFormatStyle = .long;
+    var fallback: DisplayNamesFallback = .code;
+
+    if (info.length() > 1) {
+        const options_arg = info.get(1);
+        if (v8.v8_Value_IsObject(options_arg)) {
+            const options_obj: *v8.Object = @ptrCast(options_arg);
+
+            // type (required)
+            const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4);
+            if (type_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var t_buf: [32]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &t_buf)) |t| {
+                            if (std.mem.eql(u8, t, "language")) display_type = .language else if (std.mem.eql(u8, t, "region")) display_type = .region else if (std.mem.eql(u8, t, "script")) display_type = .script else if (std.mem.eql(u8, t, "currency")) display_type = .currency else if (std.mem.eql(u8, t, "calendar")) display_type = .calendar else if (std.mem.eql(u8, t, "dateTimeField")) display_type = .dateTimeField;
+                        }
+                    }
+                }
+            }
+
+            // style
+            const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5);
+            if (style_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var s_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &s_buf)) |s| {
+                            if (std.mem.eql(u8, s, "short")) style = .short else if (std.mem.eql(u8, s, "narrow")) style = .narrow;
+                        }
+                    }
+                }
+            }
+
+            // fallback
+            const fallback_key = v8.v8_String_NewFromUtf8(isolate, "fallback", 8);
+            if (fallback_key) |key| {
+                const val = v8.v8_Object_Get(options_obj, context, @ptrCast(key));
+                if (val) |v_val| {
+                    if (v8.v8_Value_IsString(v_val)) {
+                        var f_buf: [16]u8 = undefined;
+                        if (readV8String(v8.v8_Value_ToString(v_val, context), context, &f_buf)) |f| {
+                            if (std.mem.eql(u8, f, "none")) fallback = .none;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Store in registry
+    const registry = getOrInitDisplayNamesRegistry();
+    const allocator = std.heap.page_allocator;
+
+    const locale_copy = allocator.dupe(u8, locale) catch {
+        conv.throwTypeError(isolate, "Out of memory");
+        return;
+    };
+
+    const entry = DisplayNamesRegistry.Entry{
+        .locale = locale_copy,
+        .locale_data = resolveLocale(locale),
+        .type = display_type,
+        .style = style,
+        .fallback = fallback,
+        .allocator = allocator,
+    };
+
+    const id = registry.next_id;
+    registry.next_id += 1;
+    registry.entries.put(id, entry) catch {
+        conv.throwTypeError(isolate, "Failed to store DisplayNames");
+        return;
+    };
+
+    // Create result object with methods
+    const result_obj = v8.v8_Object_New(isolate) orelse {
+        conv.throwTypeError(isolate, "Failed to create result object");
+        return;
+    };
+
+    // Store ID
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__dn_id__", 9) orelse return;
+    const id_val = v8.v8_Number_New(isolate, @floatFromInt(id));
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(id_key), @ptrCast(id_val));
+
+    // Add of method
+    const of_fn = v8.v8_FunctionTemplate_New(isolate, displayNamesOfCallback, null) orelse return;
+    const of_fn_obj = v8.v8_FunctionTemplate_GetFunction(of_fn, context) orelse return;
+    const of_key = v8.v8_String_NewFromUtf8(isolate, "of", 2) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(of_key), @ptrCast(of_fn_obj));
+
+    // Add resolvedOptions method
+    const resolved_fn = v8.v8_FunctionTemplate_New(isolate, displayNamesResolvedOptionsCallback, null) orelse return;
+    const resolved_fn_obj = v8.v8_FunctionTemplate_GetFunction(resolved_fn, context) orelse return;
+    const resolved_key = v8.v8_String_NewFromUtf8(isolate, "resolvedOptions", 15) orelse return;
+    _ = v8.v8_Object_Set(result_obj, context, @ptrCast(resolved_key), @ptrCast(resolved_fn_obj));
+
+    info.setReturnValue(@ptrCast(result_obj));
+}
+
+/// Intl.DisplayNames.prototype.of callback
+fn displayNamesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__dn_id__", 9) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitDisplayNamesRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Get code argument
+    if (info.length() < 1) {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        return;
+    }
+
+    var code_buf: [32]u8 = undefined;
+    const code_arg = info.get(0);
+    if (!v8.v8_Value_IsString(code_arg)) {
+        conv.throwTypeError(isolate, "Code must be a string");
+        return;
+    }
+
+    const code = readV8String(v8.v8_Value_ToString(code_arg, context), context, &code_buf) orelse {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+        return;
+    };
+
+    // Get display name
+    if (getDisplayName(code, entry.type, entry.locale)) |name| {
+        const result_str = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return;
+        info.setReturnValue(@ptrCast(result_str));
+    } else if (entry.fallback == .code) {
+        // Return the code itself as fallback
+        const result_str = v8.v8_String_NewFromUtf8(isolate, code.ptr, @intCast(code.len)) orelse return;
+        info.setReturnValue(@ptrCast(result_str));
+    } else {
+        info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+    }
+}
+
+/// Intl.DisplayNames.prototype.resolvedOptions callback
+fn displayNamesResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get ID from this object
+    const this_val = info.getThis();
+    const id_key = v8.v8_String_NewFromUtf8(isolate, "__dn_id__", 9) orelse return;
+    const id_val = v8.v8_Object_Get(@ptrCast(this_val), context, @ptrCast(id_key)) orelse return;
+    if (!v8.v8_Value_IsNumber(id_val)) return;
+
+    const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
+
+    const registry = getOrInitDisplayNamesRegistry();
+    const entry = registry.entries.get(id) orelse return;
+
+    // Create result object
+    const result = v8.v8_Object_New(isolate) orelse return;
+
+    // locale
+    const locale_key = v8.v8_String_NewFromUtf8(isolate, "locale", 6) orelse return;
+    const locale_val = v8.v8_String_NewFromUtf8(isolate, entry.locale.ptr, @intCast(entry.locale.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(locale_key), @ptrCast(locale_val));
+
+    // type
+    const type_key = v8.v8_String_NewFromUtf8(isolate, "type", 4) orelse return;
+    const dn_type_str: []const u8 = switch (entry.type) {
+        .language => "language",
+        .region => "region",
+        .script => "script",
+        .currency => "currency",
+        .calendar => "calendar",
+        .dateTimeField => "dateTimeField",
+    };
+    const type_val = v8.v8_String_NewFromUtf8(isolate, dn_type_str.ptr, @intCast(dn_type_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(type_key), @ptrCast(type_val));
+
+    // style
+    const style_key = v8.v8_String_NewFromUtf8(isolate, "style", 5) orelse return;
+    const dn_style_str: []const u8 = switch (entry.style) {
+        .long => "long",
+        .short => "short",
+        .narrow => "narrow",
+    };
+    const style_val = v8.v8_String_NewFromUtf8(isolate, dn_style_str.ptr, @intCast(dn_style_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(style_key), @ptrCast(style_val));
+
+    // fallback
+    const fallback_key = v8.v8_String_NewFromUtf8(isolate, "fallback", 8) orelse return;
+    const fallback_str: []const u8 = if (entry.fallback == .code) "code" else "none";
+    const fallback_val = v8.v8_String_NewFromUtf8(isolate, fallback_str.ptr, @intCast(fallback_str.len)) orelse return;
+    _ = v8.v8_Object_Set(result, context, @ptrCast(fallback_key), @ptrCast(fallback_val));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Intl.DisplayNames.supportedLocalesOf callback
+fn displayNamesSupportedLocalesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    supportedLocalesOfCallback(info);
+}
+
+// ============================================================================
+// Phase 3: Intl.supportedValuesOf
+// ============================================================================
+
+/// Intl.supportedValuesOf callback
+fn supportedValuesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    if (info.length() < 1) {
+        conv.throwTypeError(isolate, "supportedValuesOf requires a key argument");
+        return;
+    }
+
+    var key_buf: [32]u8 = undefined;
+    const key_arg = info.get(0);
+    if (!v8.v8_Value_IsString(key_arg)) {
+        conv.throwRangeError(isolate, "Invalid key");
+        return;
+    }
+
+    const key = readV8String(v8.v8_Value_ToString(key_arg, context), context, &key_buf) orelse {
+        conv.throwRangeError(isolate, "Invalid key");
+        return;
+    };
+
+    // Get supported values based on key
+    if (std.mem.eql(u8, key, "calendar")) {
+        const calendars = [_][]const u8{ "gregory", "buddhist", "chinese", "coptic", "dangi", "ethiopic", "hebrew", "indian", "islamic", "islamic-civil", "islamic-rgsa", "islamic-tbla", "islamic-umalqura", "japanese", "persian", "roc" };
+        createStringArray(isolate, context, &calendars, info);
+    } else if (std.mem.eql(u8, key, "collation")) {
+        const collations = [_][]const u8{ "big5han", "compat", "dict", "direct", "ducet", "emoji", "eor", "gb2312", "phonebk", "phonetic", "pinyin", "reformed", "search", "searchjl", "standard", "stroke", "trad", "unihan", "zhuyin" };
+        createStringArray(isolate, context, &collations, info);
+    } else if (std.mem.eql(u8, key, "currency")) {
+        const currencies = [_][]const u8{ "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BRL", "BSD", "BTN", "BWP", "BYN", "BZD", "CAD", "CDF", "CHF", "CLP", "CNY", "COP", "CRC", "CUC", "CUP", "CVE", "CZK", "DJF", "DKK", "DOP", "DZD", "EGP", "ERN", "ETB", "EUR", "FJD", "FKP", "GBP", "GEL", "GGP", "GHS", "GIP", "GMD", "GNF", "GTQ", "GYD", "HKD", "HNL", "HRK", "HTG", "HUF", "IDR", "ILS", "IMP", "INR", "IQD", "IRR", "ISK", "JEP", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF", "KPW", "KRW", "KWD", "KYD", "KZT", "LAK", "LBP", "LKR", "LRD", "LSL", "LYD", "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MRU", "MUR", "MVR", "MWK", "MXN", "MYR", "MZN", "NAD", "NGN", "NIO", "NOK", "NPR", "NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PYG", "QAR", "RON", "RSD", "RUB", "RWF", "SAR", "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLL", "SOS", "SPL", "SRD", "STN", "SVC", "SYP", "SZL", "THB", "TJS", "TMT", "TND", "TOP", "TRY", "TTD", "TVD", "TWD", "TZS", "UAH", "UGX", "USD", "UYU", "UZS", "VEF", "VND", "VUV", "WST", "XAF", "XCD", "XDR", "XOF", "XPF", "YER", "ZAR", "ZMW", "ZWD" };
+        createStringArray(isolate, context, &currencies, info);
+    } else if (std.mem.eql(u8, key, "numberingSystem")) {
+        const numbering_systems = [_][]const u8{ "adlm", "ahom", "arab", "arabext", "bali", "beng", "bhks", "brah", "cakm", "cham", "deva", "diak", "fullwide", "gong", "gonm", "gujr", "guru", "hanidec", "hmng", "hmnp", "java", "kali", "khmr", "knda", "lana", "lanatham", "laoo", "latn", "lepc", "limb", "mathbold", "mathdbl", "mathmono", "mathsanb", "mathsans", "mlym", "modi", "mong", "mroo", "mtei", "mymr", "mymrshan", "mymrtlng", "newa", "nkoo", "olck", "orya", "osma", "rohg", "saur", "segment", "shrd", "sind", "sinh", "sora", "sund", "takr", "talu", "tamldec", "telu", "thai", "tibt", "tirh", "vaii", "wara", "wcho" };
+        createStringArray(isolate, context, &numbering_systems, info);
+    } else if (std.mem.eql(u8, key, "timeZone")) {
+        const time_zones = [_][]const u8{ "Africa/Abidjan", "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/New_York", "America/Sao_Paulo", "America/Toronto", "Asia/Dubai", "Asia/Hong_Kong", "Asia/Kolkata", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo", "Australia/Melbourne", "Australia/Sydney", "Europe/Berlin", "Europe/London", "Europe/Moscow", "Europe/Paris", "Pacific/Auckland", "UTC" };
+        createStringArray(isolate, context, &time_zones, info);
+    } else if (std.mem.eql(u8, key, "unit")) {
+        const units = [_][]const u8{ "acre", "bit", "byte", "celsius", "centimeter", "day", "degree", "fahrenheit", "fluid-ounce", "foot", "gallon", "gigabit", "gigabyte", "gram", "hectare", "hour", "inch", "kilobit", "kilobyte", "kilogram", "kilometer", "liter", "megabit", "megabyte", "meter", "mile", "mile-scandinavian", "milliliter", "millimeter", "millisecond", "minute", "month", "ounce", "percent", "petabyte", "pound", "second", "stone", "terabit", "terabyte", "week", "yard", "year" };
+        createStringArray(isolate, context, &units, info);
+    } else {
+        conv.throwRangeError(isolate, "Invalid key for supportedValuesOf");
+        return;
+    }
+}
+
+fn createStringArray(isolate: *v8.Isolate, context: *v8.Context, values: []const []const u8, info: *const v8.FunctionCallbackInfo) void {
+    const arr = v8.v8_Array_New(isolate, @intCast(values.len));
+    for (values, 0..) |val, i| {
+        const str = v8.v8_String_NewFromUtf8(isolate, val.ptr, @intCast(val.len)) orelse continue;
+        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(str));
+    }
+    info.setReturnValue(@ptrCast(arr));
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -2714,6 +4256,74 @@ pub fn registerGlobal(isolate: *v8.Isolate, context: *v8.Context) void {
     _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(col_key), @ptrCast(col_constructor));
 
     // ========================================================================
+    // PluralRules
+    // ========================================================================
+    const pr_template = v8.v8_FunctionTemplate_New(isolate, pluralRulesConstructorCallback, null) orelse return;
+    const pr_constructor = v8.v8_FunctionTemplate_GetFunction(pr_template, context) orelse return;
+
+    // Add supportedLocalesOf static method
+    const pr_supported_fn = v8.v8_FunctionTemplate_New(isolate, pluralRulesSupportedLocalesOfCallback, null) orelse return;
+    const pr_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(pr_supported_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(pr_constructor), context, @ptrCast(supported_key), @ptrCast(pr_supported_fn_obj));
+
+    // Add PluralRules to Intl object
+    const pr_key = v8.v8_String_NewFromUtf8(isolate, "PluralRules", 11) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(pr_key), @ptrCast(pr_constructor));
+
+    // ========================================================================
+    // RelativeTimeFormat
+    // ========================================================================
+    const rtf_template = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatConstructorCallback, null) orelse return;
+    const rtf_constructor = v8.v8_FunctionTemplate_GetFunction(rtf_template, context) orelse return;
+
+    // Add supportedLocalesOf static method
+    const rtf_supported_fn = v8.v8_FunctionTemplate_New(isolate, relativeTimeFormatSupportedLocalesOfCallback, null) orelse return;
+    const rtf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(rtf_supported_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(rtf_constructor), context, @ptrCast(supported_key), @ptrCast(rtf_supported_fn_obj));
+
+    // Add RelativeTimeFormat to Intl object
+    const rtf_key = v8.v8_String_NewFromUtf8(isolate, "RelativeTimeFormat", 18) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(rtf_key), @ptrCast(rtf_constructor));
+
+    // ========================================================================
+    // ListFormat
+    // ========================================================================
+    const lf_template = v8.v8_FunctionTemplate_New(isolate, listFormatConstructorCallback, null) orelse return;
+    const lf_constructor = v8.v8_FunctionTemplate_GetFunction(lf_template, context) orelse return;
+
+    // Add supportedLocalesOf static method
+    const lf_supported_fn = v8.v8_FunctionTemplate_New(isolate, listFormatSupportedLocalesOfCallback, null) orelse return;
+    const lf_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(lf_supported_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(lf_constructor), context, @ptrCast(supported_key), @ptrCast(lf_supported_fn_obj));
+
+    // Add ListFormat to Intl object
+    const lf_key = v8.v8_String_NewFromUtf8(isolate, "ListFormat", 10) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(lf_key), @ptrCast(lf_constructor));
+
+    // ========================================================================
+    // DisplayNames
+    // ========================================================================
+    const dn_template = v8.v8_FunctionTemplate_New(isolate, displayNamesConstructorCallback, null) orelse return;
+    const dn_constructor = v8.v8_FunctionTemplate_GetFunction(dn_template, context) orelse return;
+
+    // Add supportedLocalesOf static method
+    const dn_supported_fn = v8.v8_FunctionTemplate_New(isolate, displayNamesSupportedLocalesOfCallback, null) orelse return;
+    const dn_supported_fn_obj = v8.v8_FunctionTemplate_GetFunction(dn_supported_fn, context) orelse return;
+    _ = v8.v8_Object_Set(@ptrCast(dn_constructor), context, @ptrCast(supported_key), @ptrCast(dn_supported_fn_obj));
+
+    // Add DisplayNames to Intl object
+    const dn_key = v8.v8_String_NewFromUtf8(isolate, "DisplayNames", 12) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(dn_key), @ptrCast(dn_constructor));
+
+    // ========================================================================
+    // Intl.supportedValuesOf (static method on Intl object)
+    // ========================================================================
+    const svo_fn = v8.v8_FunctionTemplate_New(isolate, supportedValuesOfCallback, null) orelse return;
+    const svo_fn_obj = v8.v8_FunctionTemplate_GetFunction(svo_fn, context) orelse return;
+    const svo_key = v8.v8_String_NewFromUtf8(isolate, "supportedValuesOf", 17) orelse return;
+    _ = v8.v8_Object_Set(intl_obj, context, @ptrCast(svo_key), @ptrCast(svo_fn_obj));
+
+    // ========================================================================
     // Add Intl to global object
     // ========================================================================
     const global = v8.v8_Context_Global(context) orelse return;
@@ -2759,6 +4369,33 @@ pub fn registerExternalReferences() void {
     ext_refs.registerCallbackRuntime(dateToLocaleStringCallback);
     ext_refs.registerCallbackRuntime(dateToLocaleDateStringCallback);
     ext_refs.registerCallbackRuntime(dateToLocaleTimeStringCallback);
+
+    // PluralRules
+    ext_refs.registerCallbackRuntime(pluralRulesConstructorCallback);
+    ext_refs.registerCallbackRuntime(pluralRulesSelectCallback);
+    ext_refs.registerCallbackRuntime(pluralRulesResolvedOptionsCallback);
+    ext_refs.registerCallbackRuntime(pluralRulesSupportedLocalesOfCallback);
+
+    // RelativeTimeFormat
+    ext_refs.registerCallbackRuntime(relativeTimeFormatConstructorCallback);
+    ext_refs.registerCallbackRuntime(relativeTimeFormatFormatCallback);
+    ext_refs.registerCallbackRuntime(relativeTimeFormatResolvedOptionsCallback);
+    ext_refs.registerCallbackRuntime(relativeTimeFormatSupportedLocalesOfCallback);
+
+    // ListFormat
+    ext_refs.registerCallbackRuntime(listFormatConstructorCallback);
+    ext_refs.registerCallbackRuntime(listFormatFormatCallback);
+    ext_refs.registerCallbackRuntime(listFormatResolvedOptionsCallback);
+    ext_refs.registerCallbackRuntime(listFormatSupportedLocalesOfCallback);
+
+    // DisplayNames
+    ext_refs.registerCallbackRuntime(displayNamesConstructorCallback);
+    ext_refs.registerCallbackRuntime(displayNamesOfCallback);
+    ext_refs.registerCallbackRuntime(displayNamesResolvedOptionsCallback);
+    ext_refs.registerCallbackRuntime(displayNamesSupportedLocalesOfCallback);
+
+    // Intl.supportedValuesOf
+    ext_refs.registerCallbackRuntime(supportedValuesOfCallback);
 }
 
 // ============================================================================
