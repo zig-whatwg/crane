@@ -229,6 +229,22 @@ pub const BrowserContext = struct {
         // but Object.setPrototypeOf(window, window.__proto__) must succeed (same prototype)
         const global_template = v8.ffi.v8_ObjectTemplate_New(isolate);
         v8.ffi.v8_ObjectTemplate_SetImmutableProto(global_template);
+
+        // Set internal field count for Window binding (2 fields: impl pointer + type info)
+        // This is required for bindWindowToContext() to bind the Window instance to the global
+        v8.ffi.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+
+        // Set up indexed property handler for frames[index] access
+        // Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
+        // - Numeric indices return child browsing context Windows
+        v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+            global_template,
+            context_manager.windowIndexedPropertyGetter,
+            context_manager.windowIndexedPropertyQuery,
+            context_manager.windowIndexedPropertyEnumerator,
+            null, // descriptor callback - not needed for basic access
+        );
+
         const context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse return error.ContextCreateFailed;
         self.context = context;
 
@@ -255,6 +271,20 @@ pub const BrowserContext = struct {
 
         // Register all namespaces using the generic function
         v8.interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+
+        // Bind Window instance to context for cross-realm support (frames[0], contentWindow)
+        // This creates a Window runtime.Instance and binds it to the V8 global object.
+        // Must be done after interface bindings are initialized.
+        self.window_instance = context_manager.bindWindowToContext(context, isolate, self.allocator) catch |err| blk: {
+            std.debug.print("Warning: Failed to bind Window to context: {}\n", .{err});
+            break :blk null;
+        };
+
+        // Register Window properties as own properties on the global object.
+        // This is required for WebIDL compliance: window.length, window.name, etc.
+        // must be accessible as own properties via Object.getOwnPropertyDescriptor.
+        const global_obj = v8.ffi.v8_Context_Global(context) orelse return error.GlobalNotFound;
+        v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, context, global_obj);
 
         // CRITICAL: Set up window/self globals via JavaScript FIRST
         // This MUST happen before registerBrowserGlobals() because that function
@@ -353,7 +383,8 @@ pub const BrowserContext = struct {
             \\  enumerable: true, configurable: true
             \\});
             \\globalThis.opener = null;
-            \\globalThis.length = 0;
+            \\// NOTE: 'length' is now provided by registerPropertiesAsOwnOnObject
+            \\// which binds to Window.get_length() returning browsing_context.children.len
             \\
             \\// Internal storage for accessor properties
             \\// These are set by registerWindowGlobals() and accessed via getters below
