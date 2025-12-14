@@ -22,6 +22,11 @@ const NodeIterator = interfaces.NodeIterator;
 const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
+// Import DOM module for tree navigation via NodeBase
+const dom_module = @import("dom");
+const instance_bridge = dom_module.instance_bridge;
+const NodeBase = dom_module.tree_helpers.NodeBase;
+
 pub const State = NodeIterator.State;
 
 pub const ImplError = error{
@@ -461,14 +466,22 @@ pub fn preRemoveSteps(instance: *runtime.Instance, to_be_removed: *runtime.Insta
     // Step 3: Set reference to the first preceding node of toBeRemovedNode
     // that is an inclusive descendant of root and is not an inclusive descendant of toBeRemovedNode,
     // or null if there is no such node
-    const to_be_removed_internal = getNodeInternal(to_be_removed) orelse return;
+
+    // Use instance_bridge to get NodeBase for tree navigation
+    const to_be_removed_base = instance_bridge.getNodeBase(to_be_removed) orelse return;
 
     // Find previous sibling's last descendant, or parent
-    if (to_be_removed_internal.previous_sibling) |prev_sibling| {
-        internal.reference = getLastInclusiveDescendant(prev_sibling);
+    if (to_be_removed_base.previous_sibling) |prev_sibling| {
+        // Get the runtime.Instance for the previous sibling's last inclusive descendant
+        const last_desc = getLastInclusiveDescendantBase(prev_sibling);
+        internal.reference = instance_bridge.getInstanceTyped(runtime.Instance, last_desc);
     } else {
         // Use parent if no previous sibling
-        internal.reference = to_be_removed_internal.parent;
+        if (to_be_removed_base.parent_node) |parent_base| {
+            internal.reference = instance_bridge.getInstanceTyped(runtime.Instance, parent_base);
+        } else {
+            internal.reference = null;
+        }
     }
 }
 
@@ -476,11 +489,14 @@ pub fn preRemoveSteps(instance: *runtime.Instance, to_be_removed: *runtime.Insta
 fn isInclusiveAncestor(potential_ancestor: *runtime.Instance, node: *runtime.Instance) bool {
     if (potential_ancestor == node) return true;
 
-    var current: ?*runtime.Instance = node;
+    // Use instance_bridge to get NodeBase for tree navigation
+    const node_base = instance_bridge.getNodeBase(node) orelse return false;
+    const ancestor_base = instance_bridge.getNodeBase(potential_ancestor) orelse return false;
+
+    var current: ?*NodeBase = node_base.parent_node;
     while (current) |curr| {
-        if (curr == potential_ancestor) return true;
-        const curr_internal = getNodeInternal(curr) orelse break;
-        current = curr_internal.parent;
+        if (curr == ancestor_base) return true;
+        current = curr.parent_node;
     }
 
     return false;
@@ -491,29 +507,40 @@ fn isInclusiveDescendant(node: *runtime.Instance, potential_ancestor: *runtime.I
     return isInclusiveAncestor(potential_ancestor, node);
 }
 
+/// Get the last inclusive descendant of a NodeBase (the deepest last child)
+fn getLastInclusiveDescendantBase(node: *NodeBase) *NodeBase {
+    var current: *NodeBase = node;
+    while (current.last_child) |last| {
+        current = last;
+    }
+    return current;
+}
+
 /// Get the next node after to_be_removed that is an inclusive descendant of root
 /// but NOT an inclusive descendant of to_be_removed
 fn getNextNodeNotInSubtree(to_be_removed: *runtime.Instance, root: ?*runtime.Instance) ?*runtime.Instance {
-    var current: ?*runtime.Instance = to_be_removed;
+    // Use instance_bridge to get NodeBase for tree navigation
+    const to_be_removed_base = instance_bridge.getNodeBase(to_be_removed) orelse return null;
+    const root_base: ?*NodeBase = if (root) |r| instance_bridge.getNodeBase(r) else null;
+
+    var current: ?*NodeBase = to_be_removed_base;
 
     // Skip the entire subtree of to_be_removed
     while (current) |node| {
-        const node_internal = getNodeInternal(node) orelse return null;
-
         // Try next sibling
-        if (node_internal.next_sibling) |sibling| {
+        if (node.next_sibling) |sibling| {
             // Check if sibling is within root
-            if (root) |r| {
-                if (!isInclusiveDescendant(sibling, r)) return null;
+            if (root_base) |r| {
+                if (!isInclusiveDescendantBase(sibling, r)) return null;
             }
-            return sibling;
+            return instance_bridge.getInstanceTyped(runtime.Instance, sibling);
         }
 
         // Move up to parent
-        const parent = node_internal.parent orelse return null;
+        const parent = node.parent_node orelse return null;
 
         // Check if parent is root - if so, no more nodes
-        if (root) |r| {
+        if (root_base) |r| {
             if (parent == r) return null;
         }
 
@@ -521,4 +548,17 @@ fn getNextNodeNotInSubtree(to_be_removed: *runtime.Instance, root: ?*runtime.Ins
     }
 
     return null;
+}
+
+/// Check if node is an inclusive descendant of potential_ancestor (NodeBase version)
+fn isInclusiveDescendantBase(node: *NodeBase, potential_ancestor: *NodeBase) bool {
+    if (node == potential_ancestor) return true;
+
+    var current: ?*NodeBase = node.parent_node;
+    while (current) |curr| {
+        if (curr == potential_ancestor) return true;
+        current = curr.parent_node;
+    }
+
+    return false;
 }

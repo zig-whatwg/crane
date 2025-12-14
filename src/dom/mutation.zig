@@ -46,6 +46,8 @@ const Document = interfaces.Document;
 // Implementation modules for creating NodeLists
 const impls = @import("impls");
 const NodeListImpl = impls.NodeList;
+const RangeImpl = impls.Range;
+const NodeIteratorImpl = impls.NodeIterator;
 
 /// DOM Exception types as defined in WebIDL
 pub const DOMException = error{
@@ -1712,37 +1714,107 @@ fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
 ///   - added_nodes: *NodeList (WebIDL interface)
 ///   - removed_nodes: *NodeList (WebIDL interface)
 /// Helper: Run live range pre-remove steps
-/// Spec: https://dom.spec.whatwg.org/#live-range-pre-remove-steps
+/// Spec: https://dom.spec.whatwg.org/#concept-node-remove steps 4-7
 fn runLiveRangePreRemoveSteps(node: anytype) void {
-    // TODO: Range tracking is stubbed out during unified DOM tree refactoring.
-    // Document internal state (ranges_mutex, ranges list) is not accessible from
-    // the interfaces.Document type. This needs architectural work to access
-    // document internal state through document_internals module.
-    //
-    // The spec requires updating live ranges when nodes are removed:
-    // - Step 4: For each live range whose start node is an inclusive descendant of node,
-    //   set its start to (parent, index)
-    // - Step 5: For each live range whose end node is an inclusive descendant of node,
-    //   set its end to (parent, index)
-    // - Step 6: For each live range whose start node is parent and start offset is greater than index,
-    //   decrease its start offset by 1
-    // - Step 7: For each live range whose end node is parent and end offset is greater than index,
-    //   decrease its end offset by 1
-    _ = node;
+    // Get the node's document to access the list of live ranges
+    const doc = node.owner_document orelse return;
+    const doc_instance: *runtime.Instance = @ptrCast(@alignCast(doc));
+
+    // Get the parent and index for updating boundary points
+    const parent = node.parent_node orelse return;
+    const index = getChildIndex(node) orelse return;
+
+    // Access the document's internal state to get the ranges list
+    const internal = document_internals.getInternal(doc_instance) orelse return;
+
+    // Iterate through all live ranges registered with this document
+    for (internal.ranges.items) |range| {
+        // Get range boundary points (containers only - offsets read when needed)
+        const start_container = RangeImpl.getStartContainer(range);
+        const end_container = RangeImpl.getEndContainer(range);
+
+        // Step 4: For each live range whose start node is an inclusive descendant of node,
+        // set its start to (parent, index)
+        if (start_container) |start_node| {
+            // Get the NodeBase from the start container using instance bridge
+            if (instance_bridge.getNodeBase(start_node)) |start_base| {
+                const node_ptr: *const NodeBase = @ptrCast(node);
+                if (tree_helpers.isInclusiveDescendant(node_ptr, start_base)) {
+                    // Cast parent to runtime.Instance
+                    if (instance_bridge.getInstance(parent)) |parent_instance| {
+                        RangeImpl.setStartBoundary(range, @ptrCast(@alignCast(parent_instance)), @intCast(index));
+                    }
+                }
+            }
+        }
+
+        // Step 5: For each live range whose end node is an inclusive descendant of node,
+        // set its end to (parent, index)
+        if (end_container) |end_node| {
+            // Get the NodeBase from the end container using instance bridge
+            if (instance_bridge.getNodeBase(end_node)) |end_base| {
+                const node_ptr: *const NodeBase = @ptrCast(node);
+                if (tree_helpers.isInclusiveDescendant(node_ptr, end_base)) {
+                    // Cast parent to runtime.Instance
+                    if (instance_bridge.getInstance(parent)) |parent_instance| {
+                        RangeImpl.setEndBoundary(range, @ptrCast(@alignCast(parent_instance)), @intCast(index));
+                    }
+                }
+            }
+        }
+
+        // Re-read boundary points after potential updates
+        const current_start = RangeImpl.getStartContainer(range);
+        const current_end = RangeImpl.getEndContainer(range);
+
+        // Step 6: For each live range whose start node is parent and start offset is greater than index,
+        // decrease its start offset by 1
+        if (current_start) |start_node| {
+            if (instance_bridge.getNodeBase(start_node)) |start_base| {
+                if (start_base == parent) {
+                    const current_start_offset = RangeImpl.getStartOffset(range);
+                    if (current_start_offset > index) {
+                        RangeImpl.setStartOffset(range, @intCast(current_start_offset - 1));
+                    }
+                }
+            }
+        }
+
+        // Step 7: For each live range whose end node is parent and end offset is greater than index,
+        // decrease its end offset by 1
+        if (current_end) |end_node| {
+            if (instance_bridge.getNodeBase(end_node)) |end_base| {
+                if (end_base == parent) {
+                    const current_end_offset = RangeImpl.getEndOffset(range);
+                    if (current_end_offset > index) {
+                        RangeImpl.setEndOffset(range, @intCast(current_end_offset - 1));
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Helper: Run NodeIterator pre-remove steps for all iterators
 /// Spec: https://dom.spec.whatwg.org/#nodeiterator-pre-removing-steps
 fn runNodeIteratorPreRemoveSteps(node: anytype) void {
-    // TODO: NodeIterator tracking is stubbed out during unified DOM tree refactoring.
-    // Document internal state (node_iterators_mutex, node_iterators list) is not accessible
-    // from the interfaces.Document type. This needs architectural work to access
-    // document internal state through document_internals module.
-    //
-    // The spec requires:
+    // Get the node's document to access the list of NodeIterators
+    const doc = node.owner_document orelse return;
+    const doc_instance: *runtime.Instance = @ptrCast(@alignCast(doc));
+
+    // Access the document's internal state to get the node_iterators list
+    const internal = document_internals.getInternal(doc_instance) orelse return;
+
+    // Get the node as a runtime.Instance for passing to NodeIterator.preRemoveSteps
+    const node_base_ptr: *NodeBase = @ptrCast(node);
+    const node_instance = instance_bridge.getInstance(node_base_ptr) orelse return;
+    const node_runtime: *runtime.Instance = @ptrCast(@alignCast(node_instance));
+
     // For each NodeIterator object iterator whose root's node document is node's node document,
     // run the NodeIterator pre-removing steps given node and iterator.
-    _ = node;
+    for (internal.node_iterators.items) |iterator| {
+        NodeIteratorImpl.preRemoveSteps(iterator, node_runtime);
+    }
 }
 
 /// Helper: Update ranges when inserting before child
@@ -1751,23 +1823,51 @@ fn updateRangesForInsertion(doc: anytype, parent: anytype, child_index: usize) v
 }
 
 /// Helper: Update ranges when inserting multiple nodes before child
-/// DOM spec: For each live range whose start/end node is parent and offset > child_index,
+/// Spec: https://dom.spec.whatwg.org/#concept-node-insert step 5
+/// For each live range whose start/end node is parent and offset > child_index,
 /// increase offset by count
 fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index: usize, count: usize) void {
-    // TODO: Range tracking is stubbed out during unified DOM tree refactoring.
-    // Document internal state (ranges_mutex, ranges list) is not accessible from
-    // the interfaces.Document type. This needs architectural work to access
-    // document internal state through document_internals module.
-    //
-    // The spec requires:
-    // For each live range whose start node is parent and start offset is greater than child's index,
-    // increase its start offset by count.
-    // For each live range whose end node is parent and end offset is greater than child's index,
-    // increase its end offset by count.
-    _ = doc;
-    _ = parent;
-    _ = child_index;
-    _ = count;
+    // Cast document to runtime.Instance
+    const doc_instance: *runtime.Instance = @ptrCast(@alignCast(doc));
+
+    // Access the document's internal state to get the ranges list
+    const internal = document_internals.getInternal(doc_instance) orelse return;
+
+    // Get parent as a pointer for comparison
+    const parent_base: *const NodeBase = @ptrCast(parent);
+
+    // For each live range, update offsets if necessary
+    for (internal.ranges.items) |range| {
+        // Get range boundary points
+        const start_container = RangeImpl.getStartContainer(range);
+        const end_container = RangeImpl.getEndContainer(range);
+
+        // For each live range whose start node is parent and start offset is greater than child's index,
+        // increase its start offset by count.
+        if (start_container) |start_node| {
+            if (instance_bridge.getNodeBase(start_node)) |start_base| {
+                if (start_base == parent_base) {
+                    const start_offset = RangeImpl.getStartOffset(range);
+                    if (start_offset > child_index) {
+                        RangeImpl.setStartOffset(range, @intCast(start_offset + count));
+                    }
+                }
+            }
+        }
+
+        // For each live range whose end node is parent and end offset is greater than child's index,
+        // increase its end offset by count.
+        if (end_container) |end_node| {
+            if (instance_bridge.getNodeBase(end_node)) |end_base| {
+                if (end_base == parent_base) {
+                    const end_offset = RangeImpl.getEndOffset(range);
+                    if (end_offset > child_index) {
+                        RangeImpl.setEndOffset(range, @intCast(end_offset + count));
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Helper: Remove node from parent's children list (without updating parent pointer)

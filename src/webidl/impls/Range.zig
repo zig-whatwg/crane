@@ -1286,6 +1286,34 @@ pub fn getEndOffset(instance: *runtime.Instance) u32 {
     return internal.end_offset;
 }
 
+/// Set start boundary point (for live range updates during mutations)
+/// Spec: https://dom.spec.whatwg.org/#concept-range-start
+pub fn setStartBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
+    const internal = getInternal(instance) orelse return;
+    internal.start_container = container;
+    internal.start_offset = offset;
+}
+
+/// Set end boundary point (for live range updates during mutations)
+/// Spec: https://dom.spec.whatwg.org/#concept-range-end
+pub fn setEndBoundary(instance: *runtime.Instance, container: *runtime.Instance, offset: u32) void {
+    const internal = getInternal(instance) orelse return;
+    internal.end_container = container;
+    internal.end_offset = offset;
+}
+
+/// Update start offset (for live range updates during mutations)
+pub fn setStartOffset(instance: *runtime.Instance, offset: u32) void {
+    const internal = getInternal(instance) orelse return;
+    internal.start_offset = offset;
+}
+
+/// Update end offset (for live range updates during mutations)
+pub fn setEndOffset(instance: *runtime.Instance, offset: u32) void {
+    const internal = getInternal(instance) orelse return;
+    internal.end_offset = offset;
+}
+
 /// Check if range intersects with node (non-throwing helper)
 pub fn intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) !bool {
     return try call_intersectsNode(instance, node);
