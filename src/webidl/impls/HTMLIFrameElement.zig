@@ -286,11 +286,14 @@ pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 // ============================================================================
 
 /// Getter for src
+/// Returns a newly allocated copy of the src attribute.
+/// The V8 interface layer will free the returned string after converting to V8.
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
 
     if (internal.src_attr) |src| {
-        return src;
+        // Must dupe - V8 interface layer frees getter results
+        return try internal.allocator.dupe(u8, src);
     }
     return "";
 }
@@ -666,11 +669,14 @@ pub fn set_frameBorder(instance: *runtime.Instance, value: runtime.DOMString) an
 }
 
 /// Getter for longDesc
+/// Returns a newly allocated copy of the longDesc attribute.
+/// The V8 interface layer will free the returned string after converting to V8.
 pub fn get_longDesc(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
 
     if (internal.long_desc_attr) |ld| {
-        return ld;
+        // Must dupe - V8 interface layer frees getter results
+        return try internal.allocator.dupe(u8, ld);
     }
     return "";
 }
