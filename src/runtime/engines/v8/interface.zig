@@ -1290,12 +1290,18 @@ pub fn V8Interface(comptime Interface: type) type {
                                         const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                                         if (this_ptr == null) {
-                                            // No internal field -> this was null/undefined or non-Window object
-                                            // Use method's global per WebIDL §3.8
-                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
-                                            if (global_ptr != null) {
-                                                break :blk global_ptr;
-                                            }
+                                            // No internal field -> this is NOT a valid global object
+                                            // (globals always have internal fields pointing to Window instance)
+                                            //
+                                            // This happens for Object.create(Window.prototype) or other
+                                            // incompatible objects. Per WebIDL §3.8, we must throw TypeError.
+                                            //
+                                            // Note: if getter.call(null) is used, V8 coerces null to
+                                            // the caller's global in sloppy mode, which DOES have internal
+                                            // fields. So this_ptr == null means it's definitely NOT
+                                            // a coerced null - it's an incompatible object.
+                                            //
+                                            // Fall through to throw TypeError
                                         } else {
                                             // this has an internal field - it's some Window instance
                                             // Check if it's a DIFFERENT global (cross-realm case)
@@ -1656,11 +1662,18 @@ pub fn V8Interface(comptime Interface: type) type {
                                     const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                                     if (this_ptr == null) {
-                                        // No internal field -> use method's global
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
-                                        if (global_ptr != null) {
-                                            break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
-                                        }
+                                        // No internal field -> this is NOT a valid global object
+                                        // (globals always have internal fields pointing to Window instance)
+                                        //
+                                        // This happens for Object.create(Window.prototype) or other
+                                        // incompatible objects. Per WebIDL §3.8, we must throw TypeError.
+                                        //
+                                        // Note: if setter.call(null, value) is used, V8 coerces null to
+                                        // the caller's global in sloppy mode, which DOES have internal
+                                        // fields. So this_ptr == null means it's definitely NOT
+                                        // a coerced null - it's an incompatible object.
+                                        //
+                                        // Fall through to throw TypeError
                                     } else {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
@@ -4293,11 +4306,18 @@ pub fn V8Interface(comptime Interface: type) type {
                                     const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                                     if (this_ptr == null) {
-                                        // No internal field -> use method's global
-                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
-                                        if (global_ptr != null) {
-                                            break :blk global_ptr;
-                                        }
+                                        // No internal field -> this is NOT a valid global object
+                                        // (globals always have internal fields pointing to Window instance)
+                                        //
+                                        // This happens for Object.create(Window.prototype) or other
+                                        // incompatible objects. Per WebIDL §3.8, we must throw TypeError.
+                                        //
+                                        // Note: if method.call(null, ...) is used, V8 coerces null to
+                                        // the caller's global in sloppy mode, which DOES have internal
+                                        // fields. So this_ptr == null means it's definitely NOT
+                                        // a coerced null - it's an incompatible object.
+                                        //
+                                        // Fall through to throw TypeError
                                     } else {
                                         const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
