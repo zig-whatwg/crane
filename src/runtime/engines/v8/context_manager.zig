@@ -828,6 +828,158 @@ pub const ChildContextOptions = struct {
 // Window Indexed Property Handler for frames[index] access
 // ============================================================================
 
+/// Create a V8 context and Window for an existing BrowsingContext
+///
+/// This is used by the indexed property getter to lazily create the V8 context
+/// when frames[index] is accessed but the child browsing context doesn't have
+/// an active Window yet.
+///
+/// Unlike createChildContext, this function does NOT create a new BrowsingContext.
+/// It uses the existing one and sets the active_window on it.
+///
+/// Returns the created Window instance, or null on error.
+///
+/// Note: Uses *anyopaque for the BrowsingContext type to avoid circular module
+/// dependencies. The caller is responsible for ensuring the pointer is valid.
+fn createWindowForExistingBrowsingContext(
+    parent_context: *v8.Context,
+    isolate: *v8.Isolate,
+    child_bc_opaque: *anyopaque,
+    allocator: std.mem.Allocator,
+) ?*runtime.Instance {
+    const state = &(manager_state orelse return null);
+    const interfaces = @import("interfaces");
+    const interface_bindings = @import("interface_bindings.zig");
+    const WindowImpl = @import("impls").Window;
+
+    // Get parent entry for inheriting event loop
+    const parent_raw_addr = v8.v8_Context_GetRawAddress(parent_context) orelse return null;
+    const parent_key = @intFromPtr(parent_raw_addr);
+    const parent_entry = state.contexts.getPtr(parent_key) orelse return null;
+
+    // 1. Create new global template
+    const global_template = v8.v8_ObjectTemplate_New(isolate);
+    v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+        global_template,
+        windowIndexedPropertyGetter,
+        windowIndexedPropertyQuery,
+        windowIndexedPropertyEnumerator,
+        null,
+    );
+
+    // 2. Create new V8 context
+    const child_context = v8.v8_Context_NewWithGlobalTemplate(
+        isolate,
+        global_template,
+    ) orelse return null;
+
+    const child_raw_addr = v8.v8_Context_GetRawAddress(child_context) orelse return null;
+    const child_key = @intFromPtr(child_raw_addr);
+
+    // 2b. Set security token to match parent context (same-origin for iframes)
+    if (v8.v8_Context_GetSecurityToken(parent_context)) |parent_token| {
+        v8.v8_Context_SetSecurityToken(child_context, parent_token);
+    }
+
+    // 3. Enter the new context for initialization
+    v8.v8_Context_Enter(child_context);
+    defer v8.v8_Context_Exit(child_context);
+
+    // 4. Initialize all interface bindings
+    interface_bindings.initializeBindings(isolate, child_context);
+
+    // 4b. Set global object's prototype to Window.prototype
+    const global = v8.v8_Context_Global(child_context) orelse return null;
+    const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
+    if (window_key) |wk| {
+        if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
+            const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+            if (proto_key) |pk| {
+                if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
+                    _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
+                }
+            }
+        }
+    }
+
+    // 4c. Register Window properties as own properties on the global
+    interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, child_context, global);
+
+    // 5. Create realm
+    const realm = runtime.Realm.init(allocator, .{
+        .v8_context = @ptrCast(child_context),
+        .isolate = @ptrCast(isolate),
+        .context_type = .window,
+        .global_object = @ptrCast(v8.v8_Context_Global(child_context)),
+    }) catch return null;
+    _ = realm.populateIntrinsics();
+
+    // 6. Create runtime context data
+    var timer_interface: ?runtime.TimerInterface = null;
+    var event_loop_interface: ?@import("event_loop").EventLoop = null;
+    if (parent_entry.event_loop) |parent_ev_loop| {
+        timer_interface = parent_ev_loop.timerInterface();
+        event_loop_interface = parent_ev_loop.eventLoop();
+    }
+
+    var ctx_data = runtime.ContextData.init(allocator, .{
+        .colored = false,
+        .show_timestamp = false,
+        .show_labels = false,
+        .engine = &v8_engine.v8_engine_interface,
+        .engine_ctx = @ptrCast(child_context),
+        .timer = timer_interface,
+        .event_loop = event_loop_interface,
+    }) catch return null;
+
+    // 7. Initialize V8 wrapper cache
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+    const cache_ptr = allocator.create(WrapperCache) catch return null;
+    cache_ptr.* = WrapperCache.init(allocator, child_context) catch {
+        allocator.destroy(cache_ptr);
+        return null;
+    };
+    ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
+
+    // 8. Create Window instance bound to the V8 global
+    const runtime_ctx: runtime.Context = &ctx_data;
+    const window_instance = interfaces.Window.init(allocator, runtime_ctx) catch return null;
+
+    // 9. Bind Window to global (internal fields + wrapper cache)
+    const dom_type_info = @import("dom_type_info.zig");
+    v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
+    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
+        v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+    }
+    WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
+    cache_ptr.set(window_instance, global, isolate) catch {};
+
+    // 10. CRITICAL: Set this Window as active_window on the EXISTING child browsing context
+    // This is the key difference from createChildContext - we use the existing BC
+    // Use the helper function exported from Window impl to set the active window
+    @import("impls").Window.setActiveWindowOnBrowsingContext(child_bc_opaque, @ptrCast(window_instance));
+
+    // 11. Store in context map
+    state.contexts.put(child_key, ContextEntry{
+        .v8_ctx = child_context,
+        .runtime_ctx = ctx_data,
+        .owns_context = true,
+        .event_loop = null,
+        .realm = realm,
+        .parent_entry = parent_entry,
+        .children = .{},
+        .allocator = allocator,
+        .window_instance = window_instance,
+    }) catch return null;
+
+    // 12. Link to parent's children list
+    const child_entry = state.contexts.getPtr(child_key).?;
+    parent_entry.children.append(allocator, child_entry) catch {};
+
+    return window_instance;
+}
+
 /// Indexed property getter for Window global objects.
 /// Enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
 ///
@@ -836,6 +988,12 @@ pub const ChildContextOptions = struct {
 /// - Returns undefined if index >= children.length
 ///
 /// This callback is registered on the global object template for child contexts.
+///
+/// IMPORTANT: This function handles lazy initialization of child browsing contexts.
+/// When an iframe is inserted into the DOM, a BrowsingContext is created but the
+/// V8 context and Window instance are NOT created until needed. This getter triggers
+/// the creation of the V8 child context when frames[index] is accessed and the
+/// child browsing context exists but doesn't have an active Window yet.
 pub fn windowIndexedPropertyGetter(
     index: u32,
     info: *const v8.PropertyCallbackInfo,
@@ -878,11 +1036,37 @@ pub fn windowIndexedPropertyGetter(
 
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
-    // Call Window's call_item method to get the child Window
-    const result = WindowImpl.call_item(instance, index) catch {
+    // First try to get an existing child Window via Window.call_item
+    var result = WindowImpl.call_item(instance, index) catch {
         // Error - let V8 handle normal lookup
         return;
     };
+
+    // If result is null, check if we need to lazily create the child context
+    // This happens when an iframe is in the DOM but contentWindow hasn't been accessed yet
+    if (result == null) {
+        const internal = WindowImpl.getInternal(instance) orelse return;
+        const children = internal.browsing_context.children.items;
+
+        // Check if the index is valid (child browsing context exists)
+        if (index < children.len) {
+            const child_bc = children[index];
+
+            // Child browsing context exists but no Window - create it
+            if (child_bc.getActiveWindow() == null) {
+                // Get the allocator from the context entry
+                const entry = getEntry(v8_context) orelse return;
+
+                // Create a V8 context and Window for the existing BrowsingContext
+                result = createWindowForExistingBrowsingContext(
+                    v8_context,
+                    isolate,
+                    child_bc,
+                    entry.allocator,
+                );
+            }
+        }
+    }
 
     if (result) |child_window| {
         // We have a child Window instance - wrap it and return

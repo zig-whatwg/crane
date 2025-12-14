@@ -324,6 +324,18 @@ pub fn getBrowsingContext(instance: *runtime.Instance) ?*BrowsingContext {
     return internal.browsing_context;
 }
 
+/// Set the active window on a browsing context (for cross-module use)
+/// This is used by context_manager when creating a Window for an existing
+/// BrowsingContext from an iframe.
+///
+/// Parameters:
+/// - bc_ptr: Opaque pointer to a BrowsingContext
+/// - window_ptr: Opaque pointer to the Window instance to set as active
+pub fn setActiveWindowOnBrowsingContext(bc_ptr: *anyopaque, window_ptr: *anyopaque) void {
+    const bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
+    bc.setActiveWindow(window_ptr);
+}
+
 /// Set the V8 global object that this Window IS bound to (for cross-realm support)
 /// Called by context_manager.createWindowBoundToGlobal().
 pub fn setBoundV8Global(instance: *runtime.Instance, v8_global: *anyopaque) void {
