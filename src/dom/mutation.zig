@@ -32,6 +32,8 @@ const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 const mutation_observer = @import("mutation_observer_algorithms.zig");
 const document_internals = @import("document_internals.zig");
+const element_with_base = @import("element_with_base.zig");
+const attr_with_base = @import("attr_with_base.zig");
 
 // Interface types needed for mutation observer integration
 const interfaces = @import("interfaces");
@@ -1825,13 +1827,19 @@ fn runMovingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     }
 }
 
-/// DOM §4.6 - Adopt
+/// DOM §4.2.5 - Adopt
 /// Spec: https://dom.spec.whatwg.org/#concept-node-adopt
 ///
-/// Steps:
+/// To adopt a node into a document:
 /// 1. Let oldDocument be node's node document
 /// 2. If node's parent is non-null, then remove node
-/// 3. If document is not oldDocument, update node document for all descendants
+/// 3. If document is not oldDocument:
+///    a. For each shadow-including inclusive descendant:
+///       - Set its node document to document
+///       - If element, update attribute node documents
+///    b. For each shadow-including inclusive descendant that is custom:
+///       - Enqueue adoptedCallback reaction (future)
+///    c. Run adopting steps for each descendant (future)
 pub fn adopt(
     node: anytype,
     document: anytype,
@@ -1865,14 +1873,23 @@ pub fn adopt(
             }
         }
 
-        // Step 3.1.1: Set node document for all inclusive descendants
+        // Step 3.1: For each shadow-including inclusive descendant in tree order
         for (0..descendants.len) |idx| {
             const desc = descendants.get(idx) orelse continue;
+
+            // Step 3.1.1: Set node document to document
             desc.owner_document = document;
 
-            // Step 3.1.3: If element, update attribute node documents
+            // Step 3.1.2: If element, update attribute node documents
             if (desc.node_type == ELEMENT_NODE) {
-                // TODO(DOM): Update attribute node documents once we have proper Element access
+                // Access element attributes via ElementWithBase if available
+                // Cast to ElementWithBase since elements have NodeBase as first field
+                const element = @as(*element_with_base.ElementWithBase, @ptrCast(desc));
+                for (0..element.attributes.size()) |attr_idx| {
+                    if (element.attributes.get(attr_idx)) |attr| {
+                        attr.base.owner_document = document;
+                    }
+                }
             }
         }
 

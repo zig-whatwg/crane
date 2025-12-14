@@ -186,6 +186,33 @@ pub const NodeBase = struct {
         }
         return current.node_type == DOCUMENT_NODE;
     }
+
+    /// Get the node document for this node
+    /// DOM Spec: https://dom.spec.whatwg.org/#concept-node-document
+    ///
+    /// Per spec §4.2.5:
+    /// - Every node has an associated node document (set upon creation)
+    /// - For Document nodes, the node document is itself
+    /// - Can ONLY be changed by the adopt algorithm
+    /// - NEVER null at any time after creation
+    ///
+    /// Note: Returns null only during node construction before document assignment.
+    /// After proper initialization, this should never return null.
+    pub fn getNodeDocument(self: *NodeBase) ?*DocumentType {
+        // For Document nodes, the node document is itself
+        if (self.node_type == DOCUMENT_NODE) {
+            return @ptrCast(self);
+        }
+        return self.owner_document;
+    }
+
+    /// Get the node document for this node (const version)
+    pub fn getNodeDocumentConst(self: *const NodeBase) ?*const DocumentType {
+        if (self.node_type == DOCUMENT_NODE) {
+            return @ptrCast(self);
+        }
+        return self.owner_document;
+    }
 };
 
 // Forward declarations for concrete types we cast to
