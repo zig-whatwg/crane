@@ -259,6 +259,12 @@ pub fn initializeBindings(
     // These are historical aliases that map to other interfaces
     // e.g., HTMLDocument is an alias for Document per HTML spec
     registerLegacyInterfaceAliases(isolate, context);
+
+    // NOTE: Window properties as own properties on the global are registered
+    // in createChildContext AFTER the Window instance is bound to the global.
+    // This is necessary because the property getter/setter callbacks require
+    // a valid Window instance in internal field 0 of the global object.
+    // For the main context, property access works through the prototype chain.
 }
 
 /// Register legacy interface aliases

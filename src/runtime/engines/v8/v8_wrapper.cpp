@@ -2960,6 +2960,65 @@ bool v8_Object_DefineProperty(Global<Object>* object, Global<Context>* context, 
     return obj->DefineOwnProperty(ctx, name, val, attributes).FromMaybe(false);
 }
 
+// Set an accessor property (getter/setter) on an existing V8 Object
+// This is used to make Window properties own properties of the global object
+// so that Object.getOwnPropertyDescriptor(window, "name") returns { get: [Function], set: [Function] }
+bool v8_Object_SetAccessorProperty(
+    Global<Object>* object,
+    Global<Context>* context,
+    Global<String>* name,
+    FunctionCallback getter,
+    FunctionCallback setter
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Object> obj = object->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<String> key = name->Get(isolate);
+    Context::Scope context_scope(ctx);
+    
+    // Get property name as UTF-8 for building "get <name>" / "set <name>"
+    String::Utf8Value prop_name_utf8(isolate, key);
+    const char* prop_name = *prop_name_utf8;
+    
+    // Create getter function
+    Local<Function> getter_func;
+    if (getter != nullptr) {
+        Local<FunctionTemplate> getter_tpl = FunctionTemplate::New(isolate, getter);
+        std::string getter_name = std::string("get ") + prop_name;
+        Local<String> getter_name_str = String::NewFromUtf8(
+            isolate, getter_name.c_str(), NewStringType::kNormal
+        ).ToLocalChecked();
+        getter_tpl->SetClassName(getter_name_str);
+        getter_func = getter_tpl->GetFunction(ctx).ToLocalChecked();
+    }
+    
+    // Create setter function
+    Local<Function> setter_func;
+    if (setter != nullptr) {
+        Local<FunctionTemplate> setter_tpl = FunctionTemplate::New(isolate, setter);
+        std::string setter_name = std::string("set ") + prop_name;
+        Local<String> setter_name_str = String::NewFromUtf8(
+            isolate, setter_name.c_str(), NewStringType::kNormal
+        ).ToLocalChecked();
+        setter_tpl->SetClassName(setter_name_str);
+        setter_func = setter_tpl->GetFunction(ctx).ToLocalChecked();
+    }
+    
+    // Create accessor property descriptor
+    // PropertyDescriptor(Local<Value> get, Local<Value> set) creates an accessor descriptor
+    PropertyDescriptor desc(
+        getter ? getter_func : Local<Value>(),
+        setter ? setter_func : Local<Value>()
+    );
+    desc.set_enumerable(true);  // WebIDL default
+    desc.set_configurable(true); // WebIDL default
+    
+    // Define the property on the object
+    return obj->DefineProperty(ctx, key.As<Name>(), desc).FromMaybe(false);
+}
+
 // Create a property descriptor object for Object.getOwnPropertyDescriptor callbacks
 // Returns an object like: { value: <value>, writable: <bool>, enumerable: <bool>, configurable: <bool> }
 // Takes pointers that match Zig's FFI types (v8.Value* = Global<Value>*)

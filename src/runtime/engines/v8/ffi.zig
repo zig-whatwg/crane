@@ -530,6 +530,18 @@ pub extern fn v8_Object_InternalFieldCount_Raw(object: *const anyopaque) c_int;
 pub extern fn v8_Object_GetAlignedPointerFromInternalField_Raw(object: *const anyopaque, index: c_int) ?*anyopaque;
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
+
+/// Set an accessor property (getter/setter) on an existing V8 Object
+/// This creates an own property with getter/setter functions, visible to Object.getOwnPropertyDescriptor
+/// Used to make Window properties own properties of the global object for cross-realm compliance
+pub extern fn v8_Object_SetAccessorProperty(
+    object: *Object,
+    context: *Context,
+    name: *String,
+    getter: ?FunctionCallback,
+    setter: ?FunctionCallback,
+) bool;
+
 pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototype: *Value) bool;
 /// Set the prototype using the newer V2 API that works properly with global objects
 pub extern fn v8_Object_SetPrototypeV2(object: *Object, context: *Context, prototype: *Value) bool;

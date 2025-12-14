@@ -748,6 +748,70 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
+        /// Register interface properties as own properties on an existing V8 object
+        ///
+        /// This is used for [Global] interfaces (like Window) where the properties
+        /// need to be own properties of the global object, not just inherited from
+        /// the prototype chain. This is required for cross-realm compliance:
+        ///
+        /// `Object.getOwnPropertyDescriptor(iframe.contentWindow, "name")` must return
+        /// a descriptor with getter/setter, not undefined.
+        ///
+        /// Per WebIDL §3.8: For [Global] interfaces, the global object should have
+        /// the interface's properties as own properties.
+        pub fn registerPropertiesAsOwnOnObject(
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            target_object: *v8.Object,
+        ) void {
+            @setEvalBranchQuota(10000);
+
+            // Register EAGER properties as accessor properties on the target object
+            inline for (eager_properties) |prop| {
+                const prop_name: []const u8 = prop[0];
+                const getter_name: []const u8 = prop[1];
+                const setter_name: ?[]const u8 = prop[2];
+
+                const prop_name_str = v8.v8_String_NewFromUtf8(
+                    isolate,
+                    prop_name.ptr,
+                    @intCast(prop_name.len),
+                ).?;
+
+                // Use PropertyGetterCallback to generate the getter callback
+                const getter_cb: v8.FunctionCallback = PropertyGetterCallback(getter_name).callback;
+
+                // Check if this property has [PutForwards] extended attribute
+                const put_forwards_target: ?[]const u8 = comptime blk: {
+                    if (!@hasDecl(Meta, "put_forwards_attributes")) break :blk null;
+                    for (Meta.put_forwards_attributes) |pf| {
+                        if (std.mem.eql(u8, pf[0], prop_name)) {
+                            break :blk pf[1];
+                        }
+                    }
+                    break :blk null;
+                };
+
+                // Generate setter callback
+                const setter_cb: ?v8.FunctionCallback = if (put_forwards_target) |forward_prop|
+                    PutForwardsSetterCallback(prop_name, forward_prop).callback
+                else if (setter_name) |s_name|
+                    makeSetterCallback(s_name)
+                else
+                    null;
+
+                // Set as accessor property on the target object
+                // This creates an own property visible to Object.getOwnPropertyDescriptor
+                _ = v8.v8_Object_SetAccessorProperty(
+                    target_object,
+                    context,
+                    prop_name_str,
+                    getter_cb,
+                    setter_cb,
+                );
+            }
+        }
+
         /// Check if interface has a constructor (from Meta.has_constructor hint)
         const has_constructor = Meta.has_constructor;
 

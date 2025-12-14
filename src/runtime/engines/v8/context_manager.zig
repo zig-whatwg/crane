@@ -863,6 +863,18 @@ pub fn createChildContext(
         }
     }
 
+    // 4c. Register Window properties as OWN properties on the global object
+    // This is required for cross-realm WPT compliance:
+    // `Object.getOwnPropertyDescriptor(iframe.contentWindow, "name")` must return
+    // a descriptor with getter/setter, not undefined.
+    // Per WebIDL §3.8: For [Global] interfaces, the global object should have
+    // the interface's properties as own properties (not just inherited).
+    interface_bindings.Window.registerPropertiesAsOwnOnObject(
+        options.isolate,
+        child_context,
+        global,
+    );
+
     // 5. Create realm for new context
     const realm = try runtime.Realm.init(allocator, .{
         .v8_context = @ptrCast(child_context),
