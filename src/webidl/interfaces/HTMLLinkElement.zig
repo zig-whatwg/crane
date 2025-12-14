@@ -317,6 +317,7 @@ pub const HTMLLinkElement = struct {
         .get_type = &get_type,
 
         .set_as = &set_as,
+        .set_blocking = &set_blocking,
         .set_charset = &set_charset,
         .set_crossOrigin = &set_crossOrigin,
         .set_disabled = &set_disabled,
@@ -329,7 +330,9 @@ pub const HTMLLinkElement = struct {
         .set_media = &set_media,
         .set_referrerPolicy = &set_referrerPolicy,
         .set_rel = &set_rel,
+        .set_relList = &set_relList,
         .set_rev = &set_rev,
+        .set_sizes = &set_sizes,
         .set_target = &set_target,
         .set_type = &set_type,
 

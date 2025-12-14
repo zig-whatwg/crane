@@ -380,10 +380,11 @@ pub fn writeMetadata(
             try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
             // Write sanitized getter name (hyphens -> underscores)
             try writeSanitizedName(writer, attr.name);
-            // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards]
+            // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards] OR [LegacyLenientSetter]
             const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
             const has_put_forwards = extattr_mod.getPutForwards(attr.extAttrs) != null;
-            if (!attr.readonly or is_replaceable or has_put_forwards) {
+            const is_legacy_lenient_setter = extattr_mod.isLegacyLenientSetter(attr.extAttrs);
+            if (!attr.readonly or is_replaceable or has_put_forwards or is_legacy_lenient_setter) {
                 try writer.writeAll("\", \"set_");
                 try writeSanitizedName(writer, attr.name);
                 try writer.writeAll("\" },\n");
@@ -445,6 +446,35 @@ pub fn writeMetadata(
             try writer.writeAll("        pub const lenient_this_attributes = .{\n");
             for (own_attributes) |attr| {
                 if (extattr_mod.isLegacyLenientThis(attr.extAttrs)) {
+                    try writer.print("            \"{s}\",\n", .{attr.name});
+                }
+            }
+            try writer.writeAll("        };\n");
+        }
+    }
+
+    // Generate [LegacyLenientSetter] metadata for readonly attributes with no-op setters
+    // Per WebIDL §4.3.10: [LegacyLenientSetter] readonly attributes have setters that
+    // silently do nothing - the setter steps are to return.
+    {
+        const extattr_mod = @import("extattr.zig");
+        var has_lenient_setter = false;
+
+        // Check if any attributes have [LegacyLenientSetter]
+        for (own_attributes) |attr| {
+            if (extattr_mod.isLegacyLenientSetter(attr.extAttrs)) {
+                has_lenient_setter = true;
+                break;
+            }
+        }
+
+        if (has_lenient_setter) {
+            try writer.writeAll("        \n");
+            try writer.writeAll("        /// [LegacyLenientSetter] attributes: readonly with no-op setters\n");
+            try writer.writeAll("        /// Setters silently do nothing (don't throw, don't modify)\n");
+            try writer.writeAll("        pub const lenient_setter_attributes = .{\n");
+            for (own_attributes) |attr| {
+                if (extattr_mod.isLegacyLenientSetter(attr.extAttrs)) {
                     try writer.print("            \"{s}\",\n", .{attr.name});
                 }
             }
@@ -663,10 +693,11 @@ pub fn writeMetadata(
             if (classification == .eager) {
                 try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
                 try writeSanitizedName(writer, attr.name);
-                // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards]
+                // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards] OR [LegacyLenientSetter]
                 const is_replaceable_eager = extattr_mod_eager.isReplaceable(attr.extAttrs);
                 const has_put_forwards_eager = extattr_mod_eager.getPutForwards(attr.extAttrs) != null;
-                if (!attr.readonly or is_replaceable_eager or has_put_forwards_eager) {
+                const is_legacy_lenient_setter_eager = extattr_mod_eager.isLegacyLenientSetter(attr.extAttrs);
+                if (!attr.readonly or is_replaceable_eager or has_put_forwards_eager or is_legacy_lenient_setter_eager) {
                     try writer.writeAll("\", \"set_");
                     try writeSanitizedName(writer, attr.name);
                     try writer.writeAll("\" },\n");
@@ -689,10 +720,11 @@ pub fn writeMetadata(
             if (classification == .lazy) {
                 try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
                 try writeSanitizedName(writer, attr.name);
-                // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards]
+                // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards] OR [LegacyLenientSetter]
                 const is_replaceable_lazy = extattr_mod_lazy.isReplaceable(attr.extAttrs);
                 const has_put_forwards_lazy = extattr_mod_lazy.getPutForwards(attr.extAttrs) != null;
-                if (!attr.readonly or is_replaceable_lazy or has_put_forwards_lazy) {
+                const is_legacy_lenient_setter_lazy = extattr_mod_lazy.isLegacyLenientSetter(attr.extAttrs);
+                if (!attr.readonly or is_replaceable_lazy or has_put_forwards_lazy or is_legacy_lenient_setter_lazy) {
                     try writer.writeAll("\", \"set_");
                     try writeSanitizedName(writer, attr.name);
                     try writer.writeAll("\" },\n");
@@ -1775,15 +1807,17 @@ pub fn writeVTable(
     try deduplicateVTableEntries(allocator, &getters);
 
     // Collect setters - ONLY for own attributes (not inherited)
-    // Include non-readonly attributes AND [Replaceable] readonly attributes
+    // Include non-readonly attributes AND [Replaceable] OR [PutForwards] OR [LegacyLenientSetter] readonly attributes
     const extattr_mod = @import("extattr.zig");
     var setters = std.ArrayList(VTableEntry).empty;
     defer setters.deinit(allocator);
 
     for (own_attributes) |attr| {
-        // Generate setter for non-readonly OR [Replaceable] readonly attributes
+        // Generate setter for non-readonly OR [Replaceable] OR [PutForwards] OR [LegacyLenientSetter] readonly attributes
         const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
-        if (!attr.readonly or is_replaceable) {
+        const has_put_forwards = extattr_mod.getPutForwards(attr.extAttrs) != null;
+        const is_legacy_lenient_setter = extattr_mod.isLegacyLenientSetter(attr.extAttrs);
+        if (!attr.readonly or is_replaceable or has_put_forwards or is_legacy_lenient_setter) {
             const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
             const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
 
@@ -2830,14 +2864,17 @@ pub fn writeDelegateFunctions(
 
         try writer.writeAll("    }\n\n");
 
-        // Check for [PutForwards] and [Replaceable] extended attributes
+        // Check for [PutForwards], [Replaceable], and [LegacyLenientSetter] extended attributes
         // Per WebIDL §4.3.10: [PutForwards=X] creates a setter that forwards to property X
         // on the current value of the attribute, even if the attribute is readonly
         // Per WebIDL §4.3.10: [Replaceable] creates a setter that uses [[DefineOwnProperty]]
         // to create an own property on the object, shadowing the inherited getter
+        // Per WebIDL §4.3.10: [LegacyLenientSetter] readonly attributes have setters that
+        // silently do nothing (no-op) - the setter steps are to return.
         const extattr_mod = @import("extattr.zig");
         const put_forwards = extattr_mod.getPutForwards(attr.extAttrs);
         const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
+        const is_legacy_lenient_setter = extattr_mod.isLegacyLenientSetter(attr.extAttrs);
 
         // Write setter: [PutForwards] > [Replaceable] > regular non-readonly
         if (put_forwards) |forwarded_property| {
@@ -2877,6 +2914,21 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,\n");
             try writer.writeAll("        //                                     [[Enumerable]]: true, [[Configurable]]: true}\n");
             try writer.print("        try runtime.defineOwnProperty(instance, \"{s}\", value);\n", .{attr.name});
+            try writer.writeAll("    }\n\n");
+        } else if (is_legacy_lenient_setter) {
+            // [LegacyLenientSetter] setter - silently does nothing (no-op)
+            // Per WebIDL §4.3.10: If the attribute is declared with the [LegacyLenientSetter]
+            // extended attribute, then the setter steps are to return.
+            // This is used for readonly attributes that should not throw when assigned to.
+            try writeExtendedAttributesComment(writer, attr.extAttrs);
+
+            // [LegacyLenientSetter] setter takes runtime.JSValue to accept any value
+            // but ignores it completely
+            try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {{\n", .{sanitized_name});
+            try writer.writeAll("        // [LegacyLenientSetter] - Silently do nothing (no-op setter)\n");
+            try writer.writeAll("        // Per WebIDL §4.3.10: The setter steps are to return.\n");
+            try writer.writeAll("        _ = instance;\n");
+            try writer.writeAll("        _ = value;\n");
             try writer.writeAll("    }\n\n");
         } else if (!attr.readonly) {
             // Regular setter for non-readonly attributes (no [PutForwards])

@@ -363,6 +363,7 @@ pub const HTMLAnchorElement = struct {
         .set_protocol = &set_protocol,
         .set_referrerPolicy = &set_referrerPolicy,
         .set_rel = &set_rel,
+        .set_relList = &set_relList,
         .set_rev = &set_rev,
         .set_search = &set_search,
         .set_shape = &set_shape,

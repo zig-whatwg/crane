@@ -122,6 +122,7 @@ pub const StyleSheet = struct {
         .get_type = &get_type,
 
         .set_disabled = &set_disabled,
+        .set_media = &set_media,
 
         .deinit = &deinit,
     };

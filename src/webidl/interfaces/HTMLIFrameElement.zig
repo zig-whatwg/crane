@@ -352,6 +352,7 @@ pub const HTMLIFrameElement = struct {
         .set_name = &set_name,
         .set_privateToken = &set_privateToken,
         .set_referrerPolicy = &set_referrerPolicy,
+        .set_sandbox = &set_sandbox,
         .set_scrolling = &set_scrolling,
         .set_sharedStorageWritable = &set_sharedStorageWritable,
         .set_src = &set_src,

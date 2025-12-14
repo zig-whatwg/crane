@@ -125,8 +125,8 @@ pub const Document = struct {
             .{ "fragmentDirective", "get_fragmentDirective", null },
             .{ "prerendering", "get_prerendering", null },
             .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
-            .{ "fullscreenEnabled", "get_fullscreenEnabled", null },
-            .{ "fullscreen", "get_fullscreen", null },
+            .{ "fullscreenEnabled", "get_fullscreenEnabled", "set_fullscreenEnabled" },
+            .{ "fullscreen", "get_fullscreen", "set_fullscreen" },
             .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
             .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
             .{ "timeline", "get_timeline", null },
@@ -174,7 +174,7 @@ pub const Document = struct {
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
             .{ "fonts", "get_fonts", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", null },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
             .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
@@ -303,6 +303,14 @@ pub const Document = struct {
             "onreadystatechange",
             "onmouseenter",
             "onmouseleave",
+        };
+        
+        /// [LegacyLenientSetter] attributes: readonly with no-op setters
+        /// Setters silently do nothing (don't throw, don't modify)
+        pub const lenient_setter_attributes = .{
+            "fullscreenEnabled",
+            "fullscreen",
+            "fullscreenElement",
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -491,8 +499,8 @@ pub const Document = struct {
             .{ "fragmentDirective", "get_fragmentDirective", null },
             .{ "prerendering", "get_prerendering", null },
             .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
-            .{ "fullscreenEnabled", "get_fullscreenEnabled", null },
-            .{ "fullscreen", "get_fullscreen", null },
+            .{ "fullscreenEnabled", "get_fullscreenEnabled", "set_fullscreenEnabled" },
+            .{ "fullscreen", "get_fullscreen", "set_fullscreen" },
             .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
             .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
             .{ "timeline", "get_timeline", null },
@@ -538,7 +546,7 @@ pub const Document = struct {
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
             .{ "fonts", "get_fonts", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", null },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
             .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
@@ -1060,7 +1068,11 @@ pub const Document = struct {
         .set_dir = &set_dir,
         .set_domain = &set_domain,
         .set_fgColor = &set_fgColor,
+        .set_fullscreen = &set_fullscreen,
+        .set_fullscreenElement = &set_fullscreenElement,
+        .set_fullscreenEnabled = &set_fullscreenEnabled,
         .set_linkColor = &set_linkColor,
+        .set_location = &set_location,
         .set_onabort = &set_onabort,
         .set_onanimationcancel = &set_onanimationcancel,
         .set_onanimationend = &set_onanimationend,
@@ -1354,9 +1366,25 @@ pub const Document = struct {
         return try DocumentImpl.get_fullscreenEnabled(instance);
     }
 
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn set_fullscreenEnabled(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
+        // Per WebIDL §4.3.10: The setter steps are to return.
+        _ = instance;
+        _ = value;
+    }
+
     /// Extended attributes: [LegacyLenientSetter], [Unscopable]
     pub fn get_fullscreen(instance: *runtime.Instance) anyerror!bool {
         return try DocumentImpl.get_fullscreen(instance);
+    }
+
+    /// Extended attributes: [LegacyLenientSetter], [Unscopable]
+    pub fn set_fullscreen(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
+        // Per WebIDL §4.3.10: The setter steps are to return.
+        _ = instance;
+        _ = value;
     }
 
     pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!EventHandler {
@@ -1774,6 +1802,14 @@ pub const Document = struct {
     /// Extended attributes: [LegacyLenientSetter]
     pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_fullscreenElement(instance);
+    }
+
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
+        // Per WebIDL §4.3.10: The setter steps are to return.
+        _ = instance;
+        _ = value;
     }
 
     pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {

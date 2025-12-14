@@ -117,6 +117,15 @@ pub fn isLegacyLenientThis(extAttrs: []const types.ExtendedAttribute) bool {
     return hasExtAttr(extAttrs, "LegacyLenientThis");
 }
 
+/// Check if attribute has LegacyLenientSetter
+/// Per WebIDL §4.3.10: [LegacyLenientSetter] readonly attributes have setters
+/// that silently do nothing (no-op) - the setter steps are to return.
+/// This is used for legacy compatibility with attributes that shouldn't throw
+/// when assigned to, but also shouldn't modify the underlying value.
+pub fn isLegacyLenientSetter(extAttrs: []const types.ExtendedAttribute) bool {
+    return hasExtAttr(extAttrs, "LegacyLenientSetter");
+}
+
 // Unit tests
 const testing = std.testing;
 
@@ -293,4 +302,12 @@ test "isLegacyLenientThis detects LegacyLenientThis" {
     };
 
     try testing.expect(isLegacyLenientThis(&attrs));
+}
+
+test "isLegacyLenientSetter detects LegacyLenientSetter" {
+    const attrs = [_]types.ExtendedAttribute{
+        .{ .name = "LegacyLenientSetter", .rhs = null },
+    };
+
+    try testing.expect(isLegacyLenientSetter(&attrs));
 }

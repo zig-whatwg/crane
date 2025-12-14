@@ -296,6 +296,7 @@ pub const HTMLScriptElement = struct {
 
         .set_async = &set_async,
         .set_attributionSrc = &set_attributionSrc,
+        .set_blocking = &set_blocking,
         .set_charset = &set_charset,
         .set_crossOrigin = &set_crossOrigin,
         .set_defer = &set_defer,

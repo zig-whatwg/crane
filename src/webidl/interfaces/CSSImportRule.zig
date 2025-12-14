@@ -102,6 +102,8 @@ pub const CSSImportRule = struct {
         .get_styleSheet = &get_styleSheet,
         .get_supportsText = &get_supportsText,
 
+        .set_media = &set_media,
+
         .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);

@@ -94,6 +94,8 @@ pub const CSSMediaRule = struct {
         .get_matches = &get_matches,
         .get_media = &get_media,
 
+        .set_media = &set_media,
+
         .call_deleteRule = &call_deleteRule,
         .call_insertRule = &call_insertRule,
 

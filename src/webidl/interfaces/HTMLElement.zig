@@ -944,6 +944,7 @@ pub const HTMLElement = struct {
         .set_outerText = &set_outerText,
         .set_popover = &set_popover,
         .set_spellcheck = &set_spellcheck,
+        .set_style = &set_style,
         .set_tabIndex = &set_tabIndex,
         .set_title = &set_title,
         .set_translate = &set_translate,

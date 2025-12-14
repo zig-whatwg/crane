@@ -1074,6 +1074,7 @@ pub const Window = struct {
         .set_innerHeight = &set_innerHeight,
         .set_innerWidth = &set_innerWidth,
         .set_length = &set_length,
+        .set_location = &set_location,
         .set_locationbar = &set_locationbar,
         .set_menubar = &set_menubar,
         .set_name = &set_name,

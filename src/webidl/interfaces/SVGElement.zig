@@ -814,6 +814,7 @@ pub const SVGElement = struct {
         .set_onwebkitanimationstart = &set_onwebkitanimationstart,
         .set_onwebkittransitionend = &set_onwebkittransitionend,
         .set_onwheel = &set_onwheel,
+        .set_style = &set_style,
         .set_tabIndex = &set_tabIndex,
 
         .call_blur = &call_blur,

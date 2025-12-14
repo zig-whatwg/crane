@@ -252,6 +252,7 @@ pub const HTMLStyleElement = struct {
         .get_sheet = &get_sheet,
         .get_type = &get_type,
 
+        .set_blocking = &set_blocking,
         .set_disabled = &set_disabled,
         .set_media = &set_media,
         .set_type = &set_type,

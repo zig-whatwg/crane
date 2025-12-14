@@ -274,6 +274,7 @@ pub const HTMLOutputElement = struct {
         .get_willValidate = &get_willValidate,
 
         .set_defaultValue = &set_defaultValue,
+        .set_htmlFor = &set_htmlFor,
         .set_name = &set_name,
         .set_value = &set_value,
 

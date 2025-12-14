@@ -326,6 +326,7 @@ pub const SVGAElement = struct {
         .set_protocol = &set_protocol,
         .set_referrerPolicy = &set_referrerPolicy,
         .set_rel = &set_rel,
+        .set_relList = &set_relList,
         .set_search = &set_search,
         .set_type = &set_type,
         .set_username = &set_username,

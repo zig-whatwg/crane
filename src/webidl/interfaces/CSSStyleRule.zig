@@ -98,6 +98,7 @@ pub const CSSStyleRule = struct {
         .get_styleMap = &get_styleMap,
 
         .set_selectorText = &set_selectorText,
+        .set_style = &set_style,
 
         .deinit = &deinit,
     };

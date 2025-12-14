@@ -83,6 +83,7 @@ pub const CSSKeyframeRule = struct {
         .get_style = &get_style,
 
         .set_keyText = &set_keyText,
+        .set_style = &set_style,
 
         .deinit = &deinit,
     };

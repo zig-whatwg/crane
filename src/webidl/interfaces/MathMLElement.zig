@@ -759,6 +759,7 @@ pub const MathMLElement = struct {
         .set_onwebkitanimationstart = &set_onwebkitanimationstart,
         .set_onwebkittransitionend = &set_onwebkittransitionend,
         .set_onwheel = &set_onwheel,
+        .set_style = &set_style,
 
         .deinit = &deinit,
     };

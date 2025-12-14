@@ -81,6 +81,8 @@ pub const CSSFontFaceRule = struct {
 
         .get_style = &get_style,
 
+        .set_style = &set_style,
+
         .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);

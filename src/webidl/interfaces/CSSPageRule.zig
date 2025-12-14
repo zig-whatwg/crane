@@ -92,6 +92,7 @@ pub const CSSPageRule = struct {
         .get_style = &get_style,
 
         .set_selectorText = &set_selectorText,
+        .set_style = &set_style,
 
         .deinit = &deinit,
     };

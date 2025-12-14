@@ -249,6 +249,7 @@ pub const HTMLFencedFrameElement = struct {
         .set_allow = &set_allow,
         .set_config = &set_config,
         .set_height = &set_height,
+        .set_sandbox = &set_sandbox,
         .set_width = &set_width,
 
         .deinit = &deinit,

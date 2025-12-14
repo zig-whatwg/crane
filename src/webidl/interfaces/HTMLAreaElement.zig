@@ -336,6 +336,7 @@ pub const HTMLAreaElement = struct {
         .set_protocol = &set_protocol,
         .set_referrerPolicy = &set_referrerPolicy,
         .set_rel = &set_rel,
+        .set_relList = &set_relList,
         .set_search = &set_search,
         .set_shape = &set_shape,
         .set_target = &set_target,

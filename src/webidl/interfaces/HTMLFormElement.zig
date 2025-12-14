@@ -301,6 +301,7 @@ pub const HTMLFormElement = struct {
         .set_name = &set_name,
         .set_noValidate = &set_noValidate,
         .set_rel = &set_rel,
+        .set_relList = &set_relList,
         .set_target = &set_target,
 
         .call_checkValidity = &call_checkValidity,
