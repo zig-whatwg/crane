@@ -351,6 +351,46 @@ pub fn getBoundV8Global(instance: *runtime.Instance) ?*anyopaque {
     return internal.bound_v8_global;
 }
 
+/// Replace this Window's browsing context with an existing one.
+/// This is used when creating a Window for an iframe that already has a browsing context.
+///
+/// The iframe's browsing context was created when the iframe was inserted into the DOM
+/// (via IFrameIntegration.onInsertedIntoDocument). When contentWindow is accessed,
+/// a Window is created but it needs to use the iframe's EXISTING browsing context,
+/// not create a new one.
+///
+/// This function:
+/// 1. Deinitializes the auto-created browsing context
+/// 2. Replaces it with the provided one
+/// 3. Sets this Window as the active window on the provided context
+///
+/// Parameters:
+/// - instance: The Window instance
+/// - bc_ptr: Opaque pointer to the existing BrowsingContext
+pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) void {
+    const internal = getInternal(instance) orelse return;
+
+    // Deinitialize the auto-created browsing context (created by Window.init)
+    // Note: We must deinit it because it was allocated during init
+    internal.browsing_context.deinit();
+
+    // Replace with the existing browsing context
+    const existing_bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
+    internal.browsing_context = existing_bc;
+
+    // Set this Window as the active window on the browsing context
+    existing_bc.setActiveWindow(@ptrCast(instance));
+}
+
+/// Set the document associated with this Window.
+/// This is called by browser context initialization after creating the Document.
+/// The document must be set before frames[index] can work, as the indexed getter
+/// needs to access the document to find iframe elements.
+pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.document = document;
+}
+
 /// Get the WindowProxy for this window
 /// Per spec, window.window, window.self, and window.frames all return the WindowProxy.
 fn getWindowProxy(instance: *runtime.Instance) typedefs.WindowProxy {

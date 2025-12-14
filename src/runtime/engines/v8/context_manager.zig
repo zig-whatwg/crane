@@ -822,6 +822,13 @@ pub const ChildContextOptions = struct {
 
     /// Whether to inherit the event loop from parent
     inherit_event_loop: bool = true,
+
+    /// Existing browsing context to use (optional).
+    /// If provided, the Window will use this browsing context instead of creating a new one.
+    /// This is used for iframes where the browsing context is created when the iframe
+    /// is inserted into the DOM (via IFrameIntegration.onInsertedIntoDocument).
+    /// The Window will be set as the active window on this browsing context.
+    existing_browsing_context: ?*anyopaque = null,
 };
 
 // ============================================================================
@@ -946,6 +953,18 @@ fn createWindowForExistingBrowsingContext(
     const runtime_ctx: runtime.Context = &ctx_data;
     const window_instance = interfaces.Window.init(allocator, runtime_ctx) catch return null;
 
+    // 8b. Replace the Window's auto-created browsing context with the existing one
+    // This is necessary because:
+    // - Window.init() creates its own top-level browsing context
+    // - We need to use the iframe's existing one (already in parent's children list)
+    WindowImpl.replaceBrowsingContext(window_instance, child_bc_opaque);
+
+    // 8c. Create and set a Document for this iframe window
+    // Per HTML spec, every Window must have an associated Document.
+    // For cross-realm tests, properties like `iframe.contentWindow.document` must work.
+    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch return null;
+    WindowImpl.setDocument(window_instance, document_instance);
+
     // 9. Bind Window to global (internal fields + wrapper cache)
     const dom_type_info = @import("dom_type_info.zig");
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
@@ -954,11 +973,6 @@ fn createWindowForExistingBrowsingContext(
     }
     WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
     cache_ptr.set(window_instance, global, isolate) catch {};
-
-    // 10. CRITICAL: Set this Window as active_window on the EXISTING child browsing context
-    // This is the key difference from createChildContext - we use the existing BC
-    // Use the helper function exported from Window impl to set the active window
-    @import("impls").Window.setActiveWindowOnBrowsingContext(child_bc_opaque, @ptrCast(window_instance));
 
     // 11. Store in context map
     state.contexts.put(child_key, ContextEntry{
@@ -1046,9 +1060,9 @@ pub fn windowIndexedPropertyGetter(
     // This happens when an iframe is in the DOM but contentWindow hasn't been accessed yet
     if (result == null) {
         const internal = WindowImpl.getInternal(instance) orelse return;
-        const children = internal.browsing_context.children.items;
 
-        // Check if the index is valid (child browsing context exists)
+        // First check if a browsing context exists at this index
+        const children = internal.browsing_context.children.items;
         if (index < children.len) {
             const child_bc = children[index];
 
@@ -1064,6 +1078,49 @@ pub fn windowIndexedPropertyGetter(
                     child_bc,
                     entry.allocator,
                 );
+            }
+        } else {
+            // No browsing context exists yet - the iframe hasn't had its browsing context
+            // initialized. This can happen if the iframe was created in JavaScript and
+            // frames[index] is accessed before contentWindow was accessed on the iframe.
+            //
+            // To handle this, we need to:
+            // 1. Find the Nth iframe element in the document
+            // 2. Trigger its contentWindow creation (which initializes its browsing context)
+            // 3. Retry the lookup
+            //
+            // We can access the document via the Window instance and enumerate iframes.
+            const HTMLIFrameElementImpl = @import("impls").HTMLIFrameElement;
+            const interfaces = @import("interfaces");
+
+            // Try to get the document from Window's internal state first
+            var doc: ?*runtime.Instance = internal.document;
+
+            // If no document yet, try to get it via the Window.document getter
+            // This works because the document is set on the global object even during parsing
+            if (doc == null) {
+                doc = WindowImpl.get_document(instance) catch null;
+            }
+
+            if (doc) |document| {
+                // Get all iframe elements using getElementsByTagName
+                const iframe_tag = runtime.DOMString.initInterned("iframe");
+                const iframes = interfaces.Document.call_getElementsByTagName(document, iframe_tag) catch {
+                    return; // Can't access iframes
+                };
+
+                // Check if we have enough iframes in the DOM
+                const iframe_count = interfaces.HTMLCollection.get_length(iframes) catch 0;
+                if (index < iframe_count) {
+                    // Get the Nth iframe and access its contentWindow to trigger initialization
+                    if (interfaces.HTMLCollection.call_item(iframes, index) catch null) |iframe_elem| {
+                        // This call triggers IFrameIntegration.ensureBrowsingContext
+                        _ = HTMLIFrameElementImpl.get_contentWindow(iframe_elem) catch null;
+
+                        // Now retry - the child should exist
+                        result = WindowImpl.call_item(instance, index) catch null;
+                    }
+                }
             }
         }
     }
@@ -1327,29 +1384,48 @@ pub fn createChildContext(
         interfaces.Window.deinit(window_instance);
     }
 
-    // 8b. Link child Window's browsing context to parent Window's browsing context
-    // This enables `window.frames[0]` to work by adding the child to parent's children list.
-    // Without this, the child Window's browsing context is orphaned (created as top-level).
-    if (parent_entry.window_instance) |parent_window| {
-        const WindowImpl = @import("impls").Window;
+    // 8b. Handle browsing context for the Window
+    const WindowImpl = @import("impls").Window;
 
-        // Get parent Window's browsing context
-        if (WindowImpl.getInternal(parent_window)) |parent_internal| {
-            // Get child Window's browsing context
-            if (WindowImpl.getInternal(window_instance)) |child_internal| {
-                // Link child to parent
-                const parent_bc = parent_internal.browsing_context;
-                const child_bc = child_internal.browsing_context;
+    if (options.existing_browsing_context) |existing_bc| {
+        // An existing browsing context was provided (from iframe's IFrameIntegration).
+        // Replace the auto-created one with the existing one.
+        // This is necessary because:
+        // - IFrameIntegration.onInsertedIntoDocument() already created a child browsing context
+        //   and added it to the parent's children list
+        // - Window.init() creates its own top-level browsing context
+        // - We need to use the iframe's existing one so frames[index] works correctly
+        WindowImpl.replaceBrowsingContext(window_instance, existing_bc);
+    } else {
+        // No existing browsing context provided - link the auto-created one to parent.
+        // This enables `window.frames[0]` to work by adding the child to parent's children list.
+        // Without this, the child Window's browsing context is orphaned (created as top-level).
+        if (parent_entry.window_instance) |parent_window| {
+            // Get parent Window's browsing context
+            if (WindowImpl.getInternal(parent_window)) |parent_internal| {
+                // Get child Window's browsing context
+                if (WindowImpl.getInternal(window_instance)) |child_internal| {
+                    // Link child to parent
+                    const parent_bc = parent_internal.browsing_context;
+                    const child_bc = child_internal.browsing_context;
 
-                // Set parent reference and add to parent's children list
-                child_bc.parent = parent_bc;
-                parent_bc.children.append(parent_bc.allocator, child_bc) catch {
-                    // Best effort - if this fails, frames[n] just won't work
-                    // but contentWindow will still work via the context_manager path
-                };
+                    // Set parent reference and add to parent's children list
+                    child_bc.parent = parent_bc;
+                    parent_bc.children.append(parent_bc.allocator, child_bc) catch {
+                        // Best effort - if this fails, frames[n] just won't work
+                        // but contentWindow will still work via the context_manager path
+                    };
+                }
             }
         }
     }
+
+    // 8c. Create and set a Document for this iframe window
+    // Per HTML spec, every Window must have an associated Document.
+    // For cross-realm tests, properties like `iframe.contentWindow.document` must work.
+    const interfaces = @import("interfaces");
+    const document_instance = try interfaces.Document.init(allocator, runtime_ctx);
+    WindowImpl.setDocument(window_instance, document_instance);
 
     // 9. Store in map
     // Note: We use parent_key here instead of parent_entry pointer because the put()

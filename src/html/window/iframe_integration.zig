@@ -421,6 +421,47 @@ pub const IFrameIntegration = struct {
         try self.navigateToInitialContent();
     }
 
+    /// Lazily ensure the browsing context exists.
+    /// This is called when contentWindow is accessed and the browsing context
+    /// hasn't been created yet (e.g., if onInsertedIntoDocument wasn't called).
+    ///
+    /// Parameters:
+    /// - parent_bc_opaque: Opaque pointer to the parent Window's browsing context
+    ///                     (obtained from the parent Window's internal state)
+    ///
+    /// Returns: The browsing context (creating it if necessary), or null on error
+    pub fn ensureBrowsingContext(self: *IFrameIntegration, parent_bc_opaque: *anyopaque) ?*BrowsingContext {
+        // If we already have a browsing context, return it
+        if (self.browsing_context) |bc| {
+            return bc;
+        }
+
+        // Create the browsing context as a child of the parent
+        const parent_bc: *BrowsingContext = @ptrCast(@alignCast(parent_bc_opaque));
+
+        const nested_ctx = BrowsingContext.initChild(self.allocator, parent_bc) catch {
+            return null;
+        };
+
+        self.browsing_context = nested_ctx;
+        self.parent_context = parent_bc;
+
+        // Set the target name if we have one
+        if (self.name.len > 0) {
+            nested_ctx.setTargetName(self.name) catch {};
+        }
+
+        // Create the WindowProxy
+        self.window_proxy = WindowProxy.init(self.allocator, nested_ctx);
+
+        // Update state
+        if (self.state == .uninitialized) {
+            self.state = .creating_initial_document;
+        }
+
+        return nested_ctx;
+    }
+
     /// Called when iframe is removed from a document
     /// Destroys the nested browsing context per HTML §7.1
     pub fn onRemovedFromDocument(self: *IFrameIntegration) void {

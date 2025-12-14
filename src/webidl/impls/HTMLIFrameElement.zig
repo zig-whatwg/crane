@@ -202,8 +202,39 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
-        const parent_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        const parent_v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
             // Fall back to WindowProxy if no current context
+            if (internal.integration.getContentWindow()) |proxy| {
+                return @ptrCast(proxy);
+            }
+            return null;
+        };
+
+        // CRITICAL: Ensure the iframe's browsing context exists BEFORE creating the V8 context.
+        // The browsing context is created by IFrameIntegration.onInsertedIntoDocument() when the
+        // iframe is inserted into the DOM. However, that function may not have been called yet
+        // (e.g., if insertion steps callbacks aren't set up). We lazily create it here.
+        //
+        // Get the parent Window's browsing context to use as the parent for the child BC.
+        const parent_window = context_manager.getWindowForContext(parent_v8_ctx) orelse {
+            if (internal.integration.getContentWindow()) |proxy| {
+                return @ptrCast(proxy);
+            }
+            return null;
+        };
+
+        const WindowImpl = @import("Window.zig");
+        const parent_window_internal = WindowImpl.getInternal(parent_window) orelse {
+            if (internal.integration.getContentWindow()) |proxy| {
+                return @ptrCast(proxy);
+            }
+            return null;
+        };
+
+        // Ensure the iframe's browsing context exists (lazy creation)
+        const existing_bc = internal.integration.ensureBrowsingContext(
+            @ptrCast(parent_window_internal.browsing_context),
+        ) orelse {
             if (internal.integration.getContentWindow()) |proxy| {
                 return @ptrCast(proxy);
             }
@@ -212,11 +243,17 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
 
         // Create child V8 context with all interface bindings AND Window instance
         // The Window instance IS the V8 global, enabling cross-realm access
+        //
+        // Pass the iframe's browsing context so the Window uses it instead
+        // of creating a new one. This is crucial for frames[index] to work:
+        // - The browsing context was already added to the parent's children list
+        // - The Window needs to use that same browsing context, not create a duplicate
         const entry = context_manager.createChildContext(.{
-            .parent_context = parent_ctx,
+            .parent_context = parent_v8_ctx,
             .isolate = isolate,
             .context_type = .window,
             .inherit_event_loop = true,
+            .existing_browsing_context = @ptrCast(existing_bc),
         }, internal.allocator) catch {
             // Fall back to WindowProxy if context creation fails
             if (internal.integration.getContentWindow()) |proxy| {
@@ -232,21 +269,6 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             @ptrCast(entry),
             iframeContextCleanup,
         );
-
-        // Propagate iframe name to the Window's browsing context
-        // Per HTML spec, setting iframe.name should be visible via contentWindow.name.
-        // The Window created by createChildContext has its own BrowsingContext,
-        // but we need to copy the name from the iframe's BrowsingContext to it.
-        if (entry.window_instance) |window_instance| {
-            const WindowImpl = @import("Window.zig");
-            if (WindowImpl.getInternal(window_instance)) |window_internal| {
-                // Copy the name from iframe integration to the Window's browsing context
-                const iframe_name = internal.integration.getName();
-                if (iframe_name.len > 0) {
-                    window_internal.browsing_context.setTargetName(iframe_name) catch {};
-                }
-            }
-        }
     }
 
     // Return the Window instance from the child context

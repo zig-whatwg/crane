@@ -705,6 +705,14 @@ pub const BrowserContext = struct {
             };
             self.document_instance = doc_instance;
 
+            // CRITICAL: Link the document to the Window's internal state.
+            // This is required for frames[index] to work, as the indexed getter
+            // needs to access the document to find iframe elements when scripts
+            // run during HTML parsing (before initializeIframeBrowsingContexts).
+            if (self.window_instance) |win| {
+                impls.Window.setDocument(win, doc_instance);
+            }
+
             const v8_document = v8.template_registry.wrapInstanceAsV8Object(
                 doc_instance,
                 "Document",
@@ -1574,6 +1582,46 @@ pub const BrowserContext = struct {
 
         // Document is already registered in V8 - no need to update the reference!
         // The existing document_instance has been populated with the parsed DOM.
+
+        // Initialize browsing contexts for any iframes in the document.
+        // This is necessary because when iframes are parsed, their browsing contexts
+        // aren't automatically created (that requires DOM insertion hooks which we
+        // don't have). We need to initialize them so that window.frames[N] works.
+        //
+        // This is done by calling contentWindow on each iframe, which triggers lazy
+        // initialization of its browsing context and V8 context.
+        self.initializeIframeBrowsingContexts(document) catch |err| {
+            // Non-fatal - some iframes may not need initialization
+            std.debug.print("Warning: Failed to initialize iframe browsing contexts: {}\n", .{err});
+        };
+    }
+
+    /// Initialize browsing contexts for all iframes in a document.
+    /// This triggers lazy initialization of iframe browsing contexts by accessing
+    /// their contentWindow property.
+    fn initializeIframeBrowsingContexts(_: *BrowserContext, document: *runtime.Instance) !void {
+        // Get all iframe elements using getElementsByTagName
+        const iframes = try interfaces.Document.call_getElementsByTagName(
+            document,
+            runtime.DOMString.initInterned("iframe"),
+        );
+
+        // Get the collection length
+        const length = try interfaces.HTMLCollection.get_length(iframes);
+        if (length == 0) return;
+
+        // Access contentWindow on each iframe to trigger browsing context initialization
+        var i: u32 = 0;
+        while (i < length) : (i += 1) {
+            const element = try interfaces.HTMLCollection.call_item(iframes, i);
+            if (element) |iframe_elem| {
+                // Cast to HTMLIFrameElement and access contentWindow
+                // This triggers IFrameIntegration.ensureBrowsingContext
+                _ = impls.HTMLIFrameElement.get_contentWindow(iframe_elem) catch |err| {
+                    std.debug.print("Warning: Failed to initialize iframe {d}: {}\n", .{ i, err });
+                };
+            }
+        }
     }
 
     /// Fire the DOMContentLoaded event on the document
