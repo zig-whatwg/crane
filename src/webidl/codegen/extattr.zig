@@ -109,6 +109,14 @@ pub fn isUnscopable(extAttrs: []const types.ExtendedAttribute) bool {
     return hasExtAttr(extAttrs, "Unscopable");
 }
 
+/// Check if attribute is LegacyLenientThis
+/// Per WebIDL §4.3.10: [LegacyLenientThis] attributes should NOT throw TypeError
+/// when called with invalid `this` values - they should return undefined (getter)
+/// or silently return (setter) instead of throwing.
+pub fn isLegacyLenientThis(extAttrs: []const types.ExtendedAttribute) bool {
+    return hasExtAttr(extAttrs, "LegacyLenientThis");
+}
+
 // Unit tests
 const testing = std.testing;
 
@@ -277,4 +285,12 @@ test "isUnscopable detects Unscopable" {
     };
 
     try testing.expect(isUnscopable(&attrs));
+}
+
+test "isLegacyLenientThis detects LegacyLenientThis" {
+    const attrs = [_]types.ExtendedAttribute{
+        .{ .name = "LegacyLenientThis", .rhs = null },
+    };
+
+    try testing.expect(isLegacyLenientThis(&attrs));
 }

@@ -1095,6 +1095,18 @@ pub fn V8Interface(comptime Interface: type) type {
             return template;
         }
 
+        /// Check if a property name is in the [LegacyLenientThis] attributes list
+        /// Per WebIDL §4.3.10: [LegacyLenientThis] attributes do NOT throw TypeError
+        /// when called with invalid `this` values - getters return undefined, setters silently return.
+        fn isLenientThisProperty(comptime prop_name: []const u8) bool {
+            if (!@hasDecl(Meta, "lenient_this_attributes")) return false;
+            const lenient_attrs = Meta.lenient_this_attributes;
+            inline for (lenient_attrs) |attr_name| {
+                if (std.mem.eql(u8, attr_name, prop_name)) return true;
+            }
+            return false;
+        }
+
         /// Generate a property getter callback for a specific property at comptime
         ///
         /// This creates a callback that:
@@ -1133,6 +1145,19 @@ pub fn V8Interface(comptime Interface: type) type {
 
                         const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
+                        // Derive property name from getter_name (strip "get_" prefix)
+                        const prop_name = comptime blk: {
+                            if (getter_name.len > 4 and std.mem.eql(u8, getter_name[0..4], "get_")) {
+                                break :blk getter_name[4..];
+                            }
+                            break :blk getter_name;
+                        };
+
+                        // Check if this is a [LegacyLenientThis] attribute
+                        // Per WebIDL §4.3.10: these attributes do NOT throw TypeError on invalid this
+                        // Instead, getters return undefined
+                        const is_lenient_this = comptime isLenientThisProperty(prop_name);
+
                         // If instance_ptr is null, this is NOT a valid instance of this interface.
                         // This happens when:
                         // 1. Calling getter.apply({}) with a non-interface object
@@ -1140,6 +1165,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         //
                         // Per WebIDL spec, getters must perform brand checks and throw TypeError
                         // when called with an incompatible this value.
+                        // EXCEPTION: [LegacyLenientThis] attributes return undefined instead of throwing.
                         //
                         // IMPORTANT: For cross-realm support, the TypeError must come from the
                         // method's realm (where the getter is defined), not the caller's realm.
@@ -1150,6 +1176,14 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Example: Object.create(other.HTMLElement.prototype) creates an object
                         // in the main context, but its prototype is from another context.
                         if (instance_ptr == null) {
+                            // [LegacyLenientThis] - return undefined instead of throwing
+                            if (is_lenient_this) {
+                                if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                    info.setReturnValue(undef);
+                                }
+                                return;
+                            }
+
                             // Get the prototype's creation context for cross-realm TypeError
                             const holder = info.getHolder();
                             if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
@@ -2708,8 +2742,73 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     } else {
                         // Instance setter (instance + value parameters)
-                        // TODO: Extract instance from internal field
-                        conv.throwError(isolate, "Instance setter not yet implemented");
+                        // Extract instance from 'this' object
+                        const this_obj = info.getThis();
+                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+                        // Check if this is a [LegacyLenientThis] attribute
+                        // Per WebIDL §4.3.10: these attributes do NOT throw TypeError on invalid this
+                        // Instead, setters silently return without doing anything
+                        const is_lenient_this = comptime isLenientThisProperty(lazy_name);
+
+                        // Per WebIDL spec, setters must perform brand checks and throw TypeError
+                        // when called with an incompatible this value.
+                        // EXCEPTION: [LegacyLenientThis] attributes silently return instead of throwing.
+                        if (instance_ptr == null) {
+                            // [LegacyLenientThis] - silently return instead of throwing
+                            if (is_lenient_this) {
+                                return;
+                            }
+
+                            // Get the prototype's creation context for cross-realm TypeError
+                            if (info.getHolder()) |holder| {
+                                if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
+                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                                } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                                } else {
+                                    conv.throwTypeError(isolate, "Illegal invocation");
+                                }
+                            } else {
+                                conv.throwTypeError(isolate, "Illegal invocation");
+                            }
+                            return;
+                        }
+
+                        // Safety check: detect use-after-free by checking for poison patterns
+                        const ptr_as_int = @intFromPtr(instance_ptr);
+                        const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+                        const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+                        if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                            (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+                        {
+                            conv.throwError(isolate, "Cannot set property on freed object");
+                            return;
+                        }
+
+                        const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+                        // Get the parameter type (second parameter after instance)
+                        const ValueType = params[1].type.?;
+
+                        // Convert V8 value to Zig type
+                        const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, context, value) catch {
+                            conv.throwError(isolate, "Failed to convert value for setter");
+                            return;
+                        };
+
+                        // Call the setter (check return type for error handling)
+                        const SetterReturnType = fn_info.return_type orelse void;
+                        const setter_returns_error = comptime (@typeInfo(SetterReturnType) == .error_union);
+
+                        if (setter_returns_error) {
+                            zig_setter(instance, zig_value) catch {
+                                conv.throwError(isolate, "Setter failed");
+                                return;
+                            };
+                        } else {
+                            zig_setter(instance, zig_value);
+                        }
                         return;
                     }
                 }
@@ -3962,8 +4061,22 @@ pub fn V8Interface(comptime Interface: type) type {
                     const this_obj = info.getThis();
                     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
+                    // Derive property name from setter_name_param (strip "set_" prefix)
+                    const prop_name = comptime blk: {
+                        if (setter_name_param.len > 4 and std.mem.eql(u8, setter_name_param[0..4], "set_")) {
+                            break :blk setter_name_param[4..];
+                        }
+                        break :blk setter_name_param;
+                    };
+
+                    // Check if this is a [LegacyLenientThis] attribute
+                    // Per WebIDL §4.3.10: these attributes do NOT throw TypeError on invalid this
+                    // Instead, setters silently return without doing anything
+                    const is_lenient_this = comptime isLenientThisProperty(prop_name);
+
                     // Per WebIDL spec, setters must perform brand checks and throw TypeError
                     // when called with an incompatible this value.
+                    // EXCEPTION: [LegacyLenientThis] attributes silently return instead of throwing.
                     //
                     // IMPORTANT: For cross-realm support, the TypeError must come from the
                     // setter's realm (where it is defined), not the caller's realm.
@@ -3972,6 +4085,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     // The setter is defined on the prototype, so we need to get the
                     // prototype's creation context, not the `this` object's creation context.
                     if (instance_ptr == null) {
+                        // [LegacyLenientThis] - silently return instead of throwing
+                        if (is_lenient_this) {
+                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                info.setReturnValue(undef);
+                            }
+                            return;
+                        }
+
                         // Get the prototype's creation context for cross-realm TypeError
                         const holder = info.getHolder();
                         if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {

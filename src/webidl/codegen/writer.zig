@@ -373,17 +373,23 @@ pub fn writeMetadata(
     try writer.writeAll("        \n");
     try writer.writeAll("        /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties\n");
     try writer.writeAll("        pub const properties = .{\n");
-    for (own_attributes) |attr| {
-        // Write JS property name (original with hyphens)
-        try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
-        // Write sanitized getter name (hyphens -> underscores)
-        try writeSanitizedName(writer, attr.name);
-        if (attr.readonly) {
-            try writer.writeAll("\", null },\n");
-        } else {
-            try writer.writeAll("\", \"set_");
+    {
+        const extattr_mod = @import("extattr.zig");
+        for (own_attributes) |attr| {
+            // Write JS property name (original with hyphens)
+            try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
+            // Write sanitized getter name (hyphens -> underscores)
             try writeSanitizedName(writer, attr.name);
-            try writer.writeAll("\" },\n");
+            // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards]
+            const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
+            const has_put_forwards = extattr_mod.getPutForwards(attr.extAttrs) != null;
+            if (!attr.readonly or is_replaceable or has_put_forwards) {
+                try writer.writeAll("\", \"set_");
+                try writeSanitizedName(writer, attr.name);
+                try writer.writeAll("\" },\n");
+            } else {
+                try writer.writeAll("\", null },\n");
+            }
         }
     }
     try writer.writeAll("        };\n");
@@ -411,6 +417,35 @@ pub fn writeMetadata(
             for (own_attributes) |attr| {
                 if (extattr_mod.getPutForwards(attr.extAttrs)) |forwarded| {
                     try writer.print("            .{{ \"{s}\", \"{s}\" }},\n", .{ attr.name, forwarded });
+                }
+            }
+            try writer.writeAll("        };\n");
+        }
+    }
+
+    // Generate [LegacyLenientThis] metadata for attributes that should NOT throw on invalid this
+    // Per WebIDL §4.3.10: [LegacyLenientThis] attributes return undefined (getter) or
+    // silently return (setter) when called with invalid `this` values instead of throwing.
+    {
+        const extattr_mod = @import("extattr.zig");
+        var has_lenient_this = false;
+
+        // Check if any attributes have [LegacyLenientThis]
+        for (own_attributes) |attr| {
+            if (extattr_mod.isLegacyLenientThis(attr.extAttrs)) {
+                has_lenient_this = true;
+                break;
+            }
+        }
+
+        if (has_lenient_this) {
+            try writer.writeAll("        \n");
+            try writer.writeAll("        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this\n");
+            try writer.writeAll("        /// Getters return undefined, setters silently return\n");
+            try writer.writeAll("        pub const lenient_this_attributes = .{\n");
+            for (own_attributes) |attr| {
+                if (extattr_mod.isLegacyLenientThis(attr.extAttrs)) {
+                    try writer.print("            \"{s}\",\n", .{attr.name});
                 }
             }
             try writer.writeAll("        };\n");
@@ -619,19 +654,25 @@ pub fn writeMetadata(
     try writer.writeAll("        \n");
     try writer.writeAll("        /// Properties to define eagerly (frequently accessed) - ONLY own properties\n");
     try writer.writeAll("        pub const eager_properties = .{\n");
-    for (own_attributes) |attr| {
-        // Classify based on property name and extended attributes
-        // For now, just use empty slice for ext attrs - classifier checks attr names internally
-        const classification = property_classifier.classifyProperty(attr.name, &.{});
-        if (classification == .eager) {
-            try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
-            try writeSanitizedName(writer, attr.name);
-            if (attr.readonly) {
-                try writer.writeAll("\", null },\n");
-            } else {
-                try writer.writeAll("\", \"set_");
+    {
+        const extattr_mod_eager = @import("extattr.zig");
+        for (own_attributes) |attr| {
+            // Classify based on property name and extended attributes
+            // For now, just use empty slice for ext attrs - classifier checks attr names internally
+            const classification = property_classifier.classifyProperty(attr.name, &.{});
+            if (classification == .eager) {
+                try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
                 try writeSanitizedName(writer, attr.name);
-                try writer.writeAll("\" },\n");
+                // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards]
+                const is_replaceable_eager = extattr_mod_eager.isReplaceable(attr.extAttrs);
+                const has_put_forwards_eager = extattr_mod_eager.getPutForwards(attr.extAttrs) != null;
+                if (!attr.readonly or is_replaceable_eager or has_put_forwards_eager) {
+                    try writer.writeAll("\", \"set_");
+                    try writeSanitizedName(writer, attr.name);
+                    try writer.writeAll("\" },\n");
+                } else {
+                    try writer.writeAll("\", null },\n");
+                }
             }
         }
     }
@@ -640,18 +681,24 @@ pub fn writeMetadata(
     try writer.writeAll("        \n");
     try writer.writeAll("        /// Properties to define lazily (rarely accessed) - ONLY own properties\n");
     try writer.writeAll("        pub const lazy_properties = .{\n");
-    for (own_attributes) |attr| {
-        // Classify based on property name and extended attributes
-        const classification = property_classifier.classifyProperty(attr.name, &.{});
-        if (classification == .lazy) {
-            try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
-            try writeSanitizedName(writer, attr.name);
-            if (attr.readonly) {
-                try writer.writeAll("\", null },\n");
-            } else {
-                try writer.writeAll("\", \"set_");
+    {
+        const extattr_mod_lazy = @import("extattr.zig");
+        for (own_attributes) |attr| {
+            // Classify based on property name and extended attributes
+            const classification = property_classifier.classifyProperty(attr.name, &.{});
+            if (classification == .lazy) {
+                try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
                 try writeSanitizedName(writer, attr.name);
-                try writer.writeAll("\" },\n");
+                // Check if this needs a setter: non-readonly OR [Replaceable] OR [PutForwards]
+                const is_replaceable_lazy = extattr_mod_lazy.isReplaceable(attr.extAttrs);
+                const has_put_forwards_lazy = extattr_mod_lazy.getPutForwards(attr.extAttrs) != null;
+                if (!attr.readonly or is_replaceable_lazy or has_put_forwards_lazy) {
+                    try writer.writeAll("\", \"set_");
+                    try writeSanitizedName(writer, attr.name);
+                    try writer.writeAll("\" },\n");
+                } else {
+                    try writer.writeAll("\", null },\n");
+                }
             }
         }
     }
@@ -1728,11 +1775,15 @@ pub fn writeVTable(
     try deduplicateVTableEntries(allocator, &getters);
 
     // Collect setters - ONLY for own attributes (not inherited)
+    // Include non-readonly attributes AND [Replaceable] readonly attributes
+    const extattr_mod = @import("extattr.zig");
     var setters = std.ArrayList(VTableEntry).empty;
     defer setters.deinit(allocator);
 
     for (own_attributes) |attr| {
-        if (!attr.readonly) {
+        // Generate setter for non-readonly OR [Replaceable] readonly attributes
+        const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
+        if (!attr.readonly or is_replaceable) {
             const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
             const name_was_sanitized = !std.mem.eql(u8, sanitized_name, attr.name);
 
@@ -2779,13 +2830,16 @@ pub fn writeDelegateFunctions(
 
         try writer.writeAll("    }\n\n");
 
-        // Check for [PutForwards] extended attribute
+        // Check for [PutForwards] and [Replaceable] extended attributes
         // Per WebIDL §4.3.10: [PutForwards=X] creates a setter that forwards to property X
         // on the current value of the attribute, even if the attribute is readonly
+        // Per WebIDL §4.3.10: [Replaceable] creates a setter that uses [[DefineOwnProperty]]
+        // to create an own property on the object, shadowing the inherited getter
         const extattr_mod = @import("extattr.zig");
         const put_forwards = extattr_mod.getPutForwards(attr.extAttrs);
+        const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
 
-        // Write setter: either forwarding setter for [PutForwards] or regular setter for non-readonly
+        // Write setter: [PutForwards] > [Replaceable] > regular non-readonly
         if (put_forwards) |forwarded_property| {
             // [PutForwards] setter - forwards assignment to property on the attribute's value
             const has_ce_reactions = hasExtendedAttribute(attr.extAttrs, "CEReactions");
@@ -2809,6 +2863,20 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("        // Use JavaScript [[Set]] semantics to set the forwarded property\n");
             try writer.writeAll("        // This respects prototype chain and user-defined setters\n");
             try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
+            try writer.writeAll("    }\n\n");
+        } else if (is_replaceable) {
+            // [Replaceable] setter - creates an own property on the object
+            // Per WebIDL §4.3.10: The setter steps are to perform ? [[DefineOwnProperty]]
+            // on this with the attribute's identifier as the property name and
+            // PropertyDescriptor{[[Value]]: V, [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true}.
+            try writeExtendedAttributesComment(writer, attr.extAttrs);
+
+            // [Replaceable] setter takes runtime.JSValue to accept any JavaScript value
+            try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {{\n", .{sanitized_name});
+            try writer.writeAll("        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]\n");
+            try writer.writeAll("        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,\n");
+            try writer.writeAll("        //                                     [[Enumerable]]: true, [[Configurable]]: true}\n");
+            try writer.print("        try runtime.defineOwnProperty(instance, \"{s}\", value);\n", .{attr.name});
             try writer.writeAll("    }\n\n");
         } else if (!attr.readonly) {
             // Regular setter for non-readonly attributes (no [PutForwards])

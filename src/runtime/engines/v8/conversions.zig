@@ -652,8 +652,26 @@ pub fn fromV8Value(
         if (v8.v8_Value_IsNullOrUndefined(value)) {
             return null;
         }
-        // Recursively convert the child type
+
         const ChildType = type_info.optional.child;
+
+        // Special handling for optional callback types (like EventHandler = ?EventHandlerNonNull)
+        // Per WebIDL spec, EventHandler treats non-function values as null, not as a type error.
+        // This is because EventHandler is nullable and non-callable objects convert to null.
+        // https://html.spec.whatwg.org/multipage/webappapis.html#eventhandler
+        const child_type_info = @typeInfo(ChildType);
+        if (child_type_info == .pointer) {
+            const pointer_child_info = @typeInfo(child_type_info.pointer.child);
+            if (pointer_child_info == .@"fn") {
+                // This is an optional callback (?*fn(...))
+                // If value is not a function, return null instead of erroring
+                if (!v8.v8_Value_IsFunction(value)) {
+                    return null;
+                }
+            }
+        }
+
+        // Recursively convert the child type
         return try fromV8Value(ChildType, allocator, isolate, context, value);
     }
 
