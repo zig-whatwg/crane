@@ -382,7 +382,9 @@ pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value
 
     // Use engine's setPropertyOnObject to set the property with [[Set]] semantics
     const setProperty = engine.setPropertyOnObject orelse return error.NoEngine;
-    try setProperty(engine_ctx, target_wrapper, property_name, value);
+    // Convert DOMString to slice for the engine interface
+    const value_slice = value.asSlice();
+    try setProperty(engine_ctx, target_wrapper, property_name, value_slice);
 }
 
 /// Define an own property on a runtime.Instance using JavaScript [[DefineOwnProperty]] semantics

@@ -148,15 +148,19 @@ pub fn deinit() void {
         intl_binding.deinitAllRegistries();
 
         // Deinit all owned runtime contexts
+        // Note: The order doesn't matter for cleanup because we skip onObjectFreed
+        // during teardown (is_tearing_down flag prevents nested calls).
         var it = state.contexts.valueIterator();
         while (it.next()) |entry| {
             if (entry.owns_context) {
                 var ctx_data = entry.runtime_ctx;
 
                 // Clean up V8 wrapper cache
+                // Note: During teardown, wrapper_cache.deinit() skips onObjectFreed
+                // to avoid use-after-free issues with cross-context references.
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                    cache_ptr.deinit();
+                    cache_ptr.deinitWithoutCallbacks();
                     ctx_data.getAllocator().destroy(cache_ptr);
                 }
 

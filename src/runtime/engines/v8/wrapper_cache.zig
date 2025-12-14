@@ -186,6 +186,39 @@ pub const WrapperCache = struct {
         self.cache.deinit();
     }
 
+    /// Clean up cache without calling onObjectFreed callbacks.
+    /// Used during context manager teardown to avoid use-after-free
+    /// when cleaning up cross-context references (e.g., iframe Windows).
+    ///
+    /// During normal operation, onObjectFreed is called to trigger
+    /// type-specific cleanup. During teardown, all instances will be
+    /// batch-freed anyway, so calling individual deinit functions
+    /// can cause crashes if they reference already-freed memory.
+    pub fn deinitWithoutCallbacks(self: *Self) void {
+        // Clear all weak callbacks first
+        {
+            var iter = self.cache.valueIterator();
+            while (iter.next()) |entry_ptr| {
+                const entry = entry_ptr.*;
+                v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
+            }
+        }
+
+        // Clean up entries WITHOUT calling onObjectFreed
+        var iter = self.cache.valueIterator();
+        while (iter.next()) |entry_ptr| {
+            const entry = entry_ptr.*;
+
+            // Dispose the Global<Object>* handle
+            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+
+            // Free the CacheEntry
+            self.allocator.destroy(entry);
+        }
+
+        self.cache.deinit();
+    }
+
     /// Get cached wrapper for an instance
     ///
     /// ## Parameters
