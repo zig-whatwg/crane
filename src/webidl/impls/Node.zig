@@ -970,6 +970,95 @@ pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
 // Tree Mutation Operations
 // =============================================================================
 
+/// Helper: Count element children of a node
+fn countElementChildren(node: *runtime.Instance) usize {
+    const internal = getInternal(node) orelse return 0;
+    var count: usize = 0;
+    var child = internal.first_child;
+    while (child) |c| {
+        const child_internal = getInternal(c) orelse break;
+        if (child_internal.node_type == NodeType.ELEMENT_NODE) {
+            count += 1;
+        }
+        child = child_internal.next_sibling;
+    }
+    return count;
+}
+
+/// Helper: Check if node has any Text child
+fn hasTextChild(node: *runtime.Instance) bool {
+    const internal = getInternal(node) orelse return false;
+    var child = internal.first_child;
+    while (child) |c| {
+        const child_internal = getInternal(c) orelse break;
+        if (child_internal.node_type == NodeType.TEXT_NODE) {
+            return true;
+        }
+        child = child_internal.next_sibling;
+    }
+    return false;
+}
+
+/// Helper: Check if parent has an element child
+fn hasElementChild(parent: *runtime.Instance) bool {
+    const internal = getInternal(parent) orelse return false;
+    var child = internal.first_child;
+    while (child) |c| {
+        const child_internal = getInternal(c) orelse break;
+        if (child_internal.node_type == NodeType.ELEMENT_NODE) {
+            return true;
+        }
+        child = child_internal.next_sibling;
+    }
+    return false;
+}
+
+/// Helper: Check if parent has a doctype child
+fn hasDoctypeChild(parent: *runtime.Instance) bool {
+    const internal = getInternal(parent) orelse return false;
+    var child = internal.first_child;
+    while (child) |c| {
+        const child_internal = getInternal(c) orelse break;
+        if (child_internal.node_type == NodeType.DOCUMENT_TYPE_NODE) {
+            return true;
+        }
+        child = child_internal.next_sibling;
+    }
+    return false;
+}
+
+/// Helper: Check if there's a doctype following the given child in parent
+fn isDoctypeFollowing(_: *runtime.Instance, reference_child: *runtime.Instance) bool {
+    const ref_internal = getInternal(reference_child) orelse return false;
+    var sibling = ref_internal.next_sibling;
+    while (sibling) |s| {
+        const sibling_internal = getInternal(s) orelse break;
+        if (sibling_internal.node_type == NodeType.DOCUMENT_TYPE_NODE) {
+            return true;
+        }
+        sibling = sibling_internal.next_sibling;
+    }
+    return false;
+}
+
+/// Helper: Check if there's an element preceding the given child in parent
+fn isElementPreceding(parent: *runtime.Instance, reference_child: *runtime.Instance) bool {
+    const parent_internal = getInternal(parent) orelse return false;
+    var child = parent_internal.first_child;
+    while (child) |c| {
+        if (c == reference_child) {
+            // We've reached the reference child, stop looking
+            return false;
+        }
+        const child_internal = getInternal(c) orelse break;
+        if (child_internal.node_type == NodeType.ELEMENT_NODE) {
+            return true;
+        }
+        child = child_internal.next_sibling;
+    }
+    return false;
+}
+
 /// Internal helper: Pre-insert validation
 /// https://dom.spec.whatwg.org/#concept-node-pre-insert
 fn preInsertValidation(parent: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) !void {
@@ -1009,7 +1098,53 @@ fn preInsertValidation(parent: *runtime.Instance, node: *runtime.Instance, child
         else => return error.HierarchyRequestError,
     }
 
-    // Additional Document-specific checks omitted for brevity
+    // 5. If node is a Text node and parent is a Document, or node is a DocumentType and parent is not a Document
+    if (node_internal.node_type == NodeType.TEXT_NODE and parent_internal.node_type == NodeType.DOCUMENT_NODE) {
+        return error.HierarchyRequestError;
+    }
+    if (node_internal.node_type == NodeType.DOCUMENT_TYPE_NODE and parent_internal.node_type != NodeType.DOCUMENT_NODE) {
+        return error.HierarchyRequestError;
+    }
+
+    // 6. If parent is a Document, perform additional validation
+    if (parent_internal.node_type == NodeType.DOCUMENT_NODE) {
+        if (node_internal.node_type == NodeType.DOCUMENT_FRAGMENT_NODE) {
+            // DocumentFragment: check element count and text children
+            const element_count = countElementChildren(node);
+            const has_text = hasTextChild(node);
+
+            // Fragment with more than one element child, or any text child
+            if (element_count > 1 or has_text) {
+                return error.HierarchyRequestError;
+            }
+
+            // Fragment with one element: check if document already has element or doctype follows
+            if (element_count == 1) {
+                if (hasElementChild(parent) or
+                    (child != null and isDoctypeFollowing(parent, child.?)) or
+                    (child != null and getInternal(child.?) != null and getInternal(child.?).?.node_type == NodeType.DOCUMENT_TYPE_NODE))
+                {
+                    return error.HierarchyRequestError;
+                }
+            }
+        } else if (node_internal.node_type == NodeType.ELEMENT_NODE) {
+            // Element: Document can only have one element child
+            if (hasElementChild(parent) or
+                (child != null and isDoctypeFollowing(parent, child.?)) or
+                (child != null and getInternal(child.?) != null and getInternal(child.?).?.node_type == NodeType.DOCUMENT_TYPE_NODE))
+            {
+                return error.HierarchyRequestError;
+            }
+        } else if (node_internal.node_type == NodeType.DOCUMENT_TYPE_NODE) {
+            // DocumentType: Document can only have one doctype, and it must come before any element
+            if (hasDoctypeChild(parent) or
+                (child != null and isElementPreceding(parent, child.?)) or
+                (child == null and hasElementChild(parent)))
+            {
+                return error.HierarchyRequestError;
+            }
+        }
+    }
 }
 
 /// Internal helper: Insert a node
