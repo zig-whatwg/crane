@@ -723,7 +723,18 @@ pub fn insert(
     // Step 7: For each node in nodes, in tree order:
     for (nodes[0..count]) |n| {
         // Step 7.1: Adopt node into parent's node document
-        try adopt(n, parent.owner_document.?);
+        // Per DOM spec, a Document's node document is itself (ownerDocument returns null but
+        // internally the document is its own node document for adoption purposes).
+        // For Document nodes, we skip adoption since the document owns itself.
+        if (parent.owner_document) |doc| {
+            try adopt(n, doc);
+        } else if (parent.node_type == DOCUMENT_NODE) {
+            // Parent is a Document - set node's owner_document to the parent (cast to Document)
+            // This is safe because Document has NodeBase as its first field
+            const doc: *interfaces.Document = @ptrCast(@alignCast(parent));
+            try adopt(n, doc);
+        }
+        // else: no owner document and not a document - shouldn't happen but skip adoption
 
         // Step 7.2-3: Insert node into parent's children
         // Phase 2: Maintain BOTH child_nodes list AND sibling pointers
