@@ -139,7 +139,7 @@ pub const Document = struct {
             .{ "namedFlows", "get_namedFlows", null },
             .{ "rootElement", "get_rootElement", null },
             .{ "activeViewTransition", "get_activeViewTransition", null },
-            .{ "location", "get_location", null },
+            .{ "location", "get_location", "set_location" },
             .{ "domain", "get_domain", "set_domain" },
             .{ "referrer", "get_referrer", null },
             .{ "cookie", "get_cookie", "set_cookie" },
@@ -295,6 +295,14 @@ pub const Document = struct {
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "location", "href" },
+        };
+        
+        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
+        /// Getters return undefined, setters silently return
+        pub const lenient_this_attributes = .{
+            "onreadystatechange",
+            "onmouseenter",
+            "onmouseleave",
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -497,7 +505,7 @@ pub const Document = struct {
             .{ "namedFlows", "get_namedFlows", null },
             .{ "rootElement", "get_rootElement", null },
             .{ "activeViewTransition", "get_activeViewTransition", null },
-            .{ "location", "get_location", null },
+            .{ "location", "get_location", "set_location" },
             .{ "domain", "get_domain", "set_domain" },
             .{ "referrer", "get_referrer", null },
             .{ "cookie", "get_cookie", "set_cookie" },

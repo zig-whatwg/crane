@@ -92,7 +92,7 @@ pub const HTMLOutputElement = struct {
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "htmlFor", "get_htmlFor", null },
+            .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "form", "get_form", null },
             .{ "name", "get_name", "set_name" },
             .{ "type", "get_type", null },
@@ -222,7 +222,7 @@ pub const HTMLOutputElement = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "htmlFor", "get_htmlFor", null },
+            .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
             .{ "form", "get_form", null },
             .{ "name", "get_name", "set_name" },
             .{ "type", "get_type", null },

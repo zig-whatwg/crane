@@ -115,61 +115,61 @@ pub const Window = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "window", "get_window", null },
-            .{ "self", "get_self", null },
+            .{ "self", "get_self", "set_self" },
             .{ "document", "get_document", null },
             .{ "name", "get_name", "set_name" },
-            .{ "location", "get_location", null },
+            .{ "location", "get_location", "set_location" },
             .{ "history", "get_history", null },
-            .{ "navigation", "get_navigation", null },
+            .{ "navigation", "get_navigation", "set_navigation" },
             .{ "customElements", "get_customElements", null },
-            .{ "locationbar", "get_locationbar", null },
-            .{ "menubar", "get_menubar", null },
-            .{ "personalbar", "get_personalbar", null },
-            .{ "scrollbars", "get_scrollbars", null },
-            .{ "statusbar", "get_statusbar", null },
-            .{ "toolbar", "get_toolbar", null },
+            .{ "locationbar", "get_locationbar", "set_locationbar" },
+            .{ "menubar", "get_menubar", "set_menubar" },
+            .{ "personalbar", "get_personalbar", "set_personalbar" },
+            .{ "scrollbars", "get_scrollbars", "set_scrollbars" },
+            .{ "statusbar", "get_statusbar", "set_statusbar" },
+            .{ "toolbar", "get_toolbar", "set_toolbar" },
             .{ "status", "get_status", "set_status" },
             .{ "closed", "get_closed", null },
-            .{ "frames", "get_frames", null },
-            .{ "length", "get_length", null },
+            .{ "frames", "get_frames", "set_frames" },
+            .{ "length", "get_length", "set_length" },
             .{ "top", "get_top", null },
             .{ "opener", "get_opener", "set_opener" },
-            .{ "parent", "get_parent", null },
+            .{ "parent", "get_parent", "set_parent" },
             .{ "frameElement", "get_frameElement", null },
             .{ "navigator", "get_navigator", null },
-            .{ "clientInformation", "get_clientInformation", null },
+            .{ "clientInformation", "get_clientInformation", "set_clientInformation" },
             .{ "originAgentCluster", "get_originAgentCluster", null },
             .{ "ondeviceorientation", "get_ondeviceorientation", "set_ondeviceorientation" },
             .{ "ondeviceorientationabsolute", "get_ondeviceorientationabsolute", "set_ondeviceorientationabsolute" },
             .{ "ondevicemotion", "get_ondevicemotion", "set_ondevicemotion" },
-            .{ "viewport", "get_viewport", null },
+            .{ "viewport", "get_viewport", "set_viewport" },
             .{ "cookieStore", "get_cookieStore", null },
             .{ "credentialless", "get_credentialless", null },
             .{ "speechSynthesis", "get_speechSynthesis", null },
             .{ "fence", "get_fence", null },
             .{ "documentPictureInPicture", "get_documentPictureInPicture", null },
-            .{ "event", "get_event", null },
+            .{ "event", "get_event", "set_event" },
             .{ "orientation", "get_orientation", null },
             .{ "onorientationchange", "get_onorientationchange", "set_onorientationchange" },
             .{ "sharedStorage", "get_sharedStorage", null },
             .{ "onappinstalled", "get_onappinstalled", "set_onappinstalled" },
             .{ "onbeforeinstallprompt", "get_onbeforeinstallprompt", "set_onbeforeinstallprompt" },
-            .{ "external", "get_external", null },
-            .{ "screen", "get_screen", null },
-            .{ "visualViewport", "get_visualViewport", null },
-            .{ "innerWidth", "get_innerWidth", null },
-            .{ "innerHeight", "get_innerHeight", null },
-            .{ "scrollX", "get_scrollX", null },
-            .{ "pageXOffset", "get_pageXOffset", null },
-            .{ "scrollY", "get_scrollY", null },
-            .{ "pageYOffset", "get_pageYOffset", null },
-            .{ "screenX", "get_screenX", null },
-            .{ "screenLeft", "get_screenLeft", null },
-            .{ "screenY", "get_screenY", null },
-            .{ "screenTop", "get_screenTop", null },
-            .{ "outerWidth", "get_outerWidth", null },
-            .{ "outerHeight", "get_outerHeight", null },
-            .{ "devicePixelRatio", "get_devicePixelRatio", null },
+            .{ "external", "get_external", "set_external" },
+            .{ "screen", "get_screen", "set_screen" },
+            .{ "visualViewport", "get_visualViewport", "set_visualViewport" },
+            .{ "innerWidth", "get_innerWidth", "set_innerWidth" },
+            .{ "innerHeight", "get_innerHeight", "set_innerHeight" },
+            .{ "scrollX", "get_scrollX", "set_scrollX" },
+            .{ "pageXOffset", "get_pageXOffset", "set_pageXOffset" },
+            .{ "scrollY", "get_scrollY", "set_scrollY" },
+            .{ "pageYOffset", "get_pageYOffset", "set_pageYOffset" },
+            .{ "screenX", "get_screenX", "set_screenX" },
+            .{ "screenLeft", "get_screenLeft", "set_screenLeft" },
+            .{ "screenY", "get_screenY", "set_screenY" },
+            .{ "screenTop", "get_screenTop", "set_screenTop" },
+            .{ "outerWidth", "get_outerWidth", "set_outerWidth" },
+            .{ "outerHeight", "get_outerHeight", "set_outerHeight" },
+            .{ "devicePixelRatio", "get_devicePixelRatio", "set_devicePixelRatio" },
             .{ "launchQueue", "get_launchQueue", null },
             .{ "portalHost", "get_portalHost", null },
             .{ "pushManager", "get_pushManager", null },
@@ -299,14 +299,14 @@ pub const Window = struct {
             .{ "ongamepadconnected", "get_ongamepadconnected", "set_ongamepadconnected" },
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
-            .{ "origin", "get_origin", null },
+            .{ "origin", "get_origin", "set_origin" },
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "trustedTypes", "get_trustedTypes", null },
-            .{ "performance", "get_performance", null },
+            .{ "performance", "get_performance", "set_performance" },
             .{ "caches", "get_caches", null },
-            .{ "scheduler", "get_scheduler", null },
+            .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
             .{ "sessionStorage", "get_sessionStorage", null },
             .{ "localStorage", "get_localStorage", null },
@@ -316,6 +316,13 @@ pub const Window = struct {
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "location", "href" },
+        };
+        
+        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
+        /// Getters return undefined, setters silently return
+        pub const lenient_this_attributes = .{
+            "onmouseenter",
+            "onmouseleave",
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -439,61 +446,61 @@ pub const Window = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "window", "get_window", null },
-            .{ "self", "get_self", null },
+            .{ "self", "get_self", "set_self" },
             .{ "document", "get_document", null },
             .{ "name", "get_name", "set_name" },
-            .{ "location", "get_location", null },
+            .{ "location", "get_location", "set_location" },
             .{ "history", "get_history", null },
-            .{ "navigation", "get_navigation", null },
+            .{ "navigation", "get_navigation", "set_navigation" },
             .{ "customElements", "get_customElements", null },
-            .{ "locationbar", "get_locationbar", null },
-            .{ "menubar", "get_menubar", null },
-            .{ "personalbar", "get_personalbar", null },
-            .{ "scrollbars", "get_scrollbars", null },
-            .{ "statusbar", "get_statusbar", null },
-            .{ "toolbar", "get_toolbar", null },
+            .{ "locationbar", "get_locationbar", "set_locationbar" },
+            .{ "menubar", "get_menubar", "set_menubar" },
+            .{ "personalbar", "get_personalbar", "set_personalbar" },
+            .{ "scrollbars", "get_scrollbars", "set_scrollbars" },
+            .{ "statusbar", "get_statusbar", "set_statusbar" },
+            .{ "toolbar", "get_toolbar", "set_toolbar" },
             .{ "status", "get_status", "set_status" },
             .{ "closed", "get_closed", null },
-            .{ "frames", "get_frames", null },
-            .{ "length", "get_length", null },
+            .{ "frames", "get_frames", "set_frames" },
+            .{ "length", "get_length", "set_length" },
             .{ "top", "get_top", null },
             .{ "opener", "get_opener", "set_opener" },
-            .{ "parent", "get_parent", null },
+            .{ "parent", "get_parent", "set_parent" },
             .{ "frameElement", "get_frameElement", null },
             .{ "navigator", "get_navigator", null },
-            .{ "clientInformation", "get_clientInformation", null },
+            .{ "clientInformation", "get_clientInformation", "set_clientInformation" },
             .{ "originAgentCluster", "get_originAgentCluster", null },
             .{ "ondeviceorientation", "get_ondeviceorientation", "set_ondeviceorientation" },
             .{ "ondeviceorientationabsolute", "get_ondeviceorientationabsolute", "set_ondeviceorientationabsolute" },
             .{ "ondevicemotion", "get_ondevicemotion", "set_ondevicemotion" },
-            .{ "viewport", "get_viewport", null },
+            .{ "viewport", "get_viewport", "set_viewport" },
             .{ "cookieStore", "get_cookieStore", null },
             .{ "credentialless", "get_credentialless", null },
             .{ "speechSynthesis", "get_speechSynthesis", null },
             .{ "fence", "get_fence", null },
             .{ "documentPictureInPicture", "get_documentPictureInPicture", null },
-            .{ "event", "get_event", null },
+            .{ "event", "get_event", "set_event" },
             .{ "orientation", "get_orientation", null },
             .{ "onorientationchange", "get_onorientationchange", "set_onorientationchange" },
             .{ "sharedStorage", "get_sharedStorage", null },
             .{ "onappinstalled", "get_onappinstalled", "set_onappinstalled" },
             .{ "onbeforeinstallprompt", "get_onbeforeinstallprompt", "set_onbeforeinstallprompt" },
-            .{ "external", "get_external", null },
-            .{ "screen", "get_screen", null },
-            .{ "visualViewport", "get_visualViewport", null },
-            .{ "innerWidth", "get_innerWidth", null },
-            .{ "innerHeight", "get_innerHeight", null },
-            .{ "scrollX", "get_scrollX", null },
-            .{ "pageXOffset", "get_pageXOffset", null },
-            .{ "scrollY", "get_scrollY", null },
-            .{ "pageYOffset", "get_pageYOffset", null },
-            .{ "screenX", "get_screenX", null },
-            .{ "screenLeft", "get_screenLeft", null },
-            .{ "screenY", "get_screenY", null },
-            .{ "screenTop", "get_screenTop", null },
-            .{ "outerWidth", "get_outerWidth", null },
-            .{ "outerHeight", "get_outerHeight", null },
-            .{ "devicePixelRatio", "get_devicePixelRatio", null },
+            .{ "external", "get_external", "set_external" },
+            .{ "screen", "get_screen", "set_screen" },
+            .{ "visualViewport", "get_visualViewport", "set_visualViewport" },
+            .{ "innerWidth", "get_innerWidth", "set_innerWidth" },
+            .{ "innerHeight", "get_innerHeight", "set_innerHeight" },
+            .{ "scrollX", "get_scrollX", "set_scrollX" },
+            .{ "pageXOffset", "get_pageXOffset", "set_pageXOffset" },
+            .{ "scrollY", "get_scrollY", "set_scrollY" },
+            .{ "pageYOffset", "get_pageYOffset", "set_pageYOffset" },
+            .{ "screenX", "get_screenX", "set_screenX" },
+            .{ "screenLeft", "get_screenLeft", "set_screenLeft" },
+            .{ "screenY", "get_screenY", "set_screenY" },
+            .{ "screenTop", "get_screenTop", "set_screenTop" },
+            .{ "outerWidth", "get_outerWidth", "set_outerWidth" },
+            .{ "outerHeight", "get_outerHeight", "set_outerHeight" },
+            .{ "devicePixelRatio", "get_devicePixelRatio", "set_devicePixelRatio" },
             .{ "launchQueue", "get_launchQueue", null },
             .{ "portalHost", "get_portalHost", null },
             .{ "pushManager", "get_pushManager", null },
@@ -623,14 +630,14 @@ pub const Window = struct {
             .{ "ongamepadconnected", "get_ongamepadconnected", "set_ongamepadconnected" },
             .{ "ongamepaddisconnected", "get_ongamepaddisconnected", "set_ongamepaddisconnected" },
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
-            .{ "origin", "get_origin", null },
+            .{ "origin", "get_origin", "set_origin" },
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "trustedTypes", "get_trustedTypes", null },
-            .{ "performance", "get_performance", null },
+            .{ "performance", "get_performance", "set_performance" },
             .{ "caches", "get_caches", null },
-            .{ "scheduler", "get_scheduler", null },
+            .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
             .{ "sessionStorage", "get_sessionStorage", null },
             .{ "localStorage", "get_localStorage", null },
@@ -1059,7 +1066,18 @@ pub const Window = struct {
         .get_visualViewport = &get_visualViewport,
         .get_window = &get_window,
 
+        .set_clientInformation = &set_clientInformation,
+        .set_devicePixelRatio = &set_devicePixelRatio,
+        .set_event = &set_event,
+        .set_external = &set_external,
+        .set_frames = &set_frames,
+        .set_innerHeight = &set_innerHeight,
+        .set_innerWidth = &set_innerWidth,
+        .set_length = &set_length,
+        .set_locationbar = &set_locationbar,
+        .set_menubar = &set_menubar,
         .set_name = &set_name,
+        .set_navigation = &set_navigation,
         .set_onabort = &set_onabort,
         .set_onafterprint = &set_onafterprint,
         .set_onanimationcancel = &set_onanimationcancel,
@@ -1193,7 +1211,29 @@ pub const Window = struct {
         .set_onwebkittransitionend = &set_onwebkittransitionend,
         .set_onwheel = &set_onwheel,
         .set_opener = &set_opener,
+        .set_origin = &set_origin,
+        .set_outerHeight = &set_outerHeight,
+        .set_outerWidth = &set_outerWidth,
+        .set_pageXOffset = &set_pageXOffset,
+        .set_pageYOffset = &set_pageYOffset,
+        .set_parent = &set_parent,
+        .set_performance = &set_performance,
+        .set_personalbar = &set_personalbar,
+        .set_scheduler = &set_scheduler,
+        .set_screen = &set_screen,
+        .set_screenLeft = &set_screenLeft,
+        .set_screenTop = &set_screenTop,
+        .set_screenX = &set_screenX,
+        .set_screenY = &set_screenY,
+        .set_scrollX = &set_scrollX,
+        .set_scrollY = &set_scrollY,
+        .set_scrollbars = &set_scrollbars,
+        .set_self = &set_self,
         .set_status = &set_status,
+        .set_statusbar = &set_statusbar,
+        .set_toolbar = &set_toolbar,
+        .set_viewport = &set_viewport,
+        .set_visualViewport = &set_visualViewport,
 
         .call_alert = &call_alert,
         .call_atob = &call_atob,
@@ -1276,6 +1316,14 @@ pub const Window = struct {
         return try WindowImpl.get_self(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_self(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "self", value);
+    }
+
     /// Extended attributes: [LegacyUnforgeable]
     pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_document(instance);
@@ -1314,6 +1362,14 @@ pub const Window = struct {
         return try WindowImpl.get_navigation(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_navigation(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "navigation", value);
+    }
+
     pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_customElements(instance);
     }
@@ -1324,8 +1380,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_locationbar(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "locationbar", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_menubar(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_menubar(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_menubar(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "menubar", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1334,8 +1406,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_personalbar(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "personalbar", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_scrollbars(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_scrollbars(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_scrollbars(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "scrollbars", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1344,8 +1432,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_statusbar(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "statusbar", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_toolbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_toolbar(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_toolbar(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "toolbar", value);
     }
 
     pub fn get_status(instance: *runtime.Instance) anyerror!DOMString {
@@ -1366,8 +1470,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_frames(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "frames", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try WindowImpl.get_length(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_length(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "length", value);
     }
 
     /// Extended attributes: [LegacyUnforgeable]
@@ -1388,6 +1508,14 @@ pub const Window = struct {
         return try WindowImpl.get_parent(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_parent(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "parent", value);
+    }
+
     pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WindowImpl.get_frameElement(instance);
     }
@@ -1399,6 +1527,14 @@ pub const Window = struct {
     /// Extended attributes: [Replaceable]
     pub fn get_clientInformation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_clientInformation(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_clientInformation(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "clientInformation", value);
     }
 
     pub fn get_originAgentCluster(instance: *runtime.Instance) anyerror!bool {
@@ -1445,6 +1581,14 @@ pub const Window = struct {
         const value = try WindowImpl.get_viewport(instance);
         state.own.cached_viewport = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [Replaceable]
+    pub fn set_viewport(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "viewport", value);
     }
 
     /// Extended attributes: [SameObject]
@@ -1496,6 +1640,14 @@ pub const Window = struct {
         return try WindowImpl.get_event(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_event(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "event", value);
+    }
+
     pub fn get_orientation(instance: *runtime.Instance) anyerror!i16 {
         return try WindowImpl.get_orientation(instance);
     }
@@ -1541,6 +1693,14 @@ pub const Window = struct {
         return value;
     }
 
+    /// Extended attributes: [Replaceable], [SameObject]
+    pub fn set_external(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "external", value);
+    }
+
     /// Extended attributes: [SameObject], [Replaceable]
     pub fn get_screen(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -1551,6 +1711,14 @@ pub const Window = struct {
         const value = try WindowImpl.get_screen(instance);
         state.own.cached_screen = value;
         return value;
+    }
+
+    /// Extended attributes: [SameObject], [Replaceable]
+    pub fn set_screen(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "screen", value);
     }
 
     /// Extended attributes: [SameObject], [Replaceable]
@@ -1565,9 +1733,25 @@ pub const Window = struct {
         return value;
     }
 
+    /// Extended attributes: [SameObject], [Replaceable]
+    pub fn set_visualViewport(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "visualViewport", value);
+    }
+
     /// Extended attributes: [Replaceable]
     pub fn get_innerWidth(instance: *runtime.Instance) anyerror!i32 {
         return try WindowImpl.get_innerWidth(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_innerWidth(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "innerWidth", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1576,8 +1760,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_innerHeight(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "innerHeight", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_scrollX(instance: *runtime.Instance) anyerror!f64 {
         return try WindowImpl.get_scrollX(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_scrollX(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "scrollX", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1586,8 +1786,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_pageXOffset(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "pageXOffset", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_scrollY(instance: *runtime.Instance) anyerror!f64 {
         return try WindowImpl.get_scrollY(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_scrollY(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "scrollY", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1596,8 +1812,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_pageYOffset(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "pageYOffset", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_screenX(instance: *runtime.Instance) anyerror!i32 {
         return try WindowImpl.get_screenX(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_screenX(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "screenX", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1606,8 +1838,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_screenLeft(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "screenLeft", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_screenY(instance: *runtime.Instance) anyerror!i32 {
         return try WindowImpl.get_screenY(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_screenY(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "screenY", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1616,8 +1864,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_screenTop(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "screenTop", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_outerWidth(instance: *runtime.Instance) anyerror!i32 {
         return try WindowImpl.get_outerWidth(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_outerWidth(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "outerWidth", value);
     }
 
     /// Extended attributes: [Replaceable]
@@ -1626,8 +1890,24 @@ pub const Window = struct {
     }
 
     /// Extended attributes: [Replaceable]
+    pub fn set_outerHeight(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "outerHeight", value);
+    }
+
+    /// Extended attributes: [Replaceable]
     pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
         return try WindowImpl.get_devicePixelRatio(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_devicePixelRatio(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "devicePixelRatio", value);
     }
 
     pub fn get_launchQueue(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -2661,6 +2941,14 @@ pub const Window = struct {
         return try WindowImpl.get_origin(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_origin(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "origin", value);
+    }
+
     pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
         return try WindowImpl.get_isSecureContext(instance);
     }
@@ -2690,6 +2978,14 @@ pub const Window = struct {
         return try WindowImpl.get_performance(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_performance(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "performance", value);
+    }
+
     /// Extended attributes: [SecureContext], [SameObject]
     pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -2705,6 +3001,14 @@ pub const Window = struct {
     /// Extended attributes: [Replaceable]
     pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowImpl.get_scheduler(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_scheduler(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "scheduler", value);
     }
 
     /// Extended attributes: [SameObject]

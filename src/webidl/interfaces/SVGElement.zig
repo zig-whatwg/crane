@@ -100,7 +100,7 @@ pub const SVGElement = struct {
             .{ "className", "get_className", null },
             .{ "ownerSVGElement", "get_ownerSVGElement", null },
             .{ "viewportElement", "get_viewportElement", null },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },
@@ -222,6 +222,13 @@ pub const SVGElement = struct {
             .{ "style", "cssText" },
         };
         
+        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
+        /// Getters return undefined, setters silently return
+        pub const lenient_this_attributes = .{
+            "onmouseenter",
+            "onmouseleave",
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "focus", "call_focus", 0 },
@@ -328,7 +335,7 @@ pub const SVGElement = struct {
             .{ "className", "get_className", null },
             .{ "ownerSVGElement", "get_ownerSVGElement", null },
             .{ "viewportElement", "get_viewportElement", null },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },

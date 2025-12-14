@@ -58,7 +58,7 @@ pub const SharedWorkerGlobalScope = struct {
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "name", "get_name", null },
+            .{ "name", "get_name", "set_name" },
             .{ "onconnect", "get_onconnect", "set_onconnect" },
         };
         
@@ -95,7 +95,7 @@ pub const SharedWorkerGlobalScope = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "name", "get_name", null },
+            .{ "name", "get_name", "set_name" },
             .{ "onconnect", "get_onconnect", "set_onconnect" },
         };
         
@@ -121,6 +121,7 @@ pub const SharedWorkerGlobalScope = struct {
         .get_name = &get_name,
         .get_onconnect = &get_onconnect,
 
+        .set_name = &set_name,
         .set_onconnect = &set_onconnect,
 
         .call_close = &call_close,
@@ -153,6 +154,14 @@ pub const SharedWorkerGlobalScope = struct {
     /// Extended attributes: [Replaceable]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try SharedWorkerGlobalScopeImpl.get_name(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_name(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "name", value);
     }
 
     pub fn get_onconnect(instance: *runtime.Instance) anyerror!EventHandler {

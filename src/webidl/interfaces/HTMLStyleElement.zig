@@ -97,7 +97,7 @@ pub const HTMLStyleElement = struct {
         pub const properties = .{
             .{ "disabled", "get_disabled", "set_disabled" },
             .{ "media", "get_media", "set_media" },
-            .{ "blocking", "get_blocking", null },
+            .{ "blocking", "get_blocking", "set_blocking" },
             .{ "type", "get_type", "set_type" },
             .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
@@ -217,7 +217,7 @@ pub const HTMLStyleElement = struct {
         pub const eager_properties = .{
             .{ "disabled", "get_disabled", "set_disabled" },
             .{ "media", "get_media", "set_media" },
-            .{ "blocking", "get_blocking", null },
+            .{ "blocking", "get_blocking", "set_blocking" },
             .{ "type", "get_type", "set_type" },
             .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },

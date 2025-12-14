@@ -123,7 +123,7 @@ pub const HTMLElement = struct {
             .{ "offsetLeft", "get_offsetLeft", null },
             .{ "offsetWidth", "get_offsetWidth", null },
             .{ "offsetHeight", "get_offsetHeight", null },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },
@@ -246,6 +246,13 @@ pub const HTMLElement = struct {
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
             .{ "style", "cssText" },
+        };
+        
+        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
+        /// Getters return undefined, setters silently return
+        pub const lenient_this_attributes = .{
+            "onmouseenter",
+            "onmouseleave",
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -372,7 +379,7 @@ pub const HTMLElement = struct {
             .{ "headingReset", "get_headingReset", "set_headingReset" },
             .{ "editContext", "get_editContext", "set_editContext" },
             .{ "scrollParent", "get_scrollParent", null },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },

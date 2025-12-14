@@ -23,7 +23,7 @@ pub const ElementCSSInlineStyle = struct {
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
         };
@@ -48,7 +48,7 @@ pub const ElementCSSInlineStyle = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
         };

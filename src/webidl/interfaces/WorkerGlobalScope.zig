@@ -72,14 +72,14 @@ pub const WorkerGlobalScope = struct {
             .{ "onrejectionhandled", "get_onrejectionhandled", "set_onrejectionhandled" },
             .{ "onunhandledrejection", "get_onunhandledrejection", "set_onunhandledrejection" },
             .{ "fonts", "get_fonts", null },
-            .{ "origin", "get_origin", null },
+            .{ "origin", "get_origin", "set_origin" },
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "trustedTypes", "get_trustedTypes", null },
-            .{ "performance", "get_performance", null },
+            .{ "performance", "get_performance", "set_performance" },
             .{ "caches", "get_caches", null },
-            .{ "scheduler", "get_scheduler", null },
+            .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
         };
         
@@ -137,14 +137,14 @@ pub const WorkerGlobalScope = struct {
             .{ "onrejectionhandled", "get_onrejectionhandled", "set_onrejectionhandled" },
             .{ "onunhandledrejection", "get_onunhandledrejection", "set_onunhandledrejection" },
             .{ "fonts", "get_fonts", null },
-            .{ "origin", "get_origin", null },
+            .{ "origin", "get_origin", "set_origin" },
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "trustedTypes", "get_trustedTypes", null },
-            .{ "performance", "get_performance", null },
+            .{ "performance", "get_performance", "set_performance" },
             .{ "caches", "get_caches", null },
-            .{ "scheduler", "get_scheduler", null },
+            .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
         };
         
@@ -213,6 +213,9 @@ pub const WorkerGlobalScope = struct {
         .set_ononline = &set_ononline,
         .set_onrejectionhandled = &set_onrejectionhandled,
         .set_onunhandledrejection = &set_onunhandledrejection,
+        .set_origin = &set_origin,
+        .set_performance = &set_performance,
+        .set_scheduler = &set_scheduler,
 
         .call_atob = &call_atob,
         .call_btoa = &call_btoa,
@@ -321,6 +324,14 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.get_origin(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_origin(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "origin", value);
+    }
+
     pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
         return try WorkerGlobalScopeImpl.get_isSecureContext(instance);
     }
@@ -350,6 +361,14 @@ pub const WorkerGlobalScope = struct {
         return try WorkerGlobalScopeImpl.get_performance(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_performance(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "performance", value);
+    }
+
     /// Extended attributes: [SecureContext], [SameObject]
     pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -365,6 +384,14 @@ pub const WorkerGlobalScope = struct {
     /// Extended attributes: [Replaceable]
     pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_scheduler(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_scheduler(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "scheduler", value);
     }
 
     /// Extended attributes: [SameObject]

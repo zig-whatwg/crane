@@ -33,7 +33,7 @@ pub const CSSImportRule = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "href", "get_href", null },
-            .{ "media", "get_media", null },
+            .{ "media", "get_media", "set_media" },
             .{ "styleSheet", "get_styleSheet", null },
             .{ "layerName", "get_layerName", null },
             .{ "supportsText", "get_supportsText", null },
@@ -63,7 +63,7 @@ pub const CSSImportRule = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "href", "get_href", null },
-            .{ "media", "get_media", null },
+            .{ "media", "get_media", "set_media" },
             .{ "styleSheet", "get_styleSheet", null },
             .{ "layerName", "get_layerName", null },
             .{ "supportsText", "get_supportsText", null },

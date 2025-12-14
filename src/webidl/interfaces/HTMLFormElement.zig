@@ -104,7 +104,7 @@ pub const HTMLFormElement = struct {
             .{ "noValidate", "get_noValidate", "set_noValidate" },
             .{ "target", "get_target", "set_target" },
             .{ "rel", "get_rel", "set_rel" },
-            .{ "relList", "get_relList", null },
+            .{ "relList", "get_relList", "set_relList" },
             .{ "elements", "get_elements", null },
             .{ "length", "get_length", null },
         };
@@ -241,7 +241,7 @@ pub const HTMLFormElement = struct {
             .{ "noValidate", "get_noValidate", "set_noValidate" },
             .{ "target", "get_target", "set_target" },
             .{ "rel", "get_rel", "set_rel" },
-            .{ "relList", "get_relList", null },
+            .{ "relList", "get_relList", "set_relList" },
             .{ "elements", "get_elements", null },
             .{ "length", "get_length", null },
         };

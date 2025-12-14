@@ -129,6 +129,13 @@ pub const GlobalEventHandlers = struct {
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
         
+        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
+        /// Getters return undefined, setters silently return
+        pub const lenient_this_attributes = .{
+            "onmouseenter",
+            "onmouseleave",
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };

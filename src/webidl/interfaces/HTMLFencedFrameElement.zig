@@ -94,7 +94,7 @@ pub const HTMLFencedFrameElement = struct {
             .{ "config", "get_config", "set_config" },
             .{ "width", "get_width", "set_width" },
             .{ "height", "get_height", "set_height" },
-            .{ "sandbox", "get_sandbox", null },
+            .{ "sandbox", "get_sandbox", "set_sandbox" },
             .{ "allow", "get_allow", "set_allow" },
         };
         
@@ -213,7 +213,7 @@ pub const HTMLFencedFrameElement = struct {
             .{ "config", "get_config", "set_config" },
             .{ "width", "get_width", "set_width" },
             .{ "height", "get_height", "set_height" },
-            .{ "sandbox", "get_sandbox", null },
+            .{ "sandbox", "get_sandbox", "set_sandbox" },
             .{ "allow", "get_allow", "set_allow" },
         };
         

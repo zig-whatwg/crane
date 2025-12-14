@@ -31,7 +31,7 @@ pub const CSSFunctionDeclarations = struct {
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -54,7 +54,7 @@ pub const CSSFunctionDeclarations = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties

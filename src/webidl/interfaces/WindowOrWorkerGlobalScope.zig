@@ -38,14 +38,14 @@ pub const WindowOrWorkerGlobalScope = struct {
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "origin", "get_origin", null },
+            .{ "origin", "get_origin", "set_origin" },
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "trustedTypes", "get_trustedTypes", null },
-            .{ "performance", "get_performance", null },
+            .{ "performance", "get_performance", "set_performance" },
             .{ "caches", "get_caches", null },
-            .{ "scheduler", "get_scheduler", null },
+            .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
         };
         
@@ -87,14 +87,14 @@ pub const WindowOrWorkerGlobalScope = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "origin", "get_origin", null },
+            .{ "origin", "get_origin", "set_origin" },
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
             .{ "trustedTypes", "get_trustedTypes", null },
-            .{ "performance", "get_performance", null },
+            .{ "performance", "get_performance", "set_performance" },
             .{ "caches", "get_caches", null },
-            .{ "scheduler", "get_scheduler", null },
+            .{ "scheduler", "get_scheduler", "set_scheduler" },
             .{ "crypto", "get_crypto", null },
         };
         
@@ -136,6 +136,10 @@ pub const WindowOrWorkerGlobalScope = struct {
         .get_performance = &get_performance,
         .get_scheduler = &get_scheduler,
         .get_trustedTypes = &get_trustedTypes,
+
+        .set_origin = &set_origin,
+        .set_performance = &set_performance,
+        .set_scheduler = &set_scheduler,
 
         .call_atob = &call_atob,
         .call_btoa = &call_btoa,
@@ -179,6 +183,14 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.get_origin(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_origin(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "origin", value);
+    }
+
     pub fn get_isSecureContext(instance: *runtime.Instance) anyerror!bool {
         return try WindowOrWorkerGlobalScopeImpl.get_isSecureContext(instance);
     }
@@ -208,6 +220,14 @@ pub const WindowOrWorkerGlobalScope = struct {
         return try WindowOrWorkerGlobalScopeImpl.get_performance(instance);
     }
 
+    /// Extended attributes: [Replaceable]
+    pub fn set_performance(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "performance", value);
+    }
+
     /// Extended attributes: [SecureContext], [SameObject]
     pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -223,6 +243,14 @@ pub const WindowOrWorkerGlobalScope = struct {
     /// Extended attributes: [Replaceable]
     pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowOrWorkerGlobalScopeImpl.get_scheduler(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_scheduler(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "scheduler", value);
     }
 
     /// Extended attributes: [SameObject]

@@ -32,7 +32,7 @@ pub const CSSMarginRule = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "name", "get_name", null },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -56,7 +56,7 @@ pub const CSSMarginRule = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "name", "get_name", null },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties

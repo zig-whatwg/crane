@@ -35,7 +35,7 @@ pub const CSSPageRule = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", null },
         };
@@ -63,7 +63,7 @@ pub const CSSPageRule = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
-            .{ "style", "get_style", null },
+            .{ "style", "get_style", "set_style" },
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", null },
         };

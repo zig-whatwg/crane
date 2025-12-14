@@ -33,7 +33,7 @@ pub const CSSMediaRule = struct {
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "media", "get_media", null },
+            .{ "media", "get_media", "set_media" },
             .{ "matches", "get_matches", null },
             .{ "media", "get_media", null },
             .{ "cssRules", "get_cssRules", null },
@@ -63,7 +63,7 @@ pub const CSSMediaRule = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "media", "get_media", null },
+            .{ "media", "get_media", "set_media" },
             .{ "matches", "get_matches", null },
             .{ "media", "get_media", null },
             .{ "cssRules", "get_cssRules", null },

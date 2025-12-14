@@ -64,7 +64,7 @@ pub const DedicatedWorkerGlobalScope = struct {
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "name", "get_name", null },
+            .{ "name", "get_name", "set_name" },
             .{ "onrtctransform", "get_onrtctransform", "set_onrtctransform" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
@@ -111,7 +111,7 @@ pub const DedicatedWorkerGlobalScope = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "name", "get_name", null },
+            .{ "name", "get_name", "set_name" },
             .{ "onrtctransform", "get_onrtctransform", "set_onrtctransform" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
@@ -143,6 +143,7 @@ pub const DedicatedWorkerGlobalScope = struct {
         .get_onmessageerror = &get_onmessageerror,
         .get_onrtctransform = &get_onrtctransform,
 
+        .set_name = &set_name,
         .set_onmessage = &set_onmessage,
         .set_onmessageerror = &set_onmessageerror,
         .set_onrtctransform = &set_onrtctransform,
@@ -180,6 +181,14 @@ pub const DedicatedWorkerGlobalScope = struct {
     /// Extended attributes: [Replaceable]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try DedicatedWorkerGlobalScopeImpl.get_name(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_name(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "name", value);
     }
 
     pub fn get_onrtctransform(instance: *runtime.Instance) anyerror!EventHandler {
