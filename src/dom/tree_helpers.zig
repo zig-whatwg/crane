@@ -11,7 +11,12 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 
-// Import DOM types from WebIDL interfaces
+// Import DOM types
+// NodeBase is the single source of truth for tree structure per unified DOM tree model
+const node_base = @import("node_base.zig");
+pub const NodeBase = node_base.NodeBase;
+
+// Import WebIDL interfaces for type checking/compatibility
 const interfaces = @import("interfaces");
 pub const Node = interfaces.Node;
 pub const Element = interfaces.Element;
@@ -709,12 +714,12 @@ pub fn isShadowIncludingInclusiveAncestor(nodeA: anytype, nodeB: anytype) bool {
 /// Returns a list that the caller must deinit.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-tree-order
-pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: anytype) !infra.List(*Node) {
-    var result = infra.List(*Node).init(allocator);
+pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: *NodeBase) !infra.List(*NodeBase) {
+    var result = infra.List(*NodeBase).init(allocator);
     errdefer result.deinit();
 
     // Add root first (inclusive)
-    try result.append(@constCast(root));
+    try result.append(root);
 
     // Recursively collect shadow-including descendants
     try collectShadowIncludingDescendants(&result, root);
@@ -723,31 +728,19 @@ pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: anytyp
 }
 
 /// Helper: Recursively collect shadow-including descendants in tree order
-fn collectShadowIncludingDescendants(result: *infra.List(*Node), node: *const Node) !void {
-    // Visit each child in order
-    var i: usize = 0;
-    while (i < node.child_nodes.len) : (i += 1) {
-        const child = node.child_nodes.get(i).?;
-
+fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *const NodeBase) !void {
+    // Visit each child in order using NodeBase's child_nodes
+    for (node.child_nodes.items()) |child| {
         // Add the child
         try result.append(child);
 
         // Per spec: If child is a shadow host, traverse its shadow tree immediately
         // after adding the child, before traversing the child's own children
         // Check if child is an Element (node_type == 1) with a shadow root
-        if (child.node_type == Node.ELEMENT_NODE) {
-            const element = @as(*Element, @ptrCast(@alignCast(child)));
-            if (element.shadow_root) |shadow| {
-                // Traverse the shadow tree
-                const shadow_node: *const Node = @ptrCast(@alignCast(shadow));
-
-                // Add shadow root itself
-                try result.append(@constCast(shadow_node));
-
-                // Recursively traverse shadow root's descendants
-                try collectShadowIncludingDescendants(result, shadow_node);
-            }
-        }
+        // TODO: Shadow DOM integration - check for shadow root when implemented
+        // if (child.node_type == NodeBase.ELEMENT_NODE) {
+        //     // Check for shadow root and traverse if present
+        // }
 
         // After shadow tree (if any), recursively traverse child's light DOM descendants
         try collectShadowIncludingDescendants(result, child);
@@ -755,8 +748,8 @@ fn collectShadowIncludingDescendants(result: *infra.List(*Node), node: *const No
 }
 
 /// Get all shadow-including descendants (not including root) in shadow-including tree order
-pub fn getShadowIncludingDescendants(allocator: Allocator, root: anytype) !infra.List(*Node) {
-    var result = infra.List(*Node).init(allocator);
+pub fn getShadowIncludingDescendants(allocator: Allocator, root: *NodeBase) !infra.List(*NodeBase) {
+    var result = infra.List(*NodeBase).init(allocator);
     errdefer result.deinit();
 
     // Don't add root, just collect its shadow-including descendants

@@ -4,26 +4,39 @@
 //!
 //! This module implements the complete set of mutation algorithms for DOM node trees.
 //! All algorithms follow the WHATWG DOM specification precisely.
+//!
+//! ARCHITECTURE: This module operates on NodeBase - the single source of truth for
+//! DOM tree structure. WebIDL impls delegate all tree operations here.
 
 const std = @import("std");
 const infra = @import("infra");
 
-// Import DOM types from WebIDL interfaces
-const interfaces = @import("interfaces");
-const Node = interfaces.Node;
-const NodeList = interfaces.NodeList;
-const Document = interfaces.Document;
-const DocumentFragment = interfaces.DocumentFragment;
-const Element = interfaces.Element;
-const DocumentType = interfaces.DocumentType;
-const CharacterData = interfaces.CharacterData;
-const Text = interfaces.Text;
+// NodeBase is THE source of truth for DOM tree structure
+const node_base = @import("node_base.zig");
+const NodeBase = node_base.NodeBase;
+
+// Node type constants from NodeBase
+const ELEMENT_NODE = NodeBase.ELEMENT_NODE;
+const ATTRIBUTE_NODE = NodeBase.ATTRIBUTE_NODE;
+const TEXT_NODE = NodeBase.TEXT_NODE;
+const CDATA_SECTION_NODE = NodeBase.CDATA_SECTION_NODE;
+const PROCESSING_INSTRUCTION_NODE = NodeBase.PROCESSING_INSTRUCTION_NODE;
+const COMMENT_NODE = NodeBase.COMMENT_NODE;
+const DOCUMENT_NODE = NodeBase.DOCUMENT_NODE;
+const DOCUMENT_TYPE_NODE = NodeBase.DOCUMENT_TYPE_NODE;
+const DOCUMENT_FRAGMENT_NODE = NodeBase.DOCUMENT_FRAGMENT_NODE;
 
 // Local DOM modules
 const RegisteredObserver = @import("registered_observer.zig").RegisteredObserver;
 const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 const mutation_observer = @import("mutation_observer_algorithms.zig");
+const document_internals = @import("document_internals.zig");
+
+// Interface types needed for mutation observer integration
+const interfaces = @import("interfaces");
+const NodeList = interfaces.NodeList;
+const Document = interfaces.Document;
 
 /// DOM Exception types as defined in WebIDL
 pub const DOMException = error{
@@ -46,7 +59,7 @@ pub const DOMException = error{
 ///   - Custom element reactions
 ///
 /// This is an extension point for specifications to hook into DOM mutations.
-pub const ChildrenChangedCallback = *const fn (parent: *Node) void;
+pub const ChildrenChangedCallback = *const fn (parent: *NodeBase) void;
 
 /// Global registry for children changed steps callbacks
 /// This allows specifications (like HTML) to register their hooks
@@ -70,8 +83,8 @@ pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void 
 /// - remove (step 17)
 /// - replace data in CharacterData (step 12)
 pub fn runChildrenChangedSteps(parent: anytype) void {
-    // Cast to *Node for callbacks (all DOM types have Node fields duplicated)
-    const parent_node: *Node = @ptrCast(parent);
+    // Cast to *NodeBase for callbacks (all DOM types have Node fields duplicated)
+    const parent_node: *NodeBase = @ptrCast(parent);
 
     // Call all registered callbacks
     if (children_changed_callbacks) |*callbacks| {
@@ -91,7 +104,7 @@ pub fn runChildrenChangedSteps(parent: anytype) void {
 /// Examples:
 ///   - HTML: iframe loading, form-associated element connections
 ///   - Custom elements: connectedCallback
-pub const InsertionStepsCallback = *const fn (node: *Node) void;
+pub const InsertionStepsCallback = *const fn (node: *NodeBase) void;
 
 /// Removing Steps Callback
 /// Spec: Specifications may define removing steps for all or some nodes.
@@ -100,7 +113,7 @@ pub const InsertionStepsCallback = *const fn (node: *Node) void;
 /// Examples:
 ///   - HTML: iframe unloading, form-associated element disconnections
 ///   - Custom elements: disconnectedCallback
-pub const RemovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) void;
+pub const RemovingStepsCallback = *const fn (node: *NodeBase, old_parent: ?*NodeBase) void;
 
 /// Post-connection Steps Callback
 /// Spec: The post-connection steps are run after a batch of nodes is inserted.
@@ -109,7 +122,7 @@ pub const RemovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) vo
 /// Examples:
 ///   - HTML: iframe loading after all tree mutations
 ///   - Custom elements: batch reactions after insertion
-pub const PostConnectionStepsCallback = *const fn (node: *Node) void;
+pub const PostConnectionStepsCallback = *const fn (node: *NodeBase) void;
 
 /// Moving Steps Callback
 /// Spec: Specifications may define moving steps for all or some nodes.
@@ -118,7 +131,7 @@ pub const PostConnectionStepsCallback = *const fn (node: *Node) void;
 /// Examples:
 ///   - Custom elements: connectedMoveCallback
 ///   - HTML: element relocation handling
-pub const MovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) void;
+pub const MovingStepsCallback = *const fn (node: *NodeBase, old_parent: ?*NodeBase) void;
 
 /// Global registry for insertion steps callbacks
 /// Uses page_allocator since this lives for the program lifetime and is never freed
@@ -171,7 +184,7 @@ pub fn registerMovingStepsCallback(callback: MovingStepsCallback) !void {
 /// Run the insertion steps for a node
 /// Called during the insert algorithm for each shadow-including descendant
 fn runInsertionSteps(node: anytype) void {
-    const node_ptr: *Node = @ptrCast(node);
+    const node_ptr: *NodeBase = @ptrCast(node);
     if (insertion_steps_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
             callback(node_ptr);
@@ -182,9 +195,9 @@ fn runInsertionSteps(node: anytype) void {
 /// Run the removing steps for a node
 /// Called during the remove algorithm
 fn runRemovingSteps(node: anytype, old_parent: anytype) void {
-    const node_ptr: *Node = @ptrCast(node);
+    const node_ptr: *NodeBase = @ptrCast(node);
     // Handle optional or non-optional old_parent
-    const old_parent_ptr: ?*Node = if (@TypeOf(old_parent) == @TypeOf(null))
+    const old_parent_ptr: ?*NodeBase = if (@TypeOf(old_parent) == @TypeOf(null))
         null
     else if (@typeInfo(@TypeOf(old_parent)) == .optional)
         if (old_parent) |p| @ptrCast(p) else null
@@ -201,7 +214,7 @@ fn runRemovingSteps(node: anytype, old_parent: anytype) void {
 /// Run the post-connection steps for a node
 /// Called after a batch of insertions complete
 fn runPostConnectionSteps(node: anytype) void {
-    const node_ptr: *Node = @ptrCast(node);
+    const node_ptr: *NodeBase = @ptrCast(node);
     if (post_connection_steps_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
             callback(node_ptr);
@@ -237,7 +250,7 @@ fn runRemovingStepsRecursive(node: anytype, old_parent: anytype) void {
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove step 15
 fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void {
     // For each inclusive ancestor inclusiveAncestor of parent
-    var current_ancestor: ?*Node = @ptrCast(parent);
+    var current_ancestor: ?*NodeBase = @ptrCast(parent);
     while (current_ancestor) |ancestor| {
         // For each registered observer obs in inclusiveAncestor's registered observer list
         for (0..ancestor.registered_observers.len) |i| {
@@ -256,20 +269,14 @@ fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void 
 }
 
 /// Helper: Create transient observer for a node and all its descendants
+/// TODO(Phase 6 - whatwg-9wkz8): Implement transient observers per DOM spec §4.3.3
+/// This requires adding is_transient, source_observer, source_options fields to RegisteredObserver
 fn createTransientObserverForNodeAndDescendants(node: anytype, source: RegisteredObserver) !void {
-    // Add transient observer to this node
-    try node.registered_observers.append(.{
-        .observer = source.observer,
-        .options = source.options,
-        .is_transient = true,
-        .source_observer = source.observer,
-        .source_options = source.options,
-    });
-
-    // Recursively add to all descendants
-    for (node.child_nodes.items()) |child| {
-        try createTransientObserverForNodeAndDescendants(child, source);
-    }
+    // Stub: Transient observers will be implemented in Phase 6 (MutationObserver integration)
+    // Per spec, transient observers are created when a node is removed while being observed
+    // with subtree: true, to continue observing the removed subtree.
+    _ = node;
+    _ = source;
 }
 
 /// Helper to get node type from any node-like type
@@ -279,57 +286,69 @@ fn getNodeType(node: anytype) u16 {
 
 /// Helper to check if node is a Document
 fn isDocument(node: anytype) bool {
-    return getNodeType(node) == Node.DOCUMENT_NODE;
+    return getNodeType(node) == DOCUMENT_NODE;
 }
 
 /// Helper to check if node is a DocumentFragment
 fn isDocumentFragment(node: anytype) bool {
-    return getNodeType(node) == Node.DOCUMENT_FRAGMENT_NODE;
+    return getNodeType(node) == DOCUMENT_FRAGMENT_NODE;
 }
 
 /// Helper to check if node is an Element
 fn isElement(node: anytype) bool {
-    return getNodeType(node) == Node.ELEMENT_NODE;
+    return getNodeType(node) == ELEMENT_NODE;
 }
 
 /// Helper to check if node is a DocumentType
 fn isDocumentType(node: anytype) bool {
-    return getNodeType(node) == Node.DOCUMENT_TYPE_NODE;
+    return getNodeType(node) == DOCUMENT_TYPE_NODE;
 }
 
 /// Helper to check if node is a Text node
 fn isText(node: anytype) bool {
-    return getNodeType(node) == Node.TEXT_NODE;
+    return getNodeType(node) == TEXT_NODE;
 }
 
-/// Helper to create a NodeList from an array of nodes
-/// The returned NodeList must be deinit'd by the caller
-fn createNodeList(allocator: std.mem.Allocator, nodes: []const *Node) !*NodeList {
-    const list = try allocator.create(NodeList);
-    errdefer allocator.destroy(list);
-    list.* = try NodeList.init(allocator);
-
-    for (nodes) |node| {
-        try list.addNode(node);
-    }
-
-    return list;
+/// Stub: Queue a tree mutation record
+///
+/// TODO: Mutation observer integration is stubbed out during unified DOM tree refactoring.
+/// The mutation observer system expects interface NodeList types, but mutation.zig
+/// now operates on NodeBase. This needs architectural work to bridge the two.
+///
+/// Once the architecture is updated:
+/// 1. Convert NodeBase arrays to NodeList interface types
+/// 2. Call mutation_observer.queueTreeMutationRecord with proper parameters
+fn queueTreeMutationRecordStub(
+    allocator: std.mem.Allocator,
+    target: anytype,
+    added_nodes: []const *NodeBase,
+    removed_nodes: []const *NodeBase,
+    previous_sibling: ?*NodeBase,
+    next_sibling: ?*NodeBase,
+) void {
+    // TODO: Implement mutation observer integration
+    _ = allocator;
+    _ = target;
+    _ = added_nodes;
+    _ = removed_nodes;
+    _ = previous_sibling;
+    _ = next_sibling;
 }
 
 /// Helper to check if node is a CharacterData node
 fn isCharacterData(node: anytype) bool {
     const node_type = getNodeType(node);
-    return node_type == Node.TEXT_NODE or
-        node_type == Node.COMMENT_NODE or
-        node_type == Node.CDATA_SECTION_NODE or
-        node_type == Node.PROCESSING_INSTRUCTION_NODE;
+    return node_type == TEXT_NODE or
+        node_type == COMMENT_NODE or
+        node_type == CDATA_SECTION_NODE or
+        node_type == PROCESSING_INSTRUCTION_NODE;
 }
 
 /// Get child index in parent
 fn getChildIndex(child: anytype) ?usize {
     const parent = child.parent_node orelse return null;
-    // Cast child to *Node for comparison with child_nodes array
-    const child_node: *Node = @ptrCast(child);
+    // Cast child to *NodeBase for comparison with child_nodes array
+    const child_node: *NodeBase = @ptrCast(child);
     for (parent.child_nodes.items(), 0..) |node, i| {
         if (node == child_node) return i;
     }
@@ -337,10 +356,10 @@ fn getChildIndex(child: anytype) ?usize {
 }
 
 /// Check if a doctype is following a given child in parent
-fn isDoctypeFollowing(parent: anytype, child: anytype) bool {
-    if (child == null) return false;
+fn isDoctypeFollowing(parent: *NodeBase, child: ?*NodeBase) bool {
+    const c = child orelse return false;
 
-    const child_idx = getChildIndex(child.?) orelse return false;
+    const child_idx = getChildIndex(c) orelse return false;
 
     // Check all siblings after child
     for (parent.child_nodes.items()[child_idx + 1 ..]) |sibling| {
@@ -351,7 +370,7 @@ fn isDoctypeFollowing(parent: anytype, child: anytype) bool {
 }
 
 /// Check if an element is preceding a given child in parent
-fn isElementPreceding(parent: anytype, child: anytype) bool {
+fn isElementPreceding(parent: *NodeBase, child: ?*NodeBase) bool {
     if (child == null) {
         // If child is null, check if parent has any element children
         for (parent.child_nodes.items()) |node| {
@@ -396,7 +415,7 @@ fn hasDoctypeChild(parent: anytype) bool {
 }
 
 /// Check if parent has an element child (optionally excluding one node)
-fn hasElementChild(parent: anytype, exclude: anytype) bool {
+fn hasElementChild(parent: *NodeBase, exclude: ?*NodeBase) bool {
     for (parent.child_nodes.items()) |child| {
         if (exclude) |ex| {
             if (child == ex) continue;
@@ -545,8 +564,8 @@ pub fn insert(
     suppress_observers: bool,
 ) DOMException!void {
     // Step 1: Let nodes be node's children if node is DocumentFragment, otherwise « node »
-    var nodes: []*Node = undefined;
-    var nodes_buf: [256]*Node = undefined;
+    var nodes: []*NodeBase = undefined;
+    var nodes_buf: [256]*NodeBase = undefined;
     var nodes_count: usize = 0;
 
     if (isDocumentFragment(node)) {
@@ -573,22 +592,11 @@ pub fn insert(
 
         // Step 4.2: Queue a tree mutation record for node
         // addedNodes is empty, removedNodes is the children that were removed
-        const allocator = parent.allocator;
-        const empty_list = try createNodeList(allocator, &[_]*Node{});
-        defer {
-            empty_list.deinit();
-            allocator.destroy(empty_list);
-        }
-        const removed_list = try createNodeList(allocator, nodes[0..nodes_count]);
-        defer {
-            removed_list.deinit();
-            allocator.destroy(removed_list);
-        }
-        try mutation_observer.queueTreeMutationRecord(
-            allocator,
+        queueTreeMutationRecordStub(
+            parent.allocator,
             node,
-            empty_list,
-            removed_list,
+            &[_]*NodeBase{},
+            nodes[0..nodes_count],
             null,
             null,
         );
@@ -606,7 +614,7 @@ pub fn insert(
     }
 
     // Step 6: Let previousSibling be child's previous sibling or parent's last child if child is null
-    var previousSibling: ?*Node = null;
+    var previousSibling: ?*NodeBase = null;
     if (child) |c| {
         const idx = getChildIndex(c) orelse 0;
         if (idx > 0) {
@@ -657,7 +665,7 @@ pub fn insert(
             parent.last_child = n;
         }
 
-        // Cast parent to *Node when assigning (all DOM types have Node fields duplicated)
+        // Cast parent to *NodeBase when assigning (all DOM types have Node fields duplicated)
         n.parent_node = @ptrCast(parent);
 
         // Step 7.4: If parent is a shadow host and node is slottable, assign a slot
@@ -707,22 +715,11 @@ pub fn insert(
 
     // Step 8: If suppress observers flag is unset, queue a tree mutation record
     if (!suppress_observers) {
-        const allocator = parent.allocator;
-        const added_list = try createNodeList(allocator, nodes[0..nodes_count]);
-        defer {
-            added_list.deinit();
-            allocator.destroy(added_list);
-        }
-        const empty_list = try createNodeList(allocator, &[_]*Node{});
-        defer {
-            empty_list.deinit();
-            allocator.destroy(empty_list);
-        }
-        try mutation_observer.queueTreeMutationRecord(
-            allocator,
-            @ptrCast(parent),
-            added_list,
-            empty_list,
+        queueTreeMutationRecordStub(
+            parent.allocator,
+            parent,
+            nodes[0..nodes_count],
+            &[_]*NodeBase{},
             previousSibling,
             child,
         );
@@ -765,12 +762,12 @@ pub fn append(node: anytype, parent: anytype) DOMException!@TypeOf(node) {
 /// multiple children are known upfront.
 ///
 /// Example:
-///   var children: [3]*Node = .{ text1, text2, text3 };
+///   var children: [3]*NodeBase = .{ text1, text2, text3 };
 ///   try appendChildren(parent, &children);
 ///
 pub fn appendChildren(
     parent: anytype,
-    children: []const *Node,
+    children: []const *NodeBase,
 ) DOMException!void {
     // Early exit if no children to insert
     if (children.len == 0) return;
@@ -811,7 +808,7 @@ pub fn appendChildren(
     }
 
     // Step 3: Get previous sibling for mutation record (last child before insertion)
-    var previousSibling: ?*Node = null;
+    var previousSibling: ?*NodeBase = null;
     if (parent.child_nodes.size() > 0) {
         previousSibling = parent.child_nodes.items()[parent.child_nodes.size() - 1];
     }
@@ -821,7 +818,7 @@ pub fn appendChildren(
 
     // Step 5: Update parent pointers AND sibling pointers for all inserted children
     // Phase 2: Maintain sibling pointers during batch append
-    var prev_child: ?*Node = previousSibling; // Last child before insertion (or null)
+    var prev_child: ?*NodeBase = previousSibling; // Last child before insertion (or null)
     for (children) |child| {
         child.parent_node = @ptrCast(parent);
 
@@ -873,22 +870,12 @@ pub fn appendChildren(
     }
 
     // Step 8: Queue a single tree mutation record for all insertions
-    const allocator = parent.allocator;
-    const added_list = try createNodeList(allocator, children);
-    defer {
-        added_list.deinit();
-        allocator.destroy(added_list);
-    }
-    const empty_list = try createNodeList(allocator, &[_]*Node{});
-    defer {
-        empty_list.deinit();
-        allocator.destroy(empty_list);
-    }
-    try mutation_observer.queueTreeMutationRecord(
-        allocator,
-        @ptrCast(parent),
-        added_list,
-        empty_list,
+    // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
+    queueTreeMutationRecordStub(
+        parent.allocator,
+        parent,
+        children,
+        &[_]*NodeBase{},
         previousSibling,
         null, // nextSibling is null since we're appending at end
     );
@@ -915,8 +902,8 @@ pub fn appendChildren(
 /// before an existing child rather than at the end.
 pub fn insertChildrenBefore(
     parent: anytype,
-    children: []const *Node,
-    reference_child: ?*Node,
+    children: []const *NodeBase,
+    reference_child: ?*NodeBase,
 ) DOMException!void {
     // If reference is null, this is equivalent to appendChildren
     if (reference_child == null) {
@@ -929,7 +916,7 @@ pub fn insertChildrenBefore(
     if (children.len == 0) return;
 
     // Validate reference child's parent
-    if (ref_child.parent_node != @as(*Node, @ptrCast(parent))) {
+    if (ref_child.parent_node != @as(*NodeBase, @ptrCast(parent))) {
         return error.NotFoundError;
     }
 
@@ -963,7 +950,7 @@ pub fn insertChildrenBefore(
     }
 
     // Get previous sibling for mutation record
-    var previousSibling: ?*Node = null;
+    var previousSibling: ?*NodeBase = null;
     if (insert_idx > 0) {
         previousSibling = parent.child_nodes.items()[insert_idx - 1];
     }
@@ -998,7 +985,7 @@ pub fn insertChildrenBefore(
         ref_child.previous_sibling = last_inserted;
 
         // Link inserted children together (forward pass)
-        var prev_child: ?*Node = null;
+        var prev_child: ?*NodeBase = null;
         for (children) |child| {
             if (prev_child) |prev| {
                 prev.next_sibling = child;
@@ -1033,22 +1020,12 @@ pub fn insertChildrenBefore(
     }
 
     // Queue single mutation record
-    const allocator = parent.allocator;
-    const added_list = try createNodeList(allocator, children);
-    defer {
-        added_list.deinit();
-        allocator.destroy(added_list);
-    }
-    const empty_list = try createNodeList(allocator, &[_]*Node{});
-    defer {
-        empty_list.deinit();
-        allocator.destroy(empty_list);
-    }
-    try mutation_observer.queueTreeMutationRecord(
-        allocator,
-        @ptrCast(parent),
-        added_list,
-        empty_list,
+    // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
+    queueTreeMutationRecordStub(
+        parent.allocator,
+        parent,
+        children,
+        &[_]*NodeBase{},
         previousSibling,
         ref_child,
     );
@@ -1131,7 +1108,7 @@ pub fn replace(
     }
 
     // Step 7: Let referenceChild be child's next sibling
-    var referenceChild: ?*Node = null;
+    var referenceChild: ?*NodeBase = null;
     const child_idx = getChildIndex(child);
     if (child_idx) |idx| {
         if (idx + 1 < parent.child_nodes.size()) {
@@ -1154,7 +1131,7 @@ pub fn replace(
     }
 
     // Step 9: Let previousSibling be child's previous sibling
-    var previousSibling: ?*Node = null;
+    var previousSibling: ?*NodeBase = null;
     if (child_idx) |idx| {
         if (idx > 0) {
             previousSibling = parent.child_nodes.items()[idx - 1];
@@ -1162,7 +1139,7 @@ pub fn replace(
     }
 
     // Step 10-11: Remove child if its parent is non-null
-    var removedNodes: [1]*Node = undefined;
+    var removedNodes: [1]*NodeBase = undefined;
     var removed_count: usize = 0;
 
     if (child.parent_node != null) {
@@ -1172,8 +1149,8 @@ pub fn replace(
     }
 
     // Step 12: Let nodes be node's children if DocumentFragment, otherwise « node »
-    var added_nodes: []*Node = undefined;
-    var added_nodes_buf: [256]*Node = undefined;
+    var added_nodes: []*NodeBase = undefined;
+    var added_nodes_buf: [256]*NodeBase = undefined;
     var added_count: usize = 0;
 
     if (isDocumentFragment(node)) {
@@ -1189,22 +1166,12 @@ pub fn replace(
     try insert(node, parent, referenceChild, true);
 
     // Step 14: Queue a tree mutation record
-    const allocator = parent.allocator;
-    const added_list = try createNodeList(allocator, added_nodes[0..added_count]);
-    defer {
-        added_list.deinit();
-        allocator.destroy(added_list);
-    }
-    const removed_list = try createNodeList(allocator, removedNodes[0..removed_count]);
-    defer {
-        removed_list.deinit();
-        allocator.destroy(removed_list);
-    }
-    try mutation_observer.queueTreeMutationRecord(
-        allocator,
+    // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
+    queueTreeMutationRecordStub(
+        parent.allocator,
         parent,
-        added_list,
-        removed_list,
+        added_nodes[0..added_count],
+        removedNodes[0..removed_count],
         previousSibling,
         referenceChild,
     );
@@ -1225,8 +1192,8 @@ pub fn replaceAll(
 
     // Step 1: Let removedNodes be parent's children
     const removed_count = parent.child_nodes.size();
-    var removed_nodes_buf: [256]*Node = undefined;
-    var removed_nodes: []const *Node = &[_]*Node{};
+    var removed_nodes_buf: [256]*NodeBase = undefined;
+    var removed_nodes: []const *NodeBase = &[_]*NodeBase{};
 
     if (removed_count > 0) {
         if (removed_count <= removed_nodes_buf.len) {
@@ -1238,8 +1205,8 @@ pub fn replaceAll(
     }
 
     // Step 2-4: Determine addedNodes
-    var added_nodes: []const *Node = &[_]*Node{};
-    var added_nodes_buf: [256]*Node = undefined;
+    var added_nodes: []const *NodeBase = &[_]*NodeBase{};
+    var added_nodes_buf: [256]*NodeBase = undefined;
     var added_count: usize = 0;
 
     if (node) |n| {
@@ -1247,7 +1214,7 @@ pub fn replaceAll(
             added_nodes = n.child_nodes.items();
             added_count = added_nodes.len;
         } else {
-            const node_ptr: *Node = @ptrCast(n);
+            const node_ptr: *NodeBase = @ptrCast(n);
             added_nodes_buf[0] = node_ptr;
             added_nodes = added_nodes_buf[0..1];
             added_count = 1;
@@ -1267,21 +1234,12 @@ pub fn replaceAll(
 
     // Step 7: Queue a tree mutation record if addedNodes or removedNodes is not empty
     if (added_count > 0 or removed_count > 0) {
-        const added_list = try createNodeList(allocator, added_nodes[0..added_count]);
-        defer {
-            added_list.deinit();
-            allocator.destroy(added_list);
-        }
-        const removed_list = try createNodeList(allocator, removed_nodes[0..removed_count]);
-        defer {
-            removed_list.deinit();
-            allocator.destroy(removed_list);
-        }
-        try mutation_observer.queueTreeMutationRecord(
+        // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
+        queueTreeMutationRecordStub(
             allocator,
-            @ptrCast(parent),
-            added_list,
-            removed_list,
+            parent,
+            added_nodes[0..added_count],
+            removed_nodes[0..removed_count],
             null,
             null,
         );
@@ -1339,7 +1297,7 @@ pub fn remove(
     runNodeIteratorPreRemoveSteps(node);
 
     // Step 5: Let oldPreviousSibling be node's previous sibling
-    var oldPreviousSibling: ?*Node = null;
+    var oldPreviousSibling: ?*NodeBase = null;
     const node_idx = getChildIndex(node);
     if (node_idx) |idx| {
         if (idx > 0) {
@@ -1348,7 +1306,7 @@ pub fn remove(
     }
 
     // Step 6: Let oldNextSibling be node's next sibling
-    var oldNextSibling: ?*Node = null;
+    var oldNextSibling: ?*NodeBase = null;
     if (node_idx) |idx| {
         if (idx + 1 < parent.child_nodes.size()) {
             oldNextSibling = parent.child_nodes.items()[idx + 1];
@@ -1424,24 +1382,14 @@ pub fn remove(
 
     // Step 16: If suppress observers flag is unset, queue a tree mutation record
     if (!suppress_observers) {
-        const allocator = parent.allocator;
-        const empty_list = try createNodeList(allocator, &[_]*Node{});
-        defer {
-            empty_list.deinit();
-            allocator.destroy(empty_list);
-        }
-        var removed_nodes_buf: [1]*Node = undefined;
+        var removed_nodes_buf: [1]*NodeBase = undefined;
         removed_nodes_buf[0] = node;
-        const removed_list = try createNodeList(allocator, removed_nodes_buf[0..1]);
-        defer {
-            removed_list.deinit();
-            allocator.destroy(removed_list);
-        }
-        try mutation_observer.queueTreeMutationRecord(
-            allocator,
+        // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
+        queueTreeMutationRecordStub(
+            parent.allocator,
             parent,
-            empty_list,
-            removed_list,
+            &[_]*NodeBase{},
+            removed_nodes_buf[0..1],
             oldPreviousSibling,
             oldNextSibling,
         );
@@ -1618,49 +1566,30 @@ pub fn move(
     runMovingStepsForTree(node, old_parent);
 
     // Step 25: Queue a tree mutation record for oldParent
-    const allocator = new_parent.allocator;
+    // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
     {
-        const empty_list = try createNodeList(allocator, &[_]*Node{});
-        defer {
-            empty_list.deinit();
-            allocator.destroy(empty_list);
-        }
-        var removed_nodes_buf: [1]*Node = undefined;
+        var removed_nodes_buf: [1]*NodeBase = undefined;
         removed_nodes_buf[0] = node;
-        const removed_list = try createNodeList(allocator, removed_nodes_buf[0..1]);
-        defer {
-            removed_list.deinit();
-            allocator.destroy(removed_list);
-        }
-        try mutation_observer.queueTreeMutationRecord(
-            allocator,
+        queueTreeMutationRecordStub(
+            new_parent.allocator,
             old_parent,
-            empty_list,
-            removed_list,
+            &[_]*NodeBase{},
+            removed_nodes_buf[0..1],
             old_previous_sibling,
             old_next_sibling,
         );
     }
 
     // Step 26: Queue a tree mutation record for newParent
+    // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
     {
-        var added_nodes_buf: [1]*Node = undefined;
+        var added_nodes_buf: [1]*NodeBase = undefined;
         added_nodes_buf[0] = node;
-        const added_list = try createNodeList(allocator, added_nodes_buf[0..1]);
-        defer {
-            added_list.deinit();
-            allocator.destroy(added_list);
-        }
-        const empty_list = try createNodeList(allocator, &[_]*Node{});
-        defer {
-            empty_list.deinit();
-            allocator.destroy(empty_list);
-        }
-        try mutation_observer.queueTreeMutationRecord(
-            allocator,
+        queueTreeMutationRecordStub(
+            new_parent.allocator,
             new_parent,
-            added_list,
-            empty_list,
+            added_nodes_buf[0..1],
+            &[_]*NodeBase{},
             new_previous_sibling,
             child,
         );
@@ -1678,70 +1607,50 @@ fn getShadowIncludingRoot(node: anytype) @TypeOf(node) {
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
 fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
     // For now, just check inclusive ancestor (shadow DOM TODO)
-    // Since all DOM types have Node fields duplicated, we can treat them as Node
-    const node_ptr: *const Node = @ptrCast(node);
-    const other_ptr: *const Node = @ptrCast(other);
+    const node_ptr: *const NodeBase = @ptrCast(node);
+    const other_ptr: *const NodeBase = @ptrCast(other);
     return tree_helpers.isInclusiveAncestor(node_ptr, other_ptr);
 }
 
+/// Stub: Queue tree mutation record for NodeBase nodes
+///
+/// TODO: MutationObserver integration is stubbed out during unified DOM tree refactoring.
+/// The mutation_observer_algorithms.queueTreeMutationRecord function expects:
+///   - target: *Node (WebIDL interface)
+///   - added_nodes: *NodeList (WebIDL interface)
+///   - removed_nodes: *NodeList (WebIDL interface)
 /// Helper: Run live range pre-remove steps
 /// Spec: https://dom.spec.whatwg.org/#live-range-pre-remove-steps
 fn runLiveRangePreRemoveSteps(node: anytype) void {
-    const node_ptr: *Node = @ptrCast(node);
-    const parent = node.parent_node orelse return;
-    const index = getChildIndex(node) orelse return;
-
-    // Get the document for range tracking
-    if (parent.owner_document) |doc| {
-        doc.ranges_mutex.lock();
-        defer doc.ranges_mutex.unlock();
-
-        for (doc.ranges.toSlice()) |range| {
-            // Step 4: For each live range whose start node is an inclusive descendant of node,
-            // set its start to (parent, index)
-            if (tree_helpers.isInclusiveDescendant(range.start_container, node_ptr)) {
-                range.start_container = parent;
-                range.start_offset = @intCast(index);
-            }
-
-            // Step 5: For each live range whose end node is an inclusive descendant of node,
-            // set its end to (parent, index)
-            if (tree_helpers.isInclusiveDescendant(range.end_container, node_ptr)) {
-                range.end_container = parent;
-                range.end_offset = @intCast(index);
-            }
-
-            // Step 6: For each live range whose start node is parent and start offset is greater than index,
-            // decrease its start offset by 1
-            if (range.start_container == parent and range.start_offset > index) {
-                range.start_offset -= 1;
-            }
-
-            // Step 7: For each live range whose end node is parent and end offset is greater than index,
-            // decrease its end offset by 1
-            if (range.end_container == parent and range.end_offset > index) {
-                range.end_offset -= 1;
-            }
-        }
-    }
+    // TODO: Range tracking is stubbed out during unified DOM tree refactoring.
+    // Document internal state (ranges_mutex, ranges list) is not accessible from
+    // the interfaces.Document type. This needs architectural work to access
+    // document internal state through document_internals module.
+    //
+    // The spec requires updating live ranges when nodes are removed:
+    // - Step 4: For each live range whose start node is an inclusive descendant of node,
+    //   set its start to (parent, index)
+    // - Step 5: For each live range whose end node is an inclusive descendant of node,
+    //   set its end to (parent, index)
+    // - Step 6: For each live range whose start node is parent and start offset is greater than index,
+    //   decrease its start offset by 1
+    // - Step 7: For each live range whose end node is parent and end offset is greater than index,
+    //   decrease its end offset by 1
+    _ = node;
 }
 
 /// Helper: Run NodeIterator pre-remove steps for all iterators
 /// Spec: https://dom.spec.whatwg.org/#nodeiterator-pre-removing-steps
 fn runNodeIteratorPreRemoveSteps(node: anytype) void {
-    // Get node's document
-    const doc_node = node.owner_document orelse return;
-    const doc: *Document = @ptrCast(@alignCast(doc_node));
-
+    // TODO: NodeIterator tracking is stubbed out during unified DOM tree refactoring.
+    // Document internal state (node_iterators_mutex, node_iterators list) is not accessible
+    // from the interfaces.Document type. This needs architectural work to access
+    // document internal state through document_internals module.
+    //
+    // The spec requires:
     // For each NodeIterator object iterator whose root's node document is node's node document,
-    // run the NodeIterator pre-removing steps given node and iterator
-    doc.node_iterators_mutex.lock();
-    defer doc.node_iterators_mutex.unlock();
-
-    for (doc.node_iterators.toSlice()) |iterator| {
-        // Call preRemoveSteps on the iterator
-        iterator.preRemoveSteps(node);
-    }
+    // run the NodeIterator pre-removing steps given node and iterator.
+    _ = node;
 }
 
 /// Helper: Update ranges when inserting before child
@@ -1753,28 +1662,25 @@ fn updateRangesForInsertion(doc: anytype, parent: anytype, child_index: usize) v
 /// DOM spec: For each live range whose start/end node is parent and offset > child_index,
 /// increase offset by count
 fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index: usize, count: usize) void {
-    const parent_ptr: *Node = @ptrCast(parent);
-    doc.ranges_mutex.lock();
-    defer doc.ranges_mutex.unlock();
-
-    for (doc.ranges.toSliceMut()) |range| {
-        // For each live range whose start node is parent and start offset is greater than child's index,
-        // increase its start offset by count
-        if (range.start_container == parent_ptr and range.start_offset > child_index) {
-            range.start_offset += @intCast(count);
-        }
-
-        // For each live range whose end node is parent and end offset is greater than child's index,
-        // increase its end offset by count
-        if (range.end_container == parent_ptr and range.end_offset > child_index) {
-            range.end_offset += @intCast(count);
-        }
-    }
+    // TODO: Range tracking is stubbed out during unified DOM tree refactoring.
+    // Document internal state (ranges_mutex, ranges list) is not accessible from
+    // the interfaces.Document type. This needs architectural work to access
+    // document internal state through document_internals module.
+    //
+    // The spec requires:
+    // For each live range whose start node is parent and start offset is greater than child's index,
+    // increase its start offset by count.
+    // For each live range whose end node is parent and end offset is greater than child's index,
+    // increase its end offset by count.
+    _ = doc;
+    _ = parent;
+    _ = child_index;
+    _ = count;
 }
 
 /// Helper: Remove node from parent's children list (without updating parent pointer)
 fn removeFromChildrenList(node: anytype, parent: anytype) void {
-    const node_ptr: *Node = @ptrCast(node);
+    const node_ptr: *NodeBase = @ptrCast(node);
     // Update sibling pointers
     if (node.previous_sibling) |prev| {
         prev.next_sibling = node.next_sibling;
@@ -1852,7 +1758,7 @@ fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
 /// Helper: Run moving steps for node and all descendants
 /// Spec: DOM §4.2.5 move algorithm step 24
 /// For each shadow-including inclusive descendant, run moving steps
-fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
+fn runMovingStepsForTree(node: *NodeBase, old_parent: *NodeBase) void {
     // Step 24: For each shadow-including inclusive descendant of node,
     // in shadow-including tree order
 
@@ -1888,7 +1794,7 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
         runMovingSteps(node, old_parent);
 
         // Run moving steps for all descendants with null
-        var stack = infra.List(*Node).init(node.allocator);
+        var stack = infra.List(*NodeBase).init(node.allocator);
         defer stack.deinit();
 
         for (node.child_nodes.items()) |child| {
@@ -1911,7 +1817,7 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
 /// Helper: Run moving steps hook for a node
 /// Spec: Moving steps are defined by specifications
 /// Called during the move algorithm for each shadow-including descendant
-fn runMovingSteps(node: *Node, old_parent: ?*Node) void {
+fn runMovingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     if (moving_steps_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
             callback(node, old_parent);
@@ -1944,7 +1850,7 @@ pub fn adopt(
         // For now, just update node itself and tree descendants (shadow DOM TODO)
 
         // Collect all descendants first
-        var descendants = infra.List(*Node).init(node.allocator);
+        var descendants = infra.List(*NodeBase).init(node.allocator);
         defer descendants.deinit();
 
         try descendants.append(node);
@@ -1965,7 +1871,7 @@ pub fn adopt(
             desc.owner_document = document;
 
             // Step 3.1.3: If element, update attribute node documents
-            if (desc.node_type == Node.ELEMENT_NODE) {
+            if (desc.node_type == ELEMENT_NODE) {
                 // TODO(DOM): Update attribute node documents once we have proper Element access
             }
         }

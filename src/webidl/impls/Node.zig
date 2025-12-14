@@ -1069,324 +1069,16 @@ pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
 }
 
 // =============================================================================
-// Tree Mutation Operations (using NodeBase as single source of truth)
+// Tree Mutation Operations - ALL delegated to src/dom/mutation.zig
 // =============================================================================
+//
+// IMPORTANT: Tree manipulation code lives in src/dom/mutation.zig
+// This file should NOT contain tree manipulation logic.
+// Use dom_module.mutation.* functions for all tree operations.
 
-/// Helper: Count element children of a node (using NodeBase)
-fn countElementChildren(node: *runtime.Instance) usize {
-    const internal = getInternal(node) orelse return 0;
-    const node_base = internal.node_base orelse return 0;
-    var count: usize = 0;
-    var child = node_base.first_child;
-    while (child) |c| {
-        if (c.node_type == NodeType.ELEMENT_NODE) {
-            count += 1;
-        }
-        child = c.next_sibling;
-    }
-    return count;
-}
-
-/// Helper: Check if node has any Text child (using NodeBase)
-fn hasTextChild(node: *runtime.Instance) bool {
-    const internal = getInternal(node) orelse return false;
-    const node_base = internal.node_base orelse return false;
-    var child = node_base.first_child;
-    while (child) |c| {
-        if (c.node_type == NodeType.TEXT_NODE) {
-            return true;
-        }
-        child = c.next_sibling;
-    }
-    return false;
-}
-
-/// Helper: Check if parent has an element child (using NodeBase)
-fn hasElementChild(parent: *runtime.Instance) bool {
-    const internal = getInternal(parent) orelse return false;
-    const node_base = internal.node_base orelse return false;
-    var child = node_base.first_child;
-    while (child) |c| {
-        if (c.node_type == NodeType.ELEMENT_NODE) {
-            return true;
-        }
-        child = c.next_sibling;
-    }
-    return false;
-}
-
-/// Helper: Check if parent has a doctype child (using NodeBase)
-fn hasDoctypeChild(parent: *runtime.Instance) bool {
-    const internal = getInternal(parent) orelse return false;
-    const node_base = internal.node_base orelse return false;
-    var child = node_base.first_child;
-    while (child) |c| {
-        if (c.node_type == NodeType.DOCUMENT_TYPE_NODE) {
-            return true;
-        }
-        child = c.next_sibling;
-    }
-    return false;
-}
-
-/// Helper: Check if there's a doctype following the given child in parent (using NodeBase)
-fn isDoctypeFollowing(_: *runtime.Instance, reference_child: *runtime.Instance) bool {
-    const ref_internal = getInternal(reference_child) orelse return false;
-    const ref_base = ref_internal.node_base orelse return false;
-    var sibling = ref_base.next_sibling;
-    while (sibling) |s| {
-        if (s.node_type == NodeType.DOCUMENT_TYPE_NODE) {
-            return true;
-        }
-        sibling = s.next_sibling;
-    }
-    return false;
-}
-
-/// Helper: Check if there's an element preceding the given child in parent (using NodeBase)
-fn isElementPreceding(parent: *runtime.Instance, reference_child: *runtime.Instance) bool {
-    const parent_internal = getInternal(parent) orelse return false;
-    const parent_base = parent_internal.node_base orelse return false;
-    const ref_internal = getInternal(reference_child) orelse return false;
-    const ref_base = ref_internal.node_base orelse return false;
-
-    var child = parent_base.first_child;
-    while (child) |c| {
-        if (c == ref_base) {
-            // We've reached the reference child, stop looking
-            return false;
-        }
-        if (c.node_type == NodeType.ELEMENT_NODE) {
-            return true;
-        }
-        child = c.next_sibling;
-    }
-    return false;
-}
-
-/// Internal helper: Pre-insert validation (using NodeBase for tree traversal)
-/// https://dom.spec.whatwg.org/#concept-node-pre-insert
-fn preInsertValidation(parent: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) !void {
-    const parent_internal = getInternal(parent) orelse return error.InvalidStateError;
-    const node_internal = getInternal(node) orelse return error.InvalidStateError;
-    const parent_base = parent_internal.node_base orelse return error.InvalidStateError;
-    const node_base = node_internal.node_base orelse return error.InvalidStateError;
-
-    // 1. If parent is not a Document, DocumentFragment, or Element node, throw HierarchyRequestError
-    switch (parent_internal.node_type) {
-        NodeType.DOCUMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE, NodeType.ELEMENT_NODE => {},
-        else => return error.HierarchyRequestError,
-    }
-
-    // 2. If node is a host-including inclusive ancestor of parent, throw HierarchyRequestError
-    var ancestor: ?*NodeBase = parent_base;
-    while (ancestor) |anc| {
-        if (anc == node_base) return error.HierarchyRequestError;
-        ancestor = anc.parent_node;
-    }
-
-    // 3. If child is non-null and its parent is not parent, throw NotFoundError
-    if (child) |c| {
-        const child_internal = getInternal(c) orelse return error.InvalidStateError;
-        const child_base = child_internal.node_base orelse return error.InvalidStateError;
-        if (child_base.parent_node != parent_base) return error.NotFoundError;
-    }
-
-    // 4. If node is not a DocumentFragment, DocumentType, Element, or CharacterData node, throw HierarchyRequestError
-    switch (node_internal.node_type) {
-        NodeType.DOCUMENT_FRAGMENT_NODE,
-        NodeType.DOCUMENT_TYPE_NODE,
-        NodeType.ELEMENT_NODE,
-        NodeType.TEXT_NODE,
-        NodeType.CDATA_SECTION_NODE,
-        NodeType.PROCESSING_INSTRUCTION_NODE,
-        NodeType.COMMENT_NODE,
-        => {},
-        else => return error.HierarchyRequestError,
-    }
-
-    // 5. If node is a Text node and parent is a Document, or node is a DocumentType and parent is not a Document
-    if (node_internal.node_type == NodeType.TEXT_NODE and parent_internal.node_type == NodeType.DOCUMENT_NODE) {
-        return error.HierarchyRequestError;
-    }
-    if (node_internal.node_type == NodeType.DOCUMENT_TYPE_NODE and parent_internal.node_type != NodeType.DOCUMENT_NODE) {
-        return error.HierarchyRequestError;
-    }
-
-    // 6. If parent is a Document, perform additional validation
-    if (parent_internal.node_type == NodeType.DOCUMENT_NODE) {
-        if (node_internal.node_type == NodeType.DOCUMENT_FRAGMENT_NODE) {
-            // DocumentFragment: check element count and text children
-            const element_count = countElementChildren(node);
-            const has_text = hasTextChild(node);
-
-            // Fragment with more than one element child, or any text child
-            if (element_count > 1 or has_text) {
-                return error.HierarchyRequestError;
-            }
-
-            // Fragment with one element: check if document already has element or doctype follows
-            if (element_count == 1) {
-                if (hasElementChild(parent) or
-                    (child != null and isDoctypeFollowing(parent, child.?)) or
-                    (child != null and getInternal(child.?) != null and getInternal(child.?).?.node_type == NodeType.DOCUMENT_TYPE_NODE))
-                {
-                    return error.HierarchyRequestError;
-                }
-            }
-        } else if (node_internal.node_type == NodeType.ELEMENT_NODE) {
-            // Element: Document can only have one element child
-            if (hasElementChild(parent) or
-                (child != null and isDoctypeFollowing(parent, child.?)) or
-                (child != null and getInternal(child.?) != null and getInternal(child.?).?.node_type == NodeType.DOCUMENT_TYPE_NODE))
-            {
-                return error.HierarchyRequestError;
-            }
-        } else if (node_internal.node_type == NodeType.DOCUMENT_TYPE_NODE) {
-            // DocumentType: Document can only have one doctype, and it must come before any element
-            if (hasDoctypeChild(parent) or
-                (child != null and isElementPreceding(parent, child.?)) or
-                (child == null and hasElementChild(parent)))
-            {
-                return error.HierarchyRequestError;
-            }
-        }
-    }
-}
-
-/// Internal helper: Insert a node (using NodeBase for tree manipulation)
-/// https://dom.spec.whatwg.org/#concept-node-insert
-fn insertNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runtime.Instance) !void {
-    const node_internal = getInternal(node) orelse return error.InvalidStateError;
-    const parent_internal = getInternal(parent) orelse return error.InvalidStateError;
-    const node_base = node_internal.node_base orelse return error.InvalidStateError;
-    const parent_base = parent_internal.node_base orelse return error.InvalidStateError;
-
-    // Remove from old parent if needed (using NodeBase)
-    if (node_base.parent_node) |old_parent_base| {
-        const old_parent_opaque = instance_bridge.getInstance(old_parent_base) orelse return error.InvalidStateError;
-        const old_parent: *runtime.Instance = @ptrCast(@alignCast(old_parent_opaque));
-        try removeNodeFromParent(node, old_parent);
-    }
-
-    // Set new parent in NodeBase
-    node_base.parent_node = parent_base;
-
-    // Set owner_document based on parent's type
-    if (parent_internal.node_type == NodeType.DOCUMENT_NODE) {
-        node_internal.owner_document = parent;
-    } else {
-        node_internal.owner_document = parent_internal.owner_document;
-    }
-
-    // Update isConnected based on parent's connected status
-    node_internal.is_connected = parent_internal.is_connected;
-    node_base.is_connected = parent_internal.is_connected;
-
-    // Get child's NodeBase if child is provided
-    const child_base: ?*NodeBase = if (child) |c| blk: {
-        const c_internal = getInternal(c) orelse break :blk null;
-        break :blk c_internal.node_base;
-    } else null;
-
-    if (child_base) |before_child_base| {
-        // Insert before child (using NodeBase pointers)
-        node_base.next_sibling = before_child_base;
-        node_base.previous_sibling = before_child_base.previous_sibling;
-
-        if (before_child_base.previous_sibling) |prev| {
-            prev.next_sibling = node_base;
-        } else {
-            parent_base.first_child = node_base;
-        }
-
-        before_child_base.previous_sibling = node_base;
-    } else {
-        // Append at end (using NodeBase pointers)
-        node_base.previous_sibling = parent_base.last_child;
-        node_base.next_sibling = null;
-
-        if (parent_base.last_child) |last| {
-            last.next_sibling = node_base;
-        } else {
-            parent_base.first_child = node_base;
-        }
-
-        parent_base.last_child = node_base;
-    }
-
-    // Add to parent's child_nodes list
-    try parent_base.child_nodes.append(node_base);
-
-    // Update isConnected for descendants
-    try updateConnectedStatus(node, node_internal.is_connected);
-
-    // Special handling: If parent is a Document and node is an Element,
-    // update document_element if it's not already set
-    if (parent_internal.node_type == NodeType.DOCUMENT_NODE and
-        node_internal.node_type == NodeType.ELEMENT_NODE)
-    {
-        const dom = @import("dom");
-        const document_internals = dom.document_internals;
-        if (document_internals.getDocumentElement(parent) == null) {
-            document_internals.setDocumentElement(parent, node);
-        }
-    }
-
-    // Handle iframe insertion steps
-    if (node_internal.node_type == NodeType.ELEMENT_NODE and node_internal.owner_document != null) {
-        handleIframeInsertionIfNeeded(node, parent);
-    }
-}
-
-/// Handle iframe-specific insertion steps (HTML Standard §4.8.5)
-fn handleIframeInsertionIfNeeded(node: *runtime.Instance, parent: *runtime.Instance) void {
-    _ = parent;
-    const node_internal = getInternal(node) orelse return;
-
-    // Check if this is an iframe element by comparing local name
-    const local_name = node_internal.local_name orelse return;
-    const local_name_slice = local_name.asSlice();
-    if (!std.mem.eql(u8, local_name_slice, "iframe")) return;
-
-    // Get the HTMLIFrameElement's internal state to access the integration
-    const HTMLIFrameElementImpl = @import("HTMLIFrameElement.zig");
-    const iframe_internal = HTMLIFrameElementImpl.getInternal(node) orelse return;
-
-    // Don't re-initialize if already has a browsing context
-    if (iframe_internal.integration.browsing_context != null) return;
-
-    // Get the V8 context and isolate from the node's runtime context
-    const v8 = @import("v8");
-    const engine_ctx = node.ctx.getEngineContext() orelse return;
-    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-
-    // Get current isolate
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
-
-    // Get the Window from the context manager
-    const window = v8.context_manager.getWindowForContext(v8_ctx) orelse return;
-
-    // Get the Window's browsing context
-    const WindowImpl = @import("Window.zig");
-    _ = WindowImpl.getInternal(window) orelse return;
-
-    // Create V8 child context for the iframe
-    const child_entry = v8.context_manager.createChildContext(.{
-        .isolate = isolate,
-        .parent_context = v8_ctx,
-        .context_type = .window,
-    }, node.ctx.allocator) catch return;
-
-    // Get the child Window instance from the context entry
-    const child_window = child_entry.window_instance orelse return;
-
-    // Get the child Window's browsing context
-    const child_window_internal = WindowImpl.getInternal(child_window) orelse return;
-
-    // Store the browsing context in the iframe integration
-    iframe_internal.integration.browsing_context = child_window_internal.browsing_context;
-}
+// TODO: Iframe insertion steps should be registered as a callback with
+// dom_module.mutation.registerInsertionStepsCallback() to handle
+// iframe-specific insertion per HTML Standard §4.8.5
 
 /// Find the owner document for a node (walking up the tree if needed)
 fn findOwnerDocument(node: *runtime.Instance) ?*runtime.Instance {
@@ -1401,137 +1093,114 @@ fn findOwnerDocument(node: *runtime.Instance) ?*runtime.Instance {
     return internal.owner_document;
 }
 
-/// Internal helper: Remove node from parent (using NodeBase)
-/// Note: This is public so ChildNode mixin can use it
+/// Remove node from parent - delegates to src/dom/mutation.zig
+/// Note: This is public so ChildNode mixin and other impls can use it
 pub fn removeNodeFromParent(node: *runtime.Instance, parent: *runtime.Instance) !void {
+    _ = parent; // Parent verification done by mutation.remove
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
-    const parent_internal = getInternal(parent) orelse return error.InvalidStateError;
     const node_base = node_internal.node_base orelse return error.InvalidStateError;
-    const parent_base = parent_internal.node_base orelse return error.InvalidStateError;
 
-    // Update sibling links in NodeBase
-    if (node_base.previous_sibling) |prev| {
-        prev.next_sibling = node_base.next_sibling;
-    } else {
-        parent_base.first_child = node_base.next_sibling;
-    }
-
-    if (node_base.next_sibling) |next| {
-        next.previous_sibling = node_base.previous_sibling;
-    } else {
-        parent_base.last_child = node_base.previous_sibling;
-    }
-
-    // Clear node's parent and sibling pointers in NodeBase
-    node_base.parent_node = null;
-    node_base.previous_sibling = null;
-    node_base.next_sibling = null;
-
-    // Remove from parent's child_nodes list
-    for (parent_base.child_nodes.items(), 0..) |child, i| {
-        if (child == node_base) {
-            _ = parent_base.child_nodes.remove(i) catch {};
-            break;
-        }
-    }
-
-    // Update isConnected for this node and descendants
-    try updateConnectedStatus(node, false);
-}
-
-/// Internal helper: Update isConnected status for node and all descendants (using NodeBase)
-fn updateConnectedStatus(node: *runtime.Instance, connected: bool) !void {
-    const internal = getInternal(node) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return error.InvalidStateError;
-
-    internal.is_connected = connected;
-    node_base.is_connected = connected;
-
-    // Recursively update children using NodeBase
-    var child = node_base.first_child;
-    while (child) |c| {
-        const child_opaque = instance_bridge.getInstance(c) orelse {
-            child = c.next_sibling;
-            continue;
+    // Delegate to src/dom/mutation.zig - single source of truth
+    dom_module.mutation.remove(node_base, false) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            else => error.InvalidStateError,
         };
-        const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-        try updateConnectedStatus(child_instance, connected);
-        child = c.next_sibling;
-    }
+    };
 }
 
 /// Operation: appendChild
 /// https://dom.spec.whatwg.org/#dom-node-appendchild
+/// Delegates to src/dom/mutation.zig - THE single source of truth for tree operations
 pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
-    try preInsertValidation(instance, node, null);
-    try insertNode(node, instance, null);
+    const parent_internal = getInternal(instance) orelse return error.InvalidStateError;
+    const node_internal = getInternal(node) orelse return error.InvalidStateError;
+
+    const parent_base = parent_internal.node_base orelse return error.InvalidStateError;
+    const node_base = node_internal.node_base orelse return error.InvalidStateError;
+
+    // Delegate to src/dom/mutation.zig - single source of truth
+    _ = dom_module.mutation.append(node_base, parent_base) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            else => error.InvalidStateError,
+        };
+    };
+
     return node;
 }
 
 /// Operation: insertBefore
 /// https://dom.spec.whatwg.org/#dom-node-insertbefore
+/// Delegates to src/dom/mutation.zig - THE single source of truth for tree operations
 pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
-    try preInsertValidation(instance, node, child);
-    try insertNode(node, instance, child);
+    const parent_internal = getInternal(instance) orelse return error.InvalidStateError;
+    const node_internal = getInternal(node) orelse return error.InvalidStateError;
+
+    const parent_base = parent_internal.node_base orelse return error.InvalidStateError;
+    const node_base = node_internal.node_base orelse return error.InvalidStateError;
+
+    const child_base: ?*NodeBase = if (child) |c| blk: {
+        const c_internal = getInternal(c) orelse break :blk null;
+        break :blk c_internal.node_base;
+    } else null;
+
+    // Delegate to src/dom/mutation.zig - single source of truth
+    _ = dom_module.mutation.preInsert(node_base, parent_base, child_base) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            else => error.InvalidStateError,
+        };
+    };
+
     return node;
 }
 
 /// Operation: removeChild
 /// https://dom.spec.whatwg.org/#dom-node-removechild
+/// Delegates to src/dom/mutation.zig - THE single source of truth for tree operations
 pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
     const parent_base = internal.node_base orelse return error.InvalidStateError;
     const child_base = child_internal.node_base orelse return error.InvalidStateError;
 
-    // Child must be a child of this node (check via NodeBase)
-    if (child_base.parent_node != parent_base) {
-        return error.NotFoundError;
-    }
+    // Delegate to src/dom/mutation.zig - single source of truth
+    // preRemove checks that child's parent is parent and throws NotFoundError if not
+    _ = dom_module.mutation.preRemove(child_base, parent_base) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            else => error.InvalidStateError,
+        };
+    };
 
-    try removeNodeFromParent(child, instance);
     return child;
 }
 
 /// Operation: replaceChild
 /// https://dom.spec.whatwg.org/#dom-node-replacechild
+/// Delegates to src/dom/mutation.zig - THE single source of truth for tree operations
 pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
-    try preInsertValidation(instance, node, child);
-
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
+    const node_internal = getInternal(node) orelse return error.InvalidStateError;
+
     const parent_base = internal.node_base orelse return error.InvalidStateError;
     const child_base = child_internal.node_base orelse return error.InvalidStateError;
-
-    // Child must be a child of this node (check via NodeBase)
-    if (child_base.parent_node != parent_base) {
-        return error.NotFoundError;
-    }
-
-    // Get reference to next sibling before removal (using NodeBase)
-    // Per DOM spec step 7-8: Let referenceChild be child's next sibling.
-    // If referenceChild is node, then set referenceChild to node's next sibling.
-    var next_ref_base = child_base.next_sibling;
-    const node_internal = getInternal(node) orelse return error.InvalidStateError;
     const node_base = node_internal.node_base orelse return error.InvalidStateError;
 
-    if (next_ref_base == node_base) {
-        next_ref_base = node_base.next_sibling;
-    }
-
-    // Convert next_ref_base back to Instance if non-null
-    var next_ref: ?*runtime.Instance = null;
-    if (next_ref_base) |base| {
-        if (instance_bridge.getInstance(base)) |opaque_ptr| {
-            next_ref = @ptrCast(@alignCast(opaque_ptr));
-        }
-    }
-
-    // Remove the old child
-    try removeNodeFromParent(child, instance);
-
-    // Insert the new node at the old position
-    try insertNode(node, instance, next_ref);
+    // Delegate to src/dom/mutation.zig - single source of truth
+    _ = dom_module.mutation.replace(child_base, node_base, parent_base) catch |err| {
+        return switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            else => error.InvalidStateError,
+        };
+    };
 
     return child;
 }
