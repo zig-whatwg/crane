@@ -83,6 +83,9 @@ pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
 pub const node_base = @import("node_base.zig");
 pub const NodeBase = node_base.NodeBase;
 
+// Instance bridge for runtime.Instance <-> NodeBase conversion
+pub const instance_bridge = @import("instance_bridge.zig");
+
 // Opaque handle types for breaking circular imports
 pub const handles = @import("handles.zig");
 
