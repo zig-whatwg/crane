@@ -29,13 +29,30 @@ pub const NodeBase = struct {
     allocator: Allocator,
     node_type: u16,
     node_name: []const u8,
-    parent_node: ?*NodeBase,
+
+    // Tree structure - BOTH patterns for O(1) access in all directions
+    // Parent pointer
+    parent_node: ?*NodeBase = null,
+
+    // Sibling pointers - O(1) sibling navigation (Phase 1 addition)
+    first_child: ?*NodeBase = null,
+    last_child: ?*NodeBase = null,
+    previous_sibling: ?*NodeBase = null,
+    next_sibling: ?*NodeBase = null,
+
+    // Child list - O(1) index access and iteration
     child_nodes: infra.List(*NodeBase),
-    owner_document: ?*DocumentType,
+
+    // Document ownership
+    owner_document: ?*DocumentType = null,
 
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
     registered_observers: infra.List(RegisteredObserverType),
+
+    /// Connection status - true when root is a document
+    /// Used by isConnected getter
+    is_connected: bool = false,
 
     // ========================================================================
     // Node Type Constants (DOM Spec §5.1)

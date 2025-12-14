@@ -1,12 +1,11 @@
 //! Tree Helper Utilities
 //! Pure helper functions for common DOM tree operations.
 //!
-//! Adapted from dom2's tree_helpers.zig with modifications for our List-based
-//! child storage instead of direct sibling pointers.
+//! Adapted from dom2's tree_helpers.zig with unified DOM tree model.
 //!
-//! NOTE: getNextSibling() and getPreviousSibling() are O(n) due to our
-//! child_nodes List structure. This is acceptable for now. Can optimize
-//! later by adding sibling pointers if profiling shows this is a bottleneck.
+//! Phase 1 Update: Now uses O(1) sibling pointers (first_child, last_child,
+//! previous_sibling, next_sibling) alongside the child_nodes List.
+//! Both data structures are maintained in sync by mutation.zig.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -30,63 +29,27 @@ pub fn getParentNode(node: anytype) ?*Node {
 }
 
 /// Get the first child of the given node
-/// O(1) - Direct access to first element of child_nodes list
+/// O(1) - Direct pointer access via sibling pointers (Phase 1 optimization)
 pub fn getFirstChild(node: anytype) ?*Node {
-    return node.child_nodes.get(0);
+    return node.first_child;
 }
 
 /// Get the last child of the given node
-/// O(1) - Direct access to last element of child_nodes list
+/// O(1) - Direct pointer access via sibling pointers (Phase 1 optimization)
 pub fn getLastChild(node: anytype) ?*Node {
-    const len = node.child_nodes.size();
-    return if (len > 0)
-        node.child_nodes.get(len - 1)
-    else
-        null;
+    return node.last_child;
 }
 
 /// Get the next sibling of the given node
-/// O(n) - Must search parent's child_nodes list to find current node's position
-///
-/// Performance note: This is slower than dom2's O(1) pointer access, but
-/// acceptable for typical use cases. Can optimize later if needed by adding
-/// sibling pointers alongside child_nodes list.
+/// O(1) - Direct pointer access via sibling pointers (Phase 1 optimization)
 pub fn getNextSibling(node: anytype) ?*Node {
-    const parent = node.parent_node orelse return null;
-
-    const len = parent.child_nodes.size();
-    var i: usize = 0;
-    while (i < len) : (i += 1) {
-        const child = parent.child_nodes.get(i) orelse continue;
-        if (child == node) {
-            return if (i + 1 < len)
-                parent.child_nodes.get(i + 1)
-            else
-                null;
-        }
-    }
-
-    return null;
+    return node.next_sibling;
 }
 
 /// Get the previous sibling of the given node
-/// O(n) - Must search parent's child_nodes list to find current node's position
+/// O(1) - Direct pointer access via sibling pointers (Phase 1 optimization)
 pub fn getPreviousSibling(node: anytype) ?*Node {
-    const parent = node.parent_node orelse return null;
-
-    const len = parent.child_nodes.size();
-    var i: usize = 0;
-    while (i < len) : (i += 1) {
-        const child = parent.child_nodes.get(i) orelse continue;
-        if (child == node) {
-            return if (i > 0)
-                parent.child_nodes.get(i - 1)
-            else
-                null;
-        }
-    }
-
-    return null;
+    return node.previous_sibling;
 }
 
 /// Get the number of children of the given node
@@ -457,29 +420,27 @@ pub fn findCommonAncestor(a: anytype, b: anytype) ?*Node {
 // Performance Notes
 // ============================================================================
 //
-// Complexity comparison with dom2:
+// Complexity after Phase 1 (Unified DOM Tree with Sibling Pointers):
 //
-// | Operation              | Dom2 | Our Implementation | Reason            |
-// |------------------------|------|--------------------|-------------------|
-// | getFirstChild          | O(1) | O(1)              | Direct access     |
-// | getLastChild           | O(1) | O(1)              | Direct access     |
-// | getParentNode          | O(1) | O(1)              | Direct pointer    |
-// | getNextSibling         | O(1) | O(n)              | List search       |
-// | getPreviousSibling     | O(1) | O(n)              | List search       |
-// | getChildCount          | N/A  | O(1)              | List length       |
-// | getChildAt             | N/A  | O(1)              | Array indexing    |
-// | getChildIndex          | N/A  | O(n)              | Linear search     |
+// | Operation              | Complexity | Reason                       |
+// |------------------------|------------|------------------------------|
+// | getFirstChild          | O(1)       | Direct pointer (first_child) |
+// | getLastChild           | O(1)       | Direct pointer (last_child)  |
+// | getParentNode          | O(1)       | Direct pointer (parent_node) |
+// | getNextSibling         | O(1)       | Direct pointer (next_sibling)|
+// | getPreviousSibling     | O(1)       | Direct pointer (prev_sibling)|
+// | getChildCount          | O(1)       | List length                  |
+// | getChildAt             | O(1)       | Array indexing               |
+// | getChildIndex          | O(n)       | Linear search                |
 //
-// Trade-off: We sacrifice O(1) sibling navigation for simpler data structure.
-// This is acceptable because:
-// 1. Most DOM operations access children, not siblings
-// 2. Typical elements have few children (median ~3-5)
-// 3. O(n) with n=5 is still very fast (~20-30 CPU cycles)
+// Data Structure:
+// - NodeBase maintains BOTH sibling pointers AND child_nodes list
+// - Sibling pointers provide O(1) navigation
+// - child_nodes list provides O(1) index access and iteration
+// - Both are maintained in sync by mutation.zig
 //
-// Optimization strategy:
-// - Profile real-world usage first
-// - If sibling access is hot path, add sibling pointers alongside child_nodes
-// - For now, prefer simplicity over premature optimization
+// Memory overhead: ~32 bytes extra per node (4 pointers)
+// This is an acceptable trade-off for O(1) sibling navigation.
 //
 // Spec references:
 // - Tree: https://dom.spec.whatwg.org/#trees

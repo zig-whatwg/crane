@@ -121,11 +121,10 @@ pub fn isInclusiveSibling(node_a: *const Node, node_b: *const Node) bool {
 /// The first child of an object is its first child or null if it has no children.
 ///
 /// Returns: First child or null
+/// Complexity: O(1) - Direct pointer access via sibling pointers
 pub fn firstChild(node: *const Node) ?*Node {
-    if (node.child_nodes.len == 0) {
-        return null;
-    }
-    return node.child_nodes.get(0);
+    // Use direct pointer for O(1) access (Phase 1 optimization)
+    return node.first_child;
 }
 
 /// Get the last child of a node
@@ -134,11 +133,10 @@ pub fn firstChild(node: *const Node) ?*Node {
 /// The last child of an object is its last child or null if it has no children.
 ///
 /// Returns: Last child or null
+/// Complexity: O(1) - Direct pointer access via sibling pointers
 pub fn lastChild(node: *const Node) ?*Node {
-    if (node.child_nodes.len == 0) {
-        return null;
-    }
-    return node.child_nodes.get(node.child_nodes.len - 1);
+    // Use direct pointer for O(1) access (Phase 1 optimization)
+    return node.last_child;
 }
 
 /// Get the previous sibling of a node
@@ -148,21 +146,10 @@ pub fn lastChild(node: *const Node) ?*Node {
 /// if it has no preceding sibling.
 ///
 /// Returns: Previous sibling or null
+/// Complexity: O(1) - Direct pointer access via sibling pointers
 pub fn previousSibling(node: *const Node) ?*Node {
-    const parent = node.parent_node orelse return null;
-
-    // Find node's index in parent's child_nodes
-    for (0..parent.child_nodes.len) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
-        if (child == node) {
-            if (i == 0) {
-                return null; // No previous sibling
-            }
-            return parent.child_nodes.get(i - 1);
-        }
-    }
-
-    return null; // Node not found in parent (should not happen)
+    // Use direct pointer for O(1) access (Phase 1 optimization)
+    return node.previous_sibling;
 }
 
 /// Get the next sibling of a node
@@ -172,21 +159,10 @@ pub fn previousSibling(node: *const Node) ?*Node {
 /// if it has no following sibling.
 ///
 /// Returns: Next sibling or null
+/// Complexity: O(1) - Direct pointer access via sibling pointers
 pub fn nextSibling(node: *const Node) ?*Node {
-    const parent = node.parent_node orelse return null;
-
-    // Find node's index in parent's child_nodes
-    for (0..parent.child_nodes.len) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
-        if (child == node) {
-            if (i + 1 >= parent.child_nodes.len) {
-                return null; // No next sibling
-            }
-            return parent.child_nodes.get(i + 1);
-        }
-    }
-
-    return null; // Node not found in parent (should not happen)
+    // Use direct pointer for O(1) access (Phase 1 optimization)
+    return node.next_sibling;
 }
 
 /// Get the index of a node
