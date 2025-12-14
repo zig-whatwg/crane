@@ -395,10 +395,12 @@ pub const BrowsingContext = struct {
 
     /// Deinitialize and free resources
     pub fn deinit(self: *BrowsingContext) void {
-        // Recursively deinit children
-        for (self.children.items) |child| {
-            child.deinit();
-        }
+        // Note: We do NOT recursively deinit children here.
+        // Each child browsing context is owned by its respective Window instance,
+        // which will clean it up when that Window is destroyed.
+        // The children list is just a view for frames[index] lookup.
+        // Trying to deinit children here would cause double-free because the child
+        // Window may have already been destroyed (and its browsing context freed).
         self.children.deinit(self.allocator);
 
         // Free target name if allocated
@@ -484,6 +486,13 @@ pub const BrowsingContext = struct {
     /// - window: The associated Window instance (runtime.Instance pointer)
     pub fn setActiveDocument(self: *BrowsingContext, doc: InstancePtr, window: InstancePtr) void {
         self.active_document = doc;
+        self.active_window = window;
+    }
+
+    /// Set only the active window for this browsing context
+    /// Per HTML spec §7.3, every browsing context has an associated Window.
+    /// This is called when creating a Window before the Document is ready.
+    pub fn setActiveWindow(self: *BrowsingContext, window: InstancePtr) void {
         self.active_window = window;
     }
 

@@ -240,7 +240,7 @@ pub const InternalState = struct {
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
@@ -495,7 +495,9 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     const children = internal.browsing_context.children.items;
 
     // Out of bounds check
-    if (index >= children.len) return null;
+    if (index >= children.len) {
+        return null;
+    }
 
     // Get the child browsing context's Window
     const child_ctx = children[index];

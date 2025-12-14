@@ -1088,6 +1088,80 @@ fn insertNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runti
             document_internals.setDocumentElement(parent, node);
         }
     }
+
+    // Handle iframe insertion steps (HTML Standard §4.8.5)
+    // When an iframe element is inserted into a document, create the nested browsing context
+    // Note: We don't require is_connected because during parsing, the document tree is being
+    // built incrementally and is_connected isn't set until the tree is complete.
+    // Instead, we check if the node has an owner_document (meaning it's part of a document tree).
+    if (node_internal.node_type == NodeType.ELEMENT_NODE and node_internal.owner_document != null) {
+        handleIframeInsertionIfNeeded(node, parent);
+    }
+}
+
+/// Handle iframe-specific insertion steps (HTML Standard §4.8.5)
+/// When an iframe element is inserted into a document, create the nested browsing context.
+/// This enables `window.frames[0]` to work correctly.
+fn handleIframeInsertionIfNeeded(node: *runtime.Instance, parent: *runtime.Instance) void {
+    _ = parent;
+    const node_internal = getInternal(node) orelse return;
+
+    // Check if this is an iframe element by comparing local name
+    const local_name = node_internal.local_name orelse return;
+    const local_name_slice = local_name.asSlice();
+    if (!std.mem.eql(u8, local_name_slice, "iframe")) return;
+
+    // Get the HTMLIFrameElement's internal state to access the integration
+    const HTMLIFrameElementImpl = @import("HTMLIFrameElement.zig");
+    const iframe_internal = HTMLIFrameElementImpl.getInternal(node) orelse return;
+
+    // Don't re-initialize if already has a browsing context
+    if (iframe_internal.integration.browsing_context != null) return;
+
+    // Get the V8 context and isolate from the node's runtime context
+    const v8 = @import("v8");
+    const engine_ctx = node.ctx.getEngineContext() orelse return;
+    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+    // Get current isolate
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // Get the Window from the context manager
+    const window = v8.context_manager.getWindowForContext(v8_ctx) orelse return;
+
+    // Get the Window's browsing context
+    const WindowImpl = @import("Window.zig");
+    _ = WindowImpl.getInternal(window) orelse return;
+
+    // Create V8 child context for the iframe
+    // This creates a new V8 context + Window + links browsing contexts
+    const child_entry = v8.context_manager.createChildContext(.{
+        .isolate = isolate,
+        .parent_context = v8_ctx,
+        .context_type = .window,
+    }, node.ctx.allocator) catch return;
+
+    // Get the child Window instance from the context entry
+    const child_window = child_entry.window_instance orelse return;
+
+    // Get the child Window's browsing context
+    const child_window_internal = WindowImpl.getInternal(child_window) orelse return;
+
+    // Store the browsing context in the iframe integration
+    iframe_internal.integration.browsing_context = child_window_internal.browsing_context;
+}
+
+/// Find the owner document for a node (walking up the tree if needed)
+fn findOwnerDocument(node: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(node) orelse return null;
+
+    // If this is a Document, return it
+    if (internal.node_type == NodeType.DOCUMENT_NODE) {
+        return node;
+    }
+
+    // Otherwise, return the ownerDocument
+    return internal.owner_document;
 }
 
 /// Internal helper: Remove node from parent

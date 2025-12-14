@@ -275,6 +275,44 @@ pub fn getOrCreateWithExternalEventLoop(
     return &entry.runtime_ctx;
 }
 
+/// Bind a Window instance to an existing context's global object.
+/// This enables `frames[0]` to work by:
+/// 1. Creating a Window runtime.Instance
+/// 2. Binding it to the V8 global object's internal fields
+/// 3. Storing the Window in the context entry for browsing context linking
+///
+/// Call this after getOrCreateWithExternalEventLoop() to enable cross-realm features.
+///
+/// Returns the created Window instance.
+pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator: std.mem.Allocator) !*runtime.Instance {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    // Get the raw V8 internal address as the key
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
+    const key = @intFromPtr(raw_addr);
+
+    // Get the context entry - must already exist from getOrCreateWithExternalEventLoop
+    const entry = state.contexts.getPtr(key) orelse return error.ContextNotFound;
+
+    // Don't create another Window if one already exists
+    if (entry.window_instance) |existing| {
+        return existing;
+    }
+
+    // Create Window bound to global using the internal helper
+    const window_instance = try createWindowBoundToGlobal(
+        allocator,
+        &entry.runtime_ctx,
+        v8_ctx,
+        isolate,
+    );
+
+    // Store in the context entry for browsing context linking
+    entry.window_instance = window_instance;
+
+    return window_instance;
+}
+
 /// Get or create a runtime context for the given V8 context with full timer support
 ///
 /// If a runtime context already exists for this V8 context, returns it.
@@ -749,7 +787,15 @@ fn createWindowBoundToGlobal(
     // `iframe.contentWindow.DOMRectReadOnly` work correctly.
     WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
 
-    // 5. Also cache the V8 global as the wrapper for this Window instance
+    // 5. Set this Window as the active window of its browsing context
+    // Per HTML spec §7.4, every browsing context has an "active window" which is the
+    // Window object of its active document. This is required for frames[index] access
+    // to work, since WindowProxy [[GetOwnProperty]] calls getActiveWindow().
+    if (WindowImpl.getInternal(window_instance)) |internal| {
+        internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
+    }
+
+    // 6. Also cache the V8 global as the wrapper for this Window instance
     // This is for consistency with the wrapper cache system
     if (ctx.getV8WrapperCacheStorage()) |cache_storage| {
         const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
@@ -786,7 +832,7 @@ pub const ChildContextOptions = struct {
 /// - Returns undefined if index >= children.length
 ///
 /// This callback is registered on the global object template for child contexts.
-fn windowIndexedPropertyGetter(
+pub fn windowIndexedPropertyGetter(
     index: u32,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {
@@ -800,8 +846,17 @@ fn windowIndexedPropertyGetter(
     // Get the 'this' object (the global/Window object)
     const this_obj = info.getThis();
 
+    // Also try getting the global from the context (might be different from this_obj)
+    const global_obj = v8.v8_Context_Global(v8_context);
+
     // Extract instance pointer from internal field
-    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+    var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+    // If this_obj doesn't have internal fields, try global_obj
+    if (instance_ptr == null and global_obj != null) {
+        instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global_obj.?, 0);
+    }
+
     if (instance_ptr == null) {
         // No instance - let V8 handle normal lookup
         return;
@@ -848,7 +903,7 @@ fn windowIndexedPropertyGetter(
 /// Per V8 IndexedPropertyQueryCallback:
 /// - Return Intercepted.kYes if property exists (with attributes set via info.setReturnValue)
 /// - Return Intercepted.kNo if property doesn't exist (continue normal lookup)
-fn windowIndexedPropertyQuery(
+pub fn windowIndexedPropertyQuery(
     index: u32,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
@@ -876,7 +931,7 @@ fn windowIndexedPropertyQuery(
 
 /// Indexed property enumerator for Window global objects.
 /// Returns an array of indices 0..length-1.
-fn windowIndexedPropertyEnumerator(
+pub fn windowIndexedPropertyEnumerator(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {
     const WindowImpl = @import("impls").Window;
@@ -1082,6 +1137,30 @@ pub fn createChildContext(
         // Clean up Window instance on error
         const interfaces = @import("interfaces");
         interfaces.Window.deinit(window_instance);
+    }
+
+    // 8b. Link child Window's browsing context to parent Window's browsing context
+    // This enables `window.frames[0]` to work by adding the child to parent's children list.
+    // Without this, the child Window's browsing context is orphaned (created as top-level).
+    if (parent_entry.window_instance) |parent_window| {
+        const WindowImpl = @import("impls").Window;
+
+        // Get parent Window's browsing context
+        if (WindowImpl.getInternal(parent_window)) |parent_internal| {
+            // Get child Window's browsing context
+            if (WindowImpl.getInternal(window_instance)) |child_internal| {
+                // Link child to parent
+                const parent_bc = parent_internal.browsing_context;
+                const child_bc = child_internal.browsing_context;
+
+                // Set parent reference and add to parent's children list
+                child_bc.parent = parent_bc;
+                parent_bc.children.append(parent_bc.allocator, child_bc) catch {
+                    // Best effort - if this fails, frames[n] just won't work
+                    // but contentWindow will still work via the context_manager path
+                };
+            }
+        }
     }
 
     // 9. Store in map

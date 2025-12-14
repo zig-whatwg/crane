@@ -116,7 +116,7 @@ pub const InternalState = struct {
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
+pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
@@ -136,6 +136,10 @@ pub fn init(
     // Initialize internal state
     const state = instance.getState(StateType);
     state.own._internal = try InternalState.init(allocator);
+
+    // Set Node's local name for iframe identification during DOM operations
+    const NodeImpl = @import("Node.zig");
+    try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("iframe"));
 
     return instance;
 }
