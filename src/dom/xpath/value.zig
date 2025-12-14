@@ -17,9 +17,14 @@
 //! - **string**: A sequence of UCS characters
 
 const std = @import("std");
-const Node = @import("node").Node;
-const NodeBase = @import("../node_base.zig").NodeBase;
 const infra = @import("infra");
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;
+
+// Local DOM modules
+const NodeBase = @import("../node_base.zig").NodeBase;
 
 /// XPath 1.0 Value (§3.1)
 ///

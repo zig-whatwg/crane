@@ -190,7 +190,8 @@ pub fn cloneContents(range: anytype) !*@import("document_fragment").DocumentFrag
 
 /// Check if a node is a CharacterData node (Text, Comment, ProcessingInstruction)
 fn isCharacterDataNode(node: anytype) bool {
-    const Node = @import("node").Node;
+    const interfaces = @import("interfaces");
+    const Node = interfaces.Node;
     return node.node_type == Node.TEXT_NODE or
         node.node_type == Node.PROCESSING_INSTRUCTION_NODE or
         node.node_type == Node.COMMENT_NODE;

@@ -3,12 +3,17 @@
 //! This module evaluates XPath AST nodes to produce values.
 
 const std = @import("std");
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;
+const Element = interfaces.Element;
+
+// Local XPath and DOM modules
 const ast = @import("ast.zig");
 const Value = @import("value.zig").Value;
 const NodeSet = @import("value.zig").NodeSet;
 const Context = @import("context.zig").Context;
-const Node = @import("node").Node;
-const Element = @import("element").Element;
 const NodeBase = @import("../node_base.zig").NodeBase;
 const Expr = ast.Expr;
 const PrimaryExpr = ast.PrimaryExpr;

@@ -7,15 +7,20 @@
 
 const std = @import("std");
 const infra = @import("infra");
-const Node = @import("node").Node;
-const NodeList = @import("node_list").NodeList;
-const Document = @import("document").Document;
-const DocumentFragment = @import("document_fragment").DocumentFragment;
-const Element = @import("element").Element;
-const DocumentType = @import("document_type").DocumentType;
-const CharacterData = @import("character_data").CharacterData;
-const Text = @import("text").Text;
-const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;
+const NodeList = interfaces.NodeList;
+const Document = interfaces.Document;
+const DocumentFragment = interfaces.DocumentFragment;
+const Element = interfaces.Element;
+const DocumentType = interfaces.DocumentType;
+const CharacterData = interfaces.CharacterData;
+const Text = interfaces.Text;
+
+// Local DOM modules
+const RegisteredObserver = @import("registered_observer.zig").RegisteredObserver;
 const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 const mutation_observer = @import("mutation_observer_algorithms.zig");

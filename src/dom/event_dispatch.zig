@@ -4,14 +4,19 @@
 const std = @import("std");
 const infra = @import("infra");
 const webidl = @import("webidl");
-const Event = @import("event").Event;
-const EventTarget = @import("event_target").EventTarget;
-const EventListener = @import("event_target").EventListener;
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Event = interfaces.Event;
+const EventTarget = interfaces.EventTarget;
+const Node = interfaces.Node;
+const Element = interfaces.Element;
+const ShadowRoot = interfaces.ShadowRoot;
+
+// Types from Event interface
+const EventListener = Event.EventListener;
 const EventPathItem = Event.EventPathItem;
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const ShadowRoot = @import("shadow_root").ShadowRoot;
-const ShadowRootMode = @import("shadow_root").ShadowRootMode;
+const ShadowRootMode = ShadowRoot.ShadowRootMode;
 
 /// DOM §2.9.1 - append to an event path
 /// To append to an event path, given an event, invocationTarget, shadowAdjustedTarget,

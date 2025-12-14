@@ -9,11 +9,16 @@
 
 const std = @import("std");
 const infra = @import("infra");
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;
+const Element = interfaces.Element;
+
+// Local XPath modules
 const Value = @import("value.zig").Value;
 const NodeSet = @import("value.zig").NodeSet;
 const Context = @import("context.zig").Context;
-const Node = @import("node").Node;
-const Element = @import("element").Element;
 
 // ============================================================================
 // Node Set Functions (§4.1)
@@ -64,7 +69,7 @@ pub fn fnId(allocator: std.mem.Allocator, ctx: *const Context, args: []const Val
 }
 
 /// Get the root node (document)
-fn getRootNode(node: *@import("node").Node) *@import("node").Node {
+fn getRootNode(node: *Node) *Node {
     var current = node;
     while (current.parent_node) |parent| {
         current = parent;

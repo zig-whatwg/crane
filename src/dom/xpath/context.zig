@@ -19,9 +19,14 @@
 //! - A set of **namespace declarations** (mapping prefixes to namespace URIs)
 
 const std = @import("std");
-const Node = @import("node").Node;
-const Value = @import("value.zig").Value;
 const infra = @import("infra");
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Node = interfaces.Node;
+
+// Local XPath modules
+const Value = @import("value.zig").Value;
 
 /// XPath 1.0 Evaluation Context
 ///

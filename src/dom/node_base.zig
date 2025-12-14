@@ -195,9 +195,9 @@ const Text = @import("text_with_base.zig").TextWithBase;
 const Comment = @import("text_with_base.zig").CommentWithBase;
 const AttrWithBase = @import("attr_with_base.zig").AttrWithBase;
 
-// CharacterData from generated WebIDL code
+// CharacterData from generated WebIDL interfaces
 // Has NodeBase as first field, enabling safe downcasting
-pub const CharacterData = @import("character_data").CharacterData;
+pub const CharacterData = interfaces.CharacterData;
 
 // ============================================================================
 // Tests

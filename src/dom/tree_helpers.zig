@@ -11,11 +11,11 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 
-// Import DOM types from the dom root module
-// This works because tree_helpers.zig is part of src/dom/root.zig
-pub const Node = @import("node").Node;
-pub const Element = @import("element").Element;
-pub const ShadowRoot = @import("shadow_root").ShadowRoot;
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+pub const Node = interfaces.Node;
+pub const Element = interfaces.Element;
+pub const ShadowRoot = interfaces.ShadowRoot;
 
 // ============================================================================
 // Tree Navigation Adapters

@@ -7,9 +7,14 @@
 
 const std = @import("std");
 const infra = @import("infra");
-const Attr = @import("attr").Attr;
-const Element = @import("element").Element;
-const Node = @import("node").Node;
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Attr = interfaces.Attr;
+const Element = interfaces.Element;
+const Node = interfaces.Node;
+
+// Local DOM modules
 const mutation_observer = @import("mutation_observer_algorithms.zig");
 
 // HTML Custom Elements Integration Point
@@ -56,7 +61,7 @@ pub fn handleAttributeChanges(
 
     // Note: We need to create empty node lists for added/removed nodes
     const allocator = element.allocator;
-    const NodeList = @import("node_list").NodeList;
+    const NodeList = interfaces.NodeList;
     var empty_added = try NodeList.init(allocator);
     defer empty_added.deinit();
     var empty_removed = try NodeList.init(allocator);

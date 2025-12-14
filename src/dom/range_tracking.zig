@@ -5,9 +5,12 @@
 //! and updating them when DOM mutations occur.
 
 const std = @import("std");
-const Range = @import("range").Range;
-const Node = @import("node").Node;
-const Document = @import("document").Document;
+
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+const Range = interfaces.Range;
+const Node = interfaces.Node;
+const Document = interfaces.Document;
 
 /// Update ranges after text node split
 /// Spec: Text.splitText() steps 6.2-6.5 (DOM Standard §4.9)

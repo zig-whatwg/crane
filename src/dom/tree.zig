@@ -15,8 +15,9 @@
 const std = @import("std");
 const infra = @import("infra");
 
-// Import actual Node type from WebIDL generated code via package
-pub const Node = @import("node").Node;
+// Import DOM types from WebIDL interfaces
+const interfaces = @import("interfaces");
+pub const Node = interfaces.Node;
 
 /// Get the root of an object
 /// Spec: https://dom.spec.whatwg.org/#concept-tree-root
