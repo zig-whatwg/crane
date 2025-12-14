@@ -23,6 +23,7 @@ const EngineError = runtime.EngineError;
 
 // V8 FFI and helpers
 const ffi = @import("ffi.zig");
+const v8_conversions = @import("conversions.zig");
 const async_iterator = @import("async_iterator.zig");
 const promise_mod = @import("promise.zig");
 const event_loop_mod = @import("event_loop.zig");
@@ -93,6 +94,8 @@ pub const v8_engine_interface: EngineInterface = .{
     .isString = v8IsString,
     .extractString = v8ExtractString,
     .setPropertyOnObject = v8SetPropertyOnObject,
+    .defineOwnPropertyOnObject = v8DefineOwnPropertyOnObject,
+    .convertJSValueToEngine = v8ConvertJSValueToEngine,
     .createStringArray = v8CreateStringArray,
     .createEventLoop = v8CreateEventLoop,
     .destroyEventLoop = v8DestroyEventLoop,
@@ -494,6 +497,68 @@ fn v8SetPropertyOnObject(
     if (!ffi.v8_Object_Set(target_obj, context, @ptrCast(v8_key), @ptrCast(v8_value))) {
         return EngineError.OperationFailed;
     }
+}
+
+/// Define an own property on a V8 object using [[DefineOwnProperty]] semantics
+///
+/// Per WebIDL [Replaceable] extended attribute (§4.3.10): the assignment is performed
+/// by calling [[DefineOwnProperty]] with PropertyDescriptor{[[Value]]: V,
+/// [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true}
+fn v8DefineOwnPropertyOnObject(
+    engine_ctx: *anyopaque,
+    target: *anyopaque,
+    property_name: []const u8,
+    value: *anyopaque,
+) EngineError!void {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Cast target to V8 Object
+    const target_obj: *ffi.Object = @ptrCast(@alignCast(target));
+
+    // Cast value to V8 Value
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(value));
+
+    // Create V8 String for property name
+    const v8_key = ffi.v8_String_NewFromUtf8(isolate, property_name.ptr, @intCast(property_name.len)) orelse
+        return EngineError.OperationFailed;
+
+    // Use v8_Object_DefineProperty with [[DefineOwnProperty]] semantics
+    // For [Replaceable]: writable=true, enumerable=true, configurable=true
+    if (!ffi.v8_Object_DefineProperty(target_obj, context, @ptrCast(v8_key), v8_value, true, true, true)) {
+        return EngineError.OperationFailed;
+    }
+}
+
+/// Convert an engine-agnostic runtime.JSValue to a V8 Value pointer
+///
+/// This handles all JSValue variants:
+/// - undefined → V8 undefined
+/// - null → V8 null
+/// - boolean → V8 boolean
+/// - number → V8 number
+/// - string → V8 string
+/// - handle → returns the handle directly
+/// - instance → wraps as V8 object
+fn v8ConvertJSValueToEngine(
+    engine_ctx: *anyopaque,
+    value: runtime.JSValue,
+) EngineError!*anyopaque {
+    const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse
+        return EngineError.OperationFailed;
+
+    // Use the existing toV8Value conversion which handles all variants
+    const v8_value = v8_conversions.toV8Value(runtime.JSValue, isolate, context, value) catch |err| {
+        switch (err) {
+            error.OutOfMemory => return EngineError.OutOfMemory,
+            error.TypeError => return EngineError.TypeError,
+            else => return EngineError.OperationFailed,
+        }
+    };
+
+    return @ptrCast(v8_value);
 }
 
 /// Create a V8 array from a slice of strings

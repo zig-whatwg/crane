@@ -354,19 +354,17 @@ pub fn registerCleanupHook(hook: CleanupHookFn) void {
 ///   - error.TypeError if target cannot have properties set
 ///   - error.OperationFailed if [[Set]] returns false
 pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value: DOMString) !void {
+    // Context is already *ContextData
     const ctx = target.ctx;
 
-    // Get context data
-    const ctx_data = ctx.data orelse return error.NoEngine;
-
     // Get the engine interface
-    const engine = ctx_data.getEngine() orelse return error.NoEngine;
+    const engine = ctx.getEngine() orelse return error.NoEngine;
 
     // Get the engine context
-    const engine_ctx = ctx_data.getEngineContext() orelse return error.NoEngine;
+    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
 
     // Get the JS wrapper cache from context
-    const wrapper_cache = ctx_data.getV8WrapperCacheStorage() orelse return error.NoEngine;
+    const wrapper_cache = ctx.getV8WrapperCacheStorage() orelse return error.NoEngine;
 
     // Get the getWrapperForInstance function
     const getWrapper = engine.getWrapperForInstance orelse return error.NoEngine;
@@ -385,6 +383,61 @@ pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value
     // Use engine's setPropertyOnObject to set the property with [[Set]] semantics
     const setProperty = engine.setPropertyOnObject orelse return error.NoEngine;
     try setProperty(engine_ctx, target_wrapper, property_name, value);
+}
+
+/// Define an own property on a runtime.Instance using JavaScript [[DefineOwnProperty]] semantics
+///
+/// This is used by [Replaceable] extended attribute to create own properties that shadow
+/// the inherited getter. Per WebIDL spec §4.3.10: the setter steps are to perform
+/// ? [[DefineOwnProperty]] on this with the attribute's identifier as the property name
+/// and PropertyDescriptor{[[Value]]: V, [[Writable]]: true, [[Enumerable]]: true,
+/// [[Configurable]]: true}.
+///
+/// Arguments:
+///   - target: The target runtime.Instance (e.g., Window)
+///   - property_name: Name of the property to define (e.g., "scrollX")
+///   - value: Any JavaScript value to assign
+///
+/// Errors:
+///   - error.NoEngine if no JS engine is configured
+///   - error.TypeError if target cannot have properties defined
+///   - error.OperationFailed if [[DefineOwnProperty]] returns false
+pub fn defineOwnProperty(target: *Instance, property_name: []const u8, value: JSValue) !void {
+    // Context is already *ContextData
+    const ctx = target.ctx;
+
+    // Get the engine interface
+    const engine = ctx.getEngine() orelse return error.NoEngine;
+
+    // Get the engine context
+    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
+
+    // Get the JS wrapper cache from context
+    const wrapper_cache = ctx.getV8WrapperCacheStorage() orelse return error.NoEngine;
+
+    // Get the getWrapperForInstance function
+    const getWrapper = engine.getWrapperForInstance orelse return error.NoEngine;
+
+    // Get the JS wrapper for the target
+    const target_wrapper = getWrapper(
+        engine_ctx,
+        wrapper_cache,
+        target,
+    ) orelse {
+        // If no wrapper exists, the target hasn't been exposed to JS yet
+        // This shouldn't happen in normal [Replaceable] usage
+        return error.TypeError;
+    };
+
+    // Use engine's defineOwnPropertyOnObject to define the property with [[DefineOwnProperty]] semantics
+    const defineProperty = engine.defineOwnPropertyOnObject orelse return error.NoEngine;
+
+    // Convert runtime.JSValue to engine-native value
+    // This properly handles all JSValue variants (undefined, null, boolean, number, string, handle, instance)
+    const convertValue = engine.convertJSValueToEngine orelse return error.NoEngine;
+    const value_ptr = convertValue(engine_ctx, value) catch return error.TypeError;
+
+    try defineProperty(engine_ctx, target_wrapper, property_name, value_ptr);
 }
 
 // Standard library dependency

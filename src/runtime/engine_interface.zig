@@ -34,6 +34,7 @@
 //! ```
 
 const std = @import("std");
+const JSValue = @import("js_value.zig").JSValue;
 
 /// Callback signature for main thread scheduling
 ///
@@ -318,6 +319,59 @@ pub const EngineInterface = struct {
         property_name: []const u8,
         value: []const u8,
     ) EngineError!void,
+
+    /// Define an own property on a JavaScript object using [[DefineOwnProperty]] semantics
+    ///
+    /// Per WebIDL [Replaceable] extended attribute: the setter steps are to perform
+    /// ? [[DefineOwnProperty]] on this with the attribute's identifier as the property
+    /// name and PropertyDescriptor{[[Value]]: V, [[Writable]]: true, [[Enumerable]]: true,
+    /// [[Configurable]]: true}.
+    ///
+    /// This creates an own data property on the object, shadowing any inherited
+    /// accessor property (like the readonly getter).
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC VM, etc.)
+    ///   - target: Opaque pointer to JS object to define property on
+    ///   - property_name: Name of the property to define
+    ///   - value: Any JavaScript value to set as the property value
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - EngineError.TypeError if target is not an object
+    ///   - EngineError.OperationFailed if [[DefineOwnProperty]] returns false
+    defineOwnPropertyOnObject: ?*const fn (
+        engine_ctx: *anyopaque,
+        target: *anyopaque,
+        property_name: []const u8,
+        value: *anyopaque,
+    ) EngineError!void,
+
+    /// Convert an engine-agnostic runtime.JSValue to an engine-specific value pointer
+    ///
+    /// This is used when impl code needs to pass a runtime.JSValue to engine APIs
+    /// that expect engine-native pointers (e.g., defineOwnPropertyOnObject).
+    ///
+    /// The conversion handles all JSValue variants:
+    /// - undefined → engine's undefined value
+    /// - null → engine's null value
+    /// - boolean → engine's boolean value
+    /// - number → engine's number value
+    /// - string → engine's string value
+    /// - handle → returns the engine handle directly
+    /// - instance → wraps the instance as a JS object
+    ///
+    /// Arguments:
+    ///   - engine_ctx: Engine-specific context (V8 Context, JSC VM, etc.)
+    ///   - value: The engine-agnostic JSValue to convert
+    ///
+    /// Returns:
+    ///   - Opaque pointer to the engine-native value
+    ///   - EngineError if conversion fails
+    convertJSValueToEngine: ?*const fn (
+        engine_ctx: *anyopaque,
+        value: JSValue,
+    ) EngineError!*anyopaque,
 
     /// Create a JavaScript array from a slice of strings
     ///
@@ -849,6 +903,8 @@ pub const stub_engine: EngineInterface = .{
     .isString = null,
     .extractString = null,
     .setPropertyOnObject = stubSetPropertyOnObject,
+    .defineOwnPropertyOnObject = stubDefineOwnPropertyOnObject,
+    .convertJSValueToEngine = stubConvertJSValueToEngine,
     .createStringArray = null,
     .createEventLoop = null,
     .destroyEventLoop = null,
@@ -1065,6 +1121,24 @@ fn stubSetPropertyOnObject(
     _: []const u8,
 ) EngineError!void {
     // Stub: No JS engine available for property setting
+    return EngineError.NoEngine;
+}
+
+fn stubDefineOwnPropertyOnObject(
+    _: *anyopaque,
+    _: *anyopaque,
+    _: []const u8,
+    _: *anyopaque,
+) EngineError!void {
+    // Stub: No JS engine available for property definition
+    return EngineError.NoEngine;
+}
+
+fn stubConvertJSValueToEngine(
+    _: *anyopaque,
+    _: JSValue,
+) EngineError!*anyopaque {
+    // Stub: No JS engine available for value conversion
     return EngineError.NoEngine;
 }
 
