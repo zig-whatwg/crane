@@ -774,6 +774,140 @@ pub const ChildContextOptions = struct {
     inherit_event_loop: bool = true,
 };
 
+// ============================================================================
+// Window Indexed Property Handler for frames[index] access
+// ============================================================================
+
+/// Indexed property getter for Window global objects.
+/// Enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
+///
+/// Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
+/// - Numeric indices return the corresponding child browsing context's Window
+/// - Returns undefined if index >= children.length
+///
+/// This callback is registered on the global object template for child contexts.
+fn windowIndexedPropertyGetter(
+    index: u32,
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) void {
+    const WindowImpl = @import("impls").Window;
+    const template_registry = @import("template_registry.zig");
+    const conv = @import("conversions.zig");
+
+    const isolate = info.getIsolate();
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get the 'this' object (the global/Window object)
+    const this_obj = info.getThis();
+
+    // Extract instance pointer from internal field
+    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+    if (instance_ptr == null) {
+        // No instance - let V8 handle normal lookup
+        return;
+    }
+
+    // Safety check for use-after-free patterns
+    const ptr_as_int = @intFromPtr(instance_ptr);
+    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+    {
+        return;
+    }
+
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Call Window's call_item method to get the child Window
+    const result = WindowImpl.call_item(instance, index) catch {
+        // Error - let V8 handle normal lookup
+        return;
+    };
+
+    if (result) |child_window| {
+        // We have a child Window instance - wrap it and return
+        const interface_name = template_registry.getInstanceInterfaceName(child_window);
+        const wrapped = template_registry.wrapInstanceAsV8Object(
+            child_window,
+            interface_name,
+            isolate,
+            v8_context,
+        ) catch {
+            conv.throwError(isolate, "Failed to wrap child window");
+            return;
+        };
+        info.setReturnValue(@ptrCast(wrapped));
+    }
+    // If result is null (out of bounds), don't set a return value
+    // This lets V8 continue with normal property lookup (returns undefined)
+}
+
+/// Indexed property query for Window global objects.
+/// Returns PropertyAttribute flags if the index is a valid frame index.
+/// Per V8 IndexedPropertyQueryCallback:
+/// - Return Intercepted.kYes if property exists (with attributes set via info.setReturnValue)
+/// - Return Intercepted.kNo if property doesn't exist (continue normal lookup)
+fn windowIndexedPropertyQuery(
+    index: u32,
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) v8.Intercepted {
+    const WindowImpl = @import("impls").Window;
+
+    const this_obj = info.getThis();
+    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+    if (instance_ptr == null) return .kNo;
+
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Check if this index is valid
+    const length = WindowImpl.get_length(instance) catch return .kNo;
+    if (index < length) {
+        // Valid index - return property attributes (ReadOnly | DontEnum)
+        // Per spec, indexed properties on Window are configurable but not writable
+        const isolate = info.getIsolate();
+        const attrs = v8.v8_Integer_New(isolate, 3); // 3 = ReadOnly | DontEnum
+        info.setReturnValue(@ptrCast(attrs));
+        return .kYes;
+    }
+    // Invalid index - property doesn't exist
+    return .kNo;
+}
+
+/// Indexed property enumerator for Window global objects.
+/// Returns an array of indices 0..length-1.
+fn windowIndexedPropertyEnumerator(
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) void {
+    const WindowImpl = @import("impls").Window;
+
+    const isolate = info.getIsolate();
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    const this_obj = info.getThis();
+    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+    if (instance_ptr == null) {
+        // No instance - return empty array
+        info.setReturnValue(@ptrCast(v8.v8_Array_New(isolate, 0)));
+        return;
+    }
+
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    const length = WindowImpl.get_length(instance) catch {
+        info.setReturnValue(@ptrCast(v8.v8_Array_New(isolate, 0)));
+        return;
+    };
+
+    // Create array of indices
+    const arr = v8.v8_Array_New(isolate, @intCast(length));
+    var i: u32 = 0;
+    while (i < length) : (i += 1) {
+        const idx_val = v8.v8_Integer_New(isolate, @intCast(i));
+        _ = v8.v8_Array_Set(arr, v8_context, i, @ptrCast(idx_val));
+    }
+    info.setReturnValue(@ptrCast(arr));
+}
+
 /// Create a new V8 context for a child browsing context (iframe)
 ///
 /// This creates a new V8 context with:
@@ -812,6 +946,18 @@ pub fn createChildContext(
 
     // Set internal field count for Window binding (2 fields: impl pointer + destructor type)
     v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+
+    // 1b. Set up indexed property handler for frames[index] access
+    // Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
+    // - Numeric indices return child browsing context Windows
+    // - This enables `iframe.contentWindow[0]` to access nested iframes
+    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+        global_template,
+        windowIndexedPropertyGetter,
+        windowIndexedPropertyQuery,
+        windowIndexedPropertyEnumerator,
+        null, // descriptor callback - not needed for basic access
+    );
 
     // 2. Create new V8 context with the global template
     const child_context = v8.v8_Context_NewWithGlobalTemplate(

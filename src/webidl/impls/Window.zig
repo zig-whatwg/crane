@@ -483,6 +483,28 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     return @intCast(internal.browsing_context.children.items.len);
 }
 
+/// Indexed getter for frames[index] access
+/// Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
+/// - frames[0] should return first child iframe's contentWindow
+/// - Returns null if index >= children.length
+///
+/// This enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
+/// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    const children = internal.browsing_context.children.items;
+
+    // Out of bounds check
+    if (index >= children.len) return null;
+
+    // Get the child browsing context's Window
+    const child_ctx = children[index];
+    const child_window = child_ctx.getActiveWindow() orelse return null;
+
+    // Cast the InstancePtr (anyopaque) to runtime.Instance
+    return @ptrCast(@alignCast(child_window));
+}
+
 /// Getter for top - The topmost browsing context
 /// Per spec: Returns the WindowProxy of the top-level traversable.
 pub fn get_top(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
