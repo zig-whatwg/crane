@@ -232,6 +232,21 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             @ptrCast(entry),
             iframeContextCleanup,
         );
+
+        // Propagate iframe name to the Window's browsing context
+        // Per HTML spec, setting iframe.name should be visible via contentWindow.name.
+        // The Window created by createChildContext has its own BrowsingContext,
+        // but we need to copy the name from the iframe's BrowsingContext to it.
+        if (entry.window_instance) |window_instance| {
+            const WindowImpl = @import("Window.zig");
+            if (WindowImpl.getInternal(window_instance)) |window_internal| {
+                // Copy the name from iframe integration to the Window's browsing context
+                const iframe_name = internal.integration.getName();
+                if (iframe_name.len > 0) {
+                    window_internal.browsing_context.setTargetName(iframe_name) catch {};
+                }
+            }
+        }
     }
 
     // Return the Window instance from the child context
@@ -373,8 +388,20 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     const str = value.asSlice();
     internal.name_attr = try internal.allocator.dupe(u8, str);
 
-    // Update integration
+    // Update integration (propagates to iframe's browsing context)
     internal.integration.setName(str) catch {};
+
+    // Also propagate to the Window's browsing context if contentWindow exists
+    // This ensures iframe.contentWindow.name reflects the updated name
+    if (internal.integration.getEngineContext()) |engine_ctx| {
+        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+        if (context_manager.getWindowForContext(v8_ctx)) |window_instance| {
+            const WindowImpl = @import("Window.zig");
+            if (WindowImpl.getInternal(window_instance)) |window_internal| {
+                window_internal.browsing_context.setTargetName(str) catch {};
+            }
+        }
+    }
 }
 
 // ============================================================================

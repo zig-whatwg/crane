@@ -1369,6 +1369,14 @@ pub fn createChildContext(
     // 10. Get pointer to entry in map
     const child_entry = state.contexts.getPtr(child_key).?;
 
+    // 10b. CRITICAL: Update Window's context pointer to the entry's runtime_ctx
+    // The window_instance was created with a pointer to the stack-local ctx_data.
+    // Now that ctx_data has been copied into the ContextEntry, we need to update
+    // the Window's ctx to point to the stable location in the map.
+    // Without this fix, Window.get_name() crashes when accessing instance.ctx.allocator
+    // because instance.ctx points to freed stack memory.
+    window_instance.ctx = &child_entry.runtime_ctx;
+
     // 11. Re-fetch parent entry pointer after put() to ensure it's still valid
     // (HashMap may have rehashed during put(), invalidating previous pointers)
     const fresh_parent_entry = state.contexts.getPtr(parent_key).?;
