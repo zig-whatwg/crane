@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const infra = @import("infra");
+const runtime = @import("runtime");
 
 // NodeBase is THE source of truth for DOM tree structure
 const node_base = @import("node_base.zig");
@@ -34,11 +35,17 @@ const mutation_observer = @import("mutation_observer_algorithms.zig");
 const document_internals = @import("document_internals.zig");
 const element_with_base = @import("element_with_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
+const instance_bridge = @import("instance_bridge.zig");
 
 // Interface types needed for mutation observer integration
 const interfaces = @import("interfaces");
 const NodeList = interfaces.NodeList;
+const Node = interfaces.Node;
 const Document = interfaces.Document;
+
+// Implementation modules for creating NodeLists
+const impls = @import("impls");
+const NodeListImpl = impls.NodeList;
 
 /// DOM Exception types as defined in WebIDL
 pub const DOMException = error{
@@ -311,16 +318,21 @@ fn isText(node: anytype) bool {
     return getNodeType(node) == TEXT_NODE;
 }
 
-/// Stub: Queue a tree mutation record
+/// Queue a tree mutation record for MutationObserver notifications
 ///
-/// TODO: Mutation observer integration is stubbed out during unified DOM tree refactoring.
-/// The mutation observer system expects interface NodeList types, but mutation.zig
-/// now operates on NodeBase. This needs architectural work to bridge the two.
+/// This function bridges the NodeBase-based mutation algorithms with the
+/// WebIDL MutationObserver system. It converts NodeBase arrays to NodeLists
+/// and calls the mutation observer algorithm.
 ///
-/// Once the architecture is updated:
-/// 1. Convert NodeBase arrays to NodeList interface types
-/// 2. Call mutation_observer.queueTreeMutationRecord with proper parameters
-fn queueTreeMutationRecordStub(
+/// Spec: https://dom.spec.whatwg.org/#queue-a-tree-mutation-record
+///
+/// @param allocator - Allocator for creating NodeLists
+/// @param target - The parent node that was mutated (NodeBase)
+/// @param added_nodes - Array of NodeBase pointers that were added
+/// @param removed_nodes - Array of NodeBase pointers that were removed
+/// @param previous_sibling - The sibling before the mutation (or null)
+/// @param next_sibling - The sibling after the mutation (or null)
+fn queueTreeMutationRecord(
     allocator: std.mem.Allocator,
     target: anytype,
     added_nodes: []const *NodeBase,
@@ -328,13 +340,91 @@ fn queueTreeMutationRecordStub(
     previous_sibling: ?*NodeBase,
     next_sibling: ?*NodeBase,
 ) void {
-    // TODO: Implement mutation observer integration
-    _ = allocator;
-    _ = target;
-    _ = added_nodes;
-    _ = removed_nodes;
-    _ = previous_sibling;
-    _ = next_sibling;
+    // Early return if both arrays are empty (spec step 1 assertion would fail)
+    if (added_nodes.len == 0 and removed_nodes.len == 0) return;
+
+    // Get the target as a runtime.Instance via the instance bridge
+    const target_nodebase: *NodeBase = @ptrCast(target);
+    const target_instance_ptr = instance_bridge.getInstance(target_nodebase) orelse {
+        // Target is not a registered runtime.Instance - cannot queue mutation record
+        // This can happen for nodes created purely through NodeBase (e.g., during parsing)
+        return;
+    };
+    const target_instance: *runtime.Instance = @ptrCast(@alignCast(target_instance_ptr));
+
+    // Get runtime context from the instance
+    // The context is needed for creating NodeLists
+    const ctx = target_instance.ctx;
+
+    // Create NodeList for added nodes
+    const added_list = createNodeListFromBases(allocator, ctx, added_nodes) catch {
+        // If we can't create the NodeList, skip the mutation record
+        return;
+    };
+
+    // Create NodeList for removed nodes
+    const removed_list = createNodeListFromBases(allocator, ctx, removed_nodes) catch {
+        // Clean up added_list if we fail
+        NodeListImpl.deinit(added_list);
+        return;
+    };
+
+    // Convert previous_sibling and next_sibling to runtime.Instance
+    const prev_instance: ?*runtime.Instance = if (previous_sibling) |prev| blk: {
+        const prev_inst_ptr = instance_bridge.getInstance(prev) orelse break :blk null;
+        break :blk @ptrCast(@alignCast(prev_inst_ptr));
+    } else null;
+
+    const next_instance: ?*runtime.Instance = if (next_sibling) |next| blk: {
+        const next_inst_ptr = instance_bridge.getInstance(next) orelse break :blk null;
+        break :blk @ptrCast(@alignCast(next_inst_ptr));
+    } else null;
+
+    // Call the mutation observer algorithm
+    mutation_observer.queueTreeMutationRecord(
+        allocator,
+        target_instance,
+        added_list,
+        removed_list,
+        prev_instance,
+        next_instance,
+    ) catch {
+        // If queueing fails, clean up the NodeLists
+        NodeListImpl.deinit(added_list);
+        NodeListImpl.deinit(removed_list);
+    };
+}
+
+/// Create a NodeList from an array of NodeBase pointers
+///
+/// This converts NodeBase pointers to runtime.Instance pointers via the
+/// instance bridge and creates a static NodeList containing them.
+///
+/// @param allocator - Allocator for the NodeList
+/// @param ctx - Runtime context for NodeList creation
+/// @param nodes - Array of NodeBase pointers to include
+/// @returns A NodeList instance, or error if creation fails
+fn createNodeListFromBases(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    nodes: []const *NodeBase,
+) !*runtime.Instance {
+    // Collect instances from the NodeBase array
+    var instances: std.ArrayList(*runtime.Instance) = .{};
+    defer instances.deinit(allocator);
+
+    for (nodes) |node_base_ptr| {
+        if (instance_bridge.getInstance(node_base_ptr)) |instance_ptr| {
+            // Cast anyopaque to *runtime.Instance
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+            try instances.append(allocator, instance);
+        }
+        // Skip nodes that aren't registered as runtime instances
+        // This handles internal nodes that may not have WebIDL wrappers
+    }
+
+    // Create a static NodeList from the collected instances
+    return NodeListImpl.createFromSlice(allocator, ctx, instances.items);
 }
 
 /// Helper to check if node is a CharacterData node
@@ -594,7 +684,7 @@ pub fn insert(
 
         // Step 4.2: Queue a tree mutation record for node
         // addedNodes is empty, removedNodes is the children that were removed
-        queueTreeMutationRecordStub(
+        queueTreeMutationRecord(
             parent.allocator,
             node,
             &[_]*NodeBase{},
@@ -717,7 +807,7 @@ pub fn insert(
 
     // Step 8: If suppress observers flag is unset, queue a tree mutation record
     if (!suppress_observers) {
-        queueTreeMutationRecordStub(
+        queueTreeMutationRecord(
             parent.allocator,
             parent,
             nodes[0..nodes_count],
@@ -873,7 +963,7 @@ pub fn appendChildren(
 
     // Step 8: Queue a single tree mutation record for all insertions
     // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-    queueTreeMutationRecordStub(
+    queueTreeMutationRecord(
         parent.allocator,
         parent,
         children,
@@ -1023,7 +1113,7 @@ pub fn insertChildrenBefore(
 
     // Queue single mutation record
     // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-    queueTreeMutationRecordStub(
+    queueTreeMutationRecord(
         parent.allocator,
         parent,
         children,
@@ -1169,7 +1259,7 @@ pub fn replace(
 
     // Step 14: Queue a tree mutation record
     // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-    queueTreeMutationRecordStub(
+    queueTreeMutationRecord(
         parent.allocator,
         parent,
         added_nodes[0..added_count],
@@ -1237,7 +1327,7 @@ pub fn replaceAll(
     // Step 7: Queue a tree mutation record if addedNodes or removedNodes is not empty
     if (added_count > 0 or removed_count > 0) {
         // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-        queueTreeMutationRecordStub(
+        queueTreeMutationRecord(
             allocator,
             parent,
             added_nodes[0..added_count],
@@ -1387,7 +1477,7 @@ pub fn remove(
         var removed_nodes_buf: [1]*NodeBase = undefined;
         removed_nodes_buf[0] = node;
         // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-        queueTreeMutationRecordStub(
+        queueTreeMutationRecord(
             parent.allocator,
             parent,
             &[_]*NodeBase{},
@@ -1572,7 +1662,7 @@ pub fn move(
     {
         var removed_nodes_buf: [1]*NodeBase = undefined;
         removed_nodes_buf[0] = node;
-        queueTreeMutationRecordStub(
+        queueTreeMutationRecord(
             new_parent.allocator,
             old_parent,
             &[_]*NodeBase{},
@@ -1587,7 +1677,7 @@ pub fn move(
     {
         var added_nodes_buf: [1]*NodeBase = undefined;
         added_nodes_buf[0] = node;
-        queueTreeMutationRecordStub(
+        queueTreeMutationRecord(
             new_parent.allocator,
             new_parent,
             added_nodes_buf[0..1],

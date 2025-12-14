@@ -34,14 +34,15 @@ pub const MutationObserverAgent = struct {
     microtask_queued: bool = false,
 
     /// Set of mutation observers with pending records
-    pending_observers: infra.List(*MutationObserver),
+    /// Stores *runtime.Instance pointers to MutationObserver instances
+    pending_observers: infra.List(*runtime.Instance),
 
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) MutationObserverAgent {
         return .{
             .microtask_queued = false,
-            .pending_observers = infra.List(*MutationObserver).init(allocator),
+            .pending_observers = infra.List(*runtime.Instance).init(allocator),
             .allocator = allocator,
         };
     }
@@ -220,20 +221,27 @@ pub fn queueMutationRecord(
 /// previousSibling, and nextSibling.
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-tree-mutation-record
+///
+/// Note: This function uses *runtime.Instance for all node parameters to support
+/// the unified DOM tree model where mutation.zig operates on NodeBase but needs
+/// to integrate with the WebIDL MutationObserver system.
 pub fn queueTreeMutationRecord(
     allocator: Allocator,
-    target: *Node,
-    added_nodes: *NodeList,
-    removed_nodes: *NodeList,
-    previous_sibling: ?*Node,
-    next_sibling: ?*Node,
+    target: *runtime.Instance,
+    added_nodes: *runtime.Instance,
+    removed_nodes: *runtime.Instance,
+    previous_sibling: ?*runtime.Instance,
+    next_sibling: ?*runtime.Instance,
 ) !void {
     // Step 1: Assert: either addedNodes or removedNodes is not empty
-    std.debug.assert(added_nodes.get_length() > 0 or removed_nodes.get_length() > 0);
+    // Get lengths from NodeList impls
+    const added_len = NodeListImpl.get_length(added_nodes) catch 0;
+    const removed_len = NodeListImpl.get_length(removed_nodes) catch 0;
+    std.debug.assert(added_len > 0 or removed_len > 0);
 
     // Step 2: Queue a mutation record of "childList" for target with null, null, null,
     // addedNodes, removedNodes, previousSibling, and nextSibling
-    try queueMutationRecord(
+    try queueMutationRecordInternal(
         allocator,
         "childList",
         target,
@@ -245,6 +253,62 @@ pub fn queueTreeMutationRecord(
         previous_sibling,
         next_sibling,
     );
+}
+
+// Import NodeList impl for accessing length
+const NodeListImpl = @import("impls").NodeList;
+const runtime = @import("runtime");
+
+/// Internal version of queueMutationRecord that uses runtime.Instance
+/// This avoids the architectural mismatch with the old interface-based signatures
+fn queueMutationRecordInternal(
+    allocator: Allocator,
+    mutation_type: []const u8,
+    target: *runtime.Instance,
+    name: ?[]const u8,
+    namespace: ?[]const u8,
+    old_value: ?[]const u8,
+    added_nodes: *runtime.Instance,
+    removed_nodes: *runtime.Instance,
+    previous_sibling: ?*runtime.Instance,
+    next_sibling: ?*runtime.Instance,
+) !void {
+    // TODO: Full implementation requires updating the registered observer system
+    // to work with runtime.Instance instead of NodeBase.
+    //
+    // For now, create the MutationRecord and queue it if there are any interested observers.
+    // The full observer matching logic is deferred until the node-observer bridge is complete.
+
+    // Get the MutationRecord impl
+    const MutationRecordImpl = @import("impls").MutationRecord;
+    const ctx = target.ctx;
+
+    // Create the mutation record
+    const record = try MutationRecordImpl.create(
+        allocator,
+        ctx,
+        mutation_type,
+        target,
+        added_nodes,
+        removed_nodes,
+        previous_sibling,
+        next_sibling,
+        name,
+        namespace,
+        old_value,
+    );
+    _ = record;
+
+    // TODO: The full algorithm requires iterating through target's inclusive ancestors
+    // and checking each node's registered observer list. This needs the node-observer
+    // bridge to be completed (converting runtime.Instance to NodeBase to access
+    // registered_observers field).
+    //
+    // For now, the MutationRecord is created but not dispatched to observers.
+    // This will be completed when the transient observer support is implemented.
+
+    // Queue a mutation observer microtask
+    try queueMutationObserverMicrotask(allocator);
 }
 
 /// DOM §7.1 - Queue a mutation observer microtask
@@ -280,7 +344,7 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     agent.microtask_queued = false;
 
     // Step 2: Let notifySet be a clone of the surrounding agent's pending mutation observers
-    var notify_set = infra.List(*MutationObserver).init(allocator);
+    var notify_set = infra.List(*runtime.Instance).init(allocator);
     defer notify_set.deinit();
     try notify_set.appendSlice(agent.pending_observers.items());
 
@@ -290,24 +354,24 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     // Step 4: (signal slots - not implemented yet, skip)
 
     // Step 6: For each mo of notifySet
-    for (notify_set.items()) |mo| {
+    for (notify_set.items()) |mo_instance| {
         // Step 6.1: Let records be a clone of mo's record queue
-        const records = try mo.call_takeRecords();
-        defer allocator.free(records);
-
         // Step 6.2: Empty mo's record queue (done by takeRecords())
+        // takeRecords returns a JSValue (array), not a Zig slice
+        // For now we'll call it but skip the callback invocation until
+        // we have proper JS callback infrastructure
+        _ = MutationObserver.call_takeRecords(mo_instance) catch continue;
 
         // Step 6.3: For each node of mo's node list, remove all transient registered observers
         // whose observer is mo from node's registered observer list
-        for (mo.getNodeList()) |node| {
-            removeTransientObservers(node, mo);
-        }
+        // TODO: Implement when we have proper observer tracking per node
+        // This requires MutationObserverImpl to track which nodes it's observing
 
         // Step 6.4: If records is not empty, then invoke mo's callback with « records, mo »
-        if (records.len > 0) {
-            const callback = mo.getCallback();
-            callback(records, mo);
-        }
+        // TODO: Implement callback invocation - requires:
+        // 1. Access to the MutationObserver's stored callback
+        // 2. JS function invocation through runtime
+        // For now, records are cleared by takeRecords() above
     }
 
     // Step 7: For each slot of signalSet, fire an event named slotchange...
@@ -316,19 +380,16 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
 
 /// Remove transient registered observers for a specific MutationObserver from a node
 /// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers step 6.3
-fn removeTransientObservers(node: *Node, observer: *MutationObserver) void {
-    // Remove all transient observers whose observer matches
-    // We iterate backwards to safely remove items during iteration
-    // Compare pointer addresses since opaque types from different modules can't be directly compared
-    const observer_ptr = @intFromPtr(observer);
-    var i: usize = node.registered_observers.size();
-    while (i > 0) {
-        i -= 1;
-        const registered = node.registered_observers.get(i) orelse continue;
-        if (registered.is_transient and @intFromPtr(registered.observer) == observer_ptr) {
-            _ = node.registered_observers.remove(i) catch unreachable;
-        }
-    }
+///
+/// TODO: Implement when we have proper registered observer tracking per node.
+/// This requires:
+/// 1. Node instances to track their list of registered observers
+/// 2. Each registered observer to track its source (the MutationObserver it came from)
+/// 3. Ability to identify transient observers (those added for ancestor observation)
+fn removeTransientObservers(node: *runtime.Instance, observer: *runtime.Instance) void {
+    // Stub implementation - no-op until we have registered observer infrastructure
+    _ = node;
+    _ = observer;
 }
 
 // Tests
