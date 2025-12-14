@@ -619,12 +619,39 @@ pub fn insert(
         try adopt(n, parent.owner_document.?);
 
         // Step 7.2-3: Insert node into parent's children
+        // Phase 2: Maintain BOTH child_nodes list AND sibling pointers
+
         if (child) |c| {
+            // Insert before child
             const idx = getChildIndex(c) orelse parent.child_nodes.size();
             try parent.child_nodes.insert(idx, n);
+
+            // Update sibling pointers (Phase 2)
+            n.next_sibling = c;
+            n.previous_sibling = c.previous_sibling;
+
+            if (c.previous_sibling) |prev| {
+                prev.next_sibling = n;
+            } else {
+                parent.first_child = n;
+            }
+            c.previous_sibling = n;
         } else {
+            // Append at end
             try parent.child_nodes.append(n);
+
+            // Update sibling pointers (Phase 2)
+            n.previous_sibling = parent.last_child;
+            n.next_sibling = null;
+
+            if (parent.last_child) |last| {
+                last.next_sibling = n;
+            } else {
+                parent.first_child = n;
+            }
+            parent.last_child = n;
         }
+
         // Cast parent to *Node when assigning (all DOM types have Node fields duplicated)
         n.parent_node = @ptrCast(parent);
 
@@ -787,9 +814,29 @@ pub fn appendChildren(
     // Step 4: Batch insert all children using appendSlice for O(1) amortized insertion
     try parent.child_nodes.appendSlice(children);
 
-    // Step 5: Update parent pointers for all inserted children in one pass
+    // Step 5: Update parent pointers AND sibling pointers for all inserted children
+    // Phase 2: Maintain sibling pointers during batch append
+    var prev_child: ?*Node = previousSibling; // Last child before insertion (or null)
     for (children) |child| {
         child.parent_node = @ptrCast(parent);
+
+        // Update sibling pointers
+        child.previous_sibling = prev_child;
+        child.next_sibling = null; // Will be updated by next iteration if there is one
+
+        if (prev_child) |prev| {
+            prev.next_sibling = child;
+        } else {
+            // This is the first child being inserted AND parent had no children
+            parent.first_child = child;
+        }
+
+        prev_child = child;
+    }
+
+    // The last inserted child becomes parent's last_child
+    if (children.len > 0) {
+        parent.last_child = children[children.len - 1];
     }
 
     // Step 6: Update live ranges if document is available
@@ -923,6 +970,37 @@ pub fn insertChildrenBefore(
         i -= 1;
         try parent.child_nodes.insert(insert_idx, children[i]);
         children[i].parent_node = @ptrCast(parent);
+    }
+
+    // Phase 2: Update sibling pointers for inserted children
+    // After insertion, children are at indices [insert_idx, insert_idx + children.len)
+    // They need to be linked together and connected to surrounding nodes
+    if (children.len > 0) {
+        const first_inserted = children[0];
+        const last_inserted = children[children.len - 1];
+
+        // Connect first inserted to previous sibling
+        first_inserted.previous_sibling = previousSibling;
+        if (previousSibling) |prev| {
+            prev.next_sibling = first_inserted;
+        } else {
+            // First inserted becomes first child
+            parent.first_child = first_inserted;
+        }
+
+        // Connect last inserted to reference child (next sibling)
+        last_inserted.next_sibling = ref_child;
+        ref_child.previous_sibling = last_inserted;
+
+        // Link inserted children together (forward pass)
+        var prev_child: ?*Node = null;
+        for (children) |child| {
+            if (prev_child) |prev| {
+                prev.next_sibling = child;
+                child.previous_sibling = prev;
+            }
+            prev_child = child;
+        }
     }
 
     // Update live ranges
@@ -1273,6 +1351,26 @@ pub fn remove(
     }
 
     // Step 7: Remove node from its parent's children
+    // Phase 2: Update sibling pointers BEFORE removing from list
+    if (node.previous_sibling) |prev| {
+        prev.next_sibling = node.next_sibling;
+    } else {
+        // node was first child
+        parent.first_child = node.next_sibling;
+    }
+
+    if (node.next_sibling) |next| {
+        next.previous_sibling = node.previous_sibling;
+    } else {
+        // node was last child
+        parent.last_child = node.previous_sibling;
+    }
+
+    // Clear node's sibling pointers
+    node.previous_sibling = null;
+    node.next_sibling = null;
+
+    // Remove from child_nodes list
     if (node_idx) |idx| {
         _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
     }
