@@ -17,10 +17,30 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// TODO(whatwg-zjeqb): Full Animation implementation needed
+/// Currently only implements the `id` attribute for test compatibility.
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    /// The animation's id (default: empty string)
+    /// Per Web Animations spec: https://drafts.csswg.org/web-animations-1/#dom-animation-id
+    id: []const u8 = "",
+
+    pub fn init(allocator: std.mem.Allocator) !*InternalState {
+        const state = try allocator.create(InternalState);
+        state.* = .{
+            .allocator = allocator,
+            .id = "",
+        };
+        return state;
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        if (self.id.len > 0) {
+            self.allocator.free(self.id);
+        }
+        self.allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,14 +50,22 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Initialize internal state
+    const state = instance.getState(StateType);
+    state.own._internal = try InternalState.init(allocator);
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
+    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// Constructor implementation
@@ -55,9 +83,11 @@ pub fn call_constructor(ctx: runtime.Context, effect: webidl.Opt(?*runtime.Insta
 }
 
 /// Getter for id
+/// TODO(whatwg-zjeqb): Full Animation implementation needed
 pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initInterned(internal.id);
 }
 
 /// Getter for effect
@@ -163,10 +193,23 @@ pub fn get_overallProgress(instance: *runtime.Instance) anyerror!?f64 {
 }
 
 /// Setter for id
+/// TODO(whatwg-zjeqb): Full Animation implementation needed
 pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidStateError;
+
+    // Free old id if it was allocated
+    if (internal.id.len > 0) {
+        internal.allocator.free(internal.id);
+    }
+
+    // Clone the new value
+    const slice = value.asSlice();
+    if (slice.len > 0) {
+        internal.id = try internal.allocator.dupe(u8, slice);
+    } else {
+        internal.id = "";
+    }
 }
 
 /// Setter for effect
