@@ -1107,6 +1107,20 @@ pub fn V8Interface(comptime Interface: type) type {
             return false;
         }
 
+        /// Check if a type is an optional callback type (like EventHandler = ?*const fn(...))
+        /// These types are stored as tagged pointers to V8 GlobalHandles and need special
+        /// handling for return value conversion.
+        fn isOptionalCallbackType(comptime T: type) bool {
+            const type_info = @typeInfo(T);
+            if (type_info != .optional) return false;
+
+            const child_info = @typeInfo(type_info.optional.child);
+            if (child_info != .pointer) return false;
+
+            const ptr_child_info = @typeInfo(child_info.pointer.child);
+            return ptr_child_info == .@"fn";
+        }
+
         /// Generate a property getter callback for a specific property at comptime
         ///
         /// This creates a callback that:
@@ -1399,6 +1413,26 @@ pub fn V8Interface(comptime Interface: type) type {
                                 break :comptime_convert conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
+                            } else if (comptime isOptionalCallbackType(PayloadType)) {
+                                // Optional callback type (like EventHandler = ?*const fn(...))
+                                // These are stored as tagged pointers to V8 GlobalHandles
+                                // Per WebIDL spec, null EventHandler should return JavaScript null
+                                if (result) |tagged_ptr| {
+                                    // Untag the pointer to get the GlobalHandle
+                                    const ptr_tag = @import("pointer_tag.zig");
+                                    const untagged = ptr_tag.untagPointer(@ptrCast(tagged_ptr));
+
+                                    if (untagged.tag == .global_handle) {
+                                        // This is a GlobalHandle - the ptr field IS the V8 Value
+                                        // V8's Global<Value>* can be used directly as a Value*
+                                        break :comptime_convert @ptrCast(untagged.ptr);
+                                    }
+                                    // Fallback: return null if we can't extract the V8 value
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                } else {
+                                    // null EventHandler -> JavaScript null
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                }
                             } else {
                                 // For complex types (interfaces, objects, etc.), return undefined for now
                                 // TODO: Implement proper object/interface conversions
