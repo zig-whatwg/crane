@@ -879,6 +879,17 @@ pub fn fromV8Value(
             break :blk null;
         };
 
+        // Interface pointer types: *runtime.Instance (for unions like NodeOrString)
+        // These match JS objects that are wrapped platform objects (DOM nodes, etc.)
+        const instance_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == *runtime.Instance) {
+                    break :blk i;
+                }
+            }
+            break :blk null;
+        };
+
         // Runtime dispatch based on V8 value type
         if (v8.v8_Value_IsArray(value)) {
             if (sequence_idx) |idx| {
@@ -905,6 +916,17 @@ pub fn fromV8Value(
                 return @unionInit(T, fields[idx].name, converted);
             }
         } else if (v8.v8_Value_IsObject(value)) {
+            // Try *runtime.Instance first (for unions like NodeOrString)
+            // These are wrapped platform objects (DOM nodes, etc.)
+            if (instance_idx) |idx| {
+                const FieldType = fields[idx].type;
+                // Try to extract instance from V8 object
+                if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
+                    return @unionInit(T, fields[idx].name, converted);
+                } else |_| {
+                    // Not a valid instance - fall through to dict_idx
+                }
+            }
             if (dict_idx) |idx| {
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);

@@ -1168,13 +1168,15 @@ pub fn createChildContext(
     }
 
     // 9. Store in map
+    // Note: We use parent_key here instead of parent_entry pointer because the put()
+    // below may cause the HashMap to rehash, invalidating any previously obtained pointers.
     try state.contexts.put(child_key, ContextEntry{
         .v8_ctx = child_context,
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = null, // Child doesn't own event loop (inherits from parent or none)
         .realm = realm,
-        .parent_entry = parent_entry,
+        .parent_entry = null, // Will be set below after rehash-safe lookup
         .children = .{},
         .allocator = allocator,
         .window_instance = window_instance,
@@ -1183,8 +1185,15 @@ pub fn createChildContext(
     // 10. Get pointer to entry in map
     const child_entry = state.contexts.getPtr(child_key).?;
 
-    // 11. Link to parent's children list
-    try parent_entry.children.append(allocator, child_entry);
+    // 11. Re-fetch parent entry pointer after put() to ensure it's still valid
+    // (HashMap may have rehashed during put(), invalidating previous pointers)
+    const fresh_parent_entry = state.contexts.getPtr(parent_key).?;
+
+    // 12. Set parent_entry now that we have valid pointers
+    child_entry.parent_entry = fresh_parent_entry;
+
+    // 13. Link to parent's children list
+    try fresh_parent_entry.children.append(allocator, child_entry);
 
     return child_entry;
 }
