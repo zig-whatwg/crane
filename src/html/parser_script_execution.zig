@@ -455,12 +455,11 @@ pub const DomTreeAdapter = struct {
 
             // Check if this node has a parent (i.e., was successfully attached)
             const NodeImpl = impls.Node;
-            if (NodeImpl.getInternalState(dom_node)) |internal| {
-                if (internal.parent == null) {
-                    // This node is an orphan - clean it up
-                    // Use deinitNodeByType to properly clean up based on node type
-                    NodeImpl.deinitNodeByType(dom_node);
-                }
+            // Use getParent helper which reads from NodeBase
+            if (NodeImpl.getParent(dom_node) == null) {
+                // This node is an orphan - clean it up
+                // Use deinitNodeByType to properly clean up based on node type
+                NodeImpl.deinitNodeByType(dom_node);
             }
         }
 

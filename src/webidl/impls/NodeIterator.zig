@@ -356,16 +356,13 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
 /// Get the next node in tree order (preorder depth-first), constrained within root
 /// Returns null if no next node exists within root
 fn getNextNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*runtime.Instance {
-    const node_internal = getNodeInternal(node) orelse return null;
-
     // If node has children, return first child
-    if (node_internal.first_child) |child| {
+    if (NodeImpl.getFirstChild(node)) |child| {
         return child;
     }
 
     // Otherwise, find next sibling (or ancestor's next sibling)
     var current = node;
-    var current_internal = node_internal;
 
     while (true) {
         // Don't go past root
@@ -374,12 +371,12 @@ fn getNextNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*runtim
         }
 
         // Try next sibling
-        if (current_internal.next_sibling) |sibling| {
+        if (NodeImpl.getNextSibling(current)) |sibling| {
             return sibling;
         }
 
         // Move up to parent
-        const parent = current_internal.parent orelse return null;
+        const parent = NodeImpl.getParent(current) orelse return null;
 
         // Check if parent is root
         if (root) |r| {
@@ -387,7 +384,6 @@ fn getNextNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*runtim
         }
 
         current = parent;
-        current_internal = getNodeInternal(current) orelse return null;
     }
 }
 
@@ -399,15 +395,13 @@ fn getPreviousNodeInTree(node: *runtime.Instance, root: ?*runtime.Instance) ?*ru
         if (node == r) return null;
     }
 
-    const node_internal = getNodeInternal(node) orelse return null;
-
     // If node has previous sibling, return its last descendant
-    if (node_internal.previous_sibling) |sibling| {
+    if (NodeImpl.getPreviousSibling(node)) |sibling| {
         return getLastInclusiveDescendant(sibling);
     }
 
     // Otherwise return parent (if not root)
-    const parent = node_internal.parent orelse return null;
+    const parent = NodeImpl.getParent(node) orelse return null;
 
     if (root) |r| {
         if (parent == r) return null;
@@ -422,8 +416,7 @@ fn getLastInclusiveDescendant(node: *runtime.Instance) *runtime.Instance {
     var current = node;
 
     while (true) {
-        const current_internal = getNodeInternal(current) orelse return current;
-        const last_child = current_internal.last_child orelse return current;
+        const last_child = NodeImpl.getLastChild(current) orelse return current;
         current = last_child;
     }
 }
