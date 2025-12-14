@@ -212,6 +212,20 @@ pub fn V8Interface(comptime Interface: type) type {
     // TODO: Use own_methods instead of all methods once we have runtime filtering
     // const own_methods = if (@hasDecl(Meta, "own_methods")) Meta.own_methods else &.{};
 
+    // Check if this interface has [Global] extended attribute
+    // Per WebIDL §3.8: [Global] interfaces have special `this` handling:
+    // - If `this` is null/undefined, use the method's relevant global object
+    // - If `this` is an incompatible object, throw TypeError from method's realm
+    const is_global_interface = comptime blk: {
+        if (!@hasDecl(Meta, "extended_attributes")) break :blk false;
+        for (Meta.extended_attributes) |attr| {
+            if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "Global")) {
+                break :blk true;
+            }
+        }
+        break :blk false;
+    };
+
     return struct {
         const Self = @This();
 
@@ -1176,10 +1190,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         // This happens when:
                         // 1. Calling getter.apply({}) with a non-interface object
                         // 2. Calling getter on the prototype directly (DOMException.prototype.name)
+                        // 3. Calling getter.call(null) - for [Global] interfaces this uses method's global
                         //
                         // Per WebIDL spec, getters must perform brand checks and throw TypeError
                         // when called with an incompatible this value.
-                        // EXCEPTION: [LegacyLenientThis] attributes return undefined instead of throwing.
+                        // EXCEPTIONS:
+                        // - [LegacyLenientThis] attributes return undefined instead of throwing
+                        // - [Global] interfaces: if this is null/undefined, use method's global object
                         //
                         // IMPORTANT: For cross-realm support, the TypeError must come from the
                         // method's realm (where the getter is defined), not the caller's realm.
@@ -1189,7 +1206,15 @@ pub fn V8Interface(comptime Interface: type) type {
                         // prototype's creation context, not the `this` object's creation context.
                         // Example: Object.create(other.HTMLElement.prototype) creates an object
                         // in the main context, but its prototype is from another context.
-                        if (instance_ptr == null) {
+                        //
+                        // resolved_instance: Either the original instance (if valid) or method's global for [Global]
+                        const resolved_instance: ?*anyopaque = blk: {
+                            if (instance_ptr != null) {
+                                break :blk instance_ptr;
+                            }
+
+                            // instance_ptr is null - special handling needed
+
                             // [LegacyLenientThis] - return undefined instead of throwing
                             if (is_lenient_this) {
                                 if (v8.v8_Undefined(isolate_inner)) |undef| {
@@ -1198,6 +1223,30 @@ pub fn V8Interface(comptime Interface: type) type {
                                 return;
                             }
 
+                            // [Global] interface special handling per WebIDL §3.8
+                            // If this is null/undefined, use the method's relevant global object
+                            //
+                            // When the getter is called via .call(null), V8 enters the context
+                            // where the getter function was created before invoking the callback.
+                            // So v8_Isolate_GetCurrentContext gives us the method's context.
+                            if (is_global_interface) {
+                                // Get the current context - this IS the method's context
+                                // because V8 enters the function's context before the callback
+                                if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
+                                    // Get the global object from the method's context
+                                    if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                        // Get the Window instance from the method's global
+                                        const global_instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        if (global_instance_ptr != null) {
+                                            // Successfully got the method's Window instance - use it!
+                                            break :blk global_instance_ptr;
+                                        }
+                                    }
+                                }
+                                // If we couldn't get the method's global, fall through to throw TypeError
+                            }
+
+                            // Not a [Global] or couldn't resolve - throw TypeError
                             // Get the prototype's creation context for cross-realm TypeError
                             const holder = info.getHolder();
                             if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
@@ -1210,11 +1259,17 @@ pub fn V8Interface(comptime Interface: type) type {
                                 conv.throwTypeError(isolate_inner, "Illegal invocation");
                             }
                             return;
+                        };
+
+                        // Shouldn't happen - we either have a valid instance or returned above
+                        if (resolved_instance == null) {
+                            conv.throwTypeError(isolate_inner, "Illegal invocation");
+                            return;
                         }
 
                         // Safety check: detect use-after-free by checking for poison patterns
                         // Common allocator poison values: 0xaaaa... (freed), 0xdead... (deleted)
-                        const ptr_as_int = @intFromPtr(instance_ptr);
+                        const ptr_as_int = @intFromPtr(resolved_instance.?);
                         const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
                         const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
                         if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
@@ -1227,7 +1282,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return;
                         }
 
-                        const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+                        const instance: *runtime.Instance = @ptrCast(@alignCast(resolved_instance.?));
 
                         // Additional safety check: validate instance.ctx is not corrupted
                         // This catches cases where the Instance struct was freed but V8 still holds a reference
@@ -1493,44 +1548,53 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Try type-safe unwrapping first if we have WrapperTypeInfo for this interface
                     // Per WebIDL spec, methods must perform brand checks and throw TypeError
                     // when called with an incompatible this value.
+                    // EXCEPTIONS:
+                    // - [Global] interfaces: if this is null/undefined, use method's global object
                     //
                     // IMPORTANT: For cross-realm support, the TypeError must come from the
                     // method's realm (where it is defined), not the caller's realm.
                     // This is verified by WPT test: invalid-this-value-cross-realm.html
                     //
-                    // The method is defined on the prototype, so we need to get the
-                    // prototype's creation context, not the `this` object's creation context.
+                    // When the method is called via .call(null), V8 enters the context
+                    // where the method function was created before invoking the callback.
                     const dom_type_info_mod = @import("dom_type_info.zig");
                     const instance = blk: {
                         if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
                             // Type-safe unwrapping - validates the V8 object is the correct type
-                            break :blk getInstanceTypeSafe(runtime.Instance, this_obj, expected_type) orelse {
-                                // Get the prototype's creation context for cross-realm TypeError
-                                const holder = info.getHolder();
-                                if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
-                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                                } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
-                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                                } else {
-                                    conv.throwTypeError(isolate, "Illegal invocation");
-                                }
-                                return;
-                            };
+                            if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
+                                break :blk inst;
+                            }
                         } else {
                             // Fall back to legacy unwrapping (no type validation)
-                            break :blk getInstance(runtime.Instance, this_obj) orelse {
-                                // Get the prototype's creation context for cross-realm TypeError
-                                const holder = info.getHolder();
-                                if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
-                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                                } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
-                                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                                } else {
-                                    conv.throwTypeError(isolate, "Illegal invocation");
-                                }
-                                return;
-                            };
+                            if (getInstance(runtime.Instance, this_obj)) |inst| {
+                                break :blk inst;
+                            }
                         }
+
+                        // Instance not found via normal unwrapping - try [Global] handling
+                        // Use the current context - V8 enters the function's context before callback
+                        if (is_global_interface) {
+                            if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx_for_global| {
+                                if (v8.v8_Context_Global(method_ctx_for_global)) |method_global| {
+                                    const global_instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                    if (global_instance_ptr != null) {
+                                        const global_instance: *runtime.Instance = @ptrCast(@alignCast(global_instance_ptr));
+                                        break :blk global_instance;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Not [Global] or couldn't resolve - throw TypeError
+                        const holder = info.getHolder();
+                        if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
+                            conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                        } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                            conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                        } else {
+                            conv.throwTypeError(isolate, "Illegal invocation");
+                        }
+                        return;
                     };
 
                     // Get the method function at comptime
@@ -4110,21 +4174,40 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Per WebIDL spec, setters must perform brand checks and throw TypeError
                     // when called with an incompatible this value.
-                    // EXCEPTION: [LegacyLenientThis] attributes silently return instead of throwing.
+                    // EXCEPTIONS:
+                    // - [LegacyLenientThis] attributes silently return instead of throwing
+                    // - [Global] interfaces: if this is null/undefined, use method's global object
                     //
                     // IMPORTANT: For cross-realm support, the TypeError must come from the
                     // setter's realm (where it is defined), not the caller's realm.
                     // This is verified by WPT test: invalid-this-value-cross-realm.html
                     //
-                    // The setter is defined on the prototype, so we need to get the
-                    // prototype's creation context, not the `this` object's creation context.
-                    if (instance_ptr == null) {
+                    // When the setter is called via .call(null), V8 enters the context
+                    // where the setter function was created before invoking the callback.
+                    const resolved_instance: ?*anyopaque = blk: {
+                        if (instance_ptr != null) {
+                            break :blk instance_ptr;
+                        }
+
                         // [LegacyLenientThis] - silently return instead of throwing
                         if (is_lenient_this) {
                             if (v8.v8_Undefined(isolate_inner)) |undef| {
                                 info.setReturnValue(undef);
                             }
                             return;
+                        }
+
+                        // [Global] interface special handling per WebIDL §3.8
+                        // Use the current context - V8 enters the function's context before callback
+                        if (is_global_interface) {
+                            if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
+                                if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                    const global_instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                    if (global_instance_ptr != null) {
+                                        break :blk global_instance_ptr;
+                                    }
+                                }
+                            }
                         }
 
                         // Get the prototype's creation context for cross-realm TypeError
@@ -4137,10 +4220,15 @@ pub fn V8Interface(comptime Interface: type) type {
                             conv.throwTypeError(isolate_inner, "Illegal invocation");
                         }
                         return;
+                    };
+
+                    if (resolved_instance == null) {
+                        conv.throwTypeError(isolate_inner, "Illegal invocation");
+                        return;
                     }
 
                     // Safety check: detect use-after-free by checking for poison patterns
-                    const ptr_as_int = @intFromPtr(instance_ptr);
+                    const ptr_as_int = @intFromPtr(resolved_instance.?);
                     const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
                     const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
                     if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
@@ -4150,7 +4238,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     }
 
-                    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+                    const instance: *runtime.Instance = @ptrCast(@alignCast(resolved_instance.?));
 
                     // Analyze setter signature
                     const fn_info = @typeInfo(@TypeOf(zig_setter)).@"fn";

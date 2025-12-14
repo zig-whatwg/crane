@@ -805,6 +805,29 @@ Global<Context>* v8_Context_NewWithGlobalTemplate(Isolate* isolate, Global<Objec
     return trackHandle(new Global<Context>(isolate, context));
 }
 
+/// Create a context using a FunctionTemplate's InstanceTemplate as the global.
+/// This ensures that the global object inherits from the FunctionTemplate's prototype,
+/// which is necessary for cross-realm Window support where properties like `name`
+/// are defined as getters on Window.prototype.
+///
+/// Unlike v8_Context_NewWithGlobalTemplate which uses a plain ObjectTemplate,
+/// this function creates a global object that:
+/// 1. Has the shape defined by the FunctionTemplate's InstanceTemplate
+/// 2. Has the FunctionTemplate's prototype in its prototype chain
+///
+/// Args:
+///   isolate: V8 isolate
+///   global_constructor: FunctionTemplate to use as the global object's "constructor"
+///
+/// Returns: New context with global object based on the FunctionTemplate
+Global<Context>* v8_Context_NewWithGlobalConstructor(Isolate* isolate, Global<FunctionTemplate>* global_constructor) {
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local_template = global_constructor->Get(isolate);
+    Local<ObjectTemplate> instance_template = local_template->InstanceTemplate();
+    Local<Context> context = Context::New(isolate, nullptr, instance_template);
+    return trackHandle(new Global<Context>(isolate, context));
+}
+
 void v8_Context_Dispose(Global<Context>* context) {
     if (context) {
         context->Reset();
@@ -2986,6 +3009,20 @@ bool v8_Object_SetPrototype(Global<Object>* object, Global<Context>* context, Gl
     Local<Value> proto = prototype->Get(isolate);
     
     return obj->SetPrototype(ctx, proto).FromMaybe(false);
+}
+
+/// Set the prototype of an object using SetPrototypeV2.
+/// This is the newer API that works properly with global objects (JSGlobalObject).
+/// The old SetPrototype is deprecated for global objects.
+bool v8_Object_SetPrototypeV2(Global<Object>* object, Global<Context>* context, Global<Value>* prototype) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Object> obj = object->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> proto = prototype->Get(isolate);
+    
+    return obj->SetPrototypeV2(ctx, proto).FromMaybe(false);
 }
 
 Global<Value>* v8_Object_GetPrototype(Global<Object>* object) {

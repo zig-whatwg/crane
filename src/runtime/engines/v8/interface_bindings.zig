@@ -106,7 +106,7 @@ pub const Element = V8Interface(interfaces.Element.Element);
 pub const Document = V8Interface(interfaces.Document.Document);
 
 /// Window V8 binding
-pub const Window = V8Interface(interfaces.Window.Window);
+pub const Window = V8Interface(interfaces.Window);
 
 // Note: Individual bindings above are kept for backward compatibility.
 // New code should use initializeBindings() which registers ALL interfaces.

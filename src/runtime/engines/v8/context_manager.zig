@@ -804,15 +804,14 @@ pub fn createChildContext(
     const parent_key = @intFromPtr(parent_raw_addr);
     const parent_entry = state.contexts.getPtr(parent_key) orelse return error.ParentNotFound;
 
-    // 1. Create new global template with immutable prototype
-    // Per HTML spec, Window's [[SetPrototypeOf]] always returns false
+    // 1. Create new global template
+    // We use a plain ObjectTemplate here because using Window's full FunctionTemplate
+    // causes V8 to crash with duplicate property conflicts. Instead, we'll set the
+    // prototype chain after context creation.
     const global_template = v8.v8_ObjectTemplate_New(options.isolate);
 
     // Set internal field count for Window binding (2 fields: impl pointer + destructor type)
     v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
-
-    // Set immutable prototype per spec
-    v8.v8_ObjectTemplate_SetImmutableProto(global_template);
 
     // 2. Create new V8 context with the global template
     const child_context = v8.v8_Context_NewWithGlobalTemplate(
@@ -840,6 +839,29 @@ pub fn createChildContext(
     // This registers all WebIDL interfaces as global constructors
     const interface_bindings = @import("interface_bindings.zig");
     interface_bindings.initializeBindings(options.isolate, child_context);
+
+    // 4b. Set global object's prototype to Window.prototype
+    // This is required for cross-realm support: when JavaScript accesses
+    // `iframe.contentWindow.name`, it needs to find the `name` getter from
+    // Window.prototype in the prototype chain.
+    const global = v8.v8_Context_Global(child_context) orelse return error.GlobalNotFound;
+
+    // Get Window constructor from the global scope
+    const window_key = v8.v8_String_NewFromUtf8(options.isolate, "Window", 6);
+    if (window_key) |wk| {
+        if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
+            // Get Window.prototype
+            const proto_key = v8.v8_String_NewFromUtf8(options.isolate, "prototype", 9);
+            if (proto_key) |pk| {
+                if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
+                    // Set the global object's prototype to Window.prototype
+                    // This makes Window properties (like `name`) accessible on the global
+                    // Use SetPrototypeV2 which works properly with global objects
+                    _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
+                }
+            }
+        }
+    }
 
     // 5. Create realm for new context
     const realm = try runtime.Realm.init(allocator, .{

@@ -427,6 +427,10 @@ pub extern fn v8_Isolate_RequestGarbageCollection(isolate: *Isolate) void;
 // Context management
 pub extern fn v8_Context_New(isolate: *Isolate) ?*Context;
 pub extern fn v8_Context_NewWithGlobalTemplate(isolate: *Isolate, global_template: *ObjectTemplate) ?*Context;
+/// Create a context using a FunctionTemplate's InstanceTemplate as the global.
+/// This ensures that the global object inherits from the FunctionTemplate's prototype,
+/// which is necessary for cross-realm Window support.
+pub extern fn v8_Context_NewWithGlobalConstructor(isolate: *Isolate, global_constructor: *FunctionTemplate) ?*Context;
 pub extern fn v8_Context_Dispose(context: *Context) void;
 pub extern fn v8_Context_Enter(context: *Context) void;
 pub extern fn v8_Context_Exit(context: *Context) void;
@@ -527,6 +531,8 @@ pub extern fn v8_Object_GetAlignedPointerFromInternalField_Raw(object: *const an
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
 pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototype: *Value) bool;
+/// Set the prototype using the newer V2 API that works properly with global objects
+pub extern fn v8_Object_SetPrototypeV2(object: *Object, context: *Context, prototype: *Value) bool;
 pub extern fn v8_Object_GetPrototype(object: *Object) ?*Value;
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
