@@ -4266,8 +4266,7 @@ pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anye
 
     // Remove from parent if attached
     if (NodeImpl.getParent(node)) |parent| {
-        _ = parent;
-        // TODO: Call parent.removeChild(node) when mutation algorithms are available
+        try NodeImpl.removeNodeFromParent(node, parent);
     }
 
     // Set owner document (recursively for descendants)
