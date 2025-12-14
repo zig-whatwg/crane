@@ -1235,8 +1235,6 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Instance getter - extract instance from 'this' and call
                         const this_obj = info.getThis();
 
-                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-
                         // Derive property name from getter_name (strip "get_" prefix)
                         const prop_name = comptime blk: {
                             if (getter_name.len > 4 and std.mem.eql(u8, getter_name[0..4], "get_")) {
@@ -1250,76 +1248,105 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Instead, getters return undefined
                         const is_lenient_this = comptime isLenientThisProperty(prop_name);
 
-                        // If instance_ptr is null, this is NOT a valid instance of this interface.
-                        // This happens when:
-                        // 1. Calling getter.apply({}) with a non-interface object
-                        // 2. Calling getter on the prototype directly (DOMException.prototype.name)
-                        // 3. Calling getter.call(null) - for [Global] interfaces this uses method's global
+                        // For [Global] interfaces (like Window), we need special handling:
+                        // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
                         //
-                        // Per WebIDL spec, getters must perform brand checks and throw TypeError
-                        // when called with an incompatible this value.
-                        // EXCEPTIONS:
-                        // - [LegacyLenientThis] attributes return undefined instead of throwing
-                        // - [Global] interfaces: if this is null/undefined, use method's global object
+                        // The challenge is that when getter.call(null) is used:
+                        // - V8 may coerce null to the CALLER's global in sloppy mode
+                        // - But we need to use the METHOD's global (where the getter was defined)
                         //
-                        // IMPORTANT: For cross-realm support, the TypeError must come from the
-                        // method's realm (where the getter is defined), not the caller's realm.
-                        // This is verified by WPT test: invalid-this-value-cross-realm.html
+                        // Solution: For [Global] interfaces, ALWAYS use the method's global object.
+                        // This is correct because:
+                        // 1. window.name -> this is method's global -> use it
+                        // 2. otherNameGetter.call(null) -> should use method's global
+                        // 3. otherNameGetter.call(wrongObject) -> should throw from method's realm
                         //
-                        // The method is defined on the prototype, so we need to get the
-                        // prototype's creation context, not the `this` object's creation context.
-                        // Example: Object.create(other.HTMLElement.prototype) creates an object
-                        // in the main context, but its prototype is from another context.
-                        //
-                        // resolved_instance: Either the original instance (if valid) or method's global for [Global]
+                        // Case 3 is handled by checking if the this object is the method's global.
+                        // If it's not, we throw TypeError.
                         const resolved_instance: ?*anyopaque = blk: {
-                            if (instance_ptr != null) {
-                                break :blk instance_ptr;
-                            }
-
-                            // instance_ptr is null - special handling needed
-
-                            // [LegacyLenientThis] - return undefined instead of throwing
-                            if (is_lenient_this) {
-                                if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                    info.setReturnValue(undef);
-                                }
-                                return;
-                            }
-
-                            // [Global] interface special handling per WebIDL §3.8
-                            // If this is null/undefined, use the method's relevant global object
-                            //
-                            // When the getter is called via .call(null), V8 enters the context
-                            // where the getter function was created before invoking the callback.
-                            // So v8_Isolate_GetCurrentContext gives us the method's context.
                             if (is_global_interface) {
-                                // Get the current context - this IS the method's context
-                                // because V8 enters the function's context before the callback
+                                // Get the method's context - V8 enters the function's creation context
                                 if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
-                                    // Get the global object from the method's context
                                     if (v8.v8_Context_Global(method_ctx)) |method_global| {
-                                        // Get the Window instance from the method's global
-                                        const global_instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
-                                        if (global_instance_ptr != null) {
-                                            // Successfully got the method's Window instance - use it!
-                                            break :blk global_instance_ptr;
+                                        // Check if this IS the method's global object
+                                        // (handles normal case: window.name where this === window)
+                                        if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
+                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                            if (global_ptr != null) {
+                                                break :blk global_ptr;
+                                            }
+                                        }
+
+                                        // this is NOT the method's global - could be:
+                                        // 1. getter.call(null) -> V8 coerced to caller's global
+                                        // 2. getter.call(wrongObject) -> explicit wrong this
+                                        //
+                                        // Per WebIDL, we should use the method's global for case 1,
+                                        // and throw TypeError for case 2.
+                                        //
+                                        // How to distinguish? Check if this_obj has internal field 0
+                                        // pointing to a valid Window instance. If not, it's case 1.
+                                        // If yes but it's a DIFFERENT window, it's case 2.
+                                        const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+                                        if (this_ptr == null) {
+                                            // No internal field -> this was null/undefined or non-Window object
+                                            // Use method's global per WebIDL §3.8
+                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                            if (global_ptr != null) {
+                                                break :blk global_ptr;
+                                            }
+                                        } else {
+                                            // this has an internal field - it's some Window instance
+                                            // Check if it's a DIFFERENT global (cross-realm case)
+                                            // If this_obj is caller's global (different from method's global),
+                                            // use method's global per WebIDL implicit this rules
+                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+
+                                            // Check if this_obj is a global object from any context
+                                            // by checking if it equals its own context's global
+                                            if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
+                                                if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                    if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
+                                                        // this IS a global object (caller's global)
+                                                        // This happens when getter.call(null) coerces to caller's global
+                                                        // Use method's global instead
+                                                        if (global_ptr != null) {
+                                                            break :blk global_ptr;
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // this is not a global object but has Window internal field
+                                            // This is Object.create(Window.prototype) case -> throw TypeError
                                         }
                                     }
                                 }
-                                // If we couldn't get the method's global, fall through to throw TypeError
+                                // Fall through to throw TypeError
+                            } else {
+                                // Non-[Global] interface: use normal this handling
+                                const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                if (instance_ptr != null) {
+                                    break :blk instance_ptr;
+                                }
+
+                                // [LegacyLenientThis] - return undefined instead of throwing
+                                if (is_lenient_this) {
+                                    if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                        info.setReturnValue(undef);
+                                    }
+                                    return;
+                                }
                             }
 
-                            // Not a [Global] or couldn't resolve - throw TypeError
-                            // Get the prototype's creation context for cross-realm TypeError
+                            // Throw TypeError from method's realm
                             const holder = info.getHolder();
                             if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
                                 conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
                             } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
-                                // Fallback: try the object's own creation context
                                 conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
                             } else {
-                                // Final fallback to current context
                                 conv.throwTypeError(isolate_inner, "Illegal invocation");
                             }
                             return;
@@ -1609,47 +1636,61 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Get 'this' object and extract the Zig instance
                     const this_obj = info.getThis();
 
-                    // Try type-safe unwrapping first if we have WrapperTypeInfo for this interface
-                    // Per WebIDL spec, methods must perform brand checks and throw TypeError
-                    // when called with an incompatible this value.
-                    // EXCEPTIONS:
-                    // - [Global] interfaces: if this is null/undefined, use method's global object
-                    //
-                    // IMPORTANT: For cross-realm support, the TypeError must come from the
-                    // method's realm (where it is defined), not the caller's realm.
-                    // This is verified by WPT test: invalid-this-value-cross-realm.html
-                    //
-                    // When the method is called via .call(null), V8 enters the context
-                    // where the method function was created before invoking the callback.
+                    // For [Global] interfaces (like Window), we need special handling:
+                    // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
+                    // See PropertyGetterCallback for detailed explanation.
                     const dom_type_info_mod = @import("dom_type_info.zig");
                     const instance = blk: {
-                        if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
-                            // Type-safe unwrapping - validates the V8 object is the correct type
-                            if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
-                                break :blk inst;
-                            }
-                        } else {
-                            // Fall back to legacy unwrapping (no type validation)
-                            if (getInstance(runtime.Instance, this_obj)) |inst| {
-                                break :blk inst;
-                            }
-                        }
-
-                        // Instance not found via normal unwrapping - try [Global] handling
-                        // Use the current context - V8 enters the function's context before callback
                         if (is_global_interface) {
-                            if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx_for_global| {
-                                if (v8.v8_Context_Global(method_ctx_for_global)) |method_global| {
-                                    const global_instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
-                                    if (global_instance_ptr != null) {
-                                        const global_instance: *runtime.Instance = @ptrCast(@alignCast(global_instance_ptr));
-                                        break :blk global_instance;
+                            if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx| {
+                                if (v8.v8_Context_Global(method_ctx)) |method_global| {
+                                    // Check if this IS the method's global object
+                                    if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        if (global_ptr != null) {
+                                            break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
+                                        }
                                     }
+
+                                    // this is NOT the method's global - check handling
+                                    const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+                                    if (this_ptr == null) {
+                                        // No internal field -> use method's global
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        if (global_ptr != null) {
+                                            break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
+                                        }
+                                    } else {
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
+                                            if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
+                                                    // this IS a global (caller's global) -> use method's global
+                                                    if (global_ptr != null) {
+                                                        break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // Fall through to throw TypeError
+                        } else {
+                            // Non-[Global] interface: use normal this handling
+                            if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                                if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
+                                    break :blk inst;
+                                }
+                            } else {
+                                if (getInstance(runtime.Instance, this_obj)) |inst| {
+                                    break :blk inst;
                                 }
                             }
                         }
 
-                        // Not [Global] or couldn't resolve - throw TypeError
+                        // Throw TypeError from method's realm
                         const holder = info.getHolder();
                         if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
                             conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
@@ -4221,7 +4262,6 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
-                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                     // Derive property name from setter_name_param (strip "set_" prefix)
                     const prop_name = comptime blk: {
@@ -4232,49 +4272,64 @@ pub fn V8Interface(comptime Interface: type) type {
                     };
 
                     // Check if this is a [LegacyLenientThis] attribute
-                    // Per WebIDL §4.3.10: these attributes do NOT throw TypeError on invalid this
-                    // Instead, setters silently return without doing anything
                     const is_lenient_this = comptime isLenientThisProperty(prop_name);
 
-                    // Per WebIDL spec, setters must perform brand checks and throw TypeError
-                    // when called with an incompatible this value.
-                    // EXCEPTIONS:
-                    // - [LegacyLenientThis] attributes silently return instead of throwing
-                    // - [Global] interfaces: if this is null/undefined, use method's global object
-                    //
-                    // IMPORTANT: For cross-realm support, the TypeError must come from the
-                    // setter's realm (where it is defined), not the caller's realm.
-                    // This is verified by WPT test: invalid-this-value-cross-realm.html
-                    //
-                    // When the setter is called via .call(null), V8 enters the context
-                    // where the setter function was created before invoking the callback.
+                    // For [Global] interfaces (like Window), we need special handling:
+                    // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
+                    // See PropertyGetterCallback for detailed explanation.
                     const resolved_instance: ?*anyopaque = blk: {
-                        if (instance_ptr != null) {
-                            break :blk instance_ptr;
-                        }
-
-                        // [LegacyLenientThis] - silently return instead of throwing
-                        if (is_lenient_this) {
-                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                info.setReturnValue(undef);
-                            }
-                            return;
-                        }
-
-                        // [Global] interface special handling per WebIDL §3.8
-                        // Use the current context - V8 enters the function's context before callback
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
-                                    const global_instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
-                                    if (global_instance_ptr != null) {
-                                        break :blk global_instance_ptr;
+                                    // Check if this IS the method's global object
+                                    if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        if (global_ptr != null) {
+                                            break :blk global_ptr;
+                                        }
+                                    }
+
+                                    // this is NOT the method's global - check if it's caller's global
+                                    const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+                                    if (this_ptr == null) {
+                                        // No internal field -> use method's global
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        if (global_ptr != null) {
+                                            break :blk global_ptr;
+                                        }
+                                    } else {
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+                                        if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
+                                            if (v8.v8_Context_Global(this_ctx)) |this_global| {
+                                                if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
+                                                    // this IS a global object (caller's global) -> use method's global
+                                                    if (global_ptr != null) {
+                                                        break :blk global_ptr;
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
+                        } else {
+                            // Non-[Global] interface: use normal this handling
+                            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                            if (instance_ptr != null) {
+                                break :blk instance_ptr;
+                            }
+
+                            // [LegacyLenientThis] - silently return instead of throwing
+                            if (is_lenient_this) {
+                                if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                    info.setReturnValue(undef);
+                                }
+                                return;
+                            }
                         }
 
-                        // Get the prototype's creation context for cross-realm TypeError
+                        // Throw TypeError from method's realm
                         const holder = info.getHolder();
                         if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
                             conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
