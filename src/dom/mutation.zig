@@ -195,12 +195,21 @@ pub fn registerMovingStepsCallback(callback: MovingStepsCallback) !void {
 /// Run the insertion steps for a node
 /// Called during the insert algorithm for each shadow-including descendant
 fn runInsertionSteps(node: anytype) void {
+    // Fast path: if no callbacks are registered, skip entirely
+    const callbacks = insertion_steps_callbacks orelse return;
+    if (callbacks.size() == 0) return;
+
     const node_ptr: *NodeBase = @ptrCast(node);
-    if (insertion_steps_callbacks) |*callbacks| {
-        for (callbacks.items()) |callback| {
-            callback(node_ptr);
-        }
+    for (callbacks.items()) |callback| {
+        callback(node_ptr);
     }
+}
+
+/// Check if there are any insertion steps callbacks registered
+/// Used to skip expensive descendant traversal when no callbacks exist
+pub fn hasInsertionStepsCallbacks() bool {
+    const callbacks = insertion_steps_callbacks orelse return false;
+    return callbacks.size() > 0;
 }
 
 /// Run the removing steps for a node
@@ -225,12 +234,21 @@ fn runRemovingSteps(node: anytype, old_parent: anytype) void {
 /// Run the post-connection steps for a node
 /// Called after a batch of insertions complete
 fn runPostConnectionSteps(node: anytype) void {
+    // Fast path: if no callbacks are registered, skip entirely
+    const callbacks = post_connection_steps_callbacks orelse return;
+    if (callbacks.size() == 0) return;
+
     const node_ptr: *NodeBase = @ptrCast(node);
-    if (post_connection_steps_callbacks) |*callbacks| {
-        for (callbacks.items()) |callback| {
-            callback(node_ptr);
-        }
+    for (callbacks.items()) |callback| {
+        callback(node_ptr);
     }
+}
+
+/// Check if there are any post-connection steps callbacks registered
+/// Used to skip expensive descendant traversal when no callbacks exist
+pub fn hasPostConnectionStepsCallbacks() bool {
+    const callbacks = post_connection_steps_callbacks orelse return false;
+    return callbacks.size() > 0;
 }
 
 /// Recursively run insertion steps for a node and all its descendants
@@ -788,15 +806,20 @@ pub fn insert(
         // Step 7.7: For each shadow-including inclusive descendant of node,
         // in shadow-including tree order, run the insertion steps
         // Spec: DOM §4.2.5 step 7.7
-        for (nodes) |inserted_node| {
+        // Note: We process only the current node `n`, not all nodes (that would be O(n²))
+        //
+        // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
+        // During HTML parsing, there are typically no insertion steps callbacks,
+        // so this saves significant overhead for large documents.
+        if (hasInsertionStepsCallbacks()) {
             // Get all shadow-including inclusive descendants in tree order
             var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
                 parent.allocator,
-                inserted_node,
+                n,
             ) catch {
                 // If we can't allocate, fall back to non-shadow traversal
-                runInsertionSteps(inserted_node);
-                for (inserted_node.child_nodes.items()) |descendant| {
+                runInsertionSteps(n);
+                for (n.child_nodes.items()) |descendant| {
                     runInsertionStepsRecursive(descendant);
                 }
                 continue;
@@ -837,11 +860,15 @@ pub fn insert(
     // Spec: The post-connection steps are run after a batch of nodes is inserted
     // This allows specifications to execute JavaScript or perform connection-related
     // operations after all tree mutations are complete
-    for (nodes) |inserted_node| {
-        runPostConnectionSteps(inserted_node);
-        // Recursively run for all descendants
-        for (inserted_node.child_nodes.items()) |descendant| {
-            runPostConnectionStepsRecursive(descendant);
+    //
+    // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
+    if (hasPostConnectionStepsCallbacks()) {
+        for (nodes) |inserted_node| {
+            runPostConnectionSteps(inserted_node);
+            // Recursively run for all descendants
+            for (inserted_node.child_nodes.items()) |descendant| {
+                runPostConnectionStepsRecursive(descendant);
+            }
         }
     }
 }
@@ -953,24 +980,27 @@ pub fn appendChildren(
     }
 
     // Step 7: Run insertion steps for all inserted nodes and their descendants
-    for (children) |child| {
-        // Get all shadow-including inclusive descendants in tree order
-        var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
-            parent.allocator,
-            child,
-        ) catch {
-            // If we can't allocate, fall back to non-shadow traversal
-            runInsertionSteps(child);
-            for (child.child_nodes.items()) |descendant| {
-                runInsertionStepsRecursive(descendant);
-            }
-            continue;
-        };
-        defer descendants.deinit();
+    // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
+    if (hasInsertionStepsCallbacks()) {
+        for (children) |child| {
+            // Get all shadow-including inclusive descendants in tree order
+            var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
+                parent.allocator,
+                child,
+            ) catch {
+                // If we can't allocate, fall back to non-shadow traversal
+                runInsertionSteps(child);
+                for (child.child_nodes.items()) |descendant| {
+                    runInsertionStepsRecursive(descendant);
+                }
+                continue;
+            };
+            defer descendants.deinit();
 
-        // Run insertion steps for each shadow-including inclusive descendant
-        for (descendants.toSlice()) |inclusive_descendant| {
-            runInsertionSteps(inclusive_descendant);
+            // Run insertion steps for each shadow-including inclusive descendant
+            for (descendants.toSlice()) |inclusive_descendant| {
+                runInsertionSteps(inclusive_descendant);
+            }
         }
     }
 
@@ -989,11 +1019,14 @@ pub fn appendChildren(
     runChildrenChangedSteps(parent);
 
     // Step 10: Run post-connection steps for all inserted nodes
-    for (children) |child| {
-        runPostConnectionSteps(child);
-        // Recursively run for all descendants
-        for (child.child_nodes.items()) |descendant| {
-            runPostConnectionStepsRecursive(descendant);
+    // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
+    if (hasPostConnectionStepsCallbacks()) {
+        for (children) |child| {
+            runPostConnectionSteps(child);
+            // Recursively run for all descendants
+            for (child.child_nodes.items()) |descendant| {
+                runPostConnectionStepsRecursive(descendant);
+            }
         }
     }
 }
@@ -1106,21 +1139,24 @@ pub fn insertChildrenBefore(
     }
 
     // Run insertion steps for all inserted nodes
-    for (children) |child| {
-        var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
-            parent.allocator,
-            child,
-        ) catch {
-            runInsertionSteps(child);
-            for (child.child_nodes.items()) |descendant| {
-                runInsertionStepsRecursive(descendant);
-            }
-            continue;
-        };
-        defer descendants.deinit();
+    // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
+    if (hasInsertionStepsCallbacks()) {
+        for (children) |child| {
+            var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
+                parent.allocator,
+                child,
+            ) catch {
+                runInsertionSteps(child);
+                for (child.child_nodes.items()) |descendant| {
+                    runInsertionStepsRecursive(descendant);
+                }
+                continue;
+            };
+            defer descendants.deinit();
 
-        for (descendants.toSlice()) |inclusive_descendant| {
-            runInsertionSteps(inclusive_descendant);
+            for (descendants.toSlice()) |inclusive_descendant| {
+                runInsertionSteps(inclusive_descendant);
+            }
         }
     }
 
@@ -1139,10 +1175,13 @@ pub fn insertChildrenBefore(
     runChildrenChangedSteps(parent);
 
     // Run post-connection steps
-    for (children) |child| {
-        runPostConnectionSteps(child);
-        for (child.child_nodes.items()) |descendant| {
-            runPostConnectionStepsRecursive(descendant);
+    // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
+    if (hasPostConnectionStepsCallbacks()) {
+        for (children) |child| {
+            runPostConnectionSteps(child);
+            for (child.child_nodes.items()) |descendant| {
+                runPostConnectionStepsRecursive(descendant);
+            }
         }
     }
 }
