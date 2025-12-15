@@ -86,8 +86,10 @@ pub const InternalState = struct {
         // Clear node list (don't free nodes, we don't own them)
         self.node_list.deinit(self.allocator);
 
-        // Clear record queue
-        // Note: MutationRecord instances should be cleaned up separately
+        // Free MutationRecord instances we own
+        for (self.record_queue.items) |record| {
+            runtime.Instance.deinit(record);
+        }
         self.record_queue.deinit(self.allocator);
     }
 };
@@ -248,7 +250,10 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     // the observer.
     // TODO: Remove registered observers from nodes once Node is bridged
 
-    // Step 2: Empty this's record queue.
+    // Step 2: Empty this's record queue after freeing records we own.
+    for (internal.record_queue.items) |record| {
+        runtime.Instance.deinit(record);
+    }
     internal.record_queue.clearRetainingCapacity();
 
     // Clear node list
@@ -265,13 +270,18 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Step 1: Let records be a clone of this's record queue.
     const records = internal.record_queue.toOwnedSlice(internal.allocator) catch return error.OutOfMemory;
+    defer internal.allocator.free(records);
 
     // Step 2: Empty this's record queue.
     // (Already emptied by toOwnedSlice)
 
     // Step 3: Return records as JSValue
     // TODO: Return proper V8 Array of MutationRecord - need V8 array creation utility
-    _ = records;
+    // For now, ownership transfers to caller via JSValue. If not used, we'd need
+    // to free the records. Since we return jsUndefined, we must free them here.
+    for (records) |record| {
+        runtime.Instance.deinit(record);
+    }
     return runtime.JSValue.jsUndefined;
 }
 

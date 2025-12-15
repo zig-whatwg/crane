@@ -297,7 +297,6 @@ fn queueMutationRecordInternal(
         namespace,
         old_value,
     );
-    _ = record;
 
     // TODO: The full algorithm requires iterating through target's inclusive ancestors
     // and checking each node's registered observer list. This needs the node-observer
@@ -306,6 +305,11 @@ fn queueMutationRecordInternal(
     //
     // For now, the MutationRecord is created but not dispatched to observers.
     // This will be completed when the transient observer support is implemented.
+    //
+    // MEMORY FIX: Since we're not dispatching the record, we must free it immediately
+    // to avoid leaking. When observer dispatch is implemented, this defer should be
+    // removed and ownership transferred to the observer's record queue.
+    defer runtime.Instance.deinit(record);
 
     // Queue a mutation observer microtask
     try queueMutationObserverMicrotask(allocator);
