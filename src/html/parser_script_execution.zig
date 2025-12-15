@@ -120,9 +120,18 @@ pub const ParserScriptContext = struct {
     ///
     /// Returns null if loading fails.
     pub fn loadExternalScript(self: *ParserScriptContext, url: []const u8) ?[]const u8 {
+        // DEBUG: Log script loading
+        const is_testdriver = std.mem.indexOf(u8, url, "testdriver") != null;
+        if (is_testdriver) {
+            std.debug.print("[DEBUG] Loading script: {s}\n", .{url});
+        }
+
         // Try custom loader first if provided
         if (self.script_loader_fn) |loader_fn| {
             if (loader_fn(self.script_loader_ctx, url)) |content| {
+                if (is_testdriver) {
+                    std.debug.print("[DEBUG] Script loaded via custom loader, size: {d}\n", .{content.len});
+                }
                 return content;
             }
             // Custom loader returned null - fall through to HTTP fetch
@@ -136,7 +145,15 @@ pub const ParserScriptContext = struct {
         defer if (resolved_url.ptr != url.ptr) self.allocator.free(resolved_url);
 
         // Default: HTTP fetch like a real browser
-        return fetchScriptViaHttp(self.allocator, resolved_url);
+        const result = fetchScriptViaHttp(self.allocator, resolved_url);
+        if (is_testdriver) {
+            if (result) |content| {
+                std.debug.print("[DEBUG] Script fetched via HTTP, size: {d}\n", .{content.len});
+            } else {
+                std.debug.print("[DEBUG] Script fetch FAILED\n", .{});
+            }
+        }
+        return result;
     }
 
     /// Get the DOM element for a TreeNode (if it has been converted).

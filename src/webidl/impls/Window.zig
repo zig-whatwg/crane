@@ -3424,29 +3424,28 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 /// Per CSSOM spec: Returns the computed style of an element.
 /// https://drafts.csswg.org/cssom/#dom-window-getcomputedstyle
 ///
-/// For stub backend: Returns a CSSStyleDeclaration with default/empty values.
-/// For real backend: Would delegate to layout engine.
+/// Returns a CSSStyleDeclaration that reflects computed values based on
+/// the element type. This is a minimal implementation for WPT tests.
 pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: webidl.Opt(?typedefs.CSSOMString)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = elt; // Would be used by real layout backend
     _ = pseudoElt; // Would be used for pseudo-element computed styles
 
     // Create a CSSStyleDeclaration instance for the computed style
     // Per CSSOM spec, getComputedStyle returns a live CSSStyleDeclaration
     // that reflects the computed values of an element.
     //
-    // For stub backend, we return an empty CSSStyleDeclaration where:
-    // - getPropertyValue() returns "" for all properties
-    // - length is 0
-    // - cssText is ""
+    // We use initForComputedStyle to associate the element with the style
+    // declaration, enabling element-type-based default values for properties
+    // like 'display'.
     const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
     const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
 
-    const css_instance = try CSSStyleDeclarationImpl.init(
+    const css_instance = try CSSStyleDeclarationImpl.initForComputedStyle(
         internal.allocator,
         CSSStyleDeclaration.State,
         &CSSStyleDeclaration.vtable,
         instance.ctx,
+        elt,
     );
 
     return css_instance;
