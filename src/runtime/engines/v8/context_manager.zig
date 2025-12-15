@@ -137,20 +137,37 @@ pub fn init(allocator: std.mem.Allocator) !void {
 /// Cleans up all runtime contexts that were created by the manager.
 /// After calling deinit(), init() must be called again before use.
 ///
+/// Uses CleanupCoordinator to ensure proper ordering and prevent
+/// race conditions between context teardown and GC-driven cleanup.
+///
 /// Thread safety: Thread-local, no synchronization needed
 pub fn deinit() void {
     if (manager_state) |*state| {
         const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+        const cleanup_coordinator = runtime.cleanup_coordinator;
 
-        // Set teardown flag to prevent nested cleanup attempts
+        // Create coordinator for this teardown
+        var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.allocator);
+        defer coordinator.deinit();
+
+        // Set coordinator as active so GC callbacks can check teardown state
+        cleanup_coordinator.setActiveCoordinator(&coordinator);
+        defer cleanup_coordinator.setActiveCoordinator(null);
+
+        // Begin coordinated cleanup - signals GC callbacks to skip
+        coordinator.beginContextCleanup();
+
+        // Set legacy teardown flag for backwards compatibility
         // When wrapper_cache.deinit() triggers onObjectFreed for iframes,
         // the iframe cleanup will try to call destroyChildContext. We need
         // to skip those calls since we're already tearing everything down.
         state.is_tearing_down = true;
 
+        // Phase: Static Registries (cleanup before context-specific resources)
         // Clean up Intl registries (safety net for entries not GC'd)
         // This must be done before contexts are destroyed since weak callbacks
         // may still reference registry data
+        coordinator.cleanupPhase(.static_registries);
         intl_binding.deinitAllRegistries();
 
         // Clean up ObservableArray static registry
@@ -166,9 +183,11 @@ pub fn deinit() void {
             if (entry.owns_context) {
                 var ctx_data = entry.runtime_ctx;
 
+                // Phase: DOM Tree cleanup
                 // Clean up Window instance and its Document FIRST
                 // This cleans up the DOM tree, and each Node.deinit removes itself
                 // from the wrapper cache to prevent double-free.
+                coordinator.cleanupPhase(.dom_tree);
                 if (entry.window_instance) |window| {
                     const interfaces = @import("interfaces");
                     const WindowImpl = @import("impls").Window;
@@ -184,24 +203,29 @@ pub fn deinit() void {
                     interfaces.Window.deinit(window);
                 }
 
+                // Phase: Wrapper Cache cleanup
                 // Clean up V8 wrapper cache WITH callbacks
                 // Now safe to call deinit() because:
                 // 1. DOM nodes already removed themselves from cache via Node.deinit
                 // 2. Remaining entries are non-DOM objects (AbortController, etc.)
                 // 3. These need their deinit called to free InternalState
+                coordinator.cleanupPhase(.wrapper_cache);
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
                     cache_ptr.deinit();
                     ctx_data.getAllocator().destroy(cache_ptr);
                 }
 
+                // Phase: Event Loop cleanup
                 // Clean up V8 event loop (must be done before context deinit)
+                coordinator.cleanupPhase(.event_loop);
                 if (entry.event_loop) |ev_loop| {
                     ev_loop.deinit();
                     ctx_data.getAllocator().destroy(ev_loop);
                 }
 
-                // Clean up realm
+                // Phase: Realm cleanup
+                coordinator.cleanupPhase(.realm);
                 if (entry.realm) |realm| {
                     realm.deinit();
                 }
@@ -210,11 +234,16 @@ pub fn deinit() void {
                 var children = entry.children;
                 children.deinit(entry.allocator);
 
+                // Phase: Context Data cleanup
+                coordinator.cleanupPhase(.context_data);
                 ctx_data.deinit();
             }
             // Free the heap-allocated entry itself
             state.allocator.destroy(entry);
         }
+
+        // Mark cleanup complete
+        coordinator.endContextCleanup();
 
         // Free the hash map
         state.contexts.deinit();

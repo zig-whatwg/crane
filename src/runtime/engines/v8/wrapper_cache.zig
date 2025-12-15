@@ -92,30 +92,53 @@ const CacheEntry = struct {
 /// is properly freed when JavaScript objects are collected.
 ///
 /// The cleanup sequence is:
-/// 1. Call gc_integration.onObjectFreed() to invoke type-specific deinit
+/// 1. Check if context teardown is in progress (skip if so - coordinator handles it)
+/// 2. Check if instance cleanup already started (via lifecycle flags)
+/// 3. Call gc_integration.onObjectFreed() to invoke type-specific deinit
 ///    (e.g., Response.deinit frees headers, body, URL list)
-/// 2. Remove entry from cache HashMap
-/// 3. Dispose the V8 Global<Object>* handle
-/// 4. Free the CacheEntry
+/// 4. Remove entry from cache HashMap
+/// 5. Dispose the V8 Global<Object>* handle
+/// 6. Free the CacheEntry
 fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     _ = length_in_bytes;
 
     if (data) |entry_ptr| {
         const entry: *CacheEntry = @ptrCast(@alignCast(entry_ptr));
 
-        // Step 1: Clean up the Zig instance via GC integration
+        // Step 1: Check if context teardown is in progress
+        // If the CleanupCoordinator is handling teardown, skip GC-driven cleanup
+        // to prevent race conditions and double-free issues
+        if (runtime.cleanup_coordinator.isContextTearingDown()) {
+            // Context teardown handles all cleanup - just dispose handles
+            _ = entry.cache.cache.remove(entry.instance);
+            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+
+        // Step 2: Check if instance cleanup already started (lifecycle tracking)
+        // This prevents double-cleanup if Node.deinit was already called
+        if (runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
+            // Already being cleaned up - just dispose handles
+            _ = entry.cache.cache.remove(entry.instance);
+            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+
+        // Step 3: Clean up the Zig instance via GC integration
         // This calls the type's deinit function (e.g., Response.deinit)
         // which frees all owned resources (headers, body, URL list, etc.)
         // and returns the Instance handle to the SlabAllocator
         runtime.gc.onObjectFreed(entry.instance);
 
-        // Step 2: Remove from cache HashMap
+        // Step 4: Remove from cache HashMap
         _ = entry.cache.cache.remove(entry.instance);
 
-        // Step 3: Dispose the Global<Object>* handle
+        // Step 5: Dispose the Global<Object>* handle
         v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
 
-        // Step 4: Free the CacheEntry
+        // Step 6: Free the CacheEntry
         entry.cache.allocator.destroy(entry);
     }
 }
@@ -173,6 +196,8 @@ pub const WrapperCache = struct {
         }
 
         // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
+        var count_cleaned: usize = 0;
+        var count_skipped: usize = 0;
         var iter = self.cache.valueIterator();
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
@@ -180,9 +205,12 @@ pub const WrapperCache = struct {
             // Only call deinit if not already cleaned up externally
             // (e.g., DOM nodes cleaned via Document.deinit already called their deinit)
             if (!entry.instance_already_cleaned) {
+                count_cleaned += 1;
                 // Call GC integration to invoke type-specific deinit
                 // This is essential for cleanup since weak callbacks may not fire during shutdown
                 runtime.gc.onObjectFreed(entry.instance);
+            } else {
+                count_skipped += 1;
             }
 
             // Dispose the Global<Object>* handle
@@ -191,6 +219,8 @@ pub const WrapperCache = struct {
             // Free the CacheEntry
             self.allocator.destroy(entry);
         }
+
+        @import("std").debug.print("[DEBUG] wrapper_cache.deinit: total={d}, cleaned={d}, skipped={d}\n", .{ count_cleaned + count_skipped, count_cleaned, count_skipped });
 
         self.cache.deinit();
     }
@@ -324,6 +354,8 @@ pub const WrapperCache = struct {
     /// This is used when the instance is being cleaned up by other means
     /// (e.g., Node.deinit cleaning up DOM tree). We mark it so that
     /// wrapper_cache.deinit() won't call onObjectFreed again (double-free).
+    ///
+    /// Also sets lifecycle tracking flags for coordinated cleanup (RC2 fix).
     ///
     /// We don't dispose the V8 handle here because we might still be in
     /// JavaScript execution context. The handle will be disposed during

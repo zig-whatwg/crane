@@ -226,6 +226,13 @@ pub fn getDebugNodeBaseCounts() struct { allocs: usize, frees: usize } {
 pub fn deinit(instance: *runtime.Instance) void {
     debug_node_deinit_calls += 1;
 
+    // Use lifecycle tracking to prevent double-cleanup (RC2 fix)
+    // markCleanupStarted returns false if cleanup was already started
+    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
+        debug_node_deinit_skipped += 1;
+        return; // Already being cleaned up, skip
+    }
+
     // Mark as cleaned up in V8 wrapper cache to prevent double-free.
     // When Document.deinit triggers this cleanup, we're cleaning up the DOM tree.
     // The wrapper cache also has references to these nodes. If we don't mark
@@ -278,6 +285,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
     // Clean up from registry
     Registry.remove(instance);
+
+    // Mark cleanup complete in lifecycle tracking (RC2 fix)
+    runtime.instance_lifecycle.markCleanupComplete(instance);
 
     // EventTarget cleanup happens via inheritance chain
     EventTargetImpl.deinit(instance);

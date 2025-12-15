@@ -122,6 +122,17 @@ pub const onObjectFreed = gc.onObjectFreed;
 pub const onGCSweep = gc.onGCSweep;
 pub const GCStats = gc.GCStats;
 
+// Cleanup coordination (RC2 fix - prevents dual cleanup path conflicts)
+pub const cleanup_coordinator = @import("cleanup_coordinator.zig");
+pub const CleanupCoordinator = cleanup_coordinator.CleanupCoordinator;
+pub const CleanupPhase = cleanup_coordinator.CleanupPhase;
+pub const CleanupStats = cleanup_coordinator.CleanupStats;
+pub const isContextTearingDown = cleanup_coordinator.isContextTearingDown;
+
+// Instance lifecycle tracking (RC2 fix - tracks cleanup state per instance)
+pub const instance_lifecycle = @import("instance_lifecycle.zig");
+pub const LifecycleFlags = instance_lifecycle.LifecycleFlags;
+
 // Internal state registry and accessors
 // Provides type-safe access to impl internal state from external code
 pub const internal_state = @import("internal_state.zig");
