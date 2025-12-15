@@ -159,6 +159,16 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // Requires actual HTMLMediaElement implementation with play/pause state.
     // Our polyfill doesn't fully intercept the native element behavior.
     "assumptions/allowed-to-play",
+
+    // ==========================================================================
+    // WPT Infrastructure Helper Files (not standalone tests)
+    // These are loaded by parent tests with specific parameters (uuid, etc.)
+    // ==========================================================================
+
+    // Channel test helpers - loaded via window.open/iframe with ?uuid= parameter
+    "channels/child_message.html",
+    "channels/child_script.html",
+    "channels/serialize_child.html",
 };
 
 /// Check if a path matches any exclusion pattern

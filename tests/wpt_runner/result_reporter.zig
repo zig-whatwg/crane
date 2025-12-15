@@ -449,10 +449,19 @@ pub const WptReport = struct {
         else
             try self.allocator.dupe(u8, harness_result.test_path);
 
+        // Set expected status at test level (for expected-fail directory, etc.)
+        const test_expected: ?[]const u8 = if (expected) |exp| blk: {
+            if (exp.test_expected) |test_exp| {
+                break :blk try self.allocator.dupe(u8, test_exp.toString());
+            }
+            break :blk null;
+        } else null;
+
         var result = TestResultJson{
             .test_path = test_path,
             .status = harness_result.status.toString(),
             .message = if (harness_result.message) |m| try self.allocator.dupe(u8, m) else null,
+            .expected = test_expected,
             .duration = harness_result.duration_ms,
             .subtests = .{},
         };
@@ -614,6 +623,8 @@ pub const TestResultJson = struct {
     status: []const u8,
     /// Error message (null if OK)
     message: ?[]const u8 = null,
+    /// Expected test status (for XFAIL tracking, null if pass expected)
+    expected: ?[]const u8 = null,
     /// Duration in milliseconds
     duration: u64 = 0,
     /// Subtest results
@@ -622,6 +633,7 @@ pub const TestResultJson = struct {
     pub fn deinit(self: *TestResultJson, allocator: std.mem.Allocator) void {
         allocator.free(self.test_path);
         if (self.message) |m| allocator.free(m);
+        if (self.expected) |e| allocator.free(e);
         for (self.subtests.items) |*sub| {
             sub.deinit(allocator);
         }
@@ -643,6 +655,13 @@ pub const TestResultJson = struct {
             try writer.writeAll(",\n");
         } else {
             try writer.print("{s}  \"message\": null,\n", .{indent});
+        }
+
+        // Write expected field if present (for XFAIL tracking)
+        if (self.expected) |exp| {
+            try writer.print("{s}  \"expected\": ", .{indent});
+            try writeJsonString(writer, exp);
+            try writer.writeAll(",\n");
         }
 
         try writer.print("{s}  \"duration\": {d},\n", .{ indent, self.duration });

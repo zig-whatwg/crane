@@ -442,10 +442,22 @@ pub const ProgressTracker = struct {
     pub fn recordResultWithExpected(self: *ProgressTracker, test_path: []const u8, result: test_harness.TestResult, expected: ?*const result_reporter.ExpectedResults) void {
         self.completed += 1;
 
-        // Count by test status
+        // Check if this test is expected to fail/error
+        const is_expected_error = if (expected) |exp| blk: {
+            if (exp.test_expected) |test_exp| {
+                break :blk test_exp == .fail or test_exp == .@"error";
+            }
+            break :blk false;
+        } else false;
+
+        // Count by test status (only count as error if not expected)
         switch (result.status) {
             .ok => {},
-            .@"error" => self.errors += 1,
+            .@"error" => {
+                if (!is_expected_error) {
+                    self.errors += 1;
+                }
+            },
             .timeout => self.timeouts += 1,
         }
 
@@ -791,7 +803,12 @@ pub fn executeTests(
 
                 error_result.message = try std.fmt.allocPrint(allocator, "Execution error in {s} context: {}", .{ global_context.toString(), err });
 
-                progress.recordResult(test_file.path, error_result);
+                // Record with expected status so expected-fail tests don't increment error count
+                if (expected_results) |*exp| {
+                    progress.recordResultWithExpected(test_file.path, error_result, exp);
+                } else {
+                    progress.recordResult(test_file.path, error_result);
+                }
                 progress.printProgressWithContext(test_file.path, context_name);
 
                 try report.addResult(error_result);
