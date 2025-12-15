@@ -714,6 +714,10 @@ pub fn executeTests(
         };
         defer parsed.deinit();
 
+        // Load expected results metadata for this test (XFAIL support)
+        var expected_results = result_reporter.loadExpectedResults(allocator, options.wpt_root, test_file.path) catch null;
+        defer if (expected_results) |*e| e.deinit();
+
         // Execute for each global context specified in metadata
         // For .any.js files, this might be [window, worker]
         // For .window.js files, this will be [window]
@@ -772,7 +776,12 @@ pub fn executeTests(
             progress.recordResult(test_file.path, test_result);
             progress.printProgressWithContext(test_file.path, context_name);
 
-            try report.addResult(test_result);
+            // Add result with expected status metadata (for XFAIL tracking)
+            if (expected_results) |*exp| {
+                try report.addResultWithExpected(test_result, exp);
+            } else {
+                try report.addResult(test_result);
+            }
 
             // Clean up the test result (addResult copies the data)
             var mutable_result = test_result;
