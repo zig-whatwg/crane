@@ -116,6 +116,12 @@ pub const FunctionCallbackInfo = opaque {
     /// Get data associated with the function template
     pub extern fn v8_FunctionCallbackInfo_Data(self: *const FunctionCallbackInfo) *Value;
 
+    /// Get the creation context of the target function being called.
+    /// This is critical for cross-realm support: when calling
+    /// other.SomeInterface.prototype.method.call(obj), we need the context
+    /// where 'method' was instantiated (the iframe's context).
+    pub extern fn v8_FunctionCallbackInfo_GetFunctionCreationContext(self: *const FunctionCallbackInfo) ?*Context;
+
     pub inline fn getIsolate(self: *const FunctionCallbackInfo) *Isolate {
         return v8_FunctionCallbackInfo_GetIsolate(self);
     }
@@ -154,6 +160,12 @@ pub const FunctionCallbackInfo = opaque {
 
     pub inline fn getData(self: *const FunctionCallbackInfo) *Value {
         return v8_FunctionCallbackInfo_Data(self);
+    }
+
+    /// Get the creation context of the target function being called.
+    /// For cross-realm support: returns the context where the method was instantiated.
+    pub inline fn getFunctionCreationContext(self: *const FunctionCallbackInfo) ?*Context {
+        return v8_FunctionCallbackInfo_GetFunctionCreationContext(self);
     }
 };
 

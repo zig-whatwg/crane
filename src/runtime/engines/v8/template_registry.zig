@@ -230,6 +230,7 @@ pub fn wrapInstanceAsV8Object(
         const WindowImpl = @import("impls").Window;
         if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
             // Return the bound global directly - this is the key for cross-realm!
+            // bound_global is a Global<Object>* which is the correct type for return values
             return @ptrCast(bound_global);
         }
     }
@@ -636,6 +637,18 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 
     if (inst_vtable == &interfaces.DOMRectList.vtable) {
         return "DOMRectList";
+    }
+
+    if (inst_vtable == &interfaces.DOMPoint.vtable) {
+        return "DOMPoint";
+    }
+
+    if (inst_vtable == &interfaces.DOMPointReadOnly.vtable) {
+        return "DOMPointReadOnly";
+    }
+
+    if (inst_vtable == &interfaces.DOMQuad.vtable) {
+        return "DOMQuad";
     }
 
     // Window - critical for cross-realm support

@@ -1621,11 +1621,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     // should have its prototype from 'other' (the method's realm), not the caller's realm.
                     // This is critical for WPT test: default-toJSON-cross-realm.html
                     //
-                    // The holder is the object on which the method is defined (the prototype),
-                    // so its creation context is the method's realm.
-                    const method_holder = info.getHolder();
-                    const method_context = v8.v8_Object_GetPrototypeCreationContext(method_holder) orelse
-                        v8.v8_Object_GetCreationContext(method_holder) orelse
+                    // We use getFunctionCreationContext() which accesses V8's internal layout to get
+                    // the target function being called, then returns its creation context. This gives
+                    // us the context where the function was instantiated (e.g., iframe context for
+                    // other.DOMRectReadOnly.prototype.toJSON).
+                    const method_context = info.getFunctionCreationContext() orelse
                         current_context;
 
                     // Use current_context for argument parsing (input comes from caller's realm)

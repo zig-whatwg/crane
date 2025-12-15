@@ -382,27 +382,21 @@ fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
 /// This is passed to tree_builder.setDomAdapterCallbacks().
 pub fn domAdapterOnNodeCreated(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    adapter.onNodeCreated(tree_node) catch |err| {
-        std.debug.print("DomTreeAdapter.onNodeCreated error: {}\n", .{err});
-    };
+    adapter.onNodeCreated(tree_node) catch {};
 }
 
 /// Static callback wrapper for onChildAppended.
 /// This is passed to tree_builder.setDomAdapterCallbacks().
 pub fn domAdapterOnChildAppended(parent: *TreeNode, child: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    adapter.onChildAppended(parent, child) catch |err| {
-        std.debug.print("DomTreeAdapter.onChildAppended error: {}\n", .{err});
-    };
+    adapter.onChildAppended(parent, child) catch {};
 }
 
 /// Static callback wrapper for onTextContentChanged.
 /// This is passed to tree_builder.setDomAdapterCallbacks().
 pub fn domAdapterOnTextContentChanged(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
-    adapter.onTextContentChanged(tree_node) catch |err| {
-        std.debug.print("DomTreeAdapter.onTextContentChanged error: {}\n", .{err});
-    };
+    adapter.onTextContentChanged(tree_node) catch {};
 }
 
 // =============================================================================

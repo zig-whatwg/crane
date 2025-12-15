@@ -96,8 +96,14 @@ const ManagerState = struct {
 
     /// Map from V8 context pointer to runtime context
     /// Key: usize (casted from *v8.Context)
-    /// Value: ContextEntry
-    contexts: std.AutoHashMap(usize, ContextEntry),
+    /// Value: *ContextEntry (pointer to heap-allocated entry)
+    ///
+    /// IMPORTANT: We store *ContextEntry (pointer) instead of ContextEntry (value)
+    /// because HashMap moves values during rehash. If we stored values directly,
+    /// any pointer into entry.runtime_ctx (like Window.ctx or Element.ctx)
+    /// would become dangling after rehash. By heap-allocating entries and
+    /// storing pointers, the entries themselves don't move when HashMap grows.
+    contexts: std.AutoHashMap(usize, *ContextEntry),
 
     /// Default allocator to use for new contexts
     default_allocator: std.mem.Allocator,
@@ -121,7 +127,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
     manager_state = ManagerState{
         .allocator = allocator,
-        .contexts = std.AutoHashMap(usize, ContextEntry).init(allocator),
+        .contexts = std.AutoHashMap(usize, *ContextEntry).init(allocator),
         .default_allocator = allocator,
     };
 }
@@ -151,7 +157,8 @@ pub fn deinit() void {
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
         // during teardown (is_tearing_down flag prevents nested calls).
         var it = state.contexts.valueIterator();
-        while (it.next()) |entry| {
+        while (it.next()) |entry_ptr| {
+            const entry = entry_ptr.*; // Dereference the pointer to get *ContextEntry
             if (entry.owns_context) {
                 var ctx_data = entry.runtime_ctx;
 
@@ -181,6 +188,8 @@ pub fn deinit() void {
 
                 ctx_data.deinit();
             }
+            // Free the heap-allocated entry itself
+            state.allocator.destroy(entry);
         }
 
         // Free the hash map
@@ -236,7 +245,7 @@ pub fn getOrCreateWithExternalEventLoop(
     const key = @intFromPtr(raw_addr);
 
     // Check if context already exists
-    if (state.contexts.getPtr(key)) |entry| {
+    if (state.contexts.get(key)) |entry| {
         return &entry.runtime_ctx;
     }
 
@@ -263,8 +272,11 @@ pub fn getOrCreateWithExternalEventLoop(
     // Store cache in runtime context
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
 
-    // Store in map (no event loop owned)
-    try state.contexts.put(key, ContextEntry{
+    // Heap-allocate the entry so it doesn't move when HashMap rehashes
+    const entry = try state.allocator.create(ContextEntry);
+    errdefer state.allocator.destroy(entry);
+
+    entry.* = ContextEntry{
         .v8_ctx = v8_ctx,
         .runtime_ctx = ctx_data,
         .owns_context = true,
@@ -273,9 +285,11 @@ pub fn getOrCreateWithExternalEventLoop(
         .parent_entry = null,
         .children = .{},
         .allocator = allocator,
-    });
+    };
 
-    const entry = state.contexts.getPtr(key).?;
+    // Store pointer in map - entry won't move even if HashMap rehashes
+    try state.contexts.put(key, entry);
+
     return &entry.runtime_ctx;
 }
 
@@ -296,7 +310,7 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
     const key = @intFromPtr(raw_addr);
 
     // Get the context entry - must already exist from getOrCreateWithExternalEventLoop
-    const entry = state.contexts.getPtr(key) orelse return error.ContextNotFound;
+    const entry = state.contexts.get(key) orelse return error.ContextNotFound;
 
     // Don't create another Window if one already exists
     if (entry.window_instance) |existing| {
@@ -342,7 +356,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     const key = @intFromPtr(raw_addr);
 
     // Check if context already exists
-    if (state.contexts.getPtr(key)) |entry| {
+    if (state.contexts.get(key)) |entry| {
         return &entry.runtime_ctx;
     }
 
@@ -397,8 +411,11 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         });
     }
 
-    // Store in map
-    try state.contexts.put(key, ContextEntry{
+    // Heap-allocate the entry so it doesn't move when HashMap rehashes
+    const entry = try state.allocator.create(ContextEntry);
+    errdefer state.allocator.destroy(entry);
+
+    entry.* = ContextEntry{
         .v8_ctx = v8_ctx,
         .runtime_ctx = ctx_data,
         .owns_context = true,
@@ -407,11 +424,12 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .parent_entry = null,
         .children = .{},
         .allocator = allocator,
-    });
+    };
 
-    // Return pointer to context data in the hash map
-    // This is safe because AutoHashMap doesn't move values on rehash
-    const entry = state.contexts.getPtr(key).?;
+    // Store pointer in map - entry won't move even if HashMap rehashes
+    try state.contexts.put(key, entry);
+
+    // Return pointer to context data - stable because entry is heap-allocated
     return &entry.runtime_ctx;
 }
 
@@ -427,7 +445,7 @@ pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
 
-    if (state.contexts.getPtr(key)) |entry| {
+    if (state.contexts.get(key)) |entry| {
         return &entry.runtime_ctx;
     }
 
@@ -450,8 +468,11 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
 
     const key = @intFromPtr(v8_ctx);
 
-    // Store in map (context not owned)
-    try state.contexts.put(key, ContextEntry{
+    // Heap-allocate the entry so it doesn't move when HashMap rehashes
+    const entry = try state.allocator.create(ContextEntry);
+    errdefer state.allocator.destroy(entry);
+
+    entry.* = ContextEntry{
         .v8_ctx = v8_ctx,
         .runtime_ctx = ctx.*, // Copy the context data
         .owns_context = false, // Don't deinit this one
@@ -460,7 +481,10 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
         .parent_entry = null,
         .children = .{},
         .allocator = state.allocator,
-    });
+    };
+
+    // Store pointer in map - entry won't move even if HashMap rehashes
+    try state.contexts.put(key, entry);
 }
 
 /// Remove a runtime context for a V8 context
@@ -475,7 +499,8 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
     const key = @intFromPtr(v8_ctx);
 
     if (state.contexts.fetchRemove(key)) |kv| {
-        var entry = kv.value;
+        const entry = kv.value; // This is now *ContextEntry
+        defer state.allocator.destroy(entry); // Free the heap-allocated entry
         if (entry.owns_context) {
             var ctx_data = entry.runtime_ctx;
 
@@ -534,7 +559,8 @@ pub fn clearWrapperCaches() void {
     const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
     var it = state.contexts.valueIterator();
-    while (it.next()) |entry| {
+    while (it.next()) |entry_ptr| {
+        const entry = entry_ptr.*; // Dereference pointer to get *ContextEntry
         var ctx_data = entry.runtime_ctx;
         if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
             const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
@@ -585,7 +611,7 @@ fn handleDynamicImport(
     };
     const key = @intFromPtr(raw_addr);
 
-    const entry = state.contexts.getPtr(key) orelse {
+    const entry = state.contexts.get(key) orelse {
         resolver.reject("No runtime context for this V8 context");
         return;
     };
@@ -862,7 +888,7 @@ fn createWindowForExistingBrowsingContext(
     // Get parent entry for inheriting event loop
     const parent_raw_addr = v8.v8_Context_GetRawAddress(parent_context) orelse return null;
     const parent_key = @intFromPtr(parent_raw_addr);
-    const parent_entry = state.contexts.getPtr(parent_key) orelse return null;
+    const parent_entry = state.contexts.get(parent_key) orelse return null;
 
     // 1. Create new global template
     const global_template = v8.v8_ObjectTemplate_New(isolate);
@@ -974,8 +1000,10 @@ fn createWindowForExistingBrowsingContext(
     WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
     cache_ptr.set(window_instance, global, isolate) catch {};
 
-    // 11. Store in context map
-    state.contexts.put(child_key, ContextEntry{
+    // 11. Heap-allocate entry so it doesn't move when HashMap rehashes
+    const child_entry = state.allocator.create(ContextEntry) catch return null;
+
+    child_entry.* = ContextEntry{
         .v8_ctx = child_context,
         .runtime_ctx = ctx_data,
         .owns_context = true,
@@ -985,10 +1013,15 @@ fn createWindowForExistingBrowsingContext(
         .children = .{},
         .allocator = allocator,
         .window_instance = window_instance,
-    }) catch return null;
+    };
+
+    // Store pointer in map - entry won't move even if HashMap rehashes
+    state.contexts.put(child_key, child_entry) catch {
+        state.allocator.destroy(child_entry);
+        return null;
+    };
 
     // 12. Link to parent's children list
-    const child_entry = state.contexts.getPtr(child_key).?;
     parent_entry.children.append(allocator, child_entry) catch {};
 
     return window_instance;
@@ -1236,7 +1269,7 @@ pub fn createChildContext(
     // Get parent entry
     const parent_raw_addr = v8.v8_Context_GetRawAddress(options.parent_context) orelse return error.InvalidContext;
     const parent_key = @intFromPtr(parent_raw_addr);
-    const parent_entry = state.contexts.getPtr(parent_key) orelse return error.ParentNotFound;
+    const parent_entry = state.contexts.get(parent_key) orelse return error.ParentNotFound;
 
     // 1. Create new global template
     // We use a plain ObjectTemplate here because using Window's full FunctionTemplate
@@ -1427,41 +1460,34 @@ pub fn createChildContext(
     const document_instance = try interfaces.Document.init(allocator, runtime_ctx);
     WindowImpl.setDocument(window_instance, document_instance);
 
-    // 9. Store in map
-    // Note: We use parent_key here instead of parent_entry pointer because the put()
-    // below may cause the HashMap to rehash, invalidating any previously obtained pointers.
-    try state.contexts.put(child_key, ContextEntry{
+    // 9. Heap-allocate the entry so it doesn't move when HashMap rehashes
+    const child_entry = try state.allocator.create(ContextEntry);
+    errdefer state.allocator.destroy(child_entry);
+
+    child_entry.* = ContextEntry{
         .v8_ctx = child_context,
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = null, // Child doesn't own event loop (inherits from parent or none)
         .realm = realm,
-        .parent_entry = null, // Will be set below after rehash-safe lookup
+        .parent_entry = parent_entry, // Can set directly now - parent_entry is stable
         .children = .{},
         .allocator = allocator,
         .window_instance = window_instance,
-    });
+    };
 
-    // 10. Get pointer to entry in map
-    const child_entry = state.contexts.getPtr(child_key).?;
+    // Store pointer in map - entry won't move even if HashMap rehashes
+    try state.contexts.put(child_key, child_entry);
 
-    // 10b. CRITICAL: Update Window's context pointer to the entry's runtime_ctx
-    // The window_instance was created with a pointer to the stack-local ctx_data.
-    // Now that ctx_data has been copied into the ContextEntry, we need to update
-    // the Window's ctx to point to the stable location in the map.
-    // Without this fix, Window.get_name() crashes when accessing instance.ctx.allocator
-    // because instance.ctx points to freed stack memory.
+    // 10. Fix up instance.ctx pointers that were created with stack-local ctx_data
+    // The window_instance and document_instance have ctx pointing to stack-local ctx_data,
+    // but now ctx_data has been copied into the heap-allocated child_entry.
+    // Update them to point to the stable location.
     window_instance.ctx = &child_entry.runtime_ctx;
+    document_instance.ctx = &child_entry.runtime_ctx;
 
-    // 11. Re-fetch parent entry pointer after put() to ensure it's still valid
-    // (HashMap may have rehashed during put(), invalidating previous pointers)
-    const fresh_parent_entry = state.contexts.getPtr(parent_key).?;
-
-    // 12. Set parent_entry now that we have valid pointers
-    child_entry.parent_entry = fresh_parent_entry;
-
-    // 13. Link to parent's children list
-    try fresh_parent_entry.children.append(allocator, child_entry);
+    // 11. Link to parent's children list
+    try parent_entry.children.append(allocator, child_entry);
 
     return child_entry;
 }
@@ -1545,8 +1571,9 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         ctx_data.deinit();
     }
 
-    // 6. Remove from context map
+    // 6. Remove from context map and free the heap-allocated entry
     _ = state.contexts.remove(key);
+    state.allocator.destroy(entry);
 }
 
 /// Get the realm for a V8 context
@@ -1561,7 +1588,7 @@ pub fn getRealmForContext(v8_ctx: *v8.Context) ?*runtime.Realm {
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
 
-    if (state.contexts.getPtr(key)) |entry| {
+    if (state.contexts.get(key)) |entry| {
         return entry.realm;
     }
 
@@ -1592,7 +1619,7 @@ pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
 
-    return state.contexts.getPtr(key);
+    return state.contexts.get(key);
 }
 
 /// Get the Window instance for a V8 context
@@ -1608,7 +1635,7 @@ pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
 
-    if (state.contexts.getPtr(key)) |entry| {
+    if (state.contexts.get(key)) |entry| {
         return entry.window_instance;
     }
 
@@ -1627,7 +1654,7 @@ pub fn setRealmForContext(v8_ctx: *v8.Context, realm: *runtime.Realm) !void {
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
     const key = @intFromPtr(raw_addr);
 
-    if (state.contexts.getPtr(key)) |entry| {
+    if (state.contexts.get(key)) |entry| {
         // Free existing realm if any
         if (entry.realm) |old_realm| {
             old_realm.deinit();

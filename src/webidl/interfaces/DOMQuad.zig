@@ -102,10 +102,10 @@ pub const DOMQuad = struct {
     /// ToJSON result struct for DOMQuad
     /// Generated from [Default] toJSON extended attribute
     pub const DOMQuadToJSON = struct {
-        p1: DOMPoint,
-        p2: DOMPoint,
-        p3: DOMPoint,
-        p4: DOMPoint,
+        p1: *runtime.Instance,
+        p2: *runtime.Instance,
+        p3: *runtime.Instance,
+        p4: *runtime.Instance,
     };
 
     const delegates = .{

@@ -1846,7 +1846,7 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     errdefer internal.allocator.destroy(backend);
 
     backend.* = getSessionStorageBackend(internal.allocator, context_id, internal.origin) catch |err| {
-        internal.allocator.destroy(backend);
+        // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
             web_storage.StorageError.OutOfMemory => error.OutOfMemory,

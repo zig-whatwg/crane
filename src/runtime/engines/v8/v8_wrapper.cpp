@@ -2095,17 +2095,53 @@ Global<Value>* v8_Exception_TypeErrorInContext(Global<Context>* context, Global<
 /// For methods called on an instance, this is typically the prototype object
 /// where the method is defined.
 ///
-/// Note: In modern V8, FunctionCallbackInfo doesn't have Holder() directly.
-/// We return This() which is the receiver object. For cross-realm TypeError
-/// purposes, we can then get its creation context.
+/// V8 stores the holder object at implicit_args_[kHolderIndex = 0].
+///
+/// For cross-realm support, we need the actual holder (e.g., other.DOMRectReadOnly.prototype)
+/// not This() (the receiver, e.g., our rect object).
 Global<Object>* v8_FunctionCallbackInfo_Holder(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     
-    // Return the receiver object (this). For getter/setter/method callbacks,
-    // we can then get its creation context or walk up the prototype chain.
-    Local<Object> this_obj = info->This();
+    // FunctionCallbackInfo memory layout (from v8-function-callback.h):
+    // The class stores a pointer to implicit_args_ array which contains:
+    //   - [0]: holder (kHolderIndex)
+    //   - [1]: isolate (kIsolateIndex)
+    //   - [2]: context (kContextIndex)
+    //   - [3]: return value (kReturnValueIndex)
+    //   - [4]: target (kTargetIndex)
+    //   - [5]: new target (kNewTargetIndex)
+    //
+    // The holder is the prototype object where the method was found.
+    // We access it via Data() and pointer arithmetic since Data() returns
+    // implicit_args_[kTargetIndex].
+    //
+    // For methods installed via FunctionTemplate on prototype templates:
+    // - The function is created from the FunctionTemplate
+    // - Its "holder" in the callback context is the prototype object
+    // - That prototype's creation context is the realm we want
     
+    // Since V8 doesn't expose Holder() directly for FunctionCallbackInfo in modern versions,
+    // we use the fact that NewTarget() for non-construct calls returns undefined,
+    // and we can use the current context to determine the method's realm.
+    //
+    // When other.DOMRectReadOnly.prototype.toJSON.call(rect) is called:
+    // - The current isolate context AT CALLBACK TIME is the caller's context
+    // - But we want the context where the prototype method was instantiated
+    //
+    // The best we can do without holder access is to return This() and then
+    // use GetPrototypeCreationContext to walk up to find the defining context.
+    // This works because:
+    // - rect's prototype is DOMRectReadOnly.prototype from main context
+    // - but we're calling other.DOMRectReadOnly.prototype.toJSON on it
+    //
+    // Actually, for toJSON and similar, V8's Data() contains what we passed
+    // when creating the function template. If we store the context there,
+    // we could retrieve it here.
+    //
+    // For now, return This() and rely on GetPrototypeCreationContext in Zig
+    // to find the method's realm by walking the prototype chain.
+    Local<Object> this_obj = info->This();
     return trackHandle(new Global<Object>(isolate, this_obj));
 }
 
@@ -2493,6 +2529,64 @@ Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* i
     HandleScope handle_scope(isolate);
     Local<Value> data = info->Data();
     return trackHandle(new Global<Value>(isolate, data));
+}
+
+/// Get the creation context of the target function being called.
+/// This is critical for cross-realm support: when calling
+/// other.SomeInterface.prototype.method.call(obj), we need the context
+/// where 'method' was instantiated (the iframe's context), not where
+/// 'obj' was created (the main context) or the calling context.
+///
+/// Uses V8's internal layout to access the target function at kTargetIndex (4),
+/// then gets its creation context.
+Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handle_scope(isolate);
+    
+    // Access the target (function being called) through implicit_args_
+    // Layout from v8-function-callback.h:
+    //   kTargetIndex = 4
+    // The implicit_args_ pointer is stored at offset 0 of FunctionCallbackInfo
+    //
+    // Since FunctionCallbackInfo stores:
+    //   internal::Address* implicit_args_;   // offset 0
+    //   internal::Address* values_;          // offset 8
+    //   internal::Address length_;           // offset 16
+    //
+    // We can cast and access implicit_args_ directly.
+    
+    struct FCILayout {
+        internal::Address* implicit_args;
+        internal::Address* values;
+        internal::Address length;
+    };
+    
+    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
+    
+    // Get the target function from implicit_args[kTargetIndex]
+    // kTargetIndex = 4
+    internal::Address target_addr = layout->implicit_args[4];
+    
+    // Convert the internal address to a Local<Value> using reinterpret
+    // V8 Local handles internally store an Address*, so we create a pointer to
+    // our address slot and reinterpret it as a Local
+    Local<Value> target_value = *reinterpret_cast<Local<Value>*>(&target_addr);
+    
+    if (target_value.IsEmpty() || !target_value->IsFunction()) {
+        // Fallback: return current context
+        return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
+    }
+    
+    Local<Function> target_func = target_value.As<Function>();
+    
+    // Get the creation context of the function
+    // This is the context where the function was instantiated (e.g., iframe context)
+    MaybeLocal<Context> maybe_ctx = target_func->GetCreationContext();
+    if (maybe_ctx.IsEmpty()) {
+        return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
+    }
+    
+    return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
 }
 
 // ============================================================================

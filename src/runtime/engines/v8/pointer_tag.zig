@@ -555,29 +555,23 @@ pub const DebugAssertions = struct {
     /// Use this at conversion boundaries to trace pointer creation
     /// when debugging complex tagging issues.
     ///
-    /// Compiles away in all release builds.
+    /// Disabled by default to avoid noisy output.
     pub fn logTaggedPointerCreation(ptr: *const anyopaque, tag: AnyopaqueTag) void {
-        if (builtin.mode == .Debug) {
-            debug_log.debug("Creating tagged pointer: 0x{x} with tag={}", .{
-                @intFromPtr(ptr),
-                tag,
-            });
-        }
+        // Disabled to avoid noisy debug output
+        _ = ptr;
+        _ = tag;
     }
 
     /// Log untagging of pointer (debug only, not panic).
     ///
     /// Use this when untagging to trace pointer flow when debugging.
     ///
-    /// Compiles away in all release builds.
+    /// Disabled by default to avoid noisy output.
     pub fn logPointerUntagging(tagged_addr: usize, result_ptr: *anyopaque, tag: AnyopaqueTag) void {
-        if (builtin.mode == .Debug) {
-            debug_log.debug("Untagging pointer: 0x{x} -> 0x{x} (was tag={})", .{
-                tagged_addr,
-                @intFromPtr(result_ptr),
-                tag,
-            });
-        }
+        // Disabled to avoid noisy debug output
+        _ = tagged_addr;
+        _ = result_ptr;
+        _ = tag;
     }
 };
 

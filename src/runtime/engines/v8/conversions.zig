@@ -2514,15 +2514,23 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
         const WindowImpl = @import("impls").Window;
         if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
             // Return the bound global directly - this is the key for cross-realm!
+            // bound_global is a Global<Object>* which is the correct type for setReturnValue
             return @ptrCast(bound_global);
         }
     }
 
-    // Get current context
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        // No context available, return undefined
-        return v8.v8_Undefined(isolate) orelse unreachable;
-    };
+    // Get the instance's creation context - this is critical for cross-realm support!
+    // When returning interface instances from toJSON, they must be wrapped with their
+    // ORIGINAL realm's prototype, not the current context's prototype.
+    // e.g., DOMQuad.toJSON returns p1-p4 DOMPoints - these should have the DOMPoint
+    // prototype from the realm where they were created, not the toJSON method's realm.
+    const context: *v8.Context = if (instance.ctx.getEngineContext()) |engine_ctx|
+        @ptrCast(@alignCast(engine_ctx))
+    else
+        v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+            // No context available, return undefined
+            return v8.v8_Undefined(isolate) orelse unreachable;
+        };
 
     // Wrap with correct prototype using template registry
     const v8_obj = template_registry.wrapInstanceAsV8Object(
