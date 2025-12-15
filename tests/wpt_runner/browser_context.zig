@@ -917,6 +917,33 @@ pub const BrowserContext = struct {
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "close", 5) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
         }
+
+        // Register isSecureContext on Worker global scope
+        // Per HTML spec, WorkerGlobalScope exposes isSecureContext
+        {
+            const is_secure = isSecureUrl(self.test_url);
+            const is_secure_key = v8.ffi.v8_String_NewFromUtf8(isolate, "isSecureContext", 15) orelse return error.StringCreateFailed;
+            if (v8.ffi.v8_Boolean_New(isolate, is_secure)) |is_secure_val| {
+                _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(is_secure_key), is_secure_val);
+            }
+        }
+
+        // Register origin on Worker global scope
+        {
+            const origin_key = v8.ffi.v8_String_NewFromUtf8(isolate, "origin", 6) orelse return error.StringCreateFailed;
+            // Extract origin from test_url (scheme://host:port)
+            const origin_str = blk: {
+                if (std.mem.startsWith(u8, self.test_url, "http://") or std.mem.startsWith(u8, self.test_url, "https://")) {
+                    const scheme_end = std.mem.indexOf(u8, self.test_url, "://") orelse break :blk "null";
+                    const after_scheme = self.test_url[scheme_end + 3 ..];
+                    const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
+                    break :blk self.test_url[0 .. scheme_end + 3 + path_start];
+                }
+                break :blk "null";
+            };
+            const origin_val = v8.ffi.v8_String_NewFromUtf8(isolate, origin_str.ptr, @intCast(origin_str.len)) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(origin_key), @ptrCast(origin_val));
+        }
     }
 
     /// Register common globals (setTimeout, fetch, console, etc.)
@@ -1172,6 +1199,16 @@ pub const BrowserContext = struct {
                 std.debug.print("Warning: Failed to register btoa/atob: {}\n", .{err});
             };
         }
+
+        // Register getComputedStyle as a global function
+        // Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, getComputedStyleCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1); // getComputedStyle(element, pseudoElt?)
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "getComputedStyle", 16) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, context, @ptrCast(key), @ptrCast(func));
+        }
     }
 
     /// Register WPT result callbacks (__wpt_report_result, __wpt_report_completion)
@@ -1214,17 +1251,24 @@ pub const BrowserContext = struct {
 
         // Determine if this should be treated as an HTTPS URL
         // WPT tests with .https. or .h2. in filename should use https:// scheme
+        // Per WPT convention:
+        //   - .https. tests use port 8443
+        //   - .h2. tests use port 9000 (HTTP/2)
         const effective_url = blk: {
-            if (std.mem.indexOf(u8, url, ".https.") != null or
-                std.mem.indexOf(u8, url, ".h2.") != null)
-            {
+            const is_h2 = std.mem.indexOf(u8, url, ".h2.") != null;
+            const is_https = std.mem.indexOf(u8, url, ".https.") != null;
+
+            if (is_h2 or is_https) {
+                // Determine target port based on test type
+                const target_port: []const u8 = if (is_h2) "9000" else "8443";
+
                 // Rewrite http:// to https:// for location object
                 if (std.mem.startsWith(u8, url, "http://localhost:8000")) {
-                    // Replace http://localhost:8000 with https://localhost:8443
+                    // Replace http://localhost:8000 with https://localhost:<port>
                     const rest = url["http://localhost:8000".len..];
-                    break :blk try std.fmt.allocPrint(self.allocator, "https://localhost:8443{s}", .{rest});
+                    break :blk try std.fmt.allocPrint(self.allocator, "https://localhost:{s}{s}", .{ target_port, rest });
                 } else if (std.mem.startsWith(u8, url, "http://")) {
-                    // Generic http:// to https:// replacement
+                    // Generic http:// to https:// replacement (preserve original port if present)
                     const rest = url["http://".len..];
                     break :blk try std.fmt.allocPrint(self.allocator, "https://{s}", .{rest});
                 }
@@ -1250,36 +1294,61 @@ pub const BrowserContext = struct {
             impls.Window.setIsSecureContext(win, is_secure);
         }
 
-        // Also update the JavaScript __internal.isSecureContext property
-        // This is what JavaScript code actually reads via the accessor property
+        // Update JavaScript globals based on context type
         if (self.isolate != null and self.context != null) {
-            const js_script = if (is_secure)
-                "globalThis.__internal.isSecureContext = true;"
-            else
-                "globalThis.__internal.isSecureContext = false;";
+            switch (self.context_type) {
+                .window => {
+                    // Window: update __internal.isSecureContext via accessor property
+                    const js_script = if (is_secure)
+                        "globalThis.__internal.isSecureContext = true;"
+                    else
+                        "globalThis.__internal.isSecureContext = false;";
 
-            self.executeScript(js_script) catch |err| {
-                std.debug.print("Warning: Failed to update isSecureContext: {}\n", .{err});
-            };
+                    self.executeScript(js_script) catch |err| {
+                        std.debug.print("Warning: Failed to update isSecureContext: {}\n", .{err});
+                    };
+                },
+                .worker, .shared_worker, .service_worker => {
+                    // Worker: update isSecureContext directly on globalThis
+                    const js_script = if (is_secure)
+                        "globalThis.isSecureContext = true;"
+                    else
+                        "globalThis.isSecureContext = false;";
+
+                    self.executeScript(js_script) catch |err| {
+                        std.debug.print("Warning: Failed to update worker isSecureContext: {}\n", .{err});
+                    };
+
+                    // Also update WorkerLocation with the effective URL
+                    // WorkerLocation is stored directly on globalThis.location
+                    const loc_script = std.fmt.allocPrint(self.allocator,
+                        \\(function() {{
+                        \\  if (typeof location !== 'undefined' && location && typeof location._setHref === 'function') {{
+                        \\    location._setHref("{s}");
+                        \\  }}
+                        \\}})();
+                    , .{effective_url}) catch |err| {
+                        std.debug.print("Warning: Failed to format location update script: {}\n", .{err});
+                        return;
+                    };
+                    defer self.allocator.free(loc_script);
+
+                    self.executeScript(loc_script) catch {
+                        // WorkerLocation might not have _setHref, that's OK
+                    };
+                },
+            }
         }
     }
 
     /// Check if a URL indicates a secure context
-    /// Per WPT convention, tests with .https. in the filename should be treated
-    /// as secure contexts even when served over HTTP for testing purposes.
+    /// Per WPT convention, tests with .https. or .h2. in the filename should be treated
+    /// as secure contexts. Plain HTTP localhost is NOT considered secure for WPT tests
+    /// (unlike the general Secure Contexts spec) to allow testing non-secure context behavior.
     fn isSecureUrl(url: []const u8) bool {
-        // Check for secure schemes
+        // Check for secure schemes first
         if (std.mem.startsWith(u8, url, "https://") or
-            std.mem.startsWith(u8, url, "wss://") or
-            std.mem.startsWith(u8, url, "file://"))
-        {
-            return true;
-        }
-
-        // HTTP localhost is also considered secure
-        if (std.mem.startsWith(u8, url, "http://localhost") or
-            std.mem.startsWith(u8, url, "http://127.0.0.1") or
-            std.mem.startsWith(u8, url, "http://[::1]"))
+            std.mem.startsWith(u8, url, "wss://"))
         {
             return true;
         }
@@ -1294,6 +1363,11 @@ pub const BrowserContext = struct {
         if (std.mem.indexOf(u8, url, ".h2.") != null) {
             return true;
         }
+
+        // NOTE: We intentionally do NOT treat plain http://localhost as secure here.
+        // While the Secure Contexts spec does consider localhost secure, WPT tests
+        // need to be able to test non-secure context behavior on localhost.
+        // Tests that need secure context use .https. or .h2. in their filenames.
 
         return false;
     }
@@ -4148,6 +4222,282 @@ test "createContextForTest" {
     defer ctx.deinit();
 
     try testing.expectEqual(ContextType.worker, ctx.context_type);
+}
+
+// =============================================================================
+// getComputedStyle callback
+// =============================================================================
+
+/// Callback for window.getComputedStyle(element, pseudoElt)
+/// Returns a CSSStyleDeclaration-like object with computed style values.
+/// This is a simplified implementation that creates a plain JS object with CSS properties
+/// directly accessible via property names (e.g., style.display, style['display']).
+/// Per CSSOM spec: https://drafts.csswg.org/cssom/#dom-window-getcomputedstyle
+fn getComputedStyleCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // getComputedStyle requires at least 1 argument (element)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getComputedStyle': 1 argument required", 57) orelse {
+            if (v8.ffi.v8_Undefined(isolate)) |undef| {
+                info.setReturnValue(undef);
+            }
+            return;
+        };
+        if (v8.ffi.v8_Exception_TypeError(msg)) |exc| {
+            v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        }
+        return;
+    }
+
+    // Get the element argument
+    const element_value = info.get(0);
+
+    // Validate that argument is an object (Element)
+    if (!v8.ffi.v8_Value_IsObject(element_value)) {
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getComputedStyle': parameter 1 is not of type 'Element'", 74) orelse {
+            if (v8.ffi.v8_Undefined(isolate)) |undef| {
+                info.setReturnValue(undef);
+            }
+            return;
+        };
+        if (v8.ffi.v8_Exception_TypeError(msg)) |exc| {
+            v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        }
+        return;
+    }
+
+    // Extract the runtime.Instance from the V8 object to get tag name
+    const element_obj: *v8.ffi.Object = @ptrCast(element_value);
+    const instance_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(element_obj, 0);
+
+    // Get tag name from element for element-type-specific styles
+    var tag_name: []const u8 = "div"; // Default
+    if (instance_ptr) |ptr| {
+        const element_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+        // Try to get the tag name from the Element impl
+        const ElementImpl = impls.Element;
+        if (ElementImpl.getInternal(element_instance)) |internal| {
+            tag_name = internal.local_name.asSlice();
+        }
+    }
+
+    // Create a plain JS object that acts as CSSStyleDeclaration
+    const result = v8.ffi.v8_Object_New(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+
+    // Add getPropertyValue method
+    const get_prop_template = v8.ffi.v8_FunctionTemplate_New(isolate, getPropertyValueCallback, null) orelse return;
+    const get_prop_func = v8.ffi.v8_FunctionTemplate_GetFunction(get_prop_template, v8_context) orelse return;
+    const get_prop_key = v8.ffi.v8_String_NewFromUtf8(isolate, "getPropertyValue", 16) orelse return;
+    _ = v8.ffi.v8_Object_Set(result, v8_context, @ptrCast(get_prop_key), @ptrCast(get_prop_func));
+
+    // Determine display value based on element tag name
+    const display_value: []const u8 = getDefaultDisplayForTag(tag_name);
+
+    // Add CSS properties directly on the object for property access (style.display, style['display'])
+    const props = [_]struct { name: []const u8, camel: []const u8, value: []const u8 }{
+        .{ .name = "display", .camel = "display", .value = display_value },
+        .{ .name = "visibility", .camel = "visibility", .value = "visible" },
+        .{ .name = "position", .camel = "position", .value = "static" },
+        .{ .name = "color", .camel = "color", .value = "rgb(0, 0, 0)" },
+        .{ .name = "background-color", .camel = "backgroundColor", .value = "rgba(0, 0, 0, 0)" },
+        .{ .name = "width", .camel = "width", .value = "auto" },
+        .{ .name = "height", .camel = "height", .value = "auto" },
+        .{ .name = "margin", .camel = "margin", .value = "0px" },
+        .{ .name = "padding", .camel = "padding", .value = "0px" },
+        .{ .name = "border", .camel = "border", .value = "0px none rgb(0, 0, 0)" },
+        .{ .name = "font-size", .camel = "fontSize", .value = "16px" },
+        .{ .name = "font-family", .camel = "fontFamily", .value = "sans-serif" },
+        .{ .name = "line-height", .camel = "lineHeight", .value = "normal" },
+        .{ .name = "overflow", .camel = "overflow", .value = "visible" },
+        .{ .name = "z-index", .camel = "zIndex", .value = "auto" },
+    };
+
+    for (props) |prop| {
+        // Set both kebab-case and camelCase versions
+        if (v8.ffi.v8_String_NewFromUtf8(isolate, prop.name.ptr, @intCast(prop.name.len))) |key| {
+            if (v8.ffi.v8_String_NewFromUtf8(isolate, prop.value.ptr, @intCast(prop.value.len))) |value| {
+                _ = v8.ffi.v8_Object_Set(result, v8_context, @ptrCast(key), @ptrCast(value));
+            }
+        }
+        if (!std.mem.eql(u8, prop.name, prop.camel)) {
+            if (v8.ffi.v8_String_NewFromUtf8(isolate, prop.camel.ptr, @intCast(prop.camel.len))) |key| {
+                if (v8.ffi.v8_String_NewFromUtf8(isolate, prop.value.ptr, @intCast(prop.value.len))) |value| {
+                    _ = v8.ffi.v8_Object_Set(result, v8_context, @ptrCast(key), @ptrCast(value));
+                }
+            }
+        }
+    }
+
+    // Add length property (for iteration)
+    const length_key = v8.ffi.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
+    const length_val = v8.ffi.v8_Number_New(isolate, 0.0);
+    _ = v8.ffi.v8_Object_Set(result, v8_context, @ptrCast(length_key), @ptrCast(length_val));
+
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Get the default display value for an HTML element tag name
+fn getDefaultDisplayForTag(tag_name: []const u8) []const u8 {
+    // Block elements
+    if (std.mem.eql(u8, tag_name, "div") or
+        std.mem.eql(u8, tag_name, "p") or
+        std.mem.eql(u8, tag_name, "h1") or
+        std.mem.eql(u8, tag_name, "h2") or
+        std.mem.eql(u8, tag_name, "h3") or
+        std.mem.eql(u8, tag_name, "h4") or
+        std.mem.eql(u8, tag_name, "h5") or
+        std.mem.eql(u8, tag_name, "h6") or
+        std.mem.eql(u8, tag_name, "header") or
+        std.mem.eql(u8, tag_name, "footer") or
+        std.mem.eql(u8, tag_name, "main") or
+        std.mem.eql(u8, tag_name, "section") or
+        std.mem.eql(u8, tag_name, "article") or
+        std.mem.eql(u8, tag_name, "aside") or
+        std.mem.eql(u8, tag_name, "nav") or
+        std.mem.eql(u8, tag_name, "address") or
+        std.mem.eql(u8, tag_name, "blockquote") or
+        std.mem.eql(u8, tag_name, "pre") or
+        std.mem.eql(u8, tag_name, "form") or
+        std.mem.eql(u8, tag_name, "fieldset") or
+        std.mem.eql(u8, tag_name, "hr") or
+        std.mem.eql(u8, tag_name, "ul") or
+        std.mem.eql(u8, tag_name, "ol") or
+        std.mem.eql(u8, tag_name, "dl") or
+        std.mem.eql(u8, tag_name, "figure") or
+        std.mem.eql(u8, tag_name, "figcaption"))
+    {
+        return "block";
+    }
+
+    // List items
+    if (std.mem.eql(u8, tag_name, "li")) {
+        return "list-item";
+    }
+
+    // Table elements
+    if (std.mem.eql(u8, tag_name, "table")) {
+        return "table";
+    }
+    if (std.mem.eql(u8, tag_name, "thead") or
+        std.mem.eql(u8, tag_name, "tbody") or
+        std.mem.eql(u8, tag_name, "tfoot"))
+    {
+        return "table-row-group";
+    }
+    if (std.mem.eql(u8, tag_name, "tr")) {
+        return "table-row";
+    }
+    if (std.mem.eql(u8, tag_name, "td") or std.mem.eql(u8, tag_name, "th")) {
+        return "table-cell";
+    }
+    if (std.mem.eql(u8, tag_name, "caption")) {
+        return "table-caption";
+    }
+    if (std.mem.eql(u8, tag_name, "colgroup")) {
+        return "table-column-group";
+    }
+    if (std.mem.eql(u8, tag_name, "col")) {
+        return "table-column";
+    }
+
+    // Inline elements
+    if (std.mem.eql(u8, tag_name, "span") or
+        std.mem.eql(u8, tag_name, "a") or
+        std.mem.eql(u8, tag_name, "strong") or
+        std.mem.eql(u8, tag_name, "em") or
+        std.mem.eql(u8, tag_name, "b") or
+        std.mem.eql(u8, tag_name, "i") or
+        std.mem.eql(u8, tag_name, "u") or
+        std.mem.eql(u8, tag_name, "code") or
+        std.mem.eql(u8, tag_name, "small") or
+        std.mem.eql(u8, tag_name, "sub") or
+        std.mem.eql(u8, tag_name, "sup") or
+        std.mem.eql(u8, tag_name, "abbr") or
+        std.mem.eql(u8, tag_name, "cite") or
+        std.mem.eql(u8, tag_name, "label") or
+        std.mem.eql(u8, tag_name, "img") or
+        std.mem.eql(u8, tag_name, "br"))
+    {
+        return "inline";
+    }
+
+    // Inline-block elements
+    if (std.mem.eql(u8, tag_name, "button") or
+        std.mem.eql(u8, tag_name, "select") or
+        std.mem.eql(u8, tag_name, "input") or
+        std.mem.eql(u8, tag_name, "textarea"))
+    {
+        return "inline-block";
+    }
+
+    // None (hidden elements)
+    if (std.mem.eql(u8, tag_name, "head") or
+        std.mem.eql(u8, tag_name, "script") or
+        std.mem.eql(u8, tag_name, "style") or
+        std.mem.eql(u8, tag_name, "meta") or
+        std.mem.eql(u8, tag_name, "link") or
+        std.mem.eql(u8, tag_name, "title") or
+        std.mem.eql(u8, tag_name, "template"))
+    {
+        return "none";
+    }
+
+    // Default to block for unknown elements
+    return "block";
+}
+
+/// Callback for CSSStyleDeclaration.getPropertyValue(propertyName)
+fn getPropertyValueCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    // Get the 'this' object (the CSSStyleDeclaration-like object)
+    const this_obj = info.getThis();
+
+    // Get the property name argument
+    const arg_count = info.v8_FunctionCallbackInfo_Length();
+    if (arg_count < 1) {
+        const empty = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+        info.setReturnValue(@ptrCast(empty));
+        return;
+    }
+
+    const prop_value = info.get(0);
+    const prop_str = v8.ffi.v8_Value_ToString(prop_value, context) orelse {
+        const empty = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+        info.setReturnValue(@ptrCast(empty));
+        return;
+    };
+
+    // Get the property value from the object itself
+    // Since we set the properties on the object, we can just look them up
+    if (v8.ffi.v8_Object_Get(this_obj, context, @ptrCast(prop_str))) |value| {
+        if (!v8.ffi.v8_Value_IsUndefined(value)) {
+            info.setReturnValue(value);
+            return;
+        }
+    }
+
+    // Return empty string for unknown properties
+    const empty = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+    info.setReturnValue(@ptrCast(empty));
 }
 
 // =============================================================================

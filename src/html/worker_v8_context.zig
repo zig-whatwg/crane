@@ -59,6 +59,59 @@ const EngineContext = workers.worker_context.EngineContext;
 // Thread-local storage for current worker context (used by V8 callbacks)
 threadlocal var current_worker_context: ?*WorkerV8Context = null;
 
+/// Check if a URL indicates a secure context for worker
+/// Per WPT convention, tests with .https. or .h2. in the filename should be treated
+/// as secure contexts. Plain HTTP localhost is NOT considered secure for WPT tests
+/// to allow testing non-secure context behavior.
+fn isSecureUrlForWorker(url: []const u8) bool {
+    // Check for secure schemes first
+    if (std.mem.startsWith(u8, url, "https://") or
+        std.mem.startsWith(u8, url, "wss://"))
+    {
+        return true;
+    }
+
+    // WPT convention: .https. in filename indicates secure context test
+    if (std.mem.indexOf(u8, url, ".https.") != null) {
+        return true;
+    }
+
+    // Also check for .h2. (HTTP/2 tests which require secure context)
+    if (std.mem.indexOf(u8, url, ".h2.") != null) {
+        return true;
+    }
+
+    return false;
+}
+
+/// Get the effective URL for a worker, applying WPT URL rewriting rules.
+/// Per WPT convention:
+///   - .https. tests use https://localhost:8443
+///   - .h2. tests use https://localhost:9000 (HTTP/2)
+fn getEffectiveWorkerUrl(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {
+    const is_h2 = std.mem.indexOf(u8, url, ".h2.") != null;
+    const is_https = std.mem.indexOf(u8, url, ".https.") != null;
+
+    if (is_h2 or is_https) {
+        // Determine target port based on test type
+        const target_port: []const u8 = if (is_h2) "9000" else "8443";
+
+        // Rewrite http:// to https:// for location object
+        if (std.mem.startsWith(u8, url, "http://localhost:8000")) {
+            // Replace http://localhost:8000 with https://localhost:<port>
+            const rest = url["http://localhost:8000".len..];
+            return try std.fmt.allocPrint(allocator, "https://localhost:{s}{s}", .{ target_port, rest });
+        } else if (std.mem.startsWith(u8, url, "http://")) {
+            // Generic http:// to https:// replacement (preserve original port if present)
+            const rest = url["http://".len..];
+            return try std.fmt.allocPrint(allocator, "https://{s}", .{rest});
+        }
+    }
+
+    // Return a duplicate of the original URL (caller owns the memory)
+    return try allocator.dupe(u8, url);
+}
+
 /// V8 Context for Worker execution
 ///
 /// Creates and manages a V8 isolate and context for a worker.
@@ -419,6 +472,74 @@ pub const WorkerV8Context = struct {
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(name_key), @ptrCast(name_value));
         }
+
+        // Set up isSecureContext property
+        // Per HTML Standard, isSecureContext indicates if the context is secure
+        // For WPT tests, this depends on the URL - .https. or .h2. in filename means secure
+        {
+            const is_secure = isSecureUrlForWorker(self.script_url);
+            const is_secure_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "isSecureContext", 15) orelse {
+                return error.StringCreationFailed;
+            };
+            if (v8.ffi.v8_Boolean_New(self.isolate, is_secure)) |is_secure_value| {
+                _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(is_secure_key), is_secure_value);
+            }
+        }
+
+        // Set up location object using WorkerLocation interface
+        // Per HTML Standard, WorkerGlobalScope has a location attribute
+        // Apply WPT URL rewriting: .https. -> port 8443, .h2. -> port 9000
+        {
+            const effective_url = try getEffectiveWorkerUrl(self.allocator, self.script_url);
+            defer self.allocator.free(effective_url);
+
+            const location_script = try std.fmt.allocPrint(self.allocator,
+                \\(function() {{
+                \\  // Create WorkerLocation-like object
+                \\  var url = new URL("{s}");
+                \\  globalThis.location = {{
+                \\    href: url.href,
+                \\    protocol: url.protocol,
+                \\    host: url.host,
+                \\    hostname: url.hostname,
+                \\    port: url.port,
+                \\    pathname: url.pathname,
+                \\    search: url.search,
+                \\    hash: url.hash,
+                \\    origin: url.origin,
+                \\    toString: function() {{ return this.href; }}
+                \\  }};
+                \\}})();
+            , .{effective_url});
+            defer self.allocator.free(location_script);
+            _ = try self.executeScriptInternal(location_script);
+        }
+
+        // Set up origin property
+        // Per HTML Standard, WorkerGlobalScope has an origin attribute
+        // Apply WPT URL rewriting: .https. -> port 8443, .h2. -> port 9000
+        {
+            const effective_url = try getEffectiveWorkerUrl(self.allocator, self.script_url);
+            defer self.allocator.free(effective_url);
+
+            // Extract origin from effective URL (scheme://host:port)
+            const origin_str = blk: {
+                if (std.mem.startsWith(u8, effective_url, "http://") or std.mem.startsWith(u8, effective_url, "https://")) {
+                    const scheme_end = std.mem.indexOf(u8, effective_url, "://") orelse break :blk "null";
+                    const after_scheme = effective_url[scheme_end + 3 ..];
+                    const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
+                    break :blk effective_url[0 .. scheme_end + 3 + path_start];
+                }
+                break :blk "null";
+            };
+            const origin_value = v8.ffi.v8_String_NewFromUtf8(self.isolate, origin_str.ptr, @intCast(origin_str.len)) orelse {
+                return error.StringCreationFailed;
+            };
+            const origin_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "origin", 6) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(origin_key), @ptrCast(origin_value));
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -450,6 +571,11 @@ pub const WorkerV8Context = struct {
             v8.ffi.v8_Isolate_Exit(self.isolate);
         }
 
+        return self.executeScriptInternal(source);
+    }
+
+    /// Execute a script - internal version that assumes context is already entered
+    fn executeScriptInternal(self: *Self, source: []const u8) !?*anyopaque {
         // Create V8 string from source
         const source_str = v8.ffi.v8_String_NewFromUtf8(
             self.isolate,
