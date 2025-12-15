@@ -153,6 +153,10 @@ pub fn deinit() void {
         // may still reference registry data
         intl_binding.deinitAllRegistries();
 
+        // Clean up ObservableArray static registry
+        // This is a safety net for states not cleaned up via V8 GC weak callbacks
+        runtime.ObservableArrayExotic.cleanupAll();
+
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
         // during teardown (is_tearing_down flag prevents nested calls).
@@ -1568,22 +1572,17 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
     if (entry.owns_context) {
         var ctx_data = entry.runtime_ctx;
 
-        // Clean up V8 wrapper cache (must be before Window deinit)
-        if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-            const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
-            const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-            cache_ptr.deinit();
-            ctx_data.getAllocator().destroy(cache_ptr);
-            ctx_data.clearV8WrapperCacheStorage();
-        }
-
-        // Clean up Window instance (must be after wrapper cache cleanup)
+        // Clean up Window instance and its Document FIRST
+        // This cleans up the DOM tree in proper order (parent before children),
+        // and each Node.deinit removes itself from the wrapper cache to prevent double-free.
+        // This MUST happen before wrapper cache cleanup to avoid use-after-free:
+        // if wrapper cache iterates children before parents, it would free child
+        // nodes, then when parent.deinit walks first_child, those nodes are already freed.
         if (entry.window_instance) |window| {
             const interfaces = @import("interfaces");
             const WindowImpl = @import("impls").Window;
 
-            // Clean up Document instance first (created in createChildContext)
-            // Without this, the Document leaks when iframe contexts are destroyed
+            // Clean up Document instance first (owns the entire DOM tree)
             if (WindowImpl.getInternal(window)) |internal| {
                 if (internal.document) |doc| {
                     interfaces.Document.deinit(doc);
@@ -1592,6 +1591,19 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
             }
 
             interfaces.Window.deinit(window);
+        }
+
+        // Clean up V8 wrapper cache WITH callbacks
+        // Now safe to call deinit() because:
+        // 1. DOM nodes already removed themselves from cache via Node.deinit
+        // 2. Remaining entries are non-DOM objects (AbortController, etc.)
+        // 3. These need their deinit called to free InternalState
+        if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+            const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+            const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+            cache_ptr.deinit();
+            ctx_data.getAllocator().destroy(cache_ptr);
+            ctx_data.clearV8WrapperCacheStorage();
         }
 
         // Clean up realm

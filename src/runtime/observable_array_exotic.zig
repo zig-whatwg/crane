@@ -34,6 +34,10 @@ pub const ObservableArrayState = struct {
     /// Per spec, non-indexed operations delegate to the target
     target: *v8.Array,
 
+    /// The V8 Proxy object this state is associated with
+    /// Used to clear weak callback during cleanup
+    proxy: ?*v8.Object = null,
+
     /// Callback for when an indexed value is set
     on_set_indexed_value: ?*const fn (index: usize, value: JSValue) void = null,
 
@@ -62,6 +66,60 @@ fn getRegistry(allocator: std.mem.Allocator) *std.AutoHashMap(usize, *Observable
         state_registry = std.AutoHashMap(usize, *ObservableArrayState).init(allocator);
     }
     return &state_registry.?;
+}
+
+/// V8 weak callback for GC-driven cleanup of ObservableArrayState
+/// Called when the V8 Proxy object is garbage collected
+fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
+    const state: *ObservableArrayState = @ptrCast(@alignCast(data orelse return));
+
+    // Remove from registry using the proxy pointer stored in state
+    if (state_registry) |*reg| {
+        // Find and remove this state from the registry
+        var key_to_remove: ?usize = null;
+        var iter = reg.iterator();
+        while (iter.next()) |entry| {
+            if (entry.value_ptr.* == state) {
+                key_to_remove = entry.key_ptr.*;
+                break;
+            }
+        }
+        if (key_to_remove) |key| {
+            _ = reg.remove(key);
+        }
+    }
+
+    // Clean up the state
+    state.deinit();
+    state.allocator.destroy(state);
+}
+
+/// Clean up all ObservableArrayState entries
+/// Called during context teardown to ensure no leaks
+pub fn cleanupAll() void {
+    if (state_registry) |*reg| {
+        // PHASE 1: Clear all weak callbacks first to prevent them from firing
+        // during cleanup. This avoids double-free when GC runs during teardown.
+        {
+            var iter = reg.valueIterator();
+            while (iter.next()) |state_ptr| {
+                const state = state_ptr.*;
+                if (state.proxy) |proxy| {
+                    v8.v8_Global_ClearWeak(@ptrCast(proxy));
+                }
+            }
+        }
+
+        // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
+        var iter = reg.valueIterator();
+        while (iter.next()) |state_ptr| {
+            const state = state_ptr.*;
+            state.deinit();
+            state.allocator.destroy(state);
+        }
+        reg.deinit();
+        state_registry = null;
+    }
 }
 
 /// Create a new ObservableArray exotic object
@@ -96,9 +154,20 @@ pub fn create(ctx: Context) !JSValue {
     // Create the Proxy - cast Array to Object since Array is a subtype of Object
     const proxy = v8.v8_Proxy_New(v8_ctx, @ptrCast(target), handler) orelse return error.OutOfMemory;
 
+    // Store proxy pointer in state for cleanup
+    state.proxy = @ptrCast(proxy);
+
     // Register the state with the proxy's address
     const registry = getRegistry(allocator);
     try registry.put(@intFromPtr(proxy), state);
+
+    // Set up V8 weak callback for GC-driven cleanup
+    // When the Proxy is garbage collected, the weak callback will clean up the state
+    v8.v8_Global_SetWeak(
+        @ptrCast(proxy),
+        @ptrCast(state),
+        weakCallback,
+    );
 
     return JSValue{
         .handle = .{
