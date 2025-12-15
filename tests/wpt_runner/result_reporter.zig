@@ -187,6 +187,44 @@ pub const ExpectedResults = struct {
         return self.subtest_expected.get(name);
     }
 
+    /// Get expected status for a subtest by name, case-insensitive for U+XXXX patterns
+    /// This handles metadata files that use lowercase U+xxxx vs sanitized uppercase U+XXXX
+    pub fn getExpectedForSubtestCaseInsensitive(self: *const ExpectedResults, name: []const u8) ?ExpectedStatus {
+        // Try exact match first
+        if (self.subtest_expected.get(name)) |status| {
+            return status;
+        }
+
+        // Convert name to lowercase and try again
+        var lower_name: [1024]u8 = undefined;
+        if (name.len > lower_name.len) return null;
+
+        for (name, 0..) |c, i| {
+            lower_name[i] = std.ascii.toLower(c);
+        }
+
+        // Also check all entries with case-insensitive comparison
+        var iter = self.subtest_expected.iterator();
+        while (iter.next()) |entry| {
+            const key = entry.key_ptr.*;
+            if (key.len != name.len) continue;
+
+            // Case-insensitive comparison
+            var matches = true;
+            for (key, 0..) |kc, i| {
+                if (std.ascii.toLower(kc) != std.ascii.toLower(name[i])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return entry.value_ptr.*;
+            }
+        }
+
+        return null;
+    }
+
     /// Check if test is in expected-fail directory (simpler approach)
     pub fn isExpectedFailDirectory(test_path: []const u8) bool {
         return std.mem.indexOf(u8, test_path, "expected-fail/") != null;
@@ -420,11 +458,18 @@ pub const WptReport = struct {
         };
 
         for (harness_result.subtests.items) |sub| {
+            // Sanitize subtest name for lone surrogates
+            const sanitized_name = try sanitizeLoneSurrogates(self.allocator, sub.name);
+            defer self.allocator.free(sanitized_name);
+
             // Check if this subtest has expected status from metadata
             var expected_status: ?[]const u8 = null;
             if (expected) |exp| {
-                // Check for subtest-specific expected status
-                if (exp.getExpectedForSubtest(sub.name)) |exp_status| {
+                // Check for subtest-specific expected status using sanitized name
+                // Also try case-insensitive lookup for U+XXXX patterns
+                if (exp.getExpectedForSubtest(sanitized_name)) |exp_status| {
+                    expected_status = try self.allocator.dupe(u8, exp_status.toString());
+                } else if (exp.getExpectedForSubtestCaseInsensitive(sanitized_name)) |exp_status| {
                     expected_status = try self.allocator.dupe(u8, exp_status.toString());
                 } else if (exp.test_expected) |test_exp| {
                     // Fall back to test-level expected status (e.g., expected-fail directory)
@@ -435,7 +480,7 @@ pub const WptReport = struct {
             }
 
             try result.subtests.append(self.allocator, SubtestResultJson{
-                .name = try self.allocator.dupe(u8, sub.name),
+                .name = try self.allocator.dupe(u8, sanitized_name),
                 .status = sub.status.toString(),
                 .message = if (sub.message) |m| try self.allocator.dupe(u8, m) else null,
                 .expected = expected_status,
@@ -536,11 +581,19 @@ pub const WptReport = struct {
             for (result.subtests.items) |sub| {
                 summary.total_subtests += 1;
 
+                // Check if this is an expected failure (XFAIL)
+                // Expected failures count as passed since the behavior matches expectation
+                const is_expected_failure = sub.isExpectedFailure();
+
                 // Map subtest status string back
                 if (std.mem.eql(u8, sub.status, "PASS")) {
                     summary.passed_subtests += 1;
                 } else if (std.mem.eql(u8, sub.status, "FAIL")) {
-                    summary.failed_subtests += 1;
+                    if (is_expected_failure) {
+                        summary.passed_subtests += 1; // Expected failure = pass
+                    } else {
+                        summary.failed_subtests += 1;
+                    }
                 } else if (std.mem.eql(u8, sub.status, "TIMEOUT")) {
                     summary.timeout_subtests += 1;
                 } else {

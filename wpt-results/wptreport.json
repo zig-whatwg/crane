@@ -7,16 +7,1552 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765774756372,
-  "time_end": 1765774756556,
+  "time_start": 1765801284229,
+  "time_end": 1765801301348,
   "results": [
+    {
+      "test": "infrastructure/testharness/full.stop/full-stop.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "full-stop", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testharness/lone-surrogates.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "passing test with lone surrogate U+D800 in name", "status": "PASS", "message": null},
+        {"name": "failing test with lone surrogate U+D800 in name", "status": "FAIL", "message": "assert_true: expected true got false", "expected": "FAIL"},
+        {"name": "passing test with lone surrogate in assert", "status": "PASS", "message": null},
+        {"name": "failing test with lone surrogate in assert", "status": "FAIL", "message": "assert_true: lone U+d800 surrogate expected true got false", "expected": "FAIL"}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/generate_test_report.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver generate_test_report method", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/minimize_restore_popup.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bless.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "functions in the absence of a `body` element", "status": "PASS", "message": null},
+        {"name": "user activation", "status": "FAIL", "message": "assert_false: expected false got true"},
+        {"name": "no action function provided", "status": "PASS", "message": null},
+        {"name": "synchronous return value", "status": "PASS", "message": null},
+        {"name": "synchronous error", "status": "PASS", "message": null},
+        {"name": "asynchronous return value", "status": "PASS", "message": null},
+        {"name": "asynchronous error", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/get_named_cookie.sub.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Get Named HTTPS cookie", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: no such cookie\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/get_named_cookie.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Get Named HTTP cookie", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: no such cookie\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_window.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver click method in window", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_child_testdriver.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_iframe.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver click on a document in an iframe", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/emulation/set_locale_override.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "emulate locale and clear override", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/emulation/set_geolocation_override.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "emulate geolocation and clear override", "status": "NOTRUN", "message": null},
+        {"name": "emulate geolocation position unavailable", "status": "NOTRUN", "message": null},
+        {"name": "cannot set `coordinates` and `error` simultaneously", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/emulation/set_screen_orientation_override.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "emulate screen orientation and clear override", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/permissions/set_permission.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Grant Permission", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""},
+        {"name": "Deny Permission", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""},
+        {"name": "Grant Permissions for different origins", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/speculation/prefetch_status_updated.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_service.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a GATT service.", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_characteristic_response.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a GATT characteristic response", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_gatt_disconnection.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a GATT disconnection.", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_characteristic.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a GATT characteristic.", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/handle_request_device_prompt.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "accept upon request_device_prompt_updated event", "status": "NOTRUN", "message": null},
+        {"name": "cancel upon request_device_prompt_updated event", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_gatt_connection_response.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a GATT connection response.", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_preconnected_peripheral.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a preconnected peripheral.", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_descriptor.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a GATT descriptor.", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_descriptor_response.https.html",
+      "status": "ERROR",
+      "message": "Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs",
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate a GATT descriptor response", "status": "NOTRUN", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/bidi/bluetooth/simulate_adapter.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "simulate bluetooth adapter 'absent'", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"NotSupportedError: This feature is not yet implemented\""},
+        {"name": "simulate bluetooth adapter 'powered-off'", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"NotSupportedError: This feature is not yet implemented\""},
+        {"name": "simulate bluetooth adapter 'powered-on'", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"NotSupportedError: This feature is not yet implemented\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click-multiple.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver multiple consecutive clicks", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_outer_child.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/set_permission.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Grant Permission", "status": "PASS", "message": null},
+        {"name": "Deny Permission", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/get_all_cookies.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Get all HTTP cookies", "status": "FAIL", "message": "assert_equals: expected 6 but got 7"}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_iframe_crossorigin.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver click on a document in an iframe", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/get_all_cookies.sub.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Get all HTTPS cookies", "status": "FAIL", "message": "assert_equals: expected 9 but got 8"}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver click method", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/textEditCommands.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
     {
       "test": "infrastructure/testdriver/actions/eventOrder.html",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "TestDriver actions: event order", "status": "FAIL", "message": "assert_array_equals: lengths differ, expected array [\"a\", \"b\"] length 2, got [] length 0"}
+        {"name": "TestDriver actions: event order", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/pause.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/elementPosition.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver actions: element position", "status": "FAIL", "message": "assert_array_equals: expected property 0 to be 50 but got undefined (expected array [50, 25] got [undefined, undefined])"}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/actionsWithKeyPressed.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/multiTouchPoints.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/touchPointerEventProperties.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/multiTouchPointsSimultaneousMove.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/popup.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/iframe.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver actions on a document in an iframe", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/penPointerEventProperties.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/multiTouchPointsWithPause.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/multiTouchPointsTwoTouchStarts.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/crossOrigin.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Actions in cross-origin iframe", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/iframeChild.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/mouseClickCount.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/penPointerEvents.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/multiTouchPointsReleaseFirstPoint.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/wheelScroll.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver actions: wheel scroll", "status": "FAIL", "message": "assert_array_equals: lengths differ, expected array [\"wheel\"] length 1, got [] length 0"}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/multiTouchPointsReleaseSecondPoint.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/multiDevice.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/actions/elementTiming.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver actions: element timing", "status": "FAIL", "message": "assert_equals: Expected click event, but got undefined event instead expected (string) \"click\" but got (undefined) undefined"}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_nested.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver click method with multiple windows and nested iframe", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_nested_crossorigin.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver click method with multiple windows and nested iframe", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_child_crossorigin.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/virtual_authenticator.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Can create an authenticator", "status": "PASS", "message": null},
+        {"name": "Can add a credential", "status": "PASS", "message": null},
+        {"name": "Can get the credentials", "status": "PASS", "message": null},
+        {"name": "Can remove a credential", "status": "PASS", "message": null},
+        {"name": "Can remove all credentials", "status": "PASS", "message": null},
+        {"name": "Can set user verified", "status": "PASS", "message": null},
+        {"name": "Can remove a virtual authenticator", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_outer_child.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/delete_all_cookies.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "DOM-set cookies get deleted", "status": "PASS", "message": null},
+        {"name": "HTTP-set cookies get deleted", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: Failed to open file\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/file_upload.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "File upload using testdriver", "status": "FAIL", "message": "assert_equals: expected \"PASS\" but got \"def main(request, response):\\n    return b\\\"PASS\\\" if request.POST[b\\\"file_input\\\"].file.read() == b\\\"File to upload\\\\n\\\" else b\\\"FAIL\\\"\\n\""}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/click_child.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/send_keys.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "TestDriver send keys method", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/testdriver/set_get_window_rect.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Window Position", "status": "PASS", "message": null},
+        {"name": "Window Size", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/reftest-wait.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/server/title.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "foobar", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/title.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "foobar", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/http2-websocket.sub.h2.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/server/http2-websocket.sub.h2.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "WSS over h2", "status": "FAIL", "message": "WebSocket is not defined"}
+      ]
+    },
+    {
+      "test": "infrastructure/server/secure-context.https.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Use of .https file name flag implies secure context", "status": "PASS", "message": null},
+        {"name": "Use of .https file name flag implies HTTPS scheme", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/secure-context.https.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Use of .https file name flag implies secure context", "status": "PASS", "message": null},
+        {"name": "Use of .https file name flag implies HTTPS scheme", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/wpt-server-http.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/server/wpt-server-websocket.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/server/http2-context.sub.h2.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Use of .h2. file name flag implies secure context", "status": "PASS", "message": null},
+        {"name": "Use of .h2. file name flag implies HTTPS scheme", "status": "PASS", "message": null},
+        {"name": "Use of .h2. file name flag implies correct port", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/http2-context.sub.h2.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Use of .h2. file name flag implies secure context", "status": "PASS", "message": null},
+        {"name": "Use of .h2. file name flag implies HTTPS scheme", "status": "PASS", "message": null},
+        {"name": "Use of .h2. file name flag implies correct port", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/wpt-server-wpt-flags.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "http port without flag", "status": "FAIL", "message": "Cannot read properties of null (reading 'port')"}
+      ]
+    },
+    {
+      "test": "infrastructure/server/order-of-metas.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "add_completion_callback exists", "status": "PASS", "message": null},
+        {"name": "<title> exists", "status": "PASS", "message": null},
+        {"name": "<meta name=timeout> exists", "status": "PASS", "message": null},
+        {"name": "order of scripts", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/test-pac.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "test that PAC metadata is respected", "status": "FAIL", "message": "assert_equals: expected (string) \"OK\" but got (undefined) undefined"}
+      ]
+    },
+    {
+      "test": "infrastructure/server/webtransport-h3.https.sub.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "WebTransport server should be running and should handle a bidirectional stream", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"NotSupportedError: This feature is not yet implemented\""}
+      ]
+    },
+    {
+      "test": "infrastructure/server/webtransport-h3.https.sub.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "WebTransport server should be running and should handle a bidirectional stream", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"ReferenceError: WebTransport is not defined\""}
+      ]
+    },
+    {
+      "test": "infrastructure/server/order-of-metas.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "add_completion_callback exists", "status": "PASS", "message": null},
+        {"name": "GLOBAL exists", "status": "PASS", "message": null},
+        {"name": "<title> exists", "status": "PASS", "message": null},
+        {"name": "<meta name=timeout> exists", "status": "PASS", "message": null},
+        {"name": "order of scripts", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/order-of-metas.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "add_completion_callback exists", "status": "PASS", "message": null},
+        {"name": "GLOBAL exists", "status": "PASS", "message": null},
+        {"name": "order of scripts", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/context.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "context", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/context.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "context", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/server/subdomain-flag.www.sub.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Use of .www. file name flag implies www subdomain", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/crashtests/testdriver.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/crashtests/example.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/browsers/firefox/prefs.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Ensure that setting gecko prefs works", "status": "FAIL", "message": "assert_equals: expected \"rgb(0, 255, 0)\" but got \"rgb(0, 0, 0)\""}
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest.www.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_wait_0-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_multiple_match-0.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_fail.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/size.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-6.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_fuzzy_no_differences_1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_fuzzy_ini_ref_only.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest.https.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-7.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_wait_TestRendered.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_multiple_match-1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_window_load.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_fail-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_multiple_mismatch-0.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_mismatch_fail.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-0.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_ref_timeout.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_mismatch.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_mismatch-num-pages-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/reftest_cycle.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/reftest_and_mismatch.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/fuzzy-ref-2a.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/fuzzy-ref-2.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/reftest_and_mismatch_0.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/reftest_and_mismatch_1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/reftest_fuzzy_chain_ini.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/reftest_cycle_fail.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/legacy/reftest_and_fail.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/testdriver.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_mismatch_page_margins-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_multiple_mismatch-1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-2.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_timeout.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/green.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_wait_0.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_fuzzy_no_differences.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_fuzzy_ini_full.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/fuzzy-ref-1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-3.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/devicePixelRatio.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/testdriver-child.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_fuzzy_1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_mismatch-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_fuzzy_ini_short.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/testdriver-iframe.sub.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/red.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-4.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_match_and_mismatch-5.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/reftest_mismatch_fail-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/reftest/testdriver-print.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/ahem-notref.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/non-secure-context.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Lack of .https file name flag implies non-secure context", "status": "PASS", "message": null},
+        {"name": "Lack of .https file name flag implies HTTP scheme", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/non-secure-context.any.js [worker]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Lack of .https file name flag implies non-secure context", "status": "PASS", "message": null},
+        {"name": "Lack of .https file name flag implies HTTP scheme", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/document-fonts-ready.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "document.fonts.ready resolves after layout depending on loaded fonts", "status": "FAIL", "message": "assert_equals: span is 100px wide expected 100 but got 0"}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/medium-font-size.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/allowed-to-play.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "<audio> autoplay", "status": "FAIL", "message": "assert_false: expected false got true"},
+        {"name": "<video> autoplay", "status": "FAIL", "message": "This feature is not yet implemented"}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/blank.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/canvas-background.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/ahem.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/min-font-size.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/cookie.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "cookies work in default browse settings", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/initial-color.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/non-local-ports.sub.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Fetch from https-local port works.", "status": "FAIL", "message": "assert_true: expected true got false"},
+        {"name": "Fetch from http-local port works.", "status": "PASS", "message": null},
+        {"name": "Fetch from https-public port works.", "status": "FAIL", "message": "assert_true: expected true got false"},
+        {"name": "Fetch from http-public port works.", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/html-elements.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "(pre-req for comparison tests) all CSS short-hand supported", "status": "FAIL", "message": "assert_true: expected true got false"},
+        {"name": "(pre-req for comparison tests) initial CSS value supported", "status": "PASS", "message": null},
+        {"name": "Compare CSS div definitions (only valid if pre-reqs pass)", "status": "PASS", "message": null},
+        {"name": "Compare CSS span definitions (only valid if pre-reqs pass)", "status": "PASS", "message": null},
+        {"name": "p is display: block", "status": "PASS", "message": null},
+        {"name": "ul > li is display: list-item", "status": "PASS", "message": null},
+        {"name": "ol > li is display: list-item", "status": "PASS", "message": null},
+        {"name": "table is display: table", "status": "PASS", "message": null},
+        {"name": "tbody is display: table-row-group", "status": "PASS", "message": null},
+        {"name": "tr is display: table-row", "status": "PASS", "message": null},
+        {"name": "td is display: table-cell", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/unhandled-rejection-single-test.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Unhandled rejection in single-page test", "status": "PASS", "message": null, "expected": "FAIL"}
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/uncaught-exception-following-subtest.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Uncaught exception following subtest", "status": "PASS", "message": null, "expected": "FAIL"}
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/uncaught-exception-single-test.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Uncaught exception in single-page test", "status": "PASS", "message": null, "expected": "FAIL"}
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/window-onload-test.html",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/failing-test.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Failing test", "status": "FAIL", "message": "assert_unreached: Expected failure Reached unreachable code", "expected": "FAIL"}
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/timeout.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/uncaught-exception.html",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/unhandled-rejection.html",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/user-prompt.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Unhandled user prompt dismisses and notifies", "status": "PASS", "message": null, "expected": "FAIL"}
+      ]
+    },
+    {
+      "test": "infrastructure/expected-fail/unhandled-rejection-following-subtest.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Unhandled rejection following subtest", "status": "PASS", "message": null, "expected": "FAIL"}
+      ]
+    },
+    {
+      "test": "infrastructure/webdriver/bidi/subscription.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Assert testdriver can subscribe and receive events", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""}
+      ]
+    },
+    {
+      "test": "infrastructure/webdriver/bidi/subscription.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Assert testdriver can subscribe without arguments", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""},
+        {"name": "Assert testdriver can subscribe for current window", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""},
+        {"name": "Assert testdriver can subscribe for another window", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""},
+        {"name": "Assert testdriver can subscribe globally", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: `?feature=bidi` is missing when importing testdriver.js but the test is using WebDriver BiDi APIs\""}
+      ]
+    },
+    {
+      "test": "infrastructure/window/minimize-1.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Minimize a window", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/window/minimize-2.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Use testdriver to check window is not minimized", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/channels/test_call.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "call method", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/channels/child_script.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/channels/test_postMessage.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "postMessage method", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/channels/child_message.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/channels/test_serialize.html",
+      "status": "ERROR",
+      "message": "TypeError: window.open is not a function",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/channels/serialize_child.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
       ]
     }
   ]

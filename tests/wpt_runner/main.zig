@@ -436,6 +436,10 @@ pub const ProgressTracker = struct {
     }
 
     pub fn recordResult(self: *ProgressTracker, test_path: []const u8, result: test_harness.TestResult) void {
+        self.recordResultWithExpected(test_path, result, null);
+    }
+
+    pub fn recordResultWithExpected(self: *ProgressTracker, test_path: []const u8, result: test_harness.TestResult, expected: ?*const result_reporter.ExpectedResults) void {
         self.completed += 1;
 
         // Count by test status
@@ -447,37 +451,59 @@ pub const ProgressTracker = struct {
 
         // Count ALL subtests including notrun/precondition_failed
         for (result.subtests.items) |sub| {
+            // Check if this is an expected failure
+            const is_expected_fail = if (expected) |exp| blk: {
+                // Sanitize name for lookup (matches result_reporter logic)
+                const sanitized_name = result_reporter.sanitizeLoneSurrogates(self.failures_by_category.allocator, sub.name) catch sub.name;
+                defer if (sanitized_name.ptr != sub.name.ptr) self.failures_by_category.allocator.free(sanitized_name);
+
+                // Check if expected to fail
+                if (exp.getExpectedForSubtest(sanitized_name)) |exp_status| {
+                    break :blk exp_status == .fail;
+                } else if (exp.getExpectedForSubtestCaseInsensitive(sanitized_name)) |exp_status| {
+                    break :blk exp_status == .fail;
+                } else if (exp.test_expected) |test_exp| {
+                    break :blk test_exp == .fail;
+                }
+                break :blk false;
+            } else false;
+
             switch (sub.status) {
                 .pass => self.passed += 1,
                 .fail => {
-                    self.failed += 1;
-                    // Track failures by category
-                    if (std.mem.indexOf(u8, test_path, "/")) |sep_pos| {
-                        const category = test_path[0..sep_pos];
-                        const entry = self.failures_by_category.getOrPut(category) catch continue;
-                        if (!entry.found_existing) {
-                            entry.value_ptr.* = 0;
+                    if (is_expected_fail) {
+                        // Expected failure counts as pass
+                        self.passed += 1;
+                    } else {
+                        self.failed += 1;
+                        // Track failures by category
+                        if (std.mem.indexOf(u8, test_path, "/")) |sep_pos| {
+                            const category = test_path[0..sep_pos];
+                            const entry = self.failures_by_category.getOrPut(category) catch continue;
+                            if (!entry.found_existing) {
+                                entry.value_ptr.* = 0;
+                            }
+                            entry.value_ptr.* += 1;
                         }
-                        entry.value_ptr.* += 1;
-                    }
-                    // Print failure details in verbose mode
-                    if (self.verbose) {
-                        print("\n  ✗ FAIL: {s}\n", .{sub.name});
-                        if (sub.message) |msg| {
-                            print("    Message: {s}\n", .{msg});
-                        }
-                        if (sub.stack) |stack| {
-                            // Print first 3 lines of stack
-                            var line_count: usize = 0;
-                            var iter = std.mem.splitScalar(u8, stack, '\n');
-                            while (iter.next()) |line| {
-                                if (line_count >= 3) {
-                                    print("    ...\n", .{});
-                                    break;
-                                }
-                                if (line.len > 0) {
-                                    print("    {s}\n", .{line});
-                                    line_count += 1;
+                        // Print failure details in verbose mode
+                        if (self.verbose) {
+                            print("\n  ✗ FAIL: {s}\n", .{sub.name});
+                            if (sub.message) |msg| {
+                                print("    Message: {s}\n", .{msg});
+                            }
+                            if (sub.stack) |stack| {
+                                // Print first 3 lines of stack
+                                var line_count: usize = 0;
+                                var iter = std.mem.splitScalar(u8, stack, '\n');
+                                while (iter.next()) |line| {
+                                    if (line_count >= 3) {
+                                        print("    ...\n", .{});
+                                        break;
+                                    }
+                                    if (line.len > 0) {
+                                        print("    {s}\n", .{line});
+                                        line_count += 1;
+                                    }
                                 }
                             }
                         }
@@ -773,7 +799,12 @@ pub fn executeTests(
                 continue;
             };
 
-            progress.recordResult(test_file.path, test_result);
+            // Record result with expected status metadata for proper counting
+            if (expected_results) |*exp| {
+                progress.recordResultWithExpected(test_file.path, test_result, exp);
+            } else {
+                progress.recordResult(test_file.path, test_result);
+            }
             progress.printProgressWithContext(test_file.path, context_name);
 
             // Add result with expected status metadata (for XFAIL tracking)
