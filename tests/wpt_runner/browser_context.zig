@@ -39,6 +39,7 @@ const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 const impls = @import("impls");
 const webidl = @import("webidl");
+const dictionaries = @import("dictionaries");
 
 // DOM and HTML modules for thread-local state cleanup on isolate disposal
 const dom = @import("dom");
@@ -134,6 +135,9 @@ pub const BrowserContext = struct {
 
         // Clear timer interface from thread-local storage
         clearTimerInterface();
+
+        // Clear iframe src load hook
+        impls.HTMLIFrameElement.setIframeSrcLoadHook(null);
 
         // Cleanup V8 event loop (which cleans up libuv timer manager)
         if (self.v8_event_loop) |event_loop| {
@@ -307,6 +311,10 @@ pub const BrowserContext = struct {
                 setTimerInterface(timer, self.allocator);
             }
         }
+
+        // Set up iframe src load hook for WPT tests
+        // This allows iframe.src = "relative/path.html" to work in tests
+        impls.HTMLIFrameElement.setIframeSrcLoadHook(iframeSrcLoadHook);
 
         self.initialized = true;
     }
@@ -1639,20 +1647,16 @@ pub const BrowserContext = struct {
     pub fn fireDOMContentLoaded(self: *BrowserContext) !void {
         const document = self.document_instance orelse return error.NotInitialized;
 
-        // Create DOMContentLoaded event
-        // Event type, bubbles = true, cancelable = false
-        const event = interfaces.Event.init(
-            self.allocator,
-            context_manager.getOrCreate(self.context.?, self.allocator) catch return error.NotInitialized,
-        ) catch return error.OutOfMemory;
-        errdefer interfaces.Event.deinit(event);
-
-        // Initialize the event with type "DOMContentLoaded"
-        // bubbles = true, cancelable = false per HTML spec
+        // Create DOMContentLoaded event using call_constructor for proper initialization
+        // Event type, bubbles = true, cancelable = false per HTML spec
+        const runtime_ctx = context_manager.getOrCreate(self.context.?, self.allocator) catch return error.NotInitialized;
         const event_type = runtime.DOMString.initInterned("DOMContentLoaded");
-        const bubbles = webidl.Opt(bool).passed(true);
-        const cancelable = webidl.Opt(bool).passed(false);
-        interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.InvalidStateError;
+        const event_init = dictionaries.EventInit{
+            .bubbles = true,
+            .cancelable = false,
+        };
+        const event = interfaces.Event.call_constructor(runtime_ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch return error.OutOfMemory;
+        errdefer interfaces.Event.deinit(event);
 
         // Dispatch on document
         _ = interfaces.EventTarget.call_dispatchEvent(document, event) catch return error.DispatchError;
@@ -1782,6 +1786,201 @@ pub fn readHeadersFileCharset(allocator: std.mem.Allocator, file_path: []const u
     return parseCharsetFromHeaders(headers_content);
 }
 
+/// Hook for iframe src loading
+/// This is called by HTMLIFrameElement.set_src when a relative or HTTP URL is set.
+/// The hook resolves the URL, loads the content, and fires the load event.
+///
+/// Returns true if the load was handled, false otherwise.
+pub fn iframeSrcLoadHook(iframe_instance: *runtime.Instance, src: []const u8) bool {
+    // Get the WPT context from thread-local storage
+    const wpt_root = getWptRoot() orelse {
+        std.debug.print("iframeSrcLoadHook: No WPT root set\n", .{});
+        return false;
+    };
+    const test_path = getCurrentTestPath() orelse {
+        std.debug.print("iframeSrcLoadHook: No test path set\n", .{});
+        return false;
+    };
+    const allocator = current_allocator orelse {
+        std.debug.print("iframeSrcLoadHook: No allocator set\n", .{});
+        return false;
+    };
+
+    // Get test directory from test path
+    const test_dir = if (std.mem.lastIndexOf(u8, test_path, "/")) |pos|
+        test_path[0..pos]
+    else
+        "";
+
+    // Resolve the src URL
+    var resolved_path: []u8 = undefined;
+    if (std.mem.startsWith(u8, src, "/")) {
+        // Absolute path from WPT root
+        resolved_path = std.fs.path.join(allocator, &.{ wpt_root, src[1..] }) catch {
+            std.debug.print("iframeSrcLoadHook: Failed to join path\n", .{});
+            return false;
+        };
+    } else if (std.mem.startsWith(u8, src, "http://") or std.mem.startsWith(u8, src, "https://")) {
+        // HTTP URL - extract the path portion and resolve from WPT root
+        // e.g., "http://web-platform.test:8000/webidl/foo.html" -> "/webidl/foo.html"
+        const path_start = if (std.mem.indexOf(u8, src[7..], "/")) |pos| pos + 7 else src.len;
+        if (path_start < src.len) {
+            resolved_path = std.fs.path.join(allocator, &.{ wpt_root, src[path_start + 1 ..] }) catch {
+                std.debug.print("iframeSrcLoadHook: Failed to join HTTP path\n", .{});
+                return false;
+            };
+        } else {
+            return false;
+        }
+    } else {
+        // Relative path - resolve against test directory
+        resolved_path = std.fs.path.join(allocator, &.{ wpt_root, test_dir, src }) catch {
+            std.debug.print("iframeSrcLoadHook: Failed to join relative path\n", .{});
+            return false;
+        };
+    }
+    defer allocator.free(resolved_path);
+
+    // Read the file content
+    const file = std.fs.cwd().openFile(resolved_path, .{}) catch |err| {
+        std.debug.print("iframeSrcLoadHook: Failed to open {s}: {}\n", .{ resolved_path, err });
+        return false;
+    };
+    defer file.close();
+
+    const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch |err| {
+        std.debug.print("iframeSrcLoadHook: Failed to read file: {}\n", .{err});
+        return false;
+    };
+    defer allocator.free(content);
+
+    // Get runtime context for the current V8 context
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
+        std.debug.print("iframeSrcLoadHook: No V8 isolate\n", .{});
+        return false;
+    };
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.debug.print("iframeSrcLoadHook: No V8 context\n", .{});
+        return false;
+    };
+    const runtime_ctx = context_manager.getOrCreate(v8_context, allocator) catch {
+        std.debug.print("iframeSrcLoadHook: Failed to get runtime context\n", .{});
+        return false;
+    };
+
+    // Get iframe's internal state
+    const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
+    const iframe_internal = HTMLIFrameElementImpl.getInternal(iframe_instance) orelse {
+        std.debug.print("iframeSrcLoadHook: Failed to get iframe internal\n", .{});
+        return false;
+    };
+
+    // Ensure browsing context exists for the iframe
+    // We need the parent browsing context to create a child
+    const parent_window = context_manager.getWindowForContext(v8_context) orelse {
+        std.debug.print("iframeSrcLoadHook: No parent window\n", .{});
+        return false;
+    };
+
+    const WindowImpl = impls.Window;
+    const parent_window_internal = WindowImpl.getInternal(parent_window) orelse {
+        std.debug.print("iframeSrcLoadHook: Failed to get parent window internal\n", .{});
+        return false;
+    };
+
+    // Ensure browsing context exists
+    _ = iframe_internal.integration.ensureBrowsingContext(
+        @ptrCast(parent_window_internal.browsing_context),
+    ) orelse {
+        std.debug.print("iframeSrcLoadHook: Failed to ensure browsing context\n", .{});
+        return false;
+    };
+
+    // Now ensure the iframe has a proper V8 context (triggers contentWindow lazy init)
+    const iframe_content_window = HTMLIFrameElementImpl.get_contentWindow(iframe_instance) catch {
+        std.debug.print("iframeSrcLoadHook: Failed to get contentWindow\n", .{});
+        return false;
+    };
+
+    if (iframe_content_window == null) {
+        std.debug.print("iframeSrcLoadHook: contentWindow is null\n", .{});
+        return false;
+    }
+
+    // Get the iframe's V8 context and runtime context for parsing
+    const iframe_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(iframe_internal.integration.engine_context orelse {
+        std.debug.print("iframeSrcLoadHook: No iframe V8 context\n", .{});
+        return false;
+    }));
+    const iframe_runtime_ctx = context_manager.getOrCreate(iframe_v8_ctx, allocator) catch {
+        std.debug.print("iframeSrcLoadHook: Failed to get iframe runtime context\n", .{});
+        return false;
+    };
+
+    // CRITICAL: Enter the iframe's V8 context before parsing
+    // Scripts in the iframe HTML need to run in the iframe's context, not the parent's.
+    // Without this, property setters (like window.text = ...) would try to use the
+    // parent context's allocator, causing memory corruption.
+    v8.ffi.v8_Context_Enter(iframe_v8_ctx);
+    defer v8.ffi.v8_Context_Exit(iframe_v8_ctx);
+
+    // Get the existing document from the Window that was created during createChildContext.
+    // We MUST pass this to parseHTMLWithScripting so the DOM tree is built into THIS document.
+    // Otherwise, scripts will access window.document (the existing document) but the DOM tree
+    // will be in a separate new document, causing document.body etc. to return null.
+    const existing_document = if (iframe_content_window) |window|
+        WindowImpl.get_document(window) catch null
+    else
+        null;
+
+    // Parse HTML with scripting enabled (the dummy-iframe.html has a <script> tag)
+    const HTMLParser = impls.HTMLParser;
+    const iframe_document = HTMLParser.parseHTMLWithScripting(
+        allocator,
+        iframe_runtime_ctx,
+        content,
+        .{
+            .scripting_enabled = true,
+            .base_url = resolved_path,
+            .script_loader = null, // Use default HTTP loader
+            .existing_document = existing_document, // Use the Window's document
+        },
+    ) catch |err| {
+        std.debug.print("iframeSrcLoadHook: Failed to parse HTML: {}\n", .{err});
+        return false;
+    };
+
+    // Set the document in the browsing context
+    if (iframe_internal.integration.browsing_context) |browsing_ctx| {
+        // Set up the document in the iframe's window
+        if (iframe_content_window) |window| {
+            WindowImpl.setDocument(window, iframe_document);
+        }
+        browsing_ctx.setActiveDocument(@ptrCast(iframe_document), @ptrCast(iframe_content_window));
+    }
+
+    // Fire 'load' event on the iframe element
+    // Per HTML spec, the load event fires on the iframe element when navigation completes
+    // Use call_constructor to properly initialize Event with type and internal state
+    const event_type = runtime.DOMString.initInterned("load");
+    const event_init = dictionaries.EventInit{
+        .bubbles = false, // load event doesn't bubble
+        .cancelable = false,
+    };
+    const event = interfaces.Event.call_constructor(runtime_ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch {
+        std.debug.print("iframeSrcLoadHook: Failed to create event\n", .{});
+        return true; // Still return true - document was loaded
+    };
+    defer interfaces.Event.deinit(event); // Always free the event after use
+
+    _ = interfaces.EventTarget.call_dispatchEvent(iframe_instance, event) catch {
+        std.debug.print("iframeSrcLoadHook: Failed to dispatch event\n", .{});
+        return true;
+    };
+
+    return true;
+}
+
 /// Load an iframe document from the WPT file system
 /// This handles:
 /// 1. Resolving the src URL relative to the test directory
@@ -1863,14 +2062,14 @@ pub fn loadIframeDocument(
         return error.NoBrowsingContext;
     }
 
-    // 7. Fire 'load' event on iframe element
-    const event = interfaces.Event.init(self.allocator, runtime_ctx) catch return error.OutOfMemory;
-    errdefer interfaces.Event.deinit(event);
-
+    // 7. Fire 'load' event on iframe element using call_constructor for proper initialization
     const event_type = runtime.DOMString.initInterned("load");
-    const bubbles = webidl.Opt(bool).passed(false); // load event doesn't bubble
-    const cancelable = webidl.Opt(bool).passed(false);
-    interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.EventError;
+    const event_init = dictionaries.EventInit{
+        .bubbles = false, // load event doesn't bubble
+        .cancelable = false,
+    };
+    const event = interfaces.Event.call_constructor(runtime_ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch return error.OutOfMemory;
+    errdefer interfaces.Event.deinit(event);
 
     _ = interfaces.EventTarget.call_dispatchEvent(iframe_element, event) catch return error.DispatchError;
 }

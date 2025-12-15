@@ -38,6 +38,38 @@ const SandboxFlags = html_core.SandboxFlags;
 const v8 = @import("v8");
 const context_manager = v8.context_manager;
 
+// ============================================================================
+// Iframe Src Loading Hook (for WPT runner integration)
+// ============================================================================
+//
+// This hook allows the WPT runner to intercept iframe src loading for relative
+// and HTTP URLs. The WPT runner can:
+// 1. Resolve relative URLs against the test directory
+// 2. Fetch content from the WPT file system
+// 3. Parse the HTML and set up the document
+// 4. Fire the load event on the iframe
+//
+// The hook returns true if it handled the load, false otherwise.
+
+/// Type for the iframe src load hook
+/// Parameters: (iframe_instance, src_url) -> handled
+pub const IframeSrcLoadHook = *const fn (*runtime.Instance, []const u8) bool;
+
+/// Thread-local hook for iframe src loading
+/// Set by the WPT runner to intercept iframe navigations
+threadlocal var iframe_src_load_hook: ?IframeSrcLoadHook = null;
+
+/// Set the iframe src load hook
+/// Call with null to clear the hook
+pub fn setIframeSrcLoadHook(hook: ?IframeSrcLoadHook) void {
+    iframe_src_load_hook = hook;
+}
+
+/// Get the current iframe src load hook
+pub fn getIframeSrcLoadHook() ?IframeSrcLoadHook {
+    return iframe_src_load_hook;
+}
+
 pub const State = HTMLIFrameElement.State;
 
 pub const ImplError = error{
@@ -341,6 +373,10 @@ pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
 
 /// Setter for src
 /// Setting src triggers navigation to the new URL.
+///
+/// Per HTML Standard §4.8.5, setting src navigates the iframe to the given URL.
+/// For WPT tests, we check if an external hook is registered to handle relative
+/// and HTTP URLs. This allows the WPT runner to load content from its file system.
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
@@ -351,6 +387,24 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 
     // Store new value - USVString is []const u8
     internal.src_attr = try internal.allocator.dupe(u8, value);
+
+    // Check if an external hook is registered to handle this URL
+    // The hook handles relative URLs and HTTP URLs for WPT tests
+    if (iframe_src_load_hook) |hook| {
+        // Check if this URL needs external handling (relative or HTTP)
+        const needs_external = !std.mem.startsWith(u8, value, "about:") and
+            !std.mem.startsWith(u8, value, "data:") and
+            !std.mem.startsWith(u8, value, "file://") and
+            !std.mem.startsWith(u8, value, "javascript:");
+
+        if (needs_external) {
+            // Try the external hook first
+            if (hook(instance, value)) {
+                // Hook handled the load - don't call integration.setSrc
+                return;
+            }
+        }
+    }
 
     // Trigger navigation via integration
     // Navigation errors are typically silent for iframe src
