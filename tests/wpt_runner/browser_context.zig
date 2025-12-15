@@ -1245,6 +1245,7 @@ pub const BrowserContext = struct {
     /// Set the test URL (updates location object and secure context flag)
     /// For WPT tests with .https. in filename, rewrites URL to use https:// scheme
     /// to properly simulate secure context behavior.
+    /// For WPT tests with .www. in filename, rewrites URL to use www.localhost hostname.
     pub fn setTestUrl(self: *BrowserContext, url: []const u8) !void {
         self.allocator.free(self.test_url);
         self.test_url = try self.allocator.dupe(u8, url);
@@ -1254,23 +1255,35 @@ pub const BrowserContext = struct {
         // Per WPT convention:
         //   - .https. tests use port 8443
         //   - .h2. tests use port 9000 (HTTP/2)
+        //   - .www. tests use www.localhost subdomain
+        //   - .www1., .www2. use www1./www2. subdomains
         const effective_url = blk: {
             const is_h2 = std.mem.indexOf(u8, url, ".h2.") != null;
             const is_https = std.mem.indexOf(u8, url, ".https.") != null;
+            const is_www = std.mem.indexOf(u8, url, ".www.") != null;
+            const is_www1 = std.mem.indexOf(u8, url, ".www1.") != null;
+            const is_www2 = std.mem.indexOf(u8, url, ".www2.") != null;
 
-            if (is_h2 or is_https) {
-                // Determine target port based on test type
-                const target_port: []const u8 = if (is_h2) "9000" else "8443";
+            // Determine subdomain
+            const subdomain: []const u8 = if (is_www) "www." else if (is_www1) "www1." else if (is_www2) "www2." else "";
 
-                // Rewrite http:// to https:// for location object
+            if (is_h2 or is_https or subdomain.len > 0) {
+                // Determine target port and scheme based on test type
+                const target_port: []const u8 = if (is_h2) "9000" else if (is_https) "8443" else "8000";
+                const scheme: []const u8 = if (is_h2 or is_https) "https" else "http";
+
+                // Rewrite URL with correct scheme, subdomain, and port
                 if (std.mem.startsWith(u8, url, "http://localhost:8000")) {
-                    // Replace http://localhost:8000 with https://localhost:<port>
                     const rest = url["http://localhost:8000".len..];
-                    break :blk try std.fmt.allocPrint(self.allocator, "https://localhost:{s}{s}", .{ target_port, rest });
+                    break :blk try std.fmt.allocPrint(self.allocator, "{s}://{s}localhost:{s}{s}", .{ scheme, subdomain, target_port, rest });
+                } else if (std.mem.startsWith(u8, url, "http://localhost")) {
+                    // No port specified
+                    const rest = url["http://localhost".len..];
+                    break :blk try std.fmt.allocPrint(self.allocator, "{s}://{s}localhost:{s}{s}", .{ scheme, subdomain, target_port, rest });
                 } else if (std.mem.startsWith(u8, url, "http://")) {
                     // Generic http:// to https:// replacement (preserve original port if present)
                     const rest = url["http://".len..];
-                    break :blk try std.fmt.allocPrint(self.allocator, "https://{s}", .{rest});
+                    break :blk try std.fmt.allocPrint(self.allocator, "{s}://{s}", .{ scheme, rest });
                 }
             }
             break :blk try self.allocator.dupe(u8, url);

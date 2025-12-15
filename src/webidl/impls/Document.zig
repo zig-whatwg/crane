@@ -174,6 +174,11 @@ pub const InternalState = struct {
     // === Event handlers storage (using string keys for handler names) ===
     event_handlers: std.StringHashMap(typedefs.EventHandler),
 
+    // === Cookie storage (simplified in-memory storage for WPT tests) ===
+    /// Simple cookie jar storing name -> value mappings
+    /// In a real browser, this would be backed by a proper cookie store
+    cookies: std.StringHashMap([]const u8),
+
     // === Script execution state (HTML Standard §4.12.1.1) ===
 
     /// Pending parsing-blocking script
@@ -341,6 +346,8 @@ pub const InternalState = struct {
             .style_sheets = null,
             // Event handlers
             .event_handlers = std.StringHashMap(typedefs.EventHandler).init(allocator),
+            // Cookie storage
+            .cookies = std.StringHashMap([]const u8).init(allocator),
             // Script execution state
             .pending_parsing_blocking_script = null,
             .scripts_to_execute_asap = .{},
@@ -419,6 +426,16 @@ pub const InternalState = struct {
 
         // Event handlers
         self.event_handlers.deinit();
+
+        // Cookies - free values
+        {
+            var cookie_it = self.cookies.iterator();
+            while (cookie_it.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                self.allocator.free(entry.value_ptr.*);
+            }
+            self.cookies.deinit();
+        }
 
         // Write buffer (for document.write() in after-parsing mode)
         self.write_buffer.deinit(self.allocator);
@@ -868,11 +885,43 @@ pub fn get_referrer(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// HTML - Returns document's cookies as a string
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie
 ///
-/// Note: In non-browser context, we return an empty string (no cookie jar)
+/// Returns document cookies as "name1=value1; name2=value2"
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie
 pub fn get_cookie(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    // In non-browser environment, return empty string (no cookie storage)
-    return "";
+    const internal = getInternal(instance) orelse return "";
+
+    // Count cookies to determine buffer size
+    var count: usize = 0;
+    var total_len: usize = 0;
+    var cookie_it = internal.cookies.iterator();
+    while (cookie_it.next()) |entry| {
+        if (count > 0) total_len += 2; // "; "
+        total_len += entry.key_ptr.len + 1 + entry.value_ptr.len; // "name=value"
+        count += 1;
+    }
+
+    if (count == 0) return "";
+
+    // Build the cookie string
+    const result = internal.allocator.alloc(u8, total_len) catch return "";
+    var pos: usize = 0;
+    var first = true;
+    var it2 = internal.cookies.iterator();
+    while (it2.next()) |entry| {
+        if (!first) {
+            @memcpy(result[pos .. pos + 2], "; ");
+            pos += 2;
+        }
+        @memcpy(result[pos .. pos + entry.key_ptr.len], entry.key_ptr.*);
+        pos += entry.key_ptr.len;
+        result[pos] = '=';
+        pos += 1;
+        @memcpy(result[pos .. pos + entry.value_ptr.len], entry.value_ptr.*);
+        pos += entry.value_ptr.len;
+        first = false;
+    }
+
+    return result;
 }
 
 /// Getter for lastModified
@@ -2138,12 +2187,77 @@ pub fn set_domain(instance: *runtime.Instance, value: runtime.USVString) anyerro
 /// Setter for cookie
 /// HTML - Sets a cookie
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie
-///
-/// Note: In non-browser context, this is a no-op (no cookie jar)
+/// Sets a cookie from a "name=value; attr1; attr2=val" string
+/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-cookie
 pub fn set_cookie(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // In non-browser environment, ignore cookie sets (no cookie storage)
+    const internal = getInternal(instance) orelse return;
+    const cookie_str = value;
+    if (cookie_str.len == 0) return;
+
+    // Parse "name=value" from the first part
+    var parts_iter = std.mem.splitSequence(u8, cookie_str, ";");
+    const name_value = parts_iter.first();
+
+    // Find the '=' separator
+    const eq_idx = std.mem.indexOf(u8, name_value, "=") orelse return;
+    if (eq_idx == 0) return; // Empty name
+
+    const name = std.mem.trim(u8, name_value[0..eq_idx], " ");
+    const cookie_value = std.mem.trim(u8, name_value[eq_idx + 1 ..], " ");
+
+    // Check for expires= attribute to detect deletion
+    var is_delete = false;
+    while (parts_iter.next()) |attr| {
+        const trimmed = std.mem.trim(u8, attr, " ");
+        const lower_attr = blk: {
+            var lower: [256]u8 = undefined;
+            const len = @min(trimmed.len, 256);
+            for (0..len) |i| {
+                lower[i] = std.ascii.toLower(trimmed[i]);
+            }
+            break :blk lower[0..len];
+        };
+
+        // Check for max-age=0 or max-age=-1 (deletion)
+        if (std.mem.startsWith(u8, lower_attr, "max-age=")) {
+            const max_age_str = trimmed[8..];
+            const max_age = std.fmt.parseInt(i64, max_age_str, 10) catch 0;
+            if (max_age <= 0) is_delete = true;
+        }
+        // Check for expires in the past (deletion)
+        if (std.mem.startsWith(u8, lower_attr, "expires=")) {
+            // Simple heuristic: if expires contains "1970" it's deletion
+            if (std.mem.indexOf(u8, lower_attr, "1970") != null) is_delete = true;
+        }
+    }
+
+    if (is_delete) {
+        // Remove cookie
+        if (internal.cookies.fetchRemove(name)) |entry| {
+            internal.allocator.free(entry.key);
+            internal.allocator.free(entry.value);
+        }
+        return;
+    }
+
+    // Remove old value if exists
+    if (internal.cookies.fetchRemove(name)) |entry| {
+        internal.allocator.free(entry.key);
+        internal.allocator.free(entry.value);
+    }
+
+    // Store the new cookie
+    const name_copy = internal.allocator.dupe(u8, name) catch return;
+    errdefer internal.allocator.free(name_copy);
+    const value_copy = internal.allocator.dupe(u8, cookie_value) catch {
+        internal.allocator.free(name_copy);
+        return;
+    };
+    internal.cookies.put(name_copy, value_copy) catch {
+        internal.allocator.free(name_copy);
+        internal.allocator.free(value_copy);
+        return;
+    };
 }
 
 /// Setter for title
