@@ -3370,6 +3370,71 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 
     // Set in attribute list
     try setAttributeInternal(internal, null, null, name, val);
+
+    // HTML spec hooks: Trigger element-specific attribute change reactions
+    // For HTMLImageElement: setting "src" triggers image data update
+    // Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
+    if (std.mem.eql(u8, name, "src")) {
+        // Check if this element is an HTMLImageElement by checking its local name
+        if (std.mem.eql(u8, internal.local_name.asSlice(), "img")) {
+            triggerImageSrcChange(instance, val);
+        }
+    }
+}
+
+/// Trigger image loading when src attribute changes on an img element
+/// This is called from setAttribute when the src attribute is set on an img element.
+fn triggerImageSrcChange(instance: *runtime.Instance, src_value: []const u8) void {
+    // Skip empty URLs
+    if (src_value.len == 0) {
+        return;
+    }
+
+    // Import fetch module for HTTP requests
+    const fetch_mod = @import("fetch");
+
+    // Initiate the fetch for the image
+    const allocator = instance.ctx.allocator;
+    var fetch_result = fetch_mod.webidl.globalFetch(allocator, .{ .url = src_value }, .{});
+    defer fetch_result.deinit();
+
+    // Create and dispatch the appropriate event based on the result
+    switch (fetch_result) {
+        .response => |response| {
+            // Check if the response indicates success (HTTP 200-299)
+            if (response.ok()) {
+                // Fire 'load' event
+                fireImageEvent(instance, "load") catch {};
+            } else {
+                // HTTP error status - fire 'error' event
+                fireImageEvent(instance, "error") catch {};
+            }
+        },
+        .err => {
+            // Network error - fire 'error' event
+            fireImageEvent(instance, "error") catch {};
+        },
+    }
+}
+
+/// Helper function to fire load/error events on an image element
+fn fireImageEvent(instance: *runtime.Instance, event_type: []const u8) !void {
+    const allocator = instance.ctx.allocator;
+    const ctx = instance.ctx;
+
+    // Create the event
+    const event = try interfaces.Event.init(allocator, ctx);
+    errdefer interfaces.Event.deinit(event);
+
+    // Initialize the event with the given type
+    // Per spec: bubbles = false for load/error events on elements, cancelable = false
+    const event_type_str = runtime.DOMString.initInterned(event_type);
+    const bubbles = webidl.Opt(bool).passed(false);
+    const cancelable = webidl.Opt(bool).passed(false);
+    try interfaces.Event.call_initEvent(event, event_type_str, bubbles, cancelable);
+
+    // Dispatch the event on the element
+    _ = try interfaces.EventTarget.call_dispatchEvent(instance, event);
 }
 
 /// Operation: insertAdjacentHTML

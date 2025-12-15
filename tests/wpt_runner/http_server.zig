@@ -749,6 +749,45 @@ pub const HttpServer = struct {
             return "www2.localhost";
         }
 
+        // {{browser_host}} - the browser's host (same as server host for local testing)
+        if (std.mem.eql(u8, var_name, "browser_host")) {
+            return "localhost";
+        }
+
+        // {{domains[]}} - primary domain (same as host for local testing)
+        if (std.mem.eql(u8, var_name, "domains[]")) {
+            return "localhost";
+        }
+
+        // {{domains[www]}} - www subdomain
+        if (std.mem.eql(u8, var_name, "domains[www]")) {
+            return "www.localhost";
+        }
+
+        // {{domains[www1]}} - www1 subdomain
+        if (std.mem.eql(u8, var_name, "domains[www1]")) {
+            return "www1.localhost";
+        }
+
+        // {{domains[élève]}} - punycode subdomain (IDN)
+        if (std.mem.eql(u8, var_name, "domains[élève]")) {
+            return "xn--lve-6lad.localhost";
+        }
+
+        // {{domains[天気の良い日]}} - punycode subdomain (IDN Japanese)
+        if (std.mem.eql(u8, var_name, "domains[天気の良い日]")) {
+            return "xn--n8jub8754b.localhost";
+        }
+
+        // {{ports[h2][0]}} - HTTP/2 port (using HTTPS port)
+        if (std.mem.eql(u8, var_name, "ports[h2][0]")) {
+            return switch (self.config.https_port) {
+                8443 => "8443",
+                443 => "443",
+                else => "8443",
+            };
+        }
+
         // {{hosts[alt][]}} - alternate host (not same site)
         if (std.mem.eql(u8, var_name, "hosts[alt][]")) {
             return "127.0.0.1";

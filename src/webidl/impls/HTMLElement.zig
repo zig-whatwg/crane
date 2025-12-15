@@ -79,6 +79,11 @@ pub const InternalState = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes
     event_handlers: std.StringHashMap(typedefs.EventHandler),
 
+    // === Style ===
+    /// Cached inline CSSStyleDeclaration for this element
+    /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
+    style_declaration: ?*runtime.Instance = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -89,11 +94,13 @@ pub const InternalState = struct {
             .internals_attached = false,
             .is_dragging = false,
             .event_handlers = std.StringHashMap(typedefs.EventHandler).init(allocator),
+            .style_declaration = null,
         };
     }
 
     pub fn deinit(self: *InternalState) void {
         self.event_handlers.deinit();
+        // Note: style_declaration is owned by the GC layer, don't deinit here
     }
 };
 
@@ -478,12 +485,30 @@ pub fn get_offsetHeight(instance: *runtime.Instance) anyerror!i32 {
 
 /// Getter for style
 /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
-/// Returns the inline CSSStyleDeclaration
+/// Returns the inline CSSStyleDeclaration for this element.
+/// Each element has exactly one associated inline CSSStyleDeclaration object.
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Would return a CSSStyleDeclaration instance
-    // For now, this needs CSSStyleDeclaration implementation
-    _ = instance;
-    return error.NotImplemented;
+    // Get internal state to check for cached style declaration
+    const internal = getInternalState(instance) orelse return error.InvalidStateError;
+
+    // Return cached style declaration if it exists
+    if (internal.style_declaration) |style| {
+        return style;
+    }
+
+    // Create a new CSSStyleDeclaration for inline styles
+    const allocator = instance.ctx.allocator;
+    const ctx = instance.ctx;
+    const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
+
+    // Initialize the style declaration
+    const style = try CSSStyleDeclaration.init(allocator, ctx);
+    errdefer CSSStyleDeclaration.deinit(style);
+
+    // Cache it in internal state for future access
+    internal.style_declaration = style;
+
+    return style;
 }
 
 /// Getter for attributeStyleMap

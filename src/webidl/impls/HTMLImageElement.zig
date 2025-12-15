@@ -7,7 +7,12 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
+const fetch = @import("fetch");
 const HTMLImageElement = interfaces.HTMLImageElement;
+const Element = interfaces.Element;
+const EventTarget = interfaces.EventTarget;
+const Event = interfaces.Event;
 
 pub const State = HTMLImageElement.State;
 
@@ -62,10 +67,16 @@ pub fn get_alt(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return error.NotImplemented;
 }
 
-/// Getter for src
+/// Getter for src - reflects the "src" content attribute
+/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src
 pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    // Get the src attribute value, returning empty string if not set
+    const attr_value = try Element.call_getAttribute(instance, runtime.DOMString.initInterned("src"));
+    if (attr_value) |val| {
+        // USVString is []const u8, DOMString has asSlice() method
+        return val.asSlice();
+    }
+    return "";
 }
 
 /// Getter for srcset
@@ -231,11 +242,71 @@ pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
     return error.NotImplemented;
 }
 
-/// Setter for src
+/// Setter for src - sets the "src" content attribute and fetches the image
+/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src
+///
+/// When src is set:
+/// 1. Store the src attribute on the element
+/// 2. Initiate a fetch for the image resource
+/// 3. On success (HTTP 200-299): fire 'load' event
+/// 4. On error: fire 'error' event
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Step 1: Set the src attribute using Element.setAttribute
+    // USVString is []const u8, need to convert to DOMString
+    const dom_value = runtime.DOMString.initInterned(value);
+    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), dom_value);
+
+    // Step 2: Get the URL string from the value (USVString is already []const u8)
+    const url_str = value;
+
+    // Skip empty URLs
+    if (url_str.len == 0) {
+        return;
+    }
+
+    // Step 3: Initiate the fetch
+    const allocator = instance.ctx.allocator;
+    var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
+    defer fetch_result.deinit();
+
+    // Step 4: Create and dispatch the appropriate event based on the result
+    switch (fetch_result) {
+        .response => |response| {
+            // Check if the response indicates success (HTTP 200-299)
+            if (response.ok()) {
+                // Fire 'load' event
+                fireEventOnElement(instance, "load") catch {};
+            } else {
+                // HTTP error status - fire 'error' event
+                fireEventOnElement(instance, "error") catch {};
+            }
+        },
+        .err => {
+            // Network error - fire 'error' event
+            fireEventOnElement(instance, "error") catch {};
+        },
+    }
+}
+
+/// Helper function to create and dispatch an event on an element
+fn fireEventOnElement(instance: *runtime.Instance, event_type: []const u8) !void {
+    const allocator = instance.ctx.allocator;
+    const ctx = instance.ctx;
+
+    // Create the event using the interface's init function (2 args, not 4)
+    const event = try Event.init(allocator, ctx);
+    errdefer Event.deinit(event);
+
+    // Initialize the event with the given type
+    // Per spec: bubbles = true for load/error events on elements, cancelable = false
+    const event_type_str = runtime.DOMString.initInterned(event_type);
+    const bubbles = webidl.Opt(bool).passed(true);
+    const cancelable = webidl.Opt(bool).passed(false);
+    try Event.call_initEvent(event, event_type_str, bubbles, cancelable);
+
+    // Dispatch the event on the element
+    // HTMLImageElement inherits from Element which inherits from EventTarget
+    _ = try EventTarget.call_dispatchEvent(instance, event);
 }
 
 /// Setter for srcset
@@ -382,4 +453,47 @@ pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyer
 pub fn call_decode(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
+}
+
+/// Operation: setAttribute override
+/// Intercepts src attribute changes to trigger image loading per HTML spec.
+/// For all other attributes, delegates to Element.call_setAttribute.
+/// Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
+pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+    // Delegate to parent (Element) for the actual attribute storage
+    try Element.call_setAttribute(instance, qualifiedName, value);
+
+    // Check if this is the "src" attribute - if so, trigger image loading
+    const attr_name = qualifiedName.asSlice();
+    if (std.mem.eql(u8, attr_name, "src")) {
+        const url_str = value.asSlice();
+
+        // Skip empty URLs
+        if (url_str.len == 0) {
+            return;
+        }
+
+        // Initiate the fetch for the image
+        const allocator = instance.ctx.allocator;
+        var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
+        defer fetch_result.deinit();
+
+        // Create and dispatch the appropriate event based on the result
+        switch (fetch_result) {
+            .response => |response| {
+                // Check if the response indicates success (HTTP 200-299)
+                if (response.ok()) {
+                    // Fire 'load' event
+                    fireEventOnElement(instance, "load") catch {};
+                } else {
+                    // HTTP error status - fire 'error' event
+                    fireEventOnElement(instance, "error") catch {};
+                }
+            },
+            .err => {
+                // Network error - fire 'error' event
+                fireEventOnElement(instance, "error") catch {};
+            },
+        }
+    }
 }
