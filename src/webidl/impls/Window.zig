@@ -79,6 +79,11 @@ pub const InternalState = struct {
     /// The associated browsing context (§7.1)
     browsing_context: *BrowsingContext,
 
+    /// Whether we own the browsing context and should free it in deinit.
+    /// Set to false when replaceBrowsingContext() assigns an external BC.
+    /// This prevents double-free when iframe cleanup also frees the BC.
+    owns_browsing_context: bool = true,
+
     /// Whether this window is closed
     closed: bool = false,
 
@@ -189,8 +194,12 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Clean up browsing context
-        self.browsing_context.deinit();
+        // Clean up browsing context ONLY if we own it.
+        // When replaceBrowsingContext() was called, we borrowed an external BC
+        // (from iframe integration) which will be cleaned up by the iframe.
+        if (self.owns_browsing_context) {
+            self.browsing_context.deinit();
+        }
 
         // Clean up animation scheduler if created
         if (self.animation_scheduler) |scheduler| {
@@ -268,6 +277,13 @@ pub fn init(
 
 /// Deinitialize Window instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Mark as cleaned up in V8 wrapper cache to prevent double-free
+    // Window is in the wrapper cache, and context_manager.deinit cleans up Window
+    // before calling wrapper_cache.deinit. Without this marker, wrapper_cache
+    // would try to call deinit again.
+    const context_manager = @import("v8").context_manager;
+    context_manager.markInstanceCleanedUp(instance);
+
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -371,12 +387,18 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     const internal = getInternal(instance) orelse return;
 
     // Deinitialize the auto-created browsing context (created by Window.init)
-    // Note: We must deinit it because it was allocated during init
-    internal.browsing_context.deinit();
+    // Note: We must deinit it because it was allocated during init and we own it
+    if (internal.owns_browsing_context) {
+        internal.browsing_context.deinit();
+    }
 
-    // Replace with the existing browsing context
+    // Replace with the existing browsing context (owned by iframe integration)
     const existing_bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
     internal.browsing_context = existing_bc;
+
+    // Mark that we DON'T own this browsing context - iframe cleanup will free it
+    // This prevents double-free when both Window.deinit and HTMLIFrameElement.deinit run
+    internal.owns_browsing_context = false;
 
     // Set this Window as the active window on the browsing context
     existing_bc.setActiveWindow(@ptrCast(instance));

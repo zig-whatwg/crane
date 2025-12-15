@@ -162,29 +162,9 @@ pub fn deinit() void {
             if (entry.owns_context) {
                 var ctx_data = entry.runtime_ctx;
 
-                // Clean up V8 wrapper cache WITHOUT callbacks during teardown
-                // Using deinitWithoutCallbacks because:
-                // 1. DOM tree nodes are cleaned up via Document.deinit below
-                // 2. Calling deinit() on DOM nodes here would cause double-free
-                // 3. Cross-context references (iframes) may cause use-after-free
-                //
-                // TODO: Non-DOM objects (AbortController, DOMException, etc.) leak
-                // because they're not in the DOM tree. Need selective cleanup that
-                // only deinits non-DOM objects, or use V8 weak callbacks properly.
-                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                    cache_ptr.deinitWithoutCallbacks();
-                    ctx_data.getAllocator().destroy(cache_ptr);
-                }
-
-                // Clean up V8 event loop (must be done before context deinit)
-                if (entry.event_loop) |ev_loop| {
-                    ev_loop.deinit();
-                    ctx_data.getAllocator().destroy(ev_loop);
-                }
-
-                // Clean up Window instance and its Document (same as destroyChildContext)
-                // This is needed for the main context too, not just iframe contexts
+                // Clean up Window instance and its Document FIRST
+                // This cleans up the DOM tree, and each Node.deinit removes itself
+                // from the wrapper cache to prevent double-free.
                 if (entry.window_instance) |window| {
                     const interfaces = @import("interfaces");
                     const WindowImpl = @import("impls").Window;
@@ -198,6 +178,23 @@ pub fn deinit() void {
                     }
 
                     interfaces.Window.deinit(window);
+                }
+
+                // Clean up V8 wrapper cache WITH callbacks
+                // Now safe to call deinit() because:
+                // 1. DOM nodes already removed themselves from cache via Node.deinit
+                // 2. Remaining entries are non-DOM objects (AbortController, etc.)
+                // 3. These need their deinit called to free InternalState
+                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                    cache_ptr.deinit();
+                    ctx_data.getAllocator().destroy(cache_ptr);
+                }
+
+                // Clean up V8 event loop (must be done before context deinit)
+                if (entry.event_loop) |ev_loop| {
+                    ev_loop.deinit();
+                    ctx_data.getAllocator().destroy(ev_loop);
                 }
 
                 // Clean up realm
@@ -1697,6 +1694,30 @@ pub fn setRealmForContext(v8_ctx: *v8.Context, realm: *runtime.Realm) !void {
     } else {
         return error.ContextNotFound;
     }
+}
+
+/// Mark an instance as cleaned up in the wrapper cache
+///
+/// This should be called when a DOM node is being cleaned up via Node.deinit
+/// to prevent double-free when the context is later torn down. The instance
+/// has already been (or is being) cleaned up, so we mark it to prevent
+/// wrapper_cache.deinit() from calling onObjectFreed again.
+///
+/// We don't remove from cache or dispose V8 handles here because we might
+/// still be in JavaScript execution context. That happens in wrapper_cache.deinit().
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn markInstanceCleanedUp(instance: *runtime.Instance) void {
+    // Get the context from the instance
+    const ctx_data = instance.ctx;
+
+    // Get the wrapper cache from the context
+    const cache_storage = ctx_data.getV8WrapperCacheStorage() orelse return;
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+    const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+
+    // Mark the instance as already cleaned up
+    _ = cache.markAsCleanedUp(instance);
 }
 
 // ============================================================================

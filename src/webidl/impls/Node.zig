@@ -207,6 +207,14 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// Per DOM spec semantics, destroying a parent node should release all
 /// child nodes since they are no longer reachable through the tree.
 pub fn deinit(instance: *runtime.Instance) void {
+    // Mark as cleaned up in V8 wrapper cache to prevent double-free.
+    // When Document.deinit triggers this cleanup, we're cleaning up the DOM tree.
+    // The wrapper cache also has references to these nodes. If we don't mark
+    // them, wrapper_cache.deinit() will try to call deinit again (double-free).
+    // Import context_manager to access markInstanceCleanedUp
+    const context_manager = @import("v8").context_manager;
+    context_manager.markInstanceCleanedUp(instance);
+
     // First, recursively deinit all child nodes.
     // We must do this BEFORE removing ourselves from the registry,
     // and we need to collect children first since deinit modifies the tree.

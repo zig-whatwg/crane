@@ -78,6 +78,11 @@ const CacheEntry = struct {
 
     /// Backpointer to cache (needed for removal during weak callback)
     cache: *WrapperCache,
+
+    /// Set to true when the instance has been cleaned up externally
+    /// (e.g., via Node.deinit). When true, deinit should NOT call
+    /// onObjectFreed since the instance is already cleaned up.
+    instance_already_cleaned: bool = false,
 };
 
 /// Weak callback for GC cleanup
@@ -172,9 +177,13 @@ pub const WrapperCache = struct {
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
 
-            // Call GC integration to invoke type-specific deinit
-            // This is essential for cleanup since weak callbacks may not fire during shutdown
-            runtime.gc.onObjectFreed(entry.instance);
+            // Only call deinit if not already cleaned up externally
+            // (e.g., DOM nodes cleaned via Document.deinit already called their deinit)
+            if (!entry.instance_already_cleaned) {
+                // Call GC integration to invoke type-specific deinit
+                // This is essential for cleanup since weak callbacks may not fire during shutdown
+                runtime.gc.onObjectFreed(entry.instance);
+            }
 
             // Dispose the Global<Object>* handle
             v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
@@ -310,10 +319,36 @@ pub const WrapperCache = struct {
         self.cache.clearRetainingCapacity();
     }
 
+    /// Mark an entry as already cleaned (instance deinit already called)
+    ///
+    /// This is used when the instance is being cleaned up by other means
+    /// (e.g., Node.deinit cleaning up DOM tree). We mark it so that
+    /// wrapper_cache.deinit() won't call onObjectFreed again (double-free).
+    ///
+    /// We don't dispose the V8 handle here because we might still be in
+    /// JavaScript execution context. The handle will be disposed during
+    /// wrapper_cache.deinit().
+    ///
+    /// ## Parameters
+    /// - instance: The Zig instance that has been cleaned up
+    ///
+    /// ## Returns
+    /// true if entry was found and marked, false if not in cache
+    pub fn markAsCleanedUp(self: *Self, instance: *runtime.Instance) bool {
+        if (self.cache.get(instance)) |entry| {
+            // Clear weak callback to prevent it from firing
+            v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
+            // Mark as already cleaned - deinit will skip onObjectFreed
+            entry.instance_already_cleaned = true;
+            return true;
+        }
+        return false;
+    }
+
     /// Remove a specific entry from the cache
     ///
-    /// Removes the entry for the given instance, disposes the V8 handle,
-    /// and frees the CacheEntry. Returns true if entry was found and removed.
+    /// Removes the entry completely, disposing the V8 handle.
+    /// Use markAsCleanedUp() instead if still in JS execution context.
     ///
     /// ## Parameters
     /// - instance: The Zig instance to remove from cache
@@ -323,6 +358,9 @@ pub const WrapperCache = struct {
     pub fn remove(self: *Self, instance: *runtime.Instance) bool {
         if (self.cache.fetchRemove(instance)) |kv| {
             const entry = kv.value;
+
+            // Clear weak callback first to prevent it from firing
+            v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
 
             // Dispose the Global<Object>* handle
             v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
