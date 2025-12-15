@@ -157,7 +157,7 @@ pub const PerformanceNavigationTiming = struct {
         type: NavigationTimingType,
         redirectCount: u16,
         criticalCHRestart: DOMHighResTimeStamp,
-        notRestoredReasons: NotRestoredReasons,
+        notRestoredReasons: *runtime.Instance,
         activationStart: DOMHighResTimeStamp,
     };
 

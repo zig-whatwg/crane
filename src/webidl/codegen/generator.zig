@@ -1384,7 +1384,7 @@ fn generateInterfaceFile(
         if (ir) |ir_ptr| {
             const to_json_attrs = try ir_mod.collectToJSONAttributes(allocator, interface.name, ir_ptr);
             defer allocator.free(to_json_attrs);
-            try writer.writeToJSONStruct(w, interface.name, to_json_attrs);
+            try writer.writeToJSONStruct(w, interface.name, to_json_attrs, ir_ptr);
         }
     }
 

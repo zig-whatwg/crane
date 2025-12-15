@@ -1684,6 +1684,10 @@ pub fn writeConstants(
 /// Per WebIDL spec, [Default] toJSON() returns an object with all exposed
 /// regular (non-static) attributes from the interface and its inherited interfaces.
 ///
+/// For interface-typed attributes (like DOMQuad.p1 which is DOMPoint), the ToJSON
+/// struct uses `*runtime.Instance` pointers. These get converted to proper V8 objects
+/// with correct prototype chains by the toV8Value conversion layer.
+///
 /// Example output for DOMRectReadOnly:
 /// ```zig
 /// /// ToJSON result struct for DOMRectReadOnly
@@ -1699,10 +1703,21 @@ pub fn writeConstants(
 ///     left: f64,
 /// };
 /// ```
+///
+/// Example output for DOMQuad (with interface-typed attributes):
+/// ```zig
+/// pub const DOMQuadToJSON = struct {
+///     p1: *runtime.Instance,  // DOMPoint
+///     p2: *runtime.Instance,  // DOMPoint
+///     p3: *runtime.Instance,  // DOMPoint
+///     p4: *runtime.Instance,  // DOMPoint
+/// };
+/// ```
 pub fn writeToJSONStruct(
     writer: anytype,
     interface_name: []const u8,
     attrs: []const ir.ToJSONAttribute,
+    ir_data: *const ir.IR,
 ) !void {
     if (attrs.len == 0) return;
 
@@ -1715,11 +1730,34 @@ pub fn writeToJSONStruct(
     try writer.print("    pub const {s}ToJSON = struct {{\n", .{interface_name});
 
     for (attrs) |attr| {
-        const zig_type = idlTypeToZig(attr.idl_type.type);
+        const zig_type = idlTypeToZigForToJSON(attr.idl_type.type, ir_data);
         try writer.print("        {s}: {s},\n", .{ attr.name, zig_type });
     }
 
     try writer.writeAll("    };\n\n");
+}
+
+/// Convert IDL type to Zig type for ToJSON struct fields
+///
+/// This is similar to idlTypeToZig but handles interface types specially:
+/// interface-typed attributes become `*runtime.Instance` pointers, which
+/// allows the V8 conversion layer to wrap them with proper prototypes.
+fn idlTypeToZigForToJSON(idl_type_name: []const u8, ir_data: *const ir.IR) []const u8 {
+    // First check if it's a known primitive/built-in type
+    const primitive_result = idlTypeToZig(idl_type_name);
+
+    // If idlTypeToZig returned the type name unchanged, it's likely an interface type
+    // Check if it exists in our IR's interface map
+    if (std.mem.eql(u8, primitive_result, idl_type_name)) {
+        // It's not a known primitive - check if it's an interface
+        if (ir_data.interfaces.contains(idl_type_name)) {
+            // Interface-typed attributes in toJSON become runtime Instance pointers
+            // The V8 toV8Value function will convert these to proper JS objects
+            return "*runtime.Instance";
+        }
+    }
+
+    return primitive_result;
 }
 
 /// Write VTable constant

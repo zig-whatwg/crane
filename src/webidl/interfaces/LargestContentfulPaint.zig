@@ -109,7 +109,7 @@ pub const LargestContentfulPaint = struct {
         renderTime: DOMHighResTimeStamp,
         size: u32,
         url: runtime.DOMString,
-        element: Element,
+        element: *runtime.Instance,
         paintTime: DOMHighResTimeStamp,
         presentationTime: DOMHighResTimeStamp,
     };

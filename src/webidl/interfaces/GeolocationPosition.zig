@@ -76,7 +76,7 @@ pub const GeolocationPosition = struct {
     /// ToJSON result struct for GeolocationPosition
     /// Generated from [Default] toJSON extended attribute
     pub const GeolocationPositionToJSON = struct {
-        coords: GeolocationCoordinates,
+        coords: *runtime.Instance,
         timestamp: EpochTimeStamp,
     };
 

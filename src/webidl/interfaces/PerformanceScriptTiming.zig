@@ -130,7 +130,7 @@ pub const PerformanceScriptTiming = struct {
         sourceCharPosition: i64,
         pauseDuration: DOMHighResTimeStamp,
         forcedStyleAndLayoutDuration: DOMHighResTimeStamp,
-        window: Window,
+        window: *runtime.Instance,
         windowAttribution: ScriptWindowAttribution,
     };
 

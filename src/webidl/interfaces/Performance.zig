@@ -138,10 +138,10 @@ pub const Performance = struct {
     /// Generated from [Default] toJSON extended attribute
     pub const PerformanceToJSON = struct {
         timeOrigin: DOMHighResTimeStamp,
-        eventCounts: EventCounts,
+        eventCounts: *runtime.Instance,
         interactionCount: u64,
-        timing: PerformanceTiming,
-        navigation: PerformanceNavigation,
+        timing: *runtime.Instance,
+        navigation: *runtime.Instance,
         onresourcetimingbufferfull: EventHandler,
     };
 

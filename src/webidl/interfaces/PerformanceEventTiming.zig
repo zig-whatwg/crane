@@ -99,7 +99,7 @@ pub const PerformanceEventTiming = struct {
         processingStart: DOMHighResTimeStamp,
         processingEnd: DOMHighResTimeStamp,
         cancelable: bool,
-        target: Node,
+        target: *runtime.Instance,
         targetSelector: runtime.DOMString,
         interactionId: u64,
     };

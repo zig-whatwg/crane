@@ -120,7 +120,7 @@ pub const PaymentResponse = struct {
         requestId: runtime.DOMString,
         methodName: runtime.DOMString,
         details: runtime.JSValue,
-        shippingAddress: ContactAddress,
+        shippingAddress: *runtime.Instance,
         shippingOption: runtime.DOMString,
         payerName: runtime.DOMString,
         payerEmail: runtime.DOMString,
