@@ -179,6 +179,9 @@ const WeakCallbackData = struct {
     registry_type: RegistryType,
     entry_idx: usize,
     allocator: std.mem.Allocator,
+    /// The Global handle created from the Local object.
+    /// Must be disposed in the weak callback before V8 can complete GC.
+    global_handle: *v8.Value,
 
     const RegistryType = enum {
         datetime_format,
@@ -193,13 +196,21 @@ const WeakCallbackData = struct {
 
 /// Weak callback invoked when a V8 Intl object is garbage collected.
 /// Removes the corresponding registry entry to prevent memory leaks.
+///
+/// V8 weak callback requirements:
+/// 1. The Global handle MUST be disposed before the callback returns
+/// 2. The callback is invoked with the user data passed to v8_Value_ToWeakGlobal
 fn intlWeakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     _ = length_in_bytes;
 
     const weak_data: *WeakCallbackData = @ptrCast(@alignCast(data orelse return));
-    defer weak_data.allocator.destroy(weak_data);
 
-    // Remove the entry from the appropriate registry
+    // CRITICAL: Dispose the Global handle FIRST before any other cleanup.
+    // V8 requires the Global handle to be reset/disposed before the weak callback returns.
+    // Failing to do this causes: "Check failed: Handle not reset in first callback"
+    v8.v8_Global_Dispose(weak_data.global_handle);
+
+    // Now safe to clean up the registry entry
     switch (weak_data.registry_type) {
         .datetime_format => {
             if (dtf_registry) |*reg| {
@@ -237,21 +248,21 @@ fn intlWeakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void
             }
         },
     }
+
+    // Finally, free the callback data itself
+    weak_data.allocator.destroy(weak_data);
 }
 
 /// Setup weak reference on a V8 object to trigger cleanup when GC'd.
 /// This prevents memory leaks by removing registry entries when JS objects
 /// are garbage collected.
 ///
-/// NOTE: Currently disabled due to V8 weak callback crash.
-/// The issue is that v8_Global_SetWeak requires a Global handle, not a Local,
-/// and the callback must reset the handle before returning. This needs proper
-/// Global handle management which is complex to implement correctly.
+/// The implementation uses V8's weak Global handle API:
+/// 1. Convert the Local object to a weak Global handle via v8_Value_ToWeakGlobal
+/// 2. Store the Global handle in WeakCallbackData so it can be disposed
+/// 3. When GC collects the object, intlWeakCallback disposes the Global and cleans registry
 ///
-/// For now, registry entries may accumulate but this is much less severe than
-/// the ICU OOM issue we solved - ICU cached per-locale data indefinitely (1-2MB
-/// per locale), whereas our registries only grow with the number of Intl objects
-/// created (a few hundred bytes each).
+/// See: https://v8.dev/docs/weak-handles
 fn setupWeakCallback(
     isolate: *v8.Isolate,
     js_object: *v8.Object,
@@ -259,13 +270,39 @@ fn setupWeakCallback(
     entry_idx: usize,
     allocator: std.mem.Allocator,
 ) void {
-    // TODO: Implement proper weak callback with Global handle management
-    // See: https://v8.dev/docs/weak-handles
-    _ = isolate;
-    _ = js_object;
-    _ = registry_type;
-    _ = entry_idx;
-    _ = allocator;
+    // Allocate weak callback data on the heap (must outlive the HandleScope)
+    const weak_data = allocator.create(WeakCallbackData) catch {
+        // On allocation failure, we can't set up the weak callback.
+        // The registry entry will leak but this is a rare edge case.
+        return;
+    };
+
+    // Initialize with placeholder - will be set after v8_Value_ToWeakGlobal
+    weak_data.* = .{
+        .registry_type = registry_type,
+        .entry_idx = entry_idx,
+        .allocator = allocator,
+        .global_handle = undefined, // Set below
+    };
+
+    // Create a weak Global handle from the Local object.
+    // v8_Value_ToWeakGlobal creates a Global<Value> that:
+    // - Is immediately weak (allows GC to collect when no strong refs)
+    // - Invokes our callback when collected
+    // - Passes weak_data to the callback
+    const global_handle = v8.v8_Value_ToWeakGlobal(
+        isolate,
+        @ptrCast(js_object),
+        @ptrCast(weak_data),
+        intlWeakCallback,
+    ) orelse {
+        // Failed to create Global handle - clean up and return
+        allocator.destroy(weak_data);
+        return;
+    };
+
+    // Store the Global handle so it can be disposed in the callback
+    weak_data.global_handle = global_handle;
 }
 
 /// Internal storage for DateTimeFormat instances
