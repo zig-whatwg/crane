@@ -474,7 +474,7 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
         const @"type" = interfaces.Event.get_type(event) catch return true;
         const listeners = int.getEventListenerList();
 
-        // Invoke matching listeners
+        // Invoke matching listeners (from addEventListener)
         for (listeners) |listener| {
             if (std.mem.eql(u8, listener.type.asSlice(), @"type".asSlice()) and
                 !listener.removed)
@@ -517,8 +517,87 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
         }
     }
 
+    // Also invoke IDL event handler attributes (onload, onclick, etc.)
+    // These are stored in HTMLElement's event_handlers map and need to be invoked separately
+    // Per HTML spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes
+    invokeIdlEventHandler(instance, event);
+
     // Return !canceled
     return !EventImpl.getCanceledFlag(event);
+}
+
+/// Invoke IDL event handler attribute (e.g., onload, onclick) for the given event
+/// Per HTML spec, event handler IDL attributes like `element.onload = fn` are stored
+/// separately from addEventListener callbacks and must also be invoked during dispatch.
+fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) void {
+    const v8_engine = @import("v8");
+    const pointer_tag = v8_engine.pointer_tag;
+    const global_handles = v8_engine.global_handles;
+
+    // Get the event type
+    const event_type_str = interfaces.Event.get_type(event) catch return;
+
+    // Try to get HTMLElement's internal state which stores event handlers
+    const HTMLElementImpl = @import("HTMLElement.zig");
+    const html_internal = HTMLElementImpl.getInternalState(instance) orelse return;
+
+    // Look up the event handler for this event type
+    const handler = html_internal.event_handlers.get(event_type_str.asSlice()) orelse return;
+
+    // handler is ?callbacks.EventHandlerNonNull which is ?*const fn(...)
+    // When set from JavaScript, this is actually a tagged pointer to a GlobalHandle
+    const handler_ptr = handler orelse return;
+
+    // The handler_ptr is a function pointer type, but it's actually a tagged GlobalHandle
+    // We need to get the raw pointer address
+    const raw_ptr: *const anyopaque = @ptrCast(handler_ptr);
+
+    // Untag the pointer to get the GlobalHandle
+    const untagged = pointer_tag.untagPointer(raw_ptr);
+
+    // Verify it's a global_handle tag (set during fromV8Value conversion)
+    if (untagged.tag != .global_handle) {
+        // Not a V8 callback - might be a native Zig function (unlikely for IDL handlers)
+        return;
+    }
+
+    // Get V8 context and isolate
+    const engine_ctx = instance.ctx.engine_ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // Wrap the GlobalHandle
+    const global_handle = global_handles.GlobalHandle{ .ptr = @ptrCast(untagged.ptr) };
+
+    // Get the V8 function from the GlobalHandle
+    const callback_value = global_handle.get(v8_isolate) orelse return;
+
+    // Verify it's a function
+    if (!v8_engine.ffi.v8_Value_IsFunction(callback_value)) return;
+
+    // Wrap the event as a V8 object
+    const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
+        event,
+        "Event",
+        v8_isolate,
+        v8_context,
+    ) catch return;
+
+    // Get 'this' value - use globalThis (undefined) for simplicity
+    // Per spec, event handlers should use the element as 'this', but using undefined
+    // also works for most callbacks since they don't use 'this' directly
+    const undefined_value = v8_engine.ffi.v8_Undefined(v8_isolate);
+
+    // Call the function with undefined as 'this' and event as argument
+    // We need to pass a pointer to the argument array, properly cast
+    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_v8_obj)};
+    _ = v8_engine.ffi.v8_Function_Call(
+        @ptrCast(callback_value),
+        v8_context,
+        @ptrCast(undefined_value),
+        1,
+        &args,
+    );
 }
 
 /// Operation: when (Observable)
