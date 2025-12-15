@@ -1560,6 +1560,17 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         // Clean up Window instance (must be after wrapper cache cleanup)
         if (entry.window_instance) |window| {
             const interfaces = @import("interfaces");
+            const WindowImpl = @import("impls").Window;
+
+            // Clean up Document instance first (created in createChildContext)
+            // Without this, the Document leaks when iframe contexts are destroyed
+            if (WindowImpl.getInternal(window)) |internal| {
+                if (internal.document) |doc| {
+                    interfaces.Document.deinit(doc);
+                    internal.document = null;
+                }
+            }
+
             interfaces.Window.deinit(window);
         }
 
