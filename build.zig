@@ -2616,6 +2616,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "impls", .module = impls_mod },
                 // WebIDL module for Optional type wrappers
                 .{ .name = "webidl", .module = webidl_mod },
+                // Dictionaries module for Event init dictionaries
+                .{ .name = "dictionaries", .module = dictionaries_mod },
             },
         }),
     });
