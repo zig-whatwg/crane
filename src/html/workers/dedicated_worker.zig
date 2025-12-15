@@ -447,29 +447,77 @@ pub const DedicatedWorker = struct {
         };
     }
 
+    // Thread-local storage for pending messages
+    // This is a workaround for the V8 HandleScope crash that occurs when modifying
+    // outside_port.message_queue while inside a worker V8 callback.
+    const PendingMessage = struct {
+        port: *message_channel.WorkerPort,
+        msg: *message_channel.QueuedMessage,
+    };
+    threadlocal var pending_messages: std.ArrayListUnmanaged(PendingMessage) = .{};
+
     /// Post a message from worker back to owner (called from inside the worker).
     ///
     /// This is the reverse direction: worker → main thread.
     /// Called by WorkerGlobalScope.postMessage().
+    ///
+    /// NOTE: This function defers the actual append to outside_port.message_queue
+    /// because doing so while inside a worker V8 callback causes a crash.
+    /// Call `flushPendingMessages()` after exiting the worker isolate.
     pub fn postMessageFromWorker(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
+        _ = transfer;
         if (self.agent.isClosing() or self.agent.isTerminated()) {
             return;
         }
 
         const serialized = try serializeForPostMessage(self.allocator, message);
-        errdefer {
-            var mutable = @constCast(serialized);
-            mutable.deinit();
-            self.allocator.destroy(mutable);
-        }
 
-        // Post to the inside port → arrives at entangled outside port (owner side)
-        self.port_pair.inside_port.postMessage(serialized, transfer) catch |err| {
+        const msg = message_channel.QueuedMessage.init(self.allocator, serialized, null) catch {
             var mutable = @constCast(serialized);
             mutable.deinit();
             self.allocator.destroy(mutable);
-            return err;
+            return error.OutOfMemory;
         };
+
+        // WORKAROUND: Queue the message for later processing instead of appending directly
+        // to outside_port.message_queue. Appending while inside the worker V8 callback
+        // causes "Cannot create a handle without a HandleScope" crash AFTER returning.
+        pending_messages.append(std.heap.page_allocator, .{
+            .port = self.port_pair.outside_port,
+            .msg = msg,
+        }) catch {
+            msg.deinit();
+            return error.OutOfMemory;
+        };
+    }
+
+    /// Append a message to the pending queue (public for testing from callback).
+    /// This is used to isolate which step of postMessageFromWorker causes the crash.
+    pub fn appendPendingMessage(port: *message_channel.WorkerPort, msg: *message_channel.QueuedMessage) !void {
+        try pending_messages.append(std.heap.page_allocator, .{
+            .port = port,
+            .msg = msg,
+        });
+    }
+
+    /// Flush pending messages to their target ports.
+    /// This should be called AFTER exiting the worker isolate.
+    ///
+    /// Messages are queued during worker script execution via appendPendingMessage()
+    /// because appending directly to the port's message_queue while inside a V8
+    /// callback causes HandleScope issues. This function appends the queued messages
+    /// to their target ports so processQueuedMessages() can deliver them.
+    pub fn flushPendingMessages() void {
+        for (pending_messages.items) |pending| {
+            // Append message to the port's message queue
+            // This is safe now because we're back in the main isolate's context
+            pending.port.message_queue.append(pending.port.allocator, pending.msg) catch {
+                // Clean up message if append fails
+                pending.msg.deinit();
+                continue;
+            };
+        }
+        pending_messages.clearRetainingCapacity();
     }
 
     /// Set the message handler for messages received from the worker.

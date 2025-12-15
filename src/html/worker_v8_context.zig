@@ -187,6 +187,13 @@ pub const WorkerV8Context = struct {
             .allocator = allocator,
         };
 
+        // CRITICAL: Create HandleScope for V8 handle allocation during setup
+        // V8 requires any API calls that create Local handles to be within a HandleScope.
+        // setupWorkerGlobals() calls v8_String_NewFromUtf8 which creates Local<String>.
+        // Without this, those calls will crash with "Cannot create a handle without a HandleScope".
+        const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
         // Set up basic worker globals (self, globalThis)
         try self.setupWorkerGlobals();
 
@@ -587,6 +594,13 @@ pub const WorkerV8Context = struct {
             v8.ffi.v8_Isolate_Exit(self.isolate);
         }
 
+        // CRITICAL: Create HandleScope for V8 handle allocation
+        // V8 requires any API calls that create Local handles to be within a HandleScope.
+        // Without this, v8_String_NewFromUtf8 and other handle-creating calls will crash
+        // with "Cannot create a handle without a HandleScope".
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
         return self.executeScriptInternal(source);
     }
 
@@ -681,39 +695,14 @@ fn disposeContextCallback(engine_ctx: *EngineContext) void {
 /// 3. Stores the JSON string in a JSValue
 /// 4. Posts it through the message port to the main thread
 fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse {
-        return;
-    };
-
-    // Get the DedicatedWorker to send message
-    const dedicated_worker = self.dedicated_worker orelse {
-        std.log.warn("workerPostMessageCallback: no dedicated_worker set", .{});
-        return;
-    };
-
-    // Get isolate and context
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        std.log.warn("workerPostMessageCallback: no V8 context", .{});
-        return;
-    };
-
-    // Get the message argument (first argument)
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const argc = info.v8_FunctionCallbackInfo_Length();
-    if (argc < 1) {
-        // No arguments - send undefined
-        var js_value = workers.message_channel.JSValue{ .undefined = {} };
-        dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
-            std.log.warn("postMessageFromWorker failed: {}", .{err});
-        };
-        return;
-    }
 
+    if (argc < 1) return;
     const message_arg = info.get(0);
 
-    // Serialize to JSON using V8's JSON.stringify
-    // First, get the required buffer size (pass null buffer to get size)
+    // Get required size for JSON buffer
     var dummy_buf: [1]u8 = undefined;
     const required_size = v8.ffi.v8_JSON_Stringify_ToBuffer(
         v8_context,
@@ -721,62 +710,52 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         &dummy_buf,
         0,
     );
+    if (required_size <= 0) return;
 
-    if (required_size <= 0) {
-        // JSON serialization failed (e.g., circular reference, function)
-        // Fall back to undefined
-        std.log.warn("workerPostMessageCallback: JSON.stringify failed", .{});
-        var js_value = workers.message_channel.JSValue{ .undefined = {} };
-        dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
-            std.log.warn("postMessageFromWorker failed: {}", .{err});
-        };
-        return;
-    }
-
-    // Allocate buffer and serialize
-    var json_buffer: [8192]u8 = undefined;
-    const buffer_to_use = if (required_size <= 8192)
-        &json_buffer
-    else blk: {
-        // For very large messages, allocate on heap
-        // This is rare for testharness.js messages
-        break :blk self.allocator.alloc(u8, @intCast(required_size)) catch {
-            std.log.warn("workerPostMessageCallback: allocation failed", .{});
-            var js_value = workers.message_channel.JSValue{ .undefined = {} };
-            dedicated_worker.postMessageFromWorker(&js_value, null) catch {};
-            return;
-        };
-    };
-    defer if (required_size > 8192) {
-        self.allocator.free(buffer_to_use);
-    };
+    // Allocate buffer dynamically based on required size and stringify again
+    // The "complete" message from testharness.js can be quite large (9000+ bytes)
+    // containing all test results, so we need dynamic allocation.
+    const self = current_worker_context orelse return;
+    const json_buffer = self.allocator.alloc(u8, @intCast(required_size + 1)) catch return;
+    defer self.allocator.free(json_buffer);
 
     const written = v8.ffi.v8_JSON_Stringify_ToBuffer(
         v8_context,
         message_arg,
-        buffer_to_use.ptr,
-        @intCast(buffer_to_use.len),
+        json_buffer.ptr,
+        @intCast(json_buffer.len),
     );
+    if (written <= 0) return;
 
-    if (written <= 0) {
-        std.log.warn("workerPostMessageCallback: JSON.stringify write failed", .{});
-        var js_value = workers.message_channel.JSValue{ .undefined = {} };
-        dedicated_worker.postMessageFromWorker(&js_value, null) catch {};
+    const json_str = json_buffer[0..@intCast(written)];
+    const dedicated_worker = self.dedicated_worker orelse return;
+
+    // Check agent state
+    if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
         return;
     }
 
-    // Create JSValue with the JSON string
-    // We store the JSON in a string field - the receiver will parse it
-    const json_str = buffer_to_use[0..@intCast(written)];
-
-    // Create JSValue with string type, pointing directly to the stack buffer
-    // structuredSerialize will duplicate the string, so we don't need to allocate here
+    // Serialize the JSON string for posting
     var js_value = workers.message_channel.JSValue{ .string = json_str };
+    const serialized = workers.message_channel.serializeForPostMessage(
+        dedicated_worker.allocator,
+        &js_value,
+    ) catch return;
 
-    // Post the message - the receiver will deserialize the JSON
-    // Note: structuredSerialize duplicates the string, so we don't need to manage memory
-    dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
-        std.log.warn("postMessageFromWorker failed: {}", .{err});
+    // Create QueuedMessage
+    const msg = workers.message_channel.QueuedMessage.init(dedicated_worker.allocator, serialized, null) catch {
+        serialized.deinit();
+        dedicated_worker.allocator.destroy(serialized);
+        return;
+    };
+
+    // Append to pending_messages for deferred dispatch
+    workers.dedicated_worker.DedicatedWorker.appendPendingMessage(
+        dedicated_worker.port_pair.outside_port,
+        msg,
+    ) catch {
+        msg.deinit();
+        return;
     };
 }
 

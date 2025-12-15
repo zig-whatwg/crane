@@ -119,6 +119,10 @@ pub const InternalState = struct {
     onerror_handle: v8_engine.OptionalGlobalHandle = null,
     onmessageerror_handle: v8_engine.OptionalGlobalHandle = null,
 
+    /// Pending script source to execute (deferred from constructor)
+    /// This is set during constructor and executed via timer callback
+    pending_script: ?[]const u8 = null,
+
     pub fn deinit(self: *InternalState) void {
         // Dispose V8 Global handles to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
@@ -135,6 +139,10 @@ pub const InternalState = struct {
         self.allocator.free(self.script_url);
         if (self.name.len > 0) {
             self.allocator.free(self.name);
+        }
+        // Free pending script if not yet executed
+        if (self.pending_script) |script| {
+            self.allocator.free(script);
         }
     }
 };
@@ -174,6 +182,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called when the interface is constructed from JavaScript:
 /// new Worker(scriptURL, options)
 pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
+
+    // NOTE: We rely on the persistent HandleScope from BrowserContext.
+    // Creating a local HandleScope here and disposing it at the end of the constructor
+    // would leave V8 without a HandleScope for subsequent JavaScript execution.
+    // The persistent HandleScope in BrowserContext stays active for the entire test.
 
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
@@ -324,33 +337,35 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // Start the worker's message queue so messages can be dispatched
         dedicated_worker.startWorkerMessageQueue();
 
-        // Execute the fetched script
-        dedicated_worker.executeScript(fetched_script.source) catch |err| {
-            std.log.warn("Failed to execute worker script: {}", .{err});
-            // TODO: Fire error event on Worker object
+        // Store the fetched script source in internal state for deferred execution
+        // We need to copy the source because fetched_script will be freed
+        const script_source_copy = ctx.allocator.dupe(u8, fetched_script.source) catch |err| {
+            std.log.warn("Failed to copy worker script source: {}", .{err});
+            @constCast(&fetched_script).deinit();
+            return instance;
         };
-        // Note: executeScript now handles enter/exit of worker isolate internally
+        internal_state.pending_script = script_source_copy;
 
-        // Clean up fetched script now that we're done with it
+        // Clean up fetched script metadata (source is copied)
         @constCast(&fetched_script).deinit();
 
-        // Schedule message processing via setTimeout(0)
-        // Per HTML spec, messages should be delivered asynchronously via the event loop.
-        // If we dispatch here synchronously, the onmessage handler won't be set yet
-        // (the constructor hasn't returned and fetch_tests_from_worker hasn't run).
+        // CRITICAL: DO NOT execute worker script inside the constructor!
+        // Entering/exiting the worker isolate during constructor execution
+        // corrupts the main isolate's HandleScope state, causing V8 crashes.
         //
-        // Using setTimeout(0) schedules a macrotask that runs after:
-        // 1. The constructor returns
+        // Instead, schedule worker script execution via setTimeout(0).
+        // This runs after:
+        // 1. The constructor returns and V8 wraps the instance
         // 2. JavaScript continues (e.g., fetch_tests_from_worker sets up handlers)
         // 3. The current script finishes
         // 4. The event loop runs the scheduled task
         if (ctx.timer) |timer| {
-            _ = timer.setTimeout(0, processQueuedMessagesCallback, instance);
+            _ = timer.setTimeout(0, executeWorkerScriptCallback, instance);
         } else {
-            // No timer available - fall back to immediate processing
-            // This won't work correctly for WPT tests but allows basic functionality
-            std.log.warn("Worker: no timer available, processing messages immediately", .{});
-            dedicated_worker.processQueuedMessages();
+            // No timer available - fall back to synchronous execution
+            // WARNING: This may cause crashes due to HandleScope issues
+            std.log.warn("Worker: no timer available, executing script synchronously (may crash)", .{});
+            _ = executeWorkerScriptSync(internal_state);
         }
     } else |_| {
         // Timer backend initialization failed - worker remains in "not started" state
@@ -462,18 +477,110 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
     }
 }
 
-/// Timer callback for deferred message processing
+/// Timer callback for executing the worker script (deferred from constructor)
 ///
-/// This callback is scheduled via setTimeout(0) after the worker script executes.
-/// It runs after the current JavaScript (constructor call) returns, giving
-/// fetch_tests_from_worker() a chance to set up message handlers.
-fn processQueuedMessagesCallback(user_data: ?*anyopaque) void {
+/// CRITICAL: Worker script execution is deferred to this callback to avoid
+/// HandleScope corruption. Entering/exiting the worker isolate during the
+/// constructor disrupts the main isolate's HandleScope state.
+///
+/// This callback runs after:
+/// 1. The constructor returns and V8 has wrapped the instance
+/// 2. JavaScript continues (fetch_tests_from_worker sets up handlers)
+/// 3. The event loop runs this scheduled task
+fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
     const internal = getInternal(instance) orelse return;
 
-    if (internal.dedicated_worker) |dedicated_worker| {
-        dedicated_worker.processQueuedMessages();
+    // Execute worker script.
+    //
+    // CRITICAL: After this call, V8's HandleScope state is corrupted because
+    // executeWorkerScriptSync enters/exits the worker isolate. We MUST NOT
+    // do any V8 operations here.
+    //
+    // Timeline:
+    // 1. new Worker(...) - constructor returns, fetch_tests_from_worker sets up onmessage handler
+    // 2. setTimeout(0, executeWorkerScriptCallback) fires (we're here)
+    // 3. Worker script runs, posts messages (buffered in pending_messages)
+    // 4. Messages flushed to port queue (pure Zig, no V8)
+    // 5. Return to event loop - HandleScope state will be restored
+    // 6. Next event loop iteration: dispatch messages with clean HandleScope
+    const has_messages = executeWorkerScriptSync(internal);
+
+    // If there are messages to dispatch, schedule another timer callback.
+    // This ensures the event loop has a chance to restore HandleScope state
+    // before we try to dispatch messages.
+    //
+    // The timer callback runs in a clean V8 state (the event loop's runOnce
+    // handles HandleScope properly).
+    if (has_messages) {
+        if (internal.ctx) |ctx| {
+            if (ctx.timer) |timer| {
+                _ = timer.setTimeout(0, dispatchWorkerMessagesCallback, instance);
+            }
+        }
     }
+}
+
+/// Callback to dispatch worker messages in a clean V8 state.
+///
+/// This runs in a separate timer callback (not immediately after worker script
+/// execution) to ensure V8's HandleScope state is properly restored.
+///
+/// The event loop's timer handling runs after V8 microtask checkpoints,
+/// so we're guaranteed to have a valid HandleScope context here.
+fn dispatchWorkerMessagesCallback(user_data: ?*anyopaque) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
+    const internal = getInternal(instance) orelse return;
+    const dedicated_worker = internal.dedicated_worker orelse return;
+
+    // Now dispatch messages - we're in a clean V8 state with proper HandleScope
+    dedicated_worker.processQueuedMessages();
+}
+
+/// Execute worker script synchronously (internal helper)
+/// Called from either executeWorkerScriptCallback or synchronous fallback
+///
+/// CRITICAL DESIGN NOTE:
+/// V8's HandleScope state is per-isolate and becomes corrupted when we switch
+/// between isolates on the same thread. The worker's executeScript() enters the
+/// worker isolate, which invalidates any HandleScope state in the main isolate.
+///
+/// Therefore, we MUST NOT do any V8 operations (like message dispatch) immediately
+/// after worker script execution. Instead, we queue a task to dispatch messages
+/// in the next event loop iteration, where the HandleScope state is clean.
+///
+/// Returns: true if messages were queued for dispatch, false otherwise
+fn executeWorkerScriptSync(internal: *InternalState) bool {
+    const dedicated_worker = internal.dedicated_worker orelse return false;
+    const script = internal.pending_script orelse return false;
+
+    // Execute the script in worker context
+    // The worker's executeScript() enters/exits its own isolate and creates its own HandleScope.
+    // After this returns, V8's HandleScope state for the main isolate is corrupted.
+    dedicated_worker.executeScript(script) catch |err| {
+        std.log.warn("Failed to execute worker script: {}", .{err});
+    };
+
+    // Flush pending messages to port queues
+    // This is a pure Zig operation - NO V8 operations!
+    DedicatedWorker.flushPendingMessages();
+
+    // Free the script source
+    internal.allocator.free(script);
+    internal.pending_script = null;
+
+    // Check if there are messages to dispatch
+    const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
+
+    // DO NOT dispatch messages here!
+    // The V8 HandleScope state is corrupted after worker isolate enter/exit.
+    // Messages will be dispatched by the event loop in the next iteration,
+    // where the HandleScope is properly managed.
+    //
+    // The event loop will call processQueuedMessages() in its runOnce() or via
+    // a queued task, both of which have clean HandleScope state.
+
+    return queue_len > 0;
 }
 
 /// Callback for messages received from the worker via the outside port

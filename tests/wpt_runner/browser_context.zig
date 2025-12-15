@@ -87,6 +87,10 @@ pub const BrowserContext = struct {
     // V8 handles
     isolate: ?*v8.ffi.Isolate = null,
     context: ?*v8.ffi.Context = null,
+    // Persistent HandleScope that stays active during test execution
+    // This is needed because Worker isolate enter/exit can disrupt the main isolate's
+    // HandleScope stack, causing "Cannot create a handle without a HandleScope" errors
+    persistent_handle_scope: ?*v8.ffi.HandleScope = null,
 
     // Singleton instances that need cleanup
     window_instance: ?*runtime.Instance = null,
@@ -168,6 +172,13 @@ pub const BrowserContext = struct {
         // trying to use stale template references.
         v8.template_registry.clear();
 
+        // Dispose persistent HandleScope BEFORE exiting context
+        // The HandleScope must be disposed while we're still in the isolate/context
+        if (self.persistent_handle_scope) |hs| {
+            v8.ffi.v8_HandleScope_Dispose(hs);
+            self.persistent_handle_scope = null;
+        }
+
         // Exit and dispose V8 context
         if (self.context) |ctx| {
             v8.ffi.v8_Context_Exit(ctx);
@@ -220,6 +231,20 @@ pub const BrowserContext = struct {
         self.isolate = isolate;
 
         v8.ffi.v8_Isolate_Enter(isolate);
+
+        // CRITICAL: Create a persistent HandleScope that stays active for the entire test.
+        // V8 requires any API calls that create Local handles to be within a HandleScope.
+        // This HandleScope must remain active during script execution, timer callbacks,
+        // and especially during Worker isolate enter/exit cycles.
+        //
+        // Previous approach: HandleScope created and disposed within initialize() caused
+        // "Cannot create a handle without a HandleScope" crashes when Worker constructors
+        // entered/exited worker isolates. The main isolate's HandleScope stack was disrupted.
+        //
+        // New approach: Keep the HandleScope alive for the entire BrowserContext lifetime.
+        // It will be disposed in deinit().
+        const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
+        self.persistent_handle_scope = handle_scope;
 
         // Create V8 event loop with timer support (uses libuv under the hood)
         const event_loop_ptr = try self.allocator.create(V8EventLoop);
@@ -1612,41 +1637,60 @@ pub const BrowserContext = struct {
     /// The `done()` function is exposed globally by testharness.js and can
     /// be called to signal that all tests have been defined.
     pub fn triggerTestHarnessCompletion(self: *BrowserContext) !void {
-        // Trigger testharness.js completion.
+        // For worker tests using fetch_tests_from_worker(), we must NOT call done()
+        // and must NOT set all_loaded = true prematurely!
         //
-        // testharness.js's WindowTestEnvironment waits for the window 'load' event
-        // before considering tests complete. We simulate this by:
-        // 1. Setting test_environment.all_loaded = true (simulates window load)
-        // 2. Calling done() to signal we're done defining tests
-        // 3. Adding a fallback timeout to force completion if needed
+        // Setting all_loaded = true can trigger testharness.js to think tests are
+        // complete (since no tests are defined in the main thread for worker tests).
+        // This causes immediate completion before worker results arrive.
         //
-        // For sync tests, they've already run during HTML parsing, so we just
-        // need to trigger the completion callbacks.
-        const completion_script =
-            \\(function() {
-            \\  // Simulate window load event by setting all_loaded
-            \\  if (typeof test_environment !== 'undefined' && test_environment) {
-            \\    test_environment.all_loaded = true;
-            \\  }
-            \\  
-            \\  // Use setTimeout to ensure any sync tests have completed
-            \\  setTimeout(function() {
-            \\    // Try to trigger testharness.js completion
-            \\    if (typeof done === 'function') {
-            \\      try { done(); } catch(e) {}
-            \\    }
-            \\    
-            \\    // Fallback: force completion after brief delay if not already done
-            \\    // This handles edge cases where testharness.js doesn't call our callback
-            \\    setTimeout(function() {
-            \\      if (typeof __wpt_report_completion === 'function') {
-            \\        __wpt_report_completion(0, null);
-            \\      }
-            \\    }, 50);
-            \\  }, 0);
-            \\})();
-        ;
-        try self.executeScript(completion_script);
+        // For window tests, we need to simulate the window load event and call done()
+        // to trigger testharness.js completion.
+        if (self.context_type == .worker) {
+            // Worker tests: do NOTHING here
+            // The worker's postMessage() will eventually call the completion callback
+            // via fetch_tests_from_worker()'s onmessage handler.
+            //
+            // testharness.js's fetch_tests_from_worker() function handles completion
+            // internally - it sets up a message handler that calls done() when the
+            // worker sends the "complete" message.
+        } else {
+            // Window tests: trigger completion directly
+            //
+            // testharness.js's WindowTestEnvironment waits for the window 'load' event
+            // before considering tests complete. We simulate this by:
+            // 1. Setting test_environment.all_loaded = true (simulates window load)
+            // 2. Calling done() to signal we're done defining tests
+            // 3. Adding a fallback timeout to force completion if needed
+            //
+            // For sync tests, they've already run during HTML parsing, so we just
+            // need to trigger the completion callbacks.
+            const completion_script =
+                \\(function() {
+                \\  // Simulate window load event by setting all_loaded
+                \\  if (typeof test_environment !== 'undefined' && test_environment) {
+                \\    test_environment.all_loaded = true;
+                \\  }
+                \\  
+                \\  // Use setTimeout to ensure any sync tests have completed
+                \\  setTimeout(function() {
+                \\    // Try to trigger testharness.js completion
+                \\    if (typeof done === 'function') {
+                \\      try { done(); } catch(e) {}
+                \\    }
+                \\    
+                \\    // Fallback: force completion after brief delay if not already done
+                \\    // This handles edge cases where testharness.js doesn't call our callback
+                \\    setTimeout(function() {
+                \\      if (typeof __wpt_report_completion === 'function') {
+                \\        __wpt_report_completion(0, null);
+                \\      }
+                \\    }, 50);
+                \\  }, 0);
+                \\})();
+            ;
+            try self.executeScript(completion_script);
+        }
     }
 
     /// Run event loop until completion or timeout
@@ -1659,10 +1703,12 @@ pub const BrowserContext = struct {
         const event_loop = self.v8_event_loop orelse return error.NotInitialized;
 
         const start_time = std.time.milliTimestamp();
+        var iteration: u32 = 0;
 
         while (true) {
             const now = std.time.milliTimestamp();
             const elapsed: u64 = @intCast(now - start_time);
+            iteration += 1;
 
             // 1. Run one iteration of the V8 event loop
             // This processes ready timers (via libuv), runs tasks, and runs microtasks

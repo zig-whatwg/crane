@@ -200,6 +200,11 @@ pub const WorkerPort = struct {
             .on_message = null,
             .on_message_context = null,
         };
+
+        // DEBUG: Pre-allocate message queue capacity to avoid reallocation during append
+        // This tests if the crash is caused by ArrayList reallocation
+        try port.message_queue.ensureTotalCapacity(allocator, 16);
+
         return port;
     }
 
