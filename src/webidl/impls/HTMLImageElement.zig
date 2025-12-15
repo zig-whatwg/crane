@@ -1,4 +1,22 @@
 //! Implementation for HTMLImageElement interface
+//!
+//! Production-quality image loading per HTML Standard §4.8.3 "The img element"
+//!
+//! ## Event Timing Per Spec
+//!
+//! When `src` is set, the spec requires:
+//! 1. **Queue a microtask** to start the "update the image data" algorithm
+//!    - This allows `img.onload = fn` to be set after `img.src = url`
+//! 2. **Fire events via task queue** (macrotask, not synchronously)
+//!    - Events must not fire during script execution that set src
+//!
+//! ## Cancellation
+//!
+//! Each `set_src` call increments a generation counter. If src is changed
+//! again before the load completes, the old load is cancelled and its
+//! events are not fired.
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -14,17 +32,96 @@ const Element = interfaces.Element;
 const EventTarget = interfaces.EventTarget;
 const Event = interfaces.Event;
 
+// Event loop for microtask/task queuing
+const event_loop_mod = @import("event_loop");
+
 pub const State = HTMLImageElement.State;
 
 pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for HTMLImageElement implementation
+///
+/// Contains private data for async image loading:
+/// - load_generation: Counter for cancellation (newer loads cancel older ones)
+/// - current_src: The URL currently being loaded
+/// - complete: Whether loading has completed
+pub const InternalState = struct {
+    /// Generation counter for load cancellation
+    /// Each set_src call increments this; older loads check and abort if superseded
+    load_generation: u64 = 0,
+
+    /// Whether the image has finished loading (success or error)
+    complete: bool = true,
+
+    /// Natural dimensions (0 if not yet loaded or error)
+    natural_width: u32 = 0,
+    natural_height: u32 = 0,
+
+    /// The allocator used for this internal state
+    allocator: std.mem.Allocator = undefined,
+};
+
+/// Context for microtask callback that initiates image loading
+/// This is allocated on the heap and freed after the microtask executes
+const LoadMicrotaskContext = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    url: []const u8,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *LoadMicrotaskContext) void {
+        self.allocator.free(self.url);
+        self.allocator.destroy(self);
+    }
+};
+
+/// Event type enum for image loading
+const ImageEventType = enum { load, @"error" };
+
+/// Context for task callback that fires load/error event
+/// This is allocated on the heap and freed after the task executes
+const FireEventTaskContext = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    event_type: ImageEventType,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *FireEventTaskContext) void {
+        self.allocator.destroy(self);
+    }
+};
+
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return Registry.get(instance);
+}
+
+fn getOrCreateInternal(instance: *runtime.Instance) !*InternalState {
+    if (Registry.get(instance)) |internal| {
+        return internal;
+    }
+
+    // Create new internal state using the runtime's arena allocator
+    // This ensures proper cleanup during context shutdown
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = .{
+        .allocator = instance.ctx.allocator,
+    };
+    try Registry.set(instance, internal);
+    return internal;
+}
+
+fn removeInternal(instance: *runtime.Instance) void {
+    // Note: The internal state is allocated in the arena allocator,
+    // so we don't need to explicitly free it. Just remove from registry.
+    Registry.remove(instance);
+}
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -37,16 +134,22 @@ pub fn init(
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    // HTMLImageElement has no additional initialization
+    errdefer HTMLElementImpl.deinit(instance);
+
+    // Initialize internal state for image loading
+    _ = try getOrCreateInternal(instance);
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // HTMLImageElement has no additional cleanup
-    // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    // Clean up internal state
+    removeInternal(instance);
+
+    // Chain to parent class through interface (per Golden Rule #14)
+    const HTMLElement = interfaces.HTMLElement;
+    HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -122,21 +225,39 @@ pub fn get_height(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// Getter for naturalWidth
+/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-naturalwidth
 pub fn get_naturalWidth(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    if (getInternal(instance)) |internal| {
+        return internal.natural_width;
+    }
+    return 0;
 }
 
 /// Getter for naturalHeight
+/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-naturalheight
 pub fn get_naturalHeight(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    if (getInternal(instance)) |internal| {
+        return internal.natural_height;
+    }
+    return 0;
 }
 
 /// Getter for complete
+/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-complete
+/// Returns true if the image has finished loading (success or error) or has no src
 pub fn get_complete(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    // Per spec: complete is true if:
+    // 1. src attribute is not set (or empty)
+    // 2. The image has finished loading (success or error)
+    const src = try get_src(instance);
+    if (src.len == 0) {
+        return true; // No src attribute
+    }
+
+    if (getInternal(instance)) |internal| {
+        return internal.complete;
+    }
+    return true; // No internal state = complete
 }
 
 /// Getter for currentSrc
@@ -242,17 +363,20 @@ pub fn set_alt(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
     return error.NotImplemented;
 }
 
-/// Setter for src - sets the "src" content attribute and fetches the image
+/// Setter for src - sets the "src" content attribute and initiates async image loading
 /// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src
 ///
-/// When src is set:
-/// 1. Store the src attribute on the element
-/// 2. Initiate a fetch for the image resource
-/// 3. On success (HTTP 200-299): fire 'load' event
-/// 4. On error: fire 'error' event
+/// Per HTML spec §4.8.3, when src is set:
+/// 1. Set the src content attribute on the element
+/// 2. Queue a microtask to run the "update the image data" algorithm
+///    - This allows `img.onload = fn` to be set AFTER `img.src = url`
+/// 3. The microtask fetches the image and queues a task to fire events
+///    - Events fire asynchronously via task queue (macrotask), not synchronously
+/// 4. Generation counter enables cancellation if src changes before load completes
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    const allocator = instance.ctx.allocator;
+
     // Step 1: Set the src attribute using Element.setAttribute
-    // USVString is []const u8, need to convert to DOMString
     const dom_value = runtime.DOMString.initInterned(value);
     try Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), dom_value);
 
@@ -264,28 +388,165 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
         return;
     }
 
-    // Step 3: Initiate the fetch
+    // Step 3: Increment generation counter to cancel any pending loads
+    const internal = try getOrCreateInternal(instance);
+    internal.load_generation += 1;
+    internal.complete = false; // Mark as loading
+    const current_generation = internal.load_generation;
+
+    // Step 4: Queue a microtask to start the "update the image data" algorithm
+    // This allows img.onload to be set after img.src (per spec)
+    const event_loop = instance.ctx.getOptionalEventLoop() orelse {
+        // No event loop - fall back to synchronous loading (for tests without event loop)
+        performSynchronousLoad(instance, url_str, current_generation);
+        return;
+    };
+
+    // Allocate context for the microtask
+    const url_copy = try allocator.dupe(u8, url_str);
+    errdefer allocator.free(url_copy);
+
+    const ctx = try allocator.create(LoadMicrotaskContext);
+    ctx.* = .{
+        .instance = instance,
+        .generation = current_generation,
+        .url = url_copy,
+        .allocator = allocator,
+    };
+
+    // Queue microtask
+    event_loop.queueMicrotask(.{
+        .callback = &loadMicrotaskCallback,
+        .context = ctx,
+    });
+}
+
+/// Fallback synchronous load for environments without event loop (tests)
+fn performSynchronousLoad(instance: *runtime.Instance, url_str: []const u8, generation: u64) void {
     const allocator = instance.ctx.allocator;
+
+    // Check if this load was superseded
+    const internal = getInternal(instance) orelse return;
+    if (internal.load_generation != generation) {
+        return; // Cancelled by a newer load
+    }
+
+    // Perform fetch
     var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
     defer fetch_result.deinit();
 
-    // Step 4: Create and dispatch the appropriate event based on the result
+    // Check generation again after fetch (may have been cancelled during fetch)
+    if (internal.load_generation != generation) {
+        return;
+    }
+
+    // Mark as complete
+    internal.complete = true;
+
+    // Fire event synchronously (fallback behavior)
     switch (fetch_result) {
         .response => |response| {
-            // Check if the response indicates success (HTTP 200-299)
             if (response.ok()) {
-                // Fire 'load' event
                 fireEventOnElement(instance, "load") catch {};
             } else {
-                // HTTP error status - fire 'error' event
                 fireEventOnElement(instance, "error") catch {};
             }
         },
         .err => {
-            // Network error - fire 'error' event
             fireEventOnElement(instance, "error") catch {};
         },
     }
+}
+
+/// Microtask callback - runs the "update the image data" algorithm
+/// This executes after the current script completes but before the next task
+fn loadMicrotaskCallback(data: ?*anyopaque) void {
+    const ctx: *LoadMicrotaskContext = @ptrCast(@alignCast(data.?));
+    defer ctx.deinit();
+
+    const instance = ctx.instance;
+    const generation = ctx.generation;
+    const url_str = ctx.url;
+    const allocator = ctx.allocator;
+
+    // Check if this load was superseded by a newer set_src call
+    const internal = getInternal(instance) orelse return;
+    if (internal.load_generation != generation) {
+        return; // Cancelled
+    }
+
+    // Perform the fetch
+    var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
+    defer fetch_result.deinit();
+
+    // Check generation again after fetch
+    if (internal.load_generation != generation) {
+        return; // Cancelled during fetch
+    }
+
+    // Mark as complete
+    internal.complete = true;
+
+    // Determine event type based on fetch result
+    const event_type: ImageEventType = switch (fetch_result) {
+        .response => |response| if (response.ok()) .load else .@"error",
+        .err => .@"error",
+    };
+
+    // Queue a task to fire the event (per spec, events fire via task queue)
+    // Use setTimeout(0) for task queue semantics
+    const timer = instance.ctx.getOptionalTimer() orelse {
+        // No timer support - fire event synchronously as fallback
+        const event_name = switch (event_type) {
+            .load => "load",
+            .@"error" => "error",
+        };
+        fireEventOnElement(instance, event_name) catch {};
+        return;
+    };
+
+    // Allocate task context
+    const task_ctx = allocator.create(FireEventTaskContext) catch {
+        // OOM - fire synchronously as fallback
+        const event_name = switch (event_type) {
+            .load => "load",
+            .@"error" => "error",
+        };
+        fireEventOnElement(instance, event_name) catch {};
+        return;
+    };
+    task_ctx.* = .{
+        .instance = instance,
+        .generation = generation,
+        .event_type = event_type,
+        .allocator = allocator,
+    };
+
+    // Schedule task via setTimeout(0)
+    _ = timer.setTimeout(0, &fireEventTaskCallback, task_ctx);
+}
+
+/// Task callback - fires load/error event on the element
+/// This runs as a macrotask, after microtasks complete
+fn fireEventTaskCallback(data: ?*anyopaque) void {
+    const ctx: *FireEventTaskContext = @ptrCast(@alignCast(data.?));
+    defer ctx.deinit();
+
+    const instance = ctx.instance;
+    const generation = ctx.generation;
+
+    // Final generation check - don't fire if superseded
+    const internal = getInternal(instance) orelse return;
+    if (internal.load_generation != generation) {
+        return; // Cancelled
+    }
+
+    // Fire the event
+    const event_name = switch (ctx.event_type) {
+        .load => "load",
+        .@"error" => "error",
+    };
+    fireEventOnElement(instance, event_name) catch {};
 }
 
 /// Helper function to create and dispatch an event on an element
@@ -460,40 +721,14 @@ pub fn call_decode(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// For all other attributes, delegates to Element.call_setAttribute.
 /// Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
 pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
-    // Delegate to parent (Element) for the actual attribute storage
-    try Element.call_setAttribute(instance, qualifiedName, value);
-
-    // Check if this is the "src" attribute - if so, trigger image loading
+    // Check if this is the "src" attribute
     const attr_name = qualifiedName.asSlice();
     if (std.mem.eql(u8, attr_name, "src")) {
-        const url_str = value.asSlice();
-
-        // Skip empty URLs
-        if (url_str.len == 0) {
-            return;
-        }
-
-        // Initiate the fetch for the image
-        const allocator = instance.ctx.allocator;
-        var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
-        defer fetch_result.deinit();
-
-        // Create and dispatch the appropriate event based on the result
-        switch (fetch_result) {
-            .response => |response| {
-                // Check if the response indicates success (HTTP 200-299)
-                if (response.ok()) {
-                    // Fire 'load' event
-                    fireEventOnElement(instance, "load") catch {};
-                } else {
-                    // HTTP error status - fire 'error' event
-                    fireEventOnElement(instance, "error") catch {};
-                }
-            },
-            .err => {
-                // Network error - fire 'error' event
-                fireEventOnElement(instance, "error") catch {};
-            },
-        }
+        // Delegate to set_src which handles the full async loading flow
+        // set_src will call Element.call_setAttribute internally
+        try set_src(instance, value.asSlice());
+    } else {
+        // For all other attributes, just delegate to Element
+        try Element.call_setAttribute(instance, qualifiedName, value);
     }
 }
