@@ -7,16 +7,16 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765802045768,
-  "time_end": 1765802045971,
+  "time_start": 1765802268918,
+  "time_end": 1765802269090,
   "results": [
     {
-      "test": "infrastructure/testdriver/get_named_cookie.sub.html",
+      "test": "infrastructure/testdriver/actions/elementPosition.html",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Get Named HTTP cookie", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: no such cookie\"", "expected": "FAIL"}
+        {"name": "TestDriver actions: element position", "status": "FAIL", "message": "assert_array_equals: expected property 0 to be 50 but got undefined (expected array [50, 25] got [undefined, undefined])", "expected": "FAIL"}
       ]
     }
   ]
