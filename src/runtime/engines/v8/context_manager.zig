@@ -177,6 +177,23 @@ pub fn deinit() void {
                     ctx_data.getAllocator().destroy(ev_loop);
                 }
 
+                // Clean up Window instance and its Document (same as destroyChildContext)
+                // This is needed for the main context too, not just iframe contexts
+                if (entry.window_instance) |window| {
+                    const interfaces = @import("interfaces");
+                    const WindowImpl = @import("impls").Window;
+
+                    // Clean up Document instance first (owns the entire DOM tree)
+                    if (WindowImpl.getInternal(window)) |internal| {
+                        if (internal.document) |doc| {
+                            interfaces.Document.deinit(doc);
+                            internal.document = null;
+                        }
+                    }
+
+                    interfaces.Window.deinit(window);
+                }
+
                 // Clean up realm
                 if (entry.realm) |realm| {
                     realm.deinit();
