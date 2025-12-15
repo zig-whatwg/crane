@@ -275,6 +275,7 @@ pub const WorkerV8Context = struct {
     /// - URL, URLSearchParams (for URL manipulation)
     /// - Event, EventTarget (for event handling)
     /// - DOMException (for error handling)
+    /// - WebSocket, CloseEvent, MessageEvent (for WebSocket API - Exposed in Worker per spec)
     ///
     /// Full interface registration (initializeBindings) can't be used directly
     /// because it requires the main isolate's context manager state.
@@ -302,6 +303,21 @@ pub const WorkerV8Context = struct {
         // Register DOMException interface
         const DOMException = V8Interface(interfaces.DOMException);
         DOMException.registerGlobal(self.isolate, self.context, "DOMException");
+
+        // Register WebSocket interface (Exposed in Worker per WHATWG WebSocket spec)
+        // WebIDL: [Exposed=(Window,Worker)] interface WebSocket : EventTarget { ... }
+        const WebSocket = V8Interface(interfaces.WebSocket);
+        WebSocket.registerGlobal(self.isolate, self.context, "WebSocket");
+
+        // Register CloseEvent interface (needed for WebSocket close events)
+        // WebIDL: [Exposed=(Window,Worker)] interface CloseEvent : Event { ... }
+        const CloseEvent = V8Interface(interfaces.CloseEvent);
+        CloseEvent.registerGlobal(self.isolate, self.context, "CloseEvent");
+
+        // Register MessageEvent interface (needed for WebSocket message events)
+        // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessageEvent : Event { ... }
+        const MessageEvent = V8Interface(interfaces.MessageEvent);
+        MessageEvent.registerGlobal(self.isolate, self.context, "MessageEvent");
     }
 
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
