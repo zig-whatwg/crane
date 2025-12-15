@@ -40,6 +40,19 @@ pub const ImplError = error{
 /// undefined/empty results from operations that return *const anyopaque.
 var undefined_sentinel: u8 = 0;
 
+// Debug counters for memory leak investigation
+var debug_text_nodes_created: usize = 0;
+var debug_text_nodes_destroyed: usize = 0;
+var debug_text_from_set_textContent: usize = 0;
+
+pub fn getDebugCounters() struct { created: usize, destroyed: usize, from_set_textContent: usize } {
+    return .{ .created = debug_text_nodes_created, .destroyed = debug_text_nodes_destroyed, .from_set_textContent = debug_text_from_set_textContent };
+}
+
+pub fn markCreatedBySetTextContent() void {
+    debug_text_from_set_textContent += 1;
+}
+
 /// Internal state for Text implementation
 /// Text primarily uses CharacterData's data storage via inheritance
 /// Additional Text-specific state can be added here
@@ -107,6 +120,7 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    debug_text_nodes_destroyed += 1;
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
@@ -120,6 +134,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// DOM §4.12 - Text(data)
 /// Creates a new Text node with the given data
 pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
+    debug_text_nodes_created += 1;
     const instance = try init(ctx.allocator, State, &Text.vtable, ctx);
     errdefer deinit(instance);
 
@@ -309,5 +324,7 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 
 /// Clean up ALL remaining internal states.
 pub fn cleanupAllRemainingInternal() void {
+    const count = Registry.count();
+    std.debug.print("[DEBUG] Text.cleanupAllRemainingInternal: {d} entries in registry\n", .{count});
     Registry.deinitAllAndClear();
 }

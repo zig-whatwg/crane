@@ -2735,6 +2735,9 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 ReturnType;
 
+            // Capture allocator before getter call (may be invalidated by V8 operations)
+            const cleanup_allocator = instance.ctx.allocator;
+
             // Call getter (handle error union)
             const result: PayloadType = if (return_type_info == .error_union)
                 zig_getter(instance) catch |err| {
@@ -2743,6 +2746,33 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             else
                 zig_getter(instance);
+
+            // String types need cleanup after V8 conversion
+            // (same pattern as regular getter callback)
+            const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
+
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+
+            defer if (needs_cleanup) {
+                // Re-validate allocator before cleanup - it could have been invalidated
+                const cleanup_vtable_int = @intFromPtr(cleanup_allocator.vtable);
+                const is_poisoned = (cleanup_vtable_int == poison_pattern_aa or
+                    cleanup_vtable_int == poison_pattern_dead or
+                    (cleanup_vtable_int & 0xFFFF000000000000) == 0xaaaa000000000000 or
+                    cleanup_vtable_int == 0);
+                if (!is_poisoned) {
+                    if (PayloadType == runtime.DOMString) {
+                        var mutable = result;
+                        mutable.deinit(cleanup_allocator);
+                    } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
+                        if (result.len > 0) {
+                            cleanup_allocator.free(result);
+                        }
+                    }
+                }
+                // else: Allocator was freed during V8 operations - skip cleanup
+            };
 
             // Convert to V8 value
             const v8_value = convertToV8Value(PayloadType, result, isolate);
@@ -4567,7 +4597,7 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
-        /// Free converted value if it needs cleanup (e.g., DOMString, USVString, []const u8)
+        /// Free converted value if it needs cleanup (e.g., DOMString, USVString, []const u8, JSValue)
         fn freeConvertedValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
             if (T == runtime.DOMString) {
                 // DOMString owns its buffer - deinit it
@@ -4581,6 +4611,24 @@ pub fn V8Interface(comptime Interface: type) type {
                     // The slice was created by DOMString.asSlice() which returns data[0..len]
                     // We need to free the original allocation
                     allocator.free(value);
+                }
+            } else if (T == runtime.JSValue) {
+                // JSValue may contain an owned string that needs cleanup
+                // This is used by [Replaceable] setters and other 'any' type parameters
+                switch (value) {
+                    .string => |str| {
+                        if (str.owned and str.data.len > 0) {
+                            allocator.free(str.data);
+                        }
+                    },
+                    .handle => |h| {
+                        // Engine handles may need disposal
+                        // Note: We can't dispose here as we don't have the isolate
+                        // and the handle may still be in use. The handle will be
+                        // cleaned up when the context is destroyed.
+                        _ = h;
+                    },
+                    else => {}, // Other variants don't need cleanup
                 }
             }
             // Other types (primitives, optionals with null, etc.) don't need cleanup

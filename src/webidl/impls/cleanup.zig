@@ -9,6 +9,8 @@
 //! This is especially important for WPT tests where testharness.js often modifies
 //! the DOM by removing script elements and other nodes.
 
+const std = @import("std");
+
 // Import impl modules that have registries we need to clean up
 // Note: We import directly from the same directory to avoid cross-module issues
 const NodeImpl = @import("Node.zig");
@@ -30,6 +32,28 @@ const DocumentFragmentImpl = @import("DocumentFragment.zig");
 /// but never explicitly deinited. Without this cleanup, their internal state
 /// (strings, attributes, etc.) would leak.
 pub fn cleanupAllDomRegistries() void {
+    // Debug: print counters before cleanup
+    const text_counters = TextImpl.getDebugCounters();
+    const element_deinit_count = ElementImpl.getDebugDeinitCount();
+    const node_deinit_counts = NodeImpl.getDebugNodeDeinitCounts();
+    std.debug.print("\n[DEBUG] Text nodes: created={d}, destroyed={d}, leaked={d}, from_set_textContent={d}\n", .{
+        text_counters.created,
+        text_counters.destroyed,
+        text_counters.created -| text_counters.destroyed,
+        text_counters.from_set_textContent,
+    });
+    const nodebase_counts = NodeImpl.getDebugNodeBaseCounts();
+    std.debug.print("[DEBUG] Element.deinit={d}, Node.deinit calls={d} skipped={d}\n", .{
+        element_deinit_count,
+        node_deinit_counts.calls,
+        node_deinit_counts.skipped,
+    });
+    std.debug.print("[DEBUG] NodeBase: allocs={d}, frees={d}, leaked={d}\n", .{
+        nodebase_counts.allocs,
+        nodebase_counts.frees,
+        nodebase_counts.allocs -| nodebase_counts.frees,
+    });
+
     // Clean up specific element types first (most derived to least)
     HTMLScriptElementImpl.cleanupAllRemainingInternal();
     HTMLElementImpl.cleanupAllRemainingInternal();

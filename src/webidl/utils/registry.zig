@@ -140,6 +140,36 @@ pub fn InstanceRegistry(comptime T: type) type {
                 m.clearRetainingCapacity();
             }
         }
+
+        /// Entry type for iteration - contains both instance pointer and internal state
+        pub const Entry = struct {
+            instance: *anyopaque,
+            internal: *T,
+        };
+
+        /// Iterator for the registry entries
+        pub const Iterator = struct {
+            inner: std.AutoHashMap(usize, *T).Iterator,
+
+            pub fn next(self: *Iterator) ?Entry {
+                if (self.inner.next()) |kv| {
+                    return Entry{
+                        .instance = @ptrFromInt(kv.key_ptr.*),
+                        .internal = kv.value_ptr.*,
+                    };
+                }
+                return null;
+            }
+        };
+
+        /// Get an iterator over all registry entries.
+        /// This allows custom cleanup logic that needs access to both instance and internal state.
+        pub fn iterator() ?Iterator {
+            if (map) |*m| {
+                return Iterator{ .inner = m.iterator() };
+            }
+            return null;
+        }
     };
 }
 
