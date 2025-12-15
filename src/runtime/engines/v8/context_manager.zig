@@ -162,9 +162,15 @@ pub fn deinit() void {
             if (entry.owns_context) {
                 var ctx_data = entry.runtime_ctx;
 
-                // Clean up V8 wrapper cache
-                // Note: During teardown, wrapper_cache.deinit() skips onObjectFreed
-                // to avoid use-after-free issues with cross-context references.
+                // Clean up V8 wrapper cache WITHOUT callbacks during teardown
+                // Using deinitWithoutCallbacks because:
+                // 1. DOM tree nodes are cleaned up via Document.deinit below
+                // 2. Calling deinit() on DOM nodes here would cause double-free
+                // 3. Cross-context references (iframes) may cause use-after-free
+                //
+                // TODO: Non-DOM objects (AbortController, DOMException, etc.) leak
+                // because they're not in the DOM tree. Need selective cleanup that
+                // only deinits non-DOM objects, or use V8 weak callbacks properly.
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
                     cache_ptr.deinitWithoutCallbacks();
