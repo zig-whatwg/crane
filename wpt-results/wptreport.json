@@ -7,16 +7,22 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765801619275,
-  "time_end": 1765801619379,
+  "time_start": 1765801705993,
+  "time_end": 1765801706205,
   "results": [
     {
-      "test": "infrastructure/assumptions/document-fonts-ready.html",
+      "test": "infrastructure/testdriver/bless.html",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "document.fonts.ready resolves after layout depending on loaded fonts", "status": "FAIL", "message": "assert_equals: span is 100px wide expected 100 but got 0", "expected": "FAIL"}
+        {"name": "functions in the absence of a `body` element", "status": "PASS", "message": null},
+        {"name": "user activation", "status": "FAIL", "message": "assert_false: expected false got true", "expected": "FAIL"},
+        {"name": "no action function provided", "status": "PASS", "message": null},
+        {"name": "synchronous return value", "status": "PASS", "message": null},
+        {"name": "synchronous error", "status": "PASS", "message": null},
+        {"name": "asynchronous return value", "status": "PASS", "message": null},
+        {"name": "asynchronous error", "status": "PASS", "message": null}
       ]
     }
   ]
