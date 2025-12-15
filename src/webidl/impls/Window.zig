@@ -28,6 +28,10 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Window = interfaces.Window;
 
+// Import parent class impl for initialization chain
+// Window inherits from EventTarget per WebIDL
+const EventTargetImpl = @import("EventTarget.zig");
+
 // HTML Window infrastructure modules (html_core - interface-free)
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
@@ -255,16 +259,19 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 
 /// Initialize Window instance
 /// Creates the instance with a new top-level browsing context.
+/// Chains to EventTarget.init() to ensure EventTarget internal state is registered.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (EventTarget) to initialize EventTarget internal state
+    // This ensures window.addEventListener() works correctly
+    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    errdefer EventTargetImpl.deinit(instance);
 
-    // Initialize internal state
+    // Initialize Window's own internal state
     const state = instance.getState(StateType);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
@@ -284,11 +291,15 @@ pub fn deinit(instance: *runtime.Instance) void {
     const context_manager = @import("v8").context_manager;
     context_manager.markInstanceCleanedUp(instance);
 
+    // Clean up Window's own internal state
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+
+    // Chain to parent class (EventTarget) to clean up EventTarget internal state
+    EventTargetImpl.deinit(instance);
+    // NOTE: EventTarget.deinit() does NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 // ============================================================================
