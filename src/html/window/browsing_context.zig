@@ -395,6 +395,25 @@ pub const BrowsingContext = struct {
 
     /// Deinitialize and free resources
     pub fn deinit(self: *BrowsingContext) void {
+        // NOTE: We intentionally do NOT remove ourselves from parent's children list here.
+        //
+        // Reasoning:
+        // 1. During context teardown, the parent may already be freed or in the process
+        //    of being torn down. Accessing parent_ctx.children would be use-after-free.
+        // 2. The children list is just a view for frames[index] lookup during runtime.
+        //    During teardown, no one should be accessing frames[index].
+        // 3. Each BrowsingContext is owned by its respective Window/IFrameIntegration,
+        //    and they handle their own cleanup independently.
+        //
+        // The parent's children list may briefly contain dangling pointers during teardown,
+        // but this is safe because:
+        // - The parent deinits its children list (ArrayListUnmanaged.deinit) without
+        //   dereferencing the child pointers
+        // - No code should access children during teardown
+
+        // Clear parent reference to prevent any accidental access
+        self.parent = null;
+
         // Note: We do NOT recursively deinit children here.
         // Each child browsing context is owned by its respective Window instance,
         // which will clean it up when that Window is destroyed.

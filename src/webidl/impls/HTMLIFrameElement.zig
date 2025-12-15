@@ -134,6 +134,13 @@ pub const InternalState = struct {
         // Clean up integration
         self.integration.deinit();
 
+        // Clean up sandbox_token_list DOMTokenList if it was created
+        // This is a lazily-created [SameObject] instance that owns resources
+        if (self.sandbox_token_list) |token_list| {
+            DOMTokenList.deinit(token_list);
+            self.sandbox_token_list = null;
+        }
+
         // Free cached strings
         inline for (@typeInfo(InternalState).@"struct".fields) |field| {
             if (field.type == ?[]const u8) {
