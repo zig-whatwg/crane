@@ -930,13 +930,6 @@ test "testMatchInput - pathname only pattern matches pathname only input" {
     }, .{});
     defer pattern.deinit(allocator);
 
-    // Verify pattern components (should all be wildcards except pathname)
-    std.debug.print("\nPattern components:\n", .{});
-    std.debug.print("  protocol: '{s}' (has_regex={})\n", .{ pattern.protocol.pattern_string, pattern.protocol.regex != null });
-    std.debug.print("  hostname: '{s}' (has_regex={})\n", .{ pattern.hostname.pattern_string, pattern.hostname.regex != null });
-    std.debug.print("  port: '{s}' (has_regex={})\n", .{ pattern.port.pattern_string, pattern.port.regex != null });
-    std.debug.print("  pathname: '{s}' (has_regex={})\n", .{ pattern.pathname.pattern_string, pattern.pathname.regex != null });
-
     // Test with init input having just pathname
     const matches = testMatchInput(allocator, &pattern, .{
         .init = .{
@@ -944,7 +937,6 @@ test "testMatchInput - pathname only pattern matches pathname only input" {
         },
     }, null);
 
-    std.debug.print("Match result: {}\n", .{matches});
     try std.testing.expect(matches);
 }
 
@@ -968,17 +960,9 @@ test "exec - pathname only pattern matches pathname only input and returns resul
         var result = r;
         defer result.deinit();
 
-        std.debug.print("\nExec result:\n", .{});
-        std.debug.print("  inputs.len: {}\n", .{result.inputs.len});
-        std.debug.print("  protocol.input: '{s}'\n", .{result.protocol.input});
-        std.debug.print("  hostname.input: '{s}'\n", .{result.hostname.input});
-        std.debug.print("  pathname.input: '{s}'\n", .{result.pathname.input});
-
         // Verify the result
         try std.testing.expectEqualStrings("/foo/bar", result.pathname.input);
     } else {
-        std.debug.print("\nExec returned null - no match!\n", .{});
         return error.TestUnexpectedResult;
     }
 }
-

@@ -138,14 +138,6 @@ pub fn isRegisteredRuntime(callback: v8.FunctionCallback) bool {
     return false;
 }
 
-/// Print all runtime-registered external references (for debugging)
-pub fn debugPrintRuntimeReferences() void {
-    std.debug.print("Runtime External References ({d} total):\n", .{runtime_ref_count});
-    for (runtime_refs[0..runtime_ref_count], 0..) |ref, i| {
-        std.debug.print("  [{d}] 0x{x}\n", .{ i, @as(usize, @intCast(ref)) });
-    }
-}
-
 // ============================================================================
 // Comptime Collection (future implementation)
 // ============================================================================

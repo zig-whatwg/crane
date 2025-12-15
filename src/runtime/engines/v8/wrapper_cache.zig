@@ -220,8 +220,6 @@ pub const WrapperCache = struct {
             self.allocator.destroy(entry);
         }
 
-        @import("std").debug.print("[DEBUG] wrapper_cache.deinit: total={d}, cleaned={d}, skipped={d}\n", .{ count_cleaned + count_skipped, count_cleaned, count_skipped });
-
         self.cache.deinit();
     }
 

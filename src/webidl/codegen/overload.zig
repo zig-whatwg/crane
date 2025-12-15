@@ -93,18 +93,12 @@ pub fn groupOperationsByName(
         const owned_name = try allocator.dupe(u8, entry.key_ptr.name);
         const owned_ops = try entry.value_ptr.toOwnedSlice(allocator);
 
-        // Debug: Print overload set info
-        if (std.mem.eql(u8, owned_name, "json")) {
-            std.debug.print("DEBUG groupOperationsByName: Creating OverloadSet for 'json', is_static={}, ops_count={}\n", .{ entry.key_ptr.is_static, owned_ops.len });
-        }
-
         try result.append(allocator, .{
             .name = owned_name,
             .operations = owned_ops,
         });
     }
 
-    std.debug.print("DEBUG groupOperationsByName: Returning {} overload sets\n", .{result.items.len});
     return try result.toOwnedSlice(allocator);
 }
 
