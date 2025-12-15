@@ -448,12 +448,8 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-// Debug counter for Element deinit calls
-var debug_element_deinit_count: usize = 0;
-
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    debug_element_deinit_count += 1;
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         internal.deinit();
@@ -461,10 +457,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     Registry.remove(instance);
     // Node cleanup happens via inheritance chain
     NodeImpl.deinit(instance);
-}
-
-pub fn getDebugDeinitCount() usize {
-    return debug_element_deinit_count;
 }
 
 /// Clean up ALL remaining Element internal states.

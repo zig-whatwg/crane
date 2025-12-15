@@ -166,7 +166,6 @@ pub fn init(
     internal.* = InternalState.init(allocator);
 
     // Create NodeBase - the unified tree structure
-    debug_nodebase_allocs += 1;
     const node_base = try allocator.create(NodeBase);
     errdefer allocator.destroy(node_base);
 
@@ -207,29 +206,10 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 ///
 /// Per DOM spec semantics, destroying a parent node should release all
 /// child nodes since they are no longer reachable through the tree.
-// Debug counter for Node.deinit calls
-var debug_node_deinit_calls: usize = 0;
-var debug_node_deinit_skipped: usize = 0;
-
-// Debug counters for NodeBase allocations
-var debug_nodebase_allocs: usize = 0;
-var debug_nodebase_frees: usize = 0;
-
-pub fn getDebugNodeDeinitCounts() struct { calls: usize, skipped: usize } {
-    return .{ .calls = debug_node_deinit_calls, .skipped = debug_node_deinit_skipped };
-}
-
-pub fn getDebugNodeBaseCounts() struct { allocs: usize, frees: usize } {
-    return .{ .allocs = debug_nodebase_allocs, .frees = debug_nodebase_frees };
-}
-
 pub fn deinit(instance: *runtime.Instance) void {
-    debug_node_deinit_calls += 1;
-
     // Use lifecycle tracking to prevent double-cleanup (RC2 fix)
     // markCleanupStarted returns false if cleanup was already started
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
-        debug_node_deinit_skipped += 1;
         return; // Already being cleaned up, skip
     }
 
@@ -271,16 +251,12 @@ pub fn deinit(instance: *runtime.Instance) void {
             instance_bridge.unregister(instance);
 
             // Free the NodeBase
-            debug_nodebase_frees += 1;
             internal.allocator.destroy(node_base);
             internal.node_base = null;
         }
 
         // Deinit the internal state's owned resources (strings, etc.)
         internal.deinit();
-    } else {
-        // Instance not found in registry - deinit called multiple times or not initialized
-        debug_node_deinit_skipped += 1;
     }
 
     // Clean up from registry
@@ -729,10 +705,6 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) an
                     webidl.Opt(runtime.DOMString).passed(value),
                 );
                 errdefer interfaces.Text.deinit(text_node);
-
-                // Debug: track Text nodes created by set_textContent
-                const TextImpl = @import("Text.zig");
-                TextImpl.markCreatedBySetTextContent();
 
                 // Set owner document for the text node
                 if (internal.owner_document) |owner_doc| {
@@ -1544,22 +1516,14 @@ pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime
 /// 3. Unregisters from instance_bridge
 pub fn cleanupAllRemainingInternal() void {
     // Get an iterator over all remaining entries
-    var iter = Registry.iterator() orelse {
-        @import("std").debug.print("[DEBUG] Node.cleanupAllRemainingInternal: no iterator (registry empty or null)\n", .{});
-        return;
-    };
-
-    var count: usize = 0;
-    var nodebase_count: usize = 0;
+    var iter = Registry.iterator() orelse return;
 
     while (iter.next()) |entry| {
-        count += 1;
         const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
         const internal = entry.internal;
 
         // Free NodeBase if present
         if (internal.node_base) |node_base| {
-            nodebase_count += 1;
             // Clean up NodeBase resources
             node_base.child_nodes.deinit();
             node_base.registered_observers.deinit();
@@ -1568,15 +1532,12 @@ pub fn cleanupAllRemainingInternal() void {
             instance_bridge.unregister(instance);
 
             // Free the NodeBase
-            debug_nodebase_frees += 1;
             internal.allocator.destroy(node_base);
         }
 
         // Clean up InternalState owned strings
         internal.deinit();
     }
-
-    @import("std").debug.print("[DEBUG] Node.cleanupAllRemainingInternal: cleaned {d} entries, {d} NodeBases\n", .{ count, nodebase_count });
 
     // Clear the registry
     Registry.clear();

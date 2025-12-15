@@ -616,7 +616,22 @@ When a spec depends on another spec, check `src/` for implementation. If not imp
 ### 9. **All Temporary Files Go to tmp/** ⭐
 **DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it. See `skills/temporary_files/SKILL.md` for complete policy.
 
-### 10. **NEVER Modify Generated Files Directly** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
+### 10. **Remove Debug Code After Solving Problems** ⭐
+**NEVER leave debug messages, counters, or instrumentation in the code** once the problem requiring them has been solved. Debug code is temporary scaffolding:
+- Add debug prints, counters, and tracking ONLY while actively investigating
+- Remove ALL debug code before committing the fix
+- If you need to re-investigate later, add debug code fresh - don't leave it "just in case"
+- Production code should be clean and free of investigation artifacts
+
+**Examples of debug code to remove:**
+- `std.debug.print("[DEBUG] ...")`
+- Debug counters like `var debug_count: usize = 0`
+- Functions like `getDebugCounts()` or `markCreatedByDebug()`
+- Commented-out debug lines
+
+**The fix commit should contain ONLY the fix, not the scaffolding used to find it.**
+
+### 11. **NEVER Modify Generated Files Directly** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -786,7 +801,7 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 
 **REMEMBER: You have already violated this rule once. Do not do it again.**
 
-### 11. **Implementation Files (impls/) Workflow** ⭐⭐⭐
+### 12. **Implementation Files (impls/) Workflow** ⭐⭐⭐
 
 **Implementation files in `src/webidl/impls/` contain CUSTOM CODE and are NOT overwritten by codegen.**
 
@@ -827,7 +842,7 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 - Allows diffing to see what changed in interface signatures
 - Keeps generated stubs separate from canonical implementations
 
-### 12. **NEVER Call Impls Directly from External Code** ⭐⭐⭐
+### 13. **NEVER Call Impls Directly from External Code** ⭐⭐⭐
 
 **External code MUST call through interfaces, NEVER directly call impls.**
 
@@ -896,7 +911,7 @@ HTMLScriptElement.prepareTheScriptElement(element);
 
 See epic `whatwg-jwgc` for the refactoring plan.
 
-### 13. **Impls MUST Call Interfaces, NOT Other Impls** ⭐⭐⭐
+### 14. **Impls MUST Call Interfaces, NOT Other Impls** ⭐⭐⭐
 
 **When an impl needs to use another type, it MUST call through the interface, namespace, or mixin - NEVER import another impl directly.**
 
@@ -985,7 +1000,7 @@ pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
 
 See epic `whatwg-jwgc` for the full list and refactoring plan.
 
-### 14. **NEVER Import V8 Directly - Use Runtime Abstraction** ⭐⭐⭐
+### 15. **NEVER Import V8 Directly - Use Runtime Abstraction** ⭐⭐⭐
 
 **All JavaScript engine access MUST go through `src/runtime/` abstractions. NEVER import `v8` directly in impl files.**
 
