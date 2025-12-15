@@ -7,19 +7,16 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765801868267,
-  "time_end": 1765801868446,
+  "time_start": 1765802045768,
+  "time_end": 1765802045971,
   "results": [
     {
-      "test": "infrastructure/assumptions/non-local-ports.sub.window.js",
+      "test": "infrastructure/testdriver/get_named_cookie.sub.html",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Fetch from https-local port works.", "status": "FAIL", "message": "assert_true: expected true got false", "expected": "FAIL"},
-        {"name": "Fetch from http-local port works.", "status": "PASS", "message": null},
-        {"name": "Fetch from https-public port works.", "status": "FAIL", "message": "assert_true: expected true got false", "expected": "FAIL"},
-        {"name": "Fetch from http-public port works.", "status": "PASS", "message": null}
+        {"name": "Get Named HTTP cookie", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: no such cookie\"", "expected": "FAIL"}
       ]
     }
   ]

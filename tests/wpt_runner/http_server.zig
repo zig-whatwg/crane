@@ -838,7 +838,45 @@ pub const HttpServer = struct {
         try response.setHeader("Content-Type", content_type);
         response.body = content;
 
+        // Check for corresponding .headers file
+        // WPT convention: file.html can have file.html.headers with custom headers
+        try self.applyHeadersFile(path, response);
+
         return true;
+    }
+
+    /// Apply headers from .headers file if present
+    /// WPT convention: foo.html can have foo.html.headers containing additional headers
+    fn applyHeadersFile(self: *Self, path: []const u8, response: *HttpResponse) !void {
+        const headers_path = try std.mem.concat(self.allocator, u8, &.{ path, ".headers" });
+        defer self.allocator.free(headers_path);
+
+        const hdr_file = std.fs.cwd().openFile(headers_path, .{}) catch return;
+        defer hdr_file.close();
+
+        var buf: [4096]u8 = undefined;
+
+        // Read line by line
+        while (true) {
+            const line = hdr_file.reader().readUntilDelimiterOrEof(&buf, '\n') catch break;
+            if (line == null) break;
+
+            const trimmed = std.mem.trim(u8, line.?, &std.ascii.whitespace);
+            if (trimmed.len == 0) continue;
+
+            // Parse "Header-Name: value"
+            if (std.mem.indexOf(u8, trimmed, ":")) |colon_pos| {
+                const name = std.mem.trim(u8, trimmed[0..colon_pos], &std.ascii.whitespace);
+                const value = std.mem.trim(u8, trimmed[colon_pos + 1 ..], &std.ascii.whitespace);
+
+                if (name.len > 0) {
+                    // Duplicate since we need to own this memory
+                    const name_dupe = try self.allocator.dupe(u8, name);
+                    const value_dupe = try self.allocator.dupe(u8, value);
+                    try response.headers.put(name_dupe, value_dupe);
+                }
+            }
+        }
     }
 };
 
