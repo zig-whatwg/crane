@@ -108,7 +108,7 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // Support files (not tests themselves)
     "/support/",
     "/resources/",
-    // WPT infrastructure tests
+    // WPT infrastructure tests (excluded from regular runs, run with `zig build wpt -- infrastructure/`)
     "/infrastructure/",
     "/.well-known/",
     // Reference tests (visual comparison)
@@ -119,6 +119,46 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // Tentative/experimental tests (proposed features not yet in specs)
     "/tentative/",
     ".tentative.",
+
+    // ==========================================================================
+    // WPT Infrastructure Test Exclusions
+    // These patterns exclude tests that require protocols/infrastructure beyond
+    // the current WPT runner capabilities. Applies when running infrastructure/
+    // ==========================================================================
+
+    // WebDriver BiDi protocol tests (12 failures)
+    // BiDi requires WebSocket-based bidirectional browser automation protocol
+    // (~5000+ LOC) for features like real-time subscriptions, emulation, bluetooth.
+    // Spec: https://w3c.github.io/webdriver-bidi/
+    "bidi/",
+    "webdriver/bidi/",
+
+    // HTTP/3 (QUIC) / WebTransport tests (2 failures)
+    // Requires curl built with HTTP/3 support (ngtcp2+nghttp3 or quiche)
+    // and wpt serve configured with H3 endpoint.
+    // curl_ffi.zig has CURL_HTTP_VERSION_3 ready for future enablement.
+    "-h3.",
+    "webtransport-h3",
+
+    // Browser-specific tests (1 failure)
+    // Tests in browsers/ require specific browser drivers (geckodriver, chromedriver)
+    // These test browser automation features, not web platform APIs.
+    "browsers/",
+
+    // Proxy Auto-Config (PAC) tests (1 failure)
+    // PAC requires: PAC file fetching, JS evaluation per-request, proxy routing.
+    // Significant infrastructure (~500-1000 LOC) for non-web-platform feature.
+    "server/test-pac",
+
+    // File upload tests (1 failure)
+    // Requires server-side Python execution for form POST handling.
+    // The WPT server needs to execute .py files, not just serve them.
+    "testdriver/file_upload",
+
+    // Media autoplay tests (2 failures)
+    // Requires actual HTMLMediaElement implementation with play/pause state.
+    // Our polyfill doesn't fully intercept the native element behavior.
+    "assumptions/allowed-to-play",
 };
 
 /// Check if a path matches any exclusion pattern
