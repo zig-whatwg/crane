@@ -18,23 +18,32 @@
 //!
 //! The WindowProperties object also has @@toStringTag = "WindowProperties" so that
 //! Object.prototype.toString.call(windowProperties) returns "[object WindowProperties]".
+//!
+//! ## Implementation Strategy
+//!
+//! V8's ObjectTemplate doesn't support all the exotic behaviors required by WebIDL spec.
+//! We use a JavaScript Proxy to implement the exotic internal methods correctly:
+//! - preventExtensions trap returns false
+//! - setPrototypeOf trap returns false for different prototypes
+//! - set trap returns false
+//! - deleteProperty trap returns false
+//! - defineProperty trap returns false
+//! - ownKeys returns only [Symbol.toStringTag]
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
 
-/// Create the WindowProperties exotic object
+/// Create the WindowProperties exotic object using JavaScript Proxy
 ///
-/// This creates a V8 object with:
-/// - Immutable prototype (setPrototypeOf throws for different values)
-/// - @@toStringTag = "WindowProperties"
-/// - Named property handlers for exotic [[Get]]/[[Set]]/[[Delete]] behavior
+/// This uses a Proxy to implement the exotic internal methods correctly.
+/// V8's ObjectTemplate can't express all the required exotic behaviors.
 ///
 /// Arguments:
 /// - isolate: V8 isolate
 /// - context: V8 context
-/// - event_target_prototype: The EventTarget.prototype to set as [[Prototype]]
+/// - event_target_prototype: The EventTarget.prototype to set as [[Prototype]] (unused, set via JS)
 ///
-/// Returns: The WindowProperties object, or null on failure
+/// Returns: The WindowProperties Proxy object, or null on failure
 pub fn create(
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -42,34 +51,129 @@ pub fn create(
 ) ?*v8.Object {
     _ = event_target_prototype; // Will be set via JS now
 
-    // Create a simple object template
-    const template = v8.v8_ObjectTemplate_New(isolate);
+    // Create WindowProperties as a Proxy with exotic behavior handlers
+    // This is the only way to implement the full spec-compliant behavior
+    //
+    // NOTE: V8 Proxy has a limitation where errors thrown automatically by V8
+    // (when trap returns false) come from the caller's realm, not the proxy's realm.
+    // This is a known issue: https://bugs.chromium.org/p/v8/issues/detail?id=5765
+    //
+    // The WPT tests expect cross-realm TypeError instances, but with Proxy this
+    // isn't possible without explicitly throwing errors ourselves. The test
+    // `assert_throws_js(w.TypeError, ...)` will fail because the TypeError
+    // comes from the caller's realm, not the iframe's realm.
+    //
+    // For full spec compliance, we would need V8-level support for specifying
+    // which realm to create errors in when Proxy traps return false.
+    const js_code =
+        \\(function() {
+        \\  // Target object with Symbol.toStringTag
+        \\  const target = Object.create(null);
+        \\  Object.defineProperty(target, Symbol.toStringTag, {
+        \\    value: "WindowProperties",
+        \\    writable: false,
+        \\    enumerable: false,
+        \\    configurable: true
+        \\  });
+        \\  
+        \\  // Store the prototype (will be set after creation)
+        \\  let currentPrototype = null;
+        \\  
+        \\  const handler = {
+        \\    // [[GetPrototypeOf]] - return current prototype
+        \\    getPrototypeOf(target) {
+        \\      return currentPrototype;
+        \\    },
+        \\    
+        \\    // [[SetPrototypeOf]] - return false for different value, true for same
+        \\    setPrototypeOf(target, proto) {
+        \\      if (currentPrototype === null) {
+        \\        // First time setting - allow it
+        \\        currentPrototype = proto;
+        \\        return true;
+        \\      }
+        \\      // Only allow setting to same value
+        \\      return proto === currentPrototype;
+        \\    },
+        \\    
+        \\    // [[PreventExtensions]] - always return false (cannot be made non-extensible)
+        \\    preventExtensions(target) {
+        \\      return false;
+        \\    },
+        \\    
+        \\    // [[IsExtensible]] - always return true
+        \\    isExtensible(target) {
+        \\      return true;
+        \\    },
+        \\    
+        \\    // [[GetOwnPropertyDescriptor]] - return descriptor for toStringTag only
+        \\    getOwnPropertyDescriptor(target, prop) {
+        \\      if (prop === Symbol.toStringTag) {
+        \\        return {
+        \\          value: "WindowProperties",
+        \\          writable: false,
+        \\          enumerable: false,
+        \\          configurable: true
+        \\        };
+        \\      }
+        \\      // TODO: Check for named properties in the document
+        \\      return undefined;
+        \\    },
+        \\    
+        \\    // [[DefineOwnProperty]] - always return false
+        \\    defineProperty(target, prop, descriptor) {
+        \\      return false;
+        \\    },
+        \\    
+        \\    // [[HasProperty]] - check Symbol.toStringTag and named properties
+        \\    has(target, prop) {
+        \\      if (prop === Symbol.toStringTag) return true;
+        \\      // TODO: Check for named properties in the document
+        \\      // For now, continue to prototype chain
+        \\      if (currentPrototype) {
+        \\        return prop in currentPrototype;
+        \\      }
+        \\      return false;
+        \\    },
+        \\    
+        \\    // [[Get]] - return toStringTag or look up prototype chain
+        \\    get(target, prop, receiver) {
+        \\      if (prop === Symbol.toStringTag) {
+        \\        return "WindowProperties";
+        \\      }
+        \\      // TODO: Check for named properties in the document
+        \\      // Continue to prototype chain
+        \\      if (currentPrototype && prop in currentPrototype) {
+        \\        return currentPrototype[prop];
+        \\      }
+        \\      return undefined;
+        \\    },
+        \\    
+        \\    // [[Set]] - always return false
+        \\    set(target, prop, value, receiver) {
+        \\      return false;
+        \\    },
+        \\    
+        \\    // [[Delete]] - always return false
+        \\    deleteProperty(target, prop) {
+        \\      return false;
+        \\    },
+        \\    
+        \\    // [[OwnPropertyKeys]] - return only Symbol.toStringTag
+        \\    ownKeys(target) {
+        \\      return [Symbol.toStringTag];
+        \\    }
+        \\  };
+        \\  
+        \\  return new Proxy(target, handler);
+        \\})()
+    ;
 
-    // Set @@toStringTag on the template BEFORE instantiation
-    // This ensures the property is defined before any interceptors
-    const tag_symbol = v8.v8_Symbol_GetToStringTag(isolate) orelse return null;
-    const tag_value = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16) orelse return null;
+    const source = v8.v8_String_NewFromUtf8(isolate, js_code.ptr, @intCast(js_code.len)) orelse return null;
+    const script = v8.v8_Script_Compile(context, source) orelse return null;
+    const result = v8.v8_Script_Run(context, script) orelse return null;
 
-    // Use v8_ObjectTemplate_Set to set the property on the template
-    v8.v8_ObjectTemplate_SetWithAttributes(
-        template,
-        @ptrCast(tag_symbol),
-        @ptrCast(tag_value),
-        // ReadOnly | DontEnum = non-writable, non-enumerable (configurable is default)
-        v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontEnum,
-    );
-
-    // NOTE: We cannot use SetImmutableProto here because it would prevent us from
-    // changing the prototype at all. V8's immutable proto is truly immutable.
-    // Instead, we'll rely on the JavaScript approach to set the prototype chain,
-    // and accept that WindowProperties' prototype can technically be changed.
-    // For full spec compliance, we would need to implement a custom
-    // [[SetPrototypeOf]] internal method via interceptors.
-
-    // Create instance of the template
-    const instance = v8.v8_ObjectTemplate_NewInstance(template, context) orelse return null;
-
-    return instance;
+    return @ptrCast(result);
 }
 
 /// Insert WindowProperties into the prototype chain for a global Window
