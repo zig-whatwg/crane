@@ -1,4 +1,8 @@
 //! Implementation for HTMLAreaElement interface
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/image-maps.html#htmlareaelement
+//!
+//! HTMLAreaElement represents the <area> element in an image map.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -9,17 +13,31 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLAreaElement = interfaces.HTMLAreaElement;
 
+// Import related impls for attribute access
+const ElementImpl = @import("Element.zig");
+const DOMTokenListImpl = @import("DOMTokenList.zig");
+
 pub const State = HTMLAreaElement.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidState,
+    OutOfMemory,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
+const Registry = utils.InstanceRegistry(InternalState);
+
+/// Internal state for HTMLAreaElement implementation
+pub const InternalState = struct {
+    /// Cached relList DOMTokenList instance
+    rel_list: ?*runtime.Instance = null,
+
+    pub fn deinit(self: *InternalState) void {
+        _ = self;
+    }
+};
 
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
@@ -32,16 +50,27 @@ pub fn init(
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    // HTMLAreaElement has no additional initialization
+    errdefer interfaces.HTMLElement.deinit(instance);
+
+    // Initialize HTMLAreaElement's own internal state in registry
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    internal.* = .{};
+    try Registry.set(instance, internal);
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // HTMLAreaElement has no additional cleanup
-    // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    // Clean up from registry
+    if (Registry.get(instance)) |internal| {
+        internal.deinit();
+    }
+    Registry.remove(instance);
+
+    // Chain to parent class (via interface per Golden Rule #13)
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -93,15 +122,48 @@ pub fn get_ping(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Getter for rel
+/// Spec: https://html.spec.whatwg.org/multipage/image-maps.html#dom-area-rel
+/// Reflects the rel attribute.
 pub fn get_rel(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // Use Element's attribute access
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+
+    // Look for the "rel" attribute
+    if (elem_internal.findAttribute(null, "rel")) |entry| {
+        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
+    }
+
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for relList
+/// Spec: https://html.spec.whatwg.org/multipage/image-maps.html#dom-area-rellist
+/// Returns a DOMTokenList reflecting the rel attribute.
 pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = Registry.get(instance) orelse return error.InvalidState;
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+
+    // Return cached DOMTokenList if it exists
+    if (internal.rel_list) |existing| {
+        return existing;
+    }
+
+    // Create a new DOMTokenList
+    const token_list = interfaces.DOMTokenList.init(elem_internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    errdefer interfaces.DOMTokenList.deinit(token_list);
+
+    // Initialize with current rel attribute value
+    if (elem_internal.findAttribute(null, "rel")) |entry| {
+        interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
+    }
+
+    // Associate with this element and the "rel" attribute
+    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("rel"));
+
+    // Cache for future access
+    internal.rel_list = token_list;
+
+    return token_list;
 }
 
 /// Getter for referrerPolicy
@@ -231,10 +293,11 @@ pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 }
 
 /// Setter for rel
+/// Spec: https://html.spec.whatwg.org/multipage/image-maps.html#dom-area-rel
+/// Sets the rel attribute.
 pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Use Element's setAttribute through the interface
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("rel"), value);
 }
 
 /// Setter for referrerPolicy

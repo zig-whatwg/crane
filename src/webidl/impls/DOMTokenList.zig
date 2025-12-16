@@ -170,6 +170,9 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     // Update length
     const state = instance.getState(State);
     state.own.length = @intCast(internal.tokens.size());
+
+    // Update the backing attribute on the element
+    updateBackingAttribute(instance);
 }
 
 /// Operation: item(index)
@@ -231,6 +234,9 @@ pub fn call_add(instance: *runtime.Instance, tokens: []const runtime.DOMString) 
     // Update length
     const state = instance.getState(State);
     state.own.length = @intCast(internal.tokens.size());
+
+    // Update the backing attribute on the element
+    updateBackingAttribute(instance);
 }
 
 /// Operation: remove(tokens...)
@@ -264,6 +270,9 @@ pub fn call_remove(instance: *runtime.Instance, tokens: []const runtime.DOMStrin
     // Update length
     const state = instance.getState(State);
     state.own.length = @intCast(internal.tokens.size());
+
+    // Update the backing attribute on the element
+    updateBackingAttribute(instance);
 }
 
 /// Operation: toggle(token, force?)
@@ -324,6 +333,8 @@ pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newTo
         if (std.mem.eql(u8, t.asSlice(), token_slice)) {
             t.deinit(internal.allocator);
             t.* = try runtime.DOMString.initDupe(internal.allocator, new_slice);
+            // Update the backing attribute on the element
+            updateBackingAttribute(instance);
             return true;
         }
     }
@@ -367,6 +378,27 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
 // ============================================================================
 // Internal helper functions
 // ============================================================================
+
+/// Update the backing attribute on the associated element
+/// Spec: https://dom.spec.whatwg.org/#concept-dtl-update
+/// "To update a DOMTokenList object's associated attribute, run the steps to
+/// set an attribute value with context object's associated element,
+/// context object's associated attribute's local name, and context object's
+/// serialize steps output."
+fn updateBackingAttribute(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+
+    // If not associated with an element, nothing to update
+    const element = internal.element orelse return;
+    const attr_name = internal.attr_name orelse return;
+
+    // Serialize tokens to space-separated string
+    var value = get_value(instance) catch return;
+    defer value.deinit(internal.allocator);
+
+    // Set the attribute on the element
+    interfaces.Element.call_setAttribute(element, attr_name, value) catch {};
+}
 
 /// Set supported tokens for supports() method
 pub fn setSupportedTokens(instance: *runtime.Instance, tokens: []const []const u8) void {
