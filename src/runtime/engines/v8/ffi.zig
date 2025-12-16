@@ -314,6 +314,25 @@ pub extern fn v8_ObjectTemplate_SetInternalFieldCount(self: *ObjectTemplate, cou
 /// Required for WebIDL global objects (Window, WorkerGlobalScope).
 pub extern fn v8_ObjectTemplate_SetImmutableProto(self: *ObjectTemplate) void;
 
+/// Mark objects created from this template as undetectable.
+/// Per ECMA-262, objects with [[IsHTMLDDA]] internal slot are "undetectable":
+/// - typeof returns "undefined"
+/// - == null and == undefined return true
+/// - ToBoolean returns false
+/// This is used for document.all (HTMLAllCollection).
+/// Spec: https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
+pub extern fn v8_ObjectTemplate_MarkAsUndetectable(self: *ObjectTemplate) void;
+
+/// Set a call-as-function handler on an ObjectTemplate.
+/// This allows instances to be called like functions.
+/// Required for objects marked as undetectable (like document.all).
+/// The callback is invoked when instances are called with ().
+pub extern fn v8_ObjectTemplate_SetCallAsFunctionHandler(
+    self: *ObjectTemplate,
+    callback: FunctionCallback,
+    data: ?*anyopaque,
+) void;
+
 pub extern fn v8_ObjectTemplate_Set(
     self: *ObjectTemplate,
     name: *String,
@@ -376,12 +395,14 @@ pub const NamedPropertyDescriptorCallback = *const fn (
 ) callconv(.c) Intercepted;
 
 /// V8 PropertyHandlerFlags for named property handlers
+/// Must match v8-template.h PropertyHandlerFlags enum values
+/// These are bit flags that can be combined (e.g., kNonMasking | kOnlyInterceptStrings = 3)
 pub const PropertyHandlerFlags = enum(c_int) {
     kNone = 0,
-    kAllCanRead = 1,
-    kNonMasking = 2,
-    kOnlyInterceptStrings = 4,
-    kHasNoSideEffect = 8,
+    kNonMasking = 1, // 1 << 0 = 1 - Only intercept properties not on prototype
+    kOnlyInterceptStrings = 2, // 1 << 1 = 2 - Only intercept string keys (not symbols)
+    kNonMaskingAndOnlyInterceptStrings = 3, // kNonMasking | kOnlyInterceptStrings
+    kHasNoSideEffect = 4, // 1 << 2 = 4
 };
 
 /// Set a named property handler with full support for legacy platform objects
@@ -540,6 +561,15 @@ pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsArray_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsNullOrUndefined_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsPromise(value: *Value) bool;
+
+/// Check if a value has [[IsHTMLDDA]] internal slot (document.all).
+/// Per ECMA-262, these "undetectable" objects are falsy despite being objects.
+/// Used for WebIDL this-value validation - document.all should throw TypeError
+/// when used as 'this' for incompatible operations.
+pub extern fn v8_Value_IsUndetectable(value: *Value) bool;
+
+/// Version for Local handle internal pointers (raw V8 tagged pointer)
+pub extern fn v8_Value_IsUndetectable_Local(value_ptr: *anyopaque) bool;
 
 /// Check if a value is a bound function (created via Function.prototype.bind).
 /// Used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22.
@@ -1117,6 +1147,16 @@ pub extern fn v8_FunctionTemplate_ReadOnlyPrototype(tpl: *FunctionTemplate) void
 /// Use for methods and getters which should not have a prototype property.
 /// This also removes "arguments" and "caller".
 pub extern fn v8_FunctionTemplate_RemovePrototype(tpl: *FunctionTemplate) void;
+
+/// Set a call handler on a FunctionTemplate.
+/// This is required for objects marked as undetectable (like document.all)
+/// because V8 requires undetectable objects to be callable.
+/// The callback is invoked when instances are called like functions.
+pub extern fn v8_FunctionTemplate_SetCallHandler(
+    tpl: *FunctionTemplate,
+    callback: FunctionCallback,
+    data: ?*anyopaque,
+) void;
 
 // Function
 pub extern fn v8_Function_Dispose(fn_ptr: *Function) void;

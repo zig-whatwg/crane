@@ -1123,14 +1123,28 @@ pub fn V8Interface(comptime Interface: type) type {
             const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
                 std.mem.eql(u8, interface_name, "WorkerGlobalScope");
 
-            // Named property handler for legacy platform objects - DISABLED
-            // This is work in progress for issue whatwg-ttfiz
-            // The handler needs more work to properly handle:
-            // 1. getSupportedPropertyNames delegate in codegen
-            // 2. Caching of NamedNodeMap in Element.get_attributes
-            // 3. Proper handling of property assignment vs named property access
-            _ = has_named_getter;
-            _ = is_global_object;
+            // Named property handler for legacy platform objects
+            // Enables named property access (obj.name, obj["name"]) and enumeration
+            // Only enable for interfaces with:
+            // 1. Named getter (call_getNamedItem or call_namedItem)
+            // 2. getSupportedPropertyNames delegate for enumeration
+            // 3. Not a global object (Window/WorkerGlobalScope)
+            const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
+            if (has_named_getter and !is_global_object and has_named_enumerator) {
+                v8.v8_ObjectTemplate_SetNamedPropertyHandlerFull(
+                    instance_tmpl,
+                    namedPropertyGetter,
+                    null, // setter - read-only for now
+                    namedPropertyQuery,
+                    null, // deleter - not supported yet
+                    namedPropertyEnumerator,
+                    namedPropertyDescriptor,
+                    // kNonMasking: Only intercept properties not on the prototype chain
+                    // kOnlyInterceptStrings: Only intercept string keys, not symbols
+                    // Combined flag allows prototype properties (length, item, etc.) to work correctly
+                    .kNonMaskingAndOnlyInterceptStrings,
+                );
+            }
 
             // Register only own methods on prototype (not inherited methods)
             // Inherited methods are accessible via V8's prototype chain
@@ -3625,6 +3639,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Call the named item getter
+            // Note: kNonMasking flag ensures this is only called for properties that don't
+            // exist on the prototype chain (e.g., not for "length", "item", "hasOwnProperty")
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
             else
@@ -3719,7 +3735,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     info.setReturnValue(@ptrCast(empty_arr));
                     return;
                 };
-                defer std.heap.c_allocator.free(names);
+                // Only free if we got an allocated slice (not an empty literal)
+                defer if (names.len > 0) std.heap.c_allocator.free(names);
 
                 // Create array and populate
                 const names_arr = v8.v8_Array_New(isolate, @intCast(names.len));
@@ -3797,6 +3814,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Call the named item getter to check if property exists
+            // Note: kNonMasking flag ensures this is only called for properties that don't
+            // exist on the prototype chain
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
             else
@@ -3892,6 +3911,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Call the named item getter
+            // Note: kNonMasking flag ensures this is only called for properties that don't
+            // exist on the prototype chain
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
             else
