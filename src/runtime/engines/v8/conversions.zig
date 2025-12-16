@@ -317,7 +317,11 @@ pub fn fromV8Sequence(
     errdefer allocator.free(slice);
 
     for (0..length) |i| {
-        const v8_value = v8.v8_Array_Get(context, array, @intCast(i)) orelse continue;
+        // Use v8_Object_Get with integer key instead of v8_Array_Get to properly
+        // walk the prototype chain for holey arrays. Per WebIDL spec, sequence
+        // conversion must use [[Get]] which includes prototype lookup.
+        const index_key = v8.v8_Integer_New(isolate, @intCast(i));
+        const v8_value = v8.v8_Object_Get(@ptrCast(array), context, @ptrCast(index_key)) orelse continue;
         slice[i] = try fromV8Value(T, allocator, isolate, context, v8_value);
     }
 
