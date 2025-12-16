@@ -153,6 +153,11 @@ pub const WrapperCache = struct {
     /// Allocator for cache entries
     allocator: std.mem.Allocator,
 
+    /// Flag indicating the cache is being torn down.
+    /// When true, markAsCleanedUp becomes a no-op to prevent
+    /// re-entrant access during deinit iteration.
+    is_tearing_down: bool = false,
+
     /// V8 Context (unused currently, kept for future extensions)
     context: *v8.Context,
 
@@ -184,6 +189,10 @@ pub const WrapperCache = struct {
     /// type-specific deinit is called (since weak callbacks may not fire
     /// during shutdown).
     pub fn deinit(self: *Self) void {
+        // Mark as tearing down to prevent re-entrant access during cleanup.
+        // When Node.deinit calls markInstanceCleanedUp, it will be a no-op.
+        self.is_tearing_down = true;
+
         // PHASE 1: Clear ALL weak callbacks first to prevent any from firing
         // during cleanup. This must happen before any cleanup to avoid races
         // where a weak callback tries to free an already-freed entry.
@@ -232,6 +241,9 @@ pub const WrapperCache = struct {
     /// batch-freed anyway, so calling individual deinit functions
     /// can cause crashes if they reference already-freed memory.
     pub fn deinitWithoutCallbacks(self: *Self) void {
+        // Mark as tearing down to prevent re-entrant access
+        self.is_tearing_down = true;
+
         // Clear all weak callbacks first
         {
             var iter = self.cache.valueIterator();
@@ -365,6 +377,10 @@ pub const WrapperCache = struct {
     /// ## Returns
     /// true if entry was found and marked, false if not in cache
     pub fn markAsCleanedUp(self: *Self, instance: *runtime.Instance) bool {
+        // During teardown, the cache is being iterated over for cleanup.
+        // Re-entrant access would corrupt the HashMap iterator, so skip.
+        if (self.is_tearing_down) return false;
+
         if (self.cache.get(instance)) |entry| {
             // Clear weak callback to prevent it from firing
             v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
