@@ -494,7 +494,8 @@ fn v8SetPropertyOnObject(
         return EngineError.OperationFailed;
 
     // Use v8_Object_Set to set the property (this uses [[Set]] semantics)
-    if (!ffi.v8_Object_Set(target_obj, context, @ptrCast(v8_key), @ptrCast(v8_value))) {
+    const success = ffi.v8_Object_Set(target_obj, context, @ptrCast(v8_key), @ptrCast(v8_value));
+    if (!success) {
         return EngineError.OperationFailed;
     }
 }

@@ -434,3 +434,188 @@ fn isBlockElement(tag_name: []const u8) bool {
     }
     return false;
 }
+
+// =============================================================================
+// Named Property Handlers for CSS Property Access
+// =============================================================================
+// Per CSS OM spec, CSSStyleDeclaration supports named property access:
+// - style.color -> getPropertyValue("color")
+// - style.backgroundColor -> getPropertyValue("background-color")
+// - style.color = "red" -> setProperty("color", "red")
+// =============================================================================
+
+/// Named property getter for CSS property access
+/// Maps camelCase property names to kebab-case and calls getPropertyValue
+/// Example: style.backgroundColor -> getPropertyValue("background-color")
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
+    const prop_name = name.asSlice();
+
+    const internal = getInternal(instance) orelse {
+        return null;
+    };
+
+    // Convert camelCase to kebab-case
+    var kebab_buf: [256]u8 = undefined;
+    const kebab_name = camelToKebab(prop_name, &kebab_buf) orelse {
+        return null;
+    };
+
+    // For computed styles, check computed value
+    if (internal.is_computed) {
+        if (internal.element) |element| {
+            const result = getComputedPropertyValue(kebab_name, element);
+            const slice = result.asSlice();
+            if (slice.len == 0) return null;
+            return result;
+        }
+    }
+
+    // For inline styles, check stored properties
+    if (internal.getProperty(kebab_name)) |value| {
+        return runtime.DOMString.initInterned(value);
+    }
+
+    // Return empty string for valid CSS properties (not null)
+    // This matches browser behavior - accessing any CSS property returns ""
+    return runtime.DOMString.initEmpty();
+}
+
+/// Named property setter for CSS property access
+/// Maps camelCase property names to kebab-case and calls setProperty
+/// Example: style.backgroundColor = "blue" -> setProperty("background-color", "blue")
+pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+    const internal = getInternal(instance) orelse return error.NotImplemented;
+
+    // Computed styles are read-only
+    if (internal.is_computed) {
+        return; // Silently ignore per spec
+    }
+
+    const prop_name = name.asSlice();
+    const prop_value = value.asSlice();
+
+    // Convert camelCase to kebab-case
+    var kebab_buf: [256]u8 = undefined;
+    const kebab_name = camelToKebab(prop_name, &kebab_buf) orelse return;
+
+    // If value is empty, remove the property
+    if (prop_value.len == 0) {
+        _ = internal.properties.remove(kebab_name);
+        // Rebuild cssText
+        try rebuildCssText(internal);
+        return;
+    }
+
+    // Set the property
+    // First, check if property exists and update it
+    if (internal.properties.getPtr(kebab_name)) |existing| {
+        internal.allocator.free(existing.*);
+        existing.* = try internal.allocator.dupe(u8, prop_value);
+    } else {
+        // Add new property
+        const name_copy = try internal.allocator.dupe(u8, kebab_name);
+        errdefer internal.allocator.free(name_copy);
+        const value_copy = try internal.allocator.dupe(u8, prop_value);
+        try internal.properties.put(internal.allocator, name_copy, value_copy);
+    }
+
+    // Rebuild cssText
+    try rebuildCssText(internal);
+}
+
+/// Get supported property names for named property enumeration
+/// Returns CSS property names in camelCase format
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
+
+    const count = internal.properties.count();
+    if (count == 0) return &[_]runtime.DOMString{};
+
+    var names: std.ArrayList(runtime.DOMString) = .{};
+
+    var iter = internal.properties.iterator();
+    while (iter.next()) |entry| {
+        // Convert kebab-case to camelCase for enumeration
+        const camel_name = try kebabToCamel(allocator, entry.key_ptr.*);
+        try names.append(allocator, runtime.DOMString.initOwned(camel_name));
+    }
+
+    return names.toOwnedSlice(allocator);
+}
+
+/// Rebuild cssText from properties
+fn rebuildCssText(internal: *InternalState) !void {
+    if (internal.css_text) |old| {
+        internal.allocator.free(old);
+        internal.css_text = null;
+    }
+
+    if (internal.properties.count() == 0) {
+        internal.css_text = null;
+        return;
+    }
+
+    var result: std.ArrayList(u8) = .{};
+
+    var iter = internal.properties.iterator();
+    var first = true;
+    while (iter.next()) |entry| {
+        if (!first) {
+            try result.appendSlice(internal.allocator, "; ");
+        }
+        first = false;
+        try result.appendSlice(internal.allocator, entry.key_ptr.*);
+        try result.appendSlice(internal.allocator, ": ");
+        try result.appendSlice(internal.allocator, entry.value_ptr.*);
+    }
+
+    internal.css_text = try result.toOwnedSlice(internal.allocator);
+}
+
+/// Convert camelCase to kebab-case
+/// Example: backgroundColor -> background-color
+/// Returns null if the buffer is too small
+fn camelToKebab(name: []const u8, buf: []u8) ?[]const u8 {
+    if (name.len == 0) return null;
+
+    var i: usize = 0;
+    for (name) |c| {
+        if (c >= 'A' and c <= 'Z') {
+            // Insert hyphen before uppercase letter
+            if (i + 2 > buf.len) return null;
+            buf[i] = '-';
+            i += 1;
+            buf[i] = c + 32; // Convert to lowercase
+            i += 1;
+        } else {
+            if (i + 1 > buf.len) return null;
+            buf[i] = c;
+            i += 1;
+        }
+    }
+
+    return buf[0..i];
+}
+
+/// Convert kebab-case to camelCase (allocates)
+/// Example: background-color -> backgroundColor
+fn kebabToCamel(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    if (name.len == 0) return try allocator.alloc(u8, 0);
+
+    var result: std.ArrayList(u8) = .{};
+    var capitalize_next = false;
+
+    for (name) |c| {
+        if (c == '-') {
+            capitalize_next = true;
+        } else if (capitalize_next) {
+            const upper = if (c >= 'a' and c <= 'z') c - 32 else c;
+            try result.append(allocator, upper);
+            capitalize_next = false;
+        } else {
+            try result.append(allocator, c);
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
+}

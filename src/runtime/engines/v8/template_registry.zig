@@ -255,32 +255,22 @@ pub fn wrapInstanceAsV8Object(
     // CACHE MISS: Create new wrapper
     // ========================================
 
-    std.debug.print("[DEBUG] wrapInstanceAsV8Object: creating wrapper for {s}\n", .{interface_name});
-
     // Look up the FunctionTemplate for this interface
     const template = getTemplate(interface_name) orelse {
         // Template not registered - this shouldn't happen for core interfaces
         // but can happen for interfaces not yet implemented
-        std.debug.print("[DEBUG] wrapInstanceAsV8Object: template not registered for {s}\n", .{interface_name});
         return error.TemplateNotRegistered;
     };
 
-    std.debug.print("[DEBUG] wrapInstanceAsV8Object: got template for {s}\n", .{interface_name});
-
     // Get the InstanceTemplate from the FunctionTemplate
     const instance_template = v8.v8_FunctionTemplate_InstanceTemplate(template);
-
-    std.debug.print("[DEBUG] wrapInstanceAsV8Object: got instance_template for {s}\n", .{interface_name});
 
     // Create a new V8 object from the template
     // This creates an object with the correct prototype chain and internal fields
     const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
         // NewInstance can fail if there's a JS exception or the context is invalid
-        std.debug.print("[DEBUG] wrapInstanceAsV8Object: NewInstance failed for {s}\n", .{interface_name});
         return error.ObjectCreationFailed;
     };
-
-    std.debug.print("[DEBUG] wrapInstanceAsV8Object: created v8_object for {s}\n", .{interface_name});
 
     // Store the Zig instance in internal field 0
     v8.v8_Object_SetAlignedPointerInInternalField(
@@ -635,6 +625,11 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 
     if (inst_vtable == &interfaces.URLSearchParams.vtable) {
         return "URLSearchParams";
+    }
+
+    // CSSOM types
+    if (inst_vtable == &interfaces.CSSStyleDeclaration.vtable) {
+        return "CSSStyleDeclaration";
     }
 
     // Geometry types (CSSOM View)

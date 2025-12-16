@@ -646,15 +646,11 @@ pub fn get_slot(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// own properties added to the attributes object persist across accesses.
 pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse {
-        std.debug.print("[DEBUG] get_attributes: getInternal returned null!\n", .{});
         return error.InvalidStateError;
     };
 
-    std.debug.print("[DEBUG] get_attributes: inline_attr_count={d}\n", .{internal.inline_attr_count});
-
     // Return cached NamedNodeMap if it exists
     if (internal.named_node_map) |cached| {
-        std.debug.print("[DEBUG] get_attributes: returning cached NamedNodeMap\n", .{});
         return cached;
     }
 
@@ -3369,11 +3365,9 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.
 /// TODO: value is typed as anyopaque due to codegen - should be DOMString
 pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse {
-        std.debug.print("[DEBUG] call_setAttribute: getInternal returned null!\n", .{});
         return error.InvalidStateError;
     };
     const name = qualifiedName.asSlice();
-    std.debug.print("[DEBUG] call_setAttribute: name={s}, inline_attr_count before={d}\n", .{ name, internal.inline_attr_count });
 
     // TODO: Validate qualifiedName per https://dom.spec.whatwg.org/#validate
 
@@ -3396,7 +3390,6 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 
     // Set in attribute list
     try setAttributeInternal(internal, null, null, name, val);
-    std.debug.print("[DEBUG] call_setAttribute: after setAttributeInternal, inline_attr_count={d}\n", .{internal.inline_attr_count});
 
     // HTML spec hooks: Trigger element-specific attribute change reactions
     // For HTMLImageElement: setting "src" triggers image data update

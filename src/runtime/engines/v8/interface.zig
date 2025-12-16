@@ -3511,11 +3511,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
-            std.debug.print("[DEBUG] indexedPropertyEnumerator called for {s}\n", .{interface_name});
-
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                std.debug.print("[DEBUG] indexedPropertyEnumerator: no v8 context\n", .{});
                 return;
             };
 
@@ -3526,7 +3523,6 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
                 // Called on prototype, not an instance - return empty array
-                std.debug.print("[DEBUG] indexedPropertyEnumerator: no instance ptr\n", .{});
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
                 return;
@@ -3539,19 +3535,15 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
-                std.debug.print("[DEBUG] indexedPropertyEnumerator: poison pattern\n", .{});
                 return;
             }
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
             // Get the length of the collection
-            const length = Interface.get_length(instance) catch |err| {
-                std.debug.print("[DEBUG] indexedPropertyEnumerator: get_length error: {any}\n", .{err});
+            const length = Interface.get_length(instance) catch {
                 return;
             };
-
-            std.debug.print("[DEBUG] indexedPropertyEnumerator: length={d}\n", .{length});
 
             // Create an array of indices
             const indices_arr = v8.v8_Array_New(isolate, @intCast(length));
@@ -3561,7 +3553,6 @@ pub fn V8Interface(comptime Interface: type) type {
                 const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
                 _ = v8.v8_Array_Set(indices_arr, v8_context, i, @ptrCast(v8_idx));
             }
-            std.debug.print("[DEBUG] indexedPropertyEnumerator: returning {d} indices\n", .{length});
             info.setReturnValue(@ptrCast(indices_arr));
         }
 
@@ -3988,11 +3979,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
-            std.debug.print("[DEBUG] namedPropertyEnumerator called for {s}\n", .{interface_name});
-
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                std.debug.print("[DEBUG] namedPropertyEnumerator: no v8 context\n", .{});
                 return;
             };
 
@@ -4003,7 +3991,6 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
                 // Return empty array for prototype
-                std.debug.print("[DEBUG] namedPropertyEnumerator: no instance ptr\n", .{});
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
                 return;
@@ -4016,7 +4003,6 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
-                std.debug.print("[DEBUG] namedPropertyEnumerator: poison pattern\n", .{});
                 return;
             }
 
@@ -4025,15 +4011,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check if Interface has getSupportedPropertyNames delegate
             // This should be exposed through codegen for interfaces with named properties
             if (comptime @hasDecl(Interface, "getSupportedPropertyNames")) {
-                std.debug.print("[DEBUG] namedPropertyEnumerator: calling getSupportedPropertyNames\n", .{});
                 // Get property names from interface delegate
-                const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch |err| {
-                    std.debug.print("[DEBUG] namedPropertyEnumerator: error: {any}\n", .{err});
+                const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
                     const empty_arr = v8.v8_Array_New(isolate, 0);
                     info.setReturnValue(@ptrCast(empty_arr));
                     return;
                 };
-                std.debug.print("[DEBUG] namedPropertyEnumerator: got {d} names\n", .{names.len});
                 // Only free if we got an allocated slice (not an empty literal)
                 defer if (names.len > 0) std.heap.c_allocator.free(names);
 
@@ -4050,12 +4033,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
 
-                std.debug.print("[DEBUG] namedPropertyEnumerator: returning {d} names\n", .{names.len});
                 info.setReturnValue(@ptrCast(names_arr));
             } else {
                 // No getSupportedPropertyNames - return empty array
                 // This means the interface doesn't support named property enumeration
-                std.debug.print("[DEBUG] namedPropertyEnumerator: no getSupportedPropertyNames\n", .{});
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
             }
