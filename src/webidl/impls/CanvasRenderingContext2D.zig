@@ -9,6 +9,10 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const CanvasRenderingContext2D = interfaces.CanvasRenderingContext2D;
+const v8 = @import("v8");
+
+// Use shared InstanceRegistry utility for internal state management
+const utils = @import("webidl").utils;
 
 pub const State = CanvasRenderingContext2D.State;
 
@@ -16,11 +20,45 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for CanvasRenderingContext2D
+/// Contains private data for canvas rendering:
+/// - line_dash: Current line dash pattern (sequence of f64)
+/// - line_dash_offset: Offset for line dash pattern
+pub const InternalState = struct {
+    /// Current line dash pattern - stored as owned slice
+    line_dash: []f64 = &[_]f64{},
+    /// Offset for line dash pattern
+    line_dash_offset: f64 = 0,
+    /// Allocator used for this state
+    allocator: std.mem.Allocator = undefined,
+
+    pub fn deinit(self: *InternalState) void {
+        if (self.line_dash.len > 0) {
+            self.allocator.free(self.line_dash);
+            self.line_dash = &[_]f64{};
+        }
+    }
+};
+
+const Registry = utils.InstanceRegistry(InternalState);
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return Registry.get(instance);
+}
+
+fn getOrCreateInternal(instance: *runtime.Instance) !*InternalState {
+    if (Registry.get(instance)) |internal| {
+        return internal;
+    }
+    // Create new internal state
+    const allocator = instance.ctx.allocator;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{
+        .allocator = allocator,
+    };
+    try Registry.set(instance, internal);
+    return internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -36,8 +74,12 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // Clean up internal state if it exists
+    if (Registry.get(instance)) |internal| {
+        internal.deinit();
+        internal.allocator.destroy(internal);
+    }
+    Registry.remove(instance);
 }
 
 /// Getter for canvas
@@ -138,8 +180,8 @@ pub fn get_miterLimit(instance: *runtime.Instance) anyerror!f64 {
 
 /// Getter for lineDashOffset
 pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return 0;
+    return internal.line_dash_offset;
 }
 
 /// Getter for lang
@@ -315,9 +357,8 @@ pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
 
 /// Setter for lineDashOffset
 pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = try getOrCreateInternal(instance);
+    internal.line_dash_offset = value;
 }
 
 /// Setter for lang
@@ -417,9 +458,35 @@ pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule:
 }
 
 /// Operation: getLineDash
+/// Returns a copy of the current line dash pattern.
+/// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-getlinedash
 pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse {
+        // No internal state yet = empty dash (default)
+        // Return empty array
+        const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
+        _ = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+        // v8_Array_New returns a Global<Array>* which can be used directly as a Global handle
+        const array = v8.ffi.v8_Array_New(isolate, 0);
+        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
+    };
+
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+
+    // Create V8 array from the stored line dash pattern
+    // v8_Array_New returns a Global<Array>* which can be used directly as a Global handle
+    const dash_len: u32 = @intCast(internal.line_dash.len);
+    const array = v8.ffi.v8_Array_New(isolate, @intCast(dash_len));
+
+    // Populate array with f64 values
+    for (internal.line_dash, 0..) |val, i| {
+        const num_val = v8.ffi.v8_Number_New(isolate, val);
+        _ = v8.ffi.v8_Array_Set(array, context, @intCast(i), @ptrCast(num_val));
+    }
+
+    // v8_Array_New already returns a Global handle - no need to persist again
+    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
 }
 
 /// Operation: ellipse
@@ -616,10 +683,164 @@ pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!dictionar
 }
 
 /// Operation: setLineDash
+/// Helper to iterate using Symbol.iterator protocol and collect f64 values
+/// Per WebIDL spec, sequence conversion should use the iteration protocol
+fn iterateToF64Array(
+    allocator: std.mem.Allocator,
+    isolate: *v8.ffi.Isolate,
+    context: *v8.ffi.Context,
+    obj: *v8.ffi.Object,
+) !?[]f64 {
+    // Get Symbol.iterator from the object
+    const iterator_symbol = v8.ffi.v8_Symbol_GetIterator(isolate) orelse return error.TypeError;
+    const iterator_fn_val = v8.ffi.v8_Object_GetPropertyWithSymbol(context, obj, iterator_symbol) orelse return error.TypeError;
+
+    // Check if it's a function
+    if (!v8.ffi.v8_Value_IsFunction(iterator_fn_val)) {
+        return error.TypeError;
+    }
+    const iterator_fn: *v8.ffi.Function = @ptrCast(iterator_fn_val);
+
+    // Call the iterator function to get the iterator object
+    const iterator_val = v8.ffi.v8_Function_CallWithReceiver(
+        context,
+        iterator_fn,
+        @ptrCast(obj), // receiver is the original object
+        0, // no arguments
+        null, // argv
+    ) orelse return error.TypeError;
+
+    if (!v8.ffi.v8_Value_IsObject(iterator_val)) {
+        return error.TypeError;
+    }
+    const iterator_obj: *v8.ffi.Object = @ptrCast(iterator_val);
+
+    // Get the 'next' method from the iterator
+    const next_str = v8.ffi.v8_String_NewFromUtf8(isolate, "next", 4) orelse return error.TypeError;
+    const next_fn_val = v8.ffi.v8_Object_Get(iterator_obj, context, @ptrCast(next_str)) orelse return error.TypeError;
+
+    if (!v8.ffi.v8_Value_IsFunction(next_fn_val)) {
+        return error.TypeError;
+    }
+    const next_fn: *v8.ffi.Function = @ptrCast(next_fn_val);
+
+    // Get "done" and "value" strings for property access
+    const done_str = v8.ffi.v8_String_NewFromUtf8(isolate, "done", 4) orelse return error.TypeError;
+    const value_str = v8.ffi.v8_String_NewFromUtf8(isolate, "value", 5) orelse return error.TypeError;
+
+    // Collect values by iterating
+    var values: std.ArrayList(f64) = .{};
+    defer values.deinit(allocator);
+
+    const max_iterations: usize = 10000; // Safety limit
+    var iteration_count: usize = 0;
+
+    while (iteration_count < max_iterations) : (iteration_count += 1) {
+        // Call iterator.next()
+        const result_val = v8.ffi.v8_Function_CallWithReceiver(
+            context,
+            next_fn,
+            @ptrCast(iterator_obj),
+            0, // no arguments
+            null, // argv
+        ) orelse return error.TypeError;
+
+        if (!v8.ffi.v8_Value_IsObject(result_val)) {
+            return error.TypeError;
+        }
+        const result_obj: *v8.ffi.Object = @ptrCast(result_val);
+
+        // Check if done
+        const done_val = v8.ffi.v8_Object_Get(result_obj, context, @ptrCast(done_str)) orelse return error.TypeError;
+        if (v8.ffi.v8_Value_BooleanValue(done_val, isolate)) {
+            break;
+        }
+
+        // Get the value
+        const item_val = v8.ffi.v8_Object_Get(result_obj, context, @ptrCast(value_str)) orelse return error.TypeError;
+        const num = v8.ffi.v8_Value_NumberValue(item_val, context);
+
+        // Per spec: if any value is negative, non-finite, or NaN, return null (don't change dash)
+        if (num < 0 or std.math.isNan(num) or std.math.isInf(num)) {
+            return null;
+        }
+
+        try values.append(allocator, num);
+    }
+
+    // Return owned slice
+    return try values.toOwnedSlice(allocator);
+}
+
+/// Operation: setLineDash
+/// Sets the current line dash list.
+/// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-setlinedash
 pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = segments;
-    return error.NotImplemented;
+    const internal = try getOrCreateInternal(instance);
+    const allocator = instance.ctx.allocator;
+
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NotImplemented;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NotImplemented;
+
+    // Get the V8 value from runtime.JSValue
+    // Check what variant we have
+    const v8_global: *v8.ffi.Value = switch (segments) {
+        .handle => |h| @ptrCast(h.ptr),
+        .undefined, .null => {
+            // setLineDash(undefined/null) clears the dash pattern
+            if (internal.line_dash.len > 0) {
+                allocator.free(internal.line_dash);
+                internal.line_dash = &[_]f64{};
+            }
+            return;
+        },
+        // Per WebIDL spec, sequence<unrestricted double> should be iterable
+        .boolean, .number, .string, .instance => {
+            // Invalid types for sequence parameter - per spec should throw TypeError
+            return error.TypeError;
+        },
+    };
+
+    // Get the local value from the global handle
+    const v8_local = v8.ffi.v8_Global_Get(isolate, v8_global) orelse return error.TypeError;
+    const v8_value: *v8.ffi.Value = @ptrCast(@alignCast(v8_local));
+
+    // Check if it's an object (required for iteration protocol)
+    if (!v8.ffi.v8_Value_IsObject(v8_value)) {
+        return error.TypeError;
+    }
+    const obj: *v8.ffi.Object = @ptrCast(v8_value);
+
+    // Use the iteration protocol to get values (per WebIDL spec)
+    const values = try iterateToF64Array(allocator, isolate, context, obj) orelse {
+        // null means invalid value found - return without changing (per spec)
+        return;
+    };
+
+    // Empty array is valid - clears the dash
+    if (values.len == 0) {
+        if (internal.line_dash.len > 0) {
+            allocator.free(internal.line_dash);
+            internal.line_dash = &[_]f64{};
+        }
+        allocator.free(values);
+        return;
+    }
+
+    // Per spec: if odd length, duplicate the array (e.g., [5] becomes [5, 5])
+    const final_values = if (values.len % 2 != 0) blk: {
+        const doubled = try allocator.alloc(f64, values.len * 2);
+        @memcpy(doubled[0..values.len], values);
+        @memcpy(doubled[values.len..], values);
+        allocator.free(values);
+        break :blk doubled;
+    } else values;
+
+    // Free old dash and store new one
+    if (internal.line_dash.len > 0) {
+        allocator.free(internal.line_dash);
+    }
+    internal.line_dash = final_values;
 }
 
 /// Operation: save

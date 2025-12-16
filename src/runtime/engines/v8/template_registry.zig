@@ -387,6 +387,7 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
     if (inst_vtable == &interfaces.HTMLSourceElement.vtable) return "HTMLSourceElement";
     if (inst_vtable == &interfaces.HTMLTrackElement.vtable) return "HTMLTrackElement";
     if (inst_vtable == &interfaces.HTMLCanvasElement.vtable) return "HTMLCanvasElement";
+    if (inst_vtable == &interfaces.CanvasRenderingContext2D.vtable) return "CanvasRenderingContext2D";
     if (inst_vtable == &interfaces.HTMLMapElement.vtable) return "HTMLMapElement";
     if (inst_vtable == &interfaces.HTMLAreaElement.vtable) return "HTMLAreaElement";
     if (inst_vtable == &interfaces.HTMLTemplateElement.vtable) return "HTMLTemplateElement";

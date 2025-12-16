@@ -1346,7 +1346,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
                                 // Use HasInstance to properly check if this_obj is an instance of our interface
                                 if (template_cache) |tpl| {
-                                    if (!v8.v8_FunctionTemplate_HasInstance(tpl, this_obj)) {
+                                    const has_instance = v8.v8_FunctionTemplate_HasInstance(tpl, this_obj);
+                                    std.debug.print("[GETTER DEBUG] {s}: template_cache={*}, this_obj={*}, HasInstance={}\n", .{ comptime interface_name, tpl, this_obj, has_instance });
+                                    if (!has_instance) {
                                         // Not an instance of this interface
                                         if (is_lenient_this) {
                                             // [LegacyLenientThis] - return undefined per WebIDL §4.3.10
@@ -4459,7 +4461,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
                             // Use HasInstance to properly check if this_obj is an instance of our interface
                             if (template_cache) |tpl| {
-                                if (!v8.v8_FunctionTemplate_HasInstance(tpl, this_obj)) {
+                                const has_instance = v8.v8_FunctionTemplate_HasInstance(tpl, this_obj);
+                                std.debug.print("[SETTER DEBUG] {s}: template_cache={*}, this_obj={*}, HasInstance={}\n", .{ comptime interface_name, tpl, this_obj, has_instance });
+                                if (!has_instance) {
                                     // Not an instance of this interface
                                     if (is_lenient_this) {
                                         // [LegacyLenientThis] - silently return per WebIDL §4.3.10
