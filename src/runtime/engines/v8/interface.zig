@@ -364,6 +364,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (@hasDecl(Meta, "iterable") and @hasDecl(Interface, "call_item")) {
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertyGetter));
             }
+
+            // Register HTMLAllCollection call handler if this is HTMLAllCollection
+            // This is needed for V8 snapshots to work with undetectable objects
+            if (comptime std.mem.eql(u8, interface_name, "HTMLAllCollection")) {
+                ext_refs.registerCallbackRuntime(htmlAllCollectionCallHandler);
+            }
         }
 
         /// Register interface as a global constructor in V8
@@ -949,6 +955,19 @@ pub fn V8Interface(comptime Interface: type) type {
             // Field 1: pointer to type tag (for type-safe unwrapping)
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
             v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, 2);
+
+            // HTMLAllCollection has [[IsHTMLDDA]] internal slot per ECMA-262
+            // This makes it "undetectable" - typeof returns "undefined", coerces to false
+            // V8 requires undetectable objects to have a call-as-function handler
+            // Per HTML spec, document.all(x) calls item(x) or namedItem(x) based on argument type
+            if (comptime std.mem.eql(u8, interface_name, "HTMLAllCollection")) {
+                // Mark instances as undetectable (falsy despite being objects)
+                v8.v8_ObjectTemplate_MarkAsUndetectable(instance_tmpl);
+
+                // Set call-as-function handler on instance template - V8 requires this for undetectable objects
+                // The callback implements document.all(nameOrIndex) behavior
+                v8.v8_ObjectTemplate_SetCallAsFunctionHandler(instance_tmpl, htmlAllCollectionCallHandler, null);
+            }
 
             // Get prototype template (only used for non-callback interfaces)
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
@@ -2803,6 +2822,86 @@ pub fn V8Interface(comptime Interface: type) type {
         fn nonConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
             conv.throwTypeError(isolate, "Illegal constructor: " ++ name ++ " is not constructible");
+        }
+
+        /// HTMLAllCollection call handler for document.all(nameOrIndex)
+        ///
+        /// Per HTML spec, HTMLAllCollection has [[IsHTMLDDA]] internal slot making it undetectable.
+        /// V8 requires undetectable objects to be callable. When called as a function:
+        /// - document.all() with no args returns undefined
+        /// - document.all(index) calls item(index)
+        /// - document.all(name) calls namedItem(name)
+        ///
+        /// This is ONLY used for HTMLAllCollection (comptime check ensures interface_name matches)
+        fn htmlAllCollectionCallHandler(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            // Only compile this code for HTMLAllCollection
+            if (comptime !std.mem.eql(u8, interface_name, "HTMLAllCollection")) {
+                // Should never be called for other interfaces, but safety check
+                return;
+            }
+
+            const isolate = info.getIsolate();
+            const argc = info.length();
+
+            // If no arguments, return undefined per HTML spec
+            if (argc == 0) {
+                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                return;
+            }
+
+            // Get the 'this' value - this should be the HTMLAllCollection instance
+            const this_obj = info.getThis();
+            const instance = getInstance(runtime.Instance, this_obj) orelse {
+                // If not a valid instance, return undefined
+                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                return;
+            };
+
+            // Get the first argument
+            const arg = info.get(0);
+
+            // Get V8 context and allocator for conversion
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                return;
+            };
+            const isolate_alloc = @import("isolate_allocator.zig");
+            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.page_allocator) catch {
+                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                return;
+            };
+
+            // Per HTML spec: document.all(nameOrIndex) calls call_item with the argument
+            // call_item takes an Opt(DOMString) and handles both numeric and string cases
+            if (@hasDecl(Interface, "call_item")) {
+                // Convert argument to Opt(DOMString)
+                const webidl_mod = @import("webidl");
+                const DOMString = @import("typedefs").DOMString;
+                const name_or_index = conv.fromV8Value(webidl_mod.Opt(DOMString), allocator, isolate, v8_context, arg) catch {
+                    info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                    return;
+                };
+
+                // Call call_item (it handles both numeric string indices and names)
+                const result = Interface.call_item(instance, name_or_index) catch {
+                    info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                    return;
+                };
+
+                // Return the result
+                if (result) |js_value| {
+                    // Convert runtime.JSValue to v8.Value for return
+                    const v8_value = conv.toV8Value(runtime.JSValue, isolate, v8_context, js_value) catch {
+                        info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
+                        return;
+                    };
+                    info.setReturnValue(@ptrCast(v8_value));
+                } else {
+                    info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
+                }
+            } else {
+                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+            }
         }
 
         /// Lazy property getter interceptor
