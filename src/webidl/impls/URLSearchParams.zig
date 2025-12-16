@@ -103,14 +103,114 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSVa
         return initWithString(ctx.allocator, ctx, "");
     }
 
-    // Check if it's a string
+    // Check if it's a string - handled first per spec
     if (value.asString()) |str| {
         return initWithString(ctx.allocator, ctx, str);
     }
 
-    // TODO: Handle sequence<sequence<USVString>> and record<USVString, USVString>
-    // For now, fall back to empty if not a string
+    // Get the V8 handle for sequence/record conversion
+    const v8_handle_ptr = value.asEngineHandle() orelse {
+        // No V8 handle, can't iterate - return empty
+        return initWithString(ctx.allocator, ctx, "");
+    };
+
+    // Get V8 isolate and context from runtime
+    const v8 = @import("v8");
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return initWithString(ctx.allocator, ctx, "");
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return initWithString(ctx.allocator, ctx, "");
+
+    // The handle is a Global<Value>*, we need to get the local Value*
+    const v8_handle: *v8.Value = @ptrCast(v8.ffi.v8_Global_Get(isolate, @ptrCast(v8_handle_ptr)) orelse return initWithString(ctx.allocator, ctx, ""));
+
+    // Import conversion helpers
+    const conv = v8.conversions;
+
+    // Per WebIDL spec, we must try sequence conversion first (using Symbol.iterator),
+    // but only access Symbol.iterator ONCE. If the object is iterable, use sequence conversion.
+    // If not iterable or iteration fails, fall back to record conversion.
+    //
+    // iterateAsSequencePairs returns null if the object isn't iterable, so we can use that
+    // as our check without double-accessing Symbol.iterator.
+    const maybe_pairs = conv.iterateAsSequencePairs(ctx.allocator, isolate, v8_context, v8_handle) catch |err| {
+        switch (err) {
+            error.TypeError => {
+                // Inner sequence doesn't have exactly 2 elements - throw TypeError
+                conv.throwTypeError(isolate, "Failed to construct 'URLSearchParams': Sequence element did not contain exactly two elements");
+                return error.TypeError;
+            },
+            else => return err,
+        }
+    };
+
+    if (maybe_pairs) |pair_list| {
+        defer {
+            // Free the pair strings and slice
+            for (pair_list) |pair| {
+                if (pair.name.len > 0) ctx.allocator.free(pair.name);
+                if (pair.value.len > 0) ctx.allocator.free(pair.value);
+            }
+            ctx.allocator.free(pair_list);
+        }
+        return initWithSequencePairs(ctx.allocator, ctx, pair_list);
+    }
+
+    // Not iterable - try as record<USVString, USVString>
+    // (plain object with own enumerable string keys)
+    if (conv.iterateAsRecordPairs(ctx.allocator, v8_context, v8_handle)) |maybe_record_pairs| {
+        if (maybe_record_pairs) |record_pairs| {
+            defer {
+                // Free the pair strings and slice
+                for (record_pairs) |pair| {
+                    if (pair.name.len > 0) ctx.allocator.free(pair.name);
+                    if (pair.value.len > 0) ctx.allocator.free(pair.value);
+                }
+                ctx.allocator.free(record_pairs);
+            }
+            return initWithSequencePairs(ctx.allocator, ctx, record_pairs);
+        }
+    } else |_| {
+        // Conversion error
+    }
+
+    // Fall back to empty if nothing worked
     return initWithString(ctx.allocator, ctx, "");
+}
+
+/// Initialize from SequencePair slice (from V8 conversion)
+fn initWithSequencePairs(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    pairs: []const @import("v8").conversions.SequencePair,
+) !*runtime.Instance {
+    // Create instance
+    const instance = try init(allocator, State, &URLSearchParams.vtable, ctx);
+    errdefer deinit(instance);
+
+    const state = instance.getState(State);
+
+    // Create InternalState
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = InternalState{
+        .list = infra.List(Tuple).init(allocator),
+        .url_object = null,
+        .allocator = allocator,
+    };
+
+    // Add each pair to the list (strings are already owned by caller, so dupe them)
+    for (pairs) |pair| {
+        const name = try allocator.dupe(u8, pair.name);
+        errdefer allocator.free(name);
+
+        const pairvalue = try allocator.dupe(u8, pair.value);
+        errdefer allocator.free(pairvalue);
+
+        try internal.list.append(.{ .name = name, .value = pairvalue });
+    }
+
+    state.own._internal = internal;
+    return instance;
 }
 
 /// Initialize from string (query string)

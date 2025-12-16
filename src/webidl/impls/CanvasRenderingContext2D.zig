@@ -460,6 +460,13 @@ pub fn call_isPointInPath(instance: *runtime.Instance, x: f64, y: f64, fillRule:
 /// Operation: getLineDash
 /// Returns a copy of the current line dash pattern.
 /// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-getlinedash
+///
+/// NOTE: There is a known V8 limitation where if Array.prototype has a getter-only
+/// accessor at a specific index (e.g., Array.prototype[1] with only a getter),
+/// then v8_Array_Set will fail when trying to set that index on ANY array.
+/// This affects the WPT test "A holey array with fallback to an accessor on the prototype"
+/// in sequence-conversion.html. This is a JavaScript semantics issue in V8, not
+/// something we can work around without changing V8's internal array handling.
 pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse {
         // No internal state yet = empty dash (default)

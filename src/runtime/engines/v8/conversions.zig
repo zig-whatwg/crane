@@ -2874,6 +2874,278 @@ pub fn createV8String(isolate: *v8.Isolate, value: []const u8) ConversionError!*
 }
 
 // ============================================================================
+// Symbol.iterator Helpers (for WebIDL sequence conversion)
+// ============================================================================
+
+/// Entry from iterating a sequence<sequence<USVString>> (e.g., for URLSearchParams)
+pub const SequencePair = struct {
+    name: []const u8,
+    value: []const u8,
+};
+
+/// Iterate a V8 object using Symbol.iterator and return name-value pairs.
+/// This implements the WebIDL sequence<sequence<USVString>> conversion.
+///
+/// Per the URL Standard, URLSearchParams constructor accepts:
+/// 1. A string (query string)
+/// 2. A sequence<sequence<USVString>> where each inner sequence has exactly 2 items
+/// 3. A record<USVString, USVString>
+///
+/// This function handles case 2 by:
+/// - Getting Symbol.iterator from the object
+/// - Calling the iterator to get an iterator object
+/// - Iterating with next() until done
+/// - Each yielded value must be iterable and produce exactly 2 string items
+///
+/// Returns null if the object is not iterable.
+/// Returns error.TypeError if inner sequences don't have exactly 2 elements.
+pub fn iterateAsSequencePairs(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!?[]SequencePair {
+    // Must be an object to be iterable
+    if (!v8.v8_Value_IsObject(value)) {
+        return null;
+    }
+    const obj: *v8.Object = @ptrCast(value);
+
+    // Get Symbol.iterator
+    const symbol_iterator = v8.v8_Symbol_GetIterator(isolate) orelse return null;
+
+    // Get the @@iterator method from the object
+    const iterator_method = v8.v8_Object_GetPropertyWithSymbol(context, obj, symbol_iterator) orelse return null;
+
+    // Must be a function
+    if (!v8.v8_Value_IsFunction(iterator_method)) {
+        return null;
+    }
+    const iterator_fn: *v8.Function = @ptrCast(iterator_method);
+
+    // Call the iterator function with the object as 'this'
+    var dummy_args: [0]*v8.Value = undefined;
+    const iterator_obj = v8.v8_Function_Call(iterator_fn, context, @ptrCast(obj), 0, &dummy_args) orelse return null;
+
+    if (!v8.v8_Value_IsObject(iterator_obj)) {
+        return null;
+    }
+
+    // Get the "next" method from the iterator
+    const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return ConversionError.OutOfMemory;
+    const next_method = v8.v8_Object_Get(@ptrCast(iterator_obj), context, @ptrCast(next_key)) orelse return null;
+
+    if (!v8.v8_Value_IsFunction(next_method)) {
+        return null;
+    }
+    const next_fn: *v8.Function = @ptrCast(next_method);
+
+    // Collect pairs by iterating
+    var pairs: std.ArrayList(SequencePair) = .{};
+    errdefer {
+        for (pairs.items) |pair| {
+            if (pair.name.len > 0) allocator.free(pair.name);
+            if (pair.value.len > 0) allocator.free(pair.value);
+        }
+        pairs.deinit(allocator);
+    }
+
+    const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return ConversionError.OutOfMemory;
+    const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return ConversionError.OutOfMemory;
+
+    // Iterate
+    while (true) {
+        // Call next()
+        var next_args: [0]*v8.Value = undefined;
+        const result = v8.v8_Function_Call(next_fn, context, iterator_obj, 0, &next_args) orelse break;
+
+        if (!v8.v8_Value_IsObject(result)) break;
+
+        // Check if done
+        const done_val = v8.v8_Object_Get(@ptrCast(result), context, @ptrCast(done_key)) orelse break;
+        if (v8.v8_Value_BooleanValue(done_val, isolate)) break;
+
+        // Get the yielded value
+        const yielded = v8.v8_Object_Get(@ptrCast(result), context, @ptrCast(value_key)) orelse continue;
+
+        // The yielded value must be iterable (inner sequence) with exactly 2 elements
+        // Iterate it to get name and value
+        const pair_result = try iteratePairElements(allocator, isolate, context, yielded);
+        if (pair_result == null) {
+            // Not a valid pair - throw TypeError
+            return ConversionError.TypeError;
+        }
+        try pairs.append(allocator, pair_result.?);
+    }
+
+    return try pairs.toOwnedSlice(allocator);
+}
+
+/// Iterate an inner sequence to extract exactly 2 string elements.
+/// Returns null if the value is not iterable or doesn't have exactly 2 elements.
+fn iteratePairElements(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!?SequencePair {
+    // Handle array case (most common)
+    if (v8.v8_Value_IsArray(value)) {
+        const arr: *v8.Array = @ptrCast(value);
+        const len = v8.v8_Array_Length(arr);
+
+        // Must have exactly 2 elements
+        if (len != 2) {
+            return null;
+        }
+
+        // Get elements
+        const elem0 = v8.v8_Array_Get(context, arr, 0) orelse return null;
+        const elem1 = v8.v8_Array_Get(context, arr, 1) orelse return null;
+
+        // Convert to strings using ToString
+        const name = try extractV8StringAlloc(allocator, context, elem0);
+        errdefer allocator.free(name);
+        const val = try extractV8StringAlloc(allocator, context, elem1);
+
+        return SequencePair{
+            .name = name,
+            .value = val,
+        };
+    }
+
+    // Handle general iterable case using Symbol.iterator
+    if (!v8.v8_Value_IsObject(value)) {
+        return null;
+    }
+    const obj: *v8.Object = @ptrCast(value);
+
+    // Get Symbol.iterator
+    const symbol_iterator = v8.v8_Symbol_GetIterator(isolate) orelse return null;
+    const iterator_method = v8.v8_Object_GetPropertyWithSymbol(context, obj, symbol_iterator) orelse return null;
+
+    if (!v8.v8_Value_IsFunction(iterator_method)) {
+        return null;
+    }
+    const iterator_fn: *v8.Function = @ptrCast(iterator_method);
+
+    // Call the iterator
+    var dummy_args: [0]*v8.Value = undefined;
+    const iterator_obj = v8.v8_Function_Call(iterator_fn, context, @ptrCast(obj), 0, &dummy_args) orelse return null;
+
+    if (!v8.v8_Value_IsObject(iterator_obj)) {
+        return null;
+    }
+
+    // Get next method
+    const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return ConversionError.OutOfMemory;
+    const next_method = v8.v8_Object_Get(@ptrCast(iterator_obj), context, @ptrCast(next_key)) orelse return null;
+
+    if (!v8.v8_Value_IsFunction(next_method)) {
+        return null;
+    }
+    const next_fn: *v8.Function = @ptrCast(next_method);
+
+    const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return ConversionError.OutOfMemory;
+    const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return ConversionError.OutOfMemory;
+
+    // Collect exactly 2 elements
+    var elements: [2][]u8 = .{ &[_]u8{}, &[_]u8{} };
+    var count: usize = 0;
+
+    while (count < 3) { // Iterate up to 3 times to detect if there are more than 2 elements
+        var next_args: [0]*v8.Value = undefined;
+        const result = v8.v8_Function_Call(next_fn, context, iterator_obj, 0, &next_args) orelse break;
+
+        if (!v8.v8_Value_IsObject(result)) break;
+
+        const done_val = v8.v8_Object_Get(@ptrCast(result), context, @ptrCast(done_key)) orelse break;
+        if (v8.v8_Value_BooleanValue(done_val, isolate)) break;
+
+        const elem = v8.v8_Object_Get(@ptrCast(result), context, @ptrCast(value_key)) orelse continue;
+
+        if (count < 2) {
+            elements[count] = try extractV8StringAlloc(allocator, context, elem);
+        }
+        count += 1;
+    }
+
+    // Must have exactly 2 elements
+    if (count != 2) {
+        // Free any allocated strings
+        if (elements[0].len > 0) allocator.free(elements[0]);
+        if (elements[1].len > 0) allocator.free(elements[1]);
+        return null;
+    }
+
+    return SequencePair{
+        .name = elements[0],
+        .value = elements[1],
+    };
+}
+
+/// Check if a V8 value is iterable (has Symbol.iterator method).
+pub fn isIterable(isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) bool {
+    if (!v8.v8_Value_IsObject(value)) {
+        // Strings are iterable but we handle them separately
+        return v8.v8_Value_IsString(value);
+    }
+    const obj: *v8.Object = @ptrCast(value);
+
+    // Get Symbol.iterator
+    const symbol_iterator = v8.v8_Symbol_GetIterator(isolate) orelse return false;
+    const iterator_method = v8.v8_Object_GetPropertyWithSymbol(context, obj, symbol_iterator) orelse return false;
+
+    return v8.v8_Value_IsFunction(iterator_method);
+}
+
+/// Iterate a V8 object as record<USVString, USVString> for URLSearchParams.
+/// Returns the object's own enumerable string-keyed properties as pairs.
+pub fn iterateAsRecordPairs(
+    allocator: std.mem.Allocator,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!?[]SequencePair {
+    if (!v8.v8_Value_IsObject(value)) {
+        return null;
+    }
+    const obj: *v8.Object = @ptrCast(value);
+
+    // Get own property names
+    const names = v8.v8_Object_GetOwnPropertyNames(context, obj) orelse return null;
+
+    const length = v8.v8_Array_Length(names);
+    if (length == 0) {
+        return &[_]SequencePair{};
+    }
+
+    var pairs: std.ArrayList(SequencePair) = .{};
+    errdefer {
+        for (pairs.items) |pair| {
+            if (pair.name.len > 0) allocator.free(pair.name);
+            if (pair.value.len > 0) allocator.free(pair.value);
+        }
+        pairs.deinit(allocator);
+    }
+
+    for (0..length) |i| {
+        const key_val = v8.v8_Array_Get(context, names, @intCast(i)) orelse continue;
+        const prop_val = v8.v8_Object_Get(obj, context, key_val) orelse continue;
+
+        const key_str = try extractV8StringAlloc(allocator, context, key_val);
+        errdefer allocator.free(key_str);
+        const val_str = try extractV8StringAlloc(allocator, context, prop_val);
+
+        try pairs.append(allocator, SequencePair{
+            .name = key_str,
+            .value = val_str,
+        });
+    }
+
+    return try pairs.toOwnedSlice(allocator);
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
