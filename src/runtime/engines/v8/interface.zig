@@ -1111,6 +1111,27 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // Register named property handler if interface has call_getNamedItem or call_namedItem
+            // This enables named property access: obj.name, obj["name"]
+            // WebIDL interfaces with "getter" operations on DOMString support named property access
+            // Examples: NamedNodeMap, DOMStringMap, HTMLCollection (with named item getter)
+            //
+            // IMPORTANT: Don't enable named property handler for global objects (Window)
+            // because it interferes with global property setting
+            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
+                @hasDecl(Interface, "call_namedItem");
+            const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
+                std.mem.eql(u8, interface_name, "WorkerGlobalScope");
+
+            // Named property handler for legacy platform objects - DISABLED
+            // This is work in progress for issue whatwg-ttfiz
+            // The handler needs more work to properly handle:
+            // 1. getSupportedPropertyNames delegate in codegen
+            // 2. Caching of NamedNodeMap in Element.get_attributes
+            // 3. Proper handling of property assignment vs named property access
+            _ = has_named_getter;
+            _ = is_global_object;
+
             // Register only own methods on prototype (not inherited methods)
             // Inherited methods are accessible via V8's prototype chain
             //
@@ -2331,9 +2352,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Register a method on the prototype template using generated callback
         ///
-        /// Uses V8 Signature to enforce receiver type checking. This ensures the
-        /// method callback is only invoked when `this` is an instance of the
-        /// interface template (or a subclass via FunctionTemplate_Inherit).
+        /// CROSS-REALM SUPPORT: Does NOT use V8 Signature for receiver type checking.
+        /// V8's signature checking is too strict for WebIDL cross-realm semantics.
+        /// Our MethodCallback validates `this` via internal field inspection instead.
         fn registerMethod(
             comptime zig_name: []const u8,
             isolate: *v8.Isolate,
@@ -2342,18 +2363,30 @@ pub fn V8Interface(comptime Interface: type) type {
             method_name: []const u8,
             arity: c_int,
         ) void {
+            _ = receiver_template; // Unused - cross-realm support requires no V8 signature
+
             // Generate the method callback at comptime
             const Callback = MethodCallback(zig_name);
 
-            // Create function template for method WITH SIGNATURE
-            // The signature ensures V8 only calls this callback when `this` is
-            // an instance created from receiver_template (or inheriting template).
-            // This prevents "Internal field out of bounds" crashes.
-            const method_tmpl = v8.v8_FunctionTemplate_NewWithSignature(
+            // CROSS-REALM SUPPORT: Create function template WITHOUT V8 signature.
+            //
+            // V8's signature checking is too strict for WebIDL cross-realm semantics.
+            // When obj is created via `new child.DOMParser()` (child realm's FunctionTemplate)
+            // and we call `DOMParser.prototype.method.call(obj, ...)` (parent realm's method),
+            // V8's signature check rejects it because obj's FunctionTemplate differs from
+            // the parent realm's receiver_template.
+            //
+            // Per WebIDL spec, cross-realm `this` values SHOULD work - if an object was
+            // created as a DOMParser in ANY realm, it should be usable with DOMParser
+            // methods from ANY realm (within the same agent/isolate).
+            //
+            // Our MethodCallback already validates `this` by checking internal fields
+            // (via getInstance/getInstanceTypeSafe), which correctly handles cross-realm
+            // objects since they share the same Zig instance storage mechanism.
+            const method_tmpl = v8.v8_FunctionTemplate_New(
                 isolate,
                 Callback.callback,
                 null,
-                receiver_template, // Receiver type for signature
             ) orelse {
                 std.debug.panic("Failed to create function template for method", .{});
             };
@@ -3519,6 +3552,407 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8_value.?,
                 writable,
                 true, // enumerable
+                true, // configurable
+            ) orelse return .kNo;
+
+            info.setReturnValue(@ptrCast(desc));
+            return .kYes;
+        }
+
+        // =====================================================================
+        // Named Property Handlers for Legacy Platform Objects
+        // WebIDL spec: https://webidl.spec.whatwg.org/#legacy-platform-object
+        // =====================================================================
+
+        /// Named property getter for legacy platform objects (obj.name, obj["name"])
+        /// Called when JavaScript accesses a named property on objects with WebIDL "getter" operations.
+        /// For example, NamedNodeMap has "getter Attr? getNamedItem(DOMString name)".
+        fn namedPropertyGetter(
+            property: *v8.Name,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) void {
+            // Only compile this function body if Interface has call_getNamedItem or call_namedItem
+            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
+                @hasDecl(Interface, "call_namedItem");
+            if (comptime !has_named_getter) {
+                return;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                return;
+            };
+
+            // Get the 'this' object (the interface instance)
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                // Called on prototype, not an instance - let V8 continue normal lookup
+                return;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Verify property is a string (not a Symbol) before processing
+            // This is critical because v8.Name can be either String or Symbol
+            if (!v8.v8_Name_IsString(property)) {
+                return;
+            }
+
+            // Convert property name to Zig string using raw API (safer for callback context)
+            const prop_str: *v8.String = @ptrCast(property);
+            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
+            if (prop_len <= 0) return;
+
+            var prop_buf: [256]u8 = undefined;
+            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return;
+            const prop_name = prop_buf[0..@intCast(actual_len)];
+
+            // Create a DOMString from the property name
+            const dom_str = runtime.DOMString.initInterned(prop_name);
+
+            // Call the named item getter
+            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
+                Interface.call_getNamedItem
+            else
+                Interface.call_namedItem;
+
+            const result = getter_fn(instance, dom_str) catch {
+                return;
+            };
+
+            // Convert result to V8 value
+            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
+            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
+            const type_info = @typeInfo(ActualReturnType);
+
+            if (type_info == .optional) {
+                if (result) |unwrapped_result| {
+                    const ChildType = type_info.optional.child;
+                    if (ChildType == *runtime.Instance) {
+                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
+                        const wrapped = template_registry.wrapInstanceAsV8Object(
+                            unwrapped_result,
+                            iface_name,
+                            isolate,
+                            v8_context,
+                        ) catch {
+                            return;
+                        };
+                        info.setReturnValue(@ptrCast(wrapped));
+                    } else {
+                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
+                            return;
+                        };
+                        info.setReturnValue(@ptrCast(v8_value));
+                    }
+                }
+                // If null, don't set return value - let V8 continue normal lookup
+            } else {
+                const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
+                    return;
+                };
+                info.setReturnValue(@ptrCast(v8_value));
+            }
+        }
+
+        /// Named property enumerator for Reflect.ownKeys support
+        /// Returns an array of named property keys for enumeration
+        fn namedPropertyEnumerator(
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) void {
+            // Only compile if Interface has getSupportedPropertyNames
+            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
+                @hasDecl(Interface, "call_namedItem");
+            if (comptime !has_named_getter) {
+                return;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                return;
+            };
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                // Return empty array for prototype
+                const empty_arr = v8.v8_Array_New(isolate, 0);
+                info.setReturnValue(@ptrCast(empty_arr));
+                return;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Check if Interface has getSupportedPropertyNames delegate
+            // This should be exposed through codegen for interfaces with named properties
+            if (comptime @hasDecl(Interface, "getSupportedPropertyNames")) {
+                // Get property names from interface delegate
+                const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
+                    const empty_arr = v8.v8_Array_New(isolate, 0);
+                    info.setReturnValue(@ptrCast(empty_arr));
+                    return;
+                };
+                defer std.heap.c_allocator.free(names);
+
+                // Create array and populate
+                const names_arr = v8.v8_Array_New(isolate, @intCast(names.len));
+                for (names, 0..) |prop_name, idx| {
+                    const v8_str = v8.v8_String_NewFromUtf8(
+                        isolate,
+                        prop_name.asSlice().ptr,
+                        @intCast(prop_name.asSlice().len),
+                    );
+                    if (v8_str) |str| {
+                        _ = v8.v8_Array_Set(names_arr, v8_context, @intCast(idx), @ptrCast(str));
+                    }
+                }
+
+                info.setReturnValue(@ptrCast(names_arr));
+            } else {
+                // No getSupportedPropertyNames - return empty array
+                // This means the interface doesn't support named property enumeration
+                const empty_arr = v8.v8_Array_New(isolate, 0);
+                info.setReturnValue(@ptrCast(empty_arr));
+            }
+        }
+
+        /// Named property query callback for 'name' in obj
+        /// Returns Intercepted::kYes if property exists, Intercepted::kNo otherwise
+        fn namedPropertyQuery(
+            property: *v8.Name,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) v8.Intercepted {
+            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
+                @hasDecl(Interface, "call_namedItem");
+            if (comptime !has_named_getter) {
+                return .kNo;
+            }
+
+            const isolate = info.getIsolate();
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return .kNo;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return .kNo;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Verify property is a string (not a Symbol) before processing
+            if (!v8.v8_Name_IsString(property)) {
+                return .kNo;
+            }
+
+            // Convert property name to Zig string using raw API (safer for callback context)
+            const prop_str: *v8.String = @ptrCast(property);
+            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
+            if (prop_len <= 0) return .kNo;
+
+            var prop_buf: [256]u8 = undefined;
+            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return .kNo;
+            const prop_name = prop_buf[0..@intCast(actual_len)];
+
+            // Create a DOMString from the property name
+            const dom_str = runtime.DOMString.initInterned(prop_name);
+
+            // Call the named item getter to check if property exists
+            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
+                Interface.call_getNamedItem
+            else
+                Interface.call_namedItem;
+
+            const result = getter_fn(instance, dom_str) catch {
+                return .kNo;
+            };
+
+            // Check if result is non-null (property exists)
+            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
+            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
+            const type_info = @typeInfo(ActualReturnType);
+
+            if (type_info == .optional) {
+                if (result != null) {
+                    // Property exists - set attribute flags (enumerable, configurable)
+                    // Check for LegacyUnenumerableNamedProperties extended attribute
+                    const has_unenumerable_attr = comptime blk: {
+                        if (@hasDecl(Meta, "extended_attributes")) {
+                            for (Meta.extended_attributes) |attr| {
+                                if (std.mem.eql(u8, attr.name, "LegacyUnenumerableNamedProperties")) {
+                                    break :blk true;
+                                }
+                            }
+                        }
+                        break :blk false;
+                    };
+                    // If LegacyUnenumerableNamedProperties, set DontEnum flag (2)
+                    const attr_value: c_int = if (has_unenumerable_attr) 2 else 0;
+                    const v8_attr = v8.v8_Integer_New(isolate, attr_value);
+                    info.setReturnValue(@ptrCast(v8_attr));
+                    return .kYes;
+                }
+            }
+
+            return .kNo;
+        }
+
+        /// Named property descriptor callback for Object.getOwnPropertyDescriptor
+        fn namedPropertyDescriptor(
+            property: *v8.Name,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) v8.Intercepted {
+            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
+                @hasDecl(Interface, "call_namedItem");
+            if (comptime !has_named_getter) {
+                return .kNo;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                return .kNo;
+            };
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return .kNo;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return .kNo;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Verify property is a string (not a Symbol) before processing
+            if (!v8.v8_Name_IsString(property)) {
+                return .kNo;
+            }
+
+            // Convert property name to Zig string using raw API (safer for callback context)
+            const prop_str: *v8.String = @ptrCast(property);
+            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
+            if (prop_len <= 0) return .kNo;
+
+            var prop_buf: [256]u8 = undefined;
+            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return .kNo;
+            const prop_name = prop_buf[0..@intCast(actual_len)];
+
+            // Create a DOMString from the property name
+            const dom_str = runtime.DOMString.initInterned(prop_name);
+
+            // Call the named item getter
+            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
+                Interface.call_getNamedItem
+            else
+                Interface.call_namedItem;
+
+            const result = getter_fn(instance, dom_str) catch {
+                return .kNo;
+            };
+
+            // Convert result to V8 value
+            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
+            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
+            const type_info = @typeInfo(ActualReturnType);
+
+            var v8_value: ?*v8.Value = null;
+            if (type_info == .optional) {
+                if (result) |unwrapped_result| {
+                    const ChildType = type_info.optional.child;
+                    if (ChildType == *runtime.Instance) {
+                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
+                        const wrapped = template_registry.wrapInstanceAsV8Object(
+                            unwrapped_result,
+                            iface_name,
+                            isolate,
+                            v8_context,
+                        ) catch return .kNo;
+                        v8_value = @ptrCast(wrapped);
+                    } else {
+                        v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kNo;
+                    }
+                } else {
+                    // null value - property doesn't exist
+                    return .kNo;
+                }
+            } else {
+                v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kNo;
+            }
+
+            if (v8_value == null) return .kNo;
+
+            // Check for LegacyUnenumerableNamedProperties extended attribute
+            const has_unenumerable_attr = comptime blk: {
+                if (@hasDecl(Meta, "extended_attributes")) {
+                    for (Meta.extended_attributes) |attr| {
+                        if (std.mem.eql(u8, attr.name, "LegacyUnenumerableNamedProperties")) {
+                            break :blk true;
+                        }
+                    }
+                }
+                break :blk false;
+            };
+
+            // Named properties are: NOT enumerable (if LegacyUnenumerableNamedProperties), configurable, NOT writable
+            const enumerable = !has_unenumerable_attr;
+
+            // Create property descriptor object
+            const desc = v8.v8_CreateDataPropertyDescriptor(
+                v8_context,
+                v8_value.?,
+                false, // writable - named properties are typically read-only
+                enumerable,
                 true, // configurable
             ) orelse return .kNo;
 

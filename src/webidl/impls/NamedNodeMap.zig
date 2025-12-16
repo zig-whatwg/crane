@@ -278,3 +278,25 @@ pub fn getAttrs(instance: *runtime.Instance) []const *runtime.Instance {
     const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
     return internal.attrs.toSlice();
 }
+
+/// Get the list of supported property names for legacy platform object enumeration.
+/// Returns attribute qualified names in list order.
+/// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditem
+/// "The supported property names are the return value of running these steps:
+///  1. Let names be the qualified names of the attributes in the attribute list, in order."
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
+
+    const attrs = internal.attrs.toSlice();
+    if (attrs.len == 0) return &[_]runtime.DOMString{};
+
+    var names: std.ArrayList(runtime.DOMString) = .{};
+
+    for (attrs) |attr| {
+        // Get attribute's qualified name using interface per Golden Rule #13
+        const name = interfaces.Attr.get_name(attr) catch continue;
+        try names.append(allocator, name);
+    }
+
+    return names.toOwnedSlice(allocator);
+}

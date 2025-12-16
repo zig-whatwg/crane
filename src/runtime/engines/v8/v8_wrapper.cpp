@@ -2929,6 +2929,38 @@ void v8_ObjectTemplate_SetNamedPropertyHandler(
     ));
 }
 
+// Named property handler with enumerator and descriptor support for legacy platform objects
+// Uses Intercepted return type for query/descriptor callbacks to properly handle missing properties
+typedef Intercepted (*InterceptedNamedQueryCallback)(Local<Name> property, const PropertyCallbackInfo<Integer>&);
+typedef Intercepted (*InterceptedNamedDescriptorCallback)(Local<Name> property, const PropertyCallbackInfo<Value>&);
+
+void v8_ObjectTemplate_SetNamedPropertyHandlerFull(
+    Global<ObjectTemplate>* tpl,
+    NamedPropertyGetterCallback getter,
+    NamedPropertySetterCallback setter,
+    InterceptedNamedQueryCallback query,
+    NamedPropertyDeleterCallback deleter,
+    NamedPropertyEnumeratorCallback enumerator,
+    InterceptedNamedDescriptorCallback descriptor,
+    PropertyHandlerFlags flags
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    
+    local_tpl->SetHandler(NamedPropertyHandlerConfiguration(
+        getter,
+        setter,
+        query,
+        deleter,
+        enumerator,
+        nullptr,  // definer callback (not needed for legacy platform objects)
+        descriptor,
+        Local<Value>(),  // data
+        flags
+    ));
+}
+
 // ObjectTemplate - set indexed property handler (for array-like access: obj[0], obj[1], etc.)
 void v8_ObjectTemplate_SetIndexedPropertyHandler(
     Global<ObjectTemplate>* tpl,

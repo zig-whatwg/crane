@@ -360,6 +360,47 @@ pub extern fn v8_ObjectTemplate_SetNamedPropertyHandler(
     data: ?*Value,
 ) void;
 
+/// Named property query callback with Intercepted return type
+/// Returns Intercepted::kYes if property exists, Intercepted::kNo otherwise
+pub const NamedPropertyQueryCallbackIntercepted = *const fn (
+    property: *Name,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) Intercepted;
+
+/// Named property descriptor callback with Intercepted return type
+/// Should set return value to a property descriptor object with value/writable/enumerable/configurable
+/// Returns Intercepted::kYes if property exists and descriptor was set, Intercepted::kNo otherwise
+pub const NamedPropertyDescriptorCallback = *const fn (
+    property: *Name,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) Intercepted;
+
+/// V8 PropertyHandlerFlags for named property handlers
+pub const PropertyHandlerFlags = enum(c_int) {
+    kNone = 0,
+    kAllCanRead = 1,
+    kNonMasking = 2,
+    kOnlyInterceptStrings = 4,
+    kHasNoSideEffect = 8,
+};
+
+/// Set a named property handler with full support for legacy platform objects
+/// This enables proper behavior for:
+/// - obj.name (getter)
+/// - Object.getOwnPropertyDescriptor(obj, name) (descriptor)
+/// - Reflect.ownKeys(obj) (enumerator)
+/// - 'name' in obj (query)
+pub extern fn v8_ObjectTemplate_SetNamedPropertyHandlerFull(
+    self: *ObjectTemplate,
+    getter: ?NamedPropertyGetterCallback,
+    setter: ?NamedPropertySetterCallback,
+    query: ?NamedPropertyQueryCallbackIntercepted,
+    deleter: ?NamedPropertyDeleterCallback,
+    enumerator: ?NamedPropertyEnumeratorCallback,
+    descriptor: ?NamedPropertyDescriptorCallback,
+    flags: PropertyHandlerFlags,
+) void;
+
 /// Set an indexed property handler on the ObjectTemplate
 /// This intercepts indexed property access (e.g., obj[0], obj[1], etc.)
 pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandler(
