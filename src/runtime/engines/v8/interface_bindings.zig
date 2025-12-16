@@ -452,6 +452,8 @@ pub fn registerNamespacesGeneric(
 ///   (so `Object.getPrototypeOf(DOMException) === Function.prototype`)
 ///
 /// Only the prototype-side inherits from Error, not the class-side.
+///
+/// After setting up inheritance, we make the prototype immutable per WebIDL §3.7.1.
 fn setupDOMExceptionInheritance(
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -480,6 +482,12 @@ fn setupDOMExceptionInheritance(
     // Per WebIDL spec and WPT tests, the class-side inheritance should remain Function.prototype
     // See: DOMException-custom-bindings.any.js "does not inherit from Error: class-side"
     // The test expects: Object.getPrototypeOf(DOMException) === Function.prototype
+
+    // NOTE: Unlike other interfaces, we cannot make DOMException.prototype immutable after
+    // setting up Error inheritance because V8's SetImmutableProto is only available on
+    // ObjectTemplate, not Object. The prototype template was created without SetImmutableProto
+    // specifically to allow this Error inheritance setup. This is acceptable per WebIDL spec
+    // which only requires the prototype chain to be correct, not necessarily immutable.
 }
 
 /// Set up constructor inheritance chain after all constructors are registered

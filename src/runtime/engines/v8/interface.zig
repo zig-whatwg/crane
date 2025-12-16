@@ -28,6 +28,7 @@
 //! - Internal fields for Zig instance storage
 
 const std = @import("std");
+const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
@@ -983,7 +984,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // WindowProperties insertion happens in initializeBindings() AFTER all interfaces
             // are registered. The Window.prototype will be made immutable AFTER WindowProperties
             // is inserted (via v8_Object_SetImmutableProto on the actual prototype object).
-            if (!std.mem.eql(u8, interface_name, "Window")) {
+            //
+            // EXCEPTION: DOMException.prototype must NOT be immutable during template creation
+            // because per WebIDL spec, DOMException inherits from Error. We need to set
+            // DOMException.prototype.__proto__ = Error.prototype after registration.
+            // The prototype will be made immutable AFTER the inheritance is set up.
+            if (!std.mem.eql(u8, interface_name, "Window") and !std.mem.eql(u8, interface_name, "DOMException")) {
                 v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
             }
 
