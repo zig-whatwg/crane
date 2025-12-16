@@ -2345,6 +2345,16 @@ void v8_FunctionTemplate_SetLength(Global<FunctionTemplate>* tpl, int length) {
     local_tpl->SetLength(length);
 }
 
+// Check if a value is an instance of the given FunctionTemplate
+// This is used for [LegacyLenientThis] attribute checking
+bool v8_FunctionTemplate_HasInstance(Global<FunctionTemplate>* tpl, Global<Object>* object) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
+    Local<Object> local_obj = object->Get(isolate);
+    return local_tpl->HasInstance(local_obj);
+}
+
 void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

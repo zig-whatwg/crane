@@ -1033,6 +1033,10 @@ pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *Obj
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;
 
+/// Check if an object is an instance of this FunctionTemplate.
+/// Used for [LegacyLenientThis] attribute checking per WebIDL §4.3.10.
+pub extern fn v8_FunctionTemplate_HasInstance(tpl: *FunctionTemplate, object: *Object) bool;
+
 /// Mark this function template as having a read-only "prototype" property.
 /// This also removes the legacy "arguments" and "caller" properties, making
 /// the function behave like a strict mode ES6+ function.

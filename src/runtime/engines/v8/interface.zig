@@ -1332,17 +1332,58 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Fall through to throw TypeError
                             } else {
                                 // Non-[Global] interface: use normal this handling
-                                const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                                if (instance_ptr != null) {
-                                    break :blk instance_ptr;
-                                }
+                                //
+                                // We MUST verify that `this` is actually an instance of this interface
+                                // BEFORE using the internal field pointer. This is critical because in
+                                // sloppy mode, `getter.call(null)` coerces null to the global object (Window),
+                                // which HAS internal fields but is NOT an instance of this interface.
+                                // Without this check, we'd pass the Window's internal pointer to the getter,
+                                // causing InvalidStateError instead of the correct TypeError.
+                                //
+                                // Per WebIDL spec:
+                                // - For regular attributes: throw TypeError if `this` is not a valid instance
+                                // - For [LegacyLenientThis]: return undefined if `this` is not a valid instance
 
-                                // [LegacyLenientThis] - return undefined instead of throwing
-                                if (is_lenient_this) {
-                                    if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                        info.setReturnValue(undef);
+                                // Use HasInstance to properly check if this_obj is an instance of our interface
+                                if (template_cache) |tpl| {
+                                    if (!v8.v8_FunctionTemplate_HasInstance(tpl, this_obj)) {
+                                        // Not an instance of this interface
+                                        if (is_lenient_this) {
+                                            // [LegacyLenientThis] - return undefined per WebIDL §4.3.10
+                                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                                info.setReturnValue(undef);
+                                            }
+                                            return;
+                                        }
+                                        // Regular attribute - fall through to throw TypeError
+                                    } else {
+                                        // Is an instance - get the internal field pointer
+                                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                        if (instance_ptr != null) {
+                                            break :blk instance_ptr;
+                                        }
+                                        // HasInstance passed but no internal field - shouldn't happen for valid instances
+                                        // Fall through to throw TypeError (or return undefined for LegacyLenientThis)
+                                        if (is_lenient_this) {
+                                            if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                                info.setReturnValue(undef);
+                                            }
+                                            return;
+                                        }
                                     }
-                                    return;
+                                } else {
+                                    // Template not cached yet - fall back to simpler check
+                                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                    if (instance_ptr != null) {
+                                        break :blk instance_ptr;
+                                    }
+                                    // [LegacyLenientThis] - return undefined instead of throwing
+                                    if (is_lenient_this) {
+                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                            info.setReturnValue(undef);
+                                        }
+                                        return;
+                                    }
                                 }
                             }
 
@@ -2167,6 +2208,45 @@ pub fn V8Interface(comptime Interface: type) type {
                     return v8.v8_Undefined(isolate);
                 };
                 return @ptrCast(v8_str);
+            }
+
+            // Handle runtime.JSValue - engine-agnostic value wrapper
+            if (ReturnType == runtime.JSValue) {
+                return switch (result) {
+                    .undefined => v8.v8_Undefined(isolate),
+                    .null => @ptrCast(v8.v8_Null(isolate)),
+                    .boolean => |b| @ptrCast(v8.v8_Boolean_New(isolate, b)),
+                    .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
+                    .string => |s| blk: {
+                        if (s.data.len == 0) {
+                            break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return v8.v8_Undefined(isolate));
+                        }
+                        break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return v8.v8_Undefined(isolate));
+                    },
+                    .handle => |h| blk: {
+                        // Handle is a Global<Value>* - return it directly for setReturnValueGlobal
+                        if (h.handle_scope == .global) {
+                            break :blk @ptrCast(h.ptr);
+                        } else {
+                            // Local handle - need to persist to Global
+                            const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
+                            break :blk if (global) |g| @ptrCast(g) else v8.v8_Undefined(isolate);
+                        }
+                    },
+                    .instance => |i| blk: {
+                        const inst: *runtime.Instance = @ptrCast(@alignCast(i));
+                        const iface_name = template_registry.getInstanceInterfaceName(inst);
+                        const v8_obj = template_registry.wrapInstanceAsV8Object(
+                            inst,
+                            iface_name,
+                            isolate,
+                            v8_context,
+                        ) catch {
+                            break :blk v8.v8_Undefined(isolate);
+                        };
+                        break :blk @ptrCast(v8_obj);
+                    },
+                };
             }
 
             // Handle union types (e.g., ReadableStreamReader)
@@ -4365,17 +4445,58 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                         } else {
                             // Non-[Global] interface: use normal this handling
-                            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                            if (instance_ptr != null) {
-                                break :blk instance_ptr;
-                            }
+                            //
+                            // We MUST verify that `this` is actually an instance of this interface
+                            // BEFORE using the internal field pointer. This is critical because in
+                            // sloppy mode, `setter.call(null)` coerces null to the global object (Window),
+                            // which HAS internal fields but is NOT an instance of this interface.
+                            // Without this check, we'd pass the Window's internal pointer to the setter,
+                            // causing InvalidStateError instead of the correct TypeError.
+                            //
+                            // Per WebIDL spec:
+                            // - For regular attributes: throw TypeError if `this` is not a valid instance
+                            // - For [LegacyLenientThis]: silently return if `this` is not a valid instance
 
-                            // [LegacyLenientThis] - silently return instead of throwing
-                            if (is_lenient_this) {
-                                if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                    info.setReturnValue(undef);
+                            // Use HasInstance to properly check if this_obj is an instance of our interface
+                            if (template_cache) |tpl| {
+                                if (!v8.v8_FunctionTemplate_HasInstance(tpl, this_obj)) {
+                                    // Not an instance of this interface
+                                    if (is_lenient_this) {
+                                        // [LegacyLenientThis] - silently return per WebIDL §4.3.10
+                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                            info.setReturnValue(undef);
+                                        }
+                                        return;
+                                    }
+                                    // Regular attribute - fall through to throw TypeError
+                                } else {
+                                    // Is an instance - get the internal field pointer
+                                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                    if (instance_ptr != null) {
+                                        break :blk instance_ptr;
+                                    }
+                                    // HasInstance passed but no internal field - shouldn't happen for valid instances
+                                    // Fall through to throw TypeError (or silently return for LegacyLenientThis)
+                                    if (is_lenient_this) {
+                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                            info.setReturnValue(undef);
+                                        }
+                                        return;
+                                    }
                                 }
-                                return;
+                            } else {
+                                // Template not cached yet - fall back to simpler check
+                                const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                if (instance_ptr != null) {
+                                    break :blk instance_ptr;
+                                }
+                                // [LegacyLenientThis] - silently return instead of throwing
+                                if (is_lenient_this) {
+                                    if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                        info.setReturnValue(undef);
+                                    }
+                                    return;
+                                }
                             }
                         }
 
