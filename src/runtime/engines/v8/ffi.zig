@@ -203,6 +203,10 @@ pub const PropertyCallbackInfo = opaque {
     /// Get data associated with the accessor
     pub extern fn v8_PropertyCallbackInfo_Data(self: *const PropertyCallbackInfo) *Value;
 
+    /// Check if errors should throw (indicates strict mode)
+    /// Returns true if we're in strict mode and should throw TypeError on failure
+    pub extern fn v8_PropertyCallbackInfo_ShouldThrowOnError(self: *const PropertyCallbackInfo) bool;
+
     pub inline fn getIsolate(self: *const PropertyCallbackInfo) *Isolate {
         return v8_PropertyCallbackInfo_GetIsolate(self);
     }
@@ -226,6 +230,12 @@ pub const PropertyCallbackInfo = opaque {
     pub inline fn getData(self: *const PropertyCallbackInfo) *Value {
         return v8_PropertyCallbackInfo_Data(self);
     }
+
+    /// Check if errors should throw (indicates strict mode)
+    /// Returns true if we're in strict mode and should throw TypeError on failure
+    pub inline fn shouldThrowOnError(self: *const PropertyCallbackInfo) bool {
+        return v8_PropertyCallbackInfo_ShouldThrowOnError(self);
+    }
 };
 
 /// Function callback signature for V8 function calls
@@ -248,8 +258,18 @@ pub const AccessorSetterCallback = *const fn (
 pub const PropertyCallbackInfoVoid = opaque {
     pub extern fn v8_PropertyCallbackInfo_Void_GetIsolate(self: *const PropertyCallbackInfoVoid) *Isolate;
 
+    /// Check if errors should throw (indicates strict mode)
+    /// Returns true if we're in strict mode and should throw TypeError on failure
+    pub extern fn v8_PropertyCallbackInfo_Void_ShouldThrowOnError(self: *const PropertyCallbackInfoVoid) bool;
+
     pub inline fn getIsolate(self: *const PropertyCallbackInfoVoid) *Isolate {
         return v8_PropertyCallbackInfo_Void_GetIsolate(self);
+    }
+
+    /// Check if errors should throw (indicates strict mode)
+    /// Returns true if we're in strict mode and should throw TypeError on failure
+    pub inline fn shouldThrowOnError(self: *const PropertyCallbackInfoVoid) bool {
+        return v8_PropertyCallbackInfo_Void_ShouldThrowOnError(self);
     }
 };
 
@@ -298,6 +318,16 @@ pub const IndexedPropertyGetterCallback = *const fn (
     index: u32,
     info: *const PropertyCallbackInfo,
 ) callconv(.c) void;
+
+/// Indexed property setter callback with Intercepted return type
+/// Called when JavaScript sets an indexed property (e.g., obj[0] = value)
+/// Return Intercepted::kYes if the set was handled (or rejected with exception)
+/// Return Intercepted::kNo to let V8 continue normal property setting
+pub const IndexedPropertySetterCallbackIntercepted = *const fn (
+    index: u32,
+    value: *Value,
+    info: *const PropertyCallbackInfo,
+) callconv(.c) Intercepted;
 
 // ============================================================================
 // V8 API Function Declarations
@@ -468,17 +498,59 @@ pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
     enumerator: IndexedPropertyEnumeratorCallback,
 ) void;
 
-/// Set an indexed property handler with full support (getter, query, enumerator, descriptor)
+/// Set an indexed property handler with full support (getter, setter, query, enumerator, descriptor)
 /// This enables proper behavior for:
 /// - obj[index] (getter)
+/// - obj[index] = value (setter - throws TypeError in strict mode if read-only)
 /// - Object.getOwnPropertyDescriptor(obj, index) (descriptor)
 /// - Reflect.ownKeys(obj) (enumerator)
 /// - 'index' in obj (query)
 pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
     self: *ObjectTemplate,
     getter: IndexedPropertyGetterCallback,
+    setter: ?IndexedPropertySetterCallbackIntercepted,
     query: ?IndexedPropertyQueryCallback,
     enumerator: ?IndexedPropertyEnumeratorCallback,
+    descriptor: ?IndexedPropertyDescriptorCallback,
+) void;
+
+/// V8 PropertyDescriptor - represents a property descriptor from Object.defineProperty
+/// This is an opaque type; use helper functions to extract fields
+pub const PropertyDescriptor = opaque {};
+
+/// Indexed property definer callback for Object.defineProperty() interception
+/// This handles [[DefineOwnProperty]] per WebIDL spec
+/// Returns Intercepted::kYes if the define was handled, Intercepted::kNo otherwise
+pub const IndexedPropertyDefinerCallback = *const fn (
+    index: u32,
+    desc: *const PropertyDescriptor,
+    info: *const PropertyCallbackInfoVoid,
+) callconv(.c) Intercepted;
+
+/// Check if PropertyDescriptor is an accessor descriptor (has get or set)
+pub extern fn v8_PropertyDescriptor_IsAccessorDescriptor(desc: *const PropertyDescriptor) bool;
+
+/// Check if PropertyDescriptor is a data descriptor (has value)
+pub extern fn v8_PropertyDescriptor_IsDataDescriptor(desc: *const PropertyDescriptor) bool;
+
+/// Get the value from a data PropertyDescriptor (returns null if not present)
+pub extern fn v8_PropertyDescriptor_GetValue(desc: *const PropertyDescriptor) ?*Value;
+
+/// Set indexed property handler with definer support for [[DefineOwnProperty]]
+/// This enables proper behavior for:
+/// - obj[index] (getter)
+/// - obj[index] = value (setter) - throws TypeError in strict mode if no setter defined
+/// - Object.defineProperty(obj, index, desc) (definer) - handles [[DefineOwnProperty]]
+/// - Object.getOwnPropertyDescriptor(obj, index) (descriptor)
+/// - Reflect.ownKeys(obj) (enumerator)
+/// - 'index' in obj (query)
+pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
+    self: *ObjectTemplate,
+    getter: IndexedPropertyGetterCallback,
+    setter: ?IndexedPropertySetterCallbackIntercepted,
+    query: ?IndexedPropertyQueryCallback,
+    enumerator: ?IndexedPropertyEnumeratorCallback,
+    definer: ?IndexedPropertyDefinerCallback,
     descriptor: ?IndexedPropertyDescriptorCallback,
 ) void;
 
@@ -620,6 +692,8 @@ pub extern fn v8_Object_Set(object: *Object, context: *Context, key: *Value, val
 pub extern fn v8_Object_Delete(object: *Object, context: *Context, key: *Value) bool;
 pub extern fn v8_Object_CreateDataProperty(object: *Object, context: *Context, key: *String, value: *Value) bool;
 pub extern fn v8_Object_Get(object: *Object, context: *Context, key: *Value) ?*Value;
+pub extern fn v8_Object_HasOwnProperty(object: *Object, context: *Context, key: *Value) bool;
+pub extern fn v8_Object_GetOwnPropertyDescriptor(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetOwnPropertySymbols(context: *Context, obj: *Object) ?*Array;

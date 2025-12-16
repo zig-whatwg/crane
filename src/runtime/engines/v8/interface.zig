@@ -1091,15 +1091,22 @@ pub fn V8Interface(comptime Interface: type) type {
             };
             // Check if interface has get_length for enumerator support
             const has_length = comptime @hasDecl(Interface, "get_length");
+            // Check if interface has indexed setter (set_item or call_setter)
+            const has_indexed_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
             if (has_indexed_item) {
                 if (has_length) {
                     // Use full indexed property handler with query and descriptor callbacks
                     // This enables proper Object.getOwnPropertyDescriptor support
-                    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+                    // Also includes setter to properly handle [[Set]] trap:
+                    // - If setter is defined, allow setting
+                    // - If no setter, throw TypeError in strict mode
+                    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
                         instance_tmpl,
                         indexedPropertyGetter,
+                        if (has_indexed_setter) indexedPropertySetter else indexedPropertySetterReadOnly,
                         indexedPropertyQuery,
                         indexedPropertyEnumerator,
+                        null, // definer - not needed for most interfaces
                         indexedPropertyDescriptor,
                     );
                 } else {
@@ -1814,6 +1821,8 @@ pub fn V8Interface(comptime Interface: type) type {
                             // Fall through to throw TypeError
                         } else {
                             // Non-[Global] interface: use normal this handling
+                            //
+                            // First, try to get instance using type-safe or legacy getInstance
                             if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
                                 if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
                                     break :blk inst;
@@ -1823,8 +1832,29 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :blk inst;
                                 }
                             }
-                        }
 
+                            // IMPLICIT THIS HANDLING FOR GLOBAL OBJECTS:
+                            // Per WebIDL §3.8, when an operation is called without a receiver
+                            // (e.g., `const f = dispatchEvent; f(event)`), V8 may coerce `this`
+                            // to the caller's global object in sloppy mode.
+                            //
+                            // For methods inherited from parent interfaces (like EventTarget),
+                            // even though EventTarget itself doesn't have [Global], the method
+                            // may be called on a global object (Window) which inherits from EventTarget.
+                            //
+                            // Check if `this` IS a global object and use it as implicit this.
+                            if (v8.v8_Isolate_GetCurrentContext(isolate)) |ctx| {
+                                if (v8.v8_Context_Global(ctx)) |context_global| {
+                                    // Check if this_obj IS the current context's global
+                                    if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(context_global))) {
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(context_global, 0);
+                                        if (global_ptr != null) {
+                                            break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         // Throw TypeError from method's realm
                         const holder = info.getHolder();
                         if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
@@ -3382,8 +3412,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
+            std.debug.print("[DEBUG] indexedPropertyEnumerator called for {s}\n", .{interface_name});
+
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                std.debug.print("[DEBUG] indexedPropertyEnumerator: no v8 context\n", .{});
                 return;
             };
 
@@ -3394,6 +3427,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
                 // Called on prototype, not an instance - return empty array
+                std.debug.print("[DEBUG] indexedPropertyEnumerator: no instance ptr\n", .{});
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
                 return;
@@ -3406,15 +3440,19 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
+                std.debug.print("[DEBUG] indexedPropertyEnumerator: poison pattern\n", .{});
                 return;
             }
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
             // Get the length of the collection
-            const length = Interface.get_length(instance) catch {
+            const length = Interface.get_length(instance) catch |err| {
+                std.debug.print("[DEBUG] indexedPropertyEnumerator: get_length error: {any}\n", .{err});
                 return;
             };
+
+            std.debug.print("[DEBUG] indexedPropertyEnumerator: length={d}\n", .{length});
 
             // Create an array of indices
             const indices_arr = v8.v8_Array_New(isolate, @intCast(length));
@@ -3424,6 +3462,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
                 _ = v8.v8_Array_Set(indices_arr, v8_context, i, @ptrCast(v8_idx));
             }
+            std.debug.print("[DEBUG] indexedPropertyEnumerator: returning {d} indices\n", .{length});
             info.setReturnValue(@ptrCast(indices_arr));
         }
 
@@ -3560,16 +3599,164 @@ pub fn V8Interface(comptime Interface: type) type {
             const has_setter = comptime @hasDecl(Interface, "call_setter") or @hasDecl(Interface, "set_item");
             const writable = has_setter;
 
-            // Create property descriptor object
-            const desc = v8.v8_CreateDataPropertyDescriptor(
-                v8_context,
-                v8_value.?,
-                writable,
-                true, // enumerable
-                true, // configurable
-            ) orelse return .kNo;
+            // Create property descriptor object directly in Zig
+            // { value: v8_value, writable: bool, enumerable: true, configurable: true }
+            const desc = v8.v8_Object_NewInContext(v8_context) orelse return .kNo;
+
+            // Set the "value" property
+            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return .kNo;
+            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(value_key), v8_value.?);
+
+            // Set the "writable" property
+            const writable_key = v8.v8_String_NewFromUtf8(isolate, "writable", 8) orelse return .kNo;
+            const writable_val = v8.v8_Boolean_New(isolate, writable);
+            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(writable_key), @ptrCast(writable_val));
+
+            // Set the "enumerable" property (always true for indexed properties)
+            const enumerable_key = v8.v8_String_NewFromUtf8(isolate, "enumerable", 10) orelse return .kNo;
+            const enumerable_val = v8.v8_Boolean_New(isolate, true);
+            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(enumerable_key), @ptrCast(enumerable_val));
+
+            // Set the "configurable" property (always true for WebIDL properties)
+            const configurable_key = v8.v8_String_NewFromUtf8(isolate, "configurable", 12) orelse return .kNo;
+            const configurable_val = v8.v8_Boolean_New(isolate, true);
+            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(configurable_key), @ptrCast(configurable_val));
 
             info.setReturnValue(@ptrCast(desc));
+            return .kYes;
+        }
+
+        /// Indexed property setter for read-only collections
+        /// Per WebIDL spec, [[Set]] on legacy platform objects without indexed setter:
+        /// - In strict mode: throw TypeError
+        /// - In sloppy mode: silently fail (return without error)
+        ///
+        /// Uses V8's ShouldThrowOnError() to check strict mode and throw TypeError accordingly.
+        fn indexedPropertySetterReadOnly(
+            index: u32,
+            value: *v8.Value,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) v8.Intercepted {
+            _ = value;
+
+            // Only compile if Interface has call_item (i.e., has indexed getter)
+            if (comptime !@hasDecl(Interface, "call_item") or !@hasDecl(Interface, "get_length")) {
+                return .kNo;
+            }
+
+            const isolate = info.getIsolate();
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return .kNo;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return .kNo;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Check if index is in range (this makes it a supported property index)
+            const length = Interface.get_length(instance) catch return .kNo;
+            if (index >= length) {
+                // Index out of range - not a supported property index, let normal [[Set]] happen
+                return .kNo;
+            }
+
+            // Index IS in range (supported property index), but we don't have a setter
+            // Per WebIDL [[Set]] spec step 2:
+            // "If O supports indexed properties and P is an array index, then:
+            //   If O does not implement an indexed property setter, return false."
+            //
+            // In strict mode, throw TypeError. In sloppy mode, silently return.
+            if (info.shouldThrowOnError()) {
+                // Strict mode - throw TypeError
+                var buf: [64]u8 = undefined;
+                const msg = std.fmt.bufPrint(&buf, "Cannot set property \"{d}\" on read-only indexed collection", .{index}) catch "Cannot set property on read-only indexed collection";
+                const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                v8.v8_Isolate_ThrowException(isolate, exception);
+            }
+            // In sloppy mode or after throwing, indicate we handled the request
+            return .kYes;
+        }
+
+        /// Indexed property setter for writable collections (has set_item or call_setter)
+        /// Actually sets the value at the given index
+        fn indexedPropertySetter(
+            index: u32,
+            value: *v8.Value,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) v8.Intercepted {
+            // Only compile if Interface has indexed setter
+            const has_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
+            if (comptime !has_setter) {
+                return .kNo;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return .kNo;
+            }
+
+            // Safety check
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return .kNo;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Get the setter function at comptime
+            const setter_fn = comptime if (@hasDecl(Interface, "set_item"))
+                Interface.set_item
+            else
+                Interface.call_setter;
+
+            // Get the value type from the setter function signature
+            const SetterFnType = @TypeOf(setter_fn);
+            const fn_info = @typeInfo(SetterFnType).@"fn";
+            const params = fn_info.params;
+
+            // Expected signature: fn(instance: *runtime.Instance, index: u32, value: ValueType) !void
+            if (params.len < 3) {
+                return .kNo;
+            }
+
+            const ValueType = params[2].type orelse return .kNo;
+
+            // Convert V8 value to the expected Zig type
+            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value) catch {
+                return .kNo;
+            };
+
+            // Call the setter
+            setter_fn(instance, index, zig_value) catch {
+                return .kNo;
+            };
+
             return .kYes;
         }
 
@@ -3697,8 +3884,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
+            std.debug.print("[DEBUG] namedPropertyEnumerator called for {s}\n", .{interface_name});
+
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+                std.debug.print("[DEBUG] namedPropertyEnumerator: no v8 context\n", .{});
                 return;
             };
 
@@ -3709,6 +3899,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
                 // Return empty array for prototype
+                std.debug.print("[DEBUG] namedPropertyEnumerator: no instance ptr\n", .{});
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
                 return;
@@ -3721,6 +3912,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
+                std.debug.print("[DEBUG] namedPropertyEnumerator: poison pattern\n", .{});
                 return;
             }
 
@@ -3729,12 +3921,15 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check if Interface has getSupportedPropertyNames delegate
             // This should be exposed through codegen for interfaces with named properties
             if (comptime @hasDecl(Interface, "getSupportedPropertyNames")) {
+                std.debug.print("[DEBUG] namedPropertyEnumerator: calling getSupportedPropertyNames\n", .{});
                 // Get property names from interface delegate
-                const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
+                const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch |err| {
+                    std.debug.print("[DEBUG] namedPropertyEnumerator: error: {any}\n", .{err});
                     const empty_arr = v8.v8_Array_New(isolate, 0);
                     info.setReturnValue(@ptrCast(empty_arr));
                     return;
                 };
+                std.debug.print("[DEBUG] namedPropertyEnumerator: got {d} names\n", .{names.len});
                 // Only free if we got an allocated slice (not an empty literal)
                 defer if (names.len > 0) std.heap.c_allocator.free(names);
 
@@ -3751,10 +3946,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
 
+                std.debug.print("[DEBUG] namedPropertyEnumerator: returning {d} names\n", .{names.len});
                 info.setReturnValue(@ptrCast(names_arr));
             } else {
                 // No getSupportedPropertyNames - return empty array
                 // This means the interface doesn't support named property enumeration
+                std.debug.print("[DEBUG] namedPropertyEnumerator: no getSupportedPropertyNames\n", .{});
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
             }
@@ -5109,6 +5306,49 @@ pub fn V8Interface(comptime Interface: type) type {
         /// This ensures JavaScript getter/setter overrides are respected.
         fn PutForwardsSetterCallback(comptime attr_name: []const u8, comptime forward_prop: []const u8) type {
             return struct {
+                /// Helper to get a property value, respecting own property getters.
+                /// When a user defines an own accessor property using Object.defineProperty,
+                /// we must explicitly call their getter function.
+                fn getPropertyWithOwnGetterSupport(
+                    isolate: *v8.Isolate,
+                    context: *v8.Context,
+                    obj: *v8.Object,
+                    key: *v8.Value,
+                ) ?*v8.Value {
+                    // Check if the object has an own property descriptor for this key
+                    // This is needed to properly invoke user-defined getters
+                    if (v8.v8_Object_GetOwnPropertyDescriptor(obj, context, key)) |desc_value| {
+                        // We have an own property descriptor - check if it has a "get" function
+                        if (v8.v8_Value_IsObject(desc_value)) {
+                            const desc_obj: *v8.Object = @ptrCast(desc_value);
+
+                            // Create "get" key to access the getter from descriptor
+                            const get_key = v8.v8_String_NewFromUtf8(isolate, "get", 3) orelse {
+                                // Fall back to normal Get
+                                return v8.v8_Object_Get(obj, context, key);
+                            };
+
+                            // Get the "get" property from the descriptor
+                            const getter_value = v8.v8_Object_Get(desc_obj, context, @ptrCast(get_key)) orelse {
+                                // Fall back to normal Get
+                                return v8.v8_Object_Get(obj, context, key);
+                            };
+
+                            // Check if it's a function
+                            if (v8.v8_Value_IsFunction(getter_value)) {
+                                // Call the custom getter with obj as 'this'
+                                const getter_fn: *v8.Function = @ptrCast(getter_value);
+                                // Use a dummy args pointer since argc is 0
+                                var dummy_args: [1]*v8.Value = undefined;
+                                return v8.v8_Function_Call(getter_fn, context, @ptrCast(obj), 0, &dummy_args);
+                            }
+                        }
+                    }
+
+                    // No own property getter - use standard property access
+                    return v8.v8_Object_Get(obj, context, key);
+                }
+
                 pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                     const isolate_inner = info.getIsolate();
                     const context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
@@ -5123,7 +5363,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     const this_obj = info.getThis();
 
                     // Step 1: Use JavaScript [[Get]] to get the attribute's value
-                    // This respects any user-defined getters on the object
+                    // This MUST respect user-defined getters on the object
+                    // Per WebIDL spec §3.7.6, we use JavaScript [[Get]] semantics
                     const attr_name_v8 = v8.v8_String_NewFromUtf8(
                         isolate_inner,
                         attr_name.ptr,
@@ -5133,7 +5374,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
-                    const target_value = v8.v8_Object_Get(this_obj, context, @ptrCast(attr_name_v8)) orelse {
+                    // Use our helper that properly invokes own property getters
+                    const target_value = getPropertyWithOwnGetterSupport(
+                        isolate_inner,
+                        context,
+                        this_obj,
+                        @ptrCast(attr_name_v8),
+                    ) orelse {
                         // [[Get]] returned empty/exception
                         // The exception is already set on the context, just return
                         return;
@@ -5163,11 +5410,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     };
 
                     const target_obj: *v8.Object = @ptrCast(target_value);
-                    const set_result = v8.v8_Object_Set(target_obj, context, @ptrCast(forward_prop_v8), new_value_v8);
+                    _ = v8.v8_Object_Set(target_obj, context, @ptrCast(forward_prop_v8), new_value_v8);
 
                     // Per WebIDL spec: "if [[Set]] returns false, this is NOT an error"
                     // The setter should NOT throw even if [[Set]] returns false
-                    _ = set_result;
 
                     // Return undefined
                     if (v8.v8_Undefined(isolate_inner)) |undef| {

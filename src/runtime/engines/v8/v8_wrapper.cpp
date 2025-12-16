@@ -1057,6 +1057,25 @@ bool v8_Value_IsNullOrUndefined_Local(void* value_ptr) {
     return val->IsNullOrUndefined();
 }
 
+/// Check if a value has [[IsHTMLDDA]] internal slot (document.all)
+/// Per ECMA-262, these "undetectable" objects are falsy despite being objects.
+/// Used for WebIDL this-value validation - document.all should throw TypeError
+/// when used as 'this' for incompatible operations.
+bool v8_Value_IsUndetectable(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsObject() && val.As<Object>()->IsUndetectable();
+}
+
+// Version for Local handle internal pointers (raw V8 tagged pointer)
+bool v8_Value_IsUndetectable_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
+    return val->IsObject() && val.As<Object>()->IsUndetectable();
+}
+
 bool v8_Value_BooleanValue(Global<Value>* value, Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Value> val = value->Get(isolate);
@@ -1276,6 +1295,54 @@ Global<Value>* v8_Object_Get(Global<Object>* object, Global<Context>* context, G
     
     Local<Value> val = maybe_val.ToLocalChecked();
     return trackHandle(new Global<Value>(isolate, val));
+}
+
+// Check if an object has an own property (not inherited)
+bool v8_Object_HasOwnProperty(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> obj = object->Get(isolate);
+    Local<Value> k = key->Get(isolate);
+    
+    // HasOwnProperty takes a Name (String or Symbol), not a generic Value
+    if (!k->IsName()) {
+        return false;
+    }
+    
+    Maybe<bool> result = obj->HasOwnProperty(ctx, k.As<Name>());
+    return result.FromMaybe(false);
+}
+
+// Get the own property descriptor for a property
+// Returns an object with value, writable, enumerable, configurable, get, set
+// or nullptr if the property doesn't exist as an own property
+Global<Value>* v8_Object_GetOwnPropertyDescriptor(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> obj = object->Get(isolate);
+    Local<Value> k = key->Get(isolate);
+    
+    // GetOwnPropertyDescriptor takes a Name (String or Symbol)
+    if (!k->IsName()) {
+        return nullptr;
+    }
+    
+    MaybeLocal<Value> maybe_desc = obj->GetOwnPropertyDescriptor(ctx, k.As<Name>());
+    if (maybe_desc.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Value> desc = maybe_desc.ToLocalChecked();
+    // If the property doesn't exist, GetOwnPropertyDescriptor returns undefined
+    if (desc->IsUndefined()) {
+        return nullptr;
+    }
+    
+    return trackHandle(new Global<Value>(isolate, desc));
 }
 
 Global<Array>* v8_Object_GetOwnPropertyNames(Global<Context>* context, Global<Object>* obj) {
@@ -2375,6 +2442,21 @@ void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {
     local_tpl->RemovePrototype();
 }
 
+/// Set a call handler on a FunctionTemplate.
+/// This is required for objects marked as undetectable (like document.all)
+/// because V8 requires undetectable objects to be callable.
+void v8_FunctionTemplate_SetCallHandler(
+    Global<FunctionTemplate>* tpl,
+    FunctionCallback callback,
+    void* data
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
+    Local<Value> callback_data = data ? External::New(isolate, data) : Local<Value>();
+    local_tpl->SetCallHandler(callback, callback_data);
+}
+
 // FunctionCallbackInfo accessors
 Isolate* v8_FunctionCallbackInfo_GetIsolate(const FunctionCallbackInfo<Value>* info) {
     return info->GetIsolate();
@@ -2810,6 +2892,36 @@ void v8_ObjectTemplate_SetImmutableProto(Global<ObjectTemplate>* tpl) {
     local_tpl->SetImmutableProto();
 }
 
+// ObjectTemplate - mark as undetectable
+// Per ECMA-262, objects with [[IsHTMLDDA]] internal slot are "undetectable":
+// - typeof returns "undefined"
+// - == null and == undefined return true
+// - ToBoolean returns false
+// This is used for document.all (HTMLAllCollection).
+// Spec: https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
+void v8_ObjectTemplate_MarkAsUndetectable(Global<ObjectTemplate>* tpl) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    local_tpl->MarkAsUndetectable();
+}
+
+// ObjectTemplate - set call-as-function handler
+// This allows instances to be called like functions.
+// Required for objects marked as undetectable (like document.all).
+// The callback is invoked when instances are called with ().
+void v8_ObjectTemplate_SetCallAsFunctionHandler(
+    Global<ObjectTemplate>* tpl,
+    FunctionCallback callback,
+    void* data
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    Local<Value> callback_data = data ? External::New(isolate, data) : Local<Value>();
+    local_tpl->SetCallAsFunctionHandler(callback, callback_data);
+}
+
 // Callback types for accessors (using Name instead of String for modern V8 API)
 typedef void (*AccessorNameGetterCallback)(Local<Name> property, const PropertyCallbackInfo<Value>& info);
 typedef void (*AccessorNameSetterCallback)(Local<Name> property, Local<Value> value, const PropertyCallbackInfo<void>& info);
@@ -3009,15 +3121,22 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
     ));
 }
 
-// ObjectTemplate - set indexed property handler with full support (getter, query, enumerator, descriptor)
+// ObjectTemplate - set indexed property handler with full support (getter, setter, query, enumerator, descriptor)
 // Uses V8's indexed property callback types with Intercepted return type
 // Our Zig callbacks return Intercepted (u8 enum) to match V8's expectations
 typedef Intercepted (*InterceptedIndexedQueryCallback)(uint32_t index, const PropertyCallbackInfo<Integer>&);
 typedef Intercepted (*InterceptedIndexedDescriptorCallback)(uint32_t index, const PropertyCallbackInfo<Value>&);
 
+// Forward declaration for setter callback type (defined below)
+typedef Intercepted (*InterceptedIndexedSetterCallbackFull)(
+    uint32_t index,
+    Local<Value> value,
+    const PropertyCallbackInfo<void>& info);
+
 void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
     Global<ObjectTemplate>* tpl,
     IndexedPropertyGetterCallbackV2 getter,
+    InterceptedIndexedSetterCallbackFull setter,
     InterceptedIndexedQueryCallback query,
     IndexedPropertyEnumeratorCallbackV2 enumerator,
     InterceptedIndexedDescriptorCallback descriptor
@@ -3029,11 +3148,54 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
     // Callbacks now match V8's expected Intercepted return type
     local_tpl->SetHandler(IndexedPropertyHandlerConfiguration(
         getter,
-        nullptr,  // setter callback (read-only for now)
+        setter,   // setter callback for obj[index] = value (throws TypeError for read-only)
         query,    // query callback (returns Intercepted)
         nullptr,  // deleter callback (not needed)
         enumerator,  // enumerator callback for Reflect.ownKeys
         nullptr,  // definer callback (not needed)
+        descriptor,  // descriptor callback (returns Intercepted)
+        Local<Value>(),  // data (not needed)
+        PropertyHandlerFlags::kNone
+    ));
+}
+
+// Definer callback type for [[DefineOwnProperty]] trap
+// Per WebIDL spec, accessor descriptors must throw TypeError
+// Data descriptors work only if interface supports indexed setter
+typedef Intercepted (*InterceptedIndexedDefinerCallback)(
+    uint32_t index,
+    const PropertyDescriptor& desc,
+    const PropertyCallbackInfo<void>& info);
+
+// Setter callback type for indexed properties
+typedef Intercepted (*InterceptedIndexedSetterCallback)(
+    uint32_t index,
+    Local<Value> value,
+    const PropertyCallbackInfo<void>& info);
+
+// ObjectTemplate - set indexed property handler with definer support
+// This enables proper [[DefineOwnProperty]] handling per WebIDL spec
+void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
+    Global<ObjectTemplate>* tpl,
+    IndexedPropertyGetterCallbackV2 getter,
+    InterceptedIndexedSetterCallback setter,
+    InterceptedIndexedQueryCallback query,
+    IndexedPropertyEnumeratorCallbackV2 enumerator,
+    InterceptedIndexedDefinerCallback definer,
+    InterceptedIndexedDescriptorCallback descriptor
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    
+    // Full indexed property handler configuration with definer support
+    local_tpl->SetHandler(IndexedPropertyHandlerConfiguration(
+        getter,
+        setter,      // setter callback for obj[index] = value
+        query,       // query callback (returns Intercepted)
+        nullptr,     // deleter callback (not needed)
+        enumerator,  // enumerator callback for Reflect.ownKeys
+        definer,     // definer callback for Object.defineProperty()
         descriptor,  // descriptor callback (returns Intercepted)
         Local<Value>(),  // data (not needed)
         PropertyHandlerFlags::kNone
@@ -3097,6 +3259,18 @@ void v8_PropertyCallbackInfo_SetUndefined(const PropertyCallbackInfo<Value>* inf
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     info->GetReturnValue().SetUndefined();
+}
+
+// PropertyCallbackInfo<Value> - check if errors should throw (strict mode)
+// Returns true if we're in strict mode and should throw TypeError on failure
+bool v8_PropertyCallbackInfo_ShouldThrowOnError(const PropertyCallbackInfo<Value>* info) {
+    return info->ShouldThrowOnError();
+}
+
+// PropertyCallbackInfo<void> - check if errors should throw (strict mode)
+// Returns true if we're in strict mode and should throw TypeError on failure
+bool v8_PropertyCallbackInfo_Void_ShouldThrowOnError(const PropertyCallbackInfo<void>* info) {
+    return info->ShouldThrowOnError();
 }
 
 // ============================================================================
@@ -3290,7 +3464,7 @@ bool v8_Object_SetAccessorProperty(
 
 // Create a property descriptor object for Object.getOwnPropertyDescriptor callbacks
 // Returns an object like: { value: <value>, writable: <bool>, enumerable: <bool>, configurable: <bool> }
-// Takes pointers that match Zig's FFI types (v8.Value* = Global<Value>*)
+// Takes a Global<Value>* for the value parameter - caller must ensure value is a valid global handle
 Global<Object>* v8_CreateDataPropertyDescriptor(
     Global<Context>* context,
     Global<Value>* value,
@@ -3305,7 +3479,7 @@ Global<Object>* v8_CreateDataPropertyDescriptor(
     
     Local<Object> desc = Object::New(isolate);
     
-    // Set value
+    // Get the local value from the global handle
     Local<Value> val = value->Get(isolate);
     desc->Set(ctx, v8::String::NewFromUtf8(isolate, "value").ToLocalChecked(), val).Check();
     
@@ -3322,6 +3496,51 @@ Global<Object>* v8_CreateDataPropertyDescriptor(
               Boolean::New(isolate, configurable)).Check();
     
     return trackHandle(new Global<Object>(isolate, desc));
+}
+
+// ============================================================================
+// PropertyDescriptor Helper Functions
+// For use with indexed/named property definer callbacks
+// ============================================================================
+
+// Check if a PropertyDescriptor is an accessor descriptor (has get or set)
+bool v8_PropertyDescriptor_IsAccessorDescriptor(const PropertyDescriptor* desc) {
+    // PropertyDescriptor* desc is passed from V8's definer callback
+    // V8's PropertyDescriptor has has_get(), has_set(), has_value()
+    return desc->has_get() || desc->has_set();
+}
+
+// Check if a PropertyDescriptor is a data descriptor (has value)
+bool v8_PropertyDescriptor_IsDataDescriptor(const PropertyDescriptor* desc) {
+    return desc->has_value();
+}
+
+// Get the value from a data PropertyDescriptor
+// Returns nullptr if the descriptor doesn't have a value
+Global<Value>* v8_PropertyDescriptor_GetValue(const PropertyDescriptor* desc) {
+    if (!desc->has_value()) {
+        return nullptr;
+    }
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = desc->value();
+    if (val.IsEmpty()) {
+        return nullptr;
+    }
+    return new Global<Value>(isolate, val);
+}
+
+// Get the isolate from PropertyCallbackInfo<void>
+// (PropertyCallbackInfo<void> is used for setters and definers)
+Isolate* v8_PropertyCallbackInfo_Void_This_GetIsolate(const PropertyCallbackInfo<void>* info) {
+    return info->GetIsolate();
+}
+
+// Get 'this' object from PropertyCallbackInfo<void>
+Global<Object>* v8_PropertyCallbackInfo_Void_This(const PropertyCallbackInfo<void>* info) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handle_scope(isolate);
+    return trackHandle(new Global<Object>(isolate, info->This()));
 }
 
 // ============================================================================

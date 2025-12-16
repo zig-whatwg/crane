@@ -42,17 +42,83 @@ pub const InternalState = struct {
     /// Whether this is a computed style (read-only) or inline style (read-write)
     is_computed: bool = false,
 
+    /// Storage for individual CSS property values (property name -> value)
+    properties: std.StringHashMapUnmanaged([]const u8) = .{},
+
+    /// Cached cssText representation
+    css_text: ?[]const u8 = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
             .element = null,
             .is_computed = false,
+            .properties = .{},
+            .css_text = null,
         };
     }
 
     pub fn deinit(self: *InternalState) void {
-        _ = self;
-        // No owned resources to free
+        // Free property values
+        var iter = self.properties.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.properties.deinit(self.allocator);
+
+        if (self.css_text) |text| {
+            self.allocator.free(text);
+        }
+    }
+
+    /// Parse and set cssText, updating individual properties
+    pub fn setCssText(self: *InternalState, text: []const u8) !void {
+        // Clear existing properties
+        var iter = self.properties.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.properties.clearRetainingCapacity();
+
+        if (self.css_text) |old_text| {
+            self.allocator.free(old_text);
+        }
+
+        // Store the cssText
+        self.css_text = try self.allocator.dupe(u8, text);
+
+        // Parse simple "property: value" pairs separated by semicolons
+        // This is a minimal parser for WPT tests
+        var declarations = std.mem.splitScalar(u8, text, ';');
+        while (declarations.next()) |decl| {
+            const trimmed = std.mem.trim(u8, decl, " \t\n\r");
+            if (trimmed.len == 0) continue;
+
+            // Find the colon
+            if (std.mem.indexOf(u8, trimmed, ":")) |colon_pos| {
+                const prop_name = std.mem.trim(u8, trimmed[0..colon_pos], " \t");
+                const prop_value = std.mem.trim(u8, trimmed[colon_pos + 1 ..], " \t");
+
+                if (prop_name.len > 0) {
+                    const name_copy = try self.allocator.dupe(u8, prop_name);
+                    errdefer self.allocator.free(name_copy);
+                    const value_copy = try self.allocator.dupe(u8, prop_value);
+                    try self.properties.put(self.allocator, name_copy, value_copy);
+                }
+            }
+        }
+    }
+
+    /// Get a property value by name
+    pub fn getProperty(self: *InternalState, name: []const u8) ?[]const u8 {
+        return self.properties.get(name);
+    }
+
+    /// Build cssText from properties
+    pub fn getCssText(self: *InternalState) []const u8 {
+        return self.css_text orelse "";
     }
 };
 
@@ -112,8 +178,10 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for cssText
 pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    const text = internal.getCssText();
+    // Return as interned since the internal state owns the memory
+    return runtime.DOMString.initInterned(text);
 }
 
 /// Getter for length
@@ -134,9 +202,15 @@ pub fn get_parentRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
 /// Setter for cssText
 pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.NotImplemented;
+
+    // Computed styles are read-only
+    if (internal.is_computed) {
+        return; // Silently ignore per spec
+    }
+
+    const text = value.asSlice();
+    try internal.setCssText(text);
 }
 
 /// Operation: item
@@ -192,7 +266,13 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
         }
     }
 
-    // For non-computed styles or if no element, return empty string
+    // For inline styles, check our stored properties
+    if (internal.getProperty(prop_name)) |value| {
+        // Return as interned since internal state owns the memory
+        return runtime.DOMString.initInterned(value);
+    }
+
+    // Property not found - return empty string
     return runtime.DOMString.initEmpty();
 }
 
