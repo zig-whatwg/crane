@@ -20,6 +20,7 @@
 //! All conversion functions return error unions for proper error propagation.
 
 const std = @import("std");
+const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const namespace = @import("namespace.zig");
@@ -636,8 +637,22 @@ fn convertBodyInit(
     // TODO: Check for ReadableStream - return .readable_stream variant
     // TODO: Check for Blob, FormData, URLSearchParams instances
 
-    // Fallback - return empty string for unknown types
-    return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
+    // Fallback for other objects (RegExp, etc.) - convert to string via toString()
+    // Per WebIDL §3.2.1, DOMString/USVString conversion calls ToString() on the value
+    const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+    const length = v8.v8_String_Utf8Length(string);
+    if (length <= 0) {
+        return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
+    }
+
+    const buffer = try allocator.alloc(u8, @intCast(length));
+    errdefer allocator.free(buffer);
+    const written = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
+    if (written != length) {
+        allocator.free(buffer);
+        return ConversionError.StringError;
+    }
+    return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
 }
 
 /// Generic V8 Value to Zig type conversion
@@ -1686,7 +1701,7 @@ pub fn toV8Value(
                 if (ptr_addr % 8 != 0) {
                     // Not a valid V8 handle - this is a bug in the calling code
                     // but we handle it gracefully instead of crashing
-                    std.debug.print("WARNING: Misaligned handle in runtime.JSValue: 0x{x}\n", .{ptr_addr});
+                    debug.print("WARNING: Misaligned handle in runtime.JSValue: 0x{x}\n", .{ptr_addr});
                     break :blk toV8Undefined(isolate);
                 }
 
