@@ -41,6 +41,9 @@ pub const permissions = @import("permissions");
 pub const browser = @import("browser");
 pub const intl = @import("intl");
 
+// Debug logging module (compile-time configurable)
+pub const debug = @import("debug.zig");
+
 // Export WebIDL infrastructure modules
 pub const v8 = @import("v8");
 pub const js_bindings = @import("js_bindings");

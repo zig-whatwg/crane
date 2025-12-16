@@ -164,275 +164,6 @@ test "Encoding - UTF-8 decode" {
 
 ---
 
-## Dynamic Skill Loading System
-
-This project uses a **dynamic skill loading system** where the LLM should:
-1. **Analyze the task** to determine which skills are required
-2. **Load only the necessary skills** by reading their SKILL.md files
-3. **Apply the skill knowledge** during task execution
-4. **Unload skills** from working memory when no longer needed
-
-### Available Skills
-
-| Skill | Load When | Description |
-|-------|-----------|-------------|
-| **commit_workflow** | Committing code, managing git history | Incremental commit strategy - commit after each feature completion |
-| **communication_protocol** | ALWAYS (every interaction) | Ask clarifying questions when requirements are ambiguous |
-| **temporary_files** | ALWAYS (every interaction) | All AI-generated temporary files go to `tmp/` directory |
-| **oneshot** | User explicitly requests "oneshot [task]" | Complete uninterrupted execution of entire task/epic with final summary only |
-| **pre_commit_checks** | Before committing code | Automated format/build/test checks before every commit |
-| **zig** | Writing/refactoring Zig code | Universal Zig best practices, memory management, testing, documentation |
-| **cpp** | Writing/refactoring C++ code, V8 FFI wrappers | Modern C++ (C++17/C++20), RAII, V8 API patterns, FFI boundaries |
-| **monorepo_navigation** | Finding dependencies across specs | Navigate monorepo structure, locate spec implementations |
-| **dependency_mocking** | Creating temporary mocks for unimplemented specs | Temporary mocks with clear markers for missing dependencies |
-| **webidl_codegen** | Working with WebIDL code generation | WebIDL code generation system, interface/namespace/mixin definitions |
-
-### Skill Loading Protocol
-
-**Before starting any task:**
-
-1. **Identify required skills** based on task type:
-   - User says "oneshot [task]" → Load `oneshot` skill (takes over execution)
-   - Zig code changes → Load `zig` skill
-   - C++ code changes (V8 wrappers) → Load `cpp` skill
-   - Git operations → Load `commit_workflow` skill
-   - Ambiguous requirements → `communication_protocol` (always active)
-   - Temporary files → `temporary_files` (always active)
-   - Pre-commit → Load `pre_commit_checks` skill
-   - Finding dependencies → Load `monorepo_navigation` skill
-   - Mocking unimplemented specs → Load `dependency_mocking` skill
-   - WebIDL codegen → Load `webidl_codegen` skill
-
-2. **Load skills** by reading the appropriate SKILL.md file:
-   ```
-   Read: skills/<skill_name>/SKILL.md
-   ```
-   
-   **IMPORTANT**: When loading a skill, the LLM MUST announce it in the chat response:
-   ```
-   🔧 Loading skill: <skill_name>
-   ```
-
-3. **Apply skill knowledge** during task execution
-
-4. **Unload skills** when done:
-   - Keep only relevant skills in working memory
-   - Unload skills that are no longer needed for current task
-   - Communication protocol and temporary_files are ALWAYS active (never unload)
-   
-   **IMPORTANT**: When unloading a skill, the LLM MUST announce it in the chat response:
-   ```
-   ✓ Unloading skill: <skill_name>
-   ```
-
-### Skill Usage Decision Tree
-
-```
-Task received
-    ↓
-Analyze task type
-    ↓
-┌──────────────────────────────────────┐
-│ Did user say "oneshot [task]"?       │ → YES → Load: oneshot (takes over execution)
-└──────────────────────────────────────┘
-    ↓ NO
-┌──────────────────────────────┐
-│ Is this Zig code?            │ → YES → Load: zig
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Is this C++ code (V8 FFI)?  │ → YES → Load: cpp
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Is this a git commit?        │ → YES → Load: commit_workflow, pre_commit_checks
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Need to find dependencies?   │ → YES → Load: monorepo_navigation
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Need to mock dependencies?   │ → YES → Load: dependency_mocking
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Working with WebIDL codegen? │ → YES → Load: webidl_codegen
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Are requirements unclear?    │ → YES → Use: communication_protocol (already loaded)
-└──────────────────────────────┘
-    ↓
-Execute task with loaded skills
-    ↓
-Task complete
-    ↓
-Unload skills no longer needed
-```
-
-### Skill Combinations
-
-Common task scenarios and their skill requirements:
-
-| Task Scenario | Skills to Load |
-|---------------|----------------|
-| **Oneshot execution** | `oneshot` (then loads others as needed: `zig`, `cpp`, `commit_workflow`, etc.) |
-| **Implement new WHATWG spec feature** | `zig`, `monorepo_navigation` |
-| **Implement V8 FFI wrapper** | `cpp` |
-| **Add V8 TypedArray API** | `cpp`, `zig` (for FFI bindings) |
-| **Fix bug in Zig code** | `zig` |
-| **Fix bug in C++ wrapper** | `cpp` |
-| **Commit code** | `commit_workflow`, `pre_commit_checks` |
-| **Clarify requirements** | `communication_protocol` (always active) |
-| **Write Zig tests** | `zig` |
-| **Refactor Zig code** | `zig`, `commit_workflow` |
-| **Refactor C++ code** | `cpp`, `commit_workflow` |
-| **Mock unimplemented dependency** | `dependency_mocking`, `zig` |
-| **Work with WebIDL codegen** | `webidl_codegen`, `zig` |
-| **Find cross-spec dependencies** | `monorepo_navigation` |
-
-### Example Workflow
-
-**Scenario**: User asks to "implement a new URL parser function"
-
-**LLM Response:**
-
-```
-I'll implement a new URL parser function for you.
-
-🔧 Loading skill: commit_workflow
-🔧 Loading skill: zig
-
-First, let me create an issue to track this work...
-
-Now I'll implement the parser function following Zig best practices...
-[Implements code using zig skill]
-
-Writing comprehensive tests...
-[Writes tests using zig skill]
-
-Updating issue progress...
-
-The implementation is complete. Now let me commit the changes.
-
-✓ Unloading skill: zig
-🔧 Loading skill: commit_workflow
-🔧 Loading skill: pre_commit_checks
-
-Running pre-commit checks...
-[Executes format, build, test]
-
-Committing changes...
-[Creates commit using commit_workflow]
-
-✓ Unloading skill: commit_workflow
-✓ Unloading skill: pre_commit_checks
-
-Closing the issue...
-
-
-✅ URL parser function implemented, tested, and committed!
-```
-
-### Example Workflow: Oneshot Execution
-
-**Scenario**: User asks to "oneshot bd-42" (a feature to implement URL host parser)
-
-**LLM Response:**
-
-```
-🔧 Loading skill: oneshot
-🔧 Loading skill: zig
-🔧 Loading skill: monorepo_navigation
-
-# Oneshot Execution Summary: Implement URL Host Parser
-
-## Completed Work
-
-✅ **Core Parser**
-- Implemented host parsing state machine
-- Added IPv4, IPv6, and domain parsing
-- Committed in: "feat(url): implement host parser state machine"
-
-✅ **Infra Integration**
-- Integrated Infra primitives for string handling
-- Committed in: "feat(url): integrate Infra primitives in host parser"
-
-✅ **Error Handling**
-- Added ParseError with spec-compliant messages
-- Committed in: "feat(url): add host parse error handling"
-
-✅ **Tests**
-- Added 64 comprehensive test cases covering all host types
-- Committed in: "test(url): add comprehensive host parser tests"
-
-✅ **Documentation**
-- Added inline docs with WHATWG URL spec references
-- Committed in: "docs(url): document host parser with spec citations"
-
-## Commits Made
-
-- abc1234: feat(url): implement host parser state machine
-- def5678: feat(url): integrate Infra primitives in host parser
-- ghi9012: feat(url): add host parse error handling
-- jkl3456: test(url): add comprehensive host parser tests
-- mno7890: docs(url): document host parser with spec citations
-
-## Incomplete Work
-
-None - all planned work completed.
-
-## Statistics
-
-- **Total features completed**: 5
-- **Total commits**: 5
-- **Tests added**: 64
-- **Files modified**: 4
-- **Lines of code**: +1247/-45
-
-## Issue Status
-
-- **Issue**: bd-42
-- **Final status**: closed
-- **Completion**: 100%
-
-✓ Unloading skill: oneshot
-✓ Unloading skill: zig
-✓ Unloading skill: monorepo_navigation
-
-✅ URL host parser implemented, tested, and committed!
-```
-
-### Skill Loading Commands
-
-**To load a skill:**
-```
-Read the SKILL.md file for that skill to understand the complete workflow and patterns.
-```
-
-**To reference quick usage:**
-```
-Read the USAGE.md file for quick reference on when to use the skill.
-```
-
-**To unload a skill:**
-```
-Remove skill knowledge from working memory when no longer relevant to current task.
-```
-
-### Important Notes
-
-- **Communication protocol and temporary_files** are ALWAYS active - never need loading/unloading (no announcement needed)
-- **Load skills lazily** - only when needed
-- **Unload proactively** - free up working memory
-- **Combine skills** when tasks require multiple areas of expertise
-- **Reload if needed** - Can reload a skill if task requirements change
-- **Always announce** - Use `🔧 Loading skill: <name>` and `✓ Unloading skill: <name>` in chat responses
-- **Transparency** - Skill loading/unloading announcements help users understand the LLM's decision-making process
-
----
-
 ## WHATWG Specifications
 
 **Specifications are organized in the `specs/` directory:**
@@ -472,7 +203,7 @@ WHATWG specifications frequently reference each other:
 - **Fetch** depends on: URL, Streams, Infra, WebIDL, MIME Sniff
 - **Console** depends on: WebIDL
 
-**Finding Dependencies**: Use the `monorepo_navigation` skill to locate implementations in `src/` or create temporary mocks for unimplemented specs.
+**Finding Dependencies**: Check `src/` for existing implementations or create temporary mocks for unimplemented specs.
 
 ## Memory Management
 
@@ -522,7 +253,7 @@ Before every commit, these checks MUST pass:
 
 **Automation Level**: **Recommended but Optional**
 
-- **Recommended**: Install pre-commit hooks to automate checks (see `skills/pre_commit_checks/SKILL.md`)
+- **Recommended**: Install pre-commit hooks to automate checks
 - **Acceptable**: Run checks manually before each commit
 - **Not Acceptable**: Commit without running checks
 
@@ -537,8 +268,6 @@ zig build test || exit 1
 EOF
 chmod +x .git/hooks/pre-commit
 ```
-
-See `skills/pre_commit_checks/SKILL.md` for complete setup guide.
 
 
 ### Managing AI-Generated Documents
@@ -614,22 +343,48 @@ WHATWG specs underpin all web platform functionality. Optimize for performance w
 When a spec depends on another spec, check `src/` for implementation. If not implemented, create a temporary mock with clear markers. Never skip dependency handling.
 
 ### 9. **All Temporary Files Go to tmp/** ⭐
-**DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it. See `skills/temporary_files/SKILL.md` for complete policy.
+**DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it.
 
-### 10. **Remove Debug Code After Solving Problems** ⭐
-**NEVER leave debug messages, counters, or instrumentation in the code** once the problem requiring them has been solved. Debug code is temporary scaffolding:
-- Add debug prints, counters, and tracking ONLY while actively investigating
-- Remove ALL debug code before committing the fix
-- If you need to re-investigate later, add debug code fresh - don't leave it "just in case"
-- Production code should be clean and free of investigation artifacts
+### 10. **Use Compile-Time Debug Logging** ⭐
+**ALWAYS use the `debug` module for debug output instead of `std.debug.print`.**
 
-**Examples of debug code to remove:**
-- `std.debug.print("[DEBUG] ...")`
-- Debug counters like `var debug_count: usize = 0`
-- Functions like `getDebugCounts()` or `markCreatedByDebug()`
-- Commented-out debug lines
+The project has a compile-time configurable debug system that completely eliminates debug output from release builds. This means you can leave debug statements in the code - they have zero runtime cost when disabled.
 
-**The fix commit should contain ONLY the fix, not the scaffolding used to find it.**
+**How to use:**
+```zig
+const debug = @import("root").debug;
+
+// Basic debug output (general scope)
+debug.print("Processing: {s}\n", .{item});
+
+// Scoped debug output (filtered by -Ddebug-scope)
+debug.scoped(.v8).print("V8 context: {*}\n", .{ctx});
+debug.scoped(.webidl).print("Interface: {s}\n", .{name});
+debug.scoped(.dom).print("Node: {d}\n", .{node_type});
+```
+
+**Available scopes:** `v8`, `webidl`, `dom`, `css`, `html`, `url`, `encoding`, `streams`, `fetch`, `runtime`, `gc`, `wpt`, `general`
+
+**How to compile with debug output:**
+```bash
+# Enable all debug output
+zig build -Ddebug=true
+
+# Enable only specific scopes (reduces token count)
+zig build -Ddebug=true -Ddebug-scope=v8
+zig build -Ddebug=true -Ddebug-scope=webidl,dom
+
+# Run tests with debug output
+zig build test -Ddebug=true -Ddebug-scope=v8
+```
+
+**When debugging:**
+1. Add `debug.scoped(.scope).print()` statements as needed
+2. Compile with `-Ddebug=true -Ddebug-scope=<scope>` to see output
+3. Leave the debug statements in place - they cost nothing when disabled
+4. Use specific scopes to reduce noise and token count
+
+**DO NOT use `std.debug.print` directly** - always use the debug module so output can be controlled at compile time.
 
 ### 11. **NEVER Modify Generated Files Directly** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
 
@@ -1099,8 +854,8 @@ rg "^const v8 = @import" src/webidl/impls/ --type zig
 1. **Identify context** - Determine which spec you're implementing (from file path or task description)
 2. **Read spec** - Load complete spec from `specs/whatwg/[spec-name]/` or relevant spec directory
 3. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
-4. **Check dependencies** - Use `monorepo_navigation` skill to find required specs in `src/`
-5. **Handle missing dependencies** - Create temporary mocks if needed using `dependency_mocking` skill
+4. **Check dependencies** - Find required specs in `src/`
+5. **Handle missing dependencies** - Create temporary mocks if needed
 6. **Write tests first** - Test all algorithm steps and edge cases
 7. **Implement precisely** - Follow spec steps exactly, numbered comments
 8. **Document** - Inline docs with spec references (do this BEFORE committing)
@@ -1222,32 +977,6 @@ pub const SpecError = error{
 ## File Organization
 
 ```
-skills/
-├── whatwg/                  # ⭐ WHATWG spec reading + Zig implementation
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── zig/                     # ⭐ Modern Zig: quality, performance, testing, docs
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── communication_protocol/  # ⭐ Ask clarifying questions when unclear
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── browser_benchmarking/    # Benchmarking strategies
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── pre_commit_checks/       # Automated quality checks
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── monorepo_navigation/     # ⭐ Finding dependencies in monorepo
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── dependency_mocking/      # ⭐ Creating temporary mocks
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-└── webidl_codegen/          # ⭐ WebIDL code generation
-    ├── USAGE.md             # When to use (autodiscovery)
-    └── SKILL.md             # Complete documentation
-
 specs/                       # Complete WHATWG specifications
 ├── whatwg/                  # WHATWG spec markdown files
 │   ├── html/                # HTML Standard files
@@ -1298,8 +1027,6 @@ Root:
 **CRITICAL: Temporary files MUST go into `tmp/` directory, NOT project root.**
 
 **DEFAULT BEHAVIOR: ALL AI-generated documents go to `tmp/` unless user explicitly requests otherwise.**
-
-**See `skills/temporary_files/SKILL.md` for complete policy and detailed guidelines.**
 
 ### Quick Summary
 
@@ -1462,9 +1189,8 @@ CONTRIBUTING.md                      # ✅ Project documentation
 Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 
 **Finding Internal Dependencies:**
-1. **Use `monorepo_navigation` skill** - Automatically detects and locates dependencies
-2. **Check `src/` directory** - Each spec has its own subdirectory
-3. **Import patterns** - `@import("url")`, `@import("infra")`, etc.
+1. **Check `src/` directory** - Each spec has its own subdirectory
+2. **Import patterns** - `@import("url")`, `@import("infra")`, etc.
 
 **Common Dependency Patterns:**
 - Most specs depend on **Infra** (`src/infra/`) - strings, bytes, lists, ordered maps
@@ -1472,7 +1198,7 @@ Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 - URL, Fetch, and others depend on each other
 
 **If Dependency Not Implemented:**
-1. **Use `dependency_mocking` skill** - Create temporary mock with clear markers
+1. **Create temporary mock** with clear markers
 2. **Mark as TODO** - Indicate this must be replaced with real implementation
 
 ### Internal WebIDL Codegen
@@ -1490,8 +1216,6 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 - `webidl.namespace(struct { ... })` - WebIDL namespace (static-only operations)
 - `webidl.mixin(struct { ... })` - WebIDL interface mixin (reusable member bundles)
 
-**See:** `skills/webidl_codegen/SKILL.md` for complete documentation
-
 ---
 
 ## When in Doubt
@@ -1502,9 +1226,8 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 4. **Identify context** - Which spec are you working on? (file path, imports)
 5. **Read the WHATWG spec** - Load complete spec from `specs/whatwg/[spec-name]/`
 6. **Read the complete section** - Context matters, never rely on fragments
-7. **Check dependencies** - Use `monorepo_navigation` to find implementations
-8. **Load relevant skills** - Get specialized, context-aware guidance
-9. **Look at existing tests** - See patterns in similar specs
+7. **Check dependencies** - Find implementations in `src/`
+8. **Look at existing tests** - See patterns in similar specs
 10. **Check FEATURE_CATALOG.md** - See existing API patterns
 11. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
 
@@ -1536,9 +1259,8 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 5. **Test against browsers** - Verify behavior matches Chrome, Firefox, Safari
 
 **Context Detection**:
-- The skills will automatically detect which spec you're working on from file paths
-- Use `whatwg_spec` skill for spec-specific guidance
-- Use `monorepo_navigation` skill to find related implementations
+- The system automatically detects which spec you're working on from file paths
+- Check `src/` for related implementations
 
 ---
 
@@ -1838,12 +1560,10 @@ Add new lessons when you:
 
 **Quality over speed.** Take time to do it right. The codebase is production-ready and must stay that way.
 
-**Skills are context-aware.** They adapt to the spec you're working on. Load skills for deep expertise.
-
 **WHATWG specs define the web.** Browser compatibility depends on correct implementations. Precision matters.
 
-**Cross-spec dependencies matter.** Use `monorepo_navigation` and `dependency_mocking` skills to handle them correctly.
+**Cross-spec dependencies matter.** Handle them correctly by checking `src/` for implementations or creating temporary mocks.
 
 **Document what you learn.** Future agents (and humans) will thank you for expanding this file when you discover better approaches.
 
-**Thank you for maintaining the high quality standards of this project!** 🎉
+**Thank you for maintaining the high quality standards of this project!**

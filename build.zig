@@ -354,11 +354,36 @@ pub fn build(b: *std.Build) void {
     ) orelse false;
 
     // ========================================================================
+    // DEBUG OPTIONS
+    // ========================================================================
+
+    // Debug output - compile-time flag to enable debug.print statements
+    // When false (default), all debug output is completely eliminated from the binary
+    const debug_enabled = b.option(
+        bool,
+        "debug",
+        "Enable debug output (use -Ddebug=true to enable)",
+    ) orelse false;
+
+    // Debug scope filter - only show debug output for specific scopes
+    // Example: -Ddebug-scope=v8,webidl will only show v8 and webidl debug output
+    const debug_scope = b.option(
+        []const u8,
+        "debug-scope",
+        "Filter debug output by scope (comma-separated: v8,webidl,dom,css,html,url,encoding,streams,fetch,runtime,gc,wpt,general)",
+    ) orelse "";
+
+    // ========================================================================
     // BUILD OPTIONS MODULE
     // ========================================================================
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "enable_test_utils", enable_test_utils);
+
+    // Debug options module (separate from build_options for cleaner imports)
+    const debug_options = b.addOptions();
+    debug_options.addOption(bool, "debug_enabled", debug_enabled);
+    debug_options.addOption([]const u8, "debug_scope", debug_scope);
 
     // Engine configuration options (for conditional compilation)
     build_options.addOption([]const u8, "engine_name", engine_choice);
@@ -430,6 +455,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     webidl_mod.addImport("infra", infra_mod);
+    webidl_mod.addOptions("debug_options", debug_options);
 
     // Storage module (IndexedDB and Storage Standard backend)
     const storage_mod = b.addModule("storage", .{
@@ -458,6 +484,7 @@ pub fn build(b: *std.Build) void {
     runtime_mod.addImport("infra", infra_mod);
     runtime_mod.addImport("storage", storage_mod);
     runtime_mod.addOptions("build_options", build_options);
+    runtime_mod.addOptions("debug_options", debug_options);
 
     // V8 bindings module
     const v8_mod = b.addModule("v8", .{
@@ -465,6 +492,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     v8_mod.addImport("runtime", runtime_mod);
+    v8_mod.addOptions("debug_options", debug_options);
     // v8_mod will need event_loop - added later after streams_event_loop_mod is defined
 
     // JS bindings module
@@ -523,6 +551,7 @@ pub fn build(b: *std.Build) void {
     namespaces_mod.addImport("runtime", runtime_mod);
     namespaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
     namespaces_mod.addOptions("build_options", build_options);
+    namespaces_mod.addOptions("debug_options", debug_options);
 
     // ========================================================================
     // WEBIDL TYPEDEFS MODULE
@@ -563,6 +592,7 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
     impls_mod.addImport("cookiestore", cookiestore_mod); // For CookieStore impl
     impls_mod.addOptions("build_options", build_options);
+    impls_mod.addOptions("debug_options", debug_options);
 
     // Cross-imports for WebIDL modules
     interfaces_mod.addImport("interfaces", interfaces_mod); // Self-import for cross-interface refs
