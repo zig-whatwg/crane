@@ -911,6 +911,97 @@ pub const ChildContextOptions = struct {
 };
 
 // ============================================================================
+// Iframe Document Initialization
+// ============================================================================
+
+/// Initialize an iframe document with the standard HTML structure.
+///
+/// Per HTML spec, a new browsing context's document should be initialized with:
+/// ```html
+/// <!DOCTYPE html>
+/// <html>
+///   <head></head>
+///   <body></body>
+/// </html>
+/// ```
+///
+/// This ensures that `document.body`, `document.head`, and `document.documentElement`
+/// are all properly set for iframe documents.
+fn initializeIframeDocumentStructure(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    document: *runtime.Instance,
+) void {
+    const interfaces = @import("interfaces");
+    const impls = @import("impls");
+    const DocumentImpl = impls.Document;
+    const NodeImpl = impls.Node;
+    const ElementImpl = impls.Element;
+
+    // Set document type to HTML (required for proper body/head detection)
+    DocumentImpl.setDocumentType(document, .html) catch return;
+
+    // Set content type
+    DocumentImpl.setContentType(document, "text/html") catch return;
+
+    // Create <html> element
+    const html_element = interfaces.HTMLHtmlElement.init(allocator, ctx) catch return;
+    ElementImpl.setLocalName(html_element, "html") catch {
+        interfaces.HTMLHtmlElement.deinit(html_element);
+        return;
+    };
+    NodeImpl.setOwnerDocument(html_element, document) catch {
+        interfaces.HTMLHtmlElement.deinit(html_element);
+        return;
+    };
+
+    // Append html to document
+    _ = interfaces.Node.call_appendChild(document, html_element) catch {
+        interfaces.HTMLHtmlElement.deinit(html_element);
+        return;
+    };
+
+    // Set as document element (direct access to internal state)
+    if (DocumentImpl.getInternal(document)) |doc_internal| {
+        doc_internal.document_element = html_element;
+    }
+
+    // Create <head> element
+    const head_element = interfaces.HTMLHeadElement.init(allocator, ctx) catch return;
+    ElementImpl.setLocalName(head_element, "head") catch {
+        interfaces.HTMLHeadElement.deinit(head_element);
+        return;
+    };
+    NodeImpl.setOwnerDocument(head_element, document) catch {
+        interfaces.HTMLHeadElement.deinit(head_element);
+        return;
+    };
+
+    // Append head to html
+    _ = interfaces.Node.call_appendChild(html_element, head_element) catch {
+        interfaces.HTMLHeadElement.deinit(head_element);
+        return;
+    };
+
+    // Create <body> element
+    const body_element = interfaces.HTMLBodyElement.init(allocator, ctx) catch return;
+    ElementImpl.setLocalName(body_element, "body") catch {
+        interfaces.HTMLBodyElement.deinit(body_element);
+        return;
+    };
+    NodeImpl.setOwnerDocument(body_element, document) catch {
+        interfaces.HTMLBodyElement.deinit(body_element);
+        return;
+    };
+
+    // Append body to html
+    _ = interfaces.Node.call_appendChild(html_element, body_element) catch {
+        interfaces.HTMLBodyElement.deinit(body_element);
+        return;
+    };
+}
+
+// ============================================================================
 // Window Indexed Property Handler for frames[index] access
 // ============================================================================
 
@@ -1069,10 +1160,22 @@ fn createWindowForExistingBrowsingContext(
     };
 
     // Store pointer in map - entry won't move even if HashMap rehashes
+    // This MUST happen before initializeIframeDocumentStructure because
+    // element creation uses the wrapper cache which needs the context registered.
     state.contexts.put(child_key, child_entry) catch {
         state.allocator.destroy(child_entry);
         return null;
     };
+
+    // 11b. Fix up document.ctx to point to stable location
+    document_instance.ctx = &child_entry.runtime_ctx;
+
+    // 11c. Initialize document with standard HTML structure (html > head + body)
+    // Per HTML spec, a new browsing context's document should have this structure
+    // to ensure document.body, document.head, and document.documentElement work.
+    // NOTE: This must happen AFTER the context is registered in the map (step 11)
+    // because element creation uses wrapper cache which needs context lookup.
+    initializeIframeDocumentStructure(allocator, &child_entry.runtime_ctx, document_instance);
 
     // 12. Link to parent's children list
     parent_entry.children.append(allocator, child_entry) catch {};
@@ -1530,6 +1633,8 @@ pub fn createChildContext(
     };
 
     // Store pointer in map - entry won't move even if HashMap rehashes
+    // This MUST happen before initializeIframeDocumentStructure because
+    // element creation uses the wrapper cache which needs the context registered.
     try state.contexts.put(child_key, child_entry);
 
     // 10. Fix up instance.ctx pointers that were created with stack-local ctx_data
@@ -1538,6 +1643,13 @@ pub fn createChildContext(
     // Update them to point to the stable location.
     window_instance.ctx = &child_entry.runtime_ctx;
     document_instance.ctx = &child_entry.runtime_ctx;
+
+    // 10b. Initialize document with standard HTML structure (html > head + body)
+    // Per HTML spec, a new browsing context's document should have this structure
+    // to ensure document.body, document.head, and document.documentElement work.
+    // NOTE: This must happen AFTER the context is registered in the map (step 9)
+    // because element creation uses wrapper cache which needs context lookup.
+    initializeIframeDocumentStructure(allocator, &child_entry.runtime_ctx, document_instance);
 
     // 11. Link to parent's children list
     try parent_entry.children.append(allocator, child_entry);
