@@ -27,6 +27,7 @@ const AttrImpl = @import("Attr.zig");
 const DOMTokenListImpl = @import("DOMTokenList.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 const NamedNodeMapImpl = @import("NamedNodeMap.zig");
+const ParentNodeImpl = @import("ParentNode.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -3064,17 +3065,10 @@ pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, op
 /// ParentNode mixin - Appends nodes after the last child of this element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
 ///
-/// Note: This is a simplified implementation that handles the common single-node case.
+/// Delegates to ParentNode mixin implementation.
 pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
-    // For simplified implementation, treat nodes as a single Node pointer
-    // Untag pointer from V8 before use
-    const untagged = pointer_tag.untagPointer(@ptrCast(nodes.ptr));
-    const node: *runtime.Instance = @ptrCast(@alignCast(untagged.ptr));
-
-    // Append as last child
-    _ = interfaces.Node.call_appendChild(instance, node) catch {
-        return error.InvalidStateError;
-    };
+    // Delegate to ParentNode impl (which handles NodeOrString properly)
+    return ParentNodeImpl.call_append(instance, nodes);
 }
 
 /// Operation: moveBefore
