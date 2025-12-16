@@ -23,7 +23,6 @@ pub const LinkStyle = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "sheet", "get_sheet", null },
-            .{ "sheet", "get_sheet", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -40,7 +39,6 @@ pub const LinkStyle = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
         

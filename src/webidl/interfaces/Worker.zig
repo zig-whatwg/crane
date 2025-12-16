@@ -57,13 +57,11 @@ pub const Worker = struct {
         pub const methods = .{
             .{ "terminate", "call_terminate", 0 },
             .{ "postMessage", "call_postMessage", 2 },
-            .{ "postMessage", "call_postMessage", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "terminate",
-            "postMessage",
             "postMessage",
         };
         

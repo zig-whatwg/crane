@@ -27,18 +27,14 @@ pub const CanvasImageData = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createImageData", "call_createImageData", 2 },
-            .{ "createImageData", "call_createImageData", 1 },
             .{ "getImageData", "call_getImageData", 4 },
             .{ "putImageData", "call_putImageData", 3 },
-            .{ "putImageData", "call_putImageData", 7 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createImageData",
-            "createImageData",
             "getImageData",
-            "putImageData",
             "putImageData",
         };
         

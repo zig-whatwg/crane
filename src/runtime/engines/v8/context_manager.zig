@@ -1037,12 +1037,18 @@ fn createWindowForExistingBrowsingContext(
     // 1. Create new global template
     const global_template = v8.v8_ObjectTemplate_New(isolate);
     v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+
+    // Per WebIDL spec §3.8, all objects in the global prototype chain must have
+    // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
+    v8.v8_ObjectTemplate_SetImmutableProto(global_template);
+
     v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
         global_template,
         windowIndexedPropertyGetter,
+        null, // setter - not needed
         windowIndexedPropertyQuery,
         windowIndexedPropertyEnumerator,
-        null,
+        null, // descriptor - not needed
     );
 
     // 2. Create new V8 context
@@ -1436,6 +1442,10 @@ pub fn createChildContext(
     // Set internal field count for Window binding (2 fields: impl pointer + destructor type)
     v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
 
+    // Per WebIDL spec §3.8, all objects in the global prototype chain must have
+    // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
+    v8.v8_ObjectTemplate_SetImmutableProto(global_template);
+
     // 1b. Set up indexed property handler for frames[index] access
     // Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
     // - Numeric indices return child browsing context Windows
@@ -1443,6 +1453,7 @@ pub fn createChildContext(
     v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
         global_template,
         windowIndexedPropertyGetter,
+        null, // setter - not needed
         windowIndexedPropertyQuery,
         windowIndexedPropertyEnumerator,
         null, // descriptor callback - not needed for basic access
@@ -1822,7 +1833,6 @@ pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
     if (state.contexts.get(key)) |entry| {
         return entry.window_instance;
     }
-
     return null;
 }
 

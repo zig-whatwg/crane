@@ -34,14 +34,12 @@ pub const DataTransferItemList = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "add", "call_add", 2 },
-            .{ "add", "call_add", 1 },
             .{ "remove", "call_remove", 1 },
             .{ "clear", "call_clear", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "add",
             "add",
             "remove",
             "clear",

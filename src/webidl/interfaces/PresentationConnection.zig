@@ -56,18 +56,12 @@ pub const PresentationConnection = struct {
             .{ "close", "call_close", 0 },
             .{ "terminate", "call_terminate", 0 },
             .{ "send", "call_send", 1 },
-            .{ "send", "call_send", 1 },
-            .{ "send", "call_send", 1 },
-            .{ "send", "call_send", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
             "terminate",
-            "send",
-            "send",
-            "send",
             "send",
         };
         

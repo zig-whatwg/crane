@@ -29,8 +29,6 @@ pub const MediaList = struct {
         pub const properties = .{
             .{ "mediaText", "get_mediaText", "set_mediaText" },
             .{ "length", "get_length", null },
-            .{ "mediaText", "get_mediaText", "set_mediaText" },
-            .{ "length", "get_length", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -38,9 +36,6 @@ pub const MediaList = struct {
             .{ "item", "call_item", 1 },
             .{ "appendMedium", "call_appendMedium", 1 },
             .{ "deleteMedium", "call_deleteMedium", 1 },
-            .{ "item", "call_item", 1 },
-            .{ "deleteMedium", "call_deleteMedium", 1 },
-            .{ "appendMedium", "call_appendMedium", 1 },
             .{ "toString", "get_mediaText", 0 },
         };
         
@@ -49,9 +44,6 @@ pub const MediaList = struct {
             "item",
             "appendMedium",
             "deleteMedium",
-            "item",
-            "deleteMedium",
-            "appendMedium",
             "toString",
         };
         
@@ -61,8 +53,6 @@ pub const MediaList = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "mediaText", "get_mediaText", "set_mediaText" },
-            .{ "length", "get_length", null },
             .{ "mediaText", "get_mediaText", "set_mediaText" },
             .{ "length", "get_length", null },
         };

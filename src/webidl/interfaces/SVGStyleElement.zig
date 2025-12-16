@@ -99,7 +99,6 @@ pub const SVGStyleElement = struct {
             .{ "title", "get_title", "set_title" },
             .{ "disabled", "get_disabled", "set_disabled" },
             .{ "sheet", "get_sheet", null },
-            .{ "sheet", "get_sheet", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -207,7 +206,6 @@ pub const SVGStyleElement = struct {
             .{ "media", "get_media", "set_media" },
             .{ "title", "get_title", "set_title" },
             .{ "disabled", "get_disabled", "set_disabled" },
-            .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
         

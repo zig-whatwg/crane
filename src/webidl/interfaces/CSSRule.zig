@@ -32,10 +32,6 @@ pub const CSSRule = struct {
             .{ "parentRule", "get_parentRule", null },
             .{ "parentStyleSheet", "get_parentStyleSheet", null },
             .{ "type", "get_type", null },
-            .{ "type", "get_type", null },
-            .{ "cssText", "get_cssText", "set_cssText" },
-            .{ "parentStyleSheet", "get_parentStyleSheet", null },
-            .{ "parentRule", "get_parentRule", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -74,10 +70,6 @@ pub const CSSRule = struct {
             .{ "parentRule", "get_parentRule", null },
             .{ "parentStyleSheet", "get_parentStyleSheet", null },
             .{ "type", "get_type", null },
-            .{ "type", "get_type", null },
-            .{ "cssText", "get_cssText", "set_cssText" },
-            .{ "parentStyleSheet", "get_parentStyleSheet", null },
-            .{ "parentRule", "get_parentRule", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties

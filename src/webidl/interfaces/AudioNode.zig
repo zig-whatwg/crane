@@ -49,26 +49,12 @@ pub const AudioNode = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "connect", "call_connect", 1 },
-            .{ "connect", "call_connect", 1 },
             .{ "disconnect", "call_disconnect", 0 },
-            .{ "disconnect", "call_disconnect", 1 },
-            .{ "disconnect", "call_disconnect", 1 },
-            .{ "disconnect", "call_disconnect", 2 },
-            .{ "disconnect", "call_disconnect", 3 },
-            .{ "disconnect", "call_disconnect", 1 },
-            .{ "disconnect", "call_disconnect", 2 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "connect",
-            "connect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
             "disconnect",
         };
         

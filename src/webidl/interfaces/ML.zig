@@ -37,12 +37,10 @@ pub const ML = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createContext", "call_createContext", 0 },
-            .{ "createContext", "call_createContext", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "createContext",
             "createContext",
         };
         

@@ -64,7 +64,6 @@ pub const XMLHttpRequest = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 2 },
-            .{ "open", "call_open", 3 },
             .{ "setRequestHeader", "call_setRequestHeader", 2 },
             .{ "send", "call_send", 0 },
             .{ "abort", "call_abort", 0 },
@@ -86,7 +85,6 @@ pub const XMLHttpRequest = struct {
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "open",
             "open",
             "setRequestHeader",
             "send",

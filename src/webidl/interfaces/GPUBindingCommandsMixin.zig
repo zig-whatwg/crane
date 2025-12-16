@@ -30,12 +30,10 @@ pub const GPUBindingCommandsMixin = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setBindGroup", "call_setBindGroup", 2 },
-            .{ "setBindGroup", "call_setBindGroup", 5 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "setBindGroup",
             "setBindGroup",
         };
         

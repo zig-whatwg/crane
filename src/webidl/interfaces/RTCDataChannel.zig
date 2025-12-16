@@ -69,17 +69,11 @@ pub const RTCDataChannel = struct {
         pub const methods = .{
             .{ "close", "call_close", 0 },
             .{ "send", "call_send", 1 },
-            .{ "send", "call_send", 1 },
-            .{ "send", "call_send", 1 },
-            .{ "send", "call_send", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
-            "send",
-            "send",
-            "send",
             "send",
         };
         

@@ -39,8 +39,6 @@ pub const CSSStyleSheet = struct {
         pub const properties = .{
             .{ "ownerRule", "get_ownerRule", null },
             .{ "cssRules", "get_cssRules", null },
-            .{ "ownerRule", "get_ownerRule", null },
-            .{ "cssRules", "get_cssRules", null },
             .{ "rules", "get_rules", null },
         };
         
@@ -50,8 +48,6 @@ pub const CSSStyleSheet = struct {
             .{ "deleteRule", "call_deleteRule", 1 },
             .{ "replace", "call_replace", 1 },
             .{ "replaceSync", "call_replaceSync", 1 },
-            .{ "insertRule", "call_insertRule", 2 },
-            .{ "deleteRule", "call_deleteRule", 1 },
             .{ "addRule", "call_addRule", 0 },
             .{ "removeRule", "call_removeRule", 0 },
         };
@@ -62,8 +58,6 @@ pub const CSSStyleSheet = struct {
             "deleteRule",
             "replace",
             "replaceSync",
-            "insertRule",
-            "deleteRule",
             "addRule",
             "removeRule",
         };
@@ -74,8 +68,6 @@ pub const CSSStyleSheet = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "ownerRule", "get_ownerRule", null },
-            .{ "cssRules", "get_cssRules", null },
             .{ "ownerRule", "get_ownerRule", null },
             .{ "cssRules", "get_cssRules", null },
             .{ "rules", "get_rules", null },

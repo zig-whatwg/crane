@@ -35,7 +35,6 @@ pub const CSSMediaRule = struct {
         pub const properties = .{
             .{ "media", "get_media", "set_media" },
             .{ "matches", "get_matches", null },
-            .{ "media", "get_media", null },
             .{ "cssRules", "get_cssRules", null },
         };
         
@@ -65,7 +64,6 @@ pub const CSSMediaRule = struct {
         pub const eager_properties = .{
             .{ "media", "get_media", "set_media" },
             .{ "matches", "get_matches", null },
-            .{ "media", "get_media", null },
             .{ "cssRules", "get_cssRules", null },
         };
         

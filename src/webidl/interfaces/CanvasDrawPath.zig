@@ -28,29 +28,19 @@ pub const CanvasDrawPath = struct {
         pub const methods = .{
             .{ "beginPath", "call_beginPath", 0 },
             .{ "fill", "call_fill", 0 },
-            .{ "fill", "call_fill", 1 },
             .{ "stroke", "call_stroke", 0 },
-            .{ "stroke", "call_stroke", 1 },
             .{ "clip", "call_clip", 0 },
-            .{ "clip", "call_clip", 1 },
             .{ "isPointInPath", "call_isPointInPath", 2 },
-            .{ "isPointInPath", "call_isPointInPath", 3 },
             .{ "isPointInStroke", "call_isPointInStroke", 2 },
-            .{ "isPointInStroke", "call_isPointInStroke", 3 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "beginPath",
             "fill",
-            "fill",
-            "stroke",
             "stroke",
             "clip",
-            "clip",
             "isPointInPath",
-            "isPointInPath",
-            "isPointInStroke",
             "isPointInStroke",
         };
         

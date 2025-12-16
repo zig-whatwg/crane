@@ -33,7 +33,6 @@ pub const CSSFontFaceRule = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "style", "get_style", "set_style" },
-            .{ "style", "get_style", null },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -57,7 +56,6 @@ pub const CSSFontFaceRule = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "style", "get_style", "set_style" },
-            .{ "style", "get_style", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties

@@ -32,7 +32,6 @@ pub const CanvasTransform = struct {
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
             .{ "setTransform", "call_setTransform", 6 },
-            .{ "setTransform", "call_setTransform", 0 },
             .{ "resetTransform", "call_resetTransform", 0 },
         };
         
@@ -43,7 +42,6 @@ pub const CanvasTransform = struct {
             "translate",
             "transform",
             "getTransform",
-            "setTransform",
             "setTransform",
             "resetTransform",
         };

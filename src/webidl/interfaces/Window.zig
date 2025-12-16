@@ -333,12 +333,10 @@ pub const Window = struct {
             .{ "blur", "call_blur", 0 },
             .{ "open", "call_open", 0 },
             .{ "alert", "call_alert", 0 },
-            .{ "alert", "call_alert", 1 },
             .{ "confirm", "call_confirm", 0 },
             .{ "prompt", "call_prompt", 0 },
             .{ "print", "call_print", 0 },
             .{ "postMessage", "call_postMessage", 2 },
-            .{ "postMessage", "call_postMessage", 1 },
             .{ "navigate", "call_navigate", 1 },
             .{ "showOpenFilePicker", "call_showOpenFilePicker", 0 },
             .{ "showSaveFilePicker", "call_showSaveFilePicker", 0 },
@@ -358,11 +356,8 @@ pub const Window = struct {
             .{ "resizeTo", "call_resizeTo", 2 },
             .{ "resizeBy", "call_resizeBy", 2 },
             .{ "scroll", "call_scroll", 0 },
-            .{ "scroll", "call_scroll", 2 },
             .{ "scrollTo", "call_scrollTo", 0 },
-            .{ "scrollTo", "call_scrollTo", 2 },
             .{ "scrollBy", "call_scrollBy", 0 },
-            .{ "scrollBy", "call_scrollBy", 2 },
             .{ "queryLocalFonts", "call_queryLocalFonts", 0 },
             .{ "reportError", "call_reportError", 1 },
             .{ "btoa", "call_btoa", 1 },
@@ -373,7 +368,6 @@ pub const Window = struct {
             .{ "clearInterval", "call_clearInterval", 0 },
             .{ "queueMicrotask", "call_queueMicrotask", 1 },
             .{ "createImageBitmap", "call_createImageBitmap", 1 },
-            .{ "createImageBitmap", "call_createImageBitmap", 5 },
             .{ "structuredClone", "call_structuredClone", 1 },
             .{ "fetch", "call_fetch", 1 },
             .{ "requestAnimationFrame", "call_requestAnimationFrame", 1 },
@@ -388,11 +382,9 @@ pub const Window = struct {
             "blur",
             "open",
             "alert",
-            "alert",
             "confirm",
             "prompt",
             "print",
-            "postMessage",
             "postMessage",
             "navigate",
             "showOpenFilePicker",
@@ -413,10 +405,7 @@ pub const Window = struct {
             "resizeTo",
             "resizeBy",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "queryLocalFonts",
             "reportError",
@@ -427,7 +416,6 @@ pub const Window = struct {
             "setInterval",
             "clearInterval",
             "queueMicrotask",
-            "createImageBitmap",
             "createImageBitmap",
             "structuredClone",
             "fetch",
@@ -3255,6 +3243,12 @@ pub const Window = struct {
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         
         return try WindowImpl.call_scroll(instance, options);
+    }
+
+    /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
+    /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
+    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+        return WindowImpl.getSupportedPropertyNames(instance, allocator);
     }
 
 };

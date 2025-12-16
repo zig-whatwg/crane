@@ -37,8 +37,6 @@ pub const CSSStyleRule = struct {
         pub const properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", "set_style" },
-            .{ "selectorText", "get_selectorText", "set_selectorText" },
-            .{ "style", "get_style", null },
             .{ "styleMap", "get_styleMap", null },
         };
         
@@ -66,8 +64,6 @@ pub const CSSStyleRule = struct {
         pub const eager_properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", "set_style" },
-            .{ "selectorText", "get_selectorText", "set_selectorText" },
-            .{ "style", "get_style", null },
             .{ "styleMap", "get_styleMap", null },
         };
         

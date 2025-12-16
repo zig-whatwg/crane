@@ -89,7 +89,6 @@ pub const MathMLElement = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "style", "get_style", "set_style" },
-            .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },
             .{ "onauxclick", "get_onauxclick", "set_onauxclick" },
@@ -311,7 +310,6 @@ pub const MathMLElement = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "style", "get_style", "set_style" },
-            .{ "style", "get_style", null },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },
             .{ "onauxclick", "get_onauxclick", "set_onauxclick" },

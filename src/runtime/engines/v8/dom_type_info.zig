@@ -64,7 +64,21 @@ pub const EventTarget_type_info = WrapperTypeInfo{
     .interface_name = "EventTarget",
     .parent = null,
     .this_tag = 100,
-    .max_subclass_tag = 899, // Covers Node and all descendants
+    .max_subclass_tag = 899, // Covers Node, Window, and all descendants
+    .wrapper_class_id = .object,
+    .idl_definition_kind = .interface,
+    .install_template_fn = placeholderInstall,
+};
+
+// ============================================================================
+// Window (Global object) - inherits from EventTarget
+// ============================================================================
+
+pub const Window_type_info = WrapperTypeInfo{
+    .interface_name = "Window",
+    .parent = &EventTarget_type_info,
+    .this_tag = 105, // Between EventTarget (100) and Node (110)
+    .max_subclass_tag = 105, // Leaf node (no subclasses)
     .wrapper_class_id = .object,
     .idl_definition_kind = .interface,
     .install_template_fn = placeholderInstall,
@@ -310,6 +324,7 @@ pub const URLSearchParams_type_info = WrapperTypeInfo{
 pub fn getTypeInfoByName(name: []const u8) ?*const WrapperTypeInfo {
     const type_infos = [_]*const WrapperTypeInfo{
         &EventTarget_type_info,
+        &Window_type_info,
         &Node_type_info,
         &Element_type_info,
         &HTMLElement_type_info,

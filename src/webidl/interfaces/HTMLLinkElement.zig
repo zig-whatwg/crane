@@ -115,7 +115,6 @@ pub const HTMLLinkElement = struct {
             .{ "rev", "get_rev", "set_rev" },
             .{ "target", "get_target", "set_target" },
             .{ "sheet", "get_sheet", null },
-            .{ "sheet", "get_sheet", null },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -251,7 +250,6 @@ pub const HTMLLinkElement = struct {
             .{ "charset", "get_charset", "set_charset" },
             .{ "rev", "get_rev", "set_rev" },
             .{ "target", "get_target", "set_target" },
-            .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
         

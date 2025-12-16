@@ -27,18 +27,15 @@ pub const CSSRuleList = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "length", "get_length", null },
-            .{ "length", "get_length", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "item", "call_item", 1 },
-            .{ "item", "call_item", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "item",
             "item",
         };
         
@@ -48,7 +45,6 @@ pub const CSSRuleList = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "length", "get_length", null },
             .{ "length", "get_length", null },
         };
         

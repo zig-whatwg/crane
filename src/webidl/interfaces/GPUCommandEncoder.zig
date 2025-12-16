@@ -58,7 +58,6 @@ pub const GPUCommandEncoder = struct {
             .{ "beginRenderPass", "call_beginRenderPass", 1 },
             .{ "beginComputePass", "call_beginComputePass", 0 },
             .{ "copyBufferToBuffer", "call_copyBufferToBuffer", 2 },
-            .{ "copyBufferToBuffer", "call_copyBufferToBuffer", 4 },
             .{ "copyBufferToTexture", "call_copyBufferToTexture", 3 },
             .{ "copyTextureToBuffer", "call_copyTextureToBuffer", 3 },
             .{ "copyTextureToTexture", "call_copyTextureToTexture", 3 },
@@ -74,7 +73,6 @@ pub const GPUCommandEncoder = struct {
         pub const own_methods = .{
             "beginRenderPass",
             "beginComputePass",
-            "copyBufferToBuffer",
             "copyBufferToBuffer",
             "copyBufferToTexture",
             "copyTextureToBuffer",

@@ -38,12 +38,10 @@ pub const FormData = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "append", "call_append", 2 },
-            .{ "append", "call_append", 2 },
             .{ "delete", "call_delete", 1 },
             .{ "get", "call_get", 1 },
             .{ "getAll", "call_getAll", 1 },
             .{ "has", "call_has", 1 },
-            .{ "set", "call_set", 2 },
             .{ "set", "call_set", 2 },
             .{ "forEach", "call_forEach", 1 },
             .{ "forEach", "call_forEach", 1 },
@@ -52,12 +50,10 @@ pub const FormData = struct {
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "append",
-            "append",
             "delete",
             "get",
             "getAll",
             "has",
-            "set",
             "set",
             "forEach",
         };

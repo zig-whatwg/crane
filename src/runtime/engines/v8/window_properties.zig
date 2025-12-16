@@ -413,7 +413,24 @@ pub fn insertIntoPrototypeChain(
         return false;
     };
 
-    return v8.v8_Value_BooleanValue(result_val, isolate);
+    if (!v8.v8_Value_BooleanValue(result_val, isolate)) {
+        return false;
+    }
+
+    // Note: Window.prototype immutability per WebIDL §3.7.1 cannot be fully enforced
+    // because V8 only exposes ObjectTemplate::SetImmutableProto() for templates, not
+    // Object::SetImmutableProto() for existing objects. Since we must insert WindowProperties
+    // into Window.prototype's chain AFTER the prototype object is created (to avoid chicken-
+    // and-egg issues), Window.prototype cannot have immutable [[Prototype]].
+    //
+    // This is a known V8 API limitation. The global object (window/self) and all other
+    // prototype chain objects (WindowProperties, EventTarget.prototype, Object.prototype)
+    // have immutable prototypes via their ObjectTemplates. Only Window.prototype is mutable.
+    //
+    // WPT test affected: webidl/ecmascript-binding/global-immutable-prototype.any.js
+    // Test: "Setting to a different prototype" partially fails due to Window.prototype
+
+    return true;
 }
 
 // ============================================================================

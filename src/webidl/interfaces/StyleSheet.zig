@@ -40,13 +40,6 @@ pub const StyleSheet = struct {
             .{ "title", "get_title", null },
             .{ "media", "get_media", "set_media" },
             .{ "disabled", "get_disabled", "set_disabled" },
-            .{ "type", "get_type", null },
-            .{ "disabled", "get_disabled", "set_disabled" },
-            .{ "ownerNode", "get_ownerNode", null },
-            .{ "parentStyleSheet", "get_parentStyleSheet", null },
-            .{ "href", "get_href", null },
-            .{ "title", "get_title", null },
-            .{ "media", "get_media", null },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -76,13 +69,6 @@ pub const StyleSheet = struct {
             .{ "title", "get_title", null },
             .{ "media", "get_media", "set_media" },
             .{ "disabled", "get_disabled", "set_disabled" },
-            .{ "type", "get_type", null },
-            .{ "disabled", "get_disabled", "set_disabled" },
-            .{ "ownerNode", "get_ownerNode", null },
-            .{ "parentStyleSheet", "get_parentStyleSheet", null },
-            .{ "href", "get_href", null },
-            .{ "title", "get_title", null },
-            .{ "media", "get_media", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties

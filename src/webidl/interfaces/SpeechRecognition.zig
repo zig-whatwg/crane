@@ -64,7 +64,6 @@ pub const SpeechRecognition = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "start", "call_start", 0 },
-            .{ "start", "call_start", 1 },
             .{ "stop", "call_stop", 0 },
             .{ "abort", "call_abort", 0 },
         };
@@ -77,7 +76,6 @@ pub const SpeechRecognition = struct {
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "start",
             "start",
             "stop",
             "abort",

@@ -162,7 +162,6 @@ pub const HTMLInputElement = struct {
             .{ "setCustomValidity", "call_setCustomValidity", 1 },
             .{ "select", "call_select", 0 },
             .{ "setRangeText", "call_setRangeText", 1 },
-            .{ "setRangeText", "call_setRangeText", 3 },
             .{ "setSelectionRange", "call_setSelectionRange", 2 },
             .{ "showPicker", "call_showPicker", 0 },
         };
@@ -175,7 +174,6 @@ pub const HTMLInputElement = struct {
             "reportValidity",
             "setCustomValidity",
             "select",
-            "setRangeText",
             "setRangeText",
             "setSelectionRange",
             "showPicker",

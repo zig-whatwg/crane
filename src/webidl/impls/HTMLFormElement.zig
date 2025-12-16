@@ -119,9 +119,18 @@ pub fn get_method(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for name
+/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-name
+/// Reflects the name attribute.
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    // Use Element's attribute access
+    const elem_internal = ElementImpl.getInternal(instance) orelse return error.InvalidState;
+
+    // Look for the "name" attribute
+    if (elem_internal.findAttribute(null, "name")) |entry| {
+        return runtime.DOMString.initDupe(instance.ctx.allocator, entry.value) catch return error.OutOfMemory;
+    }
+
+    return runtime.DOMString.initEmpty();
 }
 
 /// Getter for noValidate
@@ -236,10 +245,11 @@ pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) anyerro
 }
 
 /// Setter for name
+/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-name
+/// Sets the name attribute.
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Use Element's setAttribute through the interface
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("name"), value);
 }
 
 /// Setter for noValidate

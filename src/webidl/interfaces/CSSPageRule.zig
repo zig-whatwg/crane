@@ -36,8 +36,6 @@ pub const CSSPageRule = struct {
         pub const properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", "set_style" },
-            .{ "selectorText", "get_selectorText", "set_selectorText" },
-            .{ "style", "get_style", null },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -64,8 +62,6 @@ pub const CSSPageRule = struct {
         pub const eager_properties = .{
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", "set_style" },
-            .{ "selectorText", "get_selectorText", "set_selectorText" },
-            .{ "style", "get_style", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties

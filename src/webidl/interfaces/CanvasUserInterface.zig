@@ -27,12 +27,10 @@ pub const CanvasUserInterface = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "drawFocusIfNeeded", "call_drawFocusIfNeeded", 1 },
-            .{ "drawFocusIfNeeded", "call_drawFocusIfNeeded", 2 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "drawFocusIfNeeded",
             "drawFocusIfNeeded",
         };
         

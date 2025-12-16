@@ -32,9 +32,6 @@ pub const CSSStyleDeclaration = struct {
             .{ "cssText", "get_cssText", "set_cssText" },
             .{ "length", "get_length", null },
             .{ "parentRule", "get_parentRule", null },
-            .{ "cssText", "get_cssText", "set_cssText" },
-            .{ "length", "get_length", null },
-            .{ "parentRule", "get_parentRule", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -44,12 +41,7 @@ pub const CSSStyleDeclaration = struct {
             .{ "getPropertyPriority", "call_getPropertyPriority", 1 },
             .{ "setProperty", "call_setProperty", 2 },
             .{ "removeProperty", "call_removeProperty", 1 },
-            .{ "getPropertyValue", "call_getPropertyValue", 1 },
             .{ "getPropertyCSSValue", "call_getPropertyCSSValue", 1 },
-            .{ "removeProperty", "call_removeProperty", 1 },
-            .{ "getPropertyPriority", "call_getPropertyPriority", 1 },
-            .{ "setProperty", "call_setProperty", 3 },
-            .{ "item", "call_item", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -59,12 +51,7 @@ pub const CSSStyleDeclaration = struct {
             "getPropertyPriority",
             "setProperty",
             "removeProperty",
-            "getPropertyValue",
             "getPropertyCSSValue",
-            "removeProperty",
-            "getPropertyPriority",
-            "setProperty",
-            "item",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -73,9 +60,6 @@ pub const CSSStyleDeclaration = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "cssText", "get_cssText", "set_cssText" },
-            .{ "length", "get_length", null },
-            .{ "parentRule", "get_parentRule", null },
             .{ "cssText", "get_cssText", "set_cssText" },
             .{ "length", "get_length", null },
             .{ "parentRule", "get_parentRule", null },

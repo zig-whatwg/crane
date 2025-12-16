@@ -7,15 +7,26 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765823935568,
-  "time_end": 1765823935669,
+  "time_start": 1765905747495,
+  "time_end": 1765905747642,
   "results": [
     {
-      "test": "infrastructure/reftest/devicePixelRatio.html",
+      "test": "webidl/ecmascript-binding/put-forwards.html",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
+        {"name": "Overriding getter of [PutForwards] attribute", "status": "FAIL", "message": "assert_equals: Put forwarding still works expected (string) \"green\" but got (undefined) undefined"},
+        {"name": "Overriding setter of [PutForwards] target attribute", "status": "FAIL", "message": "Illegal invocation"},
+        {"name": "Overriding target of [PutForwards] attribute", "status": "FAIL", "message": "assert_equals: Original value intact expected (string) \"\" but got (undefined) undefined"},
+        {"name": "Exception propagation from getter of [PutForwards] attribute", "status": "PASS", "message": null},
+        {"name": "Exception propagation from setter of [PutForwards] target attribute", "status": "PASS", "message": null},
+        {"name": "TypeError when getter of [PutForwards] attribute returns non-object", "status": "PASS", "message": null},
+        {"name": "Does not throw when setter of [PutForwards] attribute returns false", "status": "PASS", "message": null},
+        {"name": "Setting a.relList to noreferrer is reflected in rel", "status": "PASS", "message": null},
+        {"name": "Setting area.relList to noreferrer is reflected in rel", "status": "PASS", "message": null},
+        {"name": "Setting form.relList to noreferrer is reflected in rel", "status": "PASS", "message": null},
+        {"name": "Setting link.relList to stylesheet is reflected in rel", "status": "PASS", "message": null}
       ]
     }
   ]

@@ -52,14 +52,12 @@ pub const MessagePort = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "postMessage", "call_postMessage", 2 },
-            .{ "postMessage", "call_postMessage", 1 },
             .{ "start", "call_start", 0 },
             .{ "close", "call_close", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "postMessage",
             "postMessage",
             "start",
             "close",

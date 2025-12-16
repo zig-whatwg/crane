@@ -29,7 +29,6 @@ pub const AnimationTimeline = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "currentTime", "get_currentTime", null },
-            .{ "currentTime", "get_currentTime", null },
             .{ "duration", "get_duration", null },
         };
         
@@ -49,7 +48,6 @@ pub const AnimationTimeline = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "currentTime", "get_currentTime", null },
             .{ "currentTime", "get_currentTime", null },
             .{ "duration", "get_duration", null },
         };

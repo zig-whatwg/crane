@@ -60,7 +60,6 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "clearInterval", "call_clearInterval", 0 },
             .{ "queueMicrotask", "call_queueMicrotask", 1 },
             .{ "createImageBitmap", "call_createImageBitmap", 1 },
-            .{ "createImageBitmap", "call_createImageBitmap", 5 },
             .{ "structuredClone", "call_structuredClone", 1 },
             .{ "fetch", "call_fetch", 1 },
         };
@@ -75,7 +74,6 @@ pub const WindowOrWorkerGlobalScope = struct {
             "setInterval",
             "clearInterval",
             "queueMicrotask",
-            "createImageBitmap",
             "createImageBitmap",
             "structuredClone",
             "fetch",

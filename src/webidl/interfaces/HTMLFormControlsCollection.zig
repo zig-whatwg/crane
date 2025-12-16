@@ -100,4 +100,10 @@ pub const HTMLFormControlsCollection = struct {
         return try HTMLFormControlsCollectionImpl.call_namedItem(instance, name);
     }
 
+    /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
+    /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
+    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+        return HTMLFormControlsCollectionImpl.getSupportedPropertyNames(instance, allocator);
+    }
+
 };

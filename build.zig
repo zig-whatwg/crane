@@ -641,6 +641,9 @@ pub fn build(b: *std.Build) void {
     // Add unified interfaces module
     dom_mod.addImport("interfaces", interfaces_mod);
 
+    // V8 module needs dom for document initialization
+    v8_mod.addImport("dom", dom_mod);
+
     // MIXINS MODULE (Shared WebIDL mixin implementations)
     // ========================================================================
     const mixins_mod = b.addModule("mixins", .{

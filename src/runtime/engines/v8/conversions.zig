@@ -64,8 +64,9 @@ pub const ConversionError = error{
 // ============================================================================
 
 /// Check if a runtime enum name matches a comptime Zig enum field name.
-/// Handles the transformation from WebIDL format ("same-origin") to Zig format ("_same_origin_"):
+/// Handles the transformation from WebIDL format ("same-origin", "text/html") to Zig format ("_same_origin_", "_text_html_"):
 /// - Hyphens in the runtime name match underscores in the field name
+/// - Slashes in the runtime name match underscores in the field name (e.g., "text/html" -> "text_html")
 /// - Leading/trailing underscores in field name are ignored
 fn enumNameMatches(comptime field_name: []const u8, runtime_name: []const u8) bool {
     // Get the normalized field name bounds (strip leading/trailing underscores)
@@ -78,12 +79,12 @@ fn enumNameMatches(comptime field_name: []const u8, runtime_name: []const u8) bo
     // Length must match
     if (normalized_field.len != runtime_name.len) return false;
 
-    // Compare character by character, treating hyphens as underscores
+    // Compare character by character, treating hyphens and slashes as underscores
     inline for (normalized_field, 0..) |fc, i| {
         const rc = runtime_name[i];
-        // Field char is underscore, runtime char can be either underscore or hyphen
+        // Field char is underscore, runtime char can be underscore, hyphen, or slash
         if (fc == '_') {
-            if (rc != '_' and rc != '-') return false;
+            if (rc != '_' and rc != '-' and rc != '/') return false;
         } else {
             if (fc != rc) return false;
         }

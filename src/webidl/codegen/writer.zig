@@ -3069,6 +3069,56 @@ pub fn writeIterableSupport(
     try writer.writeAll("    }\n\n");
 }
 
+/// Write getSupportedPropertyNames delegate for named property support
+///
+/// This function is used by V8Interface to enumerate named properties for
+/// legacy platform objects (e.g., NamedNodeMap, HTMLCollection, DOMStringMap).
+/// It delegates to the Impl's getSupportedPropertyNames function.
+///
+/// Example output:
+/// ```zig
+/// /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
+/// pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+///     return NamedNodeMapImpl.getSupportedPropertyNames(instance, allocator);
+/// }
+/// ```
+pub fn writeNamedPropertySupport(
+    writer: anytype,
+    impl_name: []const u8,
+) !void {
+    try writer.writeAll("    /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)\n");
+    try writer.writeAll("    /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration\n");
+    try writer.writeAll("    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {\n");
+    try writer.print("        return {s}.getSupportedPropertyNames(instance, allocator);\n", .{impl_name});
+    try writer.writeAll("    }\n\n");
+}
+
+/// Check if an interface has a named property getter operation
+/// A named property getter is: getter <type> <name>(<DOMString param>)
+/// Examples:
+///   getter Element? namedItem(DOMString name);
+///   getter Attr? getNamedItem(DOMString qualifiedName);
+pub fn hasNamedPropertyGetter(operations: []const types.Operation) bool {
+    for (operations) |op| {
+        // Must be a getter special operation
+        if (op.special) |special| {
+            if (special == .getter) {
+                // Must have a DOMString parameter (named property getter, not indexed)
+                // Indexed getters have unsigned long parameter
+                if (op.arguments.len > 0) {
+                    const first_arg_type = op.arguments[0].idlType.type;
+                    if (std.mem.eql(u8, first_arg_type, "DOMString") or
+                        std.mem.eql(u8, first_arg_type, "USVString"))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 /// Escape Zig reserved keywords by appending underscore
 fn escapeKeyword(name: []const u8) []const u8 {
     // List of Zig reserved keywords that might appear as WebIDL parameter names

@@ -54,12 +54,10 @@ pub const ServiceWorker = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "postMessage", "call_postMessage", 2 },
-            .{ "postMessage", "call_postMessage", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "postMessage",
             "postMessage",
         };
         

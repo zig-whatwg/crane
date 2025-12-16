@@ -59,7 +59,6 @@ pub const GPUComputePassEncoder = struct {
             .{ "popDebugGroup", "call_popDebugGroup", 0 },
             .{ "insertDebugMarker", "call_insertDebugMarker", 1 },
             .{ "setBindGroup", "call_setBindGroup", 2 },
-            .{ "setBindGroup", "call_setBindGroup", 5 },
         };
         
         /// Methods defined/overridden by this interface
@@ -71,7 +70,6 @@ pub const GPUComputePassEncoder = struct {
             "pushDebugGroup",
             "popDebugGroup",
             "insertDebugMarker",
-            "setBindGroup",
             "setBindGroup",
         };
         

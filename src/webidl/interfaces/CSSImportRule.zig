@@ -37,9 +37,6 @@ pub const CSSImportRule = struct {
             .{ "styleSheet", "get_styleSheet", null },
             .{ "layerName", "get_layerName", null },
             .{ "supportsText", "get_supportsText", null },
-            .{ "href", "get_href", null },
-            .{ "media", "get_media", null },
-            .{ "styleSheet", "get_styleSheet", null },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -67,9 +64,6 @@ pub const CSSImportRule = struct {
             .{ "styleSheet", "get_styleSheet", null },
             .{ "layerName", "get_layerName", null },
             .{ "supportsText", "get_supportsText", null },
-            .{ "href", "get_href", null },
-            .{ "media", "get_media", null },
-            .{ "styleSheet", "get_styleSheet", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties

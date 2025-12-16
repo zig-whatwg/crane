@@ -126,7 +126,6 @@ pub const HTMLTextAreaElement = struct {
             .{ "setCustomValidity", "call_setCustomValidity", 1 },
             .{ "select", "call_select", 0 },
             .{ "setRangeText", "call_setRangeText", 1 },
-            .{ "setRangeText", "call_setRangeText", 3 },
             .{ "setSelectionRange", "call_setSelectionRange", 2 },
         };
         
@@ -136,7 +135,6 @@ pub const HTMLTextAreaElement = struct {
             "reportValidity",
             "setCustomValidity",
             "select",
-            "setRangeText",
             "setRangeText",
             "setSelectionRange",
         };

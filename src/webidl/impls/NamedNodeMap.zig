@@ -16,6 +16,7 @@ const callbacks = @import("callbacks");
 const infra = @import("infra");
 const NamedNodeMap = interfaces.NamedNodeMap;
 const AttrImpl = @import("Attr.zig");
+const ElementImpl = @import("Element.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = NamedNodeMap.State;
@@ -91,9 +92,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Getter for length
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-length
+/// NOTE: NamedNodeMap is a LIVE COLLECTION - it queries the owner element for
+/// the current attribute count, ensuring changes to attributes are reflected.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
-    return @intCast(internal.attrs.size());
+
+    // Query owner element for live attribute count (live collection behavior)
+    const owner = internal.owner_element orelse return @intCast(internal.attrs.size());
+    const element_internal = ElementImpl.getInternal(owner) orelse return @intCast(internal.attrs.size());
+
+    return @intCast(element_internal.getAttributeCount());
 }
 
 /// Operation: item(index)
@@ -284,18 +292,42 @@ pub fn getAttrs(instance: *runtime.Instance) []const *runtime.Instance {
 /// Spec: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditem
 /// "The supported property names are the return value of running these steps:
 ///  1. Let names be the qualified names of the attributes in the attribute list, in order."
+///
+/// NOTE: NamedNodeMap is a LIVE COLLECTION - it queries the owner element for
+/// the current attribute names, ensuring changes to attributes are reflected.
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
 
-    const attrs = internal.attrs.toSlice();
-    if (attrs.len == 0) return &[_]runtime.DOMString{};
+    // Query owner element for live attribute names (live collection behavior)
+    const owner = internal.owner_element orelse {
+        // Fall back to cached attrs if no owner
+        const attrs = internal.attrs.toSlice();
+        if (attrs.len == 0) return &[_]runtime.DOMString{};
+
+        var names: std.ArrayList(runtime.DOMString) = .{};
+        for (attrs) |attr| {
+            const name = interfaces.Attr.get_name(attr) catch continue;
+            try names.append(allocator, name);
+        }
+        return names.toOwnedSlice(allocator);
+    };
+
+    const element_internal = ElementImpl.getInternal(owner) orelse return &[_]runtime.DOMString{};
+
+    const attr_count = element_internal.getAttributeCount();
+    if (attr_count == 0) return &[_]runtime.DOMString{};
 
     var names: std.ArrayList(runtime.DOMString) = .{};
 
-    for (attrs) |attr| {
-        // Get attribute's qualified name using interface per Golden Rule #13
-        const name = interfaces.Attr.get_name(attr) catch continue;
-        try names.append(allocator, name);
+    // Iterate element's attributes to get qualified names
+    var iter = element_internal.attributeIterator();
+    while (iter.next()) |entry| {
+        // Build qualified name (prefix:local_name or just local_name)
+        const qualified_name = if (entry.prefix) |p| blk: {
+            const full_name = std.fmt.allocPrint(allocator, "{s}:{s}", .{ p, entry.local_name }) catch continue;
+            break :blk runtime.DOMString.initOwned(full_name);
+        } else runtime.DOMString.initInterned(entry.local_name);
+        try names.append(allocator, qualified_name);
     }
 
     return names.toOwnedSlice(allocator);

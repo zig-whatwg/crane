@@ -269,6 +269,7 @@ pub const BrowserContext = struct {
         v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
             global_template,
             context_manager.windowIndexedPropertyGetter,
+            null, // setter - not needed
             context_manager.windowIndexedPropertyQuery,
             context_manager.windowIndexedPropertyEnumerator,
             null, // descriptor callback - not needed for basic access
@@ -3469,8 +3470,18 @@ fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
     // Run microtasks after event dispatch (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
-    // Return true (event not cancelled) - we don't track cancellation for now
-    if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+    // Check if event was cancelled via preventDefault()
+    // Per DOM spec: dispatchEvent returns false if event's canceled flag is set
+    const defaultPrevented_key = v8.ffi.v8_String_NewFromUtf8(isolate, "defaultPrevented", 16);
+    var was_cancelled = false;
+    if (defaultPrevented_key) |dp_key| {
+        if (v8.ffi.v8_Object_Get(event_obj, context, @ptrCast(dp_key))) |dp_value| {
+            was_cancelled = v8.ffi.v8_Value_BooleanValue(dp_value, isolate);
+        }
+    }
+
+    // Return false if event was cancelled, true otherwise
+    if (v8.ffi.v8_Boolean_New(isolate, !was_cancelled)) |result| {
         info.setReturnValue(result);
     }
 }

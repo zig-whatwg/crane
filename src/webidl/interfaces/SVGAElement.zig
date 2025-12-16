@@ -108,7 +108,6 @@ pub const SVGAElement = struct {
             .{ "type", "get_type", "set_type" },
             .{ "referrerPolicy", "get_referrerPolicy", "set_referrerPolicy" },
             .{ "href", "get_href", null },
-            .{ "href", "get_href", "set_href" },
             .{ "origin", "get_origin", null },
             .{ "protocol", "get_protocol", "set_protocol" },
             .{ "username", "get_username", "set_username" },
@@ -129,12 +128,10 @@ pub const SVGAElement = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "toString", "get_href", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -242,7 +239,6 @@ pub const SVGAElement = struct {
             .{ "type", "get_type", "set_type" },
             .{ "referrerPolicy", "get_referrerPolicy", "set_referrerPolicy" },
             .{ "href", "get_href", null },
-            .{ "href", "get_href", "set_href" },
             .{ "origin", "get_origin", null },
             .{ "protocol", "get_protocol", "set_protocol" },
             .{ "username", "get_username", "set_username" },

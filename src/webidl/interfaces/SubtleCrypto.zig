@@ -64,7 +64,6 @@ pub const SubtleCrypto = struct {
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
         pub const static_methods = .{
             .{ "supports", "call_static_supports", 2 },
-            .{ "supports", "call_static_supports", 3 },
         };
         
         /// Methods defined/overridden by this interface
@@ -86,7 +85,6 @@ pub const SubtleCrypto = struct {
             "decapsulateKey",
             "decapsulateBits",
             "getPublicKey",
-            "supports",
             "supports",
         };
         

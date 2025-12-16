@@ -51,24 +51,16 @@ pub const CookieStore = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "get", "call_get", 1 },
-            .{ "get", "call_get", 0 },
             .{ "getAll", "call_getAll", 1 },
-            .{ "getAll", "call_getAll", 0 },
             .{ "set", "call_set", 2 },
-            .{ "set", "call_set", 1 },
-            .{ "delete", "call_delete", 1 },
             .{ "delete", "call_delete", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "get",
-            "get",
-            "getAll",
             "getAll",
             "set",
-            "set",
-            "delete",
             "delete",
         };
         

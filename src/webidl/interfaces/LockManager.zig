@@ -38,13 +38,11 @@ pub const LockManager = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "request", "call_request", 2 },
-            .{ "request", "call_request", 3 },
             .{ "query", "call_query", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "request",
             "request",
             "query",
         };

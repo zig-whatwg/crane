@@ -100,7 +100,6 @@ pub const HTMLStyleElement = struct {
             .{ "blocking", "get_blocking", "set_blocking" },
             .{ "type", "get_type", "set_type" },
             .{ "sheet", "get_sheet", null },
-            .{ "sheet", "get_sheet", null },
         };
         
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -219,7 +218,6 @@ pub const HTMLStyleElement = struct {
             .{ "media", "get_media", "set_media" },
             .{ "blocking", "get_blocking", "set_blocking" },
             .{ "type", "get_type", "set_type" },
-            .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
         

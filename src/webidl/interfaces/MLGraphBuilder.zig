@@ -75,8 +75,6 @@ pub const MLGraphBuilder = struct {
         pub const methods = .{
             .{ "input", "call_input", 2 },
             .{ "constant", "call_constant", 2 },
-            .{ "constant", "call_constant", 2 },
-            .{ "constant", "call_constant", 1 },
             .{ "build", "call_build", 1 },
             .{ "argMin", "call_argMin", 2 },
             .{ "argMax", "call_argMax", 2 },
@@ -178,8 +176,6 @@ pub const MLGraphBuilder = struct {
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "input",
-            "constant",
-            "constant",
             "constant",
             "build",
             "argMin",

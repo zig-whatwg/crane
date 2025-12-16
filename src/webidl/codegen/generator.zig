@@ -1332,6 +1332,18 @@ fn generateInterfaceFile(
         break :blk true;
     } else false;
 
+    // Deduplicate own attributes BEFORE generating metadata
+    // Partial interfaces can cause duplicate attribute definitions (e.g., style from partials)
+    try deduplicateAttributes(allocator, &own_attrs);
+
+    // Deduplicate own operations BEFORE generating metadata
+    // Partial interfaces can cause duplicate operation definitions
+    try deduplicateOperations(allocator, &own_ops);
+
+    // Deduplicate own constructors BEFORE generating metadata
+    // Partial interfaces can cause duplicate constructor definitions
+    try deduplicateConstructors(allocator, &own_constructors);
+
     // Generate metadata with property/method hints for V8 bindings
     try writer.writeMetadata(
         w,
@@ -1353,17 +1365,8 @@ fn generateInterfaceFile(
         async_iterable_member, // Async iterable declaration if present
     );
 
-    // Deduplicate own attributes before generating State struct
-    // Partial interfaces can cause duplicate attribute definitions
-    try deduplicateAttributes(allocator, &own_attrs);
-
-    // Deduplicate own operations before generating methods metadata
-    // Partial interfaces can cause duplicate operation definitions
-    try deduplicateOperations(allocator, &own_ops);
-
-    // Deduplicate own constructors before generating constructor functions
-    // Partial interfaces can cause duplicate constructor definitions
-    try deduplicateConstructors(allocator, &own_constructors);
+    // NOTE: Deduplication now happens BEFORE writeMetadata (above)
+    // This ensures the Meta.properties, Meta.eager_properties etc. don't have duplicates
 
     // impl_name needed for State generation and delegate functions
     const impl_name = try std.fmt.allocPrint(allocator, "{s}Impl", .{interface.name});
@@ -1454,6 +1457,12 @@ fn generateInterfaceFile(
     // Generate iterable support if interface has iterable declaration
     if (iterable_member) |iterable| {
         try writer.writeIterableSupport(w, impl_name, iterable);
+    }
+
+    // Generate named property support if interface has named property getter
+    // This enables proper enumeration for legacy platform objects like NamedNodeMap
+    if (writer.hasNamedPropertyGetter(own_ops.items)) {
+        try writer.writeNamedPropertySupport(w, impl_name);
     }
 
     // Close struct

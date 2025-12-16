@@ -87,4 +87,10 @@ pub const DOMStringMap = struct {
         DOMStringMapImpl.deinit(instance);
     }
 
+    /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
+    /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
+    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+        return DOMStringMapImpl.getSupportedPropertyNames(instance, allocator);
+    }
+
 };

@@ -26,14 +26,10 @@ pub const CanvasDrawImage = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "drawImage", "call_drawImage", 3 },
-            .{ "drawImage", "call_drawImage", 5 },
-            .{ "drawImage", "call_drawImage", 9 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "drawImage",
-            "drawImage",
             "drawImage",
         };
         

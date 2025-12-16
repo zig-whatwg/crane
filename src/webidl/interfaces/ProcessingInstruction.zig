@@ -47,7 +47,6 @@ pub const ProcessingInstruction = struct {
         pub const properties = .{
             .{ "target", "get_target", null },
             .{ "sheet", "get_sheet", null },
-            .{ "sheet", "get_sheet", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -93,7 +92,6 @@ pub const ProcessingInstruction = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "target", "get_target", null },
-            .{ "sheet", "get_sheet", null },
             .{ "sheet", "get_sheet", null },
         };
         
