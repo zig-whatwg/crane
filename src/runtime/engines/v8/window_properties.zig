@@ -29,6 +29,13 @@
 //! - deleteProperty trap returns false
 //! - defineProperty trap returns false
 //! - ownKeys returns only [Symbol.toStringTag]
+//!
+//! ## Named Property Lookup (HTML §7.4.1)
+//!
+//! The supported property names of a Window object consist of:
+//! - document-tree child navigable target names (iframe/frame name attributes)
+//! - name attributes of embed, form, img, object elements
+//! - id attributes of all HTML elements
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
@@ -67,6 +74,9 @@ pub fn create(
     // which realm to create errors in when Proxy traps return false.
     const js_code =
         \\(function() {
+        \\  // Capture reference to this Window (globalThis)
+        \\  const windowRef = globalThis;
+        \\  
         \\  // Target object with Symbol.toStringTag
         \\  const target = Object.create(null);
         \\  Object.defineProperty(target, Symbol.toStringTag, {
@@ -78,6 +88,80 @@ pub fn create(
         \\  
         \\  // Store the prototype (will be set after creation)
         \\  let currentPrototype = null;
+        \\  
+        \\  // Store reference to proxy for identity checks in set trap
+        \\  let proxyRef = null;
+        \\  
+        \\  // Get named element from document per HTML §7.4.1
+        \\  // Returns the element/window or undefined if not found
+        \\  function getNamedElement(name) {
+        \\    try {
+        \\      if (!windowRef || !windowRef.document) return undefined;
+        \\      const doc = windowRef.document;
+        \\      // Don't require body - elements might be in documentElement or head
+        \\      
+        \\      // Convert name to string for comparison
+        \\      const nameStr = String(name);
+        \\      
+        \\      // 1. Check for child browsing context (iframe/frame with matching name)
+        \\      const iframes = doc.getElementsByTagName('iframe');
+        \\      for (let i = 0; i < iframes.length; i++) {
+        \\        const frame = iframes[i];
+        \\        if (frame.name === nameStr && frame.contentWindow) {
+        \\          return frame.contentWindow;
+        \\        }
+        \\      }
+        \\      const frames = doc.getElementsByTagName('frame');
+        \\      for (let i = 0; i < frames.length; i++) {
+        \\        const frame = frames[i];
+        \\        if (frame.name === nameStr && frame.contentWindow) {
+        \\          return frame.contentWindow;
+        \\        }
+        \\      }
+        \\      
+        \\      // 2. Check for named elements: embed, form, img, object with name attr
+        \\      const tagNames = ['embed', 'form', 'img', 'object'];
+        \\      const namedElements = [];
+        \\      for (let t = 0; t < tagNames.length; t++) {
+        \\        const elements = doc.getElementsByTagName(tagNames[t]);
+        \\        for (let i = 0; i < elements.length; i++) {
+        \\          if (elements[i].name === nameStr) {
+        \\            namedElements.push(elements[i]);
+        \\          }
+        \\        }
+        \\      }
+        \\      if (namedElements.length === 1) return namedElements[0];
+        \\      if (namedElements.length > 1) {
+        \\        // Return first for now - full impl would return HTMLCollection
+        \\        return namedElements[0];
+        \\      }
+        \\      
+        \\      // 3. Check for element with matching id
+        \\      const byId = doc.getElementById(nameStr);
+        \\      if (byId) return byId;
+        \\      
+        \\      return undefined;
+        \\    } catch (e) {
+        \\      // If anything fails, treat as no named element
+        \\      return undefined;
+        \\    }
+        \\  }
+        \\  
+        \\  // Check if property is visible per named property visibility algorithm
+        \\  // A property is NOT visible if shadowed by something higher in prototype chain
+        \\  function isPropertyVisible(prop) {
+        \\    // Symbol properties are never named properties
+        \\    if (typeof prop === 'symbol') return false;
+        \\    
+        \\    const propStr = String(prop);
+        \\    
+        \\    // Check if property exists on Object.prototype or EventTarget.prototype
+        \\    // These shadow named properties
+        \\    if (Object.prototype.hasOwnProperty.call(Object.prototype, propStr)) return false;
+        \\    if (currentPrototype && Object.prototype.hasOwnProperty.call(currentPrototype, propStr)) return false;
+        \\    
+        \\    return true;
+        \\  }
         \\  
         \\  const handler = {
         \\    // [[GetPrototypeOf]] - return current prototype
@@ -106,7 +190,7 @@ pub fn create(
         \\      return true;
         \\    },
         \\    
-        \\    // [[GetOwnPropertyDescriptor]] - return descriptor for toStringTag only
+        \\    // [[GetOwnPropertyDescriptor]] - return descriptor for named properties
         \\    getOwnPropertyDescriptor(target, prop) {
         \\      if (prop === Symbol.toStringTag) {
         \\        return {
@@ -116,7 +200,22 @@ pub fn create(
         \\          configurable: true
         \\        };
         \\      }
-        \\      // TODO: Check for named properties in the document
+        \\      
+        \\      // Check named property visibility
+        \\      if (!isPropertyVisible(prop)) return undefined;
+        \\      
+        \\      // Look up named element
+        \\      const element = getNamedElement(prop);
+        \\      if (element !== undefined) {
+        \\        // Per WebIDL, named properties are writable, non-enumerable, configurable
+        \\        return {
+        \\          value: element,
+        \\          writable: true,
+        \\          enumerable: false,
+        \\          configurable: true
+        \\        };
+        \\      }
+        \\      
         \\      return undefined;
         \\    },
         \\    
@@ -128,20 +227,40 @@ pub fn create(
         \\    // [[HasProperty]] - check Symbol.toStringTag and named properties
         \\    has(target, prop) {
         \\      if (prop === Symbol.toStringTag) return true;
-        \\      // TODO: Check for named properties in the document
-        \\      // For now, continue to prototype chain
+        \\      
+        \\      // Check named property visibility
+        \\      if (!isPropertyVisible(prop)) {
+        \\        // Property is shadowed - check prototype chain
+        \\        if (currentPrototype) {
+        \\          return prop in currentPrototype;
+        \\        }
+        \\        return false;
+        \\      }
+        \\      
+        \\      // Check if named element exists
+        \\      const element = getNamedElement(prop);
+        \\      if (element !== undefined) return true;
+        \\      
+        \\      // Continue to prototype chain
         \\      if (currentPrototype) {
         \\        return prop in currentPrototype;
         \\      }
         \\      return false;
         \\    },
         \\    
-        \\    // [[Get]] - return toStringTag or look up prototype chain
+        \\    // [[Get]] - return named element or continue to prototype chain
         \\    get(target, prop, receiver) {
         \\      if (prop === Symbol.toStringTag) {
         \\        return "WindowProperties";
         \\      }
-        \\      // TODO: Check for named properties in the document
+        \\      
+        \\      // Check named property visibility
+        \\      if (isPropertyVisible(prop)) {
+        \\        // Look up named element
+        \\        const element = getNamedElement(prop);
+        \\        if (element !== undefined) return element;
+        \\      }
+        \\      
         \\      // Continue to prototype chain
         \\      if (currentPrototype && prop in currentPrototype) {
         \\        return currentPrototype[prop];
@@ -149,9 +268,42 @@ pub fn create(
         \\      return undefined;
         \\    },
         \\    
-        \\    // [[Set]] - always return false
+        \\    // [[Set]] - Per WebIDL §3.7.4:
+        \\    // - If receiver is the proxy, return false (cannot set on WindowProperties)
+        \\    // - If receiver is different, create property on receiver
         \\    set(target, prop, value, receiver) {
-        \\      return false;
+        \\      // If receiver IS the proxy, setting fails
+        \\      if (receiver === proxyRef) {
+        \\        return false;
+        \\      }
+        \\      
+        \\      // Check if there's a setter in the prototype chain
+        \\      let proto = currentPrototype;
+        \\      while (proto) {
+        \\        const desc = Object.getOwnPropertyDescriptor(proto, prop);
+        \\        if (desc) {
+        \\          if (desc.set) {
+        \\            // Call the setter with receiver as this
+        \\            desc.set.call(receiver, value);
+        \\            return true;
+        \\          }
+        \\          if ('value' in desc && !desc.writable) {
+        \\            // Non-writable data property - fail
+        \\            return false;
+        \\          }
+        \\          break;
+        \\        }
+        \\        proto = Object.getPrototypeOf(proto);
+        \\      }
+        \\      
+        \\      // Create own property on receiver
+        \\      Object.defineProperty(receiver, prop, {
+        \\        value: value,
+        \\        writable: true,
+        \\        enumerable: true,
+        \\        configurable: true
+        \\      });
+        \\      return true;
         \\    },
         \\    
         \\    // [[Delete]] - always return false
@@ -165,7 +317,8 @@ pub fn create(
         \\    }
         \\  };
         \\  
-        \\  return new Proxy(target, handler);
+        \\  proxyRef = new Proxy(target, handler);
+        \\  return proxyRef;
         \\})()
     ;
 
@@ -264,44 +417,18 @@ pub fn insertIntoPrototypeChain(
 }
 
 // ============================================================================
-// Named Property Handler Callbacks
+// Named Property Handler Callbacks (legacy - kept for reference)
 // ============================================================================
 
 /// Named property getter - [[Get]] for WindowProperties
-///
-/// Per WebIDL spec, this should:
-/// 1. Check named property visibility algorithm
-/// 2. Return named elements (elements with id/name attributes) if visible
-/// 3. Continue normal lookup if not a named property
-///
-/// For now, we don't intercept - V8 will continue to prototype chain.
-/// A full implementation would query the document for elements with matching id/name.
 fn namedPropertyGetter(
     _: *v8.Name,
     _: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {
-    // Don't intercept - let V8 continue to prototype chain
-    // This means WindowProperties doesn't add any own properties by default
-    //
-    // A full implementation would:
-    // 1. Get the property name as a string
-    // 2. Check if it's an "exposed" property (passes named property visibility)
-    // 3. If so, query the document for elements with that id/name and return them
-    //
-    // For WPT compliance, the tests use iframes where the named properties
-    // come from elements added to the iframe's document. Since we're not
-    // fully implementing document element lookup here, those tests that rely
-    // on actual named elements won't work, but the ones testing the exotic
-    // behavior (set/delete/defineProperty failing) will work.
+    // Not used - Proxy handles this
 }
 
 /// Named property setter - [[Set]] for WindowProperties
-///
-/// Per WebIDL §3.7.4, [[Set]] on named properties object always returns false.
-/// This means:
-/// - In strict mode: throws TypeError
-/// - In sloppy mode: silently fails
-/// - Reflect.set returns false
 fn namedPropertySetter(
     _: *v8.Name,
     _: *v8.Value,
@@ -314,24 +441,14 @@ fn namedPropertySetter(
 }
 
 /// Named property query - [[HasProperty]] for WindowProperties
-///
-/// Returns property attributes if the property exists as a named element,
-/// or does nothing to indicate property doesn't exist.
 fn namedPropertyQuery(
     _: *v8.Name,
     _: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {
-    // Don't intercept - continue normal lookup
-    // Named properties are not reported as own properties in the basic query
+    // Not used - Proxy handles this
 }
 
 /// Named property deleter - [[Delete]] for WindowProperties
-///
-/// Per WebIDL §3.7.4, [[Delete]] on named properties object always returns false.
-/// This means:
-/// - In strict mode: throws TypeError
-/// - delete operator returns false
-/// - Reflect.deleteProperty returns false
 fn namedPropertyDeleter(
     _: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
@@ -343,9 +460,6 @@ fn namedPropertyDeleter(
 }
 
 /// Named property enumerator - [[OwnPropertyKeys]] for WindowProperties
-///
-/// Per WebIDL §3.7.4, [[OwnPropertyKeys]] returns only Symbol.toStringTag.
-/// Named properties are NOT enumerable (not in for...in, Object.keys, etc.)
 fn namedPropertyEnumerator(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {

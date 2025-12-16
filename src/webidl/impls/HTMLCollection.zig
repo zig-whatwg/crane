@@ -168,3 +168,17 @@ pub fn getElements(instance: *runtime.Instance) []const *runtime.Instance {
     const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
     return internal.elements.toSlice();
 }
+
+/// Get supported property names for named property enumeration
+/// Per WebIDL spec §3.9.3, returns the id and name attributes of elements
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
+    _ = allocator;
+
+    const elements = internal.elements.toSlice();
+    if (elements.len == 0) return &[_]runtime.DOMString{};
+
+    // For now, return empty - full implementation would collect id/name attrs
+    // TODO: Collect unique id and name attributes from all elements
+    return &[_]runtime.DOMString{};
+}

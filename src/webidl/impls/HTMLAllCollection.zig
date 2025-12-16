@@ -59,3 +59,10 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
     _ = name;
     return error.NotImplemented;
 }
+
+/// Get supported property names for named property enumeration
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    _ = instance;
+    _ = allocator;
+    return &[_]runtime.DOMString{};
+}
