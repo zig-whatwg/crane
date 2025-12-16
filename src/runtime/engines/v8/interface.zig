@@ -1165,10 +1165,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     null, // deleter - not supported yet
                     namedPropertyEnumerator,
                     namedPropertyDescriptor,
-                    // kNonMasking: Only intercept properties not on the prototype chain
                     // kOnlyInterceptStrings: Only intercept string keys, not symbols
-                    // Combined flag allows prototype properties (length, item, etc.) to work correctly
-                    .kNonMaskingAndOnlyInterceptStrings,
+                    // Note: NOT using kNonMasking so named property getter is called for all string keys
+                    // This is required per WebIDL spec for legacy platform objects
+                    .kOnlyInterceptStrings,
                 );
             }
 
@@ -3917,7 +3917,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (prop_len <= 0) return;
 
             var prop_buf: [256]u8 = undefined;
-            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return;
+            // WriteUtf8_Raw may include null terminator in length - trim it
+            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
+                actual_len -= 1;
+            }
             if (actual_len <= 0) return;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
@@ -4199,7 +4204,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (prop_len <= 0) return .kNo;
 
             var prop_buf: [256]u8 = undefined;
-            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return .kNo;
+            // WriteUtf8_Raw may include null terminator in length - trim it
+            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
+                actual_len -= 1;
+            }
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 

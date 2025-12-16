@@ -117,20 +117,43 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 /// Operation: namedItem(name)
 /// Spec: https://dom.spec.whatwg.org/#dom-htmlcollection-nameditem
 /// Returns the first element with the given id or name attribute.
+///
+/// The namedItem(name) method steps are to return the first element in the
+/// collection for which at least one of the following is true:
+/// - it has an ID which is name;
+/// - it is in the HTML namespace and has a name attribute whose value is name;
+/// or null if there is no such element.
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidState;
+    const internal = getInternal(instance) orelse return null;
     const name_slice = name.asSlice();
+
+    // Empty name returns null
+    if (name_slice.len == 0) return null;
 
     // Iterate through elements looking for matching id or name attribute
     const elements = internal.elements.toSlice();
+    const Element = interfaces.Element;
+
     for (elements) |element| {
-        // TODO: Check element's id and name attributes
-        // For now, return NotImplemented as we need Element interface
-        _ = element;
-        _ = name_slice;
+        // Check id attribute first
+        var id = try Element.get_id(element);
+        defer id.deinit(internal.allocator);
+        if (std.mem.eql(u8, id.asSlice(), name_slice)) {
+            return element;
+        }
+
+        // Check name attribute for HTML namespace elements
+        // Per spec: "it is in the HTML namespace and has a name attribute whose value is name"
+        var name_attr = Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch null;
+        if (name_attr) |*attr| {
+            defer attr.deinit(internal.allocator);
+            if (std.mem.eql(u8, attr.asSlice(), name_slice)) {
+                return element;
+            }
+        }
     }
 
-    return error.NotImplemented;
+    return null;
 }
 
 // ============================================================================
@@ -171,14 +194,69 @@ pub fn getElements(instance: *runtime.Instance) []const *runtime.Instance {
 
 /// Get supported property names for named property enumeration
 /// Per WebIDL spec §3.9.3, returns the id and name attributes of elements
+///
+/// The supported property names are the values of:
+/// - id attribute of each element in tree order
+/// - name attribute of each HTML namespace element in tree order
+/// with earlier values taking precedence (no duplicates)
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
-    _ = allocator;
 
     const elements = internal.elements.toSlice();
     if (elements.len == 0) return &[_]runtime.DOMString{};
 
-    // For now, return empty - full implementation would collect id/name attrs
-    // TODO: Collect unique id and name attributes from all elements
-    return &[_]runtime.DOMString{};
+    const Element = interfaces.Element;
+
+    // Use ArrayList to collect unique names
+    var names: std.ArrayListUnmanaged(runtime.DOMString) = .{};
+    errdefer {
+        for (names.items) |*n| n.deinit(allocator);
+        names.deinit(allocator);
+    }
+
+    // Collect id and name attributes from elements in tree order
+    for (elements) |element| {
+        // Check id attribute
+        var id = Element.get_id(element) catch continue;
+        const id_slice = id.asSlice();
+        if (id_slice.len > 0) {
+            // Check if already in list
+            var found = false;
+            for (names.items) |existing| {
+                if (std.mem.eql(u8, existing.asSlice(), id_slice)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                // Clone the id for our list
+                const cloned = try runtime.DOMString.initDupe(allocator, id_slice);
+                try names.append(allocator, cloned);
+            }
+        }
+        id.deinit(internal.allocator);
+
+        // Check name attribute for HTML namespace elements
+        var name_attr = Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch null;
+        if (name_attr) |*attr| {
+            defer attr.deinit(internal.allocator);
+            const attr_slice = attr.asSlice();
+            if (attr_slice.len > 0) {
+                // Check if already in list
+                var found = false;
+                for (names.items) |existing| {
+                    if (std.mem.eql(u8, existing.asSlice(), attr_slice)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    const cloned = try runtime.DOMString.initDupe(allocator, attr_slice);
+                    try names.append(allocator, cloned);
+                }
+            }
+        }
+    }
+
+    return names.toOwnedSlice(allocator);
 }
