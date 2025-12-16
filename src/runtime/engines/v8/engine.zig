@@ -504,6 +504,10 @@ fn v8SetPropertyOnObject(
 /// Per WebIDL [Replaceable] extended attribute (§4.3.10): the assignment is performed
 /// by calling [[DefineOwnProperty]] with PropertyDescriptor{[[Value]]: V,
 /// [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true}
+///
+/// If [[DefineOwnProperty]] fails (e.g., property is non-configurable), this returns
+/// EngineError.TypeError per the WebIDL specification: "If success is false, then throw
+/// a TypeError."
 fn v8DefineOwnPropertyOnObject(
     engine_ctx: *anyopaque,
     target: *anyopaque,
@@ -527,7 +531,8 @@ fn v8DefineOwnPropertyOnObject(
     // Use v8_Object_DefineProperty with [[DefineOwnProperty]] semantics
     // For [Replaceable]: writable=true, enumerable=true, configurable=true
     if (!ffi.v8_Object_DefineProperty(target_obj, context, @ptrCast(v8_key), v8_value, true, true, true)) {
-        return EngineError.OperationFailed;
+        // Per WebIDL spec §4.3.10: "If success is false, then throw a TypeError."
+        return EngineError.TypeError;
     }
 }
 

@@ -372,13 +372,20 @@ pub const BrowserContext = struct {
             \\}
             \\
             \\// Define 'self' as an accessor property with proper global object checks
+            \\// Per WebIDL [Replaceable] extended attribute (§4.3.10): the setter calls
+            \\// [[DefineOwnProperty]] to create an own data property that shadows the accessor
             \\Object.defineProperty(globalThis, 'self', {
             \\  get: function() {
             \\    return __checkGlobalThis(this, 'self');
             \\  },
             \\  set: function(v) {
-            \\    __checkGlobalThis(this, 'self');
-            \\    // self is not actually settable per spec, but we allow it for compat
+            \\    var target = __checkGlobalThis(this, 'self');
+            \\    // [Replaceable] - Create own property via [[DefineOwnProperty]]
+            \\    // Per spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+            \\    //           [[Enumerable]]: true, [[Configurable]]: true}
+            \\    Object.defineProperty(target, 'self', {
+            \\      value: v, writable: true, enumerable: true, configurable: true
+            \\    });
             \\  },
             \\  enumerable: true,
             \\  configurable: true
@@ -460,9 +467,16 @@ pub const BrowserContext = struct {
             \\  get: function() { __checkGlobalThis(this, 'performance'); return globalThis.__internal.performance; },
             \\  enumerable: true, configurable: true
             \\});
+            \\// [Replaceable] - origin setter creates own property via [[DefineOwnProperty]]
             \\Object.defineProperty(globalThis, 'origin', {
             \\  get: function() { __checkGlobalThis(this, 'origin'); return globalThis.__internal.origin; },
-            \\  set: function(v) { __checkGlobalThis(this, 'origin'); globalThis.__internal.origin = v; },
+            \\  set: function(v) {
+            \\    var target = __checkGlobalThis(this, 'origin');
+            \\    // [Replaceable] - Create own property via [[DefineOwnProperty]]
+            \\    Object.defineProperty(target, 'origin', {
+            \\      value: v, writable: true, enumerable: true, configurable: true
+            \\    });
+            \\  },
             \\  enumerable: true, configurable: true
             \\});
             \\Object.defineProperty(globalThis, 'isSecureContext', {
