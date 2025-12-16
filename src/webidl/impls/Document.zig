@@ -303,6 +303,11 @@ pub const InternalState = struct {
     /// Spec: https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts
     fonts: ?*runtime.Instance,
 
+    /// Cached HTMLAllCollection instance ([SameObject])
+    /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-all
+    /// This collection has [[IsHTMLDDA]] internal slot (undetectable)
+    all_collection: ?*runtime.Instance,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -385,6 +390,8 @@ pub const InternalState = struct {
             .adopted_style_sheets = null,
             // FontFaceSet (CSS Font Loading)
             .fonts = null,
+            // HTMLAllCollection (undetectable legacy object)
+            .all_collection = null,
         };
     }
 
@@ -1374,9 +1381,27 @@ pub fn get_applets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for all
+/// Returns the document's HTMLAllCollection, which is a legacy "undetectable" object.
+/// Per HTML spec, document.all has [[IsHTMLDDA]] internal slot making it:
+/// - typeof returns "undefined"
+/// - == null and == undefined return true
+/// - ToBoolean returns false
+/// This is essential for WPT test: webidl/ecmascript-binding/global-object-implicit-this-value.any.js
 pub fn get_all(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached HTMLAllCollection (lazily created, [SameObject])
+    if (internal.all_collection) |all| {
+        return all;
+    }
+
+    // Create a new HTMLAllCollection for this document
+    // The HTMLAllCollection template is automatically marked as undetectable
+    // by the V8Interface binding code (see interface.zig HTMLAllCollection handling)
+    const HTMLAllCollection = interfaces.HTMLAllCollection;
+    const all = try HTMLAllCollection.init(internal.allocator, instance.ctx);
+    internal.all_collection = all;
+    return all;
 }
 
 /// Getter for scrollingElement
