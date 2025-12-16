@@ -122,6 +122,11 @@ pub const InternalState = struct {
     /// Manual slot assignment (for SlotAssignmentMode.manual)
     manual_slot_assignment: ?*runtime.Instance = null,
 
+    /// Cached NamedNodeMap for the attributes getter
+    /// Per WebIDL, the same object must be returned on subsequent accesses
+    /// so that own properties added to the object persist.
+    named_node_map: ?*runtime.Instance = null,
+
     // ==========================================================================
     // Inline Attribute Storage Optimization
     // Most elements have 0-3 attributes. Store first 4 inline to avoid heap allocation.
@@ -151,6 +156,7 @@ pub const InternalState = struct {
             .shadow_root = null,
             .custom_element_state = .undefined,
             .is_value = null,
+            .named_node_map = null,
             .inline_attrs = .{null} ** INLINE_ATTR_CAPACITY,
             .inline_attr_count = 0,
             .heap_attrs = null,
@@ -170,6 +176,12 @@ pub const InternalState = struct {
         self.slot.deinit(self.allocator);
         if (self.is_value) |*v| {
             v.deinit(self.allocator);
+        }
+
+        // Clean up cached NamedNodeMap
+        if (self.named_node_map) |nnm| {
+            interfaces.NamedNodeMap.deinit(nnm);
+            self.named_node_map = null;
         }
 
         // Free inline attribute entries
@@ -630,8 +642,15 @@ pub fn get_slot(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Spec: https://dom.spec.whatwg.org/#dom-element-attributes
 ///
 /// The attributes getter steps are to return the associated NamedNodeMap.
+/// Per WebIDL semantics, returns the same cached object on each access so that
+/// own properties added to the attributes object persist across accesses.
 pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Return cached NamedNodeMap if it exists
+    if (internal.named_node_map) |cached| {
+        return cached;
+    }
 
     // Create a NamedNodeMap containing all attributes
     // Use interface instead of impl (per Golden Rule #13)
@@ -660,6 +679,9 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // Add to NamedNodeMap
         NamedNodeMapImpl.addAttr(named_node_map, attr) catch return error.OutOfMemory;
     }
+
+    // Cache the NamedNodeMap for future accesses
+    internal.named_node_map = named_node_map;
 
     return named_node_map;
 }
