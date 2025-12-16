@@ -2933,7 +2933,14 @@ pub fn writeDelegateFunctions(
 
             try writer.writeAll("        // [PutForwards] - Get target object and set the forwarded property\n");
             try writer.print("        // Per WebIDL spec: setting '{s}' forwards to '{s}' on the attribute's value\n", .{ attr.name, forwarded_property });
-            try writer.print("        const target = try get_{s}(instance);\n", .{sanitized_name});
+            // Only handle nullable unwrap if the attribute type is nullable
+            if (is_nullable) {
+                try writer.print("        const target_opt = try get_{s}(instance);\n", .{sanitized_name});
+                try writer.writeAll("        // Per WebIDL spec: if the target is null, throw TypeError\n");
+                try writer.writeAll("        const target = target_opt orelse return error.TypeError;\n");
+            } else {
+                try writer.print("        const target = try get_{s}(instance);\n", .{sanitized_name});
+            }
             try writer.writeAll("        \n");
             try writer.writeAll("        // Use JavaScript [[Set]] semantics to set the forwarded property\n");
             try writer.writeAll("        // This respects prototype chain and user-defined setters\n");

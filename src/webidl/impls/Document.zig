@@ -334,7 +334,9 @@ pub const InternalState = struct {
             .alink_color = runtime.DOMString.initEmpty(),
             .bg_color = runtime.DOMString.initEmpty(),
             // Fullscreen
-            .fullscreen_enabled = true,
+            // Per Fullscreen spec, fullscreenEnabled returns true only if fullscreen is supported
+            // and the document's fullscreen flag is set. For a new Document, default to false.
+            .fullscreen_enabled = false,
             .fullscreen_element = null,
             // Pointer lock
             .pointer_lock_element = null,
@@ -2289,17 +2291,24 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 /// 2. If the new value is the same as the old value, return
 /// 3. If the old body element exists, replace it with the new value
 /// 4. Otherwise, append the new value to the html element
-pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+///
+/// Note: Per WebIDL spec, this attribute is HTMLElement? (nullable), so it accepts
+/// null/undefined from JavaScript. However per HTML spec, null is not a valid body
+/// element, so we throw HierarchyRequestError for null values.
+pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ElementImpl = @import("Element.zig");
 
     // Step 1: Validate new value is body or frameset
-    const value_node_type = NodeImpl.getNodeType(value) orelse 0;
+    // Per WebIDL, undefined is converted to null for nullable types.
+    // Per HTML spec, null is not a valid body element, so throw HierarchyRequestError.
+    const actual_value = value orelse return error.HierarchyRequestError;
+    const value_node_type = NodeImpl.getNodeType(actual_value) orelse 0;
     if (value_node_type != NodeImpl.NodeType.ELEMENT_NODE) {
         return error.HierarchyRequestError;
     }
 
-    const value_internal = ElementImpl.getInternal(value) orelse return error.HierarchyRequestError;
+    const value_internal = ElementImpl.getInternal(actual_value) orelse return error.HierarchyRequestError;
     const tag_name = value_internal.local_name.asSlice();
 
     const is_body = if (internal.doc_type == .html)
@@ -2319,7 +2328,7 @@ pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!
     // Step 2: If new value is same as old value, return
     const old_body = get_body(instance) catch null;
     if (old_body) |ob| {
-        if (ob == value) return;
+        if (ob == actual_value) return;
     }
 
     // Get document element (html)
@@ -2329,15 +2338,15 @@ pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!
     if (old_body) |ob| {
         // Remove old body and insert new in its place
         // Use interface instead of impl (per Golden Rule #13)
-        _ = try interfaces.Node.call_replaceChild(doc_element, value, ob);
+        _ = try interfaces.Node.call_replaceChild(doc_element, actual_value, ob);
     } else {
         // Step 4: Append to html element
         // Use interface instead of impl (per Golden Rule #13)
-        _ = try interfaces.Node.call_appendChild(doc_element, value);
+        _ = try interfaces.Node.call_appendChild(doc_element, actual_value);
     }
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(value, instance);
+    try NodeImpl.setOwnerDocument(actual_value, instance);
 }
 
 /// Setter for designMode

@@ -1467,7 +1467,9 @@ pub const Document = struct {
     pub fn set_location(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
         // [PutForwards] - Get target object and set the forwarded property
         // Per WebIDL spec: setting 'location' forwards to 'href' on the attribute's value
-        const target = try get_location(instance) orelse return error.InvalidStateError;
+        const target_opt = try get_location(instance);
+        // Per WebIDL spec: if the target is null, throw TypeError
+        const target = target_opt orelse return error.TypeError;
 
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
@@ -1536,7 +1538,11 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    /// MANUAL OVERRIDE: Per WebIDL spec, HTMLElement? is nullable. This accepts
+    /// ?*runtime.Instance to allow undefined/null values from JS. The impl then
+    /// throws HierarchyRequestError for null since it's not a valid body element.
+    /// TODO: Update codegen to generate nullable setter parameters automatically.
+    pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
