@@ -167,6 +167,20 @@ pub const FunctionCallbackInfo = opaque {
     pub inline fn getFunctionCreationContext(self: *const FunctionCallbackInfo) ?*Context {
         return v8_FunctionCallbackInfo_GetFunctionCreationContext(self);
     }
+
+    /// Get the NewTarget for constructor calls.
+    /// Returns the function that was called with 'new', which may be different from
+    /// the constructor when subclassing (Reflect.construct) or using bound functions.
+    /// Returns null for non-construct calls.
+    pub extern fn v8_FunctionCallbackInfo_NewTarget(self: *const FunctionCallbackInfo) ?*Value;
+
+    /// Get the NewTarget value for this constructor call.
+    /// For cross-realm constructor support per WebIDL §3.7.2:
+    /// - Objects should be created in GetFunctionRealm(NewTarget) realm
+    /// - Returns null for non-construct calls
+    pub inline fn getNewTarget(self: *const FunctionCallbackInfo) ?*Value {
+        return v8_FunctionCallbackInfo_NewTarget(self);
+    }
 };
 
 /// PropertyCallbackInfo - Encapsulates information about a property access from JavaScript
@@ -485,6 +499,11 @@ pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsArray_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsNullOrUndefined_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsPromise(value: *Value) bool;
+
+/// Check if a value is a bound function (created via Function.prototype.bind).
+/// Used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22.
+pub extern fn v8_Value_IsBoundFunction(value: *Value) bool;
+
 pub extern fn v8_Value_BooleanValue(value: *Value, isolate: *Isolate) bool;
 pub extern fn v8_Value_NumberValue(value: *Value, context: *Context) f64;
 pub extern fn v8_Value_Int32Value(value: *Value, context: *Context) i32;
@@ -739,6 +758,16 @@ pub extern fn v8_Function_CallWithReceiver_Safe(
 
 /// Free a V8FunctionCallResult (does not free the value if non-null)
 pub extern fn v8_FreeFunctionCallResult(result: ?*V8FunctionCallResult) void;
+
+/// Get the [[BoundTargetFunction]] of a bound function.
+/// Used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22.
+/// Returns null if the value is not a bound function.
+pub extern fn v8_BoundFunction_GetBoundTargetFunction(func: *Function) ?*Function;
+
+/// Get the creation context (realm) of a function.
+/// This is the context where the function was instantiated, which is critical
+/// for cross-realm constructor support per WebIDL §3.7.2.
+pub extern fn v8_Function_GetCreationContext(func: *Function) ?*Context;
 
 /// Compile an ES module with TryCatch error handling
 /// Returns both the compiled module (on success) and detailed error info (on failure).

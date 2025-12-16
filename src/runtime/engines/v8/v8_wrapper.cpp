@@ -2599,6 +2599,139 @@ Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const Functi
     return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
 }
 
+/// Get the NewTarget from a constructor call.
+/// This returns the function that was actually called with 'new', which is important
+/// for cross-realm construction: when using Reflect.construct(Ctor, args, NewTarget),
+/// the object should be created in NewTarget's realm.
+///
+/// Returns nullptr for non-construct calls.
+Global<Value>* v8_FunctionCallbackInfo_NewTarget(const FunctionCallbackInfo<Value>* info) {
+    Isolate* isolate = info->GetIsolate();
+    HandleScope handle_scope(isolate);
+    
+    // Use V8's public NewTarget() API which handles internal layout properly
+    Local<Value> new_target = info->NewTarget();
+    
+    // For non-construct calls, NewTarget is undefined
+    if (new_target.IsEmpty() || new_target->IsUndefined()) {
+        return nullptr;
+    }
+    
+    return trackHandle(new Global<Value>(isolate, new_target));
+}
+
+/// Check if a value is a bound function.
+/// Bound functions are created via Function.prototype.bind() and have
+/// a [[BoundTargetFunction]] internal slot.
+///
+/// This is used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22,
+/// which needs to recurse through bound functions to find the original realm.
+bool v8_Value_IsBoundFunction(Global<Value>* value) {
+    if (!value) return false;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> local_value = value->Get(isolate);
+    
+    if (!local_value->IsFunction()) return false;
+    
+    // V8 doesn't expose a direct IsBoundFunction check, but we can detect
+    // bound functions by checking if they have the internal bound target.
+    // Bound functions in V8 are JSBoundFunction objects with specific properties.
+    //
+    // A practical way to detect this: bound functions have name starting with "bound "
+    // and their .length property is computed specially.
+    // 
+    // However, the most reliable way is to check internal fields.
+    // V8's JSBoundFunction has [[BoundTargetFunction]], [[BoundThis]], [[BoundArguments]]
+    //
+    // For a simpler approach, we use the fact that GetBoundFunction() on a
+    // non-bound function returns itself, while on bound function it returns the target.
+    // But V8 12+ may not have GetBoundFunction exposed...
+    //
+    // Alternative: check Function::GetScriptOrigin() - bound functions have empty origin
+    // But this isn't fully reliable either.
+    //
+    // Best approach: check internal class name via Object::GetConstructorName
+    // But this could be spoofed...
+    //
+    // V8 12.x approach: JSBoundFunction is a separate type but not directly queryable
+    // from the public API. We'll use a heuristic: try to get the name and check
+    // if it starts with "bound ".
+    
+    Local<Function> func = local_value.As<Function>();
+    Local<Value> name_val = func->GetName();
+    
+    if (name_val->IsString()) {
+        Local<String> name_str = name_val.As<String>();
+        String::Utf8Value utf8(isolate, name_str);
+        if (*utf8 && strncmp(*utf8, "bound ", 6) == 0) {
+            return true;
+        }
+    }
+    
+    // Additional check: bound functions typically don't have own 'prototype' property
+    // (unless explicitly set), but this isn't definitive
+    
+    return false;
+}
+
+/// Get the [[BoundTargetFunction]] of a bound function.
+/// This is used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22,
+/// which needs to recurse through bound functions to find the original function's realm.
+///
+/// Returns nullptr if the value is not a function or if we can't determine the bound target.
+/// For non-bound functions, returns the function itself.
+Global<Function>* v8_BoundFunction_GetBoundTargetFunction(Global<Function>* func) {
+    if (!func) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Function> local_func = func->Get(isolate);
+    
+    // V8 doesn't expose GetBoundFunction() in the public API for v12+
+    // We need to use internal APIs or workarounds
+    //
+    // Since we can't directly access [[BoundTargetFunction]], we return the
+    // function itself. The caller should use v8_Value_IsBoundFunction first
+    // to check, and if it's bound, we need another approach.
+    //
+    // For now, we'll use Function::GetCreationContext on the function directly.
+    // Even for bound functions, GetCreationContext returns the realm where
+    // the *bound function object* was created, which may be sufficient.
+    //
+    // If we need the true target, we could:
+    // 1. Call toString() and parse it (hacky)
+    // 2. Use V8 internals (not portable)
+    // 3. Store a map of bound functions to targets (complex)
+    
+    // For now, just return the same function - the IsBoundFunction check
+    // will indicate if further processing is needed
+    return trackHandle(new Global<Function>(isolate, local_func));
+}
+
+/// Get the creation context (realm) of a function.
+/// This is the context where the function was instantiated.
+///
+/// For cross-realm constructor support per WebIDL §3.7.2:
+/// - Objects should be created in GetFunctionRealm(NewTarget) realm
+/// - This function provides the realm for regular functions
+/// - For bound functions and proxies, the caller must handle recursion
+Global<Context>* v8_Function_GetCreationContext(Global<Function>* func) {
+    if (!func) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Function> local_func = func->Get(isolate);
+    
+    MaybeLocal<Context> maybe_ctx = local_func->GetCreationContext();
+    if (maybe_ctx.IsEmpty()) {
+        return nullptr;
+    }
+    
+    return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
+}
+
 // ============================================================================
 // External - Wrap C pointers for storage in V8
 // ============================================================================

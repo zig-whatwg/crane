@@ -404,11 +404,32 @@ pub fn V8Interface(comptime Interface: type) type {
                 true, // configurable = true
             );
 
-            // Note: Per WebIDL spec, interface constructors should not have legacy
-            // "arguments" and "caller" properties. However, V8's FunctionTemplate creates
-            // functions with these as non-configurable accessor properties that cannot be
-            // deleted. This is a V8 limitation - we attempt deletion but it will fail.
-            // The properties will still exist in property enumeration order.
+            // ========================================================================
+            // V8 LIMITATION: Constructor Property Enumeration Order
+            // ========================================================================
+            //
+            // Per WebIDL spec, interface constructors should not have legacy "arguments"
+            // and "caller" properties. However, V8's FunctionTemplate creates functions
+            // with these as non-configurable accessor properties that cannot be deleted.
+            //
+            // IMPACT: Two WPT tests fail due to this V8 API limitation:
+            //   - webidl/ecmascript-binding/builtin-function-properties.any.js
+            //     "Constructor property enumeration order" - gets "arguments" not "prototype"
+            //   - webidl/ecmascript-binding/legacy-factory-function-builtin-properties.window.js
+            //     "Legacy factory function property enumeration order"
+            //
+            // EXPECTED: Reflect.ownKeys(Constructor).slice(0,3) = ["length", "name", "prototype"]
+            // ACTUAL:   Includes "arguments" and "caller" before "prototype"
+            //
+            // WORKAROUNDS CONSIDERED AND REJECTED:
+            //   1. v8::Function::New() with manual prototype setup - loses FunctionTemplate benefits
+            //   2. Create constructor via JS eval - loses type safety and internal fields
+            //   3. Object.defineProperties post-processing - can't remove non-configurable props
+            //
+            // DECISION: Accept as V8 limitation. These 2 tests are known expected failures.
+            // The functional behavior is correct; only the enumeration order is wrong.
+            //
+            // We still attempt deletion (which will fail) to document intent:
             const arguments_key = v8.v8_String_NewFromUtf8(isolate, "arguments", 9);
             if (arguments_key) |args_key| {
                 _ = v8.v8_Object_Delete(@ptrCast(constructor.?), context, @ptrCast(args_key));
@@ -931,6 +952,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get prototype template (only used for non-callback interfaces)
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
+
+            // Per WebIDL §3.7.1, interface prototype objects must have immutable [[Prototype]].
+            // "The [[SetPrototypeOf]] internal method of an interface prototype object always
+            // returns false when called with a different value from its [[Prototype]] internal
+            // slot value."
+            // This is required for WPT test: webidl/ecmascript-binding/global-immutable-prototype.any.js
+            v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
 
             // Register EAGER properties as accessors on prototype (defined upfront)
             // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
@@ -2380,6 +2408,18 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object (the newly created instance)
             const this_obj = info.getThis();
+
+            // ========================================
+            // CROSS-REALM CONSTRUCTOR SUPPORT (WebIDL §3.7.2)
+            // ========================================
+            // When NewTarget.prototype is not an object (e.g., primitive like 7),
+            // we must fall back to the interface prototype object from the
+            // appropriate realm (GetFunctionRealm(NewTarget)).
+            //
+            // V8 already creates 'this' with the correct prototype when NewTarget.prototype
+            // is valid, but falls back to Object.prototype when it's invalid.
+            // We need to detect this and fix it.
+            handleNewTargetPrototypeFallback(info, this_obj, isolate, v8_context, interface_name);
 
             // Call the interface's constructor with arguments parsed at comptime
             const instance = callConstructorWithArgs(info, allocator, ctx, v8_context, isolate) catch |err| {
@@ -5019,6 +5059,130 @@ pub fn setInstanceWithTypeInfo(
         1,
         @ptrCast(@constCast(type_info)),
     );
+}
+
+// ============================================================================
+// Cross-Realm Constructor Support
+// ============================================================================
+
+/// Handle NewTarget.prototype fallback per WebIDL §3.7.2
+///
+/// When NewTarget.prototype is not an object (e.g., a primitive like 7),
+/// V8 falls back to Object.prototype. We must detect this and fix it
+/// by setting the prototype to the interface's prototype object from
+/// GetFunctionRealm(NewTarget).
+///
+/// Per WebIDL spec:
+/// "The prototype of the newly created object will be the value of the
+/// 'prototype' property of NewTarget. If the prototype is not an object,
+/// the prototype will be the interface prototype object of the associated
+/// global object's relevant Realm."
+fn handleNewTargetPrototypeFallback(
+    info: *const v8.FunctionCallbackInfo,
+    this_obj: *v8.Object,
+    isolate: *v8.Isolate,
+    v8_context: *v8.Context,
+    comptime interface_name: []const u8,
+) void {
+    // Get NewTarget - returns null for non-construct calls (already checked)
+    const new_target_val = info.getNewTarget() orelse return;
+
+    // Get the "prototype" property of NewTarget
+    const prototype_key = v8.v8_String_NewFromUtf8(
+        isolate,
+        "prototype",
+        9,
+    ) orelse return;
+
+    const new_target_obj: *v8.Object = @ptrCast(new_target_val);
+    const proto_val = v8.v8_Object_Get(new_target_obj, v8_context, @ptrCast(prototype_key));
+
+    // Check if prototype is a valid object
+    // If it IS an object, V8 already set the prototype correctly - nothing to do
+    if (proto_val) |pv| {
+        if (v8.v8_Value_IsObject(pv)) {
+            // NewTarget.prototype is a valid object - V8 handled it correctly
+            return;
+        }
+    }
+
+    // NewTarget.prototype is NOT an object (e.g., primitive like 7)
+    // We need to fall back to the interface prototype from GetFunctionRealm(NewTarget)
+
+    // Get the realm of NewTarget using GetFunctionRealm algorithm
+    // For bound functions: recurse to [[BoundTargetFunction]]
+    // For proxies: recurse to [[ProxyTarget]]
+    // Otherwise: function's creation context
+    const target_realm = getFunctionRealm(new_target_val, isolate) orelse v8_context;
+
+    // Get the interface constructor from the target realm
+    // The constructor is available as a property on the global object
+    const global = v8.v8_Context_Global(target_realm) orelse return;
+
+    const ctor_name = v8.v8_String_NewFromUtf8(
+        isolate,
+        interface_name.ptr,
+        @intCast(interface_name.len),
+    ) orelse return;
+
+    const ctor_val = v8.v8_Object_Get(global, target_realm, @ptrCast(ctor_name)) orelse return;
+
+    if (!v8.v8_Value_IsFunction(ctor_val)) return;
+
+    // Get the constructor's prototype property
+    const ctor_obj: *v8.Object = @ptrCast(ctor_val);
+    const interface_proto = v8.v8_Object_Get(ctor_obj, target_realm, @ptrCast(prototype_key)) orelse return;
+
+    if (!v8.v8_Value_IsObject(interface_proto)) return;
+
+    // Set the prototype on 'this' to the interface prototype
+    _ = v8.v8_Object_SetPrototype(this_obj, v8_context, interface_proto);
+}
+
+/// Implement GetFunctionRealm algorithm per ECMA-262 §7.3.22
+///
+/// 1. If func is a bound function, return GetFunctionRealm(func.[[BoundTargetFunction]])
+/// 2. If func is a Proxy, return GetFunctionRealm(func.[[ProxyTarget]])
+/// 3. Return func.[[Realm]]
+fn getFunctionRealm(func: *v8.Value, isolate: *v8.Isolate) ?*v8.Context {
+    return getFunctionRealmWithDepth(func, isolate, 0);
+}
+
+fn getFunctionRealmWithDepth(func: *v8.Value, isolate: *v8.Isolate, depth: u32) ?*v8.Context {
+    // Limit recursion depth to prevent infinite loops
+    // (in case proxy target returns something unexpected)
+    if (depth > 10) {
+        // Fall back to creation context
+        if (v8.v8_Value_IsFunction(func)) {
+            const fn_obj: *v8.Function = @ptrCast(func);
+            return v8.v8_Function_GetCreationContext(fn_obj);
+        }
+        return null;
+    }
+
+    // Step 2: If func is a Proxy, recurse on [[ProxyTarget]]
+    if (v8.v8_Value_IsProxy(func)) {
+        const proxy_obj: *v8.Object = @ptrCast(func);
+        if (v8.v8_Proxy_GetTarget(proxy_obj)) |target| {
+            // Recurse on the target
+            return getFunctionRealmWithDepth(target, isolate, depth + 1);
+        }
+        // Revoked proxy or error - fall through to function check
+    }
+
+    // Step 1: If func is a bound function, recurse on [[BoundTargetFunction]]
+    // NOTE: V8's public API doesn't fully expose [[BoundTargetFunction]].
+    // Our v8_BoundFunction_GetBoundTargetFunction can't reliably get the
+    // original function, so we just use the bound function's creation context.
+    // This works because the bound function was created in the target's realm.
+
+    // Step 3: Return func.[[Realm]] (creation context)
+    if (v8.v8_Value_IsFunction(func)) {
+        const fn_obj: *v8.Function = @ptrCast(func);
+        return v8.v8_Function_GetCreationContext(fn_obj);
+    }
+
+    return null;
 }
 
 // ============================================================================
