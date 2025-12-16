@@ -958,7 +958,15 @@ pub fn V8Interface(comptime Interface: type) type {
             // returns false when called with a different value from its [[Prototype]] internal
             // slot value."
             // This is required for WPT test: webidl/ecmascript-binding/global-immutable-prototype.any.js
-            v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
+            //
+            // EXCEPTION: Window.prototype must NOT be immutable during template creation because
+            // we need to insert WindowProperties into the prototype chain after registration.
+            // WindowProperties insertion happens in initializeBindings() AFTER all interfaces
+            // are registered. The Window.prototype will be made immutable AFTER WindowProperties
+            // is inserted (via v8_Object_SetImmutableProto on the actual prototype object).
+            if (!std.mem.eql(u8, interface_name, "Window")) {
+                v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
+            }
 
             // Register EAGER properties as accessors on prototype (defined upfront)
             // eager_properties is tuple array: .{ "propName", "get_propName", "set_propName" or null }
@@ -1145,30 +1153,39 @@ pub fn V8Interface(comptime Interface: type) type {
             // Handle inheritance (prototype chain for V8)
             // Use ParentInterface (the actual interface type) for prototype chain setup
             // ParentInterface is set when BaseType is an embedded state struct
-            if (@hasDecl(Meta, "ParentInterface")) {
-                const ParentType = Meta.ParentInterface;
-                if (@hasDecl(ParentType, "Meta")) {
-                    // Create parent template
-                    const ParentBinding = V8Interface(ParentType);
-                    const parent_template = ParentBinding.createTemplate(isolate);
+            //
+            // SPECIAL CASE: Window interface must NOT use FunctionTemplate_Inherit
+            // because we need to insert WindowProperties between Window.prototype
+            // and EventTarget.prototype. FunctionTemplate_Inherit creates a hard link
+            // that cannot be modified after template creation.
+            // Window's prototype chain is set up manually in window_properties.zig
+            const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
+            if (!is_window_interface) {
+                if (@hasDecl(Meta, "ParentInterface")) {
+                    const ParentType = Meta.ParentInterface;
+                    if (@hasDecl(ParentType, "Meta")) {
+                        // Create parent template
+                        const ParentBinding = V8Interface(ParentType);
+                        const parent_template = ParentBinding.createTemplate(isolate);
 
-                    // Set up prototype chain
-                    v8.v8_FunctionTemplate_Inherit(template, parent_template);
-                }
-            } else if (comptime @typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
-                // BaseType is ?type - check if it's non-null
-                if (comptime Meta.BaseType) |BaseType| {
-                    // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
-                    const BaseTypeInfo = @typeInfo(BaseType);
-                    if (BaseTypeInfo == .pointer) {
-                        const ChildType = BaseTypeInfo.pointer.child;
-                        if (@hasDecl(ChildType, "Meta")) {
-                            // Create parent template
-                            const ParentBinding = V8Interface(ChildType);
-                            const parent_template = ParentBinding.createTemplate(isolate);
+                        // Set up prototype chain
+                        v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                    }
+                } else if (comptime @typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
+                    // BaseType is ?type - check if it's non-null
+                    if (comptime Meta.BaseType) |BaseType| {
+                        // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
+                        const BaseTypeInfo = @typeInfo(BaseType);
+                        if (BaseTypeInfo == .pointer) {
+                            const ChildType = BaseTypeInfo.pointer.child;
+                            if (@hasDecl(ChildType, "Meta")) {
+                                // Create parent template
+                                const ParentBinding = V8Interface(ChildType);
+                                const parent_template = ParentBinding.createTemplate(isolate);
 
-                            // Set up prototype chain
-                            v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                                // Set up prototype chain
+                                v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                            }
                         }
                     }
                 }
