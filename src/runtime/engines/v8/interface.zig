@@ -3762,21 +3762,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 return .kNo;
             }
 
-            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+            _ = @as(*runtime.Instance, @ptrCast(@alignCast(instance_ptr)));
 
-            // Check if index is in range (this makes it a supported property index)
-            const length = Interface.get_length(instance) catch return .kNo;
-            if (index >= length) {
-                // Index out of range - not a supported property index, let normal [[Set]] happen
-                return .kNo;
-            }
-
-            // Index IS in range (supported property index), but we don't have a setter
-            // Per WebIDL [[Set]] spec step 2:
+            // Per WebIDL §3.9.3 [[DefineOwnProperty]] step 1.2:
             // "If O supports indexed properties and P is an array index, then:
-            //   If O does not implement an indexed property setter, return false."
+            //   If O does not implement an interface with an indexed property setter,
+            //   then return false."
             //
-            // In strict mode, throw TypeError. In sloppy mode, silently return.
+            // This applies to ALL array indices, not just in-range ones.
+            // A read-only indexed collection rejects ALL indexed property assignments.
+            // Returning false causes TypeError in strict mode.
             if (info.shouldThrowOnError()) {
                 // Strict mode - throw TypeError
                 var buf: [64]u8 = undefined;

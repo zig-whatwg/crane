@@ -7,18 +7,213 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765905747495,
-  "time_end": 1765905747642,
+  "time_start": 1765993546326,
+  "time_end": 1765993552713,
   "results": [
+    {
+      "test": "webidl/ecmascript-binding/sequence-conversion.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "An array", "status": "PASS", "message": null},
+        {"name": "A generator", "status": "PASS", "message": null},
+        {"name": "An array with an overridden Symbol.iterator", "status": "PASS", "message": null},
+        {"name": "An object with an overriden Symbol.iterator", "status": "PASS", "message": null},
+        {"name": "An array with an overridden Symbol.iterator on the prototype", "status": "PASS", "message": null},
+        {"name": "An array with an overridden %ArrayIterator%.prototype.next", "status": "PASS", "message": null},
+        {"name": "A holey array with fallback to an accessor on the prototype", "status": "FAIL", "message": "Cannot set property 1 of [object Array] which has only a getter"},
+        {"name": "A string array in sequence<sequence> or record", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/window-named-properties-object.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "[[SetPrototypeOf]] and [[GetPrototypeOf]]", "status": "FAIL", "message": "assert_throws_js: function \"() => { wp.__proto__ = null; }\" threw object \"TypeError: 'set' on proxy: trap returned falsish for property '__proto__'\" (\"TypeError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "[[PreventExtensions]] and [[IsExtensible]]", "status": "PASS", "message": null},
+        {"name": "[[GetOwnProperty]]", "status": "FAIL", "message": "Cannot set properties of undefined (setting 'status')"},
+        {"name": "[[GetOwnProperty]] (named property visibility algorithm)", "status": "PASS", "message": null},
+        {"name": "[[DefineOwnProperty]]", "status": "PASS", "message": null},
+        {"name": "[[HasProperty]]", "status": "PASS", "message": null},
+        {"name": "[[Get]]", "status": "FAIL", "message": "Cannot set properties of undefined (setting 'status')"},
+        {"name": "[[Get]] (named property visibility algorithm)", "status": "PASS", "message": null},
+        {"name": "[[Set]] (direct)", "status": "FAIL", "message": "Cannot set properties of undefined (setting 'status')"},
+        {"name": "[[Set]] (prototype chain)", "status": "PASS", "message": null},
+        {"name": "[[Set]] (Reflect.set)", "status": "PASS", "message": null},
+        {"name": "[[Delete]]", "status": "FAIL", "message": "Cannot set properties of undefined (setting 'status')"},
+        {"name": "[[OwnPropertyKeys]]", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/class-string-iterator-prototype-object.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "@@toStringTag exists with the appropriate descriptor", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied after modifying @@toStringTag", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied to a null-prototype instance", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied after nulling the prototype", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/class-string-iterator-prototype-object.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/interface-prototype-object.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "[Unscopable] extended attribute makes @@unscopables object on the prototype object, whose prototype is null.", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/replaceable-setter-throws-if-defineownproperty-fails.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "window.self setter throws TypeError if called on non-configurable accessor property", "status": "PASS", "message": null},
+        {"name": "window.parent setter throws TypeError if called on non-configurable accessor property", "status": "PASS", "message": null},
+        {"name": "window.origin setter throws TypeError if called on non-configurable accessor property", "status": "PASS", "message": null},
+        {"name": "window.innerWidth setter throws TypeError if called on non-configurable accessor property", "status": "PASS", "message": null},
+        {"name": "window.screen setter throws TypeError if called on non-configurable non-writable data property", "status": "PASS", "message": null},
+        {"name": "window.length setter throws TypeError if called on non-configurable non-writable data property", "status": "PASS", "message": null},
+        {"name": "window.event setter throws TypeError if called on non-configurable non-writable data property", "status": "PASS", "message": null},
+        {"name": "window.outerHeight setter throws TypeError if called on non-configurable non-writable data property", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-factory-function-builtin-properties.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Legacy factory function property enumeration order of \"length\", \"name\", and \"prototype\"", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/global-object-implicit-this-value.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Global object's getter throws when called on incompatible object", "status": "PASS", "message": null},
+        {"name": "Global object's setter throws when called on incompatible object", "status": "PASS", "message": null},
+        {"name": "Global object's operation throws when called on incompatible object", "status": "PASS", "message": null},
+        {"name": "Global object's getter throws when called on incompatible object (document.all)", "status": "PASS", "message": null},
+        {"name": "Global object's setter throws when called on incompatible object (document.all)", "status": "PASS", "message": null},
+        {"name": "Global object's operation throws when called on incompatible object (document.all)", "status": "PASS", "message": null},
+        {"name": "Global object's getter works when called on null / undefined", "status": "PASS", "message": null},
+        {"name": "Global object's setter works when called on null / undefined", "status": "PASS", "message": null},
+        {"name": "Global object's operation works when called on null / undefined", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/global-object-implicit-this-value.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/iterator-prototype-object.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Has %IteratorPrototype% as prototype", "status": "PASS", "message": null},
+        {"name": "next() exists and is writable, enumerable, and configurable", "status": "PASS", "message": null},
+        {"name": "next() throws TypeError when called on ineligible receiver", "status": "PASS", "message": null},
+        {"name": "Is specific to an interface", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/iterator-invalidation-foreach.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "forEach will not iterate over elements removed during iteration", "status": "PASS", "message": null},
+        {"name": "Removing elements already iterated over during forEach will cause iterator to skip an element", "status": "PASS", "message": null},
+        {"name": "Elements added during iteration with forEach will be reached", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/default-toJSON-cross-realm.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Cross-realm [Default] toJSON() creates result object in its realm", "status": "PASS", "message": null},
+        {"name": "Cross-realm [Default] toJSON() converts its interface attributes to ECMAScript values of correct realm", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/observable-array-no-leak-of-internals.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "ObservableArray's internals won't leak", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/global-immutable-prototype.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Setting to a different prototype", "status": "FAIL", "message": "assert_throws_js: function \"() => {\n      Object.setPrototypeOf(object, {});\n    }\" did not throw"},
+        {"name": "Setting to the same prototype", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/global-immutable-prototype.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/attributes-accessors-unique-function-objects.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "For attributes, each copy of the accessor property has distinct built-in function objects for its getters and setters.", "status": "FAIL", "message": "This feature is not yet implemented"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/observable-array-ownkeys.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "ObservableArray's ownKeys trap", "status": "PASS", "message": null}
+      ]
+    },
     {
       "test": "webidl/ecmascript-binding/put-forwards.html",
       "status": "OK",
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Overriding getter of [PutForwards] attribute", "status": "FAIL", "message": "assert_equals: Put forwarding still works expected (string) \"green\" but got (undefined) undefined"},
-        {"name": "Overriding setter of [PutForwards] target attribute", "status": "FAIL", "message": "Illegal invocation"},
-        {"name": "Overriding target of [PutForwards] attribute", "status": "FAIL", "message": "assert_equals: Original value intact expected (string) \"\" but got (undefined) undefined"},
+        {"name": "Overriding getter of [PutForwards] attribute", "status": "PASS", "message": null},
+        {"name": "Overriding setter of [PutForwards] target attribute", "status": "PASS", "message": null},
+        {"name": "Overriding target of [PutForwards] attribute", "status": "PASS", "message": null},
         {"name": "Exception propagation from getter of [PutForwards] attribute", "status": "PASS", "message": null},
         {"name": "Exception propagation from setter of [PutForwards] target attribute", "status": "PASS", "message": null},
         {"name": "TypeError when getter of [PutForwards] attribute returns non-object", "status": "PASS", "message": null},
@@ -27,6 +222,696 @@
         {"name": "Setting area.relList to noreferrer is reflected in rel", "status": "PASS", "message": null},
         {"name": "Setting form.relList to noreferrer is reflected in rel", "status": "PASS", "message": null},
         {"name": "Setting link.relList to stylesheet is reflected in rel", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/interface-prototype-constructor-set-receiver.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Direct [[Set]] preserves [[Enumerable]]: false property attribute", "status": "PASS", "message": null},
+        {"name": "Prototype chain [[Set]] creates property on receiver", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/allow-resizable.html",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/invalid-this-value-cross-realm.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Cross-realm getter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Reflect.get(other.document.createElement(\"div\"), \"hidden\", notElement); }\" did not throw"},
+        {"name": "Cross-realm setter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(other.element).innerHTML = \"\"; }\" threw object \"TypeError: Object prototype may only be an Object or null: undefined\" (\"TypeError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "Cross-realm operation throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(other.element).click(); }\" threw object \"TypeError: Object prototype may only be an Object or null: undefined\" (\"TypeError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-custom-bindings.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Cannot construct without new", "status": "PASS", "message": null},
+        {"name": "inherits from Error: prototype-side", "status": "PASS", "message": null},
+        {"name": "does not inherit from Error: class-side", "status": "PASS", "message": null},
+        {"name": "message property descriptor", "status": "PASS", "message": null},
+        {"name": "message getter performs brand checks (i.e. is not [LegacyLenientThis])", "status": "PASS", "message": null},
+        {"name": "name property descriptor", "status": "PASS", "message": null},
+        {"name": "name getter performs brand checks (i.e. is not [LegacyLenientThis])", "status": "PASS", "message": null},
+        {"name": "code property descriptor", "status": "PASS", "message": null},
+        {"name": "code getter performs brand checks (i.e. is not [LegacyLenientThis])", "status": "PASS", "message": null},
+        {"name": "code property is not affected by shadowing the name property", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString behavior is like other interfaces", "status": "PASS", "message": null},
+        {"name": "Inherits its toString() from Error.prototype", "status": "PASS", "message": null},
+        {"name": "toString() behavior from Error.prototype applies as expected", "status": "PASS", "message": null},
+        {"name": "DOMException.prototype.toString() applied to DOMException.prototype throws because of name/message brand checks", "status": "PASS", "message": null},
+        {"name": "If the implementation has a stack property on normal errors, it also does on DOMExceptions", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-custom-bindings.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constants.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Constant INDEX_SIZE_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant INDEX_SIZE_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant DOMSTRING_SIZE_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant DOMSTRING_SIZE_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant HIERARCHY_REQUEST_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant HIERARCHY_REQUEST_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant WRONG_DOCUMENT_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant WRONG_DOCUMENT_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_CHARACTER_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_CHARACTER_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant NO_DATA_ALLOWED_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant NO_DATA_ALLOWED_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant NO_MODIFICATION_ALLOWED_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant NO_MODIFICATION_ALLOWED_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant NOT_FOUND_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant NOT_FOUND_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant NOT_SUPPORTED_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant NOT_SUPPORTED_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant INUSE_ATTRIBUTE_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant INUSE_ATTRIBUTE_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_STATE_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_STATE_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant SYNTAX_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant SYNTAX_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_MODIFICATION_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_MODIFICATION_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant NAMESPACE_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant NAMESPACE_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_ACCESS_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_ACCESS_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant VALIDATION_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant VALIDATION_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant TYPE_MISMATCH_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant TYPE_MISMATCH_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant SECURITY_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant SECURITY_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant NETWORK_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant NETWORK_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant ABORT_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant ABORT_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant URL_MISMATCH_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant URL_MISMATCH_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant QUOTA_EXCEEDED_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant QUOTA_EXCEEDED_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant TIMEOUT_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant TIMEOUT_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_NODE_TYPE_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant INVALID_NODE_TYPE_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "Constant DATA_CLONE_ERR on DOMException constructor object", "status": "PASS", "message": null},
+        {"name": "Constant DATA_CLONE_ERR on DOMException prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException-constants", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constants.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constructor-behavior.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "new DOMException()", "status": "PASS", "message": null},
+        {"name": "new DOMException(): inherited-ness", "status": "PASS", "message": null},
+        {"name": "new DOMException(null)", "status": "PASS", "message": null},
+        {"name": "new DOMException(undefined)", "status": "PASS", "message": null},
+        {"name": "new DOMException(undefined): inherited-ness", "status": "PASS", "message": null},
+        {"name": "new DOMException(\"foo\")", "status": "PASS", "message": null},
+        {"name": "new DOMException(\"foo\"): inherited-ness", "status": "PASS", "message": null},
+        {"name": "new DOMException(\"bar\", undefined)", "status": "PASS", "message": null},
+        {"name": "new DOMException(\"bar\", \"NotSupportedError\")", "status": "PASS", "message": null},
+        {"name": "new DOMException(\"bar\", \"NotSupportedError\"): inherited-ness", "status": "PASS", "message": null},
+        {"name": "new DOMException(\"bar\", \"foo\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"IndexSizeError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"HierarchyRequestError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"WrongDocumentError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"InvalidCharacterError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NoModificationAllowedError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NotFoundError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NotSupportedError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"InUseAttributeError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"InvalidStateError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"SyntaxError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"InvalidModificationError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NamespaceError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"InvalidAccessError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"TypeMismatchError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"SecurityError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NetworkError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"AbortError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"URLMismatchError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"QuotaExceededError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"TimeoutError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"InvalidNodeTypeError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"DataCloneError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"DOMStringSizeError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NoDataAllowedError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"ValidationError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"EncodingError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NotReadableError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"UnknownError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"ConstraintError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"DataError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"TransactionInactiveError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"ReadOnlyError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"VersionError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"OperationError\")", "status": "PASS", "message": null},
+        {"name": "new DOMexception(\"msg\", \"NotAllowedError\")", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constructor-behavior.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "existence and property descriptor of DOMException", "status": "PASS", "message": null},
+        {"name": "existence and property descriptor of DOMException.prototype", "status": "PASS", "message": null},
+        {"name": "existence and property descriptor of DOMException.prototype.constructor", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/exceptions.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Object.getPrototypeOf(exception) === DOMException.prototype", "status": "PASS", "message": null},
+        {"name": "exception.hasOwnProperty(\"name\")", "status": "PASS", "message": null},
+        {"name": "exception.hasOwnProperty(\"message\")", "status": "PASS", "message": null},
+        {"name": "exception.name === \"HierarchyRequestError\"", "status": "PASS", "message": null},
+        {"name": "exception.code === DOMException.HIERARCHY_REQUEST_ERR", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString.call(exception) === \"[object DOMException]\"", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-is-error.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "DOMException-is-error", "status": "FAIL", "message": "assert_true: expected true got false"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/es-exceptions/DOMException-is-error.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/interface-object-set-receiver.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Direct [[Set]] preserves [[Enumerable]]: false property attribute", "status": "PASS", "message": null},
+        {"name": "Prototype chain [[Set]] creates property on receiver", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/class-string-interface.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "@@toStringTag exists on the prototype with the appropriate descriptor", "status": "PASS", "message": null},
+        {"name": "@@toStringTag must not exist on the instance", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied to the prototype", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied to an instance", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied after modifying the prototype's @@toStringTag", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied to the instance after modifying the instance's @@toStringTag", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied to a null-prototype instance", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString applied after deleting @@toStringTag", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/class-string-interface.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/no-regexp-special-casing.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Conversion to a dictionary works", "status": "PASS", "message": null},
+        {"name": "Conversion to a sequence works", "status": "FAIL", "message": "TypeError"},
+        {"name": "Can convert a RegExp to a USVString", "status": "PASS", "message": null},
+        {"name": "Can be used as an object implementing a callback interface", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/no-regexp-special-casing.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/has-instance.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Manually-constructed prototype chains are correctly handled by instanceof", "status": "PASS", "message": null},
+        {"name": "instanceof must return false across different globals, for platform objects", "status": "PASS", "message": null},
+        {"name": "platform objects do not have Symbol.hasInstance installed", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-callback-interface-object.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Must be a function according to typeof", "status": "PASS", "message": null},
+        {"name": "Must have the correct [[Prototype]]", "status": "PASS", "message": null},
+        {"name": "Must have the correct property descriptor", "status": "PASS", "message": null},
+        {"name": "Must throw a TypeError when called or constructed", "status": "PASS", "message": null},
+        {"name": "Must not have a .prototype property", "status": "PASS", "message": null},
+        {"name": "Must have an own name property equal to the interface name and with the correct descriptors", "status": "PASS", "message": null},
+        {"name": "Must have an own length property with value zero and the correct descriptors", "status": "PASS", "message": null},
+        {"name": "instanceof must throw but only when we don't bail out early", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/global-object-implicit-this-value-cross-realm.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Cross-realm global object's getter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { new Proxy(other, {}).onclick; }\" threw object \"TypeError: Illegal invocation\" (\"TypeError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "Cross-realm global object's setter throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { new Proxy(other, {}).location = location; }\" threw object \"TypeError: Illegal invocation\" (\"TypeError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "Cross-realm global object's operation throws when called on incompatible object", "status": "FAIL", "message": "assert_throws_js: function \"() => { Object.create(other).focus(); }\" threw object \"TypeError: Object.create(...).focus is not a function\" (\"TypeError\") expected instance of function \"function TypeError() { [native code] }\" (\"TypeError\")"},
+        {"name": "Cross-realm global object's getter called on null / undefined", "status": "PASS", "message": null},
+        {"name": "Cross-realm global object's setter called on null / undefined", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"NotSupportedError: This feature is not yet implemented\""},
+        {"name": "Cross-realm global object's operation called on null / undefined", "status": "FAIL", "message": "assert_equals: expected Element node <body>\n<script>\npromise_test(async t =&gt; {\n    const ot... but got null"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-factor-function-subclass.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "[LegacyFactoryFunction] can be subclassed and correctly handles NewTarget", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/constructors.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Normal constructor in parent window", "status": "FAIL", "message": "assert_equals: expected \"parent window\" but got \"???\""},
+        {"name": "Normal constructor in child window", "status": "FAIL", "message": "assert_equals: expected \"child window\" but got \"???\""},
+        {"name": "Constructor in child window with normal NewTarget from parent window", "status": "FAIL", "message": "assert_equals: expected \"child window\" but got \"???\""},
+        {"name": "Constructor in parent window with normal NewTarget from child window", "status": "FAIL", "message": "assert_equals: expected \"parent window\" but got \"???\""},
+        {"name": "Subclass constructor in parent window", "status": "FAIL", "message": "assert_equals: expected \"parent window\" but got \"???\""},
+        {"name": "Subclass constructor in child window", "status": "FAIL", "message": "assert_equals: expected \"child window\" but got \"???\""},
+        {"name": "Subclass constructor in parent window with parent class in child window", "status": "FAIL", "message": "assert_equals: expected \"child window\" but got \"???\""},
+        {"name": "Subclass constructor in child window with parent class in parent window", "status": "FAIL", "message": "assert_equals: expected \"parent window\" but got \"???\""},
+        {"name": "Constructor in child window with bad NewTarget from parent window", "status": "FAIL", "message": "assert_equals: expected \"child window\" but got \"???\""},
+        {"name": "Constructor in parent window with bad NewTarget from child window", "status": "FAIL", "message": "assert_equals: expected \"parent window\" but got \"???\""},
+        {"name": "Constructor in parent window with bad NewTarget from parent window that's a bound child window function", "status": "FAIL", "message": "assert_equals: expected \"parent window\" but got \"???\""},
+        {"name": "Constructor in child window with bad NewTarget from child window that's a bound parent window function", "status": "FAIL", "message": "assert_equals: expected \"child window\" but got \"???\""},
+        {"name": "Constructor in parent window with bad NewTarget from parent window that's a proxy for a child window function", "status": "FAIL", "message": "assert_equals: expected \"parent window\" but got \"???\""},
+        {"name": "Constructor in child window with bad NewTarget from child window that's a proxy for a parent window function", "status": "FAIL", "message": "assert_equals: expected \"child window\" but got \"???\""},
+        {"name": "Realm for constructed objects", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/setter-argument.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "String attribute setter should throw if this value is invalid", "status": "PASS", "message": null},
+        {"name": "String attribute setter should treat no arguments as undefined", "status": "PASS", "message": null},
+        {"name": "String attribute setter called with undefined should behave in the same way as no arguments", "status": "PASS", "message": null},
+        {"name": "String attribute setter called with string should just work", "status": "PASS", "message": null},
+        {"name": "Object attribute setter should throw if this value is invalid", "status": "PASS", "message": null},
+        {"name": "Object attribute setter should treat no arguments as undefined", "status": "PASS", "message": null},
+        {"name": "Object attribute setter called with undefined should behave in the same way as no arguments", "status": "PASS", "message": null},
+        {"name": "[Replaceable] setter should treat no arguments as undefined", "status": "PASS", "message": null},
+        {"name": "[Replaceable] setter called with undefined should behave in the same way as no arguments", "status": "PASS", "message": null},
+        {"name": "[Replaceable] setter called with other value should just work", "status": "PASS", "message": null},
+        {"name": "[LegacyLenientThis] setter should not throw even if this value is invalid, regardless of the arguments count", "status": "PASS", "message": null},
+        {"name": "[LegacyLenientThis] setter should treat no arguments as undefined", "status": "PASS", "message": null},
+        {"name": "[LegacyLenientThis] setter called with undefined should behave in the same way as no arguments", "status": "PASS", "message": null},
+        {"name": "[LegacyLenientSetter] setter should treat no arguments as undefined", "status": "PASS", "message": null},
+        {"name": "[LegacyLenientSetter] setter called with undefined should behave in the same way as no arguments", "status": "PASS", "message": null},
+        {"name": "[PutForward] setter should treat no arguments as undefined", "status": "PASS", "message": null},
+        {"name": "[PutForward] setter called with undefined should behave in the same way as no arguments", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-platform-object/test_ownkeys.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "indexed and named properties", "status": "FAIL", "message": "OutOfMemory"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-platform-object/OwnPropertyKeys.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "must enumerate property indices in ascending numerical order", "status": "PASS", "message": null},
+        {"name": "must enumerate property names in list order", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "must first enumerate property indices in ascending numerical order, then named properties in list order", "status": "FAIL", "message": "OutOfMemory"},
+        {"name": "must enumerate own properties after indexed and named properties even when they're added first", "status": "FAIL", "message": "assert_array_equals:  actual [\"0\",\"1\",\"foo\",\"bar\",\"id\",\"class\"] expected [\"0\",\"1\",\"id\",\"class\",\"foo\",\"bar\"] expected property 2 to be \"id\" but got \"foo\" (expected array [\"0\", \"1\", \"id\", \"class\", \"foo\", \"bar\"] got [\"0\", \"1\", \"foo\", \"bar\", \"id\", \"class\"])"},
+        {"name": "must enumerate symbols after strings, regardless of which ones got added first", "status": "FAIL", "message": "assert_array_equals:  actual [\"0\",\"1\",\"foo\",\"bar\",\"Symbol()\",\"Symbol()\",\"id\",\"class\"] expected [\"0\",\"1\",\"id\",\"class\",\"foo\",\"bar\",\"Symbol()\",\"Symbol()\"] expected property 2 to be \"id\" but got \"foo\" (expected array [\"0\", \"1\", \"id\", \"class\", \"foo\", \"bar\", symbol \"Symbol()\", symbol \"Symbol()\"] got [\"0\", \"1\", \"foo\", \"bar\", symbol \"Symbol()\", symbol \"Symbol()\", \"id\", \"class\"])"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-platform-object/GetOwnProperty.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "[[GetOwnProperty]] with getters and no setters", "status": "FAIL", "message": "Cannot set properties of undefined (setting 'status')"},
+        {"name": "[[GetOwnProperty]] with named property getters and setters", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "[[GetOwnProperty]] with indexed property getters and setters", "status": "FAIL", "message": "Cannot read properties of undefined (reading 'hasOwnProperty')"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-platform-object/DefineOwnProperty.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Test [[DefineOwnProperty]] with no indexed property setter support.", "status": "FAIL", "message": "assert_throws_js: function \"() =>\n      Object.defineProperty(domTokenList, \"0\", {get: () => {}})\" did not throw"},
+        {"name": "Test [[DefineOwnProperty]] with indexed property setter support.", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "Test [[DefineOwnProperty]] with no named property setter support.", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "Test [[DefineOwnProperty]] with named property setter support.", "status": "FAIL", "message": "This feature is not yet implemented"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/legacy-platform-object/Set.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "must not set the property value when assigning to a numeric property on an object which implements an indexed property getter but not a setter when not in strict mode", "status": "PASS", "message": null},
+        {"name": "must throw when assigning to a numeric property on an object which implements a indexed property getter but not a setter in strict mode", "status": "PASS", "message": null},
+        {"name": "must allow assigning to a named property on an object which implements a named property getter but not a setter when not in strict mode", "status": "PASS", "message": null},
+        {"name": "must allow assigning to a named property on an object which implements a named property getter but not a setter in strict mode", "status": "PASS", "message": null},
+        {"name": "must allow setting built-in property on a [LegacyOverrideBuiltIns] object even if a named property shadows it", "status": "FAIL", "message": "This feature is not yet implemented"},
+        {"name": "must allow assigning to a symbol property on an object which implements an indexed property getter but not a setter when not in strict mode", "status": "PASS", "message": null},
+        {"name": "must allow assigning to a symbol property on an object which implements an indexed property getter but not a setter in strict mode", "status": "PASS", "message": null},
+        {"name": "must allow assigning to a symbol property on an object which implements indexed and named property getters but no setters when not in strict mode", "status": "PASS", "message": null},
+        {"name": "must allow assigning to a symbol property on an object which implements indexed and named property getters but no setters in strict mode", "status": "PASS", "message": null},
+        {"name": "must allow assigning to a symbol property on an object which implements indexed and named property getters and setters when not in strict mode", "status": "FAIL", "message": "SecurityError"},
+        {"name": "must allow assigning to a symbol property on an object which implements indexed and named property getters and setters in strict mode", "status": "FAIL", "message": "SecurityError"}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/builtin-function-properties.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Constructor property enumeration order of \"length\", \"name\", and \"prototype\"", "status": "PASS", "message": null},
+        {"name": "Method property enumeration order of \"length\" and \"name\"", "status": "PASS", "message": null},
+        {"name": "Getter property enumeration order of \"length\" and \"name\"", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/builtin-function-properties.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/class-string-named-properties-object.window.js",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "@@toStringTag exists with the appropriate descriptor", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/interface-object.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "An interface object deleted after it has been accessed is undefined", "status": "PASS", "message": null},
+        {"name": "An interface object deleted before it has been defined is undefined", "status": "PASS", "message": null},
+        {"name": "Interface objects deleted multiple times stay deleted", "status": "PASS", "message": null},
+        {"name": "Fancy property names don't break the resolve hook on Window", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/ecmascript-binding/default-iterator-object.html",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "Default iterator objects for an interface have the same prototype", "status": "PASS", "message": null},
+        {"name": "Object.prototype.toString returns correct value", "status": "PASS", "message": null},
+        {"name": "@@toStringTag has correct value from prototype", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/idlharness.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 0,
+      "subtests": [
+        {"name": "idl_test validation", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: existence and properties of interface object", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface object length", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface object name", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: existence and properties of interface prototype object", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: existence and properties of interface prototype object's \"constructor\" property", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: existence and properties of interface prototype object's @@unscopables property", "status": "PASS", "message": null},
+        {"name": "DOMException interface: existence and properties of interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface object length", "status": "PASS", "message": null},
+        {"name": "DOMException interface object name", "status": "PASS", "message": null},
+        {"name": "DOMException interface: existence and properties of interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: existence and properties of interface prototype object's \"constructor\" property", "status": "PASS", "message": null},
+        {"name": "DOMException interface: existence and properties of interface prototype object's @@unscopables property", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INDEX_SIZE_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INDEX_SIZE_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant DOMSTRING_SIZE_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant DOMSTRING_SIZE_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant HIERARCHY_REQUEST_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant HIERARCHY_REQUEST_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant WRONG_DOCUMENT_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant WRONG_DOCUMENT_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_CHARACTER_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_CHARACTER_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NO_DATA_ALLOWED_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NO_DATA_ALLOWED_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NO_MODIFICATION_ALLOWED_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NO_MODIFICATION_ALLOWED_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NOT_FOUND_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NOT_FOUND_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NOT_SUPPORTED_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NOT_SUPPORTED_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INUSE_ATTRIBUTE_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INUSE_ATTRIBUTE_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_STATE_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_STATE_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant SYNTAX_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant SYNTAX_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_MODIFICATION_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_MODIFICATION_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NAMESPACE_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NAMESPACE_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_ACCESS_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_ACCESS_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant VALIDATION_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant VALIDATION_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant TYPE_MISMATCH_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant TYPE_MISMATCH_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant SECURITY_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant SECURITY_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NETWORK_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant NETWORK_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant ABORT_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant ABORT_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant URL_MISMATCH_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant URL_MISMATCH_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant QUOTA_EXCEEDED_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant QUOTA_EXCEEDED_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant TIMEOUT_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant TIMEOUT_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_NODE_TYPE_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant INVALID_NODE_TYPE_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant DATA_CLONE_ERR on interface object", "status": "PASS", "message": null},
+        {"name": "DOMException interface: constant DATA_CLONE_ERR on interface prototype object", "status": "PASS", "message": null},
+        {"name": "DOMException must be primary interface of new DOMException()", "status": "PASS", "message": null},
+        {"name": "Stringification of new DOMException()", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"name\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"message\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"code\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"INDEX_SIZE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"DOMSTRING_SIZE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"HIERARCHY_REQUEST_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"WRONG_DOCUMENT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"INVALID_CHARACTER_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"NO_DATA_ALLOWED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"NO_MODIFICATION_ALLOWED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"NOT_FOUND_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"NOT_SUPPORTED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"INUSE_ATTRIBUTE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"INVALID_STATE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"SYNTAX_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"INVALID_MODIFICATION_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"NAMESPACE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"INVALID_ACCESS_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"VALIDATION_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"TYPE_MISMATCH_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"SECURITY_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"NETWORK_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"ABORT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"URL_MISMATCH_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"QUOTA_EXCEEDED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"TIMEOUT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"INVALID_NODE_TYPE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException() must inherit property \"DATA_CLONE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException must be primary interface of new DOMException(\"my message\")", "status": "PASS", "message": null},
+        {"name": "Stringification of new DOMException(\"my message\")", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"name\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"message\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"code\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"INDEX_SIZE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"DOMSTRING_SIZE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"HIERARCHY_REQUEST_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"WRONG_DOCUMENT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"INVALID_CHARACTER_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"NO_DATA_ALLOWED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"NO_MODIFICATION_ALLOWED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"NOT_FOUND_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"NOT_SUPPORTED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"INUSE_ATTRIBUTE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"INVALID_STATE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"SYNTAX_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"INVALID_MODIFICATION_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"NAMESPACE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"INVALID_ACCESS_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"VALIDATION_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"TYPE_MISMATCH_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"SECURITY_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"NETWORK_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"ABORT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"URL_MISMATCH_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"QUOTA_EXCEEDED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"TIMEOUT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"INVALID_NODE_TYPE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\") must inherit property \"DATA_CLONE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException must be primary interface of new DOMException(\"my message\", \"myName\")", "status": "PASS", "message": null},
+        {"name": "Stringification of new DOMException(\"my message\", \"myName\")", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"name\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"message\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"code\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INDEX_SIZE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"DOMSTRING_SIZE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"HIERARCHY_REQUEST_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"WRONG_DOCUMENT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INVALID_CHARACTER_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"NO_DATA_ALLOWED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"NO_MODIFICATION_ALLOWED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"NOT_FOUND_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"NOT_SUPPORTED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INUSE_ATTRIBUTE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INVALID_STATE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"SYNTAX_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INVALID_MODIFICATION_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"NAMESPACE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INVALID_ACCESS_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"VALIDATION_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"TYPE_MISMATCH_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"SECURITY_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"NETWORK_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"ABORT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"URL_MISMATCH_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"QUOTA_EXCEEDED_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"TIMEOUT_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"INVALID_NODE_TYPE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "DOMException interface: new DOMException(\"my message\", \"myName\") must inherit property \"DATA_CLONE_ERR\" with the proper type", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: attribute quota", "status": "PASS", "message": null},
+        {"name": "QuotaExceededError interface: attribute requested", "status": "PASS", "message": null},
+        {"name": "DOMException interface: attribute name", "status": "PASS", "message": null},
+        {"name": "DOMException interface: attribute message", "status": "PASS", "message": null},
+        {"name": "DOMException interface: attribute code", "status": "PASS", "message": null},
+        {"name": "idl_test setup", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "webidl/idlharness.any.js [worker]",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "webidl/current-realm.html",
+      "status": "ERROR",
+      "message": "done() was called without first defining any tests",
+      "duration": 0,
+      "subtests": [
       ]
     }
   ]
