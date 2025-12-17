@@ -120,10 +120,33 @@ pub const Context = struct {
         };
 
         // Register all WebIDL interfaces
+        // This also inserts WindowProperties into Window.prototype's chain via
+        // insertIntoPrototypeChain(), creating:
+        //   Window.prototype → WindowProperties → EventTarget.prototype
         v8.interface_bindings.initializeBindings(self.isolate, v8_ctx);
 
         // Register all namespaces
         v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
+
+        // Set up Window prototype chain per WebIDL spec:
+        // Set global's prototype to Window.prototype to complete the chain:
+        //   global → Window.prototype → WindowProperties → EventTarget.prototype
+        // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
+        // the interface prototype object (Window.prototype for the global).
+        const global = v8.ffi.v8_Context_Global(v8_ctx);
+        if (global) |global_obj| {
+            const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
+            if (window_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(wk))) |window_ctor| {
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global_obj, v8_ctx, window_proto);
+                        }
+                    }
+                }
+            }
+        }
 
         // Register browser globals based on context type
         try self.registerBrowserGlobals();

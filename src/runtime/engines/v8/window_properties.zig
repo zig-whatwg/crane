@@ -1,9 +1,9 @@
 //! WindowProperties Exotic Object
 //!
-//! Per WebIDL §3.8.1, the WindowProperties object is a special "named properties object"
-//! inserted into the prototype chain for [Global] interfaces:
+//! Per WebIDL §3.7.4, the WindowProperties object is a special "named properties object"
+//! inserted into the prototype chain:
 //!
-//! global → WindowProperties → Window.prototype → EventTarget.prototype → Object.prototype
+//! Window instance → Window.prototype → WindowProperties → EventTarget.prototype → Object.prototype
 //!
 //! This object has special exotic behavior:
 //! - [[SetPrototypeOf]]: Always returns false for any value except current prototype
@@ -331,20 +331,22 @@ pub fn create(
 
 /// Insert WindowProperties into the prototype chain for a global Window
 ///
-/// Per WebIDL §3.8.1, for interfaces with [Global] extended attribute, the
-/// prototype chain must be:
-///   global → WindowProperties → Window.prototype → EventTarget.prototype → Object.prototype
+/// Per WebIDL spec, for interfaces with [Global] extended attribute that support
+/// named properties, the prototype chain must be:
+///   global → Window.prototype → WindowProperties → EventTarget.prototype → Object.prototype
 ///
-/// This function modifies the prototype chain by:
-/// 1. Creating the WindowProperties exotic object
-/// 2. Setting WindowProperties.__proto__ = Window.prototype
-/// 3. This is called BEFORE the global's prototype is set to Window.prototype
-///    (the caller must then set global.__proto__ = WindowProperties)
+/// Spec references:
+/// - §3.7.3 step 2: Window.prototype.__proto__ = WindowProperties
+/// - §3.7.4 step 2: WindowProperties.__proto__ = EventTarget.prototype (inherited interface)
+/// - §3.8 step 9: global.__proto__ = Window.prototype (set by caller)
 ///
-/// NOTE: This function is designed to be called from initializeBindings() which
-/// sets up Window.prototype → EventTarget.prototype. The caller (createChildContext
-/// or browser_context) must then set the global's prototype to WindowProperties
-/// (not Window.prototype directly) to complete the chain.
+/// This function:
+/// 1. Creates the WindowProperties exotic object (with special [[GetOwnProperty]], etc.)
+/// 2. Sets WindowProperties.__proto__ = EventTarget.prototype
+/// 3. Sets Window.prototype.__proto__ = WindowProperties
+///
+/// The caller is responsible for setting global.__proto__ = Window.prototype, which
+/// is typically done by V8's context creation or explicitly in createChildContext.
 ///
 /// Arguments:
 /// - isolate: V8 isolate
@@ -377,27 +379,40 @@ pub fn insertIntoPrototypeChain(
         return false;
     }
 
-    // Use JavaScript to set the prototype chain correctly:
-    // WindowProperties.__proto__ = Window.prototype
-    // global.__proto__ = WindowProperties
+    // Use JavaScript to set the prototype chain correctly per WebIDL spec:
     //
-    // Per WebIDL §3.8.1, the named properties object's [[Prototype]] must be
-    // the interface prototype object (Window.prototype). Then the global's
-    // [[Prototype]] must be the named properties object (WindowProperties).
+    // Per WebIDL §3.7.3 (Interface prototype object creation), step 2:
+    //   "If interface is declared with the [Global] extended attribute, and
+    //   interface supports named properties, then set proto to the result of
+    //   creating a named properties object"
+    // This means: Window.prototype.__proto__ = WindowProperties
     //
-    // This creates: global → WindowProperties → Window.prototype → EventTarget.prototype
+    // Per WebIDL §3.7.4 (Named properties object creation), step 2:
+    //   "If interface is declared to inherit from another interface, then set
+    //   proto to the interface prototype object in realm for the inherited interface"
+    // Window inherits from EventTarget, so: WindowProperties.__proto__ = EventTarget.prototype
+    //
+    // Per WebIDL §3.8 (Platform objects), the global's prototype is set to Window.prototype.
+    //
+    // Final chain: global → Window.prototype → WindowProperties → EventTarget.prototype
     const js_code =
         \\(function() {
         \\  const wp = globalThis.__windowProperties__;
         \\  if (!wp) return false;
-        \\  // Step 1: Set WindowProperties' prototype to Window.prototype
-        \\  // Per WebIDL §3.8.1: "The [[Prototype]] internal property of a named
-        \\  // properties object for an interface must be the interface prototype object"
-        \\  Object.setPrototypeOf(wp, Window.prototype);
-        \\  // Step 2: Set global's prototype to WindowProperties
-        \\  // Per WebIDL §3.8.1: For [Global] interfaces, the global's prototype
-        \\  // must be the named properties object
-        \\  Object.setPrototypeOf(globalThis, wp);
+        \\  
+        \\  // Step 1: Set WindowProperties' prototype to EventTarget.prototype
+        \\  // Per WebIDL §3.7.4 step 2: named properties object inherits from the
+        \\  // inherited interface's prototype (Window inherits from EventTarget)
+        \\  Object.setPrototypeOf(wp, EventTarget.prototype);
+        \\  
+        \\  // Step 2: Set Window.prototype's prototype to WindowProperties
+        \\  // Per WebIDL §3.7.3 step 2: interface prototype object for [Global]
+        \\  // interfaces with named properties has WindowProperties as its prototype
+        \\  Object.setPrototypeOf(Window.prototype, wp);
+        \\  
+        \\  // Note: global.__proto__ = Window.prototype is already set by V8 or
+        \\  // will be set by the caller after this function returns
+        \\  
         \\  delete globalThis.__windowProperties__;
         \\  return true;
         \\})()

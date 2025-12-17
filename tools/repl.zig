@@ -625,11 +625,34 @@ const Repl = struct {
         if (!used_snapshot) {
             // Register all WebIDL interfaces using the centralized function
             // This is the single source of truth for interface binding setup
+            // This also inserts WindowProperties into Window.prototype's chain via
+            // insertIntoPrototypeChain(), creating:
+            //   Window.prototype → WindowProperties → EventTarget.prototype
             interface_bindings.initializeBindings(isolate, context);
 
             // Register all namespaces using the generic function
             const namespaces = @import("namespaces");
             interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
+
+            // Set up Window prototype chain per WebIDL spec:
+            // Set global's prototype to Window.prototype to complete the chain:
+            //   global → Window.prototype → WindowProperties → EventTarget.prototype
+            // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
+            // the interface prototype object (Window.prototype for the global).
+            const global = v8.ffi.v8_Context_Global(context);
+            if (global) |global_obj| {
+                const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Window", 6);
+                if (window_key) |wk| {
+                    if (v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(wk))) |window_ctor| {
+                        const proto_key = v8.ffi.v8_String_NewFromUtf8(isolate, "prototype", 9);
+                        if (proto_key) |pk| {
+                            if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), context, @ptrCast(pk))) |window_proto| {
+                                _ = v8.ffi.v8_Object_SetPrototypeV2(global_obj, context, window_proto);
+                            }
+                        }
+                    }
+                }
+            }
         } else {
             std.debug.print("✓ Using snapshot - interfaces already registered\n", .{});
         }

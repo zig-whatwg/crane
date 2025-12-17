@@ -1111,13 +1111,29 @@ fn createWindowForExistingBrowsingContext(
     defer v8.v8_Context_Exit(child_context);
 
     // 4. Initialize all interface bindings
-    // NOTE: initializeBindings() calls window_properties.insertIntoPrototypeChain() which sets up:
-    //   global → WindowProperties → Window.prototype → EventTarget.prototype
-    // We must NOT overwrite this by setting global.__proto__ = Window.prototype directly.
+    // This also inserts WindowProperties into Window.prototype's chain via
+    // insertIntoPrototypeChain(), creating:
+    //   Window.prototype → WindowProperties → EventTarget.prototype
     interface_bindings.initializeBindings(isolate, child_context);
 
-    // 4b. Register Window properties as own properties on the global
+    // 4b. Set global's prototype to Window.prototype to complete the chain:
+    //   global → Window.prototype → WindowProperties → EventTarget.prototype
+    // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
+    // the interface prototype object (Window.prototype for the global).
     const global = v8.v8_Context_Global(child_context) orelse return null;
+    const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
+    if (window_key) |wk| {
+        if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
+            const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+            if (proto_key) |pk| {
+                if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
+                    _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
+                }
+            }
+        }
+    }
+
+    // 4c. Register Window properties as own properties on the global
     interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, child_context, global);
 
     // 5. Create realm
@@ -1513,17 +1529,28 @@ pub fn createChildContext(
     defer v8.v8_Context_Exit(child_context);
 
     // 4. Initialize all interface bindings in new context
-    // This registers all WebIDL interfaces as global constructors
+    // This registers all WebIDL interfaces as global constructors AND inserts
+    // WindowProperties into Window.prototype's chain via insertIntoPrototypeChain():
+    //   Window.prototype → WindowProperties → EventTarget.prototype
     const interface_bindings = @import("interface_bindings.zig");
     interface_bindings.initializeBindings(options.isolate, child_context);
 
-    // 4b. Set global object's prototype to Window.prototype
-    // NOTE: The prototype chain (global → WindowProperties → Window.prototype → EventTarget.prototype)
-    // is already set up by initializeBindings() via window_properties.insertIntoPrototypeChain().
-    // We must NOT overwrite it here by setting global.__proto__ = Window.prototype directly.
-    // Per WebIDL §3.8.1, the named properties object (WindowProperties) must be between
-    // the global and the interface prototype object (Window.prototype).
+    // 4b. Set global's prototype to Window.prototype to complete the chain:
+    //   global → Window.prototype → WindowProperties → EventTarget.prototype
+    // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
+    // the interface prototype object (Window.prototype for the global).
     const global = v8.v8_Context_Global(child_context) orelse return error.GlobalNotFound;
+    const window_key = v8.v8_String_NewFromUtf8(options.isolate, "Window", 6);
+    if (window_key) |wk| {
+        if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
+            const proto_key = v8.v8_String_NewFromUtf8(options.isolate, "prototype", 9);
+            if (proto_key) |pk| {
+                if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
+                    _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
+                }
+            }
+        }
+    }
 
     // 4c. Register Window properties as OWN properties on the global object
     // This is required for cross-realm WPT compliance:

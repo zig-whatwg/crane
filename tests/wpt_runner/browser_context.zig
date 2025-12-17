@@ -302,12 +302,25 @@ pub const BrowserContext = struct {
         // Register all namespaces using the generic function
         v8.interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
 
-        // CRITICAL: Set global object's prototype to Window.prototype
-        // NOTE: The prototype chain is already correctly set up by initializeBindings()
-        // via window_properties.insertIntoPrototypeChain(). Per WebIDL §3.8.1:
-        //   global → WindowProperties → Window.prototype → EventTarget.prototype → Object.prototype
-        // We must NOT overwrite this by setting global.__proto__ = Window.prototype directly,
-        // as that would remove WindowProperties from the chain.
+        // Set up Window prototype chain per WebIDL spec:
+        // insertIntoPrototypeChain() (called from initializeBindings) creates:
+        //   Window.prototype → WindowProperties → EventTarget.prototype
+        // Now we need to set global's prototype to Window.prototype to complete:
+        //   global → Window.prototype → WindowProperties → EventTarget.prototype
+        const global = v8.ffi.v8_Context_Global(context);
+        if (global) |global_obj| {
+            const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Window", 6);
+            if (window_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(wk))) |window_ctor| {
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), context, @ptrCast(pk))) |window_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global_obj, context, window_proto);
+                        }
+                    }
+                }
+            }
+        }
 
         // Bind Window instance to context for cross-realm support (frames[0], contentWindow)
         // This creates a Window runtime.Instance and binds it to the V8 global object.
