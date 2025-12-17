@@ -14,7 +14,7 @@
 set -e
 
 OUTPUT_DIR="${1:-$(pwd)/deps/v8}"
-V8_VERSION="${V8_VERSION:-14.5.121}"  # V8 14.x required for v8_function_arguments_caller_are_own_props flag
+V8_VERSION="${V8_VERSION:-14.0.10}"  # V8 14.x required for v8_function_arguments_caller_are_own_props flag
 BUILD_DIR="${BUILD_DIR:-/tmp/v8-build}"
 
 echo "=== V8 Static Build Script ==="
@@ -99,15 +99,20 @@ v8_function_arguments_caller_are_own_props = false
 # Disable ICU - we use our own pure Zig intl implementation
 v8_enable_i18n_support = false
 
+# Disable Temporal API (requires external Rust library temporal_rs)
+v8_enable_temporal_support = false
+
 # Disable chrome plugins and allow warnings for SDK compatibility
 clang_use_chrome_plugins = false
 treat_warnings_as_errors = false
 
-# Use system libc++ for ABI compatibility
+# Use system libc++ for ABI compatibility with macOS SDK
 use_custom_libcxx = false
+use_custom_libcxx_for_host = false
 
 # macOS specific
 is_clang = true
+use_xcode_clang = true
 ARGS
 
 # Step 4: Build
@@ -130,6 +135,11 @@ echo "==> Copying output..."
 cp out/static/obj/libv8_monolith.a "$OUTPUT_DIR/"
 cp out/static/obj/libv8_libplatform_fat.a "$OUTPUT_DIR/"
 cp out/static/obj/libv8_libbase_fat.a "$OUTPUT_DIR/"
+
+# Copy V8 headers (needed for C++ wrapper compilation)
+echo "==> Copying V8 headers..."
+rm -rf "$OUTPUT_DIR/include"
+cp -r include "$OUTPUT_DIR/include"
 
 # Note: ICU is disabled - we use our own pure Zig intl implementation
 # No icudtl.dat file will be generated
