@@ -14,7 +14,7 @@
 set -e
 
 OUTPUT_DIR="${1:-$(pwd)/deps/v8}"
-V8_VERSION="${V8_VERSION:-13.5.212.10}"  # Match homebrew version
+V8_VERSION="${V8_VERSION:-14.5.121}"  # V8 14.x required for v8_function_arguments_caller_are_own_props flag
 BUILD_DIR="${BUILD_DIR:-/tmp/v8-build}"
 
 echo "=== V8 Static Build Script ==="
