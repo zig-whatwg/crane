@@ -2224,6 +2224,13 @@ pub fn iframeSrcLoadHook(iframe_instance: *runtime.Instance, src: []const u8) bo
         return false;
     };
 
+    // Set the document URL for cross-realm support
+    // The iframe document's URL should be the resolved path (e.g., "support/constructors-support.html")
+    // This is required for DOMParser.parseFromString to inherit the correct URL
+    dom.document_internals.setURL(iframe_document, resolved_path) catch |err| {
+        std.debug.print("iframeSrcLoadHook: Failed to set document URL: {}\n", .{err});
+    };
+
     // Set the document in the browsing context
     if (iframe_internal.integration.browsing_context) |browsing_ctx| {
         // Set up the document in the iframe's window

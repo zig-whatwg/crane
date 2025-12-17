@@ -381,6 +381,26 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
     // Store in the context entry for browsing context linking
     entry.window_instance = window_instance;
 
+    // Create realm if it doesn't exist (e.g., context was created via getOrCreateWithExternalEventLoop)
+    // This is required for cross-realm support
+    if (entry.realm == null) {
+        const realm = try runtime.Realm.init(allocator, .{
+            .v8_context = @ptrCast(v8_ctx),
+            .isolate = @ptrCast(isolate),
+            .context_type = .window,
+            .global_object = window_instance, // Set directly since we have the Window
+        });
+        // Populate intrinsics for cross-realm support
+        _ = realm.populateIntrinsics();
+
+        // Store realm in entry and runtime context
+        entry.realm = realm;
+        entry.runtime_ctx.setRealm(realm);
+    } else {
+        // Realm already exists, just update global_object
+        entry.realm.?.setGlobalObject(window_instance);
+    }
+
     return window_instance;
 }
 
@@ -455,6 +475,27 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     // Store cache in runtime context
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
 
+    // Create realm for cross-realm support (only if we have an isolate)
+    // Per WebIDL, every context has an associated realm with intrinsics
+    // Note: global_object is set to null here and will be populated later by
+    // bindWindowToContext() when the Window instance is created
+    var realm: ?*runtime.Realm = null;
+    if (isolate) |iso| {
+        realm = try runtime.Realm.init(allocator, .{
+            .v8_context = @ptrCast(v8_ctx),
+            .isolate = @ptrCast(iso),
+            .context_type = .window, // Main context is a window
+            .global_object = null, // Set by bindWindowToContext() after Window creation
+        });
+        errdefer if (realm) |r| r.deinit();
+
+        // Populate realm intrinsics for cross-realm support
+        _ = realm.?.populateIntrinsics();
+
+        // Set realm on runtime context so impl code can access via instance.ctx.realm
+        ctx_data.setRealm(realm.?);
+    }
+
     // Register dynamic import handler for this isolate
     // This enables import() expressions in JavaScript per HTML spec HostImportModuleDynamically
     if (isolate) |iso| {
@@ -473,7 +514,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .runtime_ctx = ctx_data,
         .owns_context = true,
         .event_loop = event_loop_ptr,
-        .realm = null,
+        .realm = realm,
         .parent_entry = null,
         .children = .{},
         .allocator = allocator,
@@ -1522,11 +1563,13 @@ pub fn createChildContext(
     );
 
     // 5. Create realm for new context
+    // Note: global_object is set to null initially and will be updated below
+    // after the Window instance is created
     const realm = try runtime.Realm.init(allocator, .{
         .v8_context = @ptrCast(child_context),
         .isolate = @ptrCast(options.isolate),
         .context_type = options.context_type,
-        .global_object = @ptrCast(v8.v8_Context_Global(child_context)),
+        .global_object = null, // Will be set to Window instance below
     });
     errdefer realm.deinit();
 
@@ -1568,6 +1611,11 @@ pub fn createChildContext(
 
     ctx_data.setV8WrapperCacheStorage(@ptrCast(cache_ptr));
 
+    // 7b. Set realm on runtime context for cross-realm support
+    // This enables impl code to access the realm via instance.ctx.realm
+    // Critical for DOMParser.parseFromString to get the correct documentURI
+    ctx_data.setRealm(realm);
+
     // 8. Create Window instance bound to the V8 global
     // This is critical for cross-realm support: the Window instance IS the V8 global,
     // so `iframe.contentWindow.DOMRectReadOnly` works correctly.
@@ -1583,6 +1631,10 @@ pub fn createChildContext(
         const interfaces = @import("interfaces");
         interfaces.Window.deinit(window_instance);
     }
+
+    // 8a. Set the realm's global_object to the Window instance
+    // This is required for DOMParser.parseFromString to get the correct documentURI
+    realm.setGlobalObject(window_instance);
 
     // 8b. Handle browsing context for the Window
     const WindowImpl = @import("impls").Window;
