@@ -5576,6 +5576,16 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Free converted value if it needs cleanup (e.g., DOMString, USVString, []const u8, JSValue)
         fn freeConvertedValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+            const type_info = @typeInfo(T);
+
+            // Handle optional types - unwrap and recurse if non-null
+            if (type_info == .optional) {
+                if (value) |inner_value| {
+                    freeConvertedValue(type_info.optional.child, allocator, inner_value);
+                }
+                return;
+            }
+
             if (T == runtime.DOMString) {
                 // DOMString owns its buffer - deinit it
                 var mutable_value = value;
@@ -5608,7 +5618,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     else => {}, // Other variants don't need cleanup
                 }
             }
-            // Other types (primitives, optionals with null, etc.) don't need cleanup
+            // Other types (primitives, etc.) don't need cleanup
         }
 
         /// Generate a static method callback for a specific method at comptime
