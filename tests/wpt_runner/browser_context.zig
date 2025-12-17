@@ -3738,10 +3738,21 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     // Get the URL from first argument
     const input_value = info.get(0);
 
-    // Use a temporary allocator for this callback
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer _ = gpa.deinit();
+    // Get allocator from runtime context - this ensures allocations persist
+    // beyond the callback for the Response object
+    const runtime_ctx = context_manager.getOrCreate(v8_context, std.heap.page_allocator) catch {
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to get runtime context", 30) orelse {
+            if (v8.ffi.v8_Undefined(isolate)) |undef| {
+                info.setReturnValue(undef);
+            }
+            return;
+        };
+        if (v8.ffi.v8_Exception_TypeError(msg)) |exc| {
+            v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        }
+        return;
+    };
+    const allocator = runtime_ctx.allocator;
 
     // Extract URL string from input
     const url_str = extractString(allocator, isolate, v8_context, input_value) catch {
@@ -3959,56 +3970,64 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     }
 
     // For non-file URLs, use the real fetch implementation
-    var fetch_result = global_fetch.globalFetch(allocator, .{ .url = url_str }, .{});
-    defer fetch_result.deinit();
+    const fetch_result = global_fetch.globalFetch(allocator, .{ .url = url_str }, .{});
+    // Note: Don't defer deinit - ownership transfers to WebIDL Response
 
     switch (fetch_result) {
-        .response => |response| {
-            // Create a Response-like object
-            const response_obj = v8.ffi.v8_Object_New(isolate) orelse {
-                const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create response", 25) orelse return;
+        .response => |zig_response| {
+            // Create a proper WebIDL Response instance
+            // Use runtime_ctx from earlier (line 3743) - already have allocator from it
+            // This gives us full Response functionality including body as ReadableStream
+            const response_instance = interfaces.Response.init(allocator, runtime_ctx) catch {
+                const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create Response", 25) orelse return;
                 if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
                     _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
                 }
+                zig_response.deinit();
                 return;
             };
 
-            // Set ok based on status
-            const ok_key = v8.ffi.v8_String_NewFromUtf8(isolate, "ok", 2) orelse return;
-            const is_ok = response.status() >= 200 and response.status() < 300;
-            if (v8.ffi.v8_Boolean_New(isolate, is_ok)) |ok_val| {
-                _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(ok_key), ok_val);
+            // Get the internal state and populate it with the fetch result
+            const state = response_instance.getState(interfaces.Response.State);
+            if (state.own._internal) |internal| {
+                // Clean up the default empty response and replace with our fetched response
+                internal.response.deinit();
+
+                // Transfer ownership of the internal response from zig_response
+                // We need to copy the InternalResponse since zig_response wraps it
+                internal.response = zig_response.internal;
+
+                // Prevent zig_response.deinit from freeing the internal response
+                // by setting it to a new empty response that will be freed
+                zig_response.internal = @import("fetch").internal.InternalResponse.init(allocator) catch {
+                    const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to transfer response", 27) orelse return;
+                    if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
+                    }
+                    return;
+                };
             }
 
-            // Set status
-            const status_key = v8.ffi.v8_String_NewFromUtf8(isolate, "status", 6) orelse return;
-            const status_val: *v8.ffi.Value = @ptrCast(v8.ffi.v8_Integer_New(isolate, @intCast(response.status())));
-            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(status_key), status_val);
+            // Now we can safely deinit the wrapper (but not the internal response we transferred)
+            zig_response.deinit();
 
-            // Get body if available - use body.data.items which contains the actual bytes
-            // Note: body.source.bytes may point to freed memory, always use body.data.items
-            if (response.internal.body) |body| {
-                if (body.data.items.len > 0) {
-                    const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse return;
-                    const body_str = v8.ffi.v8_String_NewFromUtf8(isolate, body.data.items.ptr, @intCast(body.data.items.len)) orelse return;
-                    _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(body_key), @ptrCast(body_str));
+            // Wrap the Response instance as a V8 object
+            const v8_response = v8.template_registry.wrapInstanceAsV8Object(
+                response_instance,
+                "Response",
+                isolate,
+                v8_context,
+            ) catch {
+                const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to wrap Response", 23) orelse return;
+                if (v8.ffi.v8_Exception_TypeError(err_msg)) |exc| {
+                    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, exc);
                 }
-            }
+                interfaces.Response.deinit(response_instance);
+                return;
+            };
 
-            // Add json() method
-            const json_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseJsonCallback, null) orelse return;
-            const json_func = v8.ffi.v8_FunctionTemplate_GetFunction(json_template, v8_context) orelse return;
-            const json_key = v8.ffi.v8_String_NewFromUtf8(isolate, "json", 4) orelse return;
-            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(json_key), @ptrCast(json_func));
-
-            // Add text() method
-            const text_template = v8.ffi.v8_FunctionTemplate_New(isolate, responseTextCallback, null) orelse return;
-            const text_func = v8.ffi.v8_FunctionTemplate_GetFunction(text_template, v8_context) orelse return;
-            const text_key = v8.ffi.v8_String_NewFromUtf8(isolate, "text", 4) orelse return;
-            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(text_key), @ptrCast(text_func));
-
-            // Resolve the promise with the response object
-            _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(response_obj));
+            // Resolve the promise with the proper Response object
+            _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(v8_response));
         },
         .err => |err| {
             const err_str = switch (err) {
