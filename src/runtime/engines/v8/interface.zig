@@ -1131,7 +1131,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (has_indexed_setter) indexedPropertySetter else indexedPropertySetterReadOnly,
                         indexedPropertyQuery,
                         indexedPropertyEnumerator,
-                        null, // definer - not needed for most interfaces
+                        indexedPropertyDefiner, // Handle Object.defineProperty() per WebIDL §3.9.3
                         indexedPropertyDescriptor,
                     );
                 } else {
@@ -3850,6 +3850,57 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             return .kYes;
+        }
+
+        /// Indexed property definer callback for Object.defineProperty()
+        /// Per WebIDL §3.9.3 [[DefineOwnProperty]], accessor properties on array indices are rejected.
+        fn indexedPropertyDefiner(
+            index: u32,
+            desc: *const v8.PropertyDescriptor,
+            info: *const v8.PropertyCallbackInfoVoid,
+        ) callconv(.c) v8.Intercepted {
+            const isolate = info.getIsolate();
+
+            // Per WebIDL §3.9.3 [[DefineOwnProperty]] step 1:
+            // "If O supports indexed properties and P is an array index, then:
+            //   1. If the result of calling IsDataDescriptor(Desc) is false, then return false."
+            //
+            // Accessor descriptors (with getter/setter) are NOT data descriptors.
+            const is_accessor = v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc);
+
+            if (is_accessor) {
+                // This is an accessor descriptor - reject it per spec
+                // Return kYes to indicate we handled it (by rejecting)
+                // The rejection is signaled by NOT setting the return value
+                // V8 will throw TypeError because defineProperty returns false
+                if (info.shouldThrowOnError()) {
+                    var buf: [80]u8 = undefined;
+                    const msg = std.fmt.bufPrint(&buf, "Cannot define accessor property \"{d}\" on indexed collection", .{index}) catch "Cannot define accessor property on indexed collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // For data descriptors, check if we have an indexed setter
+            const has_indexed_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
+            if (!has_indexed_setter) {
+                // Per WebIDL §3.9.3 step 1.2:
+                // "If O does not implement an interface with an indexed property setter, return false."
+                if (info.shouldThrowOnError()) {
+                    var buf: [80]u8 = undefined;
+                    const msg = std.fmt.bufPrint(&buf, "Cannot define property \"{d}\" on read-only indexed collection", .{index}) catch "Cannot define property on read-only indexed collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Has indexed setter - let the normal setter handle it
+            // Return kNo to let V8 continue to the setter callback
+            return .kNo;
         }
 
         // =====================================================================

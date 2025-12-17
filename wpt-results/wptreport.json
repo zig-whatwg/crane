@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1765993546326,
-  "time_end": 1765993552713,
+  "time_start": 1765993950452,
+  "time_end": 1765993957250,
   "results": [
     {
       "test": "webidl/ecmascript-binding/sequence-conversion.html",
@@ -654,7 +654,7 @@
       "message": null,
       "duration": 0,
       "subtests": [
-        {"name": "Test [[DefineOwnProperty]] with no indexed property setter support.", "status": "FAIL", "message": "assert_throws_js: function \"() =>\n      Object.defineProperty(domTokenList, \"0\", {get: () => {}})\" did not throw"},
+        {"name": "Test [[DefineOwnProperty]] with no indexed property setter support.", "status": "PASS", "message": null},
         {"name": "Test [[DefineOwnProperty]] with indexed property setter support.", "status": "FAIL", "message": "This feature is not yet implemented"},
         {"name": "Test [[DefineOwnProperty]] with no named property setter support.", "status": "FAIL", "message": "This feature is not yet implemented"},
         {"name": "Test [[DefineOwnProperty]] with named property setter support.", "status": "FAIL", "message": "This feature is not yet implemented"}
