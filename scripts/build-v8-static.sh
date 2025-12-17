@@ -90,6 +90,12 @@ v8_enable_trace_maps = false
 v8_enable_test_features = false
 v8_enable_v8_checks = false
 
+# WebIDL compliance: Don't expose legacy arguments/caller properties on functions
+# Chrome uses this setting; without it, FunctionTemplate-created constructors
+# have extra "arguments" and "caller" own properties that violate WebIDL spec.
+# See: https://chromium.googlesource.com/v8/v8/+/main/BUILD.gn
+v8_function_arguments_caller_are_own_props = false
+
 # Disable ICU - we use our own pure Zig intl implementation
 v8_enable_i18n_support = false
 
