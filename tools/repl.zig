@@ -1,824 +1,52 @@
-//! JavaScript REPL with V8 Engine and WebIDL Bindings
+//! JavaScript REPL - Headless Browser
 //!
-//! Interactive Read-Eval-Print Loop with:
-//! - V8 JavaScript execution
-//! - Console API (console.log, etc.)
-//! - Tab completion for JavaScript globals
+//! Interactive Read-Eval-Print Loop using the same browser context as WPT tests.
+//! This ensures the REPL has identical behavior to the WPT test environment:
+//! - Full browser globals (window, document, navigator, etc.)
+//! - Correct prototype chains (Window.prototype → WindowProperties → EventTarget.prototype)
+//! - Timer support (setTimeout, setInterval)
+//! - Console API
+//! - Tab completion
 //! - Multi-line input support
 //! - History support
 
 const std = @import("std");
 const v8 = @import("v8");
-const context_manager = @import("v8").context_manager;
-const interface_bindings = @import("v8").interface_bindings;
 const runtime = @import("runtime");
-const fetch_mod = @import("fetch");
 
-// Global shared cookie manager for Fetch/WebSocket cookie sharing
-var global_cookie_manager: ?*fetch_mod.CurlCookieManager = null;
+// Import BrowserContext from WPT runner - this is the single source of truth
+// for browser initialization, ensuring REPL matches WPT test environment exactly
+const BrowserContext = @import("browser_context").BrowserContext;
 
-/// Helper to extract a string property from a V8 object
-fn getStringProperty(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, obj: *v8.ffi.Object, prop_name: []const u8, buf: []u8) ?[]const u8 {
-    const key = v8.ffi.v8_String_NewFromUtf8(isolate, prop_name.ptr, @intCast(prop_name.len)) orelse return null;
-    const value = v8.ffi.v8_Object_Get(obj, context, @ptrCast(key)) orelse return null;
-    if (v8.ffi.v8_Value_IsUndefined(value) or v8.ffi.v8_Value_IsNull(value)) return null;
-    if (!v8.ffi.v8_Value_IsString(value)) return null;
-
-    const str = v8.ffi.v8_Value_ToString(value, context) orelse return null;
-    const len: usize = @intCast(v8.ffi.v8_String_Utf8Length(str));
-    if (len > buf.len) return null;
-    _ = v8.ffi.v8_String_WriteUtf8(str, buf.ptr, @intCast(buf.len));
-    return buf[0..len];
-}
-
-/// Fetch callback that makes real HTTP requests using libcurl backend.
-/// Uses shared CurlCookieManager for cookie persistence across requests.
-/// Returns a Promise that resolves to a Response object.
-fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-
-    // Get allocator from runtime context
-    const runtime_ctx = context_manager.getOrCreate(context, std.heap.page_allocator) catch {
-        info.setReturnValue(@ptrCast(v8.ffi.v8_Undefined(isolate)));
-        return;
-    };
-    const allocator = runtime_ctx.allocator;
-
-    // Get the first argument (input: RequestInfo - URL string or Request object)
-    const argc = info.v8_FunctionCallbackInfo_Length();
-    if (argc < 1) {
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'fetch': 1 argument required", 47) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, err);
-        return;
-    }
-
-    const arg0 = info.v8_FunctionCallbackInfo_GetArgument(0);
-
-    // Extract URL string from the argument (can be string or Request object)
-    var url_buf: [4096]u8 = undefined;
-    var url_len: usize = 0;
-
-    // Also track if input is a Request object to extract other properties
-    var input_request_obj: ?*v8.ffi.Object = null;
-
-    if (v8.ffi.v8_Value_IsString(arg0)) {
-        const str = v8.ffi.v8_Value_ToString(arg0, context) orelse {
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Invalid URL", 11) orelse return;
-            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-            v8.ffi.v8_Isolate_ThrowException(isolate, err);
-            return;
-        };
-        // Get the actual string length first (without null terminator)
-        url_len = @intCast(v8.ffi.v8_String_Utf8Length(str));
-        if (url_len > url_buf.len) url_len = url_buf.len;
-        _ = v8.ffi.v8_String_WriteUtf8(str, &url_buf, @intCast(url_buf.len));
-    } else if (v8.ffi.v8_Value_IsObject(arg0) and !v8.ffi.v8_Value_IsNull(arg0)) {
-        // Check if it's a Request object by looking for the 'url' property
-        const req_obj: *v8.ffi.Object = @ptrCast(arg0);
-        if (getStringProperty(isolate, context, req_obj, "url", &url_buf)) |url_from_request| {
-            url_len = url_from_request.len;
-            input_request_obj = req_obj;
-        } else {
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch() argument must be a URL string or Request object", 55) orelse return;
-            const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-            v8.ffi.v8_Isolate_ThrowException(isolate, err);
-            return;
-        }
-    } else {
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch() argument must be a URL string or Request object", 55) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, err);
-        return;
-    }
-
-    // Copy URL to owned memory (url_buf is stack allocated)
-    const url_str = allocator.dupe(u8, url_buf[0..url_len]) catch {
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Out of memory", 13) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, err);
-        return;
-    };
-    defer allocator.free(url_str);
-
-    // Parse second argument (RequestInit) if present, or use Request object properties
-    var method: std.http.Method = .GET;
-    var request_body: ?[]const u8 = null;
-    var request_body_owned: ?[]u8 = null;
-    defer if (request_body_owned) |b| allocator.free(b);
-
-    // Storage for extra headers from RequestInit
-    var extra_headers_storage: [32]std.http.Header = undefined;
-    var extra_headers_count: usize = 0;
-
-    // Redirect behavior: "follow" (default), "manual", "error"
-    var redirect_mode: fetch_mod.internal.RedirectMode = .follow;
-
-    // If input was a Request object, extract method from it first
-    if (input_request_obj) |req_obj| {
-        var method_buf: [16]u8 = undefined;
-        if (getStringProperty(isolate, context, req_obj, "method", &method_buf)) |method_str| {
-            if (std.ascii.eqlIgnoreCase(method_str, "GET")) {
-                method = .GET;
-            } else if (std.ascii.eqlIgnoreCase(method_str, "POST")) {
-                method = .POST;
-            } else if (std.ascii.eqlIgnoreCase(method_str, "PUT")) {
-                method = .PUT;
-            } else if (std.ascii.eqlIgnoreCase(method_str, "DELETE")) {
-                method = .DELETE;
-            } else if (std.ascii.eqlIgnoreCase(method_str, "PATCH")) {
-                method = .PATCH;
-            } else if (std.ascii.eqlIgnoreCase(method_str, "HEAD")) {
-                method = .HEAD;
-            } else if (std.ascii.eqlIgnoreCase(method_str, "OPTIONS")) {
-                method = .OPTIONS;
-            }
-        }
-    }
-
-    // Second argument (RequestInit) can override Request object properties
-    if (argc >= 2) {
-        const arg1 = info.v8_FunctionCallbackInfo_GetArgument(1);
-        if (v8.ffi.v8_Value_IsObject(arg1) and !v8.ffi.v8_Value_IsNull(arg1)) {
-            const init_obj: *v8.ffi.Object = @ptrCast(arg1);
-
-            // Extract redirect option
-            var redirect_buf: [16]u8 = undefined;
-            if (getStringProperty(isolate, context, init_obj, "redirect", &redirect_buf)) |redirect_str| {
-                if (std.ascii.eqlIgnoreCase(redirect_str, "manual")) {
-                    redirect_mode = .manual;
-                } else if (std.ascii.eqlIgnoreCase(redirect_str, "error")) {
-                    redirect_mode = .@"error";
-                }
-                // "follow" is default, no change needed
-            }
-
-            // Check for abort signal
-            const signal_key = v8.ffi.v8_String_NewFromUtf8(isolate, "signal", 6);
-            if (signal_key) |sk| {
-                const signal_value = v8.ffi.v8_Object_Get(init_obj, context, @ptrCast(sk));
-                if (signal_value) |sv| {
-                    if (v8.ffi.v8_Value_IsObject(sv) and !v8.ffi.v8_Value_IsNull(sv)) {
-                        // Check if signal.aborted is true
-                        const signal_obj: *v8.ffi.Object = @ptrCast(sv);
-                        const aborted_key = v8.ffi.v8_String_NewFromUtf8(isolate, "aborted", 7);
-                        if (aborted_key) |ak| {
-                            const aborted_value = v8.ffi.v8_Object_Get(signal_obj, context, @ptrCast(ak));
-                            if (aborted_value) |av| {
-                                if (v8.ffi.v8_Value_BooleanValue(av, isolate)) {
-                                    // Signal is already aborted - reject with AbortError
-                                    const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-                                    const err_name = v8.ffi.v8_String_NewFromUtf8(isolate, "AbortError", 10) orelse return;
-                                    const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "The operation was aborted.", 26) orelse return;
-
-                                    // Create a DOMException-like error object
-                                    const err_obj = v8.ffi.v8_Object_New(isolate) orelse return;
-                                    const name_key = v8.ffi.v8_String_NewFromUtf8(isolate, "name", 4) orelse return;
-                                    const message_key = v8.ffi.v8_String_NewFromUtf8(isolate, "message", 7) orelse return;
-                                    _ = v8.ffi.v8_Object_Set(err_obj, context, @ptrCast(name_key), @ptrCast(err_name));
-                                    _ = v8.ffi.v8_Object_Set(err_obj, context, @ptrCast(message_key), @ptrCast(err_msg));
-
-                                    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, @ptrCast(err_obj));
-                                    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-                                    info.setReturnValue(@ptrCast(promise));
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Extract method
-            var method_buf: [16]u8 = undefined;
-            if (getStringProperty(isolate, context, init_obj, "method", &method_buf)) |method_str| {
-                if (std.ascii.eqlIgnoreCase(method_str, "GET")) {
-                    method = .GET;
-                } else if (std.ascii.eqlIgnoreCase(method_str, "POST")) {
-                    method = .POST;
-                } else if (std.ascii.eqlIgnoreCase(method_str, "PUT")) {
-                    method = .PUT;
-                } else if (std.ascii.eqlIgnoreCase(method_str, "DELETE")) {
-                    method = .DELETE;
-                } else if (std.ascii.eqlIgnoreCase(method_str, "PATCH")) {
-                    method = .PATCH;
-                } else if (std.ascii.eqlIgnoreCase(method_str, "HEAD")) {
-                    method = .HEAD;
-                } else if (std.ascii.eqlIgnoreCase(method_str, "OPTIONS")) {
-                    method = .OPTIONS;
-                }
-            }
-
-            // Extract body - handle string, URLSearchParams, and other objects
-            const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "body", 4) orelse null;
-            if (body_key) |bk| {
-                const body_value = v8.ffi.v8_Object_Get(init_obj, context, @ptrCast(bk));
-                if (body_value) |bv| {
-                    if (!v8.ffi.v8_Value_IsUndefined(bv) and !v8.ffi.v8_Value_IsNull(bv)) {
-                        // For URLSearchParams and other objects, call toString()
-                        // For strings, use directly
-                        var body_str_to_use: ?*v8.ffi.String = null;
-
-                        if (v8.ffi.v8_Value_IsString(bv)) {
-                            body_str_to_use = v8.ffi.v8_Value_ToString(bv, context);
-                        } else if (v8.ffi.v8_Value_IsObject(bv)) {
-                            // Check if it's URLSearchParams by calling toString() method
-                            const obj: *v8.ffi.Object = @ptrCast(bv);
-                            const to_string_key = v8.ffi.v8_String_NewFromUtf8(isolate, "toString", 8);
-                            if (to_string_key) |ts_key| {
-                                const to_string_fn = v8.ffi.v8_Object_Get(obj, context, @ptrCast(ts_key));
-                                if (to_string_fn) |ts_fn| {
-                                    if (v8.ffi.v8_Value_IsFunction(ts_fn)) {
-                                        // Call toString() on the body object
-                                        const func: *v8.ffi.Function = @ptrCast(ts_fn);
-                                        var empty_args: [0]*v8.ffi.Value = undefined;
-                                        const result = v8.ffi.v8_Function_Call(func, context, bv, 0, &empty_args);
-                                        if (result) |r| {
-                                            if (v8.ffi.v8_Value_IsString(r)) {
-                                                body_str_to_use = v8.ffi.v8_Value_ToString(r, context);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (body_str_to_use) |bs| {
-                            const body_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(bs));
-                            const body_buf = allocator.alloc(u8, body_len) catch null;
-                            if (body_buf) |bb| {
-                                _ = v8.ffi.v8_String_WriteUtf8(bs, bb.ptr, @intCast(bb.len));
-                                request_body = bb;
-                                request_body_owned = bb;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Extract headers object
-            const headers_key = v8.ffi.v8_String_NewFromUtf8(isolate, "headers", 7) orelse null;
-            if (headers_key) |hk| {
-                const headers_value = v8.ffi.v8_Object_Get(init_obj, context, @ptrCast(hk));
-                if (headers_value) |hv| {
-                    if (v8.ffi.v8_Value_IsObject(hv) and !v8.ffi.v8_Value_IsNull(hv)) {
-                        const headers_obj: *v8.ffi.Object = @ptrCast(hv);
-                        // Get property names
-                        const prop_names = v8.ffi.v8_Object_GetPropertyNames(context, headers_obj);
-                        if (prop_names) |names| {
-                            const len = v8.ffi.v8_Array_Length(names);
-                            var i: u32 = 0;
-                            while (i < len and extra_headers_count < extra_headers_storage.len) : (i += 1) {
-                                const name_val = v8.ffi.v8_Array_Get(context, names, i) orelse continue;
-                                if (!v8.ffi.v8_Value_IsString(name_val)) continue;
-
-                                const name_str = v8.ffi.v8_Value_ToString(name_val, context) orelse continue;
-                                const name_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(name_str));
-
-                                const header_val = v8.ffi.v8_Object_Get(headers_obj, context, name_val) orelse continue;
-                                if (!v8.ffi.v8_Value_IsString(header_val)) continue;
-
-                                const value_str = v8.ffi.v8_Value_ToString(header_val, context) orelse continue;
-                                const value_len: usize = @intCast(v8.ffi.v8_String_Utf8Length(value_str));
-
-                                // Allocate and copy header name and value
-                                const name_buf = allocator.alloc(u8, name_len) catch continue;
-                                const value_buf = allocator.alloc(u8, value_len) catch {
-                                    allocator.free(name_buf);
-                                    continue;
-                                };
-
-                                _ = v8.ffi.v8_String_WriteUtf8(name_str, name_buf.ptr, @intCast(name_buf.len));
-                                _ = v8.ffi.v8_String_WriteUtf8(value_str, value_buf.ptr, @intCast(value_buf.len));
-
-                                extra_headers_storage[extra_headers_count] = .{
-                                    .name = name_buf,
-                                    .value = value_buf,
-                                };
-                                extra_headers_count += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Cleanup extra headers on exit
-    defer {
-        for (extra_headers_storage[0..extra_headers_count]) |h| {
-            allocator.free(@constCast(h.name));
-            allocator.free(@constCast(h.value));
-        }
-    }
-
-    // Convert method enum to string
-    const method_str: []const u8 = switch (method) {
-        .GET => "GET",
-        .POST => "POST",
-        .PUT => "PUT",
-        .DELETE => "DELETE",
-        .PATCH => "PATCH",
-        .HEAD => "HEAD",
-        .OPTIONS => "OPTIONS",
-        else => "GET",
-    };
-
-    // Create InternalRequest for the fetch algorithm
-    const internal_request = fetch_mod.internal.InternalRequest.init(allocator, url_str) catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create request", 24) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-    defer internal_request.deinit();
-
-    // Set method (free the default "GET" first, then allocate new method)
-    allocator.free(internal_request.method);
-    internal_request.method = allocator.dupe(u8, method_str) catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to set request method", 28) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-
-    // Set credentials mode to include (to enable cookies)
-    internal_request.credentials_mode = .include;
-
-    // Set redirect mode from parsed option
-    internal_request.redirect_mode = redirect_mode;
-
-    // Add headers
-    for (extra_headers_storage[0..extra_headers_count]) |h| {
-        internal_request.header_list.append(h.name, h.value) catch {};
-    }
-
-    // Set body if present
-    if (request_body) |rb| {
-        const body_bytes = allocator.dupe(u8, rb) catch null;
-        if (body_bytes) |bb| {
-            internal_request.body = .{ .bytes = bb };
-        }
-    }
-
-    // Ensure global cookie manager is initialized
-    if (global_cookie_manager == null) {
-        global_cookie_manager = fetch_mod.CurlCookieManager.init(allocator, null) catch {
-            const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-            const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to initialize cookie manager", 35) orelse return;
-            const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-            const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-            info.setReturnValue(@ptrCast(promise));
-            return;
-        };
-    }
-
-    // Use HTTP fetch with the shared cookie manager
-    const http_options = fetch_mod.algorithms.HttpFetchOptions{
-        .cors_flag = false,
-        .cors_preflight_flag = false,
-        .cookie_manager = global_cookie_manager,
-    };
-
-    // Create fetch params
-    var timing_info = fetch_mod.internal.FetchTimingInfo.init(allocator);
-    const controller = fetch_mod.internal.FetchController.init(allocator) catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create fetch controller", 33) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-    defer controller.deinit();
-
-    const params = fetch_mod.internal.FetchParams.init(allocator, internal_request, controller, &timing_info) catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create fetch params", 29) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-    defer params.deinit();
-
-    // Execute HTTP fetch with libcurl backend (handles cookies automatically)
-    const internal_response = fetch_mod.algorithms.httpFetch(allocator, params, http_options) catch {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error", 13) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-    defer internal_response.deinit();
-
-    // Check if the response is a network error (e.g., redirect with redirect:'error')
-    // Network errors have response_type == .@"error" or status == 0
-    if (internal_response.response_type == .@"error" or internal_response.status == 0) {
-        const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse return;
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Network error", 13) orelse return;
-        const err = v8.ffi.v8_Exception_TypeError(@ptrCast(err_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, context, err);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    }
-
-    // Create Response object
-    const Response = @import("interfaces").Response;
-    const response_instance = Response.init(allocator, runtime_ctx) catch {
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create Response", 25) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, err);
-        return;
-    };
-
-    // Set response properties via the internal state
-    const state = response_instance.getState(Response.State);
-    if (state.own._internal) |internal| {
-        // Set status from HTTP response
-        internal.response.status = internal_response.status;
-
-        // Copy URL list
-        for (internal_response.url_list.items) |response_url| {
-            const url_copy = allocator.dupe(u8, response_url) catch continue;
-            internal.response.url_list.append(allocator, url_copy) catch {
-                allocator.free(url_copy);
-            };
-        }
-
-        // Copy headers
-        const header_entries = internal_response.header_list.iterator();
-        for (header_entries) |h| {
-            internal.response.header_list.append(h.name, h.value) catch {};
-        }
-
-        // Copy body if present
-        if (internal_response.body) |response_body| {
-            const body_bytes = response_body.getBytes();
-            if (body_bytes.len > 0) {
-                const body_obj = fetch_mod.internal.Body.fromBytes(allocator, body_bytes) catch null;
-                if (body_obj) |b| {
-                    internal.response.body = b;
-                }
-            }
-        }
-    }
-
-    // Wrap the Response as a V8 object
-    const v8_response = v8.template_registry.wrapInstanceAsV8Object(
-        response_instance,
-        "Response",
-        isolate,
-        context,
-    ) catch {
-        Response.deinit(response_instance);
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to wrap Response", 23) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, err);
-        return;
-    };
-
-    // Create a resolved Promise with the Response
-    const resolver = v8.ffi.v8_PromiseResolver_New(context) orelse {
-        const err_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to create Promise", 24) orelse return;
-        const err = v8.ffi.v8_Exception_Error(@ptrCast(err_msg)) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, err);
-        return;
-    };
-
-    _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, context, @ptrCast(v8_response));
-
-    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver);
-    info.setReturnValue(@ptrCast(promise));
-}
-
-/// Mock setTimeout callback for REPL testing.
-/// This is a simplified implementation that executes callbacks immediately
-/// since the REPL doesn't have an event loop. When the HTML spec is implemented,
-/// this should be replaced with proper timer queue handling.
-///
-/// Per HTML spec, setTimeout(handler, timeout?, ...arguments) returns a timer ID.
-/// This mock always returns 1 and executes the callback synchronously.
-fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
-
-    // Get the callback function (first argument)
-    if (info.v8_FunctionCallbackInfo_Length() < 1) {
-        // No callback provided, just return a timer ID
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    }
-
-    const callback_value = info.get(0);
-
-    // Check if it's a function
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    }
-
-    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
-
-    // Get the global object as 'this' for the callback
-    const global = v8.ffi.v8_Context_Global(context) orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 1);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
-
-    // Note: We ignore the timeout (second argument) and execute immediately
-    // This is a mock for testing purposes only
-
-    // Execute the callback synchronously with no arguments
-    // A proper implementation would queue this for later execution
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
-
-    // Return a mock timer ID (always 1)
-    const result = v8.ffi.v8_Integer_New(isolate, 1);
-    info.setReturnValue(@ptrCast(result));
-}
-
-/// Mock clearTimeout callback for REPL testing.
-/// This is a no-op since setTimeout executes immediately.
-fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    // Return undefined (clearTimeout has no return value per spec)
-    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
-        info.setReturnValue(undef_value);
-    }
-}
-
-/// REPL state
+/// REPL state - wraps BrowserContext with REPL-specific UI features
 const Repl = struct {
     allocator: std.mem.Allocator,
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
+    browser: BrowserContext,
     input_buffer: std.ArrayListUnmanaged(u8),
     history: std.ArrayListUnmanaged([]const u8),
-    /// Singleton instances that need to be cleaned up on exit
-    indexeddb_instance: ?*runtime.Instance = null,
-    performance_instance: ?*runtime.Instance = null,
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
-        runtime.initializeRuntime(allocator);
+        // Create browser context with window type (same as WPT .html tests)
+        var browser = BrowserContext.init(allocator, .window, ".") catch |err| {
+            std.debug.print("Failed to create BrowserContext: {}\n", .{err});
+            return err;
+        };
+        errdefer browser.deinit();
 
-        // Initialize V8 platform
-        v8.ffi.v8_Platform_Initialize();
-
-        // Register external references for snapshot loading (must match snapshot creation order)
-        v8.snapshot_loader.registerExternalReferences();
-
-        // Try to initialize from snapshot for fast startup
-        // Falls back to fresh isolate creation if no snapshot available
-        const init_result = try v8.snapshot_loader.initializeV8(allocator, .{
-            .snapshot_path = "whatwg_snapshot.bin",
-            .log_performance = true,
-        });
-
-        const isolate = init_result.isolate;
-        const context = init_result.context;
-        const used_snapshot = init_result.used_snapshot;
-
-        // Enter context (snapshot loader handles isolate enter)
-        v8.ffi.v8_Context_Enter(context);
-
-        // Initialize context manager for V8 callbacks
-        context_manager.init(allocator) catch |err| {
-            std.debug.print("Warning: Context manager init failed: {}\n", .{err});
-            // Continue anyway - some interfaces may not work properly
+        // Initialize the browser (creates V8 isolate, context, registers all globals)
+        browser.initialize() catch |err| {
+            std.debug.print("Failed to initialize BrowserContext: {}\n", .{err});
+            return err;
         };
 
-        // Register the V8 context with context manager to enable wrapper caching
-        // This creates a runtime context with wrapper cache for object identity
-        // Use getOrCreateWithIsolate to enable timer support (for AbortSignal.timeout, etc.)
-        _ = context_manager.getOrCreateWithIsolate(context, isolate, allocator) catch |err| {
-            std.debug.print("Warning: Context registration failed: {}\n", .{err});
-            // Continue anyway - wrapper caching won't work but basic functionality will
-        };
-
-        // Only register interfaces if we didn't use a snapshot
-        // (snapshot already contains all registered interfaces)
-        if (!used_snapshot) {
-            // Register all WebIDL interfaces using the centralized function
-            // This is the single source of truth for interface binding setup
-            // This also inserts WindowProperties into Window.prototype's chain via
-            // insertIntoPrototypeChain(), creating:
-            //   Window.prototype → WindowProperties → EventTarget.prototype
-            interface_bindings.initializeBindings(isolate, context);
-
-            // Register all namespaces using the generic function
-            const namespaces = @import("namespaces");
-            interface_bindings.registerNamespacesGeneric(namespaces, isolate, context);
-
-            // Set up Window prototype chain per WebIDL spec:
-            // Set global's prototype to Window.prototype to complete the chain:
-            //   global → Window.prototype → WindowProperties → EventTarget.prototype
-            // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
-            // the interface prototype object (Window.prototype for the global).
-            const global = v8.ffi.v8_Context_Global(context);
-            if (global) |global_obj| {
-                const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Window", 6);
-                if (window_key) |wk| {
-                    if (v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(wk))) |window_ctor| {
-                        const proto_key = v8.ffi.v8_String_NewFromUtf8(isolate, "prototype", 9);
-                        if (proto_key) |pk| {
-                            if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), context, @ptrCast(pk))) |window_proto| {
-                                _ = v8.ffi.v8_Object_SetPrototypeV2(global_obj, context, window_proto);
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            std.debug.print("✓ Using snapshot - interfaces already registered\n", .{});
-        }
-
-        // Register singleton instances (e.g., indexedDB)
-        // These are WebIDL interfaces that are exposed as pre-created instances on the global scope
-        // rather than as constructors. Per WindowOrWorkerGlobalScope: readonly attribute IDBFactory indexedDB;
-        var self = Self{
+        return Self{
             .allocator = allocator,
-            .isolate = isolate,
-            .context = context,
+            .browser = browser,
             .input_buffer = .{},
             .history = .{},
         };
-
-        try self.registerSingletons();
-
-        return self;
-    }
-
-    /// Register singleton instances on the global object
-    ///
-    /// Per WebIDL, some interfaces are exposed as pre-created instances rather than
-    /// constructors. For example, WindowOrWorkerGlobalScope defines:
-    ///   readonly attribute IDBFactory indexedDB;
-    ///
-    /// This creates those singleton instances and attaches them to the global scope.
-    fn registerSingletons(self: *Self) !void {
-        const global_obj = v8.ffi.v8_Context_Global(self.context) orelse return error.NoGlobal;
-
-        // Get the runtime context for wrapper caching (required for IDBFactory.init)
-        const runtime_ctx = context_manager.getOrCreate(self.context, self.allocator) catch |err| {
-            std.debug.print("Warning: Failed to get runtime context for singletons: {}\n", .{err});
-            return;
-        };
-
-        // Register indexedDB singleton (IDBFactory instance)
-        // Per spec: readonly attribute IDBFactory indexedDB; on WindowOrWorkerGlobalScope
-        {
-            const IDBFactory = @import("interfaces").IDBFactory;
-
-            // Create IDBFactory instance
-            const idb_factory_instance = IDBFactory.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create indexedDB singleton: {}\n", .{err});
-                return;
-            };
-            // Store for cleanup on exit
-            self.indexeddb_instance = idb_factory_instance;
-
-            // Wrap it as a V8 object using the template registry
-            const v8_idb_factory = v8.template_registry.wrapInstanceAsV8Object(
-                idb_factory_instance,
-                "IDBFactory",
-                self.isolate,
-                self.context,
-            ) catch |err| {
-                std.debug.print("Warning: Failed to wrap indexedDB singleton: {}\n", .{err});
-                return;
-            };
-
-            // Set it as 'indexedDB' property on the global object
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "indexedDB", 9) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(v8_idb_factory));
-        }
-
-        // Register performance singleton (Performance instance)
-        // Per spec: readonly attribute Performance performance; on WindowOrWorkerGlobalScope
-        {
-            const Performance = @import("interfaces").Performance;
-
-            // Create Performance instance
-            const performance_instance = Performance.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create performance singleton: {}\n", .{err});
-                return;
-            };
-            // Store for cleanup on exit
-            self.performance_instance = performance_instance;
-
-            // Wrap it as a V8 object using the template registry
-            const v8_performance = v8.template_registry.wrapInstanceAsV8Object(
-                performance_instance,
-                "Performance",
-                self.isolate,
-                self.context,
-            ) catch |err| {
-                std.debug.print("Warning: Failed to wrap performance singleton: {}\n", .{err});
-                return;
-            };
-
-            // Set it as 'performance' property on the global object
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "performance", 11) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(v8_performance));
-        }
-
-        // Register fetch stub (normally on WindowOrWorkerGlobalScope, but Window not implemented)
-        // This is a temporary stub until Window is properly implemented
-        try self.registerFetchStub(global_obj);
-
-        // Register setTimeout/clearTimeout stubs (normally on WindowOrWorkerGlobalScope)
-        // These are mock implementations for testing until HTML spec timer queue is implemented
-        try self.registerTimerStubs(global_obj);
-    }
-
-    /// Register fetch as a global function stub
-    /// Per spec, fetch is defined on WindowOrWorkerGlobalScope mixin.
-    /// Since Window is not yet implemented, we register it directly on global.
-    fn registerFetchStub(self: *Self, global_obj: *v8.ffi.Object) !void {
-        // Create function template for fetch
-        const fetch_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, fetchCallback, null) orelse return error.FunctionTemplateCreateFailed;
-        v8.ffi.v8_FunctionTemplate_SetLength(fetch_template, 1); // fetch(input, init?)
-
-        // Get the function from template
-        const fetch_fn = v8.ffi.v8_FunctionTemplate_GetFunction(fetch_template, self.context) orelse return error.FunctionCreateFailed;
-
-        // Set it as 'fetch' property on the global object
-        const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "fetch", 5) orelse return error.StringCreateFailed;
-        _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(fetch_fn));
-    }
-
-    /// Register setTimeout/clearTimeout as global function stubs
-    /// Per HTML spec, these are defined on WindowOrWorkerGlobalScope mixin.
-    /// These are mock implementations that execute callbacks immediately for testing.
-    fn registerTimerStubs(self: *Self, global_obj: *v8.ffi.Object) !void {
-        // Register setTimeout
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1); // setTimeout(handler, timeout?, ...arguments)
-
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
-
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setTimeout", 10) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register clearTimeout
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1); // clearTimeout(id)
-
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
-
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearTimeout", 12) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register setInterval (mock - just returns ID, doesn't actually repeat)
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
-
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setInterval", 11) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register clearInterval
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse return error.FunctionCreateFailed;
-
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearInterval", 13) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
     }
 
     pub fn deinit(self: *Self) void {
@@ -829,48 +57,34 @@ const Repl = struct {
         self.history.deinit(self.allocator);
         self.input_buffer.deinit(self.allocator);
 
-        // NOTE: Don't explicitly deinit singleton instances here!
-        // They are in the wrapper cache and will be cleaned up when
-        // context_manager.deinit() iterates the cache. Explicit deinit
-        // would cause double-free since wrapper cache also calls deinit.
-        self.indexeddb_instance = null;
-        self.performance_instance = null;
+        // BrowserContext handles all V8 and runtime cleanup
+        self.browser.deinit();
+    }
 
-        // Cleanup context manager (this cleans up wrapper cache which deinits all instances)
-        context_manager.deinit();
+    /// Get V8 isolate from browser context
+    fn getIsolate(self: *Self) *v8.ffi.Isolate {
+        return self.browser.isolate.?;
+    }
 
-        // Exit and dispose V8 context first to break JavaScript references
-        // This makes objects unreachable so GC can collect them
-        v8.ffi.v8_Context_Exit(self.context);
-        v8.ffi.v8_Context_Dispose(self.context);
-
-        // Force V8 garbage collection to trigger weak callbacks
-        // This ensures all Instance deinit functions are called before we exit
-        // Call multiple times to ensure full collection
-        v8.ffi.v8_Isolate_RequestGarbageCollection(self.isolate);
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-        v8.ffi.v8_Isolate_RequestGarbageCollection(self.isolate);
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-
-        // Cleanup V8 isolate
-        v8.ffi.v8_Isolate_Exit(self.isolate);
-        v8.ffi.v8_Isolate_Dispose(self.isolate);
-
-        // Cleanup WebIDL runtime
-        runtime.deinitializeRuntime();
+    /// Get V8 context from browser context
+    fn getContext(self: *Self) *v8.ffi.Context {
+        return self.browser.context.?;
     }
 
     /// Execute JavaScript code and return result
     pub fn eval(self: *Self, code: []const u8) ![]const u8 {
+        const isolate = self.getIsolate();
+        const context = self.getContext();
+
         // Create V8 string from code
-        const source_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, code.ptr, @intCast(code.len)) orelse return error.StringCreateFailed;
+        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, code.ptr, @intCast(code.len)) orelse return error.StringCreateFailed;
 
         // Compile script
-        const script = v8.ffi.v8_Script_Compile(self.context, source_str) orelse {
+        const script = v8.ffi.v8_Script_Compile(context, source_str) orelse {
             // Get exception message
-            const exception = v8.ffi.v8_TryCatch_Exception(self.context);
+            const exception = v8.ffi.v8_TryCatch_Exception(context);
             if (exception) |exc| {
-                const exc_str = v8.ffi.v8_Value_ToString(exc, self.context);
+                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
                 if (exc_str) |str| {
                     const len = v8.ffi.v8_String_Utf8Length(str);
                     const buffer = try self.allocator.alloc(u8, @intCast(len));
@@ -882,11 +96,11 @@ const Repl = struct {
         };
 
         // Run script
-        const result = v8.ffi.v8_Script_Run(self.context, script) orelse {
+        const result = v8.ffi.v8_Script_Run(context, script) orelse {
             // Get exception message
-            const exception = v8.ffi.v8_TryCatch_Exception(self.context);
+            const exception = v8.ffi.v8_TryCatch_Exception(context);
             if (exception) |exc| {
-                const exc_str = v8.ffi.v8_Value_ToString(exc, self.context);
+                const exc_str = v8.ffi.v8_Value_ToString(exc, context);
                 if (exc_str) |str| {
                     const len = v8.ffi.v8_String_Utf8Length(str);
                     const buffer = try self.allocator.alloc(u8, @intCast(len));
@@ -898,16 +112,16 @@ const Repl = struct {
         };
 
         // Run microtasks to process any pending promises
-        // This is required because we use explicit microtask policy
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
-        // Format the result for display (REPL-only formatting, doesn't affect JS semantics)
+        // Format the result for display
         return self.formatValueForDisplay(result);
     }
 
     /// Format a V8 value for REPL display (like Chrome DevTools)
-    /// This is purely cosmetic - it doesn't change JavaScript semantics
     fn formatValueForDisplay(self: *Self, value: *v8.ffi.Value) ![]const u8 {
+        const context = self.getContext();
+
         // Handle primitives directly
         if (v8.ffi.v8_Value_IsUndefined(value)) {
             return try self.allocator.dupe(u8, "undefined");
@@ -916,7 +130,7 @@ const Repl = struct {
             return try self.allocator.dupe(u8, "null");
         }
         if (v8.ffi.v8_Value_IsBoolean(value) or v8.ffi.v8_Value_IsNumber(value)) {
-            const str = v8.ffi.v8_Value_ToString(value, self.context) orelse {
+            const str = v8.ffi.v8_Value_ToString(value, context) orelse {
                 return try self.allocator.dupe(u8, "undefined");
             };
             const len = v8.ffi.v8_String_Utf8Length(str);
@@ -936,8 +150,7 @@ const Repl = struct {
             return buffer;
         }
         if (v8.ffi.v8_Value_IsFunction(value)) {
-            // For functions, show [Function: name] or just [Function]
-            const str = v8.ffi.v8_Value_ToString(value, self.context) orelse {
+            const str = v8.ffi.v8_Value_ToString(value, context) orelse {
                 return try self.allocator.dupe(u8, "[Function]");
             };
             const len = v8.ffi.v8_String_Utf8Length(str);
@@ -952,7 +165,7 @@ const Repl = struct {
         }
 
         // Fallback to toString
-        const result_str = v8.ffi.v8_Value_ToString(value, self.context) orelse {
+        const result_str = v8.ffi.v8_Value_ToString(value, context) orelse {
             return try self.allocator.dupe(u8, "undefined");
         };
         const len = v8.ffi.v8_String_Utf8Length(result_str);
@@ -962,141 +175,76 @@ const Repl = struct {
     }
 
     /// Format an object for REPL display using JavaScript's own introspection
-    /// Produces output like: Event {isTrusted: false, type: 'foo', target: null, ...}
     fn formatObjectForDisplay(self: *Self, value: *v8.ffi.Value) ![]const u8 {
+        const context = self.getContext();
+        const isolate = self.getIsolate();
+
         // Store the value temporarily so our formatter can access it
-        // We use a unique global name that's unlikely to conflict
-        const global = v8.ffi.v8_Context_Global(self.context) orelse {
+        const global = v8.ffi.v8_Context_Global(context) orelse {
             return try self.allocator.dupe(u8, "[object]");
         };
-        const temp_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "__repl_temp__", 13) orelse {
+        const temp_key = v8.ffi.v8_String_NewFromUtf8(isolate, "__repl_temp__", 13) orelse {
             return try self.allocator.dupe(u8, "[object]");
         };
-        _ = v8.ffi.v8_Object_Set(global, self.context, @ptrCast(temp_key), value);
+        _ = v8.ffi.v8_Object_Set(global, context, @ptrCast(temp_key), value);
         defer {
-            // Clean up temp variable by setting to undefined
-            if (v8.ffi.v8_Undefined(self.isolate)) |undef| {
-                _ = v8.ffi.v8_Object_Set(global, self.context, @ptrCast(temp_key), undef);
+            if (v8.ffi.v8_Undefined(isolate)) |undef| {
+                _ = v8.ffi.v8_Object_Set(global, context, @ptrCast(temp_key), undef);
             }
         }
 
         // JavaScript code to format the object like Chrome DevTools
-        // This runs in the same context, using JS introspection
-        //
-        // For WebIDL objects (DOM nodes), we show property values:
-        // - Primitives (string, number, boolean, null, undefined) - show value
-        // - Objects (other DOM nodes) - show constructor name only (don't recurse)
-        //
-        // This is safe because state memory is zero-initialized (see runtime/instance.zig),
-        // preventing crashes from uninitialized pointer fields.
         const format_code =
             \\(function() {
             \\  const obj = __repl_temp__;
             \\  if (obj === null) return 'null';
             \\  if (obj === undefined) return 'undefined';
             \\  
-            \\  // Get constructor name
             \\  let name = '';
             \\  if (obj.constructor && obj.constructor.name) {
             \\    name = obj.constructor.name;
-            \\  } else {
-            \\    name = Object.prototype.toString.call(obj).slice(8, -1);
+            \\  } else if (Object.prototype.toString.call(obj) === '[object Object]') {
+            \\    name = 'Object';
             \\  }
             \\  
-            \\  // Handle arrays specially
             \\  if (Array.isArray(obj)) {
             \\    if (obj.length === 0) return '[]';
-            \\    if (obj.length <= 10) {
-            \\      const items = obj.map(v => {
-            \\        if (typeof v === 'string') return "'" + v + "'";
-            \\        if (v === null) return 'null';
-            \\        if (v === undefined) return 'undefined';
-            \\        if (typeof v === 'object') return v.constructor ? v.constructor.name : '[object]';
-            \\        return String(v);
-            \\      });
-            \\      return '[' + items.join(', ') + ']';
+            \\    if (obj.length > 5) {
+            \\      return '[' + obj.slice(0,5).map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ', ...]';
             \\    }
-            \\    return 'Array(' + obj.length + ') [...]';
+            \\    return '[' + obj.map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ']';
             \\  }
             \\  
-            \\  // Collect property names (safe - no getters called yet)
-            \\  const propNames = [];
-            \\  const seen = new Set();
-            \\  
-            \\  // 1. Add all own property names
-            \\  try {
-            \\    const ownNames = Object.getOwnPropertyNames(obj);
-            \\    for (const key of ownNames) {
-            \\      if (!seen.has(key)) {
-            \\        seen.add(key);
-            \\        propNames.push({ key, own: true });
-            \\      }
-            \\    }
-            \\  } catch (e) {}
-            \\  
-            \\  // 2. Walk prototype chain for accessor property names (WebIDL attributes)
-            \\  try {
-            \\    let proto = Object.getPrototypeOf(obj);
-            \\    while (proto && proto !== Object.prototype) {
-            \\      const protoNames = Object.getOwnPropertyNames(proto);
-            \\      for (const key of protoNames) {
-            \\        if (key === 'constructor') continue;
-            \\        if (seen.has(key)) continue;
-            \\        const desc = Object.getOwnPropertyDescriptor(proto, key);
-            \\        // Only include accessor properties (getters) - these are WebIDL attributes
-            \\        if (desc && (desc.get || desc.set)) {
-            \\          seen.add(key);
-            \\          propNames.push({ key, own: false, hasGetter: !!desc.get });
-            \\        }
-            \\      }
-            \\      proto = Object.getPrototypeOf(proto);
-            \\    }
-            \\  } catch (e) {}
-            \\  
-            \\  // Filter to only include attributes (not methods)
-            \\  const attrNames = propNames.filter(p => p.hasGetter !== false);
-            \\  
-            \\  // Format a value safely
-            \\  function formatValue(val) {
-            \\    if (val === null) return 'null';
-            \\    if (val === undefined) return 'undefined';
-            \\    if (typeof val === 'string') {
-            \\      // Truncate long strings
-            \\      if (val.length > 30) return "'" + val.slice(0, 27) + "...'";
-            \\      return "'" + val + "'";
-            \\    }
-            \\    if (typeof val === 'number') return String(val);
-            \\    if (typeof val === 'boolean') return String(val);
-            \\    if (typeof val === 'function') return '[Function]';
-            \\    if (typeof val === 'object') {
-            \\      // For objects, just show type name (don't access properties - may crash)
-            \\      if (Array.isArray(val)) return 'Array(' + val.length + ')';
-            \\      return val.constructor ? val.constructor.name : '[object]';
-            \\    }
-            \\    return String(val);
+            \\  if (obj instanceof Error) {
+            \\    return obj.name + ': ' + obj.message;
             \\  }
             \\  
-            \\  // Build props array with values
+            \\  if (obj instanceof Promise) {
+            \\    return 'Promise { <pending> }';
+            \\  }
+            \\  
             \\  const props = [];
-            \\  const maxProps = 8;
+            \\  const keys = Object.keys(obj);
+            \\  const maxProps = 5;
             \\  
-            \\  for (const { key } of attrNames) {
-            \\    if (props.length >= maxProps) break;
-            \\    
-            \\    let valStr;
+            \\  for (let i = 0; i < Math.min(keys.length, maxProps); i++) {
+            \\    const key = keys[i];
             \\    try {
             \\      const val = obj[key];
-            \\      // Skip methods
-            \\      if (typeof val === 'function') continue;
-            \\      valStr = formatValue(val);
-            \\    } catch (e) {
-            \\      // Property threw an error
-            \\      valStr = '(...)';
+            \\      let valStr;
+            \\      if (val === null) valStr = 'null';
+            \\      else if (val === undefined) valStr = 'undefined';
+            \\      else if (typeof val === 'string') valStr = JSON.stringify(val);
+            \\      else if (typeof val === 'function') valStr = '[Function]';
+            \\      else if (typeof val === 'object') valStr = val.constructor ? val.constructor.name : '[object]';
+            \\      else valStr = String(val);
+            \\      props.push(key + ': ' + valStr);
+            \\    } catch(e) {
+            \\      props.push(key + ': [error]');
             \\    }
-            \\    props.push(key + ': ' + valStr);
             \\  }
             \\  
-            \\  if (attrNames.length > maxProps) {
+            \\  if (keys.length > maxProps) {
             \\    props.push('...');
             \\  }
             \\  
@@ -1108,19 +256,19 @@ const Repl = struct {
             \\})()
         ;
 
-        const format_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, format_code.ptr, @intCast(format_code.len)) orelse {
+        const format_str = v8.ffi.v8_String_NewFromUtf8(isolate, format_code.ptr, @intCast(format_code.len)) orelse {
             return try self.allocator.dupe(u8, "[object]");
         };
 
-        const format_script = v8.ffi.v8_Script_Compile(self.context, format_str) orelse {
+        const format_script = v8.ffi.v8_Script_Compile(context, format_str) orelse {
             return try self.allocator.dupe(u8, "[object]");
         };
 
-        const format_result = v8.ffi.v8_Script_Run(self.context, format_script) orelse {
+        const format_result = v8.ffi.v8_Script_Run(context, format_script) orelse {
             return try self.allocator.dupe(u8, "[object]");
         };
 
-        const result_str = v8.ffi.v8_Value_ToString(format_result, self.context) orelse {
+        const result_str = v8.ffi.v8_Value_ToString(format_result, context) orelse {
             return try self.allocator.dupe(u8, "[object]");
         };
 
@@ -1131,8 +279,9 @@ const Repl = struct {
     }
 
     /// Get completions for tab completion
-    /// Handles both global completions and object property completions (e.g., "Event.")
     pub fn getCompletions(self: *Self, input: []const u8) !struct { completions: [][]const u8, prefix_len: usize } {
+        const context = self.getContext();
+
         var completions = std.ArrayList([]const u8).empty;
         errdefer {
             for (completions.items) |item| {
@@ -1158,7 +307,7 @@ const Repl = struct {
         }
 
         // No dot - complete on globals
-        const global = v8.ffi.v8_Context_Global(self.context) orelse return error.NoGlobal;
+        const global = v8.ffi.v8_Context_Global(context) orelse return error.NoGlobal;
         try self.getPropertyNames(global, input, &completions);
 
         return .{ .completions = try completions.toOwnedSlice(self.allocator), .prefix_len = input.len };
@@ -1168,16 +317,18 @@ const Repl = struct {
     fn evalExpression(self: *Self, expr: []const u8) ?*v8.ffi.Object {
         if (expr.len == 0) return null;
 
+        const isolate = self.getIsolate();
+        const context = self.getContext();
+
         const source = v8.ffi.v8_String_NewFromUtf8(
-            self.isolate,
+            isolate,
             expr.ptr,
             @intCast(expr.len),
         ) orelse return null;
 
-        const script = v8.ffi.v8_Script_Compile(self.context, source) orelse return null;
-        const result = v8.ffi.v8_Script_Run(self.context, script) orelse return null;
+        const script = v8.ffi.v8_Script_Compile(context, source) orelse return null;
+        const result = v8.ffi.v8_Script_Run(context, script) orelse return null;
 
-        // Check if result is an object
         if (!v8.ffi.v8_Value_IsObject(result)) return null;
 
         return @ptrCast(result);
@@ -1185,19 +336,19 @@ const Repl = struct {
 
     /// Get property names from an object that match prefix
     fn getPropertyNames(self: *Self, obj: *v8.ffi.Object, prefix: []const u8, completions: *std.ArrayList([]const u8)) !void {
-        // Get all property names including prototype chain
-        const names = v8.ffi.v8_Object_GetPropertyNames(self.context, obj) orelse return;
+        const context = self.getContext();
+
+        const names = v8.ffi.v8_Object_GetPropertyNames(context, obj) orelse return;
         const len = v8.ffi.v8_Array_Length(names);
         var i: u32 = 0;
         while (i < len) : (i += 1) {
-            const name_val = v8.ffi.v8_Array_Get(self.context, names, i) orelse continue;
-            const name_str = v8.ffi.v8_Value_ToString(name_val, self.context) orelse continue;
+            const name_val = v8.ffi.v8_Array_Get(context, names, i) orelse continue;
+            const name_str = v8.ffi.v8_Value_ToString(name_val, context) orelse continue;
 
             const name_len = v8.ffi.v8_String_Utf8Length(name_str);
             const name_buf = try self.allocator.alloc(u8, @intCast(name_len));
             _ = v8.ffi.v8_String_WriteUtf8(name_str, name_buf.ptr, @intCast(name_len));
 
-            // Check if matches prefix
             if (prefix.len == 0 or std.mem.startsWith(u8, name_buf, prefix)) {
                 try completions.append(self.allocator, name_buf);
             } else {
@@ -1206,19 +357,122 @@ const Repl = struct {
         }
     }
 
-    /// Legacy wrapper for backward compatibility
-    pub fn getGlobalCompletions(self: *Self, prefix: []const u8) ![][]const u8 {
-        const result = try self.getCompletions(prefix);
-        return result.completions;
+    /// Add line to history
+    fn addHistory(self: *Self, line: []const u8) !void {
+        // Don't add empty lines or duplicates of the last entry
+        if (line.len == 0) return;
+        if (self.history.items.len > 0 and std.mem.eql(u8, self.history.items[self.history.items.len - 1], line)) return;
+
+        const dup = try self.allocator.dupe(u8, line);
+        try self.history.append(self.allocator, dup);
     }
 
-    /// Sync file if supported (currently disabled due to Zig stdlib issues with pipes)
-    /// File syncing works for interactive terminals but causes stack traces on pipes.
-    /// Output flushing is automatic for line-buffered stdout, so explicit sync isn't needed.
-    fn syncIfSupported(file: std.fs.File) void {
-        _ = file;
-        // Disabled: file.sync() causes unexpectedErrno stack traces on pipes (errno 45 ENOTSUP)
-        // Interactive terminals handle flushing automatically, pipes work fine without it
+    /// Check if JavaScript code is syntactically complete
+    fn isCompleteCode(_: *Self, code: []const u8) bool {
+        if (code.len == 0) return true;
+
+        var brace_count: i32 = 0;
+        var bracket_count: i32 = 0;
+        var paren_count: i32 = 0;
+
+        var in_string: u8 = 0;
+        var in_template: bool = false;
+        var in_line_comment: bool = false;
+        var in_block_comment: bool = false;
+        var escape_next: bool = false;
+        var prev_char: u8 = 0;
+
+        for (code) |c| {
+            if (c == '\n') {
+                in_line_comment = false;
+                prev_char = c;
+                continue;
+            }
+
+            if (in_line_comment) {
+                prev_char = c;
+                continue;
+            }
+
+            if (in_block_comment) {
+                if (prev_char == '*' and c == '/') {
+                    in_block_comment = false;
+                }
+                prev_char = c;
+                continue;
+            }
+
+            if (escape_next) {
+                escape_next = false;
+                prev_char = c;
+                continue;
+            }
+
+            if (c == '\\' and (in_string != 0 or in_template)) {
+                escape_next = true;
+                prev_char = c;
+                continue;
+            }
+
+            if (in_string != 0) {
+                if (c == in_string) {
+                    in_string = 0;
+                }
+                prev_char = c;
+                continue;
+            }
+
+            if (in_template) {
+                if (c == '`') {
+                    in_template = false;
+                }
+                prev_char = c;
+                continue;
+            }
+
+            if (prev_char == '/') {
+                if (c == '/') {
+                    in_line_comment = true;
+                    prev_char = c;
+                    continue;
+                } else if (c == '*') {
+                    in_block_comment = true;
+                    prev_char = c;
+                    continue;
+                }
+            }
+
+            if (c == '"' or c == '\'') {
+                in_string = c;
+                prev_char = c;
+                continue;
+            }
+            if (c == '`') {
+                in_template = true;
+                prev_char = c;
+                continue;
+            }
+
+            if (c != '/') {
+                switch (c) {
+                    '{' => brace_count += 1,
+                    '}' => brace_count -= 1,
+                    '[' => bracket_count += 1,
+                    ']' => bracket_count -= 1,
+                    '(' => paren_count += 1,
+                    ')' => paren_count -= 1,
+                    else => {},
+                }
+            }
+
+            prev_char = c;
+        }
+
+        if (in_string != 0 or in_template) return false;
+        if (in_block_comment) return false;
+        if (brace_count > 0 or bracket_count > 0 or paren_count > 0) return false;
+
+        return true;
     }
 
     /// Read a single byte from stdin
@@ -1244,15 +498,11 @@ const Repl = struct {
 
     /// Clear current line and redraw with new content
     fn clearAndRedraw(self: *Self, stdout: std.fs.File, new_content: []const u8) !void {
-        // Clear current line: move to start, clear to end
         const current_len = self.input_buffer.items.len;
-        // Move cursor back to start of input
         if (current_len > 0) {
             try print(self.allocator, stdout, "\x1b[{d}D", .{current_len});
         }
-        // Clear from cursor to end of line
         try stdout.writeAll("\x1b[K");
-        // Update buffer and display new content
         self.input_buffer.clearRetainingCapacity();
         try self.input_buffer.appendSlice(self.allocator, new_content);
         try stdout.writeAll(new_content);
@@ -1263,16 +513,13 @@ const Repl = struct {
         const stdout = std.fs.File.stdout();
         const stdin = std.fs.File.stdin();
 
-        // Enable raw mode to capture tab key and arrow keys directly
         var original_termios: std.posix.termios = undefined;
         const is_tty = std.posix.isatty(stdin.handle);
         if (is_tty) {
             original_termios = try std.posix.tcgetattr(stdin.handle);
             var raw = original_termios;
-            // Disable canonical mode and echo
             raw.lflag.ICANON = false;
             raw.lflag.ECHO = false;
-            // Set minimum bytes and timeout
             raw.cc[@intFromEnum(std.posix.V.MIN)] = 1;
             raw.cc[@intFromEnum(std.posix.V.TIME)] = 0;
             try std.posix.tcsetattr(stdin.handle, .FLUSH, raw);
@@ -1283,9 +530,7 @@ const Repl = struct {
 
         self.input_buffer.clearRetainingCapacity();
 
-        // History navigation index (history.len means "current input", not in history)
         var history_index: usize = self.history.items.len;
-        // Save current input when navigating history
         var saved_input: ?[]u8 = null;
         defer if (saved_input) |s| self.allocator.free(s);
 
@@ -1298,20 +543,49 @@ const Repl = struct {
             switch (byte) {
                 '\n' => {
                     try writeByte(stdout, '\n');
-                    syncIfSupported(stdout);
-                    break;
+                    const result = try self.allocator.dupe(u8, self.input_buffer.items);
+                    return result;
                 },
-                '\x1b' => {
-                    // Escape sequence (arrow keys, etc.)
-                    const seq1 = readByte(stdin) catch continue;
-                    if (seq1 != '[') continue;
-                    const seq2 = readByte(stdin) catch continue;
+                4 => return null, // Ctrl+D
+                127, 8 => { // Backspace
+                    if (self.input_buffer.items.len > 0) {
+                        _ = self.input_buffer.pop();
+                        try stdout.writeAll("\x08 \x08");
+                    }
+                },
+                '\t' => { // Tab - trigger completion
+                    if (self.input_buffer.items.len > 0) {
+                        const result = try self.getCompletions(self.input_buffer.items);
+                        defer {
+                            for (result.completions) |c| self.allocator.free(c);
+                            self.allocator.free(result.completions);
+                        }
 
-                    switch (seq2) {
-                        'A' => {
-                            // Up arrow - previous history
-                            if (self.history.items.len > 0 and history_index > 0) {
-                                // Save current input if we're leaving it
+                        if (result.completions.len == 1) {
+                            // Single match - complete it
+                            const completion = result.completions[0];
+                            const suffix = completion[result.prefix_len..];
+                            try self.input_buffer.appendSlice(self.allocator, suffix);
+                            try stdout.writeAll(suffix);
+                        } else if (result.completions.len > 1) {
+                            // Multiple matches - show them
+                            try stdout.writeAll("\n");
+                            for (result.completions) |c| {
+                                try print(self.allocator, stdout, "{s}  ", .{c});
+                            }
+                            try stdout.writeAll("\n>>> ");
+                            try stdout.writeAll(self.input_buffer.items);
+                        }
+                    }
+                },
+                27 => { // Escape sequence
+                    const next1 = readByte(stdin) catch continue;
+                    if (next1 != '[') continue;
+                    const next2 = readByte(stdin) catch continue;
+
+                    switch (next2) {
+                        'A' => { // Up arrow
+                            if (history_index > 0) {
                                 if (history_index == self.history.items.len) {
                                     if (saved_input) |s| self.allocator.free(s);
                                     saved_input = try self.allocator.dupe(u8, self.input_buffer.items);
@@ -1320,14 +594,11 @@ const Repl = struct {
                                 try self.clearAndRedraw(stdout, self.history.items[history_index]);
                             }
                         },
-                        'B' => {
-                            // Down arrow - next history
+                        'B' => { // Down arrow
                             if (history_index < self.history.items.len) {
                                 history_index += 1;
                                 if (history_index == self.history.items.len) {
-                                    // Restore saved input
-                                    const content = saved_input orelse "";
-                                    try self.clearAndRedraw(stdout, content);
+                                    try self.clearAndRedraw(stdout, saved_input orelse "");
                                 } else {
                                     try self.clearAndRedraw(stdout, self.history.items[history_index]);
                                 }
@@ -1336,580 +607,69 @@ const Repl = struct {
                         else => {},
                     }
                 },
-                '\t' => {
-                    // Tab completion - handles both globals and object properties
-                    const input = self.input_buffer.items;
-                    const result = try self.getCompletions(input);
-                    const completions = result.completions;
-                    const prefix_len = result.prefix_len;
-                    defer {
-                        for (completions) |comp| {
-                            self.allocator.free(comp);
-                        }
-                        self.allocator.free(completions);
-                    }
-
-                    if (completions.len == 1) {
-                        // Single match - autocomplete
-                        const completion = completions[0];
-                        const remaining = completion[prefix_len..];
-                        try self.input_buffer.appendSlice(self.allocator, remaining);
-                        try stdout.writeAll(remaining);
-                        syncIfSupported(stdout);
-                    } else if (completions.len > 1) {
-                        // Multiple matches - show options
-                        try writeByte(stdout, '\n');
-                        for (completions) |comp| {
-                            try print(self.allocator, stdout, "  {s}\n", .{comp});
-                        }
-                        try stdout.writeAll(">>> ");
-                        try stdout.writeAll(self.input_buffer.items);
-                        syncIfSupported(stdout);
+                else => {
+                    if (byte >= 32 and byte < 127) {
+                        try self.input_buffer.append(self.allocator, byte);
+                        try writeByte(stdout, byte);
                     }
                 },
-                127, 8 => {
-                    // Backspace
-                    if (self.input_buffer.items.len > 0) {
-                        _ = self.input_buffer.pop();
-                        try stdout.writeAll("\x08 \x08");
-                        syncIfSupported(stdout);
-                    }
-                },
-                4 => {
-                    // Ctrl+D - EOF
-                    if (self.input_buffer.items.len == 0) {
-                        return null;
-                    }
-                },
-                32...126 => {
-                    // Printable ASCII
-                    try self.input_buffer.append(self.allocator, byte);
-                    try writeByte(stdout, byte);
-                    syncIfSupported(stdout);
-                },
-                else => {},
             }
         }
-
-        const line = try self.allocator.dupe(u8, self.input_buffer.items);
-        return line;
-    }
-
-    /// Add line to history
-    pub fn addHistory(self: *Self, line: []const u8) !void {
-        const dup = try self.allocator.dupe(u8, line);
-        try self.history.append(self.allocator, dup);
-    }
-
-    /// Check if JavaScript code is syntactically complete using bracket counting
-    /// Returns true if the code can be evaluated, false if more input is needed
-    ///
-    /// This uses a simple heuristic: count brackets, braces, and parens.
-    /// If they're balanced and we're not inside a string/template literal/comment, the code is likely complete.
-    fn isCompleteCode(_: *Self, code: []const u8) bool {
-        if (code.len == 0) return true;
-
-        var brace_count: i32 = 0; // { }
-        var bracket_count: i32 = 0; // [ ]
-        var paren_count: i32 = 0; // ( )
-
-        var in_string: u8 = 0; // 0 = not in string, '"' or '\'' = in that string type
-        var in_template: bool = false; // Inside template literal ``
-        var in_line_comment: bool = false; // Inside // comment
-        var in_block_comment: bool = false; // Inside /* */ comment
-        var escape_next: bool = false;
-        var prev_char: u8 = 0;
-
-        for (code) |c| {
-            // Handle newlines - they end single-line comments
-            if (c == '\n') {
-                in_line_comment = false;
-                prev_char = c;
-                continue;
-            }
-
-            // Skip everything inside single-line comments
-            if (in_line_comment) {
-                prev_char = c;
-                continue;
-            }
-
-            // Handle block comment end
-            if (in_block_comment) {
-                if (prev_char == '*' and c == '/') {
-                    in_block_comment = false;
-                }
-                prev_char = c;
-                continue;
-            }
-
-            // Handle escape sequences
-            if (escape_next) {
-                escape_next = false;
-                prev_char = c;
-                continue;
-            }
-
-            if (c == '\\' and (in_string != 0 or in_template)) {
-                escape_next = true;
-                prev_char = c;
-                continue;
-            }
-
-            // Handle string literals
-            if (in_string != 0) {
-                if (c == in_string) {
-                    in_string = 0;
-                }
-                prev_char = c;
-                continue;
-            }
-
-            // Handle template literals
-            if (in_template) {
-                if (c == '`') {
-                    in_template = false;
-                }
-                // Note: We're ignoring ${} inside templates for simplicity
-                prev_char = c;
-                continue;
-            }
-
-            // Check for comment start (must be before string check since // could be in code)
-            if (prev_char == '/') {
-                if (c == '/') {
-                    // Single-line comment starts
-                    in_line_comment = true;
-                    prev_char = c;
-                    continue;
-                } else if (c == '*') {
-                    // Block comment starts
-                    in_block_comment = true;
-                    prev_char = c;
-                    continue;
-                }
-            }
-
-            // Check for string/template start
-            if (c == '"' or c == '\'') {
-                in_string = c;
-                prev_char = c;
-                continue;
-            }
-            if (c == '`') {
-                in_template = true;
-                prev_char = c;
-                continue;
-            }
-
-            // Count brackets (but not if this is a potential comment start)
-            if (c != '/') {
-                switch (c) {
-                    '{' => brace_count += 1,
-                    '}' => brace_count -= 1,
-                    '[' => bracket_count += 1,
-                    ']' => bracket_count -= 1,
-                    '(' => paren_count += 1,
-                    ')' => paren_count -= 1,
-                    else => {},
-                }
-            }
-
-            prev_char = c;
-        }
-
-        // If we're inside a string or template, need more input
-        if (in_string != 0 or in_template) {
-            return false;
-        }
-
-        // If we're inside a block comment, need more input
-        if (in_block_comment) {
-            return false;
-        }
-
-        // If brackets are unbalanced (more opens than closes), need more input
-        if (brace_count > 0 or bracket_count > 0 or paren_count > 0) {
-            return false;
-        }
-
-        // Code appears complete
-        return true;
-    }
-
-    /// Test result from running a test file
-    const TestFileResult = struct {
-        passed: usize,
-        failed: usize,
-        errors: usize,
-    };
-
-    /// Minimal assertion library injected into test files
-    /// Results are stored in _assertResults array and queried by the Zig test runner
-    const assert_library =
-        \\(function(g){
-        \\  class AssertionError extends Error { constructor(m,a,e,o){super(m);this.name='AssertionError';this.actual=a;this.expected=e;this.operator=o;} }
-        \\  function fmt(v){if(v===null)return'null';if(v===undefined)return'undefined';if(typeof v==='string')return JSON.stringify(v);if(typeof v==='object')try{return JSON.stringify(v)}catch(e){return Object.prototype.toString.call(v)}return String(v);}
-        \\  function isPromise(v){return v&&typeof v==='object'&&typeof v.then==='function';}
-        \\  g._pendingAsserts=[];g._assertsPassed=0;g._assertsFailed=0;g._assertTotal=0;g._assertResults=[];
-        \\  function logPass(m){g._assertTotal++;g._assertResults.push({passed:true,name:m});}
-        \\  function logFail(m){g._assertTotal++;g._assertResults.push({passed:false,name:m});}
-        \\  const assert=function(v,m){g._assertTotal++;if(!v){logFail(m||'assert');throw new AssertionError(m||'Expected truthy, got '+fmt(v),v,true,'==');}logPass(m||'assert');return true;};
-        \\  assert.ok=assert;
-        \\  assert.isTrue=function(v,m){if(isPromise(v)){g._pendingAsserts.push(v.then(function(r){if(r!==true){logFail(m||'isTrue');throw new AssertionError(m||'Expected true, got '+fmt(r),r,true,'===true');}g._assertsPassed++;logPass(m||'isTrue');return true;}).catch(function(e){g._assertsFailed++;throw e;}));return true;}if(v!==true){logFail(m||'isTrue');throw new AssertionError(m||'Expected true, got '+fmt(v),v,true,'===true');}logPass(m||'isTrue');return true;};
-        \\  assert.isFalse=function(v,m){if(v!==false){logFail(m||'isFalse');throw new AssertionError(m||'Expected false, got '+fmt(v),v,false,'===false');}logPass(m||'isFalse');return true;};
-        \\  assert.equal=function(a,e,m){if(a!=e){logFail(m||'equal');throw new AssertionError(m||'Expected '+fmt(e)+', got '+fmt(a),a,e,'==');}logPass(m||'equal');return true;};
-        \\  assert.strictEqual=function(a,e,m){if(a!==e){logFail(m||'strictEqual');throw new AssertionError(m||'Expected '+fmt(e)+' (===), got '+fmt(a),a,e,'===');}logPass(m||'strictEqual');return true;};
-        \\  assert.notEqual=function(a,e,m){if(a==e){logFail(m||'notEqual');throw new AssertionError(m||'Expected '+fmt(a)+' to not equal '+fmt(e),a,e,'!=');}logPass(m||'notEqual');return true;};
-        \\  assert.notStrictEqual=function(a,e,m){if(a===e){logFail(m||'notStrictEqual');throw new AssertionError(m||'Expected '+fmt(a)+' to not strictly equal '+fmt(e),a,e,'!==');}logPass(m||'notStrictEqual');return true;};
-        \\  assert.deepEqual=function(a,e,m){if(JSON.stringify(a)!==JSON.stringify(e)){logFail(m||'deepEqual');throw new AssertionError(m||'Deep equal failed',a,e,'deepEqual');}logPass(m||'deepEqual');return true;};
-        \\  assert.throws=function(fn,ee,m){let threw=false,err;try{fn()}catch(e){threw=true;err=e}if(!threw){logFail(m||'throws');throw new AssertionError(m||'Expected function to throw',undefined,ee||'error','throws');}if(ee&&typeof ee==='function'&&!(err instanceof ee)){logFail(m||'throws');throw new AssertionError(m||'Wrong error type',err,ee,'throws');}if(ee instanceof RegExp&&!ee.test(err.message)){logFail(m||'throws');throw new AssertionError(m||'Error message mismatch',err.message,ee,'throws');}logPass(m||'throws');return true;};
-        \\  assert.doesNotThrow=function(fn,m){try{fn()}catch(e){logFail(m||'doesNotThrow');throw new AssertionError(m||'Expected no throw, got: '+e.message,e,undefined,'doesNotThrow')}logPass(m||'doesNotThrow');return true;};
-        \\  assert.isNull=function(v,m){if(v!==null){logFail(m||'isNull');throw new AssertionError(m||'Expected null, got '+fmt(v),v,null,'===null');}logPass(m||'isNull');return true;};
-        \\  assert.isNotNull=function(v,m){if(v===null){logFail(m||'isNotNull');throw new AssertionError(m||'Expected non-null',v,'non-null','!==null');}logPass(m||'isNotNull');return true;};
-        \\  assert.isUndefined=function(v,m){if(v!==undefined){logFail(m||'isUndefined');throw new AssertionError(m||'Expected undefined, got '+fmt(v),v,undefined,'===undefined');}logPass(m||'isUndefined');return true;};
-        \\  assert.isDefined=function(v,m){if(v===undefined){logFail(m||'isDefined');throw new AssertionError(m||'Expected defined value',v,'defined','!==undefined');}logPass(m||'isDefined');return true;};
-        \\  assert.isFunction=function(v,m){if(typeof v!=='function'){logFail(m||'isFunction');throw new AssertionError(m||'Expected function, got '+typeof v,typeof v,'function','typeof');}logPass(m||'isFunction');return true;};
-        \\  assert.isObject=function(v,m){if(typeof v!=='object'||v===null){logFail(m||'isObject');throw new AssertionError(m||'Expected object',typeof v,'object','typeof');}logPass(m||'isObject');return true;};
-        \\  assert.isString=function(v,m){if(typeof v!=='string'){logFail(m||'isString');throw new AssertionError(m||'Expected string, got '+typeof v,typeof v,'string','typeof');}logPass(m||'isString');return true;};
-        \\  assert.isNumber=function(v,m){if(typeof v!=='number'){logFail(m||'isNumber');throw new AssertionError(m||'Expected number, got '+typeof v,typeof v,'number','typeof');}logPass(m||'isNumber');return true;};
-        \\  assert.isBoolean=function(v,m){if(typeof v!=='boolean'){logFail(m||'isBoolean');throw new AssertionError(m||'Expected boolean, got '+typeof v,typeof v,'boolean','typeof');}logPass(m||'isBoolean');return true;};
-        \\  assert.isArray=function(v,m){if(!Array.isArray(v)){logFail(m||'isArray');throw new AssertionError(m||'Expected array, got '+typeof v,typeof v,'array','isArray');}logPass(m||'isArray');return true;};
-        \\  assert.instanceOf=function(v,c,m){if(!(v instanceof c)){logFail(m||'instanceOf');throw new AssertionError(m||'Expected instance of '+c.name,v,c,'instanceof');}logPass(m||'instanceOf');return true;};
-        \\  assert.match=function(v,r,m){if(!r.test(v)){logFail(m||'match');throw new AssertionError(m||'Expected "'+v+'" to match '+r,v,r,'match');}logPass(m||'match');return true;};
-        \\  assert.includes=function(h,n,m){if(!(Array.isArray(h)?h.includes(n):String(h).includes(n))){logFail(m||'includes');throw new AssertionError(m||'Expected to include '+fmt(n),h,n,'includes');}logPass(m||'includes');return true;};
-        \\  assert.greaterThan=function(a,b,m){if(!(a>b)){logFail(m||'greaterThan');throw new AssertionError(m||'Expected '+a+' > '+b,a,b,'>');}logPass(m||'greaterThan');return true;};
-        \\  assert.lessThan=function(a,b,m){if(!(a<b)){logFail(m||'lessThan');throw new AssertionError(m||'Expected '+a+' < '+b,a,b,'<');}logPass(m||'lessThan');return true;};
-        \\  assert.AssertionError=AssertionError;
-        \\  g.assert=assert;g.AssertionError=AssertionError;
-        \\})(globalThis);
-    ;
-
-    /// Run a test file - execute each statement and check if it returns true
-    /// Handles multi-line constructs by accumulating lines until they form complete code
-    pub fn runTestFile(self: *Self, file_path: []const u8) !TestFileResult {
-        const stdout = std.fs.File.stdout();
-
-        // Inject the assertion library before running tests
-        const assert_result = self.eval(assert_library) catch |err| {
-            try print(self.allocator, stdout, "Error loading assert library: {}\n", .{err});
-            return .{ .passed = 0, .failed = 0, .errors = 1 };
-        };
-        self.allocator.free(assert_result);
-
-        // Read the file
-        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
-            try print(self.allocator, stdout, "Error opening {s}: {}\n", .{ file_path, err });
-            return .{ .passed = 0, .failed = 0, .errors = 1 };
-        };
-        defer file.close();
-
-        const content = file.readToEndAlloc(self.allocator, 1024 * 1024) catch |err| {
-            try print(self.allocator, stdout, "Error reading {s}: {}\n", .{ file_path, err });
-            return .{ .passed = 0, .failed = 0, .errors = 1 };
-        };
-        defer self.allocator.free(content);
-
-        var passed: usize = 0;
-        var failed: usize = 0;
-        var errors: usize = 0;
-
-        // Buffer for accumulating multi-line statements
-        var stmt_buffer = std.ArrayListUnmanaged(u8){};
-        defer stmt_buffer.deinit(self.allocator);
-
-        var lines = std.mem.splitScalar(u8, content, '\n');
-        while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
-
-            // Skip empty lines and comments
-            if (trimmed.len == 0) {
-                // Empty line might end a statement
-                if (stmt_buffer.items.len > 0 and self.isCompleteCode(stmt_buffer.items)) {
-                    const result = self.evalStatement(stmt_buffer.items, &passed, &failed, &errors);
-                    _ = result;
-                    stmt_buffer.clearRetainingCapacity();
-                }
-                continue;
-            }
-            if (std.mem.startsWith(u8, trimmed, "//")) continue;
-
-            // Accumulate the line
-            if (stmt_buffer.items.len > 0) {
-                try stmt_buffer.append(self.allocator, '\n');
-            }
-            try stmt_buffer.appendSlice(self.allocator, trimmed);
-
-            // Check if we have complete code
-            if (self.isCompleteCode(stmt_buffer.items)) {
-                const result = self.evalStatement(stmt_buffer.items, &passed, &failed, &errors);
-                _ = result;
-                stmt_buffer.clearRetainingCapacity();
-            }
-        }
-
-        // Handle any remaining code
-        if (stmt_buffer.items.len > 0) {
-            const result = self.evalStatement(stmt_buffer.items, &passed, &failed, &errors);
-            _ = result;
-        }
-
-        // Wait for async assertions to complete by pumping microtasks
-        // This runs any pending promise callbacks
-        var iterations: usize = 0;
-        while (iterations < 100) : (iterations += 1) {
-            // Pump V8 microtasks
-            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-            std.Thread.sleep(10 * std.time.ns_per_ms);
-
-            // Check if all pending asserts are done
-            const check_code = "globalThis._pendingAsserts?globalThis._pendingAsserts.length:0";
-            if (self.eval(check_code)) |check_result| {
-                defer self.allocator.free(check_result);
-                if (std.mem.eql(u8, check_result, "0")) break;
-            } else |_| break;
-        }
-
-        // Get async test counts
-        const passed_code = "globalThis._assertsPassed||0";
-        const failed_code = "globalThis._assertsFailed||0";
-        if (self.eval(passed_code)) |p| {
-            defer self.allocator.free(p);
-            if (std.fmt.parseInt(usize, p, 10)) |n| {
-                passed += n;
-            } else |_| {}
-        } else |_| {}
-        if (self.eval(failed_code)) |f| {
-            defer self.allocator.free(f);
-            if (std.fmt.parseInt(usize, f, 10)) |n| {
-                failed += n;
-            } else |_| {}
-        } else |_| {}
-
-        // Get assertion results from JavaScript and display each one
-        // Format: [{passed: true/false, name: "assertion name"}, ...]
-        const results_code =
-            \\(function() {
-            \\  var r = globalThis._assertResults || [];
-            \\  var out = [];
-            \\  for (var i = 0; i < r.length; i++) {
-            \\    out.push((r[i].passed ? 'P' : 'F') + ':' + (r[i].name || 'unnamed'));
-            \\  }
-            \\  return out.join('\n');
-            \\})()
-        ;
-        if (self.eval(results_code)) |results_str| {
-            defer self.allocator.free(results_str);
-            if (results_str.len > 0) {
-                // Strip surrounding quotes added by formatValueForDisplay
-                // Format is: 'P:name1\nP:name2\n...'
-                var results_content = results_str;
-                if (results_content.len >= 2 and results_content[0] == '\'' and results_content[results_content.len - 1] == '\'') {
-                    results_content = results_content[1 .. results_content.len - 1];
-                }
-                if (results_content.len == 0) {
-                    // No assertions were recorded
-                } else {
-                    var result_lines = std.mem.splitScalar(u8, results_content, '\n');
-                    // Reset counters - we'll count from the results
-                    passed = 0;
-                    failed = 0;
-                    while (result_lines.next()) |result_line| {
-                        if (result_line.len < 2) continue;
-                        const is_pass = result_line[0] == 'P';
-                        const name = if (result_line.len > 2) result_line[2..] else "unnamed";
-                        if (is_pass) {
-                            try print(self.allocator, stdout, "  \x1b[32m✓\x1b[0m {s}\n", .{name});
-                            passed += 1;
-                        } else {
-                            try print(self.allocator, stdout, "  \x1b[31m✗\x1b[0m {s}\n", .{name});
-                            failed += 1;
-                        }
-                    }
-                }
-            }
-        } else |_| {}
-
-        // Print summary for this file
-        const total = passed + failed + errors;
-        try print(self.allocator, stdout, "\n  {d}/{d} passed\n", .{ passed, total });
-
-        return .{ .passed = passed, .failed = failed, .errors = errors };
-    }
-
-    /// Evaluate a statement and update counters
-    fn evalStatement(self: *Self, code: []const u8, passed: *usize, failed: *usize, errors: *usize) bool {
-        // Skip pure declarations (var/let/const without assertions)
-        if (std.mem.startsWith(u8, code, "var ") or
-            std.mem.startsWith(u8, code, "let ") or
-            std.mem.startsWith(u8, code, "const "))
-        {
-            // Execute but don't count as assertion
-            const result = self.eval(code) catch {
-                errors.* += 1;
-                return false;
-            };
-            self.allocator.free(result);
-            return true;
-        }
-
-        // Check if this is an assignment expression (not a declaration)
-        // Assignment expressions like "element.id = 'value'" return the assigned value
-        // and should not be counted as assertions
-        const is_assignment = self.isAssignmentExpression(code);
-
-        // Evaluate the statement
-        const result = self.eval(code) catch {
-            errors.* += 1;
-            return false;
-        };
-        defer self.allocator.free(result);
-
-        // Check if result is "true"
-        if (std.mem.eql(u8, result, "true")) {
-            passed.* += 1;
-            return true;
-        } else if (std.mem.eql(u8, result, "undefined")) {
-            // Statements like function calls that return undefined are not assertions
-            return true;
-        } else if (is_assignment) {
-            // Assignment expressions return their assigned value, not true/undefined
-            // Don't count them as failed assertions
-            return true;
-        } else {
-            failed.* += 1;
-            return false;
-        }
-    }
-
-    /// Check if code is a simple assignment expression (not a declaration or comparison)
-    /// Examples that return true: "element.id = 'value'", "obj.prop = 123"
-    /// Examples that return false: "var x = 1", "x === y", "assert.equal(a, b)"
-    fn isAssignmentExpression(self: *Self, code: []const u8) bool {
-        _ = self;
-
-        // Skip if it's a declaration
-        if (std.mem.startsWith(u8, code, "var ") or
-            std.mem.startsWith(u8, code, "let ") or
-            std.mem.startsWith(u8, code, "const "))
-        {
-            return false;
-        }
-
-        // Skip if it looks like an assertion or function call
-        if (std.mem.startsWith(u8, code, "assert.") or
-            std.mem.startsWith(u8, code, "console."))
-        {
-            return false;
-        }
-
-        // Look for assignment operator (=) that's not part of == or === or != or !==
-        var i: usize = 0;
-        while (i < code.len) : (i += 1) {
-            const c = code[i];
-
-            // Skip string literals
-            if (c == '"' or c == '\'') {
-                const quote = c;
-                i += 1;
-                while (i < code.len and code[i] != quote) : (i += 1) {
-                    if (code[i] == '\\' and i + 1 < code.len) i += 1; // Skip escaped chars
-                }
-                continue;
-            }
-
-            // Check for = that's not == or === or != or !== or <= or >= or =>
-            if (c == '=') {
-                // Check what comes before and after
-                const prev = if (i > 0) code[i - 1] else ' ';
-                const next = if (i + 1 < code.len) code[i + 1] else ' ';
-
-                // Skip if it's ==, ===, !=, !==, <=, >=, =>
-                if (next == '=' or prev == '=' or prev == '!' or prev == '<' or prev == '>' or next == '>') {
-                    continue;
-                }
-
-                // This is an assignment
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// Run the REPL loop
     pub fn run(self: *Self) !void {
         const stdout = std.fs.File.stdout();
 
-        try stdout.writeAll("JavaScript REPL with V8 and WebIDL\n");
+        try stdout.writeAll("JavaScript REPL - Headless Browser\n");
+        try stdout.writeAll("Same environment as WPT tests (window, document, etc.)\n");
         try stdout.writeAll("Type JavaScript code and press Enter\n");
         try stdout.writeAll("Press Tab for completions, Ctrl+D to exit\n\n");
-        syncIfSupported(stdout); // Flush output (ignore errors on pipes)
 
-        // Buffer for accumulating multi-line input
         var multiline_buffer = std.ArrayListUnmanaged(u8){};
         defer multiline_buffer.deinit(self.allocator);
 
         while (true) {
-            // Show appropriate prompt
             if (multiline_buffer.items.len == 0) {
                 try stdout.writeAll(">>> ");
             } else {
                 try stdout.writeAll("... ");
             }
-            syncIfSupported(stdout); // Flush prompt immediately
 
             const line = try self.readLine() orelse break;
             defer self.allocator.free(line);
 
-            // Handle empty lines
             if (line.len == 0) {
-                if (multiline_buffer.items.len == 0) {
-                    continue;
-                }
-                // Empty line in multi-line mode - try to execute what we have
+                if (multiline_buffer.items.len == 0) continue;
             } else {
-                // Append line to buffer
                 if (multiline_buffer.items.len > 0) {
                     try multiline_buffer.append(self.allocator, '\n');
                 }
                 try multiline_buffer.appendSlice(self.allocator, line);
             }
 
-            // Check if code is complete
-            if (!self.isCompleteCode(multiline_buffer.items)) {
-                // Need more input
-                continue;
-            }
+            if (!self.isCompleteCode(multiline_buffer.items)) continue;
 
-            // Code is complete - evaluate it
             const code = try self.allocator.dupe(u8, multiline_buffer.items);
             defer self.allocator.free(code);
 
-            // Clear buffer for next input
             multiline_buffer.clearRetainingCapacity();
 
-            // Skip if empty after trimming
             const trimmed = std.mem.trim(u8, code, &std.ascii.whitespace);
             if (trimmed.len == 0) continue;
 
-            // Add to history
             try self.addHistory(code);
 
-            // Evaluate
             const result = self.eval(code) catch |err| {
                 try print(self.allocator, stdout, "Error: {}\n", .{err});
-                syncIfSupported(stdout); // Flush error output
                 continue;
             };
             defer self.allocator.free(result);
 
             try print(self.allocator, stdout, "{s}\n", .{result});
-            syncIfSupported(stdout); // Flush result output
         }
 
         try stdout.writeAll("\nGoodbye!\n");
-        syncIfSupported(stdout);
     }
 };
 
@@ -1919,50 +679,9 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     var repl = try Repl.init(allocator);
-    // Note: We manage deinit manually below because std.process.exit() doesn't run defers
     errdefer repl.deinit();
 
-    // Check for command-line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    try repl.run();
 
-    var exit_code: u8 = 0;
-
-    if (args.len > 1) {
-        // Run test file(s) instead of interactive mode
-        var total_passed: usize = 0;
-        var total_failed: usize = 0;
-        var total_errors: usize = 0;
-
-        for (args[1..]) |file_path| {
-            const result = try repl.runTestFile(file_path);
-            total_passed += result.passed;
-            total_failed += result.failed;
-            total_errors += result.errors;
-        }
-
-        // Print summary if multiple files
-        if (args.len > 2) {
-            const stdout = std.fs.File.stdout();
-            const summary = try std.fmt.allocPrint(allocator, "\n--- Total: {d} passed, {d} failed, {d} errors ---\n", .{ total_passed, total_failed, total_errors });
-            defer allocator.free(summary);
-            try stdout.writeAll(summary);
-        }
-
-        // Set exit code if any tests failed
-        if (total_failed > 0 or total_errors > 0) {
-            exit_code = 1;
-        }
-    } else {
-        // Interactive mode
-        try repl.run();
-    }
-
-    // Always clean up REPL before exiting
     repl.deinit();
-
-    // Exit with appropriate code
-    if (exit_code != 0) {
-        std.process.exit(exit_code);
-    }
 }

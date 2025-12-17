@@ -2498,7 +2498,58 @@ pub fn build(b: *std.Build) void {
     const interfaces_tool_step = b.step("interfaces-tool", "Run interfaces tool (use -- to pass args)");
     interfaces_tool_step.dependOn(&run_interfaces_tool.step);
 
-    // REPL tool
+    // ========================================================================
+    // WPT BROWSER CONTEXT MODULE (shared between REPL and WPT runner)
+    // ========================================================================
+
+    // WPT config module
+    const wpt_config_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/config.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // WPT test harness module
+    const wpt_test_harness_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/test_harness.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // WPT test parser module
+    const wpt_test_parser_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/test_parser.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "config", .module = wpt_config_mod },
+        },
+    });
+
+    // Browser context module - full headless browser environment
+    const browser_context_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/browser_context.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "config", .module = wpt_config_mod },
+            .{ .name = "test_parser", .module = wpt_test_parser_mod },
+            .{ .name = "test_harness", .module = wpt_test_harness_mod },
+            .{ .name = "v8", .module = v8_mod },
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "namespaces", .module = namespaces_mod },
+            .{ .name = "impls", .module = impls_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "dictionaries", .module = dictionaries_mod },
+            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "html_full", .module = html_mod },
+            .{ .name = "platform", .module = platform_mod },
+            .{ .name = "fetch", .module = fetch_mod },
+        },
+    });
+
+    // REPL tool - uses same browser context as WPT runner for consistency
     const repl_exe = b.addExecutable(.{
         .name = "repl",
         .root_module = b.createModule(.{
@@ -2511,6 +2562,26 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
                 .{ .name = "fetch", .module = fetch_mod },
+                // Platform abstraction for timer backend
+                .{ .name = "platform", .module = platform_mod },
+                // HTML event loop and timer manager (core module without interfaces)
+                .{ .name = "html", .module = html_core_mod },
+                // HTML full module with custom_elements for thread-local cleanup
+                .{ .name = "html_full", .module = html_mod },
+                // DOM module for mutation observer thread-local cleanup
+                .{ .name = "dom", .module = dom_mod },
+                // Infra primitives
+                .{ .name = "infra", .module = infra_mod },
+                // Browser module for headless browser functionality
+                .{ .name = "browser", .module = browser_mod },
+                // Impls module for HTMLParser (needed for HTML parsing)
+                .{ .name = "impls", .module = impls_mod },
+                // WebIDL module for Optional type wrappers
+                .{ .name = "webidl", .module = webidl_mod },
+                // Dictionaries module for Event init dictionaries
+                .{ .name = "dictionaries", .module = dictionaries_mod },
+                // Browser context module - full headless browser environment
+                .{ .name = "browser_context", .module = browser_context_mod },
             },
         }),
     });
