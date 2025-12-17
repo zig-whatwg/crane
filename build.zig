@@ -255,17 +255,17 @@ fn addTestFilesFromDir(
                 },
             });
 
-            test_exe.linkSystemLibrary("v8");
-            test_exe.linkSystemLibrary("v8_libplatform");
-            test_exe.linkSystemLibrary("v8_libbase");
+            // Add custom-built V8 static libraries
+            test_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+            test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+            test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+            test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+
+            // Add libuv
+            test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+            test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
             test_exe.linkSystemLibrary("uv");
             test_exe.linkLibCpp();
-
-            // Add library search paths for Homebrew V8 and libuv
-            test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
-            test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-            test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
-            test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
         }
 
         const run_test = builder.addRunArtifact(test_exe);
@@ -2107,14 +2107,13 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Add V8 include paths
-    full_static_lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
+    full_static_lib.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
 
-    // Link V8 libraries
-    full_static_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
-    full_static_lib.linkSystemLibrary("v8");
-    full_static_lib.linkSystemLibrary("v8_libplatform");
-    full_static_lib.linkSystemLibrary("v8_libbase");
+    // Link V8 libraries (custom-built static libraries)
+    full_static_lib.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     full_static_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2528,14 +2527,13 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Add V8 include paths (Homebrew on macOS)
-    repl_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
+    repl_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
 
-    // Link V8 libraries
-    repl_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
-    repl_exe.linkSystemLibrary("v8");
-    repl_exe.linkSystemLibrary("v8_libplatform");
-    repl_exe.linkSystemLibrary("v8_libbase");
+    // Link V8 libraries (custom-built static libraries)
+    repl_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     repl_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2587,14 +2585,13 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Add V8 include paths (Homebrew on macOS)
-    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
+    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
 
-    // Link V8 libraries
-    snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
-    snapshot_gen_exe.linkSystemLibrary("v8");
-    snapshot_gen_exe.linkSystemLibrary("v8_libplatform");
-    snapshot_gen_exe.linkSystemLibrary("v8_libbase");
+    // Link V8 libraries (custom-built static libraries)
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2667,14 +2664,13 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Add V8 include paths (Homebrew on macOS)
-    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/v8/include" });
+    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
+    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
 
-    // Link V8 libraries
-    wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/v8/lib" });
-    wpt_runner_exe.linkSystemLibrary("v8");
-    wpt_runner_exe.linkSystemLibrary("v8_libplatform");
-    wpt_runner_exe.linkSystemLibrary("v8_libbase");
+    // Link V8 libraries (custom-built static libraries)
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
