@@ -1562,6 +1562,18 @@ pub fn createChildContext(
         global,
     );
 
+    // 4d. Register Window methods as OWN properties on the global object
+    // This is required for cross-realm WPT compliance:
+    // `Object.create(iframe.contentWindow).focus()` must work because
+    // methods should be accessible through the prototype chain.
+    // Per WebIDL §3.8: For [Global] interfaces, the global object should have
+    // the interface's operations as own properties (callable functions).
+    interface_bindings.Window.registerMethodsAsOwnOnObject(
+        options.isolate,
+        child_context,
+        global,
+    );
+
     // 5. Create realm for new context
     // Note: global_object is set to null initially and will be updated below
     // after the Window instance is created
