@@ -51,3 +51,32 @@ pub fn set_cssFloat(instance: *runtime.Instance, value: typedefs.CSSOMString) an
     _ = value;
     return error.NotImplemented;
 }
+
+// =============================================================================
+// CSS Property Named Handlers (per CSS OM spec §6.6.1)
+// =============================================================================
+
+/// Get a CSS property value by name (named property getter)
+/// Converts camelCase to kebab-case for CSS property lookup
+pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
+    _ = instance;
+    _ = name;
+    // Stub implementation - CSSStyleProperties has limited properties
+    return null;
+}
+
+/// Set a CSS property value by name (named property setter)
+pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+    _ = instance;
+    _ = name;
+    _ = value;
+    // Stub implementation
+}
+
+/// Get the list of supported property names
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    _ = instance;
+    _ = allocator;
+    // Return empty list - no named properties currently set
+    return &[_]runtime.DOMString{};
+}

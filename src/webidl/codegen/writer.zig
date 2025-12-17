@@ -1783,6 +1783,7 @@ pub fn writeVTable(
     own_constants: []const types.Constant,
     own_attributes: []const types.Attribute,
     own_operations: []const types.Operation,
+    interface_name: []const u8,
 ) !void {
     const allocator = std.heap.page_allocator;
 
@@ -1952,6 +1953,13 @@ pub fn writeVTable(
                 allocator.free(entry.reference);
             }
         }
+    }
+
+    // Add CSS property named handlers for CSSStyleDeclaration and related interfaces
+    // These enable named property access for CSS properties (style.color, style.backgroundColor)
+    if (isCSSDeclarationInterface(interface_name)) {
+        try writer.writeAll("\n        .call_namedItem = &call_namedItem,\n");
+        try writer.writeAll("        .call_setNamedItem = &call_setNamedItem,\n");
     }
 
     // Add deinit for cleanup when V8 GC collects the wrapper object
@@ -3097,6 +3105,53 @@ pub fn writeNamedPropertySupport(
     try writer.writeAll("    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {\n");
     try writer.print("        return {s}.getSupportedPropertyNames(instance, allocator);\n", .{impl_name});
     try writer.writeAll("    }\n\n");
+}
+
+/// Write CSS property named handlers for CSSStyleDeclaration and CSSStyleProperties
+///
+/// Per CSS OM spec §6.6.1, CSSStyleDeclaration supports named property access for
+/// CSS properties (e.g., style.color, style.backgroundColor). This is NOT defined
+/// in WebIDL but is browser-specific behavior that we need to support.
+///
+/// Generates:
+/// - call_namedItem: Gets CSS property value by name (camelCase or kebab-case)
+/// - call_setNamedItem: Sets CSS property value by name
+/// - getSupportedPropertyNames: Returns list of set property names
+pub fn writeCSSPropertyNamedHandlers(
+    writer: anytype,
+    impl_name: []const u8,
+) !void {
+    // call_namedItem - Named property getter for CSS properties
+    try writer.writeAll("    /// Named property getter for CSS property access\n");
+    try writer.writeAll("    /// Maps style.color, style.backgroundColor to getPropertyValue()\n");
+    try writer.writeAll("    /// Per CSS OM spec §6.6.1\n");
+    try writer.writeAll("    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {\n");
+    try writer.print("        return {s}.call_namedItem(instance, name);\n", .{impl_name});
+    try writer.writeAll("    }\n\n");
+
+    // call_setNamedItem - Named property setter for CSS properties
+    try writer.writeAll("    /// Named property setter for CSS property access\n");
+    try writer.writeAll("    /// Maps style.color = \"red\" to setProperty()\n");
+    try writer.writeAll("    /// Per CSS OM spec §6.6.1\n");
+    try writer.writeAll("    pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {\n");
+    try writer.print("        return {s}.call_setNamedItem(instance, name, value);\n", .{impl_name});
+    try writer.writeAll("    }\n\n");
+
+    // getSupportedPropertyNames - For enumeration
+    try writer.writeAll("    /// Get supported property names for CSS property enumeration\n");
+    try writer.writeAll("    /// Returns CSS property names that have been set on this declaration\n");
+    try writer.writeAll("    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {\n");
+    try writer.print("        return {s}.getSupportedPropertyNames(instance, allocator);\n", .{impl_name});
+    try writer.writeAll("    }\n\n");
+}
+
+/// Check if an interface should have CSS property named handlers
+/// These interfaces need special handling for CSS property access (style.color, etc.)
+pub fn isCSSDeclarationInterface(name: []const u8) bool {
+    return std.mem.eql(u8, name, "CSSStyleDeclaration") or
+        std.mem.eql(u8, name, "CSSStyleProperties") or
+        std.mem.eql(u8, name, "CSSPageDescriptors") or
+        std.mem.eql(u8, name, "CSSMarginDescriptors");
 }
 
 /// Check if an interface has a named property getter operation

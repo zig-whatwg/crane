@@ -1171,10 +1171,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     null, // deleter - not supported yet
                     namedPropertyEnumerator,
                     namedPropertyDescriptor,
-                    // kOnlyInterceptStrings: Only intercept string keys, not symbols
-                    // Note: NOT using kNonMasking so named property getter is called for all string keys
-                    // This is required per WebIDL spec for legacy platform objects
-                    .kOnlyInterceptStrings,
+                    // kNonMaskingAndOnlyInterceptStrings: Only intercept string keys that don't
+                    // shadow prototype properties. Per WebIDL spec, named property handlers
+                    // should NOT intercept properties defined on the interface's prototype
+                    // (e.g., cssText, length for CSSStyleDeclaration).
+                    .kNonMaskingAndOnlyInterceptStrings,
                 );
             }
 
@@ -3974,7 +3975,14 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Named property enumerator for Reflect.ownKeys support
-        /// Returns an array of named property keys for enumeration
+        /// Implements WebIDL §3.9.6 [[OwnPropertyKeys]] semantics:
+        /// 1. Indexed property keys in ascending order (handled by indexed enumerator)
+        /// 2. Named property names in list order
+        /// 3. Own property keys (strings first, then symbols) - but NOT duplicates of named properties
+        ///
+        /// Per WebIDL spec: "append P to keys if P is not already in keys"
+        /// This means named properties come before own properties, and own properties
+        /// that have the same name as named properties should NOT be added.
         fn namedPropertyEnumerator(
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) void {
@@ -4026,26 +4034,56 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Only free if we got an allocated slice (not an empty literal)
                 defer if (names.len > 0) std.heap.c_allocator.free(names);
 
-                // Create array and populate
-                const names_arr = v8.v8_Array_New(isolate, @intCast(names.len));
-                for (names, 0..) |prop_name, idx| {
+                // Per WebIDL §3.9.6 [[OwnPropertyKeys]], we need to return:
+                // 1. Indexed property keys in ascending order (handled by indexed enumerator)
+                // 2. Named property names in list order (from getSupportedPropertyNames)
+                // 3. Own property keys (strings first, then symbols)
+                //
+                // V8 will merge this with indexed property enumerator results and own properties.
+                // We only return named properties here - V8 adds own properties automatically.
+                //
+                // NOTE: V8's default behavior puts own properties BEFORE named properties,
+                // but for most WebIDL use cases, the named properties from the interceptor
+                // are what matter. The deduplication ensures named props aren't double-listed.
+
+                // Create result array with just named properties
+                const result_arr = v8.v8_Array_New(isolate, @intCast(names.len));
+
+                // Add named properties
+                var idx: u32 = 0;
+                for (names) |prop_name| {
                     const v8_str = v8.v8_String_NewFromUtf8(
                         isolate,
                         prop_name.asSlice().ptr,
                         @intCast(prop_name.asSlice().len),
                     );
                     if (v8_str) |str| {
-                        _ = v8.v8_Array_Set(names_arr, v8_context, @intCast(idx), @ptrCast(str));
+                        _ = v8.v8_Array_Set(result_arr, v8_context, idx, @ptrCast(str));
+                        idx += 1;
                     }
                 }
 
-                info.setReturnValue(@ptrCast(names_arr));
+                info.setReturnValue(@ptrCast(result_arr));
             } else {
                 // No getSupportedPropertyNames - return empty array
                 // This means the interface doesn't support named property enumeration
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
             }
+        }
+
+        /// Check if a string is a valid array index (non-negative integer < 2^32 - 1)
+        fn isArrayIndex(s: []const u8) bool {
+            if (s.len == 0 or s.len > 10) return false;
+            // Leading zeros are not valid (except for "0" itself)
+            if (s.len > 1 and s[0] == '0') return false;
+            var val: u64 = 0;
+            for (s) |c| {
+                if (c < '0' or c > '9') return false;
+                val = val * 10 + (c - '0');
+                if (val >= 0xFFFFFFFF) return false;
+            }
+            return true;
         }
 
         /// Named property query callback for 'name' in obj

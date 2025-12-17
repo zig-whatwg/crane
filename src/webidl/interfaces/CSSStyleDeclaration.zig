@@ -98,6 +98,9 @@ pub const CSSStyleDeclaration = struct {
         .call_removeProperty = &call_removeProperty,
         .call_setProperty = &call_setProperty,
 
+        .call_namedItem = &call_namedItem,
+        .call_setNamedItem = &call_setNamedItem,
+
         .deinit = &deinit,
     };
     pub const vtable = runtime.buildVTable(&delegates);
@@ -183,6 +186,26 @@ pub const CSSStyleDeclaration = struct {
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!CSSOMString {
         
         return try CSSStyleDeclarationImpl.call_item(instance, index);
+    }
+
+    /// Named property getter for CSS property access
+    /// Maps style.color, style.backgroundColor to getPropertyValue()
+    /// Per CSS OM spec §6.6.1
+    pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
+        return CSSStyleDeclarationImpl.call_namedItem(instance, name);
+    }
+
+    /// Named property setter for CSS property access
+    /// Maps style.color = "red" to setProperty()
+    /// Per CSS OM spec §6.6.1
+    pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+        return CSSStyleDeclarationImpl.call_setNamedItem(instance, name, value);
+    }
+
+    /// Get supported property names for CSS property enumeration
+    /// Returns CSS property names that have been set on this declaration
+    pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+        return CSSStyleDeclarationImpl.getSupportedPropertyNames(instance, allocator);
     }
 
 };

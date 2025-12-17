@@ -1435,7 +1435,7 @@ fn generateInterfaceFile(
     }
 
     // Generate VTable (with ONLY own attributes/operations, not inherited)
-    try writer.writeVTable(w, all_constants.items, own_constants.items, own_attrs.items, own_ops.items);
+    try writer.writeVTable(w, all_constants.items, own_constants.items, own_attrs.items, own_ops.items, interface.name);
 
     // Generate lifecycle functions
     try writer.writeLifecycleFunctions(w, impl_name);
@@ -1468,6 +1468,12 @@ fn generateInterfaceFile(
     // This enables proper enumeration for legacy platform objects like NamedNodeMap
     if (writer.hasNamedPropertyGetter(own_ops.items)) {
         try writer.writeNamedPropertySupport(w, impl_name);
+    }
+
+    // Generate CSS property named handlers for CSSStyleDeclaration and related interfaces
+    // Per CSS OM spec §6.6.1, these support named property access for CSS properties
+    if (writer.isCSSDeclarationInterface(interface.name)) {
+        try writer.writeCSSPropertyNamedHandlers(w, impl_name);
     }
 
     // Close struct
