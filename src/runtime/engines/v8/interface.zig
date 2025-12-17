@@ -1327,6 +1327,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
 
+                    // Get function's creation context for cross-realm error throwing
+                    // Per WebIDL spec: "Throw a TypeError using the function's realm."
+                    const caller_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
+                        conv.throwError(isolate_inner, "No current context");
+                        return;
+                    };
+                    const getter_context = info.getFunctionCreationContext() orelse caller_context;
+
                     // Check return type
                     const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
                     const ReturnType = fn_info.return_type.?;
@@ -1501,21 +1509,15 @@ pub fn V8Interface(comptime Interface: type) type {
                                 }
                             }
 
-                            // Throw TypeError from method's realm
-                            const holder = info.getHolder();
-                            if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
-                                conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
-                            } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
-                                conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
-                            } else {
-                                conv.throwTypeError(isolate_inner, "Illegal invocation");
-                            }
+                            // Throw TypeError from getter's realm (function's creation context)
+                            // Per WebIDL spec: "Throw a TypeError using the function's realm."
+                            conv.throwTypeErrorFromContext(isolate_inner, getter_context, "Illegal invocation");
                             return;
                         };
 
                         // Shouldn't happen - we either have a valid instance or returned above
                         if (resolved_instance == null) {
-                            conv.throwTypeError(isolate_inner, "Illegal invocation");
+                            conv.throwTypeErrorFromContext(isolate_inner, getter_context, "Illegal invocation");
                             return;
                         }
 
@@ -1881,15 +1883,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                 }
                             }
                         }
-                        // Throw TypeError from method's realm
-                        const holder = info.getHolder();
-                        if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
-                            conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                        } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
-                            conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                        } else {
-                            conv.throwTypeError(isolate, "Illegal invocation");
-                        }
+                        // Throw TypeError from method's realm (function's creation context)
+                        // Per WebIDL spec: "Throw a TypeError using the function's realm."
+                        // method_context is already the function's creation context from line 1783
+                        conv.throwTypeErrorFromContext(isolate, method_context, "Illegal invocation");
                         return;
                     };
 
@@ -2505,11 +2502,21 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
-            // Get V8 context
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
+            // Get V8 contexts:
+            // - current_context: The caller's context (for argument parsing)
+            // - constructor_context: The constructor's creation context (for object realm)
+            //
+            // Per WebIDL §3.7.2 [[Construct]]: "Let realm be the value of F's [[Realm]] internal slot"
+            // Objects created by constructors belong to the constructor's realm, not the caller's realm.
+            const current_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 conv.throwError(isolate, "No current V8 context");
                 return;
             };
+
+            // Get the constructor's creation context (the realm where the constructor was defined)
+            // This is critical for cross-realm construction: `new child.DOMParser()` should
+            // create an object in the child's realm, even when called from the parent.
+            const constructor_context = info.getFunctionCreationContext() orelse current_context;
 
             // Get or create isolate allocator (uses page_allocator as fallback)
             const isolate_alloc = @import("isolate_allocator.zig");
@@ -2518,10 +2525,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
 
-            // Get or create runtime context from context manager
-            // Pass isolate to ensure timer/event loop interfaces are available
+            // Get or create runtime context from the CONSTRUCTOR'S context (not caller's)
+            // This ensures the realm in ctx matches the constructor's realm
             const ctx_mgr = @import("context_manager.zig");
-            const ctx = ctx_mgr.getOrCreateWithIsolate(v8_context, isolate, allocator) catch {
+            const ctx = ctx_mgr.getOrCreateWithIsolate(constructor_context, isolate, allocator) catch {
                 conv.throwError(isolate, "Failed to get runtime context");
                 return;
             };
@@ -2539,10 +2546,13 @@ pub fn V8Interface(comptime Interface: type) type {
             // V8 already creates 'this' with the correct prototype when NewTarget.prototype
             // is valid, but falls back to Object.prototype when it's invalid.
             // We need to detect this and fix it.
-            handleNewTargetPrototypeFallback(info, this_obj, isolate, v8_context, interface_name);
+            // Note: Use current_context here since NewTarget comes from the caller's realm
+            handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, interface_name);
 
             // Call the interface's constructor with arguments parsed at comptime
-            const instance = callConstructorWithArgs(info, allocator, ctx, v8_context, isolate) catch |err| {
+            // Note: Arguments are parsed from current_context (caller's values), but
+            // the runtime ctx uses constructor_context (constructor's realm)
+            const instance = callConstructorWithArgs(info, allocator, ctx, current_context, isolate) catch |err| {
                 // Throw appropriate error type based on error name
                 // Use throwWebIDLError which properly creates DOMException for WebIDL errors
                 conv.throwWebIDLError(isolate, @errorName(err));
@@ -2577,19 +2587,20 @@ pub fn V8Interface(comptime Interface: type) type {
             // POST-CONSTRUCTOR HOOKS: Interface-specific initialization
             // ========================================
             // For ReadableStream: invoke pending start callback now that V8 wrappers exist
+            // Use constructor_context since callbacks should execute in the object's realm
             if (comptime std.mem.eql(u8, interface_name, "ReadableStream")) {
-                invokeReadableStreamStartCallback(instance, this_obj, isolate, v8_context, allocator);
+                invokeReadableStreamStartCallback(instance, this_obj, isolate, constructor_context, allocator);
             }
 
             // For WritableStream: invoke pending start callback now that V8 wrappers exist
             if (comptime std.mem.eql(u8, interface_name, "WritableStream")) {
-                invokeWritableStreamStartCallback(instance, this_obj, isolate, v8_context, allocator);
+                invokeWritableStreamStartCallback(instance, this_obj, isolate, constructor_context, allocator);
             }
 
             // For DOMException: add stack property per WebIDL spec
             // If the implementation has a stack property on normal errors, DOMException must too
             if (comptime std.mem.eql(u8, interface_name, "DOMException")) {
-                captureDOMExceptionStack(this_obj, isolate, v8_context);
+                captureDOMExceptionStack(this_obj, isolate, constructor_context);
             }
 
             // Return 'this' (V8 does this automatically for constructors)
@@ -5269,6 +5280,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
+                    // Get function's creation context for cross-realm error throwing
+                    // Per WebIDL spec: "Throw a TypeError using the function's realm."
+                    const setter_context = info.getFunctionCreationContext() orelse context;
+
                     // Get the new value from info[0]
                     // Note: info.get() always returns a valid pointer in V8
                     const new_value_v8 = info.get(0);
@@ -5391,20 +5406,14 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                         }
 
-                        // Throw TypeError from method's realm
-                        const holder = info.getHolder();
-                        if (v8.v8_Object_GetPrototypeCreationContext(holder)) |creation_ctx| {
-                            conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
-                        } else if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
-                            conv.throwTypeErrorFromContext(isolate_inner, creation_ctx, "Illegal invocation");
-                        } else {
-                            conv.throwTypeError(isolate_inner, "Illegal invocation");
-                        }
+                        // Throw TypeError from setter's realm (function's creation context)
+                        // Per WebIDL spec: "Throw a TypeError using the function's realm."
+                        conv.throwTypeErrorFromContext(isolate_inner, setter_context, "Illegal invocation");
                         return;
                     };
 
                     if (resolved_instance == null) {
-                        conv.throwTypeError(isolate_inner, "Illegal invocation");
+                        conv.throwTypeErrorFromContext(isolate_inner, setter_context, "Illegal invocation");
                         return;
                     }
 

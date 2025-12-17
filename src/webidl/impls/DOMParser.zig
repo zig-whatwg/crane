@@ -129,7 +129,11 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
 
     // Get the DOMParser's relevant global object's document URL
     // Per spec: "URL is this's relevant global object's associated Document's URL"
-    const realm_url = blk: {
+    // Track whether we allocated the URL so we can free it later
+    var allocated_url: ?[]const u8 = null;
+    defer if (allocated_url) |url| internal.allocator.free(url);
+
+    const realm_url: []const u8 = blk: {
         // Get the realm from the context (instance.ctx is already ContextData pointer)
         const realm = instance.ctx.realm orelse break :blk "about:blank";
 
@@ -141,8 +145,9 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
         const Window = interfaces.Window;
         const doc = Window.get_document(window_instance) catch break :blk "about:blank";
 
-        // Get the document's URL (returns []const u8 directly)
+        // Get the document's URL (returns allocated []const u8)
         const url = interfaces.Document.get_URL(doc) catch break :blk "about:blank";
+        allocated_url = url; // Track for cleanup
         break :blk url;
     };
 
