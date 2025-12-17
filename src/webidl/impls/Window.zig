@@ -1956,11 +1956,22 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     return error.NotImplemented;
 }
 
-/// Setter for status
+/// Setter for status - Set the status bar text
+/// Per HTML Standard, this is deprecated but must be implemented for spec compliance.
+/// Note: In modern browsers, this has no visible effect (the status bar is hidden),
+/// but the value must still be stored and retrievable via the getter.
 pub fn set_status(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free existing status if allocated
+    if (internal.status.len > 0) {
+        internal.allocator.free(internal.status);
+    }
+
+    // Store the new status value
+    // Duplicate the string since DOMString may be temporary
+    const str_slice = value.asSlice();
+    internal.status = try internal.allocator.dupe(u8, str_slice);
 }
 
 /// Setter for opener
