@@ -72,12 +72,53 @@ const Repl = struct {
     }
 
     /// Execute JavaScript code and return result
+    /// Supports top-level await by wrapping code in an async IIFE
     pub fn eval(self: *Self, code: []const u8) ![]const u8 {
         const isolate = self.getIsolate();
         const context = self.getContext();
 
+        // Check if code contains 'await' - if so, wrap in async IIFE
+        const needs_async_wrap = std.mem.indexOf(u8, code, "await") != null;
+
+        var wrapped_code: []u8 = undefined;
+        var source_to_use: []const u8 = undefined;
+
+        if (needs_async_wrap) {
+            // Wrap in async IIFE: (async () => { ... })()
+            // Use implicit return for expression statements
+            const trimmed = std.mem.trim(u8, code, &std.ascii.whitespace);
+
+            // Check if it's a simple expression (no semicolon at end, or assignment)
+            // For expressions, we want to return the value
+            const is_expression = !std.mem.endsWith(u8, trimmed, ";") or
+                std.mem.indexOf(u8, trimmed, "=") != null;
+
+            if (is_expression and !std.mem.startsWith(u8, trimmed, "let ") and
+                !std.mem.startsWith(u8, trimmed, "const ") and
+                !std.mem.startsWith(u8, trimmed, "var ") and
+                !std.mem.startsWith(u8, trimmed, "function ") and
+                !std.mem.startsWith(u8, trimmed, "class ") and
+                !std.mem.startsWith(u8, trimmed, "if ") and
+                !std.mem.startsWith(u8, trimmed, "for ") and
+                !std.mem.startsWith(u8, trimmed, "while ") and
+                !std.mem.startsWith(u8, trimmed, "switch ") and
+                !std.mem.startsWith(u8, trimmed, "try ") and
+                !std.mem.startsWith(u8, trimmed, "{"))
+            {
+                // Expression - wrap with return
+                wrapped_code = try std.fmt.allocPrint(self.allocator, "(async () => {{ return {s}; }})()", .{code});
+            } else {
+                // Statement(s) - wrap without return
+                wrapped_code = try std.fmt.allocPrint(self.allocator, "(async () => {{ {s} }})()", .{code});
+            }
+            source_to_use = wrapped_code;
+        } else {
+            source_to_use = code;
+        }
+        defer if (needs_async_wrap) self.allocator.free(wrapped_code);
+
         // Create V8 string from code
-        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, code.ptr, @intCast(code.len)) orelse return error.StringCreateFailed;
+        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source_to_use.ptr, @intCast(source_to_use.len)) orelse return error.StringCreateFailed;
 
         // Compile script
         const script = v8.ffi.v8_Script_Compile(context, source_str) orelse {
@@ -96,7 +137,7 @@ const Repl = struct {
         };
 
         // Run script
-        const result = v8.ffi.v8_Script_Run(context, script) orelse {
+        var result = v8.ffi.v8_Script_Run(context, script) orelse {
             // Get exception message
             const exception = v8.ffi.v8_TryCatch_Exception(context);
             if (exception) |exc| {
@@ -113,6 +154,48 @@ const Repl = struct {
 
         // Run microtasks to process any pending promises
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+        // If the result is a Promise (from async IIFE), wait for it to resolve
+        if (v8.ffi.v8_Value_IsPromise(result)) {
+            const promise: *v8.ffi.Promise = @ptrCast(result);
+
+            // Poll the event loop until promise settles
+            var iterations: u32 = 0;
+            const max_iterations: u32 = 10000; // Prevent infinite loops
+
+            while (v8.ffi.v8_Promise_State(promise) == 0 and iterations < max_iterations) : (iterations += 1) {
+                // Run microtasks
+                v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+                // Small delay to prevent busy-waiting
+                if (iterations > 100) {
+                    std.Thread.sleep(1_000_000); // 1ms
+                }
+            }
+
+            const state = v8.ffi.v8_Promise_State(promise);
+            if (state == 1) {
+                // Fulfilled - get the resolved value
+                if (v8.ffi.v8_Promise_Result(promise)) |resolved| {
+                    result = resolved;
+                }
+            } else if (state == 2) {
+                // Rejected - get the rejection reason
+                if (v8.ffi.v8_Promise_Result(promise)) |rejected| {
+                    const exc_str = v8.ffi.v8_Value_ToString(rejected, context);
+                    if (exc_str) |str| {
+                        const len = v8.ffi.v8_String_Utf8Length(str);
+                        const buffer = try self.allocator.alloc(u8, @intCast(len));
+                        _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
+                        return buffer;
+                    }
+                }
+                return try self.allocator.dupe(u8, "Promise rejected");
+            } else {
+                // Still pending after max iterations
+                return try self.allocator.dupe(u8, "Promise { <pending> } (timeout)");
+            }
+        }
 
         // Format the result for display
         return self.formatValueForDisplay(result);

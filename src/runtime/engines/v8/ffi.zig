@@ -1314,6 +1314,14 @@ pub extern fn v8_Promise_Catch(
 /// Dispose a Promise
 pub extern fn v8_Promise_Dispose(promise: *Promise) void;
 
+/// Get the state of a Promise
+/// Returns: 0 = Pending, 1 = Fulfilled, 2 = Rejected
+pub extern fn v8_Promise_State(promise: *Promise) c_int;
+
+/// Get the result of a settled Promise (fulfilled value or rejection reason)
+/// Returns null if the promise is still pending
+pub extern fn v8_Promise_Result(promise: *Promise) ?*Value;
+
 /// Dispose a PromiseResolver
 pub extern fn v8_PromiseResolver_Dispose(resolver: *PromiseResolver) void;
 

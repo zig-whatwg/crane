@@ -3928,6 +3928,33 @@ void v8_Promise_Dispose(Global<Promise>* promise) {
     }
 }
 
+/// Get the state of a Promise
+/// Returns: 0 = Pending, 1 = Fulfilled, 2 = Rejected
+int v8_Promise_State(Global<Promise>* promise) {
+    if (!promise) return 0;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Promise> prom = promise->Get(isolate);
+    return static_cast<int>(prom->State());
+}
+
+/// Get the result of a settled Promise (fulfilled value or rejection reason)
+/// Returns nullptr if the promise is still pending
+Global<Value>* v8_Promise_Result(Global<Promise>* promise) {
+    if (!promise) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Promise> prom = promise->Get(isolate);
+    
+    // Only get result if promise is settled (not pending)
+    if (prom->State() == Promise::kPending) {
+        return nullptr;
+    }
+    
+    Local<Value> result = prom->Result();
+    return trackHandle(new Global<Value>(isolate, result));
+}
+
 /// Dispose a PromiseResolver
 void v8_PromiseResolver_Dispose(Global<Promise::Resolver>* resolver) {
     if (resolver) {
