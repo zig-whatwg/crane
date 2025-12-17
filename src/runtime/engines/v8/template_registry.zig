@@ -501,6 +501,11 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "EventTarget";
     }
 
+    // Web Storage types
+    if (inst_vtable == &interfaces.Storage.vtable) {
+        return "Storage";
+    }
+
     // IndexedDB types
     if (inst_vtable == &interfaces.IDBKeyRange.vtable) {
         return "IDBKeyRange";

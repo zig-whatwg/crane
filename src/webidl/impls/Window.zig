@@ -243,6 +243,11 @@ pub const InternalState = struct {
             self.allocator.free(self.name);
         }
 
+        // Free origin if allocated (not the default "null" string literal)
+        if (!std.mem.eql(u8, self.origin, "null")) {
+            self.allocator.free(self.origin);
+        }
+
         // Free status if allocated
         if (self.status.len > 0) {
             self.allocator.free(self.status);
@@ -255,6 +260,19 @@ const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
+}
+
+/// Set the Window's origin for storage access.
+/// This should be called when the document's origin is established.
+pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    // Copy the origin string since it may be from temporary storage
+    const origin_copy = try internal.allocator.dupe(u8, origin);
+    // Free the old origin if it was allocated (not the default "null")
+    if (!std.mem.eql(u8, internal.origin, "null")) {
+        internal.allocator.free(internal.origin);
+    }
+    internal.origin = origin_copy;
 }
 
 /// Initialize Window instance

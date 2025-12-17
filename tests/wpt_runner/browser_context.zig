@@ -1824,6 +1824,21 @@ pub const BrowserContext = struct {
         // Update location object with the document's URL
         try self.setTestUrl(base_url);
 
+        // Set the Window's origin from the base URL for storage access
+        // This is needed for sessionStorage/localStorage to work properly
+        if (self.window_instance) |win| {
+            if (std.mem.startsWith(u8, base_url, "http://") or std.mem.startsWith(u8, base_url, "https://")) {
+                // Extract origin from URL (scheme://host:port)
+                const scheme_end = std.mem.indexOf(u8, base_url, "://") orelse base_url.len;
+                const after_scheme = base_url[scheme_end + 3 ..];
+                const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
+                const origin = base_url[0 .. scheme_end + 3 + path_start];
+                impls.Window.setOrigin(win, origin) catch |err| {
+                    std.debug.print("Warning: Failed to set Window origin: {}\n", .{err});
+                };
+            }
+        }
+
         // Use HTMLParser from impls module
         const HTMLParser = impls.HTMLParser;
 

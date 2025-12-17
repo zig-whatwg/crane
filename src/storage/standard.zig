@@ -694,13 +694,12 @@ pub fn obtainStorageBottleMap(
     }
 
     // Get the appropriate shed
-    var shed: *StorageShed = undefined;
-    if (storage_type == .local) {
-        shed = try initGlobalStorageShed(allocator);
-    } else {
-        // Session storage requires traversable navigable (not implemented yet)
-        return null;
-    }
+    // Note: For session storage, we use the same global shed infrastructure
+    // but with a different key that includes the browsing context.
+    // The caller (getSessionStorage in web_storage.zig) already creates
+    // a session_key that includes the browsing_context_id.
+    _ = storage_type; // Both local and session use the same shed infrastructure
+    const shed = try initGlobalStorageShed(allocator);
 
     // Obtain shelf
     const shelf = try shed.obtainShelf(key);
@@ -708,11 +707,19 @@ pub fn obtainStorageBottleMap(
     // Get default bucket
     const bucket = shelf.getDefaultBucket() orelse return null;
 
-    // Get bottle for this endpoint
-    const bottle = bucket.getBottle(identifier) orelse return null;
+    // Get bottle for this endpoint, creating it if needed
+    // Session storage bottles are created on-demand since they're scoped per browsing context
+    var bottle = bucket.getBottle(identifier);
+    if (bottle == null) {
+        // Create the bottle on-demand
+        const endpoint = getEndpoint(identifier);
+        const new_bottle = StorageBottle.init(allocator, endpoint.quota);
+        bucket.bottle_map.put(identifier, new_bottle) catch return null;
+        bottle = bucket.bottle_map.getPtr(identifier);
+    }
 
     // Create and return proxy map
-    return bottle.createProxyMap();
+    return if (bottle) |b| b.createProxyMap() else null;
 }
 
 /// Obtain a local storage bottle map
