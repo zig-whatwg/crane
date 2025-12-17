@@ -109,8 +109,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 ///
 /// The parseFromString(string, type) method steps are:
 ///
-/// 1. Let document be a new Document, whose content type is type and url is
-///    "about:blank".
+/// 1. Let document be a new Document, whose content type is type and URL is
+///    this's relevant global object's associated Document's URL.
 ///
 /// 2. Switch on type:
 ///    - "text/html"
@@ -127,6 +127,25 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const html_string = string.asSlice();
 
+    // Get the DOMParser's relevant global object's document URL
+    // Per spec: "URL is this's relevant global object's associated Document's URL"
+    const realm_url = blk: {
+        // Get the realm from the context (instance.ctx is already ContextData pointer)
+        const realm = instance.ctx.realm orelse break :blk "about:blank";
+
+        // Get the global object (Window) from the realm - cast from *anyopaque
+        const window_ptr = realm.global_object orelse break :blk "about:blank";
+        const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+
+        // Get the Window's document
+        const Window = interfaces.Window;
+        const doc = Window.get_document(window_instance) catch break :blk "about:blank";
+
+        // Get the document's URL (returns []const u8 directly)
+        const url = interfaces.Document.get_URL(doc) catch break :blk "about:blank";
+        break :blk url;
+    };
+
     return switch (@"type") {
         ._text_html_ => {
             // Parse as HTML
@@ -142,6 +161,9 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
 
             // Set content type to "text/html"
             try document_internals.setContentType(document, "text/html");
+
+            // Set the document's URL to the DOMParser's realm's document URL
+            try document_internals.setURL(document, realm_url);
 
             return document;
         },

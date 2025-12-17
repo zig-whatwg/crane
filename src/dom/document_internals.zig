@@ -68,6 +68,23 @@ pub fn getContentType(instance: *runtime.Instance) ?[]const u8 {
     return internal.content_type.asSlice();
 }
 
+/// Set the document's URL.
+/// Per spec, this is set during document creation based on the relevant settings object.
+pub fn setURL(instance: *runtime.Instance, url: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Free existing URL if allocated
+    if (internal.url.len > 0) {
+        internal.allocator.free(internal.url);
+    }
+    internal.url = try internal.allocator.dupe(u8, url);
+}
+
+/// Get the document's URL.
+pub fn getURL(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.url;
+}
+
 /// Copy origin from another document
 pub fn copyOrigin(instance: *runtime.Instance, source: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;

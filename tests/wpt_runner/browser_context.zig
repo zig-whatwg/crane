@@ -331,6 +331,14 @@ pub const BrowserContext = struct {
             break :blk null;
         };
 
+        // Set the realm's global_object for cross-realm support
+        // This enables DOMParser.parseFromString to inherit the document URL from its realm
+        if (self.window_instance) |win| {
+            if (win.ctx.realm) |realm| {
+                realm.global_object = win;
+            }
+        }
+
         // Register Window properties as own properties on the global object.
         // This is required for WebIDL compliance: window.length, window.name, etc.
         // must be accessible as own properties via Object.getOwnPropertyDescriptor.
@@ -1444,6 +1452,14 @@ pub const BrowserContext = struct {
         if (self.location_instance) |loc| {
             impls.Location.setURLFromString(loc, effective_url) catch |err| {
                 std.debug.print("Warning: Failed to update location URL: {}\n", .{err});
+            };
+        }
+
+        // Also update the Document's URL for cross-realm support
+        // This ensures DOMParser.parseFromString inherits the correct URL
+        if (self.document_instance) |doc| {
+            dom.document_internals.setURL(doc, effective_url) catch |err| {
+                std.debug.print("Warning: Failed to update document URL: {}\n", .{err});
             };
         }
 
