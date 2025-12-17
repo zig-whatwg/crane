@@ -1531,36 +1531,32 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // - For regular attributes: throw TypeError if `this` is not a valid instance
                                 // - For [LegacyLenientThis]: return undefined if `this` is not a valid instance
 
-                                // Use HasInstance to properly check if this_obj is an instance of our interface
-                                if (template_cache) |tpl| {
-                                    const has_instance = v8.v8_FunctionTemplate_HasInstance(tpl, this_obj);
-                                    if (!has_instance) {
-                                        // Not an instance of this interface
-                                        if (is_lenient_this) {
-                                            // [LegacyLenientThis] - return undefined per WebIDL §4.3.10
-                                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                                info.setReturnValue(undef);
-                                            }
-                                            return;
-                                        }
-                                        // Regular attribute - fall through to throw TypeError
-                                    } else {
-                                        // Is an instance - get the internal field pointer
-                                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                                        if (instance_ptr != null) {
-                                            break :blk instance_ptr;
-                                        }
-                                        // HasInstance passed but no internal field - shouldn't happen for valid instances
-                                        // Fall through to throw TypeError (or return undefined for LegacyLenientThis)
-                                        if (is_lenient_this) {
-                                            if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                                info.setReturnValue(undef);
-                                            }
-                                            return;
-                                        }
+                                // CROSS-REALM SUPPORT: Use internal slot checking instead of HasInstance.
+                                // HasInstance uses prototype chain which fails across realms because
+                                // different realms have different prototype objects even for same interface.
+                                // Internal slot (WrapperTypeInfo in slot 1) works across realms because
+                                // it's tied to the Zig type system, not the JavaScript prototype chain.
+                                //
+                                // Per WebIDL spec, type checking should be done via internal slots:
+                                // "If the this value is null or undefined, or is not a platform object
+                                // that implements the interface, then throw a TypeError"
+                                const dom_type_info_mod = @import("dom_type_info.zig");
+                                if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                                    if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
+                                        break :blk @ptrCast(inst);
                                     }
+                                    // Type check failed - not an instance of this interface
+                                    if (is_lenient_this) {
+                                        // [LegacyLenientThis] - return undefined per WebIDL §4.3.10
+                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                            info.setReturnValue(undef);
+                                        }
+                                        return;
+                                    }
+                                    // Regular attribute - fall through to throw TypeError
                                 } else {
-                                    // Template not cached yet - fall back to simpler check
+                                    // Type info not registered - fall back to legacy getInstance check
+                                    // This path is only used for interfaces not yet in dom_type_info.zig
                                     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
                                     if (instance_ptr != null) {
                                         break :blk instance_ptr;
@@ -5428,36 +5424,32 @@ pub fn V8Interface(comptime Interface: type) type {
                             // - For regular attributes: throw TypeError if `this` is not a valid instance
                             // - For [LegacyLenientThis]: silently return if `this` is not a valid instance
 
-                            // Use HasInstance to properly check if this_obj is an instance of our interface
-                            if (template_cache) |tpl| {
-                                const has_instance = v8.v8_FunctionTemplate_HasInstance(tpl, this_obj);
-                                if (!has_instance) {
-                                    // Not an instance of this interface
-                                    if (is_lenient_this) {
-                                        // [LegacyLenientThis] - silently return per WebIDL §4.3.10
-                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                            info.setReturnValue(undef);
-                                        }
-                                        return;
-                                    }
-                                    // Regular attribute - fall through to throw TypeError
-                                } else {
-                                    // Is an instance - get the internal field pointer
-                                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                                    if (instance_ptr != null) {
-                                        break :blk instance_ptr;
-                                    }
-                                    // HasInstance passed but no internal field - shouldn't happen for valid instances
-                                    // Fall through to throw TypeError (or silently return for LegacyLenientThis)
-                                    if (is_lenient_this) {
-                                        if (v8.v8_Undefined(isolate_inner)) |undef| {
-                                            info.setReturnValue(undef);
-                                        }
-                                        return;
-                                    }
+                            // CROSS-REALM SUPPORT: Use internal slot checking instead of HasInstance.
+                            // HasInstance uses prototype chain which fails across realms because
+                            // different realms have different prototype objects even for same interface.
+                            // Internal slot (WrapperTypeInfo in slot 1) works across realms because
+                            // it's tied to the Zig type system, not the JavaScript prototype chain.
+                            //
+                            // Per WebIDL spec, type checking should be done via internal slots:
+                            // "If the this value is null or undefined, or is not a platform object
+                            // that implements the interface, then throw a TypeError"
+                            const dom_type_info_mod = @import("dom_type_info.zig");
+                            if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                                if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
+                                    break :blk @ptrCast(inst);
                                 }
+                                // Type check failed - not an instance of this interface
+                                if (is_lenient_this) {
+                                    // [LegacyLenientThis] - silently return per WebIDL §4.3.10
+                                    if (v8.v8_Undefined(isolate_inner)) |undef| {
+                                        info.setReturnValue(undef);
+                                    }
+                                    return;
+                                }
+                                // Regular attribute - fall through to throw TypeError
                             } else {
-                                // Template not cached yet - fall back to simpler check
+                                // Type info not registered - fall back to legacy getInstance check
+                                // This path is only used for interfaces not yet in dom_type_info.zig
                                 const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
                                 if (instance_ptr != null) {
                                     break :blk instance_ptr;

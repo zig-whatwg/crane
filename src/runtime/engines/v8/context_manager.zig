@@ -1111,23 +1111,13 @@ fn createWindowForExistingBrowsingContext(
     defer v8.v8_Context_Exit(child_context);
 
     // 4. Initialize all interface bindings
+    // NOTE: initializeBindings() calls window_properties.insertIntoPrototypeChain() which sets up:
+    //   global → WindowProperties → Window.prototype → EventTarget.prototype
+    // We must NOT overwrite this by setting global.__proto__ = Window.prototype directly.
     interface_bindings.initializeBindings(isolate, child_context);
 
-    // 4b. Set global object's prototype to Window.prototype
+    // 4b. Register Window properties as own properties on the global
     const global = v8.v8_Context_Global(child_context) orelse return null;
-    const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
-    if (window_key) |wk| {
-        if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
-            const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
-            if (proto_key) |pk| {
-                if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
-                    _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
-                }
-            }
-        }
-    }
-
-    // 4c. Register Window properties as own properties on the global
     interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, child_context, global);
 
     // 5. Create realm
@@ -1528,27 +1518,12 @@ pub fn createChildContext(
     interface_bindings.initializeBindings(options.isolate, child_context);
 
     // 4b. Set global object's prototype to Window.prototype
-    // This is required for cross-realm support: when JavaScript accesses
-    // `iframe.contentWindow.name`, it needs to find the `name` getter from
-    // Window.prototype in the prototype chain.
+    // NOTE: The prototype chain (global → WindowProperties → Window.prototype → EventTarget.prototype)
+    // is already set up by initializeBindings() via window_properties.insertIntoPrototypeChain().
+    // We must NOT overwrite it here by setting global.__proto__ = Window.prototype directly.
+    // Per WebIDL §3.8.1, the named properties object (WindowProperties) must be between
+    // the global and the interface prototype object (Window.prototype).
     const global = v8.v8_Context_Global(child_context) orelse return error.GlobalNotFound;
-
-    // Get Window constructor from the global scope
-    const window_key = v8.v8_String_NewFromUtf8(options.isolate, "Window", 6);
-    if (window_key) |wk| {
-        if (v8.v8_Object_Get(global, child_context, @ptrCast(wk))) |window_ctor| {
-            // Get Window.prototype
-            const proto_key = v8.v8_String_NewFromUtf8(options.isolate, "prototype", 9);
-            if (proto_key) |pk| {
-                if (v8.v8_Object_Get(@ptrCast(window_ctor), child_context, @ptrCast(pk))) |window_proto| {
-                    // Set the global object's prototype to Window.prototype
-                    // This makes Window properties (like `name`) accessible on the global
-                    // Use SetPrototypeV2 which works properly with global objects
-                    _ = v8.v8_Object_SetPrototypeV2(global, child_context, window_proto);
-                }
-            }
-        }
-    }
 
     // 4c. Register Window properties as OWN properties on the global object
     // This is required for cross-realm WPT compliance:

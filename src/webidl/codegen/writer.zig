@@ -3835,7 +3835,7 @@ test "writeVTable generates vtable constant" {
     const ops: []const types.Operation = &.{};
     const all_consts: []const types.Constant = &.{};
     const own_consts: []const types.Constant = &.{};
-    try writeVTable(writer.any(), all_consts, own_consts, attrs, ops);
+    try writeVTable(writer.any(), all_consts, own_consts, attrs, ops, "TestInterface");
 
     const output = buffer.items;
     try testing.expect(std.mem.indexOf(u8, output, "const delegates = .{") != null);

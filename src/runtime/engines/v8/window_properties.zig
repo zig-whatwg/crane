@@ -1,9 +1,9 @@
 //! WindowProperties Exotic Object
 //!
-//! Per WebIDL §3.7.4, the WindowProperties object is a special "named properties object"
-//! inserted into the prototype chain:
+//! Per WebIDL §3.8.1, the WindowProperties object is a special "named properties object"
+//! inserted into the prototype chain for [Global] interfaces:
 //!
-//! Window instance → Window.prototype → WindowProperties → EventTarget.prototype → Object.prototype
+//! global → WindowProperties → Window.prototype → EventTarget.prototype → Object.prototype
 //!
 //! This object has special exotic behavior:
 //! - [[SetPrototypeOf]]: Always returns false for any value except current prototype
@@ -331,10 +331,20 @@ pub fn create(
 
 /// Insert WindowProperties into the prototype chain for a global Window
 ///
-/// This modifies the prototype chain from:
-///   Window.prototype → EventTarget.prototype
-/// to:
-///   Window.prototype → WindowProperties → EventTarget.prototype
+/// Per WebIDL §3.8.1, for interfaces with [Global] extended attribute, the
+/// prototype chain must be:
+///   global → WindowProperties → Window.prototype → EventTarget.prototype → Object.prototype
+///
+/// This function modifies the prototype chain by:
+/// 1. Creating the WindowProperties exotic object
+/// 2. Setting WindowProperties.__proto__ = Window.prototype
+/// 3. This is called BEFORE the global's prototype is set to Window.prototype
+///    (the caller must then set global.__proto__ = WindowProperties)
+///
+/// NOTE: This function is designed to be called from initializeBindings() which
+/// sets up Window.prototype → EventTarget.prototype. The caller (createChildContext
+/// or browser_context) must then set the global's prototype to WindowProperties
+/// (not Window.prototype directly) to complete the chain.
 ///
 /// Arguments:
 /// - isolate: V8 isolate
@@ -355,80 +365,59 @@ pub fn insertIntoPrototypeChain(
     // Get Window.prototype
     const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return false;
     const window_proto_val = v8.v8_Object_Get(window_ctor, context, @ptrCast(proto_key)) orelse return false;
-    _ = window_proto_val; // Unused in JS approach
+    _ = window_proto_val;
 
-    // Since Window doesn't use FunctionTemplate_Inherit anymore, Window.prototype.__proto__
-    // starts as Object.prototype. We need to get EventTarget.prototype from the global scope.
-    const et_key = v8.v8_String_NewFromUtf8(isolate, "EventTarget", 11) orelse return false;
-    const et_ctor_val = v8.v8_Object_Get(global, context, @ptrCast(et_key)) orelse return false;
-    const et_ctor: *v8.Object = @ptrCast(et_ctor_val);
-
-    const et_proto_val = v8.v8_Object_Get(et_ctor, context, @ptrCast(proto_key)) orelse return false;
-    const event_target_proto: *v8.Object = @ptrCast(et_proto_val);
-
-    // Create WindowProperties with EventTarget.prototype as its [[Prototype]]
-    const window_properties = create(isolate, context, event_target_proto) orelse return false;
+    // Create WindowProperties (EventTarget.prototype arg is unused now - set via JS)
+    // Note: The argument is kept for API compatibility but ignored
+    const window_properties = create(isolate, context, @ptrCast(v8.v8_Null(isolate).?)) orelse return false;
 
     // Store WindowProperties on a temporary global property so JS can access it
     const temp_key = v8.v8_String_NewFromUtf8(isolate, "__windowProperties__", 20) orelse return false;
     if (!v8.v8_Object_Set(global, context, @ptrCast(temp_key), @ptrCast(window_properties))) {
-        std.debug.print("insertIntoPrototypeChain: failed to store WindowProperties on global\n", .{});
         return false;
     }
 
-    // Use JavaScript to set the prototype chain
-    // This works because JS has full access to modify prototypes, even when
-    // the V8 C++ API SetPrototypeV2 fails (possibly due to internal template state)
+    // Use JavaScript to set the prototype chain correctly:
+    // WindowProperties.__proto__ = Window.prototype
+    // global.__proto__ = WindowProperties
     //
-    // IMPORTANT: We set WindowProperties.__proto__ = EventTarget.prototype FIRST
-    // because WindowProperties was created with immutable proto set on its template.
-    // This first setPrototypeOf on WindowProperties succeeds because V8's immutable proto
-    // allows changing from the template's default (Object.prototype) exactly once.
-    // After this, WindowProperties' prototype is locked to EventTarget.prototype.
+    // Per WebIDL §3.8.1, the named properties object's [[Prototype]] must be
+    // the interface prototype object (Window.prototype). Then the global's
+    // [[Prototype]] must be the named properties object (WindowProperties).
+    //
+    // This creates: global → WindowProperties → Window.prototype → EventTarget.prototype
     const js_code =
         \\(function() {
         \\  const wp = globalThis.__windowProperties__;
         \\  if (!wp) return false;
-        \\  // Set WindowProperties' prototype to EventTarget.prototype
-        \\  Object.setPrototypeOf(wp, EventTarget.prototype);
-        \\  // Insert WindowProperties into Window's prototype chain
-        \\  Object.setPrototypeOf(Window.prototype, wp);
+        \\  // Step 1: Set WindowProperties' prototype to Window.prototype
+        \\  // Per WebIDL §3.8.1: "The [[Prototype]] internal property of a named
+        \\  // properties object for an interface must be the interface prototype object"
+        \\  Object.setPrototypeOf(wp, Window.prototype);
+        \\  // Step 2: Set global's prototype to WindowProperties
+        \\  // Per WebIDL §3.8.1: For [Global] interfaces, the global's prototype
+        \\  // must be the named properties object
+        \\  Object.setPrototypeOf(globalThis, wp);
         \\  delete globalThis.__windowProperties__;
         \\  return true;
         \\})()
     ;
 
     const source = v8.v8_String_NewFromUtf8(isolate, js_code.ptr, js_code.len) orelse {
-        std.debug.print("insertIntoPrototypeChain: failed to create JS source string\n", .{});
         return false;
     };
 
     const script = v8.v8_Script_Compile(context, source) orelse {
-        std.debug.print("insertIntoPrototypeChain: failed to compile JS\n", .{});
         return false;
     };
 
     const result_val = v8.v8_Script_Run(context, script) orelse {
-        std.debug.print("insertIntoPrototypeChain: JS execution failed\n", .{});
         return false;
     };
 
     if (!v8.v8_Value_BooleanValue(result_val, isolate)) {
         return false;
     }
-
-    // Note: Window.prototype immutability per WebIDL §3.7.1 cannot be fully enforced
-    // because V8 only exposes ObjectTemplate::SetImmutableProto() for templates, not
-    // Object::SetImmutableProto() for existing objects. Since we must insert WindowProperties
-    // into Window.prototype's chain AFTER the prototype object is created (to avoid chicken-
-    // and-egg issues), Window.prototype cannot have immutable [[Prototype]].
-    //
-    // This is a known V8 API limitation. The global object (window/self) and all other
-    // prototype chain objects (WindowProperties, EventTarget.prototype, Object.prototype)
-    // have immutable prototypes via their ObjectTemplates. Only Window.prototype is mutable.
-    //
-    // WPT test affected: webidl/ecmascript-binding/global-immutable-prototype.any.js
-    // Test: "Setting to a different prototype" partially fails due to Window.prototype
 
     return true;
 }
