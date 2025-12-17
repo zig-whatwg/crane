@@ -279,6 +279,26 @@ pub fn wrapInstanceAsV8Object(
         @ptrCast(instance),
     );
 
+    // ========================================
+    // LEGACY PLATFORM OBJECT PROXY WRAPPING
+    // ========================================
+    // For legacy platform objects, wrap in a Proxy to ensure correct
+    // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
+    // V8's default order is: own → intercepted, but WebIDL requires: indexed → named → own
+    //
+    // NOTE: Proxy wrapping is currently DISABLED because V8 Proxies don't properly
+    // forward property interceptor access, breaking methods like .length on HTMLCollection.
+    // The correct fix requires either:
+    // 1. A full Proxy implementation with get/set/has traps that forward to interceptors
+    // 2. Or V8 C++ changes to override [[OwnPropertyKeys]] directly
+    //
+    // TODO(whatwg-i9pew): Re-enable when proper Proxy forwarding is implemented
+    // if (isLegacyPlatformObject(interface_name)) {
+    //     const lpo_proxy = @import("legacy_platform_object_proxy.zig");
+    //     v8_object = lpo_proxy.wrapInProxy(v8_object, isolate, context);
+    // }
+    _ = isLegacyPlatformObject; // suppress unused warning
+
     // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
     if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(
@@ -669,6 +689,63 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
+}
+
+// ============================================================================
+// Legacy Platform Object Detection
+// ============================================================================
+
+/// Known legacy platform object interfaces that have indexed or named property access.
+/// These require Proxy wrapping to ensure correct [[OwnPropertyKeys]] enumeration order.
+const legacy_platform_objects = [_][]const u8{
+    // DOM Collections with indexed/named access
+    "NodeList",
+    "HTMLCollection",
+    "NamedNodeMap",
+    "DOMTokenList",
+    "DOMStringList",
+    "DOMRectList",
+    "StyleSheetList",
+    "CSSRuleList",
+    "CSSStyleDeclaration",
+    "MediaList",
+    // Form-related collections
+    "HTMLFormControlsCollection",
+    "HTMLOptionsCollection",
+    "RadioNodeList",
+    // Table-related collections
+    "HTMLTableRowsCollection",
+    "HTMLTableCellsCollection",
+    "HTMLTableSectionElement", // has rows collection
+    // File API
+    "FileList",
+    // Storage
+    "Storage",
+    // Plugin-related (legacy)
+    "Plugin",
+    "PluginArray",
+    "MimeType",
+    "MimeTypeArray",
+    // Touch events
+    "TouchList",
+    // Data transfer
+    "DataTransferItemList",
+    // Selection
+    "Selection",
+    // NOTE: Window is NOT included here because it's the global object
+    // and wrapping it in a Proxy breaks method invocation semantics.
+    // Window's OwnPropertyKeys order needs special handling in V8 C++.
+};
+
+/// Check if an interface name represents a legacy platform object.
+/// Legacy platform objects need Proxy wrapping for correct OwnPropertyKeys behavior.
+fn isLegacyPlatformObject(interface_name: []const u8) bool {
+    for (legacy_platform_objects) |lpo_name| {
+        if (std.mem.eql(u8, interface_name, lpo_name)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ============================================================================
