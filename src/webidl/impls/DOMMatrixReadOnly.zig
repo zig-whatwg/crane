@@ -315,7 +315,7 @@ pub fn call_skewX(instance: *runtime.Instance, sx: webidl.Opt(f64)) anyerror!*ru
 }
 
 /// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMMatrixReadOnly.DOMMatrixReadOnlyToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMMatrixReadOnly.DOMMatrixReadOnlyToJSON {
     const state = instance.getState(State);
     return .{
         .a = state.own.a,

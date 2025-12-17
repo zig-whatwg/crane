@@ -64,14 +64,14 @@ pub fn get_transform(instance: *runtime.Instance) anyerror!?typedefs.RTCRtpTrans
 }
 
 /// Setter for jitterBufferTarget
-pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: typedefs.DOMHighResTimeStamp) anyerror!void {
+pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: ?typedefs.DOMHighResTimeStamp) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for transform
-pub fn set_transform(instance: *runtime.Instance, value: typedefs.RTCRtpTransform) anyerror!void {
+pub fn set_transform(instance: *runtime.Instance, value: ?typedefs.RTCRtpTransform) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

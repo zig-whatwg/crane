@@ -76,7 +76,7 @@ pub fn get_columnNumber(instance: *runtime.Instance) anyerror!?u32 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!DeprecationReportBody.DeprecationReportBodyToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DeprecationReportBody.DeprecationReportBodyToJSON {
     _ = instance;
     return error.NotImplemented;
 }

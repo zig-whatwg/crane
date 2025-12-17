@@ -1535,7 +1535,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_body(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

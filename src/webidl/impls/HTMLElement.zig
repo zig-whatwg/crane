@@ -1190,7 +1190,7 @@ pub fn set_dir(instance: *runtime.Instance, value: runtime.DOMString) anyerror!v
 
 /// Setter for hidden
 /// Complex type: can be boolean, null, or "until-found"
-pub fn set_hidden(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     // Simplified: treat as boolean
     // The value pointer being non-null means hidden is set
     // In full implementation, would check if it's "until-found" string
@@ -1268,12 +1268,16 @@ pub fn set_outerText(instance: *runtime.Instance, value: runtime.DOMString) anye
 }
 
 /// Setter for popover
-pub fn set_popover(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const s = value.asSlice();
-    if (s.len == 0) {
-        removeContentAttribute(instance, "popover");
+pub fn set_popover(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
+    if (value) |v| {
+        const s = v.asSlice();
+        if (s.len == 0) {
+            removeContentAttribute(instance, "popover");
+        } else {
+            try setContentAttribute(instance, "popover", v);
+        }
     } else {
-        try setContentAttribute(instance, "popover", value);
+        removeContentAttribute(instance, "popover");
     }
 }
 
@@ -1294,7 +1298,7 @@ pub fn set_headingReset(instance: *runtime.Instance, value: bool) anyerror!void 
 }
 
 /// Setter for editContext
-pub fn set_editContext(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_editContext(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     // EditContext is not yet widely implemented
     _ = instance;
     _ = value;

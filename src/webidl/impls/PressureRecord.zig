@@ -58,7 +58,7 @@ pub fn get_time(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeSta
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PressureRecord.PressureRecordToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PressureRecord.PressureRecordToJSON {
     _ = instance;
     return error.NotImplemented;
 }

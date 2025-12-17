@@ -70,7 +70,7 @@ pub fn get_columnNumber(instance: *runtime.Instance) anyerror!?u32 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!InterventionReportBody.InterventionReportBodyToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.InterventionReportBody.InterventionReportBodyToJSON {
     _ = instance;
     return error.NotImplemented;
 }

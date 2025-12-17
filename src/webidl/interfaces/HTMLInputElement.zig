@@ -670,7 +670,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.get_files(instance);
     }
 
-    pub fn set_files(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_files(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try HTMLInputElementImpl.set_files(instance, value);
     }
 
@@ -998,7 +998,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.get_valueAsDate(instance);
     }
 
-    pub fn set_valueAsDate(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_valueAsDate(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         try HTMLInputElementImpl.set_valueAsDate(instance, value);
     }
 
@@ -1044,7 +1044,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.get_selectionStart(instance);
     }
 
-    pub fn set_selectionStart(instance: *runtime.Instance, value: u32) anyerror!void {
+    pub fn set_selectionStart(instance: *runtime.Instance, value: ?u32) anyerror!void {
         try HTMLInputElementImpl.set_selectionStart(instance, value);
     }
 
@@ -1052,7 +1052,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.get_selectionEnd(instance);
     }
 
-    pub fn set_selectionEnd(instance: *runtime.Instance, value: u32) anyerror!void {
+    pub fn set_selectionEnd(instance: *runtime.Instance, value: ?u32) anyerror!void {
         try HTMLInputElementImpl.set_selectionEnd(instance, value);
     }
 
@@ -1060,7 +1060,7 @@ pub const HTMLInputElement = struct {
         return try HTMLInputElementImpl.get_selectionDirection(instance);
     }
 
-    pub fn set_selectionDirection(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_selectionDirection(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         try HTMLInputElementImpl.set_selectionDirection(instance, value);
     }
 
@@ -1124,7 +1124,7 @@ pub const HTMLInputElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

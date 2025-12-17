@@ -372,7 +372,7 @@ pub const HTMLButtonElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_commandForElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_commandForElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -532,7 +532,7 @@ pub const HTMLButtonElement = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

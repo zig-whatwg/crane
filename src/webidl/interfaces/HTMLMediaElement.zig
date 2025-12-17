@@ -537,7 +537,7 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.get_srcObject(instance);
     }
 
-    pub fn set_srcObject(instance: *runtime.Instance, value: MediaProvider) anyerror!void {
+    pub fn set_srcObject(instance: *runtime.Instance, value: ?MediaProvider) anyerror!void {
         try HTMLMediaElementImpl.set_srcObject(instance, value);
     }
 
@@ -551,7 +551,7 @@ pub const HTMLMediaElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_crossOrigin(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

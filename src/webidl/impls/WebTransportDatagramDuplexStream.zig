@@ -77,14 +77,14 @@ pub fn get_outgoingHighWaterMark(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Setter for incomingMaxAge
-pub fn set_incomingMaxAge(instance: *runtime.Instance, value: f64) anyerror!void {
+pub fn set_incomingMaxAge(instance: *runtime.Instance, value: ?f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for outgoingMaxAge
-pub fn set_outgoingMaxAge(instance: *runtime.Instance, value: f64) anyerror!void {
+pub fn set_outgoingMaxAge(instance: *runtime.Instance, value: ?f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

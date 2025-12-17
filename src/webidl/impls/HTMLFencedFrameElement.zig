@@ -87,7 +87,7 @@ pub fn get_allow(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Setter for config
-pub fn set_config(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_config(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

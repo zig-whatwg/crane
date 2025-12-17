@@ -122,7 +122,7 @@ pub const WebTransportSendStream = struct {
         return try WebTransportSendStreamImpl.get_sendGroup(instance);
     }
 
-    pub fn set_sendGroup(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_sendGroup(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try WebTransportSendStreamImpl.set_sendGroup(instance, value);
     }
 

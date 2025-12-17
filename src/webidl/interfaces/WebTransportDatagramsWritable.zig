@@ -114,7 +114,7 @@ pub const WebTransportDatagramsWritable = struct {
         return try WebTransportDatagramsWritableImpl.get_sendGroup(instance);
     }
 
-    pub fn set_sendGroup(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_sendGroup(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try WebTransportDatagramsWritableImpl.set_sendGroup(instance, value);
     }
 

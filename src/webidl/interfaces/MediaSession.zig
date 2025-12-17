@@ -122,7 +122,7 @@ pub const MediaSession = struct {
         return try MediaSessionImpl.get_metadata(instance);
     }
 
-    pub fn set_metadata(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_metadata(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try MediaSessionImpl.set_metadata(instance, value);
     }
 

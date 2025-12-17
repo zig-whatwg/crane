@@ -137,7 +137,7 @@ pub const WaveShaperNode = struct {
         return try WaveShaperNodeImpl.get_curve(instance);
     }
 
-    pub fn set_curve(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_curve(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         try WaveShaperNodeImpl.set_curve(instance, value);
     }
 

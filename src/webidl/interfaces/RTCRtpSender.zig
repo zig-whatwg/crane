@@ -152,7 +152,7 @@ pub const RTCRtpSender = struct {
         return try RTCRtpSenderImpl.get_transform(instance);
     }
 
-    pub fn set_transform(instance: *runtime.Instance, value: RTCRtpTransform) anyerror!void {
+    pub fn set_transform(instance: *runtime.Instance, value: ?RTCRtpTransform) anyerror!void {
         try RTCRtpSenderImpl.set_transform(instance, value);
     }
 

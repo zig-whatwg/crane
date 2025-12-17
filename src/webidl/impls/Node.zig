@@ -640,7 +640,7 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 
 /// Setter for nodeValue
 /// https://dom.spec.whatwg.org/#dom-node-nodevalue
-pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -654,8 +654,8 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) anye
             if (internal.node_value) |*old| {
                 old.deinit(internal.allocator);
             }
-            // Clone and store new value
-            internal.node_value = try value.clone(internal.allocator);
+            // Clone and store new value (null becomes null)
+            internal.node_value = if (value) |v| try v.clone(internal.allocator) else null;
         },
         // For Element, Document, etc: do nothing
         else => {},
@@ -664,7 +664,7 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: runtime.DOMString) anye
 
 /// Setter for textContent
 /// https://dom.spec.whatwg.org/#dom-node-textcontent
-pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     switch (internal.node_type) {
@@ -681,7 +681,8 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) an
             if (internal.node_value) |*old| {
                 old.deinit(internal.allocator);
             }
-            internal.node_value = try value.clone(internal.allocator);
+            // Clone and store new value (null becomes null)
+            internal.node_value = if (value) |v| try v.clone(internal.allocator) else null;
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
             // Remove all children using NodeBase
@@ -697,12 +698,12 @@ pub fn set_textContent(instance: *runtime.Instance, value: runtime.DOMString) an
             }
 
             // If value is not empty, create and append a Text node
-            const slice = value.asSlice();
+            const slice = if (value) |v| v.asSlice() else "";
             if (slice.len > 0) {
                 // Create Text node with the value (use interface per Golden Rule #13)
                 const text_node = try interfaces.Text.call_constructor(
                     instance.ctx,
-                    webidl.Opt(runtime.DOMString).passed(value),
+                    webidl.Opt(runtime.DOMString).passed(value.?),
                 );
                 errdefer interfaces.Text.deinit(text_node);
 

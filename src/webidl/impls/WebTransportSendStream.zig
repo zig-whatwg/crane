@@ -52,7 +52,7 @@ pub fn get_sendOrder(instance: *runtime.Instance) anyerror!i64 {
 }
 
 /// Setter for sendGroup
-pub fn set_sendGroup(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_sendGroup(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

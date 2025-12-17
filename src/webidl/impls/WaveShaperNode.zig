@@ -67,7 +67,7 @@ pub fn get_oversample(instance: *runtime.Instance) anyerror!enums.OverSampleType
 }
 
 /// Setter for curve
-pub fn set_curve(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_curve(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

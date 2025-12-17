@@ -115,7 +115,7 @@ pub fn get_text(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Setter for region
-pub fn set_region(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_region(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

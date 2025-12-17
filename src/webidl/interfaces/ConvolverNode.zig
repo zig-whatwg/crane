@@ -137,7 +137,7 @@ pub const ConvolverNode = struct {
         return try ConvolverNodeImpl.get_buffer(instance);
     }
 
-    pub fn set_buffer(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_buffer(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try ConvolverNodeImpl.set_buffer(instance, value);
     }
 

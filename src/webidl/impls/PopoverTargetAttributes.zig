@@ -52,7 +52,7 @@ pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!runtime.DOM
 }
 
 /// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

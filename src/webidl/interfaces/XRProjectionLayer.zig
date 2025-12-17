@@ -150,7 +150,7 @@ pub const XRProjectionLayer = struct {
         return try XRProjectionLayerImpl.get_fixedFoveation(instance);
     }
 
-    pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) anyerror!void {
+    pub fn set_fixedFoveation(instance: *runtime.Instance, value: ?f32) anyerror!void {
         try XRProjectionLayerImpl.set_fixedFoveation(instance, value);
     }
 
@@ -158,7 +158,7 @@ pub const XRProjectionLayer = struct {
         return try XRProjectionLayerImpl.get_deltaPose(instance);
     }
 
-    pub fn set_deltaPose(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_deltaPose(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try XRProjectionLayerImpl.set_deltaPose(instance, value);
     }
 

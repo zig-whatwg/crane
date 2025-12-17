@@ -127,14 +127,14 @@ pub fn get_supportsReliableOnly(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Setter for anticipatedConcurrentIncomingUnidirectionalStreams
-pub fn set_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance, value: u16) anyerror!void {
+pub fn set_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance, value: ?u16) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for anticipatedConcurrentIncomingBidirectionalStreams
-pub fn set_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance, value: u16) anyerror!void {
+pub fn set_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance, value: ?u16) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

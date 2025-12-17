@@ -1650,9 +1650,16 @@ fn getAriaAttribute(instance: *runtime.Instance, aria_name: []const u8) runtime.
 }
 
 /// Set an ARIA attribute value
-fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: runtime.DOMString) ImplError!void {
+fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: ?runtime.DOMString) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try setAttributeInternal(internal, null, null, aria_name, value.asSlice());
+    // Per WebIDL spec: null/undefined converts to null for nullable DOMString
+    // which should remove the attribute
+    if (value) |v| {
+        try setAttributeInternal(internal, null, null, aria_name, v.asSlice());
+    } else {
+        // Setting to null removes the attribute
+        _ = internal.removeAttribute(null, aria_name);
+    }
 }
 
 /// Get an element by ID from the owner document (for ARIA element reference attributes)
@@ -2002,7 +2009,7 @@ pub fn set_scrollLeft(instance: *runtime.Instance, value: f64) anyerror!void {
 
 /// Setter for role
 /// ARIAMixin - Sets the role attribute
-pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_role(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "role", value);
 }
 
@@ -2014,7 +2021,7 @@ pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 /// aria-activedescendant to the target element's ID.
 /// Note: No-op - full implementation requires getting target element's ID
 /// and setting aria-activedescendant attribute.
-pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to get value's ID and set aria-activedescendant
@@ -2023,61 +2030,61 @@ pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runt
 
 /// Setter for ariaAtomic
 /// ARIAMixin - Sets the aria-atomic attribute
-pub fn set_ariaAtomic(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaAtomic(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-atomic", value);
 }
 
 /// Setter for ariaAutoComplete
 /// ARIAMixin - Sets the aria-autocomplete attribute
-pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-autocomplete", value);
 }
 
 /// Setter for ariaBrailleLabel
 /// ARIAMixin - Sets the aria-braillelabel attribute
-pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-braillelabel", value);
 }
 
 /// Setter for ariaBrailleRoleDescription
 /// ARIAMixin - Sets the aria-brailleroledescription attribute
-pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-brailleroledescription", value);
 }
 
 /// Setter for ariaBusy
 /// ARIAMixin - Sets the aria-busy attribute
-pub fn set_ariaBusy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaBusy(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-busy", value);
 }
 
 /// Setter for ariaChecked
 /// ARIAMixin - Sets the aria-checked attribute
-pub fn set_ariaChecked(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaChecked(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-checked", value);
 }
 
 /// Setter for ariaColCount
 /// ARIAMixin - Sets the aria-colcount attribute
-pub fn set_ariaColCount(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colcount", value);
 }
 
 /// Setter for ariaColIndex
 /// ARIAMixin - Sets the aria-colindex attribute
-pub fn set_ariaColIndex(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colindex", value);
 }
 
 /// Setter for ariaColIndexText
 /// ARIAMixin - Sets the aria-colindextext attribute
-pub fn set_ariaColIndexText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colindextext", value);
 }
 
 /// Setter for ariaColSpan
 /// ARIAMixin - Sets the aria-colspan attribute
-pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-colspan", value);
 }
 
@@ -2088,7 +2095,7 @@ pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) an
 /// Sets the elements that this element controls. This should set
 /// aria-controls to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaControlsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-controls
@@ -2096,7 +2103,7 @@ pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSVa
 
 /// Setter for ariaCurrent
 /// ARIAMixin - Sets the aria-current attribute
-pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaCurrent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-current", value);
 }
 
@@ -2107,7 +2114,7 @@ pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) an
 /// Sets the elements that describe this element. This should set
 /// aria-describedby to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-describedby
@@ -2115,7 +2122,7 @@ pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.J
 
 /// Setter for ariaDescription
 /// ARIAMixin - Sets the aria-description attribute
-pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-description", value);
 }
 
@@ -2126,7 +2133,7 @@ pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString
 /// Sets the elements that provide details for this element. This should set
 /// aria-details to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-details
@@ -2134,7 +2141,7 @@ pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSVal
 
 /// Setter for ariaDisabled
 /// ARIAMixin - Sets the aria-disabled attribute
-pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaDisabled(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-disabled", value);
 }
 
@@ -2145,7 +2152,7 @@ pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) a
 /// Sets the elements that contain error messages for this element. This should set
 /// aria-errormessage to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-errormessage
@@ -2153,7 +2160,7 @@ pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.
 
 /// Setter for ariaExpanded
 /// ARIAMixin - Sets the aria-expanded attribute
-pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaExpanded(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-expanded", value);
 }
 
@@ -2164,7 +2171,7 @@ pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) a
 /// Sets the elements that are the next in reading order. This should set
 /// aria-flowto to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-flowto
@@ -2172,31 +2179,31 @@ pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValu
 
 /// Setter for ariaHasPopup
 /// ARIAMixin - Sets the aria-haspopup attribute
-pub fn set_ariaHasPopup(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaHasPopup(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-haspopup", value);
 }
 
 /// Setter for ariaHidden
 /// ARIAMixin - Sets the aria-hidden attribute
-pub fn set_ariaHidden(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaHidden(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-hidden", value);
 }
 
 /// Setter for ariaInvalid
 /// ARIAMixin - Sets the aria-invalid attribute
-pub fn set_ariaInvalid(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaInvalid(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-invalid", value);
 }
 
 /// Setter for ariaKeyShortcuts
 /// ARIAMixin - Sets the aria-keyshortcuts attribute
-pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-keyshortcuts", value);
 }
 
 /// Setter for ariaLabel
 /// ARIAMixin - Sets the aria-label attribute
-pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-label", value);
 }
 
@@ -2207,7 +2214,7 @@ pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) anye
 /// Sets the elements that label this element. This should set
 /// aria-labelledby to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-labelledby
@@ -2215,37 +2222,37 @@ pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JS
 
 /// Setter for ariaLevel
 /// ARIAMixin - Sets the aria-level attribute
-pub fn set_ariaLevel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaLevel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-level", value);
 }
 
 /// Setter for ariaLive
 /// ARIAMixin - Sets the aria-live attribute
-pub fn set_ariaLive(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaLive(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-live", value);
 }
 
 /// Setter for ariaModal
 /// ARIAMixin - Sets the aria-modal attribute
-pub fn set_ariaModal(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaModal(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-modal", value);
 }
 
 /// Setter for ariaMultiLine
 /// ARIAMixin - Sets the aria-multiline attribute
-pub fn set_ariaMultiLine(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaMultiLine(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-multiline", value);
 }
 
 /// Setter for ariaMultiSelectable
 /// ARIAMixin - Sets the aria-multiselectable attribute
-pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-multiselectable", value);
 }
 
 /// Setter for ariaOrientation
 /// ARIAMixin - Sets the aria-orientation attribute
-pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaOrientation(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-orientation", value);
 }
 
@@ -2256,7 +2263,7 @@ pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString
 /// Sets the elements that are owned by this element. This should set
 /// aria-owns to space-separated IDs of the target elements.
 /// Note: No-op - full implementation requires FrozenArray handling and ID extraction.
-pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     // No-op - would need to extract IDs from elements and set aria-owns
@@ -2264,109 +2271,109 @@ pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue)
 
 /// Setter for ariaPlaceholder
 /// ARIAMixin - Sets the aria-placeholder attribute
-pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-placeholder", value);
 }
 
 /// Setter for ariaPosInSet
 /// ARIAMixin - Sets the aria-posinset attribute
-pub fn set_ariaPosInSet(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaPosInSet(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-posinset", value);
 }
 
 /// Setter for ariaPressed
 /// ARIAMixin - Sets the aria-pressed attribute
-pub fn set_ariaPressed(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaPressed(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-pressed", value);
 }
 
 /// Setter for ariaReadOnly
 /// ARIAMixin - Sets the aria-readonly attribute
-pub fn set_ariaReadOnly(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaReadOnly(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-readonly", value);
 }
 
 /// Setter for ariaRelevant
 /// ARIAMixin - Sets the aria-relevant attribute
-pub fn set_ariaRelevant(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRelevant(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-relevant", value);
 }
 
 /// Setter for ariaRequired
 /// ARIAMixin - Sets the aria-required attribute
-pub fn set_ariaRequired(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRequired(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-required", value);
 }
 
 /// Setter for ariaRoleDescription
 /// ARIAMixin - Sets the aria-roledescription attribute
-pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-roledescription", value);
 }
 
 /// Setter for ariaRowCount
 /// ARIAMixin - Sets the aria-rowcount attribute
-pub fn set_ariaRowCount(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowcount", value);
 }
 
 /// Setter for ariaRowIndex
 /// ARIAMixin - Sets the aria-rowindex attribute
-pub fn set_ariaRowIndex(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowindex", value);
 }
 
 /// Setter for ariaRowIndexText
 /// ARIAMixin - Sets the aria-rowindextext attribute
-pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowindextext", value);
 }
 
 /// Setter for ariaRowSpan
 /// ARIAMixin - Sets the aria-rowspan attribute
-pub fn set_ariaRowSpan(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-rowspan", value);
 }
 
 /// Setter for ariaSelected
 /// ARIAMixin - Sets the aria-selected attribute
-pub fn set_ariaSelected(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaSelected(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-selected", value);
 }
 
 /// Setter for ariaSetSize
 /// ARIAMixin - Sets the aria-setsize attribute
-pub fn set_ariaSetSize(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaSetSize(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-setsize", value);
 }
 
 /// Setter for ariaSort
 /// ARIAMixin - Sets the aria-sort attribute
-pub fn set_ariaSort(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaSort(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-sort", value);
 }
 
 /// Setter for ariaValueMax
 /// ARIAMixin - Sets the aria-valuemax attribute
-pub fn set_ariaValueMax(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueMax(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuemax", value);
 }
 
 /// Setter for ariaValueMin
 /// ARIAMixin - Sets the aria-valuemin attribute
-pub fn set_ariaValueMin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueMin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuemin", value);
 }
 
 /// Setter for ariaValueNow
 /// ARIAMixin - Sets the aria-valuenow attribute
-pub fn set_ariaValueNow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueNow(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuenow", value);
 }
 
 /// Setter for ariaValueText
 /// ARIAMixin - Sets the aria-valuetext attribute
-pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     return setAriaAttribute(instance, "aria-valuetext", value);
 }
 

@@ -88,7 +88,7 @@ pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMH
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!LargestContentfulPaint.LargestContentfulPaintToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.LargestContentfulPaint.LargestContentfulPaintToJSON {
     _ = instance;
     return error.NotImplemented;
 }

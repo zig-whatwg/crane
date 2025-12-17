@@ -88,7 +88,7 @@ pub fn get_containerName(instance: *runtime.Instance) anyerror!runtime.DOMString
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!TaskAttributionTiming.TaskAttributionTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.TaskAttributionTiming.TaskAttributionTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

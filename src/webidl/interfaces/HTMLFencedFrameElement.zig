@@ -291,7 +291,7 @@ pub const HTMLFencedFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_config(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_config(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

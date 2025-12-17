@@ -76,14 +76,14 @@ pub fn get_deltaPose(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Setter for fixedFoveation
-pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) anyerror!void {
+pub fn set_fixedFoveation(instance: *runtime.Instance, value: ?f32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for deltaPose
-pub fn set_deltaPose(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_deltaPose(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

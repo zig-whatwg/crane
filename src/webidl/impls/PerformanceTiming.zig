@@ -166,7 +166,7 @@ pub fn get_loadEventEnd(instance: *runtime.Instance) anyerror!u64 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceTiming.PerformanceTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceTiming.PerformanceTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

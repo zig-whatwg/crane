@@ -433,7 +433,7 @@ pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
 }
 
 /// Setter for files
-pub fn set_files(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_files(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -601,7 +601,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 }
 
 /// Setter for valueAsDate
-pub fn set_valueAsDate(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_valueAsDate(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -622,21 +622,21 @@ pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
 }
 
 /// Setter for selectionStart
-pub fn set_selectionStart(instance: *runtime.Instance, value: u32) anyerror!void {
+pub fn set_selectionStart(instance: *runtime.Instance, value: ?u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for selectionEnd
-pub fn set_selectionEnd(instance: *runtime.Instance, value: u32) anyerror!void {
+pub fn set_selectionEnd(instance: *runtime.Instance, value: ?u32) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for selectionDirection
-pub fn set_selectionDirection(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_selectionDirection(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -671,7 +671,7 @@ pub fn set_useMap(instance: *runtime.Instance, value: runtime.DOMString) anyerro
 }
 
 /// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

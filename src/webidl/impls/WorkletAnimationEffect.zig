@@ -46,7 +46,7 @@ pub fn get_localTime(instance: *runtime.Instance) anyerror!?f64 {
 }
 
 /// Setter for localTime
-pub fn set_localTime(instance: *runtime.Instance, value: f64) anyerror!void {
+pub fn set_localTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

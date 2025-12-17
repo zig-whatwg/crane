@@ -118,7 +118,7 @@ pub fn get_activationStart(instance: *runtime.Instance) anyerror!typedefs.DOMHig
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceNavigationTiming.PerformanceNavigationTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceNavigationTiming.PerformanceNavigationTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

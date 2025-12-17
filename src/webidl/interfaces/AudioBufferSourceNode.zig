@@ -162,7 +162,7 @@ pub const AudioBufferSourceNode = struct {
         return try AudioBufferSourceNodeImpl.get_buffer(instance);
     }
 
-    pub fn set_buffer(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_buffer(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try AudioBufferSourceNodeImpl.set_buffer(instance, value);
     }
 

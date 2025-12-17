@@ -163,7 +163,7 @@ pub const XRWebGLLayer = struct {
         return try XRWebGLLayerImpl.get_fixedFoveation(instance);
     }
 
-    pub fn set_fixedFoveation(instance: *runtime.Instance, value: f32) anyerror!void {
+    pub fn set_fixedFoveation(instance: *runtime.Instance, value: ?f32) anyerror!void {
         try XRWebGLLayerImpl.set_fixedFoveation(instance, value);
     }
 

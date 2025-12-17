@@ -19,6 +19,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const mixins = @import("mixins");
 
 // Import impl modules for accessing internal state
 const NodeImpl = @import("Node.zig");
@@ -71,7 +72,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// 5. If viablePreviousSibling is null, set it to parent's first child
 /// 6. Otherwise, set it to viablePreviousSibling's next sibling
 /// 7. Pre-insert node into parent before viablePreviousSibling
-pub fn call_before(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = nodes;
 
     // Step 1: Get parent
@@ -92,7 +93,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: []const NodeOrString) any
 /// 3. Let viableNextSibling be this's first following sibling not in nodes
 /// 4. Let node be the result of converting nodes into a node
 /// 5. Pre-insert node into parent before viableNextSibling
-pub fn call_after(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = nodes;
 
     // Step 1: Get parent
@@ -113,7 +114,7 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const NodeOrString) anye
 /// 4. Let node be the result of converting nodes into a node
 /// 5. If this's parent is parent, replace this with node within parent
 /// 6. Otherwise, pre-insert node into parent before viableNextSibling
-pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const NodeOrString) anyerror!void {
+pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = nodes;
 
     // Step 1: Get parent

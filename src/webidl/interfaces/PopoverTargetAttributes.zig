@@ -100,7 +100,7 @@ pub const PopoverTargetAttributes = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

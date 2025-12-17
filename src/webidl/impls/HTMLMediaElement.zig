@@ -267,14 +267,14 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 }
 
 /// Setter for srcObject
-pub fn set_srcObject(instance: *runtime.Instance, value: typedefs.MediaProvider) anyerror!void {
+pub fn set_srcObject(instance: *runtime.Instance, value: ?typedefs.MediaProvider) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for crossOrigin
-pub fn set_crossOrigin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

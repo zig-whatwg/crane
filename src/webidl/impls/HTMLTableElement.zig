@@ -142,21 +142,21 @@ pub fn get_cellSpacing(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Setter for caption
-pub fn set_caption(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_caption(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for tHead
-pub fn set_tHead(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_tHead(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for tFoot
-pub fn set_tFoot(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_tFoot(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

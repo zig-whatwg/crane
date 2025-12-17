@@ -52,7 +52,7 @@ pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?typedefs.DOMH
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformancePaintTiming.PerformancePaintTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformancePaintTiming.PerformancePaintTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

@@ -2982,7 +2982,13 @@ pub fn writeDelegateFunctions(
             // Extended attributes apply to setter too
             try writeExtendedAttributesComment(writer, attr.extAttrs);
 
-            try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: {s}) anyerror!void {{\n", .{ sanitized_name, return_type });
+            // For nullable types, the setter parameter must also be nullable
+            // Per WebIDL spec: undefined/null JS values convert to null for nullable types
+            if (is_nullable) {
+                try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: ?{s}) anyerror!void {{\n", .{ sanitized_name, return_type });
+            } else {
+                try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: {s}) anyerror!void {{\n", .{ sanitized_name, return_type });
+            }
 
             if (has_ce_reactions) {
                 // [CEReactions] - Wrap in Custom Element reactions

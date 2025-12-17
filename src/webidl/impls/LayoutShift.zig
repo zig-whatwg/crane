@@ -64,7 +64,7 @@ pub fn get_sources(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!LayoutShift.LayoutShiftToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.LayoutShift.LayoutShiftToJSON {
     _ = instance;
     return error.NotImplemented;
 }

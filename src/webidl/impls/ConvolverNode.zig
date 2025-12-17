@@ -67,7 +67,7 @@ pub fn get_normalize(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Setter for buffer
-pub fn set_buffer(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_buffer(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

@@ -103,7 +103,7 @@ pub const Presentation = struct {
         return try PresentationImpl.get_defaultRequest(instance);
     }
 
-    pub fn set_defaultRequest(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_defaultRequest(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try PresentationImpl.set_defaultRequest(instance, value);
     }
 

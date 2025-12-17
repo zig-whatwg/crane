@@ -108,13 +108,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// Spec: https://drafts.fxtf.org/geometry-1/#dom-domquad-domquad
 /// Creates a DOMQuad with four vertices from DOMPointInit dictionaries
-pub fn call_constructor(
-    ctx: runtime.Context,
-    p1: webidl.Opt(dictionaries.DOMPointInit),
-    p2: webidl.Opt(dictionaries.DOMPointInit),
-    p3: webidl.Opt(dictionaries.DOMPointInit),
-    p4: webidl.Opt(dictionaries.DOMPointInit),
-) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, p1: webidl.Opt(dictionaries.DOMPointInit), p2: webidl.Opt(dictionaries.DOMPointInit), p3: webidl.Opt(dictionaries.DOMPointInit), p4: webidl.Opt(dictionaries.DOMPointInit)) !*runtime.Instance {
     const p1_init = if (p1.was_passed) p1.value else null;
     const p2_init = if (p2.was_passed) p2.value else null;
     const p3_init = if (p3.was_passed) p3.value else null;
@@ -246,7 +240,7 @@ pub fn call_static_fromQuad(instance: *runtime.Instance, other: webidl.Opt(dicti
 /// Spec: https://drafts.fxtf.org/geometry-1/#dom-domquad-tojson
 /// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
 /// For DOMQuad, this serializes p1-p4 as DOMPoint instances.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMQuad.DOMQuadToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMQuad.DOMQuadToJSON {
     const state = getState(instance);
     // Return the DOMPoint instances - they will be converted to JS objects
     // with proper prototype chains by the V8 toV8Value conversion layer

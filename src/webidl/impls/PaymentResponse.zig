@@ -110,7 +110,7 @@ pub fn call_complete(instance: *runtime.Instance, result: webidl.Opt(enums.Payme
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PaymentResponse.PaymentResponseToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PaymentResponse.PaymentResponseToJSON {
     _ = instance;
     return error.NotImplemented;
 }

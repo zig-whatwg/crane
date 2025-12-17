@@ -213,28 +213,28 @@ pub fn set_id(instance: *runtime.Instance, value: runtime.DOMString) anyerror!vo
 }
 
 /// Setter for effect
-pub fn set_effect(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_effect(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for timeline
-pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_timeline(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for startTime
-pub fn set_startTime(instance: *runtime.Instance, value: f64) anyerror!void {
+pub fn set_startTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for currentTime
-pub fn set_currentTime(instance: *runtime.Instance, value: f64) anyerror!void {
+pub fn set_currentTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -269,7 +269,7 @@ pub fn set_onremove(instance: *runtime.Instance, value: typedefs.EventHandler) a
 }
 
 /// Setter for trigger
-pub fn set_trigger(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_trigger(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

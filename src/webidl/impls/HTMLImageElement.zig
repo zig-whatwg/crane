@@ -585,7 +585,7 @@ pub fn set_sizes(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 }
 
 /// Setter for crossOrigin
-pub fn set_crossOrigin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

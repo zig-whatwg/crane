@@ -105,7 +105,7 @@ pub const WorkletAnimationEffect = struct {
         return try WorkletAnimationEffectImpl.get_localTime(instance);
     }
 
-    pub fn set_localTime(instance: *runtime.Instance, value: f64) anyerror!void {
+    pub fn set_localTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
         try WorkletAnimationEffectImpl.set_localTime(instance, value);
     }
 

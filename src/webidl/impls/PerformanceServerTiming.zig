@@ -58,7 +58,7 @@ pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceServerTiming.PerformanceServerTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceServerTiming.PerformanceServerTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

@@ -91,7 +91,7 @@ pub fn get_loopEnd(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Setter for buffer
-pub fn set_buffer(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_buffer(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

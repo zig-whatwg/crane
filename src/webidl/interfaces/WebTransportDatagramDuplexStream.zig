@@ -138,7 +138,7 @@ pub const WebTransportDatagramDuplexStream = struct {
         return try WebTransportDatagramDuplexStreamImpl.get_incomingMaxAge(instance);
     }
 
-    pub fn set_incomingMaxAge(instance: *runtime.Instance, value: f64) anyerror!void {
+    pub fn set_incomingMaxAge(instance: *runtime.Instance, value: ?f64) anyerror!void {
         try WebTransportDatagramDuplexStreamImpl.set_incomingMaxAge(instance, value);
     }
 
@@ -146,7 +146,7 @@ pub const WebTransportDatagramDuplexStream = struct {
         return try WebTransportDatagramDuplexStreamImpl.get_outgoingMaxAge(instance);
     }
 
-    pub fn set_outgoingMaxAge(instance: *runtime.Instance, value: f64) anyerror!void {
+    pub fn set_outgoingMaxAge(instance: *runtime.Instance, value: ?f64) anyerror!void {
         try WebTransportDatagramDuplexStreamImpl.set_outgoingMaxAge(instance, value);
     }
 

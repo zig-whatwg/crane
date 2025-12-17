@@ -352,364 +352,364 @@ pub fn get_ariaValueText(instance: *runtime.Instance) anyerror!?runtime.DOMStrin
 }
 
 /// Setter for role
-pub fn set_role(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_role(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaActiveDescendantElement
-pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaAtomic
-pub fn set_ariaAtomic(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaAtomic(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaAutoComplete
-pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaBrailleLabel
-pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaBrailleRoleDescription
-pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaBusy
-pub fn set_ariaBusy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaBusy(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaChecked
-pub fn set_ariaChecked(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaChecked(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaColCount
-pub fn set_ariaColCount(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaColIndex
-pub fn set_ariaColIndex(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaColIndexText
-pub fn set_ariaColIndexText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaColSpan
-pub fn set_ariaColSpan(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaColSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaControlsElements
-pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaControlsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaCurrent
-pub fn set_ariaCurrent(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaCurrent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaDescribedByElements
-pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaDescription
-pub fn set_ariaDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaDetailsElements
-pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaDisabled
-pub fn set_ariaDisabled(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaDisabled(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaErrorMessageElements
-pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaExpanded
-pub fn set_ariaExpanded(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaExpanded(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaFlowToElements
-pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaHasPopup
-pub fn set_ariaHasPopup(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaHasPopup(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaHidden
-pub fn set_ariaHidden(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaHidden(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaInvalid
-pub fn set_ariaInvalid(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaInvalid(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaKeyShortcuts
-pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaLabel
-pub fn set_ariaLabel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaLabel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaLabelledByElements
-pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaLevel
-pub fn set_ariaLevel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaLevel(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaLive
-pub fn set_ariaLive(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaLive(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaModal
-pub fn set_ariaModal(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaModal(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaMultiLine
-pub fn set_ariaMultiLine(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaMultiLine(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaMultiSelectable
-pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaOrientation
-pub fn set_ariaOrientation(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaOrientation(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaOwnsElements
-pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaPlaceholder
-pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaPosInSet
-pub fn set_ariaPosInSet(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaPosInSet(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaPressed
-pub fn set_ariaPressed(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaPressed(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaReadOnly
-pub fn set_ariaReadOnly(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaReadOnly(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaRelevant
-pub fn set_ariaRelevant(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRelevant(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaRequired
-pub fn set_ariaRequired(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRequired(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaRoleDescription
-pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaRowCount
-pub fn set_ariaRowCount(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowCount(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaRowIndex
-pub fn set_ariaRowIndex(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowIndex(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaRowIndexText
-pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaRowSpan
-pub fn set_ariaRowSpan(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaRowSpan(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaSelected
-pub fn set_ariaSelected(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaSelected(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaSetSize
-pub fn set_ariaSetSize(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaSetSize(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaSort
-pub fn set_ariaSort(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaSort(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaValueMax
-pub fn set_ariaValueMax(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueMax(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaValueMin
-pub fn set_ariaValueMin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueMin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaValueNow
-pub fn set_ariaValueNow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueNow(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for ariaValueText
-pub fn set_ariaValueText(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_ariaValueText(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

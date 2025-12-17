@@ -146,7 +146,7 @@ pub fn set_lang(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 }
 
 /// Setter for voice
-pub fn set_voice(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_voice(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

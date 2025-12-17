@@ -82,7 +82,7 @@ pub fn get_srcAttribute(instance: *runtime.Instance) anyerror!?runtime.DOMString
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PermissionsPolicyViolationReportBody.PermissionsPolicyViolationReportBodyToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PermissionsPolicyViolationReportBody.PermissionsPolicyViolationReportBodyToJSON {
     _ = instance;
     return error.NotImplemented;
 }

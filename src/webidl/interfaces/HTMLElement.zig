@@ -1052,7 +1052,7 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_hidden(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1196,7 +1196,7 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_popover(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_popover(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1236,7 +1236,7 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.get_editContext(instance);
     }
 
-    pub fn set_editContext(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_editContext(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try HTMLElementImpl.set_editContext(instance, value);
     }
 

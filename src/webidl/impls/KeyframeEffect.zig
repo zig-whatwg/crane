@@ -78,14 +78,14 @@ pub fn get_iterationComposite(instance: *runtime.Instance) anyerror!enums.Iterat
 }
 
 /// Setter for target
-pub fn set_target(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_target(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
 }
 
 /// Setter for pseudoElement
-pub fn set_pseudoElement(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
+pub fn set_pseudoElement(instance: *runtime.Instance, value: ?typedefs.CSSOMString) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

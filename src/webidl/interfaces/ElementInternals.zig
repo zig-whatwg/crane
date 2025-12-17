@@ -446,7 +446,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_role(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_role(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -460,7 +460,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-activedescendant"]
-    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_ariaActiveDescendantElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -474,7 +474,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-atomic"]
-    pub fn set_ariaAtomic(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaAtomic(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -488,7 +488,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-autocomplete"]
-    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaAutoComplete(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -502,7 +502,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-braillelabel"]
-    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaBrailleLabel(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -516,7 +516,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-brailleroledescription"]
-    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaBrailleRoleDescription(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -530,7 +530,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-busy"]
-    pub fn set_ariaBusy(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaBusy(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -544,7 +544,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-checked"]
-    pub fn set_ariaChecked(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaChecked(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -558,7 +558,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colcount"]
-    pub fn set_ariaColCount(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaColCount(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -572,7 +572,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindex"]
-    pub fn set_ariaColIndex(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaColIndex(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -586,7 +586,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colindextext"]
-    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaColIndexText(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -600,7 +600,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-colspan"]
-    pub fn set_ariaColSpan(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaColSpan(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -614,7 +614,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-controls"]
-    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_ariaControlsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -628,7 +628,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-current"]
-    pub fn set_ariaCurrent(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaCurrent(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -642,7 +642,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-describedby"]
-    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_ariaDescribedByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -656,7 +656,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-description"]
-    pub fn set_ariaDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaDescription(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -670,7 +670,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-details"]
-    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_ariaDetailsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -684,7 +684,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-disabled"]
-    pub fn set_ariaDisabled(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaDisabled(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -698,7 +698,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-errormessage"]
-    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_ariaErrorMessageElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -712,7 +712,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-expanded"]
-    pub fn set_ariaExpanded(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaExpanded(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -726,7 +726,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-flowto"]
-    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_ariaFlowToElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -740,7 +740,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-haspopup"]
-    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaHasPopup(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -754,7 +754,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-hidden"]
-    pub fn set_ariaHidden(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaHidden(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -768,7 +768,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-invalid"]
-    pub fn set_ariaInvalid(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaInvalid(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -782,7 +782,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-keyshortcuts"]
-    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaKeyShortcuts(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -796,7 +796,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-label"]
-    pub fn set_ariaLabel(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaLabel(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -810,7 +810,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-labelledby"]
-    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_ariaLabelledByElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -824,7 +824,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-level"]
-    pub fn set_ariaLevel(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaLevel(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -838,7 +838,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-live"]
-    pub fn set_ariaLive(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaLive(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -852,7 +852,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-modal"]
-    pub fn set_ariaModal(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaModal(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -866,7 +866,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiline"]
-    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaMultiLine(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -880,7 +880,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-multiselectable"]
-    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaMultiSelectable(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -894,7 +894,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-orientation"]
-    pub fn set_ariaOrientation(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaOrientation(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -908,7 +908,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-owns"]
-    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+    pub fn set_ariaOwnsElements(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -922,7 +922,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-placeholder"]
-    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaPlaceholder(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -936,7 +936,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-posinset"]
-    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaPosInSet(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -950,7 +950,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-pressed"]
-    pub fn set_ariaPressed(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaPressed(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -964,7 +964,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-readonly"]
-    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaReadOnly(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -978,7 +978,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-relevant"]
-    pub fn set_ariaRelevant(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaRelevant(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -992,7 +992,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-required"]
-    pub fn set_ariaRequired(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaRequired(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1006,7 +1006,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-roledescription"]
-    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaRoleDescription(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1020,7 +1020,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowcount"]
-    pub fn set_ariaRowCount(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaRowCount(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1034,7 +1034,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindex"]
-    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaRowIndex(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1048,7 +1048,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowindextext"]
-    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaRowIndexText(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1062,7 +1062,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-rowspan"]
-    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaRowSpan(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1076,7 +1076,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-selected"]
-    pub fn set_ariaSelected(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaSelected(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1090,7 +1090,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-setsize"]
-    pub fn set_ariaSetSize(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaSetSize(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1104,7 +1104,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-sort"]
-    pub fn set_ariaSort(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaSort(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1118,7 +1118,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemax"]
-    pub fn set_ariaValueMax(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaValueMax(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1132,7 +1132,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuemin"]
-    pub fn set_ariaValueMin(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaValueMin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1146,7 +1146,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuenow"]
-    pub fn set_ariaValueNow(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaValueNow(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1160,7 +1160,7 @@ pub const ElementInternals = struct {
     }
 
     /// Extended attributes: [CEReactions], [Reflect="aria-valuetext"]
-    pub fn set_ariaValueText(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_ariaValueText(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

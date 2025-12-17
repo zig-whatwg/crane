@@ -156,7 +156,7 @@ pub const KeyframeEffect = struct {
         return try KeyframeEffectImpl.get_target(instance);
     }
 
-    pub fn set_target(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_target(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try KeyframeEffectImpl.set_target(instance, value);
     }
 
@@ -164,7 +164,7 @@ pub const KeyframeEffect = struct {
         return try KeyframeEffectImpl.get_pseudoElement(instance);
     }
 
-    pub fn set_pseudoElement(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
+    pub fn set_pseudoElement(instance: *runtime.Instance, value: ?CSSOMString) anyerror!void {
         try KeyframeEffectImpl.set_pseudoElement(instance, value);
     }
 

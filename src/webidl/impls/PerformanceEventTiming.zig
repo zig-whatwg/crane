@@ -76,7 +76,7 @@ pub fn get_interactionId(instance: *runtime.Instance) anyerror!u64 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceEventTiming.PerformanceEventTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceEventTiming.PerformanceEventTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

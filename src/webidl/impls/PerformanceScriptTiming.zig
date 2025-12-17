@@ -124,7 +124,7 @@ pub fn get_windowAttribution(instance: *runtime.Instance) anyerror!enums.ScriptW
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceScriptTiming.PerformanceScriptTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceScriptTiming.PerformanceScriptTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

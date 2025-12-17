@@ -195,7 +195,7 @@ pub const SpeechSynthesisUtterance = struct {
         return try SpeechSynthesisUtteranceImpl.get_voice(instance);
     }
 
-    pub fn set_voice(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_voice(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try SpeechSynthesisUtteranceImpl.set_voice(instance, value);
     }
 

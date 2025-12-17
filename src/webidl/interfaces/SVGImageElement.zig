@@ -350,7 +350,7 @@ pub const SVGImageElement = struct {
         return try SVGImageElementImpl.get_crossOrigin(instance);
     }
 
-    pub fn set_crossOrigin(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         try SVGImageElementImpl.set_crossOrigin(instance, value);
     }
 

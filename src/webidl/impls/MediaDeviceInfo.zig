@@ -64,7 +64,7 @@ pub fn get_groupId(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!MediaDeviceInfo.MediaDeviceInfoToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.MediaDeviceInfo.MediaDeviceInfoToJSON {
     _ = instance;
     return error.NotImplemented;
 }

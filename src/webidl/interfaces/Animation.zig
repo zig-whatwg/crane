@@ -249,7 +249,7 @@ pub const Animation = struct {
         return try AnimationImpl.get_effect(instance);
     }
 
-    pub fn set_effect(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_effect(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try AnimationImpl.set_effect(instance, value);
     }
 
@@ -257,7 +257,7 @@ pub const Animation = struct {
         return try AnimationImpl.get_timeline(instance);
     }
 
-    pub fn set_timeline(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_timeline(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try AnimationImpl.set_timeline(instance, value);
     }
 
@@ -265,7 +265,7 @@ pub const Animation = struct {
         return try AnimationImpl.get_startTime(instance);
     }
 
-    pub fn set_startTime(instance: *runtime.Instance, value: f64) anyerror!void {
+    pub fn set_startTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
         try AnimationImpl.set_startTime(instance, value);
     }
 
@@ -273,7 +273,7 @@ pub const Animation = struct {
         return try AnimationImpl.get_currentTime(instance);
     }
 
-    pub fn set_currentTime(instance: *runtime.Instance, value: f64) anyerror!void {
+    pub fn set_currentTime(instance: *runtime.Instance, value: ?f64) anyerror!void {
         try AnimationImpl.set_currentTime(instance, value);
     }
 
@@ -333,7 +333,7 @@ pub const Animation = struct {
         return try AnimationImpl.get_trigger(instance);
     }
 
-    pub fn set_trigger(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_trigger(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try AnimationImpl.set_trigger(instance, value);
     }
 

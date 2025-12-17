@@ -175,7 +175,7 @@ pub const VTTCue = struct {
         return try VTTCueImpl.get_region(instance);
     }
 
-    pub fn set_region(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_region(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try VTTCueImpl.set_region(instance, value);
     }
 

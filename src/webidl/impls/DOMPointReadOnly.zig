@@ -81,7 +81,7 @@ pub fn get_w(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMPointReadOnly.DOMPointReadOnlyToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMPointReadOnly.DOMPointReadOnlyToJSON {
     const state = instance.getState(State);
     return .{
         .x = state.own.x,

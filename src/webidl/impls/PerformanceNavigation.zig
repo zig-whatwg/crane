@@ -52,7 +52,7 @@ pub fn get_redirectCount(instance: *runtime.Instance) anyerror!u16 {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceNavigation.PerformanceNavigationToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceNavigation.PerformanceNavigationToJSON {
     _ = instance;
     return error.NotImplemented;
 }

@@ -359,7 +359,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_caption(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_caption(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -373,7 +373,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_tHead(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_tHead(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -387,7 +387,7 @@ pub const HTMLTableElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_tFoot(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+    pub fn set_tFoot(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

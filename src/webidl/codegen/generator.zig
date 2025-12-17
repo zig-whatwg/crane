@@ -935,6 +935,11 @@ fn generateImplFile(
 
             try w.print("/// Setter for {s}\n", .{attr.name});
             try w.print("pub fn set_{s}(instance: *runtime.Instance, value: ", .{sanitized_name});
+            // For nullable types, the setter parameter must also be nullable
+            // Per WebIDL spec: undefined/null JS values convert to null for nullable types
+            if (attr.idlType.nullable) {
+                try w.writeAll("?");
+            }
             try writeTypeSimple(w, attr.idlType, type_reg);
             try w.writeAll(") anyerror!void {\n");
             try w.writeAll("    _ = instance;\n");

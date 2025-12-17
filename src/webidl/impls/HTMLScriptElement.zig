@@ -645,8 +645,14 @@ pub fn set_defer(instance: *runtime.Instance, value: bool) anyerror!void {
 
 /// Setter for crossOrigin
 /// Spec: [CEReactions] attribute DOMString? crossOrigin;
-pub fn set_crossOrigin(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try setContentAttribute(instance, "crossorigin", value);
+pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
+    if (value) |v| {
+        try setContentAttribute(instance, "crossorigin", v);
+    } else {
+        // Setting to null removes the attribute
+        const elem = ElementImpl.getInternal(instance) orelse return error.InvalidStateError;
+        _ = elem.removeAttribute(null, "crossorigin");
+    }
 }
 
 /// Setter for referrerPolicy

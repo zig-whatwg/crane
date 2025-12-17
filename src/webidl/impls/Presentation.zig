@@ -52,7 +52,7 @@ pub fn get_receiver(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Setter for defaultRequest
-pub fn set_defaultRequest(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_defaultRequest(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

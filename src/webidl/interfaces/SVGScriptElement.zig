@@ -268,7 +268,7 @@ pub const SVGScriptElement = struct {
         return try SVGScriptElementImpl.get_crossOrigin(instance);
     }
 
-    pub fn set_crossOrigin(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         try SVGScriptElementImpl.set_crossOrigin(instance, value);
     }
 

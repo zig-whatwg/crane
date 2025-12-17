@@ -146,7 +146,7 @@ pub const RTCRtpReceiver = struct {
         return try RTCRtpReceiverImpl.get_jitterBufferTarget(instance);
     }
 
-    pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: DOMHighResTimeStamp) anyerror!void {
+    pub fn set_jitterBufferTarget(instance: *runtime.Instance, value: ?DOMHighResTimeStamp) anyerror!void {
         try RTCRtpReceiverImpl.set_jitterBufferTarget(instance, value);
     }
 
@@ -154,7 +154,7 @@ pub const RTCRtpReceiver = struct {
         return try RTCRtpReceiverImpl.get_transform(instance);
     }
 
-    pub fn set_transform(instance: *runtime.Instance, value: RTCRtpTransform) anyerror!void {
+    pub fn set_transform(instance: *runtime.Instance, value: ?RTCRtpTransform) anyerror!void {
         try RTCRtpReceiverImpl.set_transform(instance, value);
     }
 

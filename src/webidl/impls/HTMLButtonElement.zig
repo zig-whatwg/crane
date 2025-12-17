@@ -172,7 +172,7 @@ pub fn set_command(instance: *runtime.Instance, value: runtime.DOMString) anyerr
 }
 
 /// Setter for commandForElement
-pub fn set_commandForElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_commandForElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;
@@ -242,7 +242,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 }
 
 /// Setter for popoverTargetElement
-pub fn set_popoverTargetElement(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

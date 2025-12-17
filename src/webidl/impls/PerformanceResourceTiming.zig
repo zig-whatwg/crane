@@ -190,7 +190,7 @@ pub fn get_serverTiming(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: toJSON
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceResourceTiming.PerformanceResourceTimingToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceResourceTiming.PerformanceResourceTimingToJSON {
     _ = instance;
     return error.NotImplemented;
 }

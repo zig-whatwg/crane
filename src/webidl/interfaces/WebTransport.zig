@@ -199,7 +199,7 @@ pub const WebTransport = struct {
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn set_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance, value: u16) anyerror!void {
+    pub fn set_anticipatedConcurrentIncomingUnidirectionalStreams(instance: *runtime.Instance, value: ?u16) anyerror!void {
         try WebTransportImpl.set_anticipatedConcurrentIncomingUnidirectionalStreams(instance, value);
     }
 
@@ -209,7 +209,7 @@ pub const WebTransport = struct {
     }
 
     /// Extended attributes: [EnforceRange]
-    pub fn set_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance, value: u16) anyerror!void {
+    pub fn set_anticipatedConcurrentIncomingBidirectionalStreams(instance: *runtime.Instance, value: ?u16) anyerror!void {
         try WebTransportImpl.set_anticipatedConcurrentIncomingBidirectionalStreams(instance, value);
     }
 

@@ -53,7 +53,7 @@ pub fn get_playbackState(instance: *runtime.Instance) anyerror!enums.MediaSessio
 }
 
 /// Setter for metadata
-pub fn set_metadata(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+pub fn set_metadata(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     _ = instance;
     _ = value;
     return error.NotImplemented;

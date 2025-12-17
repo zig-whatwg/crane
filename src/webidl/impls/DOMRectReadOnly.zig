@@ -156,7 +156,7 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
 /// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
 /// The conversion layer will convert this struct to a JavaScript object using the
 /// correct realm context for proper cross-realm support.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMRectReadOnly.DOMRectReadOnlyToJSON {
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMRectReadOnly.DOMRectReadOnlyToJSON {
     const state = instance.getState(State);
 
     return .{
