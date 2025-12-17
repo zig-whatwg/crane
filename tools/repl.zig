@@ -496,19 +496,39 @@ const Repl = struct {
         try file.writeAll(str);
     }
 
-    /// Clear current line and redraw with new content
-    fn clearAndRedraw(self: *Self, stdout: std.fs.File, new_content: []const u8) !void {
+    /// Clear current line and redraw with new content, cursor at end
+    fn clearAndRedraw(self: *Self, stdout: std.fs.File, new_content: []const u8, cursor_pos: *usize) !void {
         const current_len = self.input_buffer.items.len;
-        if (current_len > 0) {
-            try print(self.allocator, stdout, "\x1b[{d}D", .{current_len});
+        // Move cursor to start of input
+        if (cursor_pos.* > 0) {
+            try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos.*});
         }
+        // Clear from cursor to end of line
         try stdout.writeAll("\x1b[K");
+        // Update buffer
         self.input_buffer.clearRetainingCapacity();
         try self.input_buffer.appendSlice(self.allocator, new_content);
+        // Write new content
         try stdout.writeAll(new_content);
+        // Set cursor to end
+        cursor_pos.* = new_content.len;
+        _ = current_len;
     }
 
-    /// Read line with tab completion and history navigation
+    /// Redraw the line from cursor position to end, then restore cursor
+    fn redrawFromCursor(self: *Self, stdout: std.fs.File, cursor_pos: usize) !void {
+        // Save cursor, clear to end, write rest of buffer, restore cursor
+        const rest = self.input_buffer.items[cursor_pos..];
+        try stdout.writeAll(rest);
+        try stdout.writeAll(" "); // Clear any leftover character
+        // Move back to cursor position
+        const move_back = rest.len + 1;
+        if (move_back > 0) {
+            try print(self.allocator, stdout, "\x1b[{d}D", .{move_back});
+        }
+    }
+
+    /// Read line with tab completion, history navigation, and cursor movement
     pub fn readLine(self: *Self) !?[]const u8 {
         const stdout = std.fs.File.stdout();
         const stdin = std.fs.File.stdin();
@@ -530,6 +550,7 @@ const Repl = struct {
 
         self.input_buffer.clearRetainingCapacity();
 
+        var cursor_pos: usize = 0;
         var history_index: usize = self.history.items.len;
         var saved_input: ?[]u8 = null;
         defer if (saved_input) |s| self.allocator.free(s);
@@ -548,9 +569,45 @@ const Repl = struct {
                 },
                 4 => return null, // Ctrl+D
                 127, 8 => { // Backspace
+                    if (cursor_pos > 0) {
+                        // Remove character before cursor
+                        _ = self.input_buffer.orderedRemove(cursor_pos - 1);
+                        cursor_pos -= 1;
+                        // Move cursor back
+                        try stdout.writeAll("\x08");
+                        // Redraw from cursor position
+                        try self.redrawFromCursor(stdout, cursor_pos);
+                    }
+                },
+                1 => { // Ctrl+A - move to beginning
+                    if (cursor_pos > 0) {
+                        try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos});
+                        cursor_pos = 0;
+                    }
+                },
+                5 => { // Ctrl+E - move to end
+                    if (cursor_pos < self.input_buffer.items.len) {
+                        const move = self.input_buffer.items.len - cursor_pos;
+                        try print(self.allocator, stdout, "\x1b[{d}C", .{move});
+                        cursor_pos = self.input_buffer.items.len;
+                    }
+                },
+                21 => { // Ctrl+U - clear line
                     if (self.input_buffer.items.len > 0) {
-                        _ = self.input_buffer.pop();
-                        try stdout.writeAll("\x08 \x08");
+                        // Move to start
+                        if (cursor_pos > 0) {
+                            try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos});
+                        }
+                        // Clear line
+                        try stdout.writeAll("\x1b[K");
+                        self.input_buffer.clearRetainingCapacity();
+                        cursor_pos = 0;
+                    }
+                },
+                11 => { // Ctrl+K - clear from cursor to end
+                    if (cursor_pos < self.input_buffer.items.len) {
+                        self.input_buffer.shrinkRetainingCapacity(cursor_pos);
+                        try stdout.writeAll("\x1b[K");
                     }
                 },
                 '\t' => { // Tab - trigger completion
@@ -567,6 +624,7 @@ const Repl = struct {
                             const suffix = completion[result.prefix_len..];
                             try self.input_buffer.appendSlice(self.allocator, suffix);
                             try stdout.writeAll(suffix);
+                            cursor_pos = self.input_buffer.items.len;
                         } else if (result.completions.len > 1) {
                             // Multiple matches - show them
                             try stdout.writeAll("\n");
@@ -575,6 +633,7 @@ const Repl = struct {
                             }
                             try stdout.writeAll("\n>>> ");
                             try stdout.writeAll(self.input_buffer.items);
+                            cursor_pos = self.input_buffer.items.len;
                         }
                     }
                 },
@@ -584,23 +643,57 @@ const Repl = struct {
                     const next2 = readByte(stdin) catch continue;
 
                     switch (next2) {
-                        'A' => { // Up arrow
+                        'A' => { // Up arrow - history previous
                             if (history_index > 0) {
                                 if (history_index == self.history.items.len) {
                                     if (saved_input) |s| self.allocator.free(s);
                                     saved_input = try self.allocator.dupe(u8, self.input_buffer.items);
                                 }
                                 history_index -= 1;
-                                try self.clearAndRedraw(stdout, self.history.items[history_index]);
+                                try self.clearAndRedraw(stdout, self.history.items[history_index], &cursor_pos);
                             }
                         },
-                        'B' => { // Down arrow
+                        'B' => { // Down arrow - history next
                             if (history_index < self.history.items.len) {
                                 history_index += 1;
                                 if (history_index == self.history.items.len) {
-                                    try self.clearAndRedraw(stdout, saved_input orelse "");
+                                    try self.clearAndRedraw(stdout, saved_input orelse "", &cursor_pos);
                                 } else {
-                                    try self.clearAndRedraw(stdout, self.history.items[history_index]);
+                                    try self.clearAndRedraw(stdout, self.history.items[history_index], &cursor_pos);
+                                }
+                            }
+                        },
+                        'C' => { // Right arrow - move cursor right
+                            if (cursor_pos < self.input_buffer.items.len) {
+                                cursor_pos += 1;
+                                try stdout.writeAll("\x1b[C");
+                            }
+                        },
+                        'D' => { // Left arrow - move cursor left
+                            if (cursor_pos > 0) {
+                                cursor_pos -= 1;
+                                try stdout.writeAll("\x1b[D");
+                            }
+                        },
+                        'H' => { // Home key
+                            if (cursor_pos > 0) {
+                                try print(self.allocator, stdout, "\x1b[{d}D", .{cursor_pos});
+                                cursor_pos = 0;
+                            }
+                        },
+                        'F' => { // End key
+                            if (cursor_pos < self.input_buffer.items.len) {
+                                const move = self.input_buffer.items.len - cursor_pos;
+                                try print(self.allocator, stdout, "\x1b[{d}C", .{move});
+                                cursor_pos = self.input_buffer.items.len;
+                            }
+                        },
+                        '3' => { // Delete key (ESC [ 3 ~)
+                            const next3 = readByte(stdin) catch continue;
+                            if (next3 == '~') {
+                                if (cursor_pos < self.input_buffer.items.len) {
+                                    _ = self.input_buffer.orderedRemove(cursor_pos);
+                                    try self.redrawFromCursor(stdout, cursor_pos);
                                 }
                             }
                         },
@@ -609,8 +702,18 @@ const Repl = struct {
                 },
                 else => {
                     if (byte >= 32 and byte < 127) {
-                        try self.input_buffer.append(self.allocator, byte);
-                        try writeByte(stdout, byte);
+                        // Insert character at cursor position
+                        if (cursor_pos == self.input_buffer.items.len) {
+                            // Append at end (common case)
+                            try self.input_buffer.append(self.allocator, byte);
+                            try writeByte(stdout, byte);
+                        } else {
+                            // Insert in middle
+                            try self.input_buffer.insert(self.allocator, cursor_pos, byte);
+                            try writeByte(stdout, byte);
+                            try self.redrawFromCursor(stdout, cursor_pos + 1);
+                        }
+                        cursor_pos += 1;
                     }
                 },
             }
