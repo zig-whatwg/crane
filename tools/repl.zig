@@ -85,18 +85,42 @@ const Repl = struct {
 
         if (needs_async_wrap) {
             // Wrap in async IIFE: (async () => { ... })()
-            // Use implicit return for expression statements
+            // Handle variable declarations specially to persist to global scope
             const trimmed = std.mem.trim(u8, code, &std.ascii.whitespace);
 
-            // Check if it's a simple expression (no semicolon at end, or assignment)
-            // For expressions, we want to return the value
-            const is_expression = !std.mem.endsWith(u8, trimmed, ";") or
-                std.mem.indexOf(u8, trimmed, "=") != null;
+            // Check for variable declarations with await - these need special handling
+            // to persist the variable to the global scope
+            const is_const_decl = std.mem.startsWith(u8, trimmed, "const ");
+            const is_let_decl = std.mem.startsWith(u8, trimmed, "let ");
+            const is_var_decl = std.mem.startsWith(u8, trimmed, "var ");
 
-            if (is_expression and !std.mem.startsWith(u8, trimmed, "let ") and
-                !std.mem.startsWith(u8, trimmed, "const ") and
-                !std.mem.startsWith(u8, trimmed, "var ") and
-                !std.mem.startsWith(u8, trimmed, "function ") and
+            if (is_const_decl or is_let_decl or is_var_decl) {
+                // Transform: "const x = await ..." -> "globalThis.x = await ...; x"
+                // Find the variable name (after const/let/var and before =)
+                const decl_len: usize = if (is_const_decl) 6 else if (is_let_decl) 4 else 4;
+                const after_keyword = std.mem.trim(u8, trimmed[decl_len..], &std.ascii.whitespace);
+
+                // Find the = sign
+                if (std.mem.indexOf(u8, after_keyword, "=")) |eq_pos| {
+                    const var_name = std.mem.trim(u8, after_keyword[0..eq_pos], &std.ascii.whitespace);
+                    const value_expr = std.mem.trim(u8, after_keyword[eq_pos + 1 ..], &std.ascii.whitespace);
+
+                    // Remove trailing semicolon from value if present
+                    const clean_value = if (std.mem.endsWith(u8, value_expr, ";"))
+                        value_expr[0 .. value_expr.len - 1]
+                    else
+                        value_expr;
+
+                    wrapped_code = try std.fmt.allocPrint(
+                        self.allocator,
+                        "(async () => {{ globalThis.{s} = {s}; return {s}; }})()",
+                        .{ var_name, clean_value, var_name },
+                    );
+                } else {
+                    // No = sign, just wrap as statement
+                    wrapped_code = try std.fmt.allocPrint(self.allocator, "(async () => {{ {s} }})()", .{code});
+                }
+            } else if (!std.mem.startsWith(u8, trimmed, "function ") and
                 !std.mem.startsWith(u8, trimmed, "class ") and
                 !std.mem.startsWith(u8, trimmed, "if ") and
                 !std.mem.startsWith(u8, trimmed, "for ") and
