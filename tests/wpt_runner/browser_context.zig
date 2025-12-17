@@ -3985,15 +3985,13 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
             const status_val: *v8.ffi.Value = @ptrCast(v8.ffi.v8_Integer_New(isolate, @intCast(response.status())));
             _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(status_key), status_val);
 
-            // Get body if available
+            // Get body if available - use body.data.items which contains the actual bytes
+            // Note: body.source.bytes may point to freed memory, always use body.data.items
             if (response.internal.body) |body| {
-                switch (body.source) {
-                    .bytes => |source| {
-                        const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse return;
-                        const body_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return;
-                        _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(body_key), @ptrCast(body_str));
-                    },
-                    .none, .blob, .form_data => {},
+                if (body.data.items.len > 0) {
+                    const body_key = v8.ffi.v8_String_NewFromUtf8(isolate, "_body", 5) orelse return;
+                    const body_str = v8.ffi.v8_String_NewFromUtf8(isolate, body.data.items.ptr, @intCast(body.data.items.len)) orelse return;
+                    _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(body_key), @ptrCast(body_str));
                 }
             }
 
