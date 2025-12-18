@@ -14,6 +14,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <set>
+#include <algorithm>
 #include <execinfo.h>  // For backtrace on macOS/Linux
 
 using namespace v8;
@@ -5854,6 +5856,411 @@ bool v8_Proxy_IsRevoked(Global<Object>* proxy) {
     
     Local<Proxy> proxy_obj = obj.As<Proxy>();
     return proxy_obj->IsRevoked();
+}
+
+} // extern "C" - temporarily close for C++ helper functions
+
+// ============================================================================
+// Legacy Platform Object Proxy Support
+// ============================================================================
+// 
+// WebIDL §3.9.6 requires [[OwnPropertyKeys]] to return keys in order:
+// 1. Indexed property keys (ascending numeric order)
+// 2. Named property keys (in definition order)
+// 3. Own property keys (strings, then symbols)
+//
+// V8's default enumeration order is: own → interceptors
+// We use a Proxy to override [[OwnPropertyKeys]] while forwarding all other
+// operations transparently to the target.
+// ============================================================================
+
+namespace {
+
+// Helper to get indexed property keys from an object with length property
+Local<Array> GetIndexedPropertyKeys(Isolate* isolate, Local<Context> context, Local<Object> target) {
+    Local<String> length_key = String::NewFromUtf8Literal(isolate, "length");
+    
+    MaybeLocal<Value> maybe_length = target->Get(context, length_key);
+    if (maybe_length.IsEmpty()) {
+        return Array::New(isolate, 0);
+    }
+    
+    Local<Value> length_val = maybe_length.ToLocalChecked();
+    if (!length_val->IsNumber()) {
+        return Array::New(isolate, 0);
+    }
+    
+    uint32_t length = length_val->Uint32Value(context).FromMaybe(0);
+    Local<Array> indices = Array::New(isolate, length);
+    
+    for (uint32_t i = 0; i < length; i++) {
+        Local<String> idx_str = String::NewFromUtf8(isolate, std::to_string(i).c_str()).ToLocalChecked();
+        indices->Set(context, i, idx_str).Check();
+    }
+    
+    return indices;
+}
+
+// Helper to get named property keys by calling the named property enumerator
+// This works by triggering Object.keys which will call our interceptor
+Local<Array> GetNamedPropertyKeys(Isolate* isolate, Local<Context> context, Local<Object> target) {
+    // Get property names that would be returned by the named property enumerator
+    // We use GetPropertyNames with ONLY_ENUMERABLE to get interceptor keys
+    PropertyFilter filter = static_cast<PropertyFilter>(
+        PropertyFilter::ONLY_ENUMERABLE | 
+        PropertyFilter::SKIP_SYMBOLS
+    );
+    
+    MaybeLocal<Array> maybe_names = target->GetPropertyNames(
+        context,
+        KeyCollectionMode::kOwnOnly,
+        filter,
+        IndexFilter::kSkipIndices  // Skip indices, we handle them separately
+    );
+    
+    if (maybe_names.IsEmpty()) {
+        return Array::New(isolate, 0);
+    }
+    
+    return maybe_names.ToLocalChecked();
+}
+
+// Helper to get own property keys (non-interceptor, non-indexed)
+Local<Array> GetOwnPropertyKeys(Isolate* isolate, Local<Context> context, Local<Object> target) {
+    // Get ALL own property names including non-enumerable
+    MaybeLocal<Array> maybe_names = target->GetOwnPropertyNames(
+        context,
+        static_cast<PropertyFilter>(PropertyFilter::ALL_PROPERTIES),
+        KeyConversionMode::kConvertToString
+    );
+    
+    if (maybe_names.IsEmpty()) {
+        return Array::New(isolate, 0);
+    }
+    
+    return maybe_names.ToLocalChecked();
+}
+
+// The ownKeys trap implementation for legacy platform objects
+// Uses Reflect.ownKeys(target) to get all keys, then reorders them per WebIDL §3.9.6
+void LegacyPlatformObjectOwnKeys(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    
+    if (info.Length() < 1 || !info[0]->IsObject()) {
+        info.GetReturnValue().Set(Array::New(isolate, 0));
+        return;
+    }
+    
+    Local<Object> target = info[0].As<Object>();
+    
+    // Get Reflect.ownKeys(target) to get V8's native key list
+    Local<Object> reflect = context->Global()
+        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
+        .ToLocalChecked().As<Object>();
+    
+    Local<Function> ownKeys_fn = reflect
+        ->Get(context, String::NewFromUtf8Literal(isolate, "ownKeys"))
+        .ToLocalChecked().As<Function>();
+    
+    Local<Value> args[] = { target };
+    MaybeLocal<Value> maybe_keys = ownKeys_fn->Call(context, reflect, 1, args);
+    
+    if (maybe_keys.IsEmpty()) {
+        info.GetReturnValue().Set(Array::New(isolate, 0));
+        return;
+    }
+    
+    Local<Array> all_keys = maybe_keys.ToLocalChecked().As<Array>();
+    
+    // Categorize keys into: indices, named, own strings, symbols
+    std::vector<uint32_t> indices;
+    std::vector<Local<Value>> named_props;
+    std::vector<Local<Value>> own_props;
+    std::vector<Local<Value>> symbols;
+    
+    // Get the length for determining index range
+    Local<String> length_key = String::NewFromUtf8Literal(isolate, "length");
+    uint32_t length = 0;
+    MaybeLocal<Value> maybe_length = target->Get(context, length_key);
+    if (!maybe_length.IsEmpty()) {
+        Local<Value> length_val = maybe_length.ToLocalChecked();
+        if (length_val->IsNumber()) {
+            length = length_val->Uint32Value(context).FromMaybe(0);
+        }
+    }
+    
+    // Get named property names from the interceptor
+    std::set<std::string> named_set;
+    PropertyFilter filter = static_cast<PropertyFilter>(
+        PropertyFilter::ONLY_ENUMERABLE | PropertyFilter::SKIP_SYMBOLS
+    );
+    MaybeLocal<Array> maybe_named = target->GetPropertyNames(
+        context, KeyCollectionMode::kOwnOnly, filter, IndexFilter::kSkipIndices
+    );
+    if (!maybe_named.IsEmpty()) {
+        Local<Array> named_arr = maybe_named.ToLocalChecked();
+        for (uint32_t i = 0; i < named_arr->Length(); i++) {
+            MaybeLocal<Value> mk = named_arr->Get(context, i);
+            if (!mk.IsEmpty() && mk.ToLocalChecked()->IsString()) {
+                String::Utf8Value utf8(isolate, mk.ToLocalChecked());
+                named_set.insert(std::string(*utf8));
+            }
+        }
+    }
+    
+    // Categorize each key
+    for (uint32_t i = 0; i < all_keys->Length(); i++) {
+        MaybeLocal<Value> maybe_key = all_keys->Get(context, i);
+        if (maybe_key.IsEmpty()) continue;
+        
+        Local<Value> key = maybe_key.ToLocalChecked();
+        
+        if (key->IsSymbol()) {
+            symbols.push_back(key);
+        } else if (key->IsString()) {
+            String::Utf8Value utf8(isolate, key);
+            std::string key_str(*utf8);
+            
+            // Check if it's a numeric index within range
+            bool is_index = false;
+            if (!key_str.empty() && std::all_of(key_str.begin(), key_str.end(), ::isdigit)) {
+                uint32_t idx = std::stoul(key_str);
+                if (idx < length) {
+                    indices.push_back(idx);
+                    is_index = true;
+                }
+            }
+            
+            if (!is_index) {
+                // Use HasRealNamedProperty to distinguish actual own properties
+                // from named properties provided by the interceptor.
+                // HasRealNamedProperty returns true only for actual own properties,
+                // not for properties from the named property handler.
+                Local<String> key_string = key.As<String>();
+                Maybe<bool> has_real = target->HasRealNamedProperty(context, key_string);
+                if (has_real.FromMaybe(false)) {
+                    own_props.push_back(key);
+                } else {
+                    named_props.push_back(key);
+                }
+            }
+        }
+    }
+    
+    // Sort indices
+    std::sort(indices.begin(), indices.end());
+    
+    // Build result in WebIDL order: indices, named, own, symbols
+    std::vector<Local<Value>> result_keys;
+    
+    for (uint32_t idx : indices) {
+        Local<String> idx_str = String::NewFromUtf8(isolate, std::to_string(idx).c_str()).ToLocalChecked();
+        result_keys.push_back(idx_str);
+    }
+    for (const auto& key : named_props) {
+        result_keys.push_back(key);
+    }
+    for (const auto& key : own_props) {
+        result_keys.push_back(key);
+    }
+    for (const auto& key : symbols) {
+        result_keys.push_back(key);
+    }
+    
+    Local<Array> result = Array::New(isolate, static_cast<int>(result_keys.size()));
+    for (size_t i = 0; i < result_keys.size(); i++) {
+        result->Set(context, static_cast<uint32_t>(i), result_keys[i]).Check();
+    }
+    
+    info.GetReturnValue().Set(result);
+}
+
+// The getOwnPropertyDescriptor trap - must be consistent with ownKeys
+void LegacyPlatformObjectGetOwnPropertyDescriptor(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    
+    if (info.Length() < 2 || !info[0]->IsObject()) {
+        info.GetReturnValue().SetUndefined();
+        return;
+    }
+    
+    Local<Object> target = info[0].As<Object>();
+    Local<Value> key = info[1];
+    
+    // Forward to Reflect.getOwnPropertyDescriptor(target, key)
+    Local<Object> reflect = context->Global()
+        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
+        .ToLocalChecked().As<Object>();
+    
+    Local<Function> getOwnPropertyDescriptor = reflect
+        ->Get(context, String::NewFromUtf8Literal(isolate, "getOwnPropertyDescriptor"))
+        .ToLocalChecked().As<Function>();
+    
+    Local<Value> args[] = { target, key };
+    MaybeLocal<Value> result = getOwnPropertyDescriptor->Call(context, reflect, 2, args);
+    
+    if (result.IsEmpty()) {
+        info.GetReturnValue().SetUndefined();
+    } else {
+        info.GetReturnValue().Set(result.ToLocalChecked());
+    }
+}
+
+// Generic trap that forwards to Reflect
+void ForwardToReflect(const FunctionCallbackInfo<Value>& info, const char* method_name) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    
+    Local<Object> reflect = context->Global()
+        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
+        .ToLocalChecked().As<Object>();
+    
+    Local<Function> method = reflect
+        ->Get(context, String::NewFromUtf8(isolate, method_name).ToLocalChecked())
+        .ToLocalChecked().As<Function>();
+    
+    std::vector<Local<Value>> args;
+    for (int i = 0; i < info.Length(); i++) {
+        args.push_back(info[i]);
+    }
+    
+    MaybeLocal<Value> result = method->Call(context, reflect, 
+        static_cast<int>(args.size()), args.data());
+    
+    if (!result.IsEmpty()) {
+        info.GetReturnValue().Set(result.ToLocalChecked());
+    }
+}
+
+void TrapGet(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    
+    if (info.Length() < 2) return;
+    
+    Local<Value> target = info[0];
+    Local<Value> property = info[1];
+    
+    Local<Object> reflect = context->Global()
+        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
+        .ToLocalChecked().As<Object>();
+    
+    Local<Function> get_fn = reflect
+        ->Get(context, String::NewFromUtf8Literal(isolate, "get"))
+        .ToLocalChecked().As<Function>();
+    
+    Local<Value> args[] = { target, property, target };
+    MaybeLocal<Value> result = get_fn->Call(context, reflect, 3, args);
+    
+    if (!result.IsEmpty()) {
+        info.GetReturnValue().Set(result.ToLocalChecked());
+    }
+}
+
+void TrapSet(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    
+    if (info.Length() < 3) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+    
+    Local<Object> target = info[0].As<Object>();
+    Local<Value> property = info[1];
+    Local<Value> value = info[2];
+    
+    // Use Object.defineProperty to bypass named property interceptor.
+    // Reflect.set goes through the interceptor which may not create
+    // actual own properties on objects with named property handlers.
+    Local<Object> object_ctor = context->Global()
+        ->Get(context, String::NewFromUtf8Literal(isolate, "Object"))
+        .ToLocalChecked().As<Object>();
+    
+    Local<Function> define_prop = object_ctor
+        ->Get(context, String::NewFromUtf8Literal(isolate, "defineProperty"))
+        .ToLocalChecked().As<Function>();
+    
+    // Create property descriptor: { value, writable: true, enumerable: true, configurable: true }
+    Local<Object> descriptor = Object::New(isolate);
+    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "value"), value).Check();
+    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "writable"), Boolean::New(isolate, true)).Check();
+    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "enumerable"), Boolean::New(isolate, true)).Check();
+    descriptor->Set(context, String::NewFromUtf8Literal(isolate, "configurable"), Boolean::New(isolate, true)).Check();
+    
+    Local<Value> args[] = { target, property, descriptor };
+    MaybeLocal<Value> result = define_prop->Call(context, object_ctor, 3, args);
+    
+    info.GetReturnValue().Set(!result.IsEmpty());
+}
+void TrapHas(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "has"); }
+void TrapDeleteProperty(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "deleteProperty"); }
+void TrapDefineProperty(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "defineProperty"); }
+void TrapGetPrototypeOf(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "getPrototypeOf"); }
+void TrapSetPrototypeOf(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "setPrototypeOf"); }
+void TrapIsExtensible(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "isExtensible"); }
+void TrapPreventExtensions(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "preventExtensions"); }
+
+} // anonymous namespace
+
+extern "C" {
+
+/// Create a transparent Proxy for a legacy platform object
+/// 
+/// This wraps the target in a Proxy that forwards all operations to the target
+/// except for [[OwnPropertyKeys]] which returns keys in WebIDL order:
+/// indexed → named → own → symbols
+///
+/// @param context - The V8 context
+/// @param target - The legacy platform object to wrap
+/// @return Global handle to the Proxy, or nullptr on failure
+Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Global<Object>* target) {
+    if (!context || !target) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Object> local_target = target->Get(isolate);
+    
+    // Create the handler object with all traps
+    Local<Object> handler = Object::New(isolate);
+    
+    // Helper to create and set a function trap
+    auto set_trap = [&](const char* name, FunctionCallback callback) {
+        Local<FunctionTemplate> tmpl = FunctionTemplate::New(isolate, callback);
+        Local<Function> fn = tmpl->GetFunction(ctx).ToLocalChecked();
+        handler->Set(ctx, String::NewFromUtf8(isolate, name).ToLocalChecked(), fn).Check();
+    };
+    
+    // Set all traps
+    set_trap("get", TrapGet);
+    set_trap("set", TrapSet);
+    set_trap("has", TrapHas);
+    set_trap("deleteProperty", TrapDeleteProperty);
+    set_trap("ownKeys", LegacyPlatformObjectOwnKeys);
+    set_trap("getOwnPropertyDescriptor", LegacyPlatformObjectGetOwnPropertyDescriptor);
+    set_trap("defineProperty", TrapDefineProperty);
+    set_trap("getPrototypeOf", TrapGetPrototypeOf);
+    set_trap("setPrototypeOf", TrapSetPrototypeOf);
+    set_trap("isExtensible", TrapIsExtensible);
+    set_trap("preventExtensions", TrapPreventExtensions);
+    
+    // Create the Proxy
+    MaybeLocal<Proxy> maybe_proxy = Proxy::New(ctx, local_target, handler);
+    if (maybe_proxy.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Proxy> proxy = maybe_proxy.ToLocalChecked();
+    return trackHandle(new Global<Object>(isolate, proxy.As<Object>()));
 }
 
 } // extern "C"

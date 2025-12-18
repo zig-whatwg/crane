@@ -279,26 +279,6 @@ pub fn wrapInstanceAsV8Object(
         @ptrCast(instance),
     );
 
-    // ========================================
-    // LEGACY PLATFORM OBJECT PROXY WRAPPING
-    // ========================================
-    // For legacy platform objects, wrap in a Proxy to ensure correct
-    // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
-    // V8's default order is: own → intercepted, but WebIDL requires: indexed → named → own
-    //
-    // NOTE: Proxy wrapping is currently DISABLED because V8 Proxies don't properly
-    // forward property interceptor access, breaking methods like .length on HTMLCollection.
-    // The correct fix requires either:
-    // 1. A full Proxy implementation with get/set/has traps that forward to interceptors
-    // 2. Or V8 C++ changes to override [[OwnPropertyKeys]] directly
-    //
-    // TODO(whatwg-i9pew): Re-enable when proper Proxy forwarding is implemented
-    // if (isLegacyPlatformObject(interface_name)) {
-    //     const lpo_proxy = @import("legacy_platform_object_proxy.zig");
-    //     v8_object = lpo_proxy.wrapInProxy(v8_object, isolate, context);
-    // }
-    _ = isLegacyPlatformObject; // suppress unused warning
-
     // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
     if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(
@@ -308,6 +288,13 @@ pub fn wrapInstanceAsV8Object(
         );
     }
 
+    // For legacy platform objects, wrap in a Proxy to ensure correct
+    // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
+    const final_object = if (isLegacyPlatformObject(interface_name)) blk: {
+        const lpo_proxy = @import("legacy_platform_object_proxy.zig");
+        break :blk lpo_proxy.wrapInProxy(v8_object, isolate, context);
+    } else v8_object;
+
     // ========================================
     // CACHE THE WRAPPER: Store for future lookups
     // ========================================
@@ -316,14 +303,14 @@ pub fn wrapInstanceAsV8Object(
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
             const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
 
-            // Cache the wrapper (log but don't fail if caching fails)
-            cache.set(instance, v8_object, isolate) catch |err| {
+            // Cache the final object (Proxy for LPOs, target for others)
+            cache.set(instance, final_object, isolate) catch |err| {
                 std.log.warn("Failed to cache V8 wrapper: {s}", .{@errorName(err)});
             };
         }
     }
 
-    return v8_object;
+    return final_object;
 }
 
 /// Get the interface name from an Instance

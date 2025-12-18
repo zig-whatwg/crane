@@ -2239,3 +2239,7 @@ pub extern fn v8_Proxy_Revoke(proxy: *Object) void;
 /// @param proxy - The Proxy object to check
 /// @return true if revoked, false otherwise or if not a Proxy
 pub extern fn v8_Proxy_IsRevoked(proxy: *Object) bool;
+
+/// Create a transparent Proxy for legacy platform objects with WebIDL-compliant
+/// [[OwnPropertyKeys]] enumeration order: indexed → named → own → symbols
+pub extern fn v8_CreateLegacyPlatformObjectProxy(context: *Context, target: *Object) ?*Object;
