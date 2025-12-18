@@ -294,16 +294,16 @@ pub fn set_item(instance: *runtime.Instance, index: u32, value: ?*runtime.Instan
 
         if (existing) |old_option| {
             // Replace the existing option
-            _ = try Node.replaceChild(instance, new_option, old_option);
+            _ = try Node.call_replaceChild(instance, new_option, old_option);
         } else {
             // Append if index is beyond current length
-            _ = try Node.appendChild(instance, new_option);
+            _ = try Node.call_appendChild(instance, new_option);
         }
     } else {
         // Remove the option at this index
         const existing = try call_item(instance, index);
         if (existing) |old_option| {
-            _ = try Node.removeChild(instance, old_option);
+            _ = try Node.call_removeChild(instance, old_option);
         }
     }
 }
