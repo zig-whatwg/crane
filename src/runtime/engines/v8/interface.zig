@@ -5346,9 +5346,9 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Per WebIDL spec: "Throw a TypeError using the function's realm."
                     const setter_context = info.getFunctionCreationContext() orelse context;
 
-                    // Get the new value from info[0]
-                    // Note: info.get() always returns a valid pointer in V8
-                    const new_value_v8 = info.get(0);
+                    // Get the new value from info[0] - handle missing arguments as undefined
+                    // Per WebIDL spec, missing arguments should be treated as undefined
+                    const new_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
@@ -5603,9 +5603,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
 
-                    // Get the new value from info[0]
-                    const new_value_v8 = info.get(0);
-
+                    // Get the new value from info[0] - handle missing arguments as undefined
+                    // Per WebIDL spec, missing arguments should be treated as undefined
+                    const new_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
                     // Get 'this' object
                     const this_obj = info.getThis();
 
