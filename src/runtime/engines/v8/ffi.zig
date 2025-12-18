@@ -452,6 +452,24 @@ pub extern fn v8_ObjectTemplate_SetNamedPropertyHandlerFull(
     flags: PropertyHandlerFlags,
 ) void;
 
+pub const NamedPropertyDefinerCallback = *const fn (
+    property: *Name,
+    desc: *const PropertyDescriptor,
+    info: *const PropertyCallbackInfoVoid,
+) callconv(.c) Intercepted;
+
+pub extern fn v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
+    self: *ObjectTemplate,
+    getter: ?NamedPropertyGetterCallback,
+    setter: ?NamedPropertySetterCallback,
+    query: ?NamedPropertyQueryCallbackIntercepted,
+    deleter: ?NamedPropertyDeleterCallback,
+    enumerator: ?NamedPropertyEnumeratorCallback,
+    definer: ?NamedPropertyDefinerCallback,
+    descriptor: ?NamedPropertyDescriptorCallback,
+    flags: PropertyHandlerFlags,
+) void;
+
 /// Set an indexed property handler on the ObjectTemplate
 /// This intercepts indexed property access (e.g., obj[0], obj[1], etc.)
 pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandler(
@@ -535,6 +553,24 @@ pub extern fn v8_PropertyDescriptor_IsDataDescriptor(desc: *const PropertyDescri
 
 /// Get the value from a data PropertyDescriptor (returns null if not present)
 pub extern fn v8_PropertyDescriptor_GetValue(desc: *const PropertyDescriptor) ?*Value;
+
+/// Check if PropertyDescriptor has a configurable field specified
+pub extern fn v8_PropertyDescriptor_HasConfigurable(desc: *const PropertyDescriptor) bool;
+
+/// Get the configurable value from PropertyDescriptor (only valid if HasConfigurable returns true)
+pub extern fn v8_PropertyDescriptor_Configurable(desc: *const PropertyDescriptor) bool;
+
+/// Check if PropertyDescriptor has an enumerable field specified
+pub extern fn v8_PropertyDescriptor_HasEnumerable(desc: *const PropertyDescriptor) bool;
+
+/// Get the enumerable value from PropertyDescriptor (only valid if HasEnumerable returns true)
+pub extern fn v8_PropertyDescriptor_Enumerable(desc: *const PropertyDescriptor) bool;
+
+/// Check if PropertyDescriptor has a writable field specified
+pub extern fn v8_PropertyDescriptor_HasWritable(desc: *const PropertyDescriptor) bool;
+
+/// Get the writable value from PropertyDescriptor (only valid if HasWritable returns true)
+pub extern fn v8_PropertyDescriptor_Writable(desc: *const PropertyDescriptor) bool;
 
 /// Set indexed property handler with definer support for [[DefineOwnProperty]]
 /// This enables proper behavior for:

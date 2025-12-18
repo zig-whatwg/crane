@@ -1232,18 +1232,15 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Check if interface has named setter
                 const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
                     @hasDecl(Interface, "set_namedItem");
-                v8.v8_ObjectTemplate_SetNamedPropertyHandlerFull(
+                v8.v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
                     instance_tmpl,
                     namedPropertyGetter,
-                    if (has_named_setter) null else namedPropertySetterReadOnly, // TODO: implement namedPropertySetter when needed
+                    if (has_named_setter) null else namedPropertySetterReadOnly,
                     namedPropertyQuery,
-                    null, // deleter - not supported yet
+                    null,
                     namedPropertyEnumerator,
+                    namedPropertyDefiner,
                     namedPropertyDescriptor,
-                    // kNonMaskingAndOnlyInterceptStrings: Only intercept string keys that don't
-                    // shadow prototype properties. Per WebIDL spec, named property handlers
-                    // should NOT intercept properties defined on the interface's prototype
-                    // (e.g., cssText, length for CSSStyleDeclaration).
                     .kNonMaskingAndOnlyInterceptStrings,
                 );
             }
@@ -1558,11 +1555,28 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                     // Regular attribute - fall through to throw TypeError
                                 } else {
-                                    // Type info not registered - fall back to legacy getInstance check
-                                    // This path is only used for interfaces not yet in dom_type_info.zig
-                                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                                    if (instance_ptr != null) {
-                                        break :blk instance_ptr;
+                                    // Type info not registered in dom_type_info.zig - check WrapperTypeInfo in slot 1
+                                    // if available, otherwise fall back to legacy behavior
+                                    if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
+                                        // WrapperTypeInfo is present - use it for type checking
+                                        // Per WebIDL spec: "If the this value is null or undefined, or is not a
+                                        // platform object that implements the interface, then throw a TypeError"
+                                        if (std.mem.eql(u8, stored_type_info.getName(), interface_name)) {
+                                            // Type matches - get instance pointer from slot 0
+                                            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                            if (instance_ptr != null) {
+                                                break :blk instance_ptr;
+                                            }
+                                        }
+                                        // Type mismatch - fall through to throw TypeError
+                                    } else {
+                                        // No WrapperTypeInfo - fall back to legacy getInstance check
+                                        // This path is used for interfaces not yet in dom_type_info.zig
+                                        // (e.g., HTMLCollection, NodeList, etc.)
+                                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                        if (instance_ptr != null) {
+                                            break :blk instance_ptr;
+                                        }
                                     }
                                     // [LegacyLenientThis] - return undefined instead of throwing
                                     if (is_lenient_this) {
@@ -1921,8 +1935,24 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :blk inst;
                                 }
                             } else {
-                                if (getInstance(runtime.Instance, this_obj)) |inst| {
-                                    break :blk inst;
+                                // Type info not registered in dom_type_info.zig - check WrapperTypeInfo in slot 1
+                                // if available, otherwise fall back to legacy behavior
+                                if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
+                                    // WrapperTypeInfo is present - use it for type checking
+                                    if (std.mem.eql(u8, stored_type_info.getName(), interface_name)) {
+                                        // Type matches - get instance using legacy getInstance
+                                        if (getInstance(runtime.Instance, this_obj)) |inst| {
+                                            break :blk inst;
+                                        }
+                                    }
+                                    // Type mismatch - fall through to implicit this handling or TypeError
+                                } else {
+                                    // No WrapperTypeInfo - fall back to legacy getInstance check
+                                    // This path is used for interfaces not yet in dom_type_info.zig
+                                    if (getInstance(runtime.Instance, this_obj)) |inst| {
+                                        break :blk inst;
+                                    }
+                                    // Continue to implicit this handling
                                 }
                             }
 
@@ -3966,41 +3996,28 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Indexed property definer callback for Object.defineProperty()
-        /// Per WebIDL §3.9.3 [[DefineOwnProperty]], accessor properties on array indices are rejected.
+        /// Implements WebIDL §3.9.3 [[DefineOwnProperty]] for indexed properties.
+        ///
+        /// Per WebIDL spec:
+        /// - If interface supports indexed properties but NO setter: reject all defines
+        /// - If interface HAS indexed property setter: validate descriptor, then invoke setter
         fn indexedPropertyDefiner(
             index: u32,
             desc: *const v8.PropertyDescriptor,
             info: *const v8.PropertyCallbackInfoVoid,
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
-
-            // Per WebIDL §3.9.3 [[DefineOwnProperty]] step 1:
-            // "If O supports indexed properties and P is an array index, then:
-            //   1. If the result of calling IsDataDescriptor(Desc) is false, then return false."
-            //
-            // Accessor descriptors (with getter/setter) are NOT data descriptors.
-            const is_accessor = v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc);
-
-            if (is_accessor) {
-                // This is an accessor descriptor - reject it per spec
-                // Return kYes to indicate we handled it (by rejecting)
-                // The rejection is signaled by NOT setting the return value
-                // V8 will throw TypeError because defineProperty returns false
-                if (info.shouldThrowOnError()) {
-                    var buf: [80]u8 = undefined;
-                    const msg = std.fmt.bufPrint(&buf, "Cannot define accessor property \"{d}\" on indexed collection", .{index}) catch "Cannot define accessor property on indexed collection";
-                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                    v8.v8_Isolate_ThrowException(isolate, exception);
-                }
-                return .kYes;
-            }
-
-            // For data descriptors, check if we have an indexed setter
             const has_indexed_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
+
+            // WebIDL §3.9.3 step 1: Interface supports indexed properties
+            // This callback is only registered for interfaces with indexed property support,
+            // so we know we're handling an indexed property access.
+
             if (!has_indexed_setter) {
-                // Per WebIDL §3.9.3 step 1.2:
-                // "If O does not implement an interface with an indexed property setter, return false."
+                // No indexed property setter - reject all define operations per WebIDL §3.9.3
+                // "If O does not implement an interface with an indexed property setter,
+                // then return false."
+                // Returning false in defineProperty throws TypeError in strict mode.
                 if (info.shouldThrowOnError()) {
                     var buf: [80]u8 = undefined;
                     const msg = std.fmt.bufPrint(&buf, "Cannot define property \"{d}\" on read-only indexed collection", .{index}) catch "Cannot define property on read-only indexed collection";
@@ -4008,10 +4025,58 @@ pub fn V8Interface(comptime Interface: type) type {
                     const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
                     v8.v8_Isolate_ThrowException(isolate, exception);
                 }
+                // Return kYes to indicate we handled it (by rejecting)
                 return .kYes;
             }
 
-            // Has indexed setter - let the normal setter handle it
+            // Interface HAS indexed property setter - validate descriptor per WebIDL §3.9.3 step 1.2
+
+            // Step 1.2.1: If not a data descriptor, throw TypeError
+            // "If the result of calling IsDataDescriptor(Desc) is false, throw a TypeError."
+            if (v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define accessor property on indexed collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 1.2.2: If [[Configurable]] is false, throw TypeError
+            if (v8.v8_PropertyDescriptor_HasConfigurable(desc) and !v8.v8_PropertyDescriptor_Configurable(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define non-configurable property on indexed collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 1.2.3: If [[Enumerable]] is false, throw TypeError
+            if (v8.v8_PropertyDescriptor_HasEnumerable(desc) and !v8.v8_PropertyDescriptor_Enumerable(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define non-enumerable property on indexed collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 1.2.4: If [[Writable]] is false, throw TypeError
+            if (v8.v8_PropertyDescriptor_HasWritable(desc) and !v8.v8_PropertyDescriptor_Writable(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define non-writable property on indexed collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 1.2.5: Invoke indexed property setter with value
             // Return kNo to let V8 continue to the setter callback
             return .kNo;
         }
@@ -4020,6 +4085,75 @@ pub fn V8Interface(comptime Interface: type) type {
         // Named Property Handlers for Legacy Platform Objects
         // WebIDL spec: https://webidl.spec.whatwg.org/#legacy-platform-object
         // =====================================================================
+
+        /// Named property definer callback for Object.defineProperty() on named properties.
+        /// Implements WebIDL §3.9.3 [[DefineOwnProperty]] for named properties.
+        fn namedPropertyDefiner(
+            property: *v8.Name,
+            desc: *const v8.PropertyDescriptor,
+            info: *const v8.PropertyCallbackInfoVoid,
+        ) callconv(.c) v8.Intercepted {
+            const isolate = info.getIsolate();
+            const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
+                @hasDecl(Interface, "set_namedItem");
+
+            // Verify property is a string (not a Symbol)
+            if (!v8.v8_Name_IsString(property)) {
+                return .kNo;
+            }
+
+            // WebIDL §3.9.3 step 2.1: If no named property setter, delegate to OrdinaryDefineOwnProperty
+            if (!has_named_setter) {
+                return .kNo;
+            }
+
+            // Step 2.2.1: If not a data descriptor (accessor descriptor), throw TypeError
+            if (v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define accessor property on named property collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 2.2.2: If [[Configurable]] is false, throw TypeError
+            if (v8.v8_PropertyDescriptor_HasConfigurable(desc) and !v8.v8_PropertyDescriptor_Configurable(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define non-configurable property on named property collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 2.2.3: If [[Enumerable]] is false, throw TypeError
+            if (v8.v8_PropertyDescriptor_HasEnumerable(desc) and !v8.v8_PropertyDescriptor_Enumerable(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define non-enumerable property on named property collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 2.2.4: If [[Writable]] is false, throw TypeError
+            if (v8.v8_PropertyDescriptor_HasWritable(desc) and !v8.v8_PropertyDescriptor_Writable(desc)) {
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define non-writable property on named property collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
+                return .kYes;
+            }
+
+            // Step 2.2.5: Invoke named property setter with value - delegate to setter callback
+            return .kNo;
+        }
 
         /// Named property getter for legacy platform objects (obj.name, obj["name"])
         /// Called when JavaScript accesses a named property on objects with WebIDL "getter" operations.
@@ -5579,11 +5713,28 @@ pub fn V8Interface(comptime Interface: type) type {
                                 }
                                 // Regular attribute - fall through to throw TypeError
                             } else {
-                                // Type info not registered - fall back to legacy getInstance check
-                                // This path is only used for interfaces not yet in dom_type_info.zig
-                                const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                                if (instance_ptr != null) {
-                                    break :blk instance_ptr;
+                                // Type info not registered in dom_type_info.zig - check WrapperTypeInfo in slot 1
+                                // if available, otherwise fall back to legacy behavior
+                                if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
+                                    // WrapperTypeInfo is present - use it for type checking
+                                    // Per WebIDL spec: "If the this value is null or undefined, or is not a
+                                    // platform object that implements the interface, then throw a TypeError"
+                                    if (std.mem.eql(u8, stored_type_info.getName(), interface_name)) {
+                                        // Type matches - get instance pointer from slot 0
+                                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                        if (instance_ptr != null) {
+                                            break :blk instance_ptr;
+                                        }
+                                    }
+                                    // Type mismatch - fall through to throw TypeError
+                                } else {
+                                    // No WrapperTypeInfo - fall back to legacy getInstance check
+                                    // This path is used for interfaces not yet in dom_type_info.zig
+                                    // (e.g., HTMLCollection, NodeList, etc.)
+                                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                    if (instance_ptr != null) {
+                                        break :blk instance_ptr;
+                                    }
                                 }
                                 // [LegacyLenientThis] - silently return instead of throwing
                                 if (is_lenient_this) {

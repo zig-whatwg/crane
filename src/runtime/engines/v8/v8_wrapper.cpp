@@ -3068,7 +3068,43 @@ void v8_ObjectTemplate_SetNamedPropertyHandlerFull(
         query,
         deleter,
         enumerator,
-        nullptr,  // definer callback (not needed for legacy platform objects)
+        nullptr,  // definer callback (see SetNamedPropertyHandlerWithDefiner for definer support)
+        descriptor,
+        Local<Value>(),  // data
+        flags
+    ));
+}
+
+// Named definer callback type for [[DefineOwnProperty]] trap on named properties
+// Per WebIDL spec, accessor descriptors must throw TypeError
+typedef Intercepted (*InterceptedNamedDefinerCallback)(
+    Local<Name> property,
+    const PropertyDescriptor& desc,
+    const PropertyCallbackInfo<void>& info);
+
+// Named property handler with definer support for [[DefineOwnProperty]] per WebIDL §3.9.3
+void v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
+    Global<ObjectTemplate>* tpl,
+    NamedPropertyGetterCallback getter,
+    NamedPropertySetterCallback setter,
+    InterceptedNamedQueryCallback query,
+    NamedPropertyDeleterCallback deleter,
+    NamedPropertyEnumeratorCallback enumerator,
+    InterceptedNamedDefinerCallback definer,
+    InterceptedNamedDescriptorCallback descriptor,
+    PropertyHandlerFlags flags
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    
+    local_tpl->SetHandler(NamedPropertyHandlerConfiguration(
+        getter,
+        setter,
+        query,
+        deleter,
+        enumerator,
+        definer,  // definer callback for Object.defineProperty() per WebIDL §3.9.3
         descriptor,
         Local<Value>(),  // data
         flags
@@ -3530,6 +3566,36 @@ Global<Value>* v8_PropertyDescriptor_GetValue(const PropertyDescriptor* desc) {
         return nullptr;
     }
     return new Global<Value>(isolate, val);
+}
+
+// Check if PropertyDescriptor has a configurable field specified
+bool v8_PropertyDescriptor_HasConfigurable(const PropertyDescriptor* desc) {
+    return desc->has_configurable();
+}
+
+// Get the configurable value from PropertyDescriptor
+bool v8_PropertyDescriptor_Configurable(const PropertyDescriptor* desc) {
+    return desc->configurable();
+}
+
+// Check if PropertyDescriptor has an enumerable field specified
+bool v8_PropertyDescriptor_HasEnumerable(const PropertyDescriptor* desc) {
+    return desc->has_enumerable();
+}
+
+// Get the enumerable value from PropertyDescriptor
+bool v8_PropertyDescriptor_Enumerable(const PropertyDescriptor* desc) {
+    return desc->enumerable();
+}
+
+// Check if PropertyDescriptor has a writable field specified
+bool v8_PropertyDescriptor_HasWritable(const PropertyDescriptor* desc) {
+    return desc->has_writable();
+}
+
+// Get the writable value from PropertyDescriptor
+bool v8_PropertyDescriptor_Writable(const PropertyDescriptor* desc) {
+    return desc->writable();
 }
 
 // Get the isolate from PropertyCallbackInfo<void>
