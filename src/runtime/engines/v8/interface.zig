@@ -1229,10 +1229,13 @@ pub fn V8Interface(comptime Interface: type) type {
             // 3. Not a global object (Window/WorkerGlobalScope)
             const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
             if (has_named_getter and !is_global_object and has_named_enumerator) {
+                // Check if interface has named setter
+                const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
+                    @hasDecl(Interface, "set_namedItem");
                 v8.v8_ObjectTemplate_SetNamedPropertyHandlerFull(
                     instance_tmpl,
                     namedPropertyGetter,
-                    null, // setter - read-only for now
+                    if (has_named_setter) null else namedPropertySetterReadOnly, // TODO: implement namedPropertySetter when needed
                     namedPropertyQuery,
                     null, // deleter - not supported yet
                     namedPropertyEnumerator,
@@ -4298,6 +4301,97 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             return .kNo;
+        }
+
+        /// Named property setter for read-only named properties (no setter defined)
+        /// Implements WebIDL [[Set]] semantics §3.9.2:
+        /// - If property name is a supported property name: fail silently (sloppy) or throw TypeError (strict)
+        /// - If property name is NOT supported: don't set return value to allow OrdinarySet (create own property)
+        /// - Symbols always fall through to OrdinarySet
+        fn namedPropertySetterReadOnly(
+            property: *v8.Name,
+            _: *v8.Value, // value - ignored since we don't actually set
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) void {
+            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
+                @hasDecl(Interface, "call_namedItem");
+            if (comptime !has_named_getter) {
+                return; // Don't intercept - allow fallthrough
+            }
+
+            // Symbols should always be settable as own properties
+            if (!v8.v8_Name_IsString(property)) {
+                return; // Don't intercept
+            }
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return; // Don't intercept
+            }
+
+            // Safety check for poisoned pointers
+            const ptr_as_int = @intFromPtr(instance_ptr);
+            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+            {
+                return; // Don't intercept
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Convert property name to Zig string
+            const prop_str: *v8.String = @ptrCast(property);
+            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
+            if (prop_len <= 0) return;
+
+            var prop_buf: [256]u8 = undefined;
+            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return;
+            const prop_name = prop_buf[0..@intCast(actual_len)];
+
+            // Create a DOMString from the property name
+            const dom_str = runtime.DOMString.initInterned(prop_name);
+
+            // Check if this is a supported property name by calling the getter
+            const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
+                Interface.call_getNamedItem
+            else
+                Interface.call_namedItem;
+
+            const result = getter_fn(instance, dom_str) catch {
+                // Error calling getter - allow fallthrough
+                return;
+            };
+
+            // Check if result is non-null (property exists as supported name)
+            const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
+            const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
+            const type_info = @typeInfo(ActualReturnType);
+
+            if (type_info == .optional) {
+                if (result != null) {
+                    // Property IS a supported property name - cannot set without a setter
+                    // Per WebIDL: in strict mode throw TypeError, in sloppy mode fail silently
+                    // Setting return value to true indicates we "handled" it (by not setting)
+                    // This prevents the property from being created as an own property
+                    // Note: For strict mode TypeError, V8 handles this automatically when
+                    // we intercept but don't actually perform the set
+                    const isolate = info.getIsolate();
+                    if (v8.v8_Boolean_New(isolate, true)) |true_val| {
+                        info.setReturnValue(true_val);
+                    }
+                    return;
+                }
+            }
+
+            // Property is NOT a supported property name - don't set return value
+            // This allows OrdinarySet to proceed and create an own property
         }
 
         /// Named property descriptor callback for Object.getOwnPropertyDescriptor
