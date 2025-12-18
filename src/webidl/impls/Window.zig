@@ -1967,11 +1967,13 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     return storage_instance;
 }
 
-/// Setter for name
+/// Setter for name - Set the window's target name
+/// Per HTML spec: Sets the browsing context name.
+/// This is used for targeting links (e.g., target="myframe") and window.open().
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const str_slice = value.asSlice();
+    try internal.browsing_context.setTargetName(str_slice);
 }
 
 /// Setter for status - Set the status bar text
