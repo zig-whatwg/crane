@@ -3047,25 +3047,46 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj); // Clean up the Global handle
 
+            // Get the holder (prototype) for cross-realm error throwing
+            // Per WebIDL spec, TypeError should be from the realm where the getter is defined
+            const maybe_holder = info.getHolder();
+            defer if (maybe_holder) |h| v8.v8_Object_Dispose(h);
+
             // CRITICAL: Check if this object has internal fields before accessing them
             // Plain JS objects (e.g., {}) have 0 internal fields, our wrapped objects have 2
             // Accessing internal field 0 on an object without internal fields crashes V8
             const field_count = v8.v8_Object_InternalFieldCount(this_obj);
             if (field_count < 1) {
-                // Not a wrapped object - return undefined for lazy properties
-                if (v8.v8_Undefined(isolate)) |undef| {
-                    info.setReturnValue(undef);
+                // Not a wrapped object - per WebIDL spec, throw TypeError for incompatible this
+                // For cross-realm: get context from this_obj's prototype (e.g., Object.create(other.Element.prototype))
+                // The prototype is from the other realm, so its creation context is the correct one
+                if (v8.v8_Object_GetPrototypeCreationContext(this_obj)) |creation_ctx| {
+                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                    return;
+                } else if (maybe_holder) |holder| {
+                    if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                        conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                        return;
+                    }
                 }
+                conv.throwTypeError(isolate, "Illegal invocation");
                 return;
             }
 
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
-            // If no instance, return undefined (prototype access or not properly wrapped)
+            // If no instance, throw TypeError (incompatible this value per WebIDL spec)
             if (instance_ptr == null) {
-                if (v8.v8_Undefined(isolate)) |undef| {
-                    info.setReturnValue(undef);
+                if (v8.v8_Object_GetPrototypeCreationContext(this_obj)) |creation_ctx| {
+                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                    return;
+                } else if (maybe_holder) |holder| {
+                    if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
+                        conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                        return;
+                    }
                 }
+                conv.throwTypeError(isolate, "Illegal invocation");
                 return;
             }
 
@@ -3076,9 +3097,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
-                if (v8.v8_Undefined(isolate)) |undef| {
-                    info.setReturnValue(undef);
-                }
+                conv.throwTypeError(isolate, "Illegal invocation");
                 return;
             }
 
@@ -3089,9 +3108,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ctx_as_int == poison_pattern_aa or ctx_as_int == poison_pattern_dead or
                 (ctx_as_int & 0xFFFF000000000000) == 0xaaaa000000000000 or ctx_as_int == 0)
             {
-                if (v8.v8_Undefined(isolate)) |undef| {
-                    info.setReturnValue(undef);
-                }
+                conv.throwTypeError(isolate, "Illegal invocation");
                 return;
             }
 
@@ -3387,12 +3404,32 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Instance setter (instance + value parameters)
                         // Extract instance from 'this' object
                         const this_obj = info.getThis();
-                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                        defer v8.v8_Object_Dispose(this_obj);
 
                         // Check if this is a [LegacyLenientThis] attribute
                         // Per WebIDL §4.3.10: these attributes do NOT throw TypeError on invalid this
                         // Instead, setters silently return without doing anything
                         const is_lenient_this = comptime isLenientThisProperty(lazy_name);
+
+                        // CRITICAL: Check if this object has internal fields before accessing them
+                        // Plain JS objects (e.g., Object.create(Element.prototype)) have 0 internal fields
+                        // Accessing internal field 0 on an object without internal fields crashes V8
+                        const field_count = v8.v8_Object_InternalFieldCount(this_obj);
+                        if (field_count < 1) {
+                            // Not a wrapped object - per WebIDL spec, throw TypeError for incompatible this
+                            if (is_lenient_this) {
+                                return;
+                            }
+                            // For cross-realm: get context from this_obj's prototype
+                            if (v8.v8_Object_GetPrototypeCreationContext(this_obj)) |creation_ctx| {
+                                conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+                                return;
+                            }
+                            conv.throwTypeError(isolate, "Illegal invocation");
+                            return;
+                        }
+
+                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                         // Per WebIDL spec, setters must perform brand checks and throw TypeError
                         // when called with an incompatible this value.
