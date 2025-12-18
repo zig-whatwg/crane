@@ -3836,7 +3836,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (v8_value == null) return .kNo;
 
             // Check if interface has an indexed setter (makes it writable)
-            const has_setter = comptime @hasDecl(Interface, "call_setter") or @hasDecl(Interface, "set_item");
+            // Use same logic as indexedPropertyDefiner - prefer Meta.has_indexed_setter from codegen
+            const has_setter = comptime blk: {
+                if (@hasDecl(Meta, "has_indexed_setter")) break :blk Meta.has_indexed_setter;
+                break :blk @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
+            };
             const writable = has_setter;
 
             // Create property descriptor object directly in Zig
@@ -4007,7 +4011,13 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfoVoid,
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
-            const has_indexed_setter = comptime @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
+            // Check for indexed setter via Meta (from codegen) or fallback to method detection
+            const has_indexed_setter = comptime blk: {
+                // Prefer Meta.has_indexed_setter from codegen (authoritative for IDL-defined setters)
+                if (@hasDecl(Meta, "has_indexed_setter")) break :blk Meta.has_indexed_setter;
+                // Fallback: check if impl has set_item (for interfaces with impl-defined setters)
+                break :blk @hasDecl(Interface, "set_item") or @hasDecl(Interface, "call_setter");
+            };
 
             // WebIDL §3.9.3 step 1: Interface supports indexed properties
             // This callback is only registered for interfaces with indexed property support,
@@ -4017,7 +4027,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 // No indexed property setter - reject all define operations per WebIDL §3.9.3
                 // "If O does not implement an interface with an indexed property setter,
                 // then return false."
-                // Returning false in defineProperty throws TypeError in strict mode.
+                //
+                // Per ECMAScript/WebIDL:
+                // - Object.defineProperty() always throws TypeError on failure
+                // - Sloppy mode assignment silently fails (no error)
+                // - Strict mode assignment throws TypeError
+                //
+                // V8's shouldThrowOnError() returns true for:
+                // - Strict mode code
+                // - Object.defineProperty() calls (always throws)
+                // And returns false for:
+                // - Sloppy mode simple assignment
+                // - Reflect.defineProperty() calls (returns boolean)
                 if (info.shouldThrowOnError()) {
                     var buf: [80]u8 = undefined;
                     const msg = std.fmt.bufPrint(&buf, "Cannot define property \"{d}\" on read-only indexed collection", .{index}) catch "Cannot define property on read-only indexed collection";
@@ -4025,60 +4046,35 @@ pub fn V8Interface(comptime Interface: type) type {
                     const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
                     v8.v8_Isolate_ThrowException(isolate, exception);
                 }
-                // Return kYes to indicate we handled it (by rejecting)
+                // Return kYes to indicate we handled it (by rejecting, possibly with exception)
                 return .kYes;
             }
 
             // Interface HAS indexed property setter - validate descriptor per WebIDL §3.9.3 step 1.2
 
-            // Step 1.2.1: If not a data descriptor, throw TypeError
-            // "If the result of calling IsDataDescriptor(Desc) is false, throw a TypeError."
+            // Step 1.3: If Desc is accessor descriptor, throw TypeError
+            // Per WebIDL §3.9.3, only accessor descriptors are rejected when there IS a setter.
+            // Data descriptors with any flags (configurable, enumerable, writable) are allowed -
+            // the flags are ignored and the setter is invoked with the value.
             if (v8.v8_PropertyDescriptor_IsAccessorDescriptor(desc)) {
-                if (info.shouldThrowOnError()) {
-                    const msg = "Cannot define accessor property on indexed collection";
-                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                    v8.v8_Isolate_ThrowException(isolate, exception);
-                }
+                const msg = "Cannot define accessor property on indexed collection";
+                const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                v8.v8_Isolate_ThrowException(isolate, exception);
                 return .kYes;
             }
 
-            // Step 1.2.2: If [[Configurable]] is false, throw TypeError
-            if (v8.v8_PropertyDescriptor_HasConfigurable(desc) and !v8.v8_PropertyDescriptor_Configurable(desc)) {
-                if (info.shouldThrowOnError()) {
-                    const msg = "Cannot define non-configurable property on indexed collection";
-                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                    v8.v8_Isolate_ThrowException(isolate, exception);
-                }
-                return .kYes;
-            }
-
-            // Step 1.2.3: If [[Enumerable]] is false, throw TypeError
-            if (v8.v8_PropertyDescriptor_HasEnumerable(desc) and !v8.v8_PropertyDescriptor_Enumerable(desc)) {
-                if (info.shouldThrowOnError()) {
-                    const msg = "Cannot define non-enumerable property on indexed collection";
-                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                    v8.v8_Isolate_ThrowException(isolate, exception);
-                }
-                return .kYes;
-            }
-
-            // Step 1.2.4: If [[Writable]] is false, throw TypeError
-            if (v8.v8_PropertyDescriptor_HasWritable(desc) and !v8.v8_PropertyDescriptor_Writable(desc)) {
-                if (info.shouldThrowOnError()) {
-                    const msg = "Cannot define non-writable property on indexed collection";
-                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                    v8.v8_Isolate_ThrowException(isolate, exception);
-                }
-                return .kYes;
-            }
-
-            // Step 1.2.5: Invoke indexed property setter with value
-            // Return kNo to let V8 continue to the setter callback
-            return .kNo;
+            // Step 1.4: Invoke indexed property setter with value
+            // Per WebIDL §3.9.3, we should invoke the setter with the descriptor's value.
+            //
+            // LIMITATION: PropertyCallbackInfoVoid doesn't provide access to the holder
+            // object, so we cannot invoke the setter directly from this callback.
+            // We return kYes to prevent V8 from creating an own property (which would
+            // have incorrect descriptor flags). The value is not actually stored.
+            //
+            // TODO(whatwg-25gwd): Add v8_PropertyCallbackInfo_Void_GetHolder to FFI
+            // to properly invoke the indexed setter with the value.
+            return .kYes;
         }
 
         // =====================================================================
@@ -4094,8 +4090,13 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfoVoid,
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
-            const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
-                @hasDecl(Interface, "set_namedItem");
+            // Check for named setter via Meta (from codegen) or fallback to method detection
+            const has_named_setter = comptime blk: {
+                // Prefer Meta.has_named_setter from codegen (authoritative for IDL-defined setters)
+                if (@hasDecl(Meta, "has_named_setter")) break :blk Meta.has_named_setter;
+                // Fallback: check if impl has named setter methods
+                break :blk @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
+            };
 
             // Verify property is a string (not a Symbol)
             if (!v8.v8_Name_IsString(property)) {
@@ -4680,14 +4681,22 @@ pub fn V8Interface(comptime Interface: type) type {
                 break :blk false;
             };
 
-            // Named properties are: NOT enumerable (if LegacyUnenumerableNamedProperties), configurable, NOT writable
+            // Named properties are: NOT enumerable (if LegacyUnenumerableNamedProperties), configurable
             const enumerable = !has_unenumerable_attr;
+
+            // Check if interface has a named setter (makes it writable)
+            // Use same logic as namedPropertyDefiner - prefer Meta.has_named_setter from codegen
+            const has_named_setter = comptime blk: {
+                if (@hasDecl(Meta, "has_named_setter")) break :blk Meta.has_named_setter;
+                break :blk @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
+            };
+            const writable = has_named_setter;
 
             // Create property descriptor object
             const desc = v8.v8_CreateDataPropertyDescriptor(
                 v8_context,
                 v8_value.?,
-                false, // writable - named properties are typically read-only
+                writable, // writable if interface has named setter
                 enumerable,
                 true, // configurable
             ) orelse return .kNo;
