@@ -304,7 +304,7 @@ pub const PropertyCallbackInfoVoid = opaque {
 pub const NamedPropertyGetterCallback = *const fn (
     property: *Name,
     info: *const PropertyCallbackInfo,
-) callconv(.c) void;
+) callconv(.c) Intercepted;
 
 /// Called when JavaScript sets a named property (e.g., obj.propertyName = value)
 /// Should set a return value to indicate success/failure
@@ -312,21 +312,21 @@ pub const NamedPropertySetterCallback = *const fn (
     property: *Name,
     value: *Value,
     info: *const PropertyCallbackInfo,
-) callconv(.c) void;
+) callconv(.c) Intercepted;
 
 /// Called to check if a named property exists on the object
 /// Should return an integer attribute value, or do nothing if property doesn't exist
 pub const NamedPropertyQueryCallback = *const fn (
     property: *Name,
     info: *const PropertyCallbackInfo,
-) callconv(.c) void;
+) callconv(.c) Intercepted;
 
 /// Called when JavaScript deletes a named property (e.g., delete obj.propertyName)
 /// Should set return value to true if deletion succeeds, false if it fails
 pub const NamedPropertyDeleterCallback = *const fn (
     property: *Name,
     info: *const PropertyCallbackInfo,
-) callconv(.c) void;
+) callconv(.c) Intercepted;
 
 /// Called when JavaScript enumerates object properties (e.g., for...in loop, Object.keys())
 /// Should set return value to an array of property names
@@ -339,7 +339,7 @@ pub const NamedPropertyEnumeratorCallback = *const fn (
 pub const IndexedPropertyGetterCallback = *const fn (
     index: u32,
     info: *const PropertyCallbackInfo,
-) callconv(.c) void;
+) callconv(.c) Intercepted;
 
 /// Indexed property setter callback with Intercepted return type
 /// Called when JavaScript sets an indexed property (e.g., obj[0] = value)

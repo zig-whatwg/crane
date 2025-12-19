@@ -3054,7 +3054,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn lazyPropertyGetter(
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
+        ) callconv(.c) v8.Intercepted {
             // CRITICAL: Named property handlers can intercept property lookups at various
             // levels of the prototype chain. We must ONLY handle properties that are
             // explicitly in our lazy_properties list. For everything else, return without
@@ -3371,19 +3371,19 @@ pub fn V8Interface(comptime Interface: type) type {
             property: *v8.Name,
             value: *v8.Value,
             info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
+        ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
 
             // Get current context from isolate
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 conv.throwError(isolate, "No current context");
-                return;
+                return .kYes;
             };
 
             // Check if property is a string (not a symbol)
             // Symbol properties should not trigger lazy property interceptor
             if (!v8.v8_Name_IsString(property)) {
-                return; // Let V8 handle symbols normally
+                return .kNo; // Let V8 handle symbols normally
             }
 
             // Cast Name to String (use const pointer for Raw functions)
@@ -3391,7 +3391,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Use raw pointer functions (not Global<> functions) since property comes from callback
             const utf8_length = v8.v8_String_Utf8Length_Raw(property_str);
-            if (utf8_length <= 0 or utf8_length >= 256) return; // Invalid or too long
+            if (utf8_length <= 0 or utf8_length >= 256) return .kNo; // Invalid or too long
 
             // Stack-allocated buffer for property name
             var buf: [256]u8 = undefined;
@@ -3402,7 +3402,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 &buf,
                 @intCast(utf8_length + 1),
             );
-            if (bytes_written <= 0) return;
+            if (bytes_written <= 0) return .kNo;
 
             const prop_name = buf[0..@intCast(utf8_length)];
 
@@ -3416,7 +3416,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (setter_name == null) {
                         // Read-only property
                         conv.throwError(isolate, "Property is read-only");
-                        return;
+                        return .kYes;
                     }
 
                     // Get the Zig setter function
@@ -3571,10 +3571,11 @@ pub fn V8Interface(comptime Interface: type) type {
         fn placeholderGetterCallback(
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
+        ) callconv(.c) v8.Intercepted {
             _ = property;
             const isolate = info.getIsolate();
             conv.throwError(isolate, "Getter not yet implemented");
+            return .kYes;
         }
 
         /// Indexed property getter for array-like access (obj[0], obj[1], etc.)
@@ -3583,7 +3584,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn indexedPropertyGetter(
             index: u32,
             info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
+        ) callconv(.c) v8.Intercepted {
             // Only compile this function body if Interface has call_item
             if (comptime !@hasDecl(Interface, "call_item")) {
                 // No item() method - just return to let V8 handle lookup
@@ -4171,78 +4172,62 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertyGetter(
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
-            // Only compile this function body if Interface has call_getNamedItem or call_namedItem
+        ) callconv(.c) v8.Intercepted {
+            // Only compile if Interface has named item getter
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
                 @hasDecl(Interface, "call_namedItem");
             if (comptime !has_named_getter) {
-                return;
+                return .kNo;
             }
 
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                return;
+                conv.throwError(isolate, "No V8 context");
+                return .kYes;
             };
 
-            // Get the 'this' object (the interface instance)
+            // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
-                // Called on prototype, not an instance - let V8 continue normal lookup
-                return;
-            }
-
-            // Safety check
-            const ptr_as_int = @intFromPtr(instance_ptr);
-            const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
-            const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
-            if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
-                (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
-            {
-                return;
+                return .kNo;
             }
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
             // Verify property is a string (not a Symbol) before processing
-            // This is critical because v8.Name can be either String or Symbol
             if (!v8.v8_Name_IsString(property)) {
-                return;
+                return .kNo;
             }
 
-            // Convert property name to Zig string using raw API (safer for callback context)
+            // Convert property name to Zig string using raw API
             const prop_str: *v8.String = @ptrCast(property);
             const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return;
+            if (prop_len <= 0) return .kNo;
 
             var prop_buf: [256]u8 = undefined;
             var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return;
-            // WriteUtf8_Raw may include null terminator in length - trim it
+            if (actual_len <= 0) return .kNo;
             if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
                 actual_len -= 1;
             }
-            if (actual_len <= 0) return;
+            if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
-            // Create a DOMString from the property name
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
-            // Call the named item getter
-            // Note: kNonMasking flag ensures this is only called for properties that don't
-            // exist on the prototype chain (e.g., not for "length", "item", "hasOwnProperty")
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
             else
                 Interface.call_namedItem;
 
             const result = getter_fn(instance, dom_str) catch {
-                return;
+                return .kNo;
             };
 
-            // Convert result to V8 value
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
             const type_info = @typeInfo(ActualReturnType);
@@ -4257,23 +4242,20 @@ pub fn V8Interface(comptime Interface: type) type {
                             iface_name,
                             isolate,
                             v8_context,
-                        ) catch {
-                            return;
-                        };
+                        ) catch return .kYes;
                         info.setReturnValue(@ptrCast(wrapped));
+                        return .kYes;
                     } else {
-                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
-                            return;
-                        };
+                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kYes;
                         info.setReturnValue(@ptrCast(v8_value));
+                        return .kYes;
                     }
                 }
-                // If null, don't set return value - let V8 continue normal lookup
+                return .kNo;
             } else {
-                const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
-                    return;
-                };
+                const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kYes;
                 info.setReturnValue(@ptrCast(v8_value));
+                return .kYes;
             }
         }
 
@@ -4518,29 +4500,30 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertySetter(
             property: *v8.Name,
             value: *v8.Value,
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
+            info: *const v8.PropertyCallbackInfoVoid,
+        ) callconv(.c) v8.Intercepted {
             // Only compile if Interface has named setter
             const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
             if (comptime !has_setter) {
-                return;
+                return .kNo;
             }
 
             // Verify property is a string (not a Symbol)
             if (!v8.v8_Name_IsString(property)) {
-                return;
+                return .kNo;
             }
 
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
-                return;
+                return .kNo;
             }
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -4548,15 +4531,15 @@ pub fn V8Interface(comptime Interface: type) type {
             // Convert property name to Zig string
             const prop_str: *v8.String = @ptrCast(property);
             const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return;
+            if (prop_len <= 0) return .kNo;
 
             var prop_buf: [256]u8 = undefined;
             var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return;
+            if (actual_len <= 0) return .kNo;
             if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
                 actual_len -= 1;
             }
-            if (actual_len <= 0) return;
+            if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
             // Create a DOMString from the property name
@@ -4575,21 +4558,17 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Expected signature: fn(instance: *runtime.Instance, name: DOMString, value: ValueType) !void
             if (params.len < 3) {
-                return;
+                return .kNo;
             }
 
-            const ValueType = params[2].type orelse return;
+            const ValueType = params[2].type orelse return .kNo;
 
             // Convert V8 value to the expected Zig type
             const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
                 if (info.shouldThrowOnError()) {
                     conv.throwWebIDLError(isolate, @errorName(err));
                 }
-                // Set return value to indicate we handled it (prevent OrdinarySet)
-                if (v8.v8_Boolean_New(isolate, true)) |true_val| {
-                    info.setReturnValue(true_val);
-                }
-                return;
+                return .kYes; // Intercepted even if it failed
             };
 
             // Call the setter
@@ -4599,10 +4578,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             };
 
-            // Set return value to indicate success and interception
-            if (v8.v8_Boolean_New(isolate, true)) |true_val| {
-                info.setReturnValue(true_val);
-            }
+            return .kYes;
         }
 
         /// Named property setter for read-only named properties (no setter defined)
@@ -4613,26 +4589,27 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertySetterReadOnly(
             property: *v8.Name,
             _: *v8.Value, // value - ignored since we don't actually set
-            info: *const v8.PropertyCallbackInfo,
-        ) callconv(.c) void {
+            info: *const v8.PropertyCallbackInfoVoid,
+        ) callconv(.c) v8.Intercepted {
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
                 @hasDecl(Interface, "call_namedItem");
             if (comptime !has_named_getter) {
-                return; // Don't intercept - allow fallthrough
+                return .kNo; // Don't intercept - allow fallthrough
             }
 
             // Symbols should always be settable as own properties
             if (!v8.v8_Name_IsString(property)) {
-                return; // Don't intercept
+                return .kNo; // Don't intercept
             }
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
-                return; // Don't intercept
+                return .kNo; // Don't intercept
             }
 
             // Safety check for poisoned pointers
@@ -4642,7 +4619,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
-                return; // Don't intercept
+                return .kNo; // Don't intercept
             }
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -4650,11 +4627,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // Convert property name to Zig string
             const prop_str: *v8.String = @ptrCast(property);
             const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
-            if (prop_len <= 0) return;
+            if (prop_len <= 0) return .kNo;
 
             var prop_buf: [256]u8 = undefined;
             const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
-            if (actual_len <= 0) return;
+            if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
             // Create a DOMString from the property name
@@ -4668,7 +4645,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const result = getter_fn(instance, dom_str) catch {
                 // Error calling getter - allow fallthrough
-                return;
+                return .kNo;
             };
 
             // Check if result is non-null (property exists as supported name)
@@ -4680,21 +4657,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result != null) {
                     // Property IS a supported property name - cannot set without a setter
                     // Per WebIDL: in strict mode throw TypeError, in sloppy mode fail silently
-                    // To signal failure AND prevent own property creation, we set return value to true
-                    // BUT only if we want to BLOCK the creation of an own property.
-                    //
-                    // Wait! WebIDL § 3.9.2 [[Set]] step 2 calls GetOwnProperty(..., true).
-                    // If it returns a descriptor, OrdinarySet uses it.
-                    //
-                    // Actually, for named properties WITHOUT a setter, WebIDL allows
-                    // creating an OWN property that shadows the named property!
-                    // So we should NOT block it here.
-                    return;
+                    if (info.shouldThrowOnError()) {
+                        const isolate = info.getIsolate();
+                        conv.throwTypeError(isolate, "Cannot set read-only named property");
+                    }
+                    return .kYes;
                 }
             }
 
-            // Property is NOT a supported property name - don't set return value
-            // This allows OrdinarySet to proceed and create an own property
+            // Property is NOT a supported property name - don't intercept
+            return .kNo;
         }
 
         /// Named property descriptor callback for Object.getOwnPropertyDescriptor
@@ -4715,6 +4687,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);

@@ -3321,6 +3321,14 @@ void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* i
     info->GetReturnValue().Set(val);
 }
 
+// PropertyCallbackInfo (void) - set return value (mostly for Boolean results)
+void v8_PropertyCallbackInfo_Void_SetReturnValue(const PropertyCallbackInfo<void>* info, Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    info->GetReturnValue().Set(val);
+}
+
 // PropertyCallbackInfo - set return value to undefined
 void v8_PropertyCallbackInfo_SetUndefined(const PropertyCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
