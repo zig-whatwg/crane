@@ -1184,17 +1184,13 @@ pub fn V8Interface(comptime Interface: type) type {
             if (has_indexed_item) {
                 if (has_length) {
                     // Use full indexed property handler with query and descriptor callbacks
-                    // This enables proper Object.getOwnPropertyDescriptor support
-                    // Also includes setter to properly handle [[Set]] trap:
-                    // - If setter is defined, allow setting
-                    // - If no setter, throw TypeError in strict mode
                     v8.v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
                         instance_tmpl,
                         indexedPropertyGetter,
                         if (has_indexed_setter) indexedPropertySetter else indexedPropertySetterReadOnly,
                         indexedPropertyQuery,
                         indexedPropertyEnumerator,
-                        indexedPropertyDefiner, // Handle Object.defineProperty() per WebIDL §3.9.3
+                        indexedPropertyDefiner,
                         indexedPropertyDescriptor,
                     );
                 } else {
@@ -1229,16 +1225,29 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Check if interface has named setter
                 const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
                     @hasDecl(Interface, "set_namedItem");
+
+                // Check for [LegacyOverrideBuiltIns] extended attribute
+                // Per WebIDL §3.9.1, this allows named properties to shadow built-ins on the prototype chain
+                const has_legacy_override_builtins = comptime blk: {
+                    if (!@hasDecl(Meta, "extended_attributes")) break :blk false;
+                    for (Meta.extended_attributes) |attr| {
+                        if (@hasField(@TypeOf(attr), "name") and std.mem.eql(u8, attr.name, "LegacyOverrideBuiltIns")) {
+                            break :blk true;
+                        }
+                    }
+                    break :blk false;
+                };
+
                 v8.v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
                     instance_tmpl,
                     namedPropertyGetter,
-                    if (has_named_setter) null else namedPropertySetterReadOnly,
+                    if (has_named_setter) namedPropertySetter else namedPropertySetterReadOnly,
                     namedPropertyQuery,
                     null,
                     namedPropertyEnumerator,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
-                    .kNonMaskingAndOnlyInterceptStrings,
+                    if (has_legacy_override_builtins) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
                 );
             }
 
@@ -4026,11 +4035,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (!has_indexed_setter) {
                 // No indexed property setter - reject all define operations per WebIDL §3.9.3
                 // Return false from internal method = throw TypeError in Object.defineProperty
-                // We must throw manually for V8 to catch it in Object.defineProperty
-                const msg = "Cannot define property on read-only indexed collection";
-                const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                v8.v8_Isolate_ThrowException(isolate, exception);
+                if (info.shouldThrowOnError()) {
+                    const msg = "Cannot define property on read-only indexed collection";
+                    const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    v8.v8_Isolate_ThrowException(isolate, exception);
+                }
                 return .kYes;
             }
 
@@ -4450,6 +4460,98 @@ pub fn V8Interface(comptime Interface: type) type {
             return .kNo;
         }
 
+        /// Named property setter for legacy platform objects (obj.name = value)
+        /// Implements WebIDL §3.9.2 [[Set]] for named properties.
+        fn namedPropertySetter(
+            property: *v8.Name,
+            value: *v8.Value,
+            info: *const v8.PropertyCallbackInfo,
+        ) callconv(.c) void {
+            // Only compile if Interface has named setter
+            const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
+            if (comptime !has_setter) {
+                return;
+            }
+
+            // Verify property is a string (not a Symbol)
+            if (!v8.v8_Name_IsString(property)) {
+                return;
+            }
+
+            const isolate = info.getIsolate();
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+            // Get the 'this' object
+            const this_obj = info.getThis();
+
+            // Extract instance pointer from internal field
+            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            if (instance_ptr == null) {
+                return;
+            }
+
+            const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+            // Convert property name to Zig string
+            const prop_str: *v8.String = @ptrCast(property);
+            const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
+            if (prop_len <= 0) return;
+
+            var prop_buf: [256]u8 = undefined;
+            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return;
+            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
+                actual_len -= 1;
+            }
+            if (actual_len <= 0) return;
+            const prop_name = prop_buf[0..@intCast(actual_len)];
+
+            // Create a DOMString from the property name
+            const dom_str = runtime.DOMString.initInterned(prop_name);
+
+            // Get the setter function at comptime
+            const setter_fn = comptime if (@hasDecl(Interface, "call_setNamedItem"))
+                Interface.call_setNamedItem
+            else
+                Interface.set_namedItem;
+
+            // Get the value type from the setter function signature
+            const SetterFnType = @TypeOf(setter_fn);
+            const fn_info = @typeInfo(SetterFnType).@"fn";
+            const params = fn_info.params;
+
+            // Expected signature: fn(instance: *runtime.Instance, name: DOMString, value: ValueType) !void
+            if (params.len < 3) {
+                return;
+            }
+
+            const ValueType = params[2].type orelse return;
+
+            // Convert V8 value to the expected Zig type
+            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
+                if (info.shouldThrowOnError()) {
+                    conv.throwWebIDLError(isolate, @errorName(err));
+                }
+                // Set return value to indicate we handled it (prevent OrdinarySet)
+                if (v8.v8_Boolean_New(isolate, true)) |true_val| {
+                    info.setReturnValue(true_val);
+                }
+                return;
+            };
+
+            // Call the setter
+            setter_fn(instance, dom_str, zig_value) catch |err| {
+                if (info.shouldThrowOnError()) {
+                    conv.throwWebIDLError(isolate, @errorName(err));
+                }
+            };
+
+            // Set return value to indicate success and interception
+            if (v8.v8_Boolean_New(isolate, true)) |true_val| {
+                info.setReturnValue(true_val);
+            }
+        }
+
         /// Named property setter for read-only named properties (no setter defined)
         /// Implements WebIDL [[Set]] semantics §3.9.2:
         /// - If property name is a supported property name: fail silently (sloppy) or throw TypeError (strict)
@@ -4525,14 +4627,15 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result != null) {
                     // Property IS a supported property name - cannot set without a setter
                     // Per WebIDL: in strict mode throw TypeError, in sloppy mode fail silently
-                    // Setting return value to true indicates we "handled" it (by not setting)
-                    // This prevents the property from being created as an own property
-                    // Note: For strict mode TypeError, V8 handles this automatically when
-                    // we intercept but don't actually perform the set
-                    const isolate = info.getIsolate();
-                    if (v8.v8_Boolean_New(isolate, true)) |true_val| {
-                        info.setReturnValue(true_val);
-                    }
+                    // To signal failure AND prevent own property creation, we set return value to true
+                    // BUT only if we want to BLOCK the creation of an own property.
+                    //
+                    // Wait! WebIDL § 3.9.2 [[Set]] step 2 calls GetOwnProperty(..., true).
+                    // If it returns a descriptor, OrdinarySet uses it.
+                    //
+                    // Actually, for named properties WITHOUT a setter, WebIDL allows
+                    // creating an OWN property that shadows the named property!
+                    // So we should NOT block it here.
                     return;
                 }
             }
