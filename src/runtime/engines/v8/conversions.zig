@@ -428,20 +428,24 @@ fn convertHeadersInit(
             for (0..pair_len) |j| {
                 const item = v8.v8_Array_Get(context, pair_array, @intCast(j));
                 if (item) |it| {
-                    if (v8.v8_Value_IsString(it)) {
-                        const str = v8.v8_Value_ToString(it, context);
-                        if (str) |s| {
-                            const len = v8.v8_String_Utf8Length(s);
-                            if (len > 0) {
-                                const buf = try allocator.alloc(u8, @intCast(len));
-                                _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
-                                inner_seq[j] = buf;
-                                continue;
-                            }
+                    if (v8.v8_Value_IsSymbol(it)) {
+                        return ConversionError.TypeError;
+                    }
+                    const str = v8.v8_Value_ToString(it, context);
+                    if (str) |s| {
+                        const len = v8.v8_String_Utf8Length(s);
+                        if (len > 0) {
+                            const buf = try allocator.alloc(u8, @intCast(len));
+                            _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
+                            inner_seq[j] = buf;
+                            continue;
+                        } else if (len == 0) {
+                            inner_seq[j] = "";
+                            continue;
                         }
                     }
                 }
-                inner_seq[j] = "";
+                inner_seq[j] = ""; // Fallback for failed ToString
             }
 
             outer_seq[i] = inner_seq;
@@ -485,7 +489,7 @@ fn convertHeadersInit(
             const prop_val = v8.v8_Object_Get(obj, context, @ptrCast(prop_name_val)) orelse continue;
 
             var val_str: runtime.ByteString = "";
-            if (v8.v8_Value_IsString(prop_val)) {
+            if (!v8.v8_Value_IsSymbol(prop_val)) {
                 const str = v8.v8_Value_ToString(prop_val, context);
                 if (str) |s| {
                     const len = v8.v8_String_Utf8Length(s);
@@ -493,6 +497,8 @@ fn convertHeadersInit(
                         const buf = try allocator.alloc(u8, @intCast(len));
                         _ = v8.v8_String_WriteUtf8(s, buf.ptr, @intCast(len));
                         val_str = buf;
+                    } else {
+                        val_str = "";
                     }
                 }
             }
@@ -580,9 +586,16 @@ fn convertBodyInit(
 ) ConversionError!typedefs.BodyInit {
     _ = isolate; // Used only for potential future error reporting
 
-    // Check for null/undefined - return empty USVString
+    // Check for null/undefined - return empty USVString (preserving standard coercion)
+    // NOTE: Fetch/XHR treat null body as no-body (empty), matching this behavior.
     if (v8.v8_Value_IsNullOrUndefined(value)) {
-        return .{ .xmlhttp_request_body_init = .{ .usvstring = "" } };
+        // Use ToString() to be explicit and follow WebIDL §3.2.1
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        const length = v8.v8_String_Utf8Length(string);
+        const buffer = try allocator.alloc(u8, @intCast(length));
+        errdefer allocator.free(buffer);
+        _ = v8.v8_String_WriteUtf8(string, buffer.ptr, @intCast(length));
+        return .{ .xmlhttp_request_body_init = .{ .usvstring = buffer } };
     }
 
     // Check if it's a string (most common case: USVString)
@@ -1275,7 +1288,8 @@ pub fn fromV8Value(
     if (T == runtime.Double) return try fromV8Double(context, value);
     if (T == runtime.Float) return try fromV8Float(context, value);
     if (T == runtime.DOMString) {
-        if (!v8.v8_Value_IsString(value)) {
+        // Use ToString coercion for all values except Symbol (WebIDL standard behavior)
+        if (v8.v8_Value_IsSymbol(value)) {
             return ConversionError.TypeError;
         }
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
