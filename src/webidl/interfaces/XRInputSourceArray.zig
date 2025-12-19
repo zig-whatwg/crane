@@ -107,6 +107,11 @@ pub const XRInputSourceArray = struct {
         return try XRInputSourceArrayImpl.get_length(instance);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try XRInputSourceArrayImpl.call_getter(instance, index);
+    }
+
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try XRInputSourceArrayImpl.call_forEach(instance, callback);

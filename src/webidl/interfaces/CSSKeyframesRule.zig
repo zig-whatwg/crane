@@ -138,6 +138,11 @@ pub const CSSKeyframesRule = struct {
         return try CSSKeyframesRuleImpl.call_appendRule(instance, rule);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try CSSKeyframesRuleImpl.call_getter(instance, index);
+    }
+
     pub fn call_findRule(instance: *runtime.Instance, select: CSSOMString) anyerror!?*runtime.Instance {
         
         return try CSSKeyframesRuleImpl.call_findRule(instance, select);

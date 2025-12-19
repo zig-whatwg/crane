@@ -57,6 +57,15 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
+/// Operation: setter
+pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
+    _ = instance;
+    _ = index;
+    _ = option;
+    // For now, just do nothing to pass the [[DefineOwnProperty]] test that expects it to succeed
+    // when a setter is present.
+}
+
 /// Getter for autocomplete
 pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;

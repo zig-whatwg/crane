@@ -3065,9 +3065,9 @@ pub const Window = struct {
         return try WindowImpl.call_cancelIdleCallback(instance, handle);
     }
 
-    pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
+    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
         
-        return try WindowImpl.call_reportError(instance, e);
+        return try WindowImpl.call_getter(instance, name);
     }
 
     pub fn call_focus(instance: *runtime.Instance) anyerror!void {
@@ -3083,6 +3083,11 @@ pub const Window = struct {
     /// Extended attributes: [SecureContext]
     pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WindowImpl.call_getScreenDetails(instance);
+    }
+
+    pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
+        
+        return try WindowImpl.call_reportError(instance, e);
     }
 
     pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {

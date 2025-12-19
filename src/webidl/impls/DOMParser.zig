@@ -147,6 +147,7 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
 
         // Get the document's URL (returns allocated []const u8)
         const url = interfaces.Document.get_URL(doc) catch break :blk "about:blank";
+        std.debug.print("DOMParser: inherited realm URL: {s}\n", .{url});
         allocated_url = url; // Track for cleanup
         break :blk url;
     };

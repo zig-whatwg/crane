@@ -100,6 +100,11 @@ pub const TextTrackCueList = struct {
         return try TextTrackCueListImpl.get_length(instance);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try TextTrackCueListImpl.call_getter(instance, index);
+    }
+
     pub fn call_getCueById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {
         
         return try TextTrackCueListImpl.call_getCueById(instance, id);

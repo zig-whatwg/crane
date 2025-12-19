@@ -2930,6 +2930,11 @@ pub const Document = struct {
         return try DocumentImpl.call_queryCommandEnabled(instance, commandId);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!runtime.JSValue {
+        
+        return try DocumentImpl.call_getter(instance, name);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object

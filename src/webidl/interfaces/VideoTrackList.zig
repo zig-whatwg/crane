@@ -161,6 +161,11 @@ pub const VideoTrackList = struct {
         try VideoTrackListImpl.set_onremovetrack(instance, value);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try VideoTrackListImpl.call_getter(instance, index);
+    }
+
     pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {
         
         return try VideoTrackListImpl.call_getTrackById(instance, id);

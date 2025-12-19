@@ -2421,7 +2421,7 @@ fn writeSingleOperation(
     _: bool, // has_static_collision - no longer used
 ) !void {
     const allocator = std.heap.page_allocator;
-    const name = op.name orelse return; // Skip unnamed operations
+    const name = op.name orelse if (op.special) |special| @tagName(special) else return; // Skip unnamed operations without special type
 
     // Static methods always use call_static_<name> convention
     // Instance methods use call_<name> convention

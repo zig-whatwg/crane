@@ -535,6 +535,21 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.call_submit(instance);
     }
 
+    /// Arguments for getter (WebIDL overloading)
+    pub const GetterArgs = union(enum) {
+        /// getter(index)
+        unsigned_long: u32,
+        /// getter(name)
+        string: DOMString,
+    };
+
+    pub fn call_getter(instance: *runtime.Instance, args: GetterArgs) anyerror!Element {
+        switch (args) {
+            .unsigned_long => |arg| return try HTMLFormElementImpl.unsigned_long(instance, arg),
+            .string => |arg| return try HTMLFormElementImpl.string(instance, arg),
+        }
+    }
+
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLFormElementImpl.call_reportValidity(instance);
     }

@@ -959,7 +959,7 @@ fn generateImplFile(
         if (set.isOverloaded()) {
             // Multiple overloads - generate ONE impl stub that accepts the Args union
             const first_op = set.operations[0];
-            const op_name = first_op.name orelse "unnamed";
+            const op_name = set.name;
             const is_nullable_return = first_op.idlType.nullable;
 
             try w.print("/// Operation: {s} (overloaded - {d} variants)\n", .{ op_name, set.operations.len });
@@ -991,7 +991,7 @@ fn generateImplFile(
         } else {
             // Single operation - generate normal function (same as before)
             const op = set.operations[0];
-            const op_name = op.name orelse "unnamed";
+            const op_name = set.name;
             const is_nullable_return = op.idlType.nullable;
 
             // Check for [Default] toJSON - needs special return type

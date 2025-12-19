@@ -96,6 +96,10 @@ pub const TrustedScriptURL = struct {
         TrustedScriptURLImpl.deinit(instance);
     }
 
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try TrustedScriptURLImpl.call_stringifier(instance);
+    }
+
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try TrustedScriptURLImpl.call_toJSON(instance);
     }

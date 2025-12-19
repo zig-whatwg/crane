@@ -231,6 +231,10 @@ pub const Selection = struct {
         return try SelectionImpl.call_getComposedRanges(instance, options);
     }
 
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try SelectionImpl.call_stringifier(instance);
+    }
+
     pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset: webidl.Opt(u32)) anyerror!void {
         
         return try SelectionImpl.call_extend(instance, node, offset);

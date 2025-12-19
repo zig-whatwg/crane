@@ -1141,7 +1141,7 @@ fn createWindowForExistingBrowsingContext(
         .v8_context = @ptrCast(child_context),
         .isolate = @ptrCast(isolate),
         .context_type = .window,
-        .global_object = @ptrCast(v8.v8_Context_Global(child_context)),
+        .global_object = null, // Will be set to Window instance below
     }) catch return null;
     _ = realm.populateIntrinsics();
 
@@ -1175,6 +1175,10 @@ fn createWindowForExistingBrowsingContext(
     // 8. Create Window instance bound to the V8 global
     const runtime_ctx: runtime.Context = &ctx_data;
     const window_instance = interfaces.Window.init(allocator, runtime_ctx) catch return null;
+
+    // Set the realm's global_object to the Window instance for cross-realm support.
+    // This allows DOMParser and other APIs to correctly identify their realm's global.
+    realm.setGlobalObject(@ptrCast(window_instance));
 
     // 8b. Replace the Window's auto-created browsing context with the existing one
     // This is necessary because:

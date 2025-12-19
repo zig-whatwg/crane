@@ -258,15 +258,8 @@ pub const Range = struct {
         return try RangeImpl.call_insertNode(instance, node);
     }
 
-    /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createContextualFragment(instance: *runtime.Instance, string: DOMString) anyerror!*runtime.Instance {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
-        // [NewObject] - Caller owns the returned object
-        
-        return try RangeImpl.call_createContextualFragment(instance, string);
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try RangeImpl.call_stringifier(instance);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -277,6 +270,17 @@ pub const Range = struct {
         
         // [NewObject] - Caller owns the returned object
         return try RangeImpl.call_cloneContents(instance);
+    }
+
+    /// Extended attributes: [CEReactions], [NewObject]
+    pub fn call_createContextualFragment(instance: *runtime.Instance, string: DOMString) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        // [NewObject] - Caller owns the returned object
+        
+        return try RangeImpl.call_createContextualFragment(instance, string);
     }
 
     pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {

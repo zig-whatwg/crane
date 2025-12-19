@@ -154,6 +154,11 @@ pub const SVGStringList = struct {
         return try SVGStringListImpl.call_getItem(instance, index);
     }
 
+    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: DOMString) anyerror!void {
+        
+        return try SVGStringListImpl.call_setter(instance, index, newItem);
+    }
+
     pub fn call_replaceItem(instance: *runtime.Instance, newItem: DOMString, index: u32) anyerror!DOMString {
         
         return try SVGStringListImpl.call_replaceItem(instance, newItem, index);

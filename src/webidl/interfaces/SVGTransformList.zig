@@ -170,6 +170,11 @@ pub const SVGTransformList = struct {
         return try SVGTransformListImpl.call_getItem(instance, index);
     }
 
+    pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: *runtime.Instance) anyerror!void {
+        
+        return try SVGTransformListImpl.call_setter(instance, index, newItem);
+    }
+
     pub fn call_replaceItem(instance: *runtime.Instance, newItem: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         
         return try SVGTransformListImpl.call_replaceItem(instance, newItem, index);

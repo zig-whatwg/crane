@@ -95,6 +95,10 @@ pub const TrustedHTML = struct {
         TrustedHTMLImpl.deinit(instance);
     }
 
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try TrustedHTMLImpl.call_stringifier(instance);
+    }
+
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!DOMString {
         return try TrustedHTMLImpl.call_toJSON(instance);
     }

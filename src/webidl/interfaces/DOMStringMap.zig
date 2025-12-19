@@ -87,6 +87,31 @@ pub const DOMStringMap = struct {
         DOMStringMapImpl.deinit(instance);
     }
 
+    /// Extended attributes: [CEReactions]
+    pub fn call_setter(instance: *runtime.Instance, name: DOMString, value: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try DOMStringMapImpl.call_setter(instance, name, value);
+    }
+
+    pub fn call_getter(instance: *runtime.Instance, name: DOMString) anyerror!DOMString {
+        
+        return try DOMStringMapImpl.call_getter(instance, name);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_deleter(instance: *runtime.Instance, name: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try DOMStringMapImpl.call_deleter(instance, name);
+    }
+
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {

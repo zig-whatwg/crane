@@ -125,6 +125,11 @@ pub const FontFacePalette = struct {
         return try FontFacePaletteImpl.get_usableWithDarkBackground(instance);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!DOMString {
+        
+        return try FontFacePaletteImpl.call_getter(instance, index);
+    }
+
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try FontFacePaletteImpl.call_forEach(instance, callback);

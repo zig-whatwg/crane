@@ -125,6 +125,10 @@ pub const CSSParserAtRule = struct {
         return try CSSParserAtRuleImpl.get_body(instance);
     }
 
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try CSSParserAtRuleImpl.call_stringifier(instance);
+    }
+
     /// Stringifier delegate - toString() implementation
     /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
     pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {

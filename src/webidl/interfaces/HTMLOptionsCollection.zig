@@ -136,6 +136,16 @@ pub const HTMLOptionsCollection = struct {
     }
 
     /// Extended attributes: [CEReactions]
+    pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try HTMLOptionsCollectionImpl.call_setter(instance, index, option);
+    }
+
+    /// Extended attributes: [CEReactions]
     pub fn call_remove(instance: *runtime.Instance, index: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();

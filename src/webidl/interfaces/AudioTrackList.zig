@@ -153,6 +153,11 @@ pub const AudioTrackList = struct {
         try AudioTrackListImpl.set_onremovetrack(instance, value);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try AudioTrackListImpl.call_getter(instance, index);
+    }
+
     pub fn call_getTrackById(instance: *runtime.Instance, id: DOMString) anyerror!?*runtime.Instance {
         
         return try AudioTrackListImpl.call_getTrackById(instance, id);

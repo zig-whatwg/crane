@@ -116,6 +116,9 @@ pub const FunctionCallbackInfo = opaque {
     /// Get data associated with the function template
     pub extern fn v8_FunctionCallbackInfo_Data(self: *const FunctionCallbackInfo) *Value;
 
+    /// Get the function being called
+    pub extern fn v8_FunctionCallbackInfo_GetFunction(self: *const FunctionCallbackInfo) ?*Function;
+
     /// Get the creation context of the target function being called.
     /// This is critical for cross-realm support: when calling
     /// other.SomeInterface.prototype.method.call(obj), we need the context
@@ -160,6 +163,11 @@ pub const FunctionCallbackInfo = opaque {
 
     pub inline fn getData(self: *const FunctionCallbackInfo) *Value {
         return v8_FunctionCallbackInfo_Data(self);
+    }
+
+    /// Get the function being called.
+    pub inline fn getFunction(self: *const FunctionCallbackInfo) ?*Function {
+        return v8_FunctionCallbackInfo_GetFunction(self);
     }
 
     /// Get the creation context of the target function being called.
@@ -262,8 +270,22 @@ pub const PropertyCallbackInfoVoid = opaque {
     /// Returns true if we're in strict mode and should throw TypeError on failure
     pub extern fn v8_PropertyCallbackInfo_Void_ShouldThrowOnError(self: *const PropertyCallbackInfoVoid) bool;
 
+    /// Get the 'this' object
+    pub extern fn v8_PropertyCallbackInfo_Void_This(self: *const PropertyCallbackInfoVoid) *Object;
+
+    /// Get the holder object
+    pub extern fn v8_PropertyCallbackInfo_Void_Holder(self: *const PropertyCallbackInfoVoid) ?*Object;
+
     pub inline fn getIsolate(self: *const PropertyCallbackInfoVoid) *Isolate {
         return v8_PropertyCallbackInfo_Void_GetIsolate(self);
+    }
+
+    pub inline fn getThis(self: *const PropertyCallbackInfoVoid) *Object {
+        return v8_PropertyCallbackInfo_Void_This(self);
+    }
+
+    pub inline fn getHolder(self: *const PropertyCallbackInfoVoid) ?*Object {
+        return v8_PropertyCallbackInfo_Void_Holder(self);
     }
 
     /// Check if errors should throw (indicates strict mode)

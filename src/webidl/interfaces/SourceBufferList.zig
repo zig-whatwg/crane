@@ -139,4 +139,9 @@ pub const SourceBufferList = struct {
         try SourceBufferListImpl.set_onremovesourcebuffer(instance, value);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try SourceBufferListImpl.call_getter(instance, index);
+    }
+
 };

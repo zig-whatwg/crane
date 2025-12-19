@@ -110,6 +110,11 @@ pub const HTMLAllCollection = struct {
         return try HTMLAllCollectionImpl.call_namedItem(instance, name);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try HTMLAllCollectionImpl.call_getter(instance, index);
+    }
+
     pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(DOMString)) anyerror!?runtime.JSValue {
         
         return try HTMLAllCollectionImpl.call_item(instance, nameOrIndex);

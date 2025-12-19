@@ -559,6 +559,16 @@ pub const HTMLSelectElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
+    pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
+        
+        return try HTMLSelectElementImpl.call_setter(instance, index, option);
+    }
+
+    /// Extended attributes: [CEReactions]
     pub fn call_add(instance: *runtime.Instance, element: runtime.JSValue, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();

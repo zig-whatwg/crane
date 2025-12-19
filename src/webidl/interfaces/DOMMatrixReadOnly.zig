@@ -447,6 +447,11 @@ pub const DOMMatrixReadOnly = struct {
         return try DOMMatrixReadOnlyImpl.call_translate(instance, tx, ty, tz);
     }
 
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try DOMMatrixReadOnlyImpl.call_stringifier(instance);
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_flipY(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object

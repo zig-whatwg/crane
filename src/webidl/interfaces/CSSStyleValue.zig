@@ -102,6 +102,10 @@ pub const CSSStyleValue = struct {
         CSSStyleValueImpl.deinit(instance);
     }
 
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try CSSStyleValueImpl.call_stringifier(instance);
+    }
+
     /// Extended attributes: [Exposed=Window]
     pub fn call_static_parseAll(instance: *runtime.Instance, property: runtime.USVString, cssText: runtime.USVString) anyerror!runtime.JSValue {
         

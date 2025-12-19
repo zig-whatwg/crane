@@ -96,8 +96,8 @@ pub fn create(
         \\  // Returns the element/window or undefined if not found
         \\  function getNamedElement(name) {
         \\    try {
-        \\      if (!windowRef || !windowRef.document) return undefined;
-        \\      const doc = windowRef.document;
+        \\      if (typeof window === 'undefined' || !window.document) return undefined;
+        \\      const doc = window.document;
         \\      // Don't require body - elements might be in documentElement or head
         \\      
         \\      // Convert name to string for comparison
@@ -409,6 +409,14 @@ pub fn insertIntoPrototypeChain(
         \\  // Per WebIDL §3.7.3 step 2: interface prototype object for [Global]
         \\  // interfaces with named properties has WindowProperties as its prototype
         \\  Object.setPrototypeOf(Window.prototype, wp);
+        \\  
+        \\  // Step 3: Make Window.prototype's prototype immutable per WebIDL §3.7.3
+        \\  // We do this by making __proto__ non-configurable and non-writable
+        \\  // Note: V8 honors this for the immutable prototype bit internally
+        \\  Object.defineProperty(Window.prototype, "__proto__", {
+        \\    configurable: false,
+        \\    writable: false
+        \\  });
         \\  
         \\  // Note: global.__proto__ = Window.prototype is already set by V8 or
         \\  // will be set by the caller after this function returns

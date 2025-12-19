@@ -125,6 +125,16 @@ pub const CSSUnparsedValue = struct {
         return try CSSUnparsedValueImpl.get_length(instance);
     }
 
+    pub fn call_setter(instance: *runtime.Instance, index: u32, val: CSSUnparsedSegment) anyerror!void {
+        
+        return try CSSUnparsedValueImpl.call_setter(instance, index, val);
+    }
+
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!CSSUnparsedSegment {
+        
+        return try CSSUnparsedValueImpl.call_getter(instance, index);
+    }
+
     pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anyerror!void {
         
         return try CSSUnparsedValueImpl.call_forEach(instance, callback);

@@ -2131,6 +2131,8 @@ pub fn throwTypeError(
     isolate: *v8.Isolate,
     message: []const u8,
 ) void {
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
     // Log error through context if available
     if (namespace.getGlobalContext()) |ctx| {
         ctx.logger.@"error"("V8 TypeError: {s}", .{message}) catch {};
@@ -2141,7 +2143,7 @@ pub fn throwTypeError(
         message.ptr,
         @intCast(message.len),
     ) orelse return; // Failed to create string, can't throw
-    const exception = v8.v8_Exception_TypeError(msg_str) orelse return; // Failed to create exception
+    const exception = v8.v8_Exception_TypeErrorInContext(context, msg_str) orelse return; // Failed to create exception
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 

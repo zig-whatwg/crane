@@ -111,6 +111,11 @@ pub const DataTransferItemList = struct {
         return try DataTransferItemListImpl.call_clear(instance);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try DataTransferItemListImpl.call_getter(instance, index);
+    }
+
     pub fn call_remove(instance: *runtime.Instance, index: u32) anyerror!void {
         
         return try DataTransferItemListImpl.call_remove(instance, index);

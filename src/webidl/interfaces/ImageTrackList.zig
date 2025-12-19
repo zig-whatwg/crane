@@ -123,4 +123,9 @@ pub const ImageTrackList = struct {
         return try ImageTrackListImpl.get_selectedTrack(instance);
     }
 
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try ImageTrackListImpl.call_getter(instance, index);
+    }
+
 };

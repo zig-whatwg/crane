@@ -73,7 +73,7 @@ pub fn groupOperationsByName(
     // Group operations by name AND static status
     // This ensures static json(data, init) and instance json() are separate groups
     for (operations) |op| {
-        const name = op.name orelse continue; // Skip unnamed operations
+        const name = op.name orelse if (op.special) |special| @tagName(special) else continue; // Skip unnamed operations without special type
 
         const key = OperationKey{ .name = name, .is_static = op.static };
         const entry = try groups.getOrPut(key);

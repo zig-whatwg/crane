@@ -155,6 +155,10 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_forEach(instance, callback);
     }
 
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
+        return try URLSearchParamsImpl.call_stringifier(instance);
+    }
+
     pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: webidl.Opt(runtime.USVString)) anyerror!bool {
         
         return try URLSearchParamsImpl.call_has(instance, name, value);

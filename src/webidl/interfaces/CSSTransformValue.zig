@@ -137,6 +137,16 @@ pub const CSSTransformValue = struct {
         return try CSSTransformValueImpl.get_is2D(instance);
     }
 
+    pub fn call_setter(instance: *runtime.Instance, index: u32, val: *runtime.Instance) anyerror!void {
+        
+        return try CSSTransformValueImpl.call_setter(instance, index, val);
+    }
+
+    pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+        
+        return try CSSTransformValueImpl.call_getter(instance, index);
+    }
+
     pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSTransformValueImpl.call_toMatrix(instance);
     }
