@@ -251,6 +251,9 @@ pub const FunctionCallbackInfo = ffi.FunctionCallbackInfo;
 // NOTE: Commented out because bindings is not available
 // pub const initializeNamespaces = bindings.initializeNamespaces;
 
+/// WindowProperties exotic object implementation
+pub const window_properties = @import("window_properties.zig");
+
 test "v8 module compiles" {
     const testing = @import("std").testing;
     testing.refAllDecls(@This());

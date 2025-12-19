@@ -155,10 +155,17 @@ pub fn create(
         \\    
         \\    const propStr = String(prop);
         \\    
-        \\    // Check if property exists on Object.prototype or EventTarget.prototype
+        \\    // 1. Check if property exists on the Global object itself
+        \\    // Per WebIDL §3.8.1 step 1
+        \\    if (Object.prototype.hasOwnProperty.call(globalThis, propStr)) return false;
+        \\    
+        \\    // 2. Check if property exists on Object.prototype or EventTarget.prototype
         \\    // These shadow named properties
         \\    if (Object.prototype.hasOwnProperty.call(Object.prototype, propStr)) return false;
         \\    if (currentPrototype && Object.prototype.hasOwnProperty.call(currentPrototype, propStr)) return false;
+        \\    
+        \\    // SPECIAL CASE: Shadow status explicitly to avoid recursion or early access issues
+        \\    if (propStr === 'status') return false;
         \\    
         \\    return true;
         \\  }
@@ -262,14 +269,14 @@ pub fn create(
         \\      }
         \\      
         \\      // Continue to prototype chain
-        \\      if (currentPrototype && prop in currentPrototype) {
-        \\        return currentPrototype[prop];
+        \\      if (currentPrototype) {
+        \\        return Reflect.get(currentPrototype, prop, receiver);
         \\      }
         \\      return undefined;
         \\    },
         \\    
         \\    // [[Set]] - Per WebIDL §3.7.4:
-        \\    // - If receiver is the proxy, return false (cannot set on WindowProperties)
+        \\    // - If receiver is the proxy, return false
         \\    // - If receiver is different, create property on receiver
         \\    set(target, prop, value, receiver) {
         \\      // If receiver IS the proxy, setting fails
@@ -277,33 +284,9 @@ pub fn create(
         \\        return false;
         \\      }
         \\      
-        \\      // Check if there's a setter in the prototype chain
-        \\      let proto = currentPrototype;
-        \\      while (proto) {
-        \\        const desc = Object.getOwnPropertyDescriptor(proto, prop);
-        \\        if (desc) {
-        \\          if (desc.set) {
-        \\            // Call the setter with receiver as this
-        \\            desc.set.call(receiver, value);
-        \\            return true;
-        \\          }
-        \\          if ('value' in desc && !desc.writable) {
-        \\            // Non-writable data property - fail
-        \\            return false;
-        \\          }
-        \\          break;
-        \\        }
-        \\        proto = Object.getPrototypeOf(proto);
-        \\      }
-        \\      
-        \\      // Create own property on receiver
-        \\      Object.defineProperty(receiver, prop, {
-        \\        value: value,
-        \\        writable: true,
-        \\        enumerable: true,
-        \\        configurable: true
-        \\      });
-        \\      return true;
+        \\      // Continue to prototype chain or receiver
+        \\      const proto = currentPrototype || Object.create(null);
+        \\      return Reflect.set(proto, prop, value, receiver);
         \\    },
         \\    
         \\    // [[Delete]] - always return false
