@@ -73,11 +73,10 @@ pub const CallbackWrapper = struct {
     callback_context_raw_addr: ?*anyopaque = null,
 
     /// Create a wrapper for a JavaScript function callback
-    ///
-    /// The function pointer is converted to a Global handle for persistent storage.
     pub fn initFunction(
         allocator: std.mem.Allocator,
         isolate: *v8.Isolate,
+        context: *v8.Context,
         func: *v8.Function,
     ) !*CallbackWrapper {
         // IMPORTANT: In our architecture, values from FunctionCallbackInfo_GetArgument
@@ -88,12 +87,12 @@ pub const CallbackWrapper = struct {
         // Instead, we just wrap the existing Global pointer.
         const global = GlobalHandle{ .ptr = @ptrCast(func) };
 
-        // Store the current context where this callback was created
-        const current_ctx = v8.v8_Isolate_GetCurrentContext(isolate);
+        // Use the provided context where this callback was created/intended to run
+        const current_ctx = context;
 
         // Get the raw V8 context address for stable identity comparison
         // (Global handle pointers change each time GetCurrentContext is called)
-        const raw_addr = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
+        const raw_addr = v8.v8_Context_GetRawAddress(current_ctx);
 
         const wrapper = try allocator.create(CallbackWrapper);
         wrapper.* = .{
@@ -110,11 +109,10 @@ pub const CallbackWrapper = struct {
     }
 
     /// Create a wrapper for a JavaScript object callback (with method)
-    ///
-    /// The object pointer is converted to a Global handle for persistent storage.
     pub fn initObject(
         allocator: std.mem.Allocator,
         isolate: *v8.Isolate,
+        context: *v8.Context,
         object: *v8.Object,
         method_name: [*:0]const u8,
     ) !*CallbackWrapper {
@@ -122,6 +120,12 @@ pub const CallbackWrapper = struct {
         const global = GlobalHandle.create(isolate, @ptrCast(object)) orelse {
             return error.GlobalHandleCreationFailed;
         };
+
+        // Use the provided context
+        const current_ctx = context;
+
+        // Get the raw V8 context address for stable identity comparison
+        const raw_addr = v8.v8_Context_GetRawAddress(current_ctx);
 
         const wrapper = try allocator.create(CallbackWrapper);
         wrapper.* = .{
@@ -131,6 +135,8 @@ pub const CallbackWrapper = struct {
             .method_name = method_name,
             .is_function = false,
             .allocator = allocator,
+            .callback_context = current_ctx,
+            .callback_context_raw_addr = raw_addr,
         };
         return wrapper;
     }
@@ -196,7 +202,7 @@ pub const CallbackWrapper = struct {
         // if we need to switch contexts. Global handle pointers are different each time
         // GetCurrentContext is called, even for the same underlying V8 context.
         const current_raw_addr = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
-        const need_context_switch = (current_raw_addr == null) or (current_raw_addr != self.callback_context_raw_addr);
+        const need_context_switch = (current_raw_addr != self.callback_context_raw_addr);
 
         if (need_context_switch) {
             v8.v8_Context_Enter(effective_context);
@@ -346,9 +352,9 @@ pub fn createFromV8Value(
     }
 
     if (v8.v8_Value_IsFunction(value)) {
-        // Direct function callback - initFunction will create Global handle
+        // Direct function callback - initFunction now takes context
         const func: *v8.Function = @ptrCast(value);
-        return try CallbackWrapper.initFunction(allocator, isolate, func);
+        return try CallbackWrapper.initFunction(allocator, isolate, context, func);
     }
 
     if (v8.v8_Value_IsObject(value)) {
@@ -366,8 +372,8 @@ pub fn createFromV8Value(
             return null;
         }
 
-        // initObject will create Global handle for persistent storage
-        return try CallbackWrapper.initObject(allocator, isolate, obj, method_name);
+        // initObject now takes context
+        return try CallbackWrapper.initObject(allocator, isolate, context, obj, method_name);
     }
 
     return null;

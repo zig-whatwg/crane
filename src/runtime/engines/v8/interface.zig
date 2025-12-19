@@ -2624,17 +2624,19 @@ pub fn V8Interface(comptime Interface: type) type {
             // - current_context: The caller's context (for argument parsing)
             // - constructor_context: The constructor's creation context (for object realm)
             //
-            // Per WebIDL §3.7.2 [[Construct]]: "Let realm be the value of F's [[Realm]] internal slot"
+            // Per WebIDL §3.7.2 [[Construct]]: "Let realm be F's relevant realm"
             // Objects created by constructors belong to the constructor's realm, not the caller's realm.
             const current_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 conv.throwError(isolate, "No current V8 context");
                 return;
             };
 
-            // Get the constructor's creation context (the realm where the constructor was defined)
-            // This is critical for cross-realm construction: `new child.DOMParser()` should
-            // create an object in the child's realm, even when called from the parent.
-            const constructor_context = info.getFunctionCreationContext() orelse current_context;
+            // Implementation of GetFunctionRealm algorithm for constructor realm
+            // This ensures we correctly handle cross-realm construction, bound functions, and proxies.
+            // Using the constructor function's realm (F.[[Realm]]) per WebIDL spec.
+            const constructor_v8_fn = info.getFunction();
+            const constructor_v8_context = if (constructor_v8_fn) |f| getFunctionRealm(@ptrCast(f), isolate) else info.getFunctionCreationContext();
+            const constructor_context = constructor_v8_context orelse current_context;
 
             // Get or create isolate allocator (uses page_allocator as fallback)
             const isolate_alloc = @import("isolate_allocator.zig");
