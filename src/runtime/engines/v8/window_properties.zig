@@ -118,9 +118,8 @@ pub fn create(
         \\  // Returns the element/window or undefined if not found
         \\  function getNamedElement(name) {
         \\    try {
-        \\      if (typeof window === 'undefined' || !window.document) return undefined;
-        \\      const doc = window.document;
-        \\      // Don't require body - elements might be in documentElement or head
+        \\      const doc = globalThis.document;
+        \\      if (!doc) return undefined;
         \\      
         \\      // Convert name to string for comparison
         \\      const nameStr = String(name);

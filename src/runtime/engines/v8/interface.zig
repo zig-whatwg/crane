@@ -976,10 +976,10 @@ pub fn V8Interface(comptime Interface: type) type {
             ).?;
 
             const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
-            if (is_window_interface) {
-                const wp_tpl = window_properties.getTemplate(isolate);
-                v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(template, wp_tpl);
-            }
+            // if (is_window_interface) {
+            //     const wp_tpl = window_properties.getTemplate(isolate);
+            //     v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(template, wp_tpl);
+            // }
 
             // Set class name
             const name_str = v8.v8_String_NewFromUtf8(
@@ -1055,9 +1055,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // Per WebIDL spec §3.8, all objects in the global prototype chain must have
             // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
             // Some specific interfaces also require immutable prototypes (e.g., Location).
-            const has_immutable_proto = comptime std.mem.eql(u8, interface_name, "Location") or
-                is_window_interface or
-                (std.mem.eql(u8, interface_name, "DOMException") == false);
+            // NOTE: For Window, we don't set it on the template because we need to set the
+            // prototype manually in insertIntoPrototypeChain(). We'll make it immutable
+            // there via Object.defineProperty(Window.prototype, "__proto__", ...).
+            const has_immutable_proto = (comptime std.mem.eql(u8, interface_name, "Location") or
+                (std.mem.eql(u8, interface_name, "DOMException") == false)) and !is_window_interface;
 
             if (has_immutable_proto) {
                 v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
@@ -1674,7 +1676,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                     return;
                                 }
-                                conv.throwWebIDLError(isolate_inner, @errorName(err));
+                                conv.throwWebIDLErrorFromContext(isolate_inner, getter_context, @errorName(err));
                                 return;
                             }
                         else
@@ -2031,7 +2033,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         method_context, // Use method's realm for return value
                     ) catch |err| {
                         // Throw proper DOMException for WebIDL errors
-                        conv.throwWebIDLError(isolate, @errorName(err));
+                        conv.throwWebIDLErrorFromContext(isolate, method_context, @errorName(err));
                         return;
                     };
 
@@ -2610,7 +2612,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // If called as a function (without 'new'), 'this' may be the global object
             // which has 0 internal fields, causing "Internal field out of bounds" crash.
             if (!info.isConstructCall()) {
-                conv.throwTypeError(isolate, interface_name ++ " constructor: 'new' is required");
+                const function_ctx = info.getFunctionCreationContext() orelse {
+                    conv.throwTypeError(isolate, interface_name ++ " constructor: 'new' is required");
+                    return;
+                };
+                conv.throwTypeErrorFromContext(isolate, function_ctx, interface_name ++ " constructor: 'new' is required");
                 return;
             }
 
@@ -2667,7 +2673,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance = callConstructorWithArgs(info, allocator, ctx, current_context, isolate) catch |err| {
                 // Throw appropriate error type based on error name
                 // Use throwWebIDLError which properly creates DOMException for WebIDL errors
-                conv.throwWebIDLError(isolate, @errorName(err));
+                const function_ctx = info.getFunctionCreationContext() orelse current_context;
+                conv.throwWebIDLErrorFromContext(isolate, function_ctx, @errorName(err));
                 return;
             };
 
@@ -2951,7 +2958,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// - Must throw TypeError, NOT a generic Error
         fn nonConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
-            conv.throwTypeError(isolate, "Illegal constructor: " ++ name ++ " is not constructible");
+            const function_ctx = info.getFunctionCreationContext() orelse {
+                conv.throwTypeError(isolate, "Illegal constructor: " ++ name ++ " is not constructible");
+                return;
+            };
+            conv.throwTypeErrorFromContext(isolate, function_ctx, "Illegal constructor: " ++ name ++ " is not constructible");
         }
 
         /// HTMLAllCollection call handler for document.all(nameOrIndex)
@@ -3202,7 +3213,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // Call getter (handle error union)
             const result: PayloadType = if (return_type_info == .error_union)
                 zig_getter(instance) catch |err| {
-                    conv.throwWebIDLError(isolate, @errorName(err));
+                    const this_obj = info.getThis();
+                    const creation_ctx = v8.v8_Object_GetPrototypeCreationContext(this_obj) orelse v8.v8_Isolate_GetCurrentContext(isolate).?;
+                    conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
                     return;
                 }
             else
@@ -3605,16 +3618,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Call the item() method
             const result = Interface.call_item(instance, index) catch |err| {
-                const err_msg = std.fmt.allocPrint(
-                    std.heap.c_allocator,
-                    "item() failed: {s}",
-                    .{@errorName(err)},
-                ) catch {
-                    conv.throwError(isolate, "item() failed");
-                    return;
-                };
-                defer std.heap.c_allocator.free(err_msg);
-                conv.throwError(isolate, err_msg);
+                const creation_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse v8_context;
+                conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
                 return;
             };
 
@@ -3938,12 +3943,18 @@ pub fn V8Interface(comptime Interface: type) type {
             // A read-only indexed collection rejects ALL indexed property assignments.
             // Returning false causes TypeError in strict mode.
             if (info.shouldThrowOnError()) {
-                // Strict mode - throw TypeError
+                // Strict mode - throw TypeError from creation context for cross-realm correctness
+                const creation_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse {
+                    // Fallback to error in current context if creation context unavailable
+                    var buf: [64]u8 = undefined;
+                    const msg = std.fmt.bufPrint(&buf, "Cannot set property \"{d}\" on read-only indexed collection", .{index}) catch "Cannot set property on read-only indexed collection";
+                    conv.throwTypeError(isolate, msg);
+                    return .kYes;
+                };
+
                 var buf: [64]u8 = undefined;
                 const msg = std.fmt.bufPrint(&buf, "Cannot set property \"{d}\" on read-only indexed collection", .{index}) catch "Cannot set property on read-only indexed collection";
-                const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
-                const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
-                v8.v8_Isolate_ThrowException(isolate, exception);
+                conv.throwTypeErrorFromContext(isolate, creation_ctx, msg);
             }
             // In sloppy mode or after throwing, indicate we handled the request
             return .kYes;
@@ -5902,7 +5913,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             }
                             return;
                         }
-                        conv.throwWebIDLError(isolate_inner, @errorName(err));
+                        conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
                         return;
                     };
                     defer freeConvertedValue(ValueType, allocator, zig_value);
@@ -5913,7 +5924,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     if (return_type_info == .error_union) {
                         zig_setter(instance, zig_value) catch |err| {
-                            conv.throwWebIDLError(isolate_inner, @errorName(err));
+                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
                             return;
                         };
                     } else {
@@ -6021,12 +6032,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Step 2: Check if the target is an object (not null/undefined)
                     // Per WebIDL spec: "if the result is not an object, throw a TypeError"
                     if (v8.v8_Value_IsNull(target_value) or v8.v8_Value_IsUndefined(target_value)) {
-                        conv.throwTypeError(isolate_inner, "Cannot set property on null or undefined");
+                        const function_ctx = info.getFunctionCreationContext() orelse context;
+                        conv.throwTypeErrorFromContext(isolate_inner, function_ctx, "Cannot set property on null or undefined");
                         return;
                     }
 
                     if (!v8.v8_Value_IsObject(target_value)) {
-                        conv.throwTypeError(isolate_inner, "Cannot set property on non-object");
+                        const function_ctx = info.getFunctionCreationContext() orelse context;
+                        conv.throwTypeErrorFromContext(isolate_inner, function_ctx, "Cannot set property on non-object");
                         return;
                     }
 
@@ -6232,7 +6245,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         v8_context,
                         v8_context, // return_context: same as caller context for indexed callbacks
                     ) catch |err| {
-                        conv.throwWebIDLError(isolate, @errorName(err));
+                        conv.throwWebIDLErrorFromContext(isolate, v8_context, @errorName(err));
                         return;
                     };
 

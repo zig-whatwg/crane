@@ -2168,6 +2168,15 @@ pub fn throwTypeErrorFromContext(
     context: *v8.Context,
     message: []const u8,
 ) void {
+    // CRITICAL: Enter the context before creating and throwing the exception.
+
+    // This ensures that:
+    // 1. The TypeError object is an instance of context.TypeError
+    // 2. The stack trace and other details are correctly associated with this realm
+    // 3. The exception is thrown within this context
+    v8.v8_Context_Enter(context);
+    defer v8.v8_Context_Exit(context);
+
     // Log error through context if available
     if (namespace.getGlobalContext()) |ctx| {
         ctx.logger.@"error"("V8 TypeError (cross-realm): {s}", .{message}) catch {};
@@ -2362,34 +2371,35 @@ pub fn isDOMExceptionName(name: []const u8) bool {
 }
 
 /// Throw an appropriate exception based on the error name
-///
-/// If the error name is a known DOMException name, throws a DOMException.
-/// Otherwise, throws a generic Error.
 pub fn throwWebIDLError(
     isolate: *v8.Isolate,
     error_name: []const u8,
 ) void {
+    const context = v8.v8_Isolate_GetCurrentContext(isolate);
+    throwWebIDLErrorFromContext(isolate, context.?, error_name);
+}
+
+/// Throw an appropriate exception from a specific context's realm
+pub fn throwWebIDLErrorFromContext(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    error_name: []const u8,
+) void {
     if (isDOMExceptionName(error_name)) {
+        // TODO: implement throwDOMExceptionFromContext
         throwDOMException(isolate, error_name, error_name);
     } else if (std.mem.eql(u8, error_name, "TypeError")) {
-        throwTypeError(isolate, "TypeError");
+        throwTypeErrorFromContext(isolate, context, "TypeError");
     } else if (std.mem.eql(u8, error_name, "RangeError")) {
+        // TODO: implement throwRangeErrorFromContext
         throwRangeError(isolate, "RangeError");
     } else if (std.mem.eql(u8, error_name, "InvalidEncoding")) {
-        // Map InvalidEncoding to RangeError per WHATWG Encoding spec
-        // TextDecoder constructor throws RangeError for invalid encoding labels
         throwRangeError(isolate, "The encoding label provided is invalid.");
     } else if (std.mem.eql(u8, error_name, "ReplacementEncoding")) {
-        // Map ReplacementEncoding to RangeError per WHATWG Encoding spec
-        // TextDecoder constructor throws RangeError for replacement encodings (e.g., iso-2022-cn)
         throwRangeError(isolate, "The encoding label provided is a replacement encoding.");
     } else if (std.mem.eql(u8, error_name, "DecodingError")) {
-        // Map DecodingError to TypeError per WHATWG Encoding spec
-        // TextDecoder.decode() throws TypeError when fatal=true and invalid byte encountered
-        throwTypeError(isolate, "The encoded data was not valid.");
+        throwTypeErrorFromContext(isolate, context, "The encoded data was not valid.");
     } else if (std.mem.eql(u8, error_name, "NotImplemented")) {
-        // Map NotImplemented to NotSupportedError DOMException
-        // This is the standard way to indicate unimplemented features in web APIs
         throwDOMException(isolate, "NotSupportedError", "This feature is not yet implemented");
     } else {
         throwError(isolate, error_name);
