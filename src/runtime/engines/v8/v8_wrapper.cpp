@@ -6379,3 +6379,10 @@ Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Glo
 }
 
 } // extern "C"
+
+extern "C" void v8_FunctionTemplate_SetPrototypeProviderTemplate(Global<FunctionTemplate>* tpl, Global<FunctionTemplate>* provider) {
+    if (!tpl || !provider) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    tpl->Get(isolate)->SetPrototypeProviderTemplate(provider->Get(isolate));
+}

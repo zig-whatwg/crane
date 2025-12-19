@@ -65,6 +65,11 @@ const IDBFactoryBackend = storage.indexeddb.IDBFactory;
 
 pub const State = Window.State;
 
+/// Whether this interface should have an immutable prototype.
+/// Per WebIDL §3.8, global objects and their prototype chain must be immutable.
+/// This constant is checked by the V8 interface binding generator.
+pub const has_immutable_prototype = true;
+
 pub const ImplError = error{
     NotImplemented,
     WindowClosed,

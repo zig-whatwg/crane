@@ -1263,6 +1263,7 @@ pub extern fn v8_FunctionTemplate_SetClassName(tpl: *FunctionTemplate, name: *St
 pub extern fn v8_FunctionTemplate_InstanceTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
 pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
+pub extern fn v8_FunctionTemplate_SetPrototypeProviderTemplate(self: *FunctionTemplate, provider: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;
 
 /// Check if an object is an instance of this FunctionTemplate.

@@ -260,12 +260,12 @@ pub fn initializeBindings(
     // e.g., HTMLDocument is an alias for Document per HTML spec
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: Insert WindowProperties into prototype chain
-    // Per WebIDL §3.7.4, the prototype chain for [Global] objects must be:
+    // Step 7: Window prototype chain is now handled via SetPrototypeProviderTemplate
+    // in interface.zig, so we don't need manual insertion here.
+    // Per WebIDL §3.7.4, the prototype chain for [Global] objects is:
     // Window instance → Window.prototype → WindowProperties → EventTarget.prototype
-    // This is required for WPT tests in webidl/ecmascript-binding/window-named-properties-object.html
-    const window_properties = @import("window_properties.zig");
-    _ = window_properties.insertIntoPrototypeChain(isolate, context);
+    // const window_properties = @import("window_properties.zig");
+    // _ = window_properties.insertIntoPrototypeChain(isolate, context);
 
     // NOTE: Window properties as own properties on the global are registered
     // in createChildContext AFTER the Window instance is bound to the global.

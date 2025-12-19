@@ -36,6 +36,7 @@ const overload_resolver = @import("overload_resolver.zig");
 const async_iterator = @import("async_iterator.zig");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
+const window_properties = @import("window_properties.zig");
 
 /// Re-export WrapperTypeInfo for use by generated bindings
 pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
@@ -974,6 +975,12 @@ pub fn V8Interface(comptime Interface: type) type {
                 null,
             ).?;
 
+            const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
+            if (is_window_interface) {
+                const wp_tpl = window_properties.getTemplate(isolate);
+                v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(template, wp_tpl);
+            }
+
             // Set class name
             const name_str = v8.v8_String_NewFromUtf8(
                 isolate,
@@ -1049,8 +1056,8 @@ pub fn V8Interface(comptime Interface: type) type {
             // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
             // Some specific interfaces also require immutable prototypes (e.g., Location).
             const has_immutable_proto = comptime std.mem.eql(u8, interface_name, "Location") or
-                (std.mem.eql(u8, interface_name, "Window") == false and
-                    std.mem.eql(u8, interface_name, "DOMException") == false);
+                is_window_interface or
+                (std.mem.eql(u8, interface_name, "DOMException") == false);
 
             if (has_immutable_proto) {
                 v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
@@ -1294,12 +1301,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Use ParentInterface (the actual interface type) for prototype chain setup
             // ParentInterface is set when BaseType is an embedded state struct
             //
-            // SPECIAL CASE: Window interface must NOT use FunctionTemplate_Inherit
-            // because we need to insert WindowProperties between Window.prototype
-            // and EventTarget.prototype. FunctionTemplate_Inherit creates a hard link
-            // that cannot be modified after template creation.
-            // Window's prototype chain is set up manually in window_properties.zig
-            const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
+            // SPECIAL CASE: Window prototype chain was set up above using provider template
             if (!is_window_interface) {
                 if (@hasDecl(Meta, "ParentInterface")) {
                     const ParentType = Meta.ParentInterface;

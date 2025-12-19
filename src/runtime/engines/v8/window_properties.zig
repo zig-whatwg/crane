@@ -40,6 +40,28 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 
+var template_cache: ?*v8.FunctionTemplate = null;
+var template_cache_isolate: ?*v8.Isolate = null;
+
+/// Get or create the FunctionTemplate for WindowProperties
+pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
+    if (template_cache) |cached| {
+        if (template_cache_isolate == isolate) return cached;
+    }
+
+    const tpl = v8.v8_FunctionTemplate_New(isolate, null, null).?;
+    const name = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16);
+    v8.v8_FunctionTemplate_SetClassName(tpl, name.?);
+
+    const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(tpl);
+    // Mark WindowProperties.prototype as immutable per WebIDL §3.7.4
+    v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
+
+    template_cache = tpl;
+    template_cache_isolate = isolate;
+    return tpl;
+}
+
 /// Create the WindowProperties exotic object using JavaScript Proxy
 ///
 /// This uses a Proxy to implement the exotic internal methods correctly.
