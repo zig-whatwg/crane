@@ -4279,7 +4279,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Named property enumerator for Reflect.ownKeys support
         /// Implements WebIDL §3.9.6 [[OwnPropertyKeys]] semantics:
-        /// 1. Indexed property keys in ascending order (handled by indexed enumerator)
+        /// 1. Indexed property keys in ascending order
         /// 2. Named property names in list order
         /// 3. Own property keys (strings first, then symbols) - but NOT duplicates of named properties
         ///
@@ -4326,7 +4326,6 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
             // Check if Interface has getSupportedPropertyNames delegate
-            // This should be exposed through codegen for interfaces with named properties
             if (comptime @hasDecl(Interface, "getSupportedPropertyNames")) {
                 // Get property names from interface delegate
                 const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
@@ -4334,26 +4333,45 @@ pub fn V8Interface(comptime Interface: type) type {
                     info.setReturnValue(@ptrCast(empty_arr));
                     return;
                 };
-                // Only free if we got an allocated slice (not an empty literal)
-                defer if (names.len > 0) std.heap.c_allocator.free(names);
+                // Deinit and free names after use
+                defer {
+                    for (names) |*prop_name| {
+                        prop_name.deinit(std.heap.c_allocator);
+                    }
+                    if (names.len > 0) std.heap.c_allocator.free(names);
+                }
 
                 // Per WebIDL §3.9.6 [[OwnPropertyKeys]], we need to return:
-                // 1. Indexed property keys in ascending order (handled by indexed enumerator)
+                // 1. Indexed property keys in ascending order
                 // 2. Named property names in list order (from getSupportedPropertyNames)
-                // 3. Own property keys (strings first, then symbols)
                 //
-                // V8 will merge this with indexed property enumerator results and own properties.
-                // We only return named properties here - V8 adds own properties automatically.
-                //
-                // NOTE: V8's default behavior puts own properties BEFORE named properties,
-                // but for most WebIDL use cases, the named properties from the interceptor
-                // are what matter. The deduplication ensures named props aren't double-listed.
+                // V8 calls indexed enumerator first, then named. To satisfy WebIDL ordering
+                // constraints where indices MUST come before names, we include both here
+                // in the prescribed order. V8 will merge/deduplicate with the indexed
+                // enumerator results.
+                var keys: std.ArrayListUnmanaged(*v8.Value) = .{};
+                defer keys.deinit(std.heap.c_allocator);
 
-                // Create result array with just named properties
-                const result_arr = v8.v8_Array_New(isolate, @intCast(names.len));
+                // 1. Add indexed properties (ascending) if interface supports them
+                const has_indexed_item = comptime blk: {
+                    if (!@hasDecl(Interface, "call_item")) break :blk false;
+                    const CallItemFn = @TypeOf(Interface.call_item);
+                    const fn_info = @typeInfo(CallItemFn).@"fn";
+                    if (fn_info.params.len != 2) break :blk false;
+                    const second_param = fn_info.params[1].type orelse break :blk false;
+                    break :blk second_param == u32;
+                };
 
-                // Add named properties
-                var idx: u32 = 0;
+                if (has_indexed_item and comptime @hasDecl(Interface, "get_length")) {
+                    const length = Interface.get_length(instance) catch 0;
+                    var i: u32 = 0;
+                    while (i < length) : (i += 1) {
+                        const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
+                        keys.append(std.heap.c_allocator, @ptrCast(v8_idx)) catch {};
+                    }
+                }
+
+                // 2. Add named properties (list order)
                 for (names) |prop_name| {
                     const v8_str = v8.v8_String_NewFromUtf8(
                         isolate,
@@ -4361,15 +4379,19 @@ pub fn V8Interface(comptime Interface: type) type {
                         @intCast(prop_name.asSlice().len),
                     );
                     if (v8_str) |str| {
-                        _ = v8.v8_Array_Set(result_arr, v8_context, idx, @ptrCast(str));
-                        idx += 1;
+                        keys.append(std.heap.c_allocator, @ptrCast(str)) catch {};
                     }
+                }
+
+                // Create V8 array from keys
+                const result_arr = v8.v8_Array_New(isolate, @intCast(keys.items.len));
+                for (keys.items, 0..) |v8_val, idx| {
+                    _ = v8.v8_Array_Set(result_arr, v8_context, @intCast(idx), v8_val);
                 }
 
                 info.setReturnValue(@ptrCast(result_arr));
             } else {
                 // No getSupportedPropertyNames - return empty array
-                // This means the interface doesn't support named property enumeration
                 const empty_arr = v8.v8_Array_New(isolate, 0);
                 info.setReturnValue(@ptrCast(empty_arr));
             }
@@ -4462,12 +4484,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (type_info == .optional) {
                 if (result != null) {
                     // Property exists - set attribute flags (enumerable, configurable)
-                    // Per WebIDL §3.9.1, named properties are NOT enumerable by default
-                    // unless [LegacyEnumerableNamedProperties] is specified.
-                    const has_enumerable_attr = comptime blk: {
+                    // Per WebIDL §3.9.1, named properties are enumerable by default
+                    // unless [LegacyUnenumerableNamedProperties] is specified.
+                    const has_unenumerable_attr = comptime blk: {
                         if (@hasDecl(Meta, "extended_attributes")) {
                             for (Meta.extended_attributes) |attr| {
-                                if (std.mem.eql(u8, attr.name, "LegacyEnumerableNamedProperties")) {
+                                if (std.mem.eql(u8, attr.name, "LegacyUnenumerableNamedProperties")) {
                                     break :blk true;
                                 }
                             }
@@ -4475,8 +4497,8 @@ pub fn V8Interface(comptime Interface: type) type {
                         break :blk false;
                     };
 
-                    // If not LegacyEnumerableNamedProperties, set DontEnum flag (2)
-                    var attr_value: c_int = if (has_enumerable_attr) 0 else v8.PropertyAttribute.DontEnum;
+                    // If LegacyUnenumerableNamedProperties, set DontEnum flag (2)
+                    var attr_value: c_int = if (has_unenumerable_attr) v8.PropertyAttribute.DontEnum else 0;
 
                     // Also check for named setter presence to set ReadOnly flag
                     const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem") or @hasDecl(Interface, "call_setter");
