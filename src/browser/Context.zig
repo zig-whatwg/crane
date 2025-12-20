@@ -335,12 +335,15 @@ pub const Context = struct {
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
 
+        const url_copy = try allocator.dupe(u8, url);
+        errdefer allocator.free(url_copy);
+
         ctx.* = Context{
             .allocator = allocator,
             .isolate = isolate,
             .v8_context = null,
             .storage = storage,
-            .url = try allocator.dupe(u8, url),
+            .url = url_copy,
             .context_type = context_type,
             .initialized = false,
             .event_loop = event_loop,
@@ -366,9 +369,13 @@ pub const Context = struct {
 
         v8.ffi.v8_Context_Enter(v8_ctx);
 
-        // Initialize context manager for V8 callbacks
+        // Initialize context manager for V8 callbacks (only if not already initialized)
+        // The context manager is per-thread, so it only needs to be initialized once.
+        // Subsequent context creations within the same thread will get AlreadyInitialized.
         context_manager.init(self.allocator) catch |err| {
-            std.debug.print("Warning: Context manager init failed: {}\n", .{err});
+            if (err != error.AlreadyInitialized) {
+                std.debug.print("Warning: Context manager init failed: {}\n", .{err});
+            }
         };
 
         // Register context with context manager for wrapper caching
@@ -416,7 +423,10 @@ pub const Context = struct {
 
         // Set up global aliases FIRST (creates __internal object and accessor properties)
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
-        try self.setupGlobalAliases();
+        self.setupGlobalAliases() catch |err| {
+            // Log but continue - setupGlobalAliases failing shouldn't prevent context creation
+            std.debug.print("Warning: setupGlobalAliases failed: {} - continuing\n", .{err});
+        };
 
         // Register browser globals based on context type
         // For window context, stores Document, Navigator, etc. in __internal
@@ -880,111 +890,17 @@ pub const Context = struct {
     fn setupGlobalAliases(self: *Context) !void {
         const setup_script = switch (self.context_type) {
             .window =>
-            // Window context: full window, self, document, navigator, location, etc.
-            // Per WebIDL spec, these are accessor properties that validate 'this'
-            \\// Create __internal object to store singleton values
-            \\// The accessor properties read from __internal to return the same object each time
-            \\globalThis.__internal = {
-            \\  isSecureContext: false,
-            \\};
-            \\
-            \\// Helper function to check 'this' value for accessor properties
-            \\// Per WebIDL spec, getters must validate that 'this' is the global object
-            \\function __checkGlobalThis(thisArg, propName) {
-            \\  if (thisArg === null || thisArg === undefined) {
-            \\    return globalThis;
-            \\  }
-            \\  if (thisArg === globalThis) {
-            \\    return globalThis;
-            \\  }
-            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface Window.");
-            \\}
-            \\globalThis.__checkGlobalThis = __checkGlobalThis;
-            \\
-            \\// Define window as an accessor property per WebIDL
-            \\Object.defineProperty(globalThis, 'window', {
-            \\  get: function() { return __checkGlobalThis(this, 'window'); },
-            \\  enumerable: true, configurable: false
-            \\});
-            \\
-            \\// Define self as an accessor property per WebIDL
-            \\Object.defineProperty(globalThis, 'self', {
-            \\  get: function() { return __checkGlobalThis(this, 'self'); },
-            \\  enumerable: true, configurable: true
-            \\});
-            \\
-            \\// Define document as an accessor property that reads from __internal
-            \\Object.defineProperty(globalThis, 'document', {
-            \\  get: function() {
-            \\    __checkGlobalThis(this, 'document');
-            \\    return globalThis.__internal.document;
-            \\  },
-            \\  enumerable: true, configurable: false
-            \\});
-            \\
-            \\// Define navigator as an accessor property that reads from __internal
-            \\Object.defineProperty(globalThis, 'navigator', {
-            \\  get: function() {
-            \\    __checkGlobalThis(this, 'navigator');
-            \\    return globalThis.__internal.navigator;
-            \\  },
-            \\  enumerable: true, configurable: true
-            \\});
-            \\
-            \\// Define location as an accessor property that reads from __internal
-            \\Object.defineProperty(globalThis, 'location', {
-            \\  get: function() {
-            \\    __checkGlobalThis(this, 'location');
-            \\    return globalThis.__internal.location;
-            \\  },
-            \\  set: function(value) {
-            \\    __checkGlobalThis(this, 'location');
-            \\    if (globalThis.__internal.location) {
-            \\      globalThis.__internal.location.href = String(value);
-            \\    }
-            \\  },
-            \\  enumerable: true, configurable: false
-            \\});
-            \\
-            \\// Define history as an accessor property that reads from __internal
-            \\Object.defineProperty(globalThis, 'history', {
-            \\  get: function() {
-            \\    __checkGlobalThis(this, 'history');
-            \\    return globalThis.__internal.history;
-            \\  },
-            \\  enumerable: true, configurable: false
-            \\});
-            \\
-            \\// Define performance as an accessor property that reads from __internal
-            \\Object.defineProperty(globalThis, 'performance', {
-            \\  get: function() {
-            \\    __checkGlobalThis(this, 'performance');
-            \\    return globalThis.__internal.performance;
-            \\  },
-            \\  enumerable: true, configurable: true
-            \\});
-            \\
-            \\// Define isSecureContext as an accessor property
-            \\Object.defineProperty(globalThis, 'isSecureContext', {
-            \\  get: function() {
-            \\    __checkGlobalThis(this, 'isSecureContext');
-            \\    return globalThis.__internal.isSecureContext;
-            \\  },
-            \\  enumerable: true, configurable: true
-            \\});
-            \\
-            \\// Simple property assignments for frame-related globals
+            // Window context: simplified setup that works with existing bindings
+            \\globalThis.__internal = globalThis.__internal || { isSecureContext: false };
             \\globalThis.parent = globalThis;
             \\globalThis.top = globalThis;
             \\globalThis.opener = null;
             \\globalThis.frames = globalThis;
             \\globalThis.length = 0;
-            \\
-            \\// Set up GLOBAL object for WPT tests - WINDOW context
             \\globalThis.GLOBAL = {
             \\  isWindow: function() { return true; },
             \\  isWorker: function() { return false; },
-            \\  isShadowRealm: function() { return false; },
+            \\  isShadowRealm: function() { return false; }
             \\};
             ,
             .worker =>
@@ -1392,6 +1308,29 @@ pub const Context = struct {
         // This must happen before context manager deinit to prevent callbacks
         // from firing after the V8 context is disposed
         clearTimerInterface();
+
+        // Clean up WebIDL singleton instances
+        // These are allocated in registerWindowGlobals() and must be freed
+        if (self.document_instance) |inst| {
+            interfaces.Document.deinit(inst);
+            self.document_instance = null;
+        }
+        if (self.navigator_instance) |inst| {
+            interfaces.Navigator.deinit(inst);
+            self.navigator_instance = null;
+        }
+        if (self.location_instance) |inst| {
+            interfaces.Location.deinit(inst);
+            self.location_instance = null;
+        }
+        if (self.history_instance) |inst| {
+            interfaces.History.deinit(inst);
+            self.history_instance = null;
+        }
+        if (self.performance_instance) |inst| {
+            interfaces.Performance.deinit(inst);
+            self.performance_instance = null;
+        }
 
         // Cleanup context manager
         if (self.v8_context) |ctx| {
