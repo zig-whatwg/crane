@@ -349,9 +349,38 @@ pub const Context = struct {
     }
 
     /// Create V8 context and register globals
+    /// Per WebIDL spec, creates context with Window's instance template for proper:
+    /// - Immutable prototype (Object.setPrototypeOf(window, {}) throws)
+    /// - Indexed property handler for frames[index] access
+    /// - Internal fields for Window instance binding
     fn createV8Context(self: *Context) !void {
-        // Create V8 context
-        const v8_ctx = v8.ffi.v8_Context_New(self.isolate) orelse {
+        // Create V8 context with Window's instance template as global template
+        // This ensures the global object has all Window properties AND an immutable prototype
+        const window_tpl = v8.interface_bindings.Window.createTemplate(self.isolate);
+        const global_template = v8.ffi.v8_FunctionTemplate_InstanceTemplate(window_tpl);
+
+        // Mark global object prototype as immutable per WebIDL §3.8
+        // Object.setPrototypeOf(window, {}) must throw TypeError
+        v8.ffi.v8_ObjectTemplate_SetImmutableProto(global_template);
+
+        // Set internal field count for Window binding (2 fields: impl pointer + type info)
+        // This is required for bindWindowToContext() to bind the Window instance to the global
+        v8.ffi.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+
+        // Set up indexed property handler for frames[index] access
+        // Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
+        // - Numeric indices return child browsing context Windows
+        v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+            global_template,
+            context_manager.windowIndexedPropertyGetter,
+            null, // setter - not needed
+            context_manager.windowIndexedPropertyQuery,
+            context_manager.windowIndexedPropertyEnumerator,
+            null, // descriptor callback - not needed for basic access
+        );
+
+        // Create V8 context with the configured global template
+        const v8_ctx = v8.ffi.v8_Context_NewWithGlobalTemplate(self.isolate, global_template) orelse {
             return error.ContextCreateFailed;
         };
         self.v8_context = v8_ctx;
@@ -364,7 +393,10 @@ pub const Context = struct {
         };
 
         // Register context with context manager for wrapper caching
-        _ = context_manager.getOrCreateWithIsolate(v8_ctx, self.isolate, self.allocator) catch |err| {
+        // Pass timer and event loop interfaces so all runtime contexts share the same libuv loop
+        const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
+        const event_loop_iface = if (self.event_loop) |ev| ev.eventLoop() else null;
+        _ = context_manager.getOrCreateWithExternalEventLoop(v8_ctx, timer_iface, event_loop_iface, self.allocator) catch |err| {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
         };
 
@@ -377,24 +409,28 @@ pub const Context = struct {
         // Register all namespaces
         v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
 
-        // Set up Window prototype chain per WebIDL spec:
-        // Set global's prototype to Window.prototype to complete the chain:
-        //   global → Window.prototype → WindowProperties → EventTarget.prototype
-        // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
-        // the interface prototype object (Window.prototype for the global).
+        // Bind Window instance to context for cross-realm support (frames[0], contentWindow)
+        // This creates a Window runtime.Instance and binds it to the V8 global object.
+        // Must be done after interface bindings are initialized.
+        self.window_instance = context_manager.bindWindowToContext(v8_ctx, self.isolate, self.allocator) catch |err| blk: {
+            std.debug.print("Warning: Failed to bind Window to context: {}\n", .{err});
+            break :blk null;
+        };
+
+        // Set the realm's global_object for cross-realm support
+        // This enables DOMParser.parseFromString to inherit the document URL from its realm
+        if (self.window_instance) |win| {
+            if (win.ctx.realm) |realm| {
+                realm.global_object = win;
+            }
+        }
+
+        // Register Window properties as own properties on the global object.
+        // This is required for WebIDL compliance: window.length, window.name, etc.
+        // must be accessible as own properties via Object.getOwnPropertyDescriptor.
         const global = v8.ffi.v8_Context_Global(v8_ctx);
         if (global) |global_obj| {
-            const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
-            if (window_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(wk))) |window_ctor| {
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global_obj, v8_ctx, window_proto);
-                        }
-                    }
-                }
-            }
+            v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global_obj);
         }
 
         // Set up global aliases FIRST (creates __internal object and accessor properties)
@@ -404,6 +440,14 @@ pub const Context = struct {
         // Register browser globals based on context type
         // For window context, stores Document, Navigator, etc. in __internal
         try self.registerBrowserGlobals();
+
+        // Set up timer interface in thread-local storage
+        // This needs to be available for JavaScript setTimeout/setInterval calls
+        if (self.event_loop) |event_loop| {
+            if (event_loop.timerInterface()) |timer| {
+                setTimerInterface(timer, self.allocator);
+            }
+        }
 
         self.initialized = true;
     }
@@ -1194,6 +1238,11 @@ pub const Context = struct {
 
     /// Deinitialize the context
     pub fn deinit(self: *Context) void {
+        // Clear timer interface and cancel all pending timers
+        // This must happen before context manager deinit to prevent callbacks
+        // from firing after the V8 context is disposed
+        clearTimerInterface();
+
         // Cleanup context manager
         if (self.v8_context) |ctx| {
             context_manager.deinit();
