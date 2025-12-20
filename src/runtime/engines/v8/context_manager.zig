@@ -1257,13 +1257,13 @@ fn createWindowForExistingBrowsingContext(
 pub fn windowIndexedPropertyGetter(
     index: u32,
     info: *const v8.PropertyCallbackInfo,
-) callconv(.c) void {
+) callconv(.c) v8.Intercepted {
     const WindowImpl = @import("impls").Window;
     const template_registry = @import("template_registry.zig");
     const conv = @import("conversions.zig");
 
     const isolate = info.getIsolate();
-    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
 
     // Get the 'this' object (the global/Window object)
     const this_obj = info.getThis();
@@ -1281,7 +1281,7 @@ pub fn windowIndexedPropertyGetter(
 
     if (instance_ptr == null) {
         // No instance - let V8 handle normal lookup
-        return;
+        return .kNo;
     }
 
     // Safety check for use-after-free patterns
@@ -1291,7 +1291,7 @@ pub fn windowIndexedPropertyGetter(
     if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
         (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
     {
-        return;
+        return .kNo;
     }
 
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -1299,13 +1299,13 @@ pub fn windowIndexedPropertyGetter(
     // First try to get an existing child Window via Window.call_item
     var result = WindowImpl.call_item(instance, index) catch {
         // Error - let V8 handle normal lookup
-        return;
+        return .kNo;
     };
 
     // If result is null, check if we need to lazily create the child context
     // This happens when an iframe is in the DOM but contentWindow hasn't been accessed yet
     if (result == null) {
-        const internal = WindowImpl.getInternal(instance) orelse return;
+        const internal = WindowImpl.getInternal(instance) orelse return .kNo;
 
         // First check if a browsing context exists at this index
         const children = internal.browsing_context.children.items;
@@ -1315,7 +1315,7 @@ pub fn windowIndexedPropertyGetter(
             // Child browsing context exists but no Window - create it
             if (child_bc.getActiveWindow() == null) {
                 // Get the allocator from the context entry
-                const entry = getEntry(v8_context) orelse return;
+                const entry = getEntry(v8_context) orelse return .kNo;
 
                 // Create a V8 context and Window for the existing BrowsingContext
                 result = createWindowForExistingBrowsingContext(
@@ -1352,7 +1352,7 @@ pub fn windowIndexedPropertyGetter(
                 // Get all iframe elements using getElementsByTagName
                 const iframe_tag = runtime.DOMString.initInterned("iframe");
                 const iframes = interfaces.Document.call_getElementsByTagName(document, iframe_tag) catch {
-                    return; // Can't access iframes
+                    return .kNo; // Can't access iframes
                 };
 
                 // Check if we have enough iframes in the DOM
@@ -1381,12 +1381,14 @@ pub fn windowIndexedPropertyGetter(
             v8_context,
         ) catch {
             conv.throwError(isolate, "Failed to wrap child window");
-            return;
+            return .kNo;
         };
         info.setReturnValue(@ptrCast(wrapped));
+        return .kYes;
     }
     // If result is null (out of bounds), don't set a return value
     // This lets V8 continue with normal property lookup (returns undefined)
+    return .kNo;
 }
 
 /// Indexed property query for Window global objects.

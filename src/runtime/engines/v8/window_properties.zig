@@ -36,19 +36,34 @@ const runtime = @import("runtime");
 const WindowImpl = @import("impls").Window;
 const context_manager = @import("context_manager.zig");
 const conv = @import("conversions.zig");
+const template_registry = @import("template_registry.zig");
 
 var template_cache: ?*v8.FunctionTemplate = null;
 var template_cache_isolate: ?*v8.Isolate = null;
+var template_cache_generation: u64 = 0;
 
 /// Get or create the FunctionTemplate for WindowProperties
 pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     if (template_cache) |cached| {
-        if (template_cache_isolate == isolate) return cached;
+        if (template_cache_isolate == isolate and
+            template_cache_generation == template_registry.cache_generation)
+        {
+            return cached;
+        }
+        // Invalidate stale cache
+        template_cache = null;
+        template_cache_isolate = null;
     }
 
     const tpl = v8.v8_FunctionTemplate_New(isolate, null, null).?;
     const name = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16);
     v8.v8_FunctionTemplate_SetClassName(tpl, name.?);
+
+    // Set up inheritance: WindowProperties inherits from EventTarget
+    // This sets up the prototype chain at template level, avoiding JavaScript calls
+    const interface_bindings = @import("interface_bindings.zig");
+    const event_target_tpl = interface_bindings.EventTarget.createTemplate(isolate);
+    v8.v8_FunctionTemplate_Inherit(tpl, event_target_tpl);
 
     const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(tpl);
 
@@ -64,12 +79,17 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
         .kOnlyInterceptStrings,
     );
 
+    // Mark WindowProperties instances as immutable prototype exotic objects
+    // Per WebIDL §3.7.4, all objects in global prototype chain must have immutable [[Prototype]]
+    v8.v8_ObjectTemplate_SetImmutableProto(instance_tpl);
+
     const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(tpl);
     // Mark WindowProperties.prototype as immutable per WebIDL §3.7.4
     v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
 
     template_cache = tpl;
     template_cache_isolate = isolate;
+    template_cache_generation = template_registry.cache_generation;
     return tpl;
 }
 
@@ -99,56 +119,37 @@ pub fn create(
 /// Per WebIDL spec, for interfaces with [Global] extended attribute that support
 /// named properties, the prototype chain must be:
 ///   global → Window.prototype → WindowProperties → EventTarget.prototype → Object.prototype
+///
+/// With SetPrototypeProviderTemplate, the chain Window.prototype → WindowProperties → EventTarget.prototype
+/// is set up at template creation time. This function only needs to set @@toStringTag on the
+/// WindowProperties object in the chain for proper Object.prototype.toString behavior.
 pub fn insertIntoPrototypeChain(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) bool {
+    // The prototype chain is now set up at template level via SetPrototypeProviderTemplate.
+    // We just need to ensure Symbol.toStringTag is set correctly on WindowProperties in the chain.
+    // Get Window.prototype from the chain
     const global = v8.v8_Context_Global(context) orelse return false;
-
-    // Get Window constructor
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse return false;
     const window_ctor_val = v8.v8_Object_Get(global, context, @ptrCast(window_key)) orelse return false;
     const window_ctor: *v8.Object = helpers.asObject(window_ctor_val) orelse return false;
 
-    // Get Window.prototype
     const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return false;
     const window_proto_val = v8.v8_Object_Get(window_ctor, context, @ptrCast(proto_key)) orelse return false;
-    _ = helpers.asObject(window_proto_val) orelse return false;
+    const window_proto = helpers.asObject(window_proto_val) orelse return false;
 
-    // Create WindowProperties (EventTarget.prototype is temporarily set via JS later)
-    // We pass null for now as it's ignored.
-    const wp = create(isolate, context, @ptrCast(v8.v8_Null(isolate).?)) orelse return false;
+    // Get WindowProperties (Window.prototype's [[Prototype]])
+    const wp_val = v8.v8_Object_GetPrototype(window_proto) orelse return false;
+    const wp = helpers.asObject(wp_val) orelse return false;
 
-    // Store WindowProperties on a temporary global property so JS can access it for prototype setting
-    const temp_key = v8.v8_String_NewFromUtf8(isolate, "__windowProperties__", 20) orelse return false;
-    if (!v8.v8_Object_Set(global, context, @ptrCast(temp_key), @ptrCast(wp))) {
-        return false;
+    // Set Symbol.toStringTag on WindowProperties for proper toString behavior
+    if (v8.v8_Symbol_GetToStringTag(isolate)) |tag_symbol| {
+        const tag_val = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16);
+        _ = v8.v8_Object_DefineProperty(wp, context, @ptrCast(tag_symbol), @ptrCast(tag_val), false, false, true);
     }
 
-    const js_code =
-        \\(function() {
-        \\  const wp = globalThis.__windowProperties__;
-        \\  if (!wp) return false;
-        \\  
-        \\  // Set WindowProperties' prototype to EventTarget.prototype
-        \\  Object.setPrototypeOf(wp, EventTarget.prototype);
-        \\  
-        \\  // Set Window.prototype's prototype to WindowProperties
-        \\  Object.setPrototypeOf(Window.prototype, wp);
-        \\  
-        \\  // Make Window.prototype's prototype immutable per WebIDL §3.7.3
-        \\  Object.defineProperty(Window.prototype, "__proto__", { configurable: false, writable: false });
-        \\  
-        \\  delete globalThis.__windowProperties__;
-        \\  return true;
-        \\})()
-    ;
-
-    const source = v8.v8_String_NewFromUtf8(isolate, js_code.ptr, js_code.len) orelse return false;
-    const script = v8.v8_Script_Compile(context, source) orelse return false;
-    const result_val = v8.v8_Script_Run(context, script) orelse return false;
-
-    return v8.v8_Value_BooleanValue(result_val, isolate);
+    return true;
 }
 
 // ============================================================================
@@ -248,7 +249,7 @@ fn namedPropertyEnumerator(
 
     const names = WindowImpl.getSupportedPropertyNames(window, allocator) catch return;
     defer {
-        for (names) |name| name.deinit();
+        for (names) |*name| name.deinit(allocator);
         allocator.free(names);
     }
 
@@ -277,7 +278,7 @@ fn namedPropertyDescriptor(
     const result = WindowImpl.getNamedProperty(window, name) catch return .kNo;
     if (result) |js_val| {
         const val = conv.toV8Value(runtime.JSValue, isolate, context, js_val) catch return .kNo;
-        const desc = v8.v8_Object_New(isolate);
+        const desc = v8.v8_Object_New(isolate) orelse return .kNo;
         _ = v8.v8_Object_Set(desc, context, @ptrCast(v8.v8_String_NewFromUtf8(isolate, "value", 5)), val);
         _ = v8.v8_Object_Set(desc, context, @ptrCast(v8.v8_String_NewFromUtf8(isolate, "writable", 8)), @ptrCast(v8.v8_Boolean_New(isolate, true)));
         _ = v8.v8_Object_Set(desc, context, @ptrCast(v8.v8_String_NewFromUtf8(isolate, "enumerable", 10)), @ptrCast(v8.v8_Boolean_New(isolate, false)));

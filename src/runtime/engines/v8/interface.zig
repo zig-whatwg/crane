@@ -976,10 +976,13 @@ pub fn V8Interface(comptime Interface: type) type {
             ).?;
 
             const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
-            // if (is_window_interface) {
-            //     const wp_tpl = window_properties.getTemplate(isolate);
-            //     v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(template, wp_tpl);
-            // }
+            // For Window, set up prototype chain at template level using WindowProperties
+            // This ensures the chain is: Window.prototype → WindowProperties → EventTarget.prototype
+            // and allows all prototypes to be immutable (set via SetImmutableProto)
+            if (is_window_interface) {
+                const wp_tpl = window_properties.getTemplate(isolate);
+                v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(template, wp_tpl);
+            }
 
             // Set class name
             const name_str = v8.v8_String_NewFromUtf8(
@@ -1055,11 +1058,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // Per WebIDL spec §3.8, all objects in the global prototype chain must have
             // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
             // Some specific interfaces also require immutable prototypes (e.g., Location).
-            // NOTE: For Window, we don't set it on the template because we need to set the
-            // prototype manually in insertIntoPrototypeChain(). We'll make it immutable
-            // there via Object.defineProperty(Window.prototype, "__proto__", ...).
+            // Window now uses SetPrototypeProviderTemplate for its chain, so we CAN set
+            // immutable proto on its template (no more dynamic JS prototype changes needed).
             const has_immutable_proto = (comptime std.mem.eql(u8, interface_name, "Location") or
-                (std.mem.eql(u8, interface_name, "DOMException") == false)) and !is_window_interface;
+                (std.mem.eql(u8, interface_name, "DOMException") == false));
 
             if (has_immutable_proto) {
                 v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
@@ -3062,7 +3064,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Check if property is a String (not a Symbol)
             if (!v8.v8_Name_IsString(property)) {
-                return; // Not a string property (likely a Symbol), continue lookup
+                return .kNo; // Not a string property (likely a Symbol), continue lookup
             }
 
             // Safe to cast to String now that we've checked
@@ -3070,7 +3072,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Use raw pointer functions (not Global<> functions) since property comes from callback
             const utf8_length = v8.v8_String_Utf8Length_Raw(property_str);
-            if (utf8_length <= 0 or utf8_length >= 256) return; // Invalid or too long
+            if (utf8_length <= 0 or utf8_length >= 256) return .kNo; // Invalid or too long
 
             var buf: [256]u8 = undefined;
             const bytes_written = v8.v8_String_WriteUtf8_Raw(
@@ -3078,7 +3080,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 &buf,
                 @intCast(utf8_length + 1),
             );
-            if (bytes_written <= 0) return;
+            if (bytes_written <= 0) return .kNo;
 
             const prop_name = buf[0..@intCast(utf8_length)];
 
@@ -3095,7 +3097,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // If not a lazy property, return immediately without setting value (let V8 continue lookup)
             if (!is_lazy_property) {
-                return;
+                return .kNo;
             }
 
             // This IS a lazy property - now handle it
@@ -3122,15 +3124,15 @@ pub fn V8Interface(comptime Interface: type) type {
                 // The prototype is from the other realm, so its creation context is the correct one
                 if (v8.v8_Object_GetPrototypeCreationContext(this_obj)) |creation_ctx| {
                     conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                    return;
+                    return .kNo;
                 } else if (maybe_holder) |holder| {
                     if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
                         conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                        return;
+                        return .kNo;
                     }
                 }
                 conv.throwTypeError(isolate, "Illegal invocation");
-                return;
+                return .kNo;
             }
 
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -3139,15 +3141,15 @@ pub fn V8Interface(comptime Interface: type) type {
             if (instance_ptr == null) {
                 if (v8.v8_Object_GetPrototypeCreationContext(this_obj)) |creation_ctx| {
                     conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                    return;
+                    return .kNo;
                 } else if (maybe_holder) |holder| {
                     if (v8.v8_Object_GetCreationContext(holder)) |creation_ctx| {
                         conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                        return;
+                        return .kNo;
                     }
                 }
                 conv.throwTypeError(isolate, "Illegal invocation");
-                return;
+                return .kNo;
             }
 
             // Safety check: detect use-after-free by checking for poison patterns
@@ -3158,7 +3160,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
                 conv.throwTypeError(isolate, "Illegal invocation");
-                return;
+                return .kNo;
             }
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -3169,7 +3171,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 (ctx_as_int & 0xFFFF000000000000) == 0xaaaa000000000000 or ctx_as_int == 0)
             {
                 conv.throwTypeError(isolate, "Illegal invocation");
-                return;
+                return .kNo;
             }
 
             // Find and call the getter for this lazy property
@@ -3181,9 +3183,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Call the getter function
                     const zig_getter = @field(Interface, getter_name);
                     callLazyGetter(zig_getter, instance, isolate, info);
-                    return;
+                    return .kYes;
                 }
             }
+            return .kNo;
         }
 
         /// Helper to call a lazy property getter and convert result to V8
@@ -3427,7 +3430,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (params.len == 0) {
                         // Invalid setter - needs at least value parameter
                         conv.throwError(isolate, "Invalid setter: no parameters");
-                        return;
+                        return .kNo;
                     } else if (params.len == 1) {
                         // Static setter (just value parameter)
                         // TODO: Implement value conversion
@@ -3456,12 +3459,12 @@ pub fn V8Interface(comptime Interface: type) type {
                             zig_setter(zig_value);
 
                             // Success - V8 expects no return value for setters
-                            return;
+                            return .kYes;
                         }
 
                         // Unsupported type
                         conv.throwError(isolate, "Setter type not yet supported (only numbers for now)");
-                        return;
+                        return .kNo;
                     } else {
                         // Instance setter (instance + value parameters)
                         // Extract instance from 'this' object
@@ -3480,15 +3483,15 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (field_count < 1) {
                             // Not a wrapped object - per WebIDL spec, throw TypeError for incompatible this
                             if (is_lenient_this) {
-                                return;
+                                return .kYes;
                             }
                             // For cross-realm: get context from this_obj's prototype
                             if (v8.v8_Object_GetPrototypeCreationContext(this_obj)) |creation_ctx| {
                                 conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                                return;
+                                return .kNo;
                             }
                             conv.throwTypeError(isolate, "Illegal invocation");
-                            return;
+                            return .kNo;
                         }
 
                         const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -3499,7 +3502,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (instance_ptr == null) {
                             // [LegacyLenientThis] - silently return instead of throwing
                             if (is_lenient_this) {
-                                return;
+                                return .kYes;
                             }
 
                             // Get the prototype's creation context for cross-realm TypeError
@@ -3514,7 +3517,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             } else {
                                 conv.throwTypeError(isolate, "Illegal invocation");
                             }
-                            return;
+                            return .kNo;
                         }
 
                         // Safety check: detect use-after-free by checking for poison patterns
@@ -3525,7 +3528,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
                         {
                             conv.throwError(isolate, "Cannot set property on freed object");
-                            return;
+                            return .kNo;
                         }
 
                         const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -3536,7 +3539,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Convert V8 value to Zig type
                         const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, context, value) catch {
                             conv.throwError(isolate, "Failed to convert value for setter");
-                            return;
+                            return .kNo;
                         };
 
                         // Call the setter (check return type for error handling)
@@ -3546,17 +3549,18 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (setter_returns_error) {
                             zig_setter(instance, zig_value) catch {
                                 conv.throwError(isolate, "Setter failed");
-                                return;
+                                return .kNo;
                             };
                         } else {
                             zig_setter(instance, zig_value);
                         }
-                        return;
+                        return .kYes;
                     }
                 }
             }
 
             // Property not found in lazy_properties - let V8 continue
+            return .kNo;
         }
 
         /// Placeholder method callback
@@ -3588,13 +3592,13 @@ pub fn V8Interface(comptime Interface: type) type {
             // Only compile this function body if Interface has call_item
             if (comptime !@hasDecl(Interface, "call_item")) {
                 // No item() method - just return to let V8 handle lookup
-                return;
+                return .kNo;
             }
 
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 conv.throwError(isolate, "No V8 context");
-                return;
+                return .kNo;
             };
 
             // Get the 'this' object (the interface instance)
@@ -3604,7 +3608,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr == null) {
                 // Called on prototype, not an instance - let V8 continue normal lookup
-                return;
+                return .kNo;
             }
 
             // Safety check: detect use-after-free by checking for poison patterns
@@ -3614,7 +3618,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
                 (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
             {
-                return;
+                return .kNo;
             }
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
@@ -3623,7 +3627,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const result = Interface.call_item(instance, index) catch |err| {
                 const creation_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse v8_context;
                 conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
-                return;
+                return .kNo;
             };
 
             // Convert result to V8 value based on return type
@@ -3647,30 +3651,30 @@ pub fn V8Interface(comptime Interface: type) type {
                             v8_context,
                         ) catch {
                             conv.throwError(isolate, "Failed to wrap result");
-                            return;
+                            return .kNo;
                         };
                         info.setReturnValue(@ptrCast(wrapped));
                     } else {
                         // Other type (like DOMString, CSSOMString) - convert to V8 string
                         const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
                             conv.throwError(isolate, "Failed to convert result to V8");
-                            return;
+                            return .kNo;
                         };
                         info.setReturnValue(@ptrCast(v8_value));
                     }
+                    return .kYes;
                 } else {
-                    // null - return undefined
-                    if (v8.v8_Undefined(isolate)) |undef| {
-                        info.setReturnValue(undef);
-                    }
+                    // null - return kNo to let V8 continue property lookup
+                    return .kNo;
                 }
             } else {
                 // Non-optional type (like CSSOMString)
                 const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
                     conv.throwError(isolate, "Failed to convert result to V8");
-                    return;
+                    return .kNo;
                 };
                 info.setReturnValue(@ptrCast(v8_value));
+                return .kYes;
             }
         }
 
@@ -4500,7 +4504,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertySetter(
             property: *v8.Name,
             value: *v8.Value,
-            info: *const v8.PropertyCallbackInfoVoid,
+            info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             // Only compile if Interface has named setter
             const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
@@ -4589,7 +4593,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertySetterReadOnly(
             property: *v8.Name,
             _: *v8.Value, // value - ignored since we don't actually set
-            info: *const v8.PropertyCallbackInfoVoid,
+            info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
                 @hasDecl(Interface, "call_namedItem");

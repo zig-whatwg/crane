@@ -3618,3 +3618,75 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
     _ = instance;
     return error.NotImplemented;
 }
+
+// ============================================================================
+// Named Property Access Support (for WindowProperties object)
+// ============================================================================
+
+/// Get a named property by name.
+/// This is called by window_properties.zig for the WindowProperties named property getter.
+/// Named properties on Window include:
+/// - Named elements (elements with id or name attributes)
+/// - Child browsing context names (iframe names)
+///
+/// Per HTML spec §7.4 "Named access on the Window object"
+pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!?runtime.JSValue {
+    const internal = getInternal(instance) orelse return null;
+
+    // First, check if it's a child browsing context name
+    for (internal.browsing_context.children.items) |child| {
+        if (std.mem.eql(u8, child.target_name, name)) {
+            const child_window = child.getActiveWindow() orelse continue;
+            return runtime.JSValue.fromInstanceAnyopaque(@ptrCast(@alignCast(child_window)));
+        }
+    }
+
+    // TODO: Check document for named elements (elements with matching id or name attributes)
+    // This would require searching the document for:
+    // 1. Elements with id="name"
+    // 2. Elements with name="name" (for certain element types like form, iframe, etc.)
+    //
+    // For now, return null to indicate property not found
+    return null;
+}
+
+/// Check if a named property exists.
+/// This is called by window_properties.zig for the WindowProperties named property query.
+pub fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
+    const internal = getInternal(instance) orelse return false;
+
+    // Check if it's a child browsing context name
+    for (internal.browsing_context.children.items) |child| {
+        if (std.mem.eql(u8, child.target_name, name)) {
+            return true;
+        }
+    }
+
+    // TODO: Check document for named elements
+    return false;
+}
+
+/// Get all supported property names.
+/// This is called by window_properties.zig for the WindowProperties enumerator.
+/// Returns the list of all named properties that can be accessed on the window.
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) anyerror![]runtime.DOMString {
+    const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
+
+    var names: std.ArrayList(runtime.DOMString) = .{};
+    errdefer {
+        for (names.items) |*n| n.deinit(allocator);
+        names.deinit(allocator);
+    }
+
+    // Add child browsing context names
+    for (internal.browsing_context.children.items) |child| {
+        if (child.target_name.len > 0) {
+            const name = try runtime.DOMString.initDupe(allocator, child.target_name);
+            try names.append(allocator, name);
+        }
+    }
+
+    // TODO: Add named elements from document
+
+    return names.toOwnedSlice(allocator);
+}

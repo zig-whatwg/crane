@@ -91,19 +91,19 @@ pub fn shouldSkipInterface(comptime name: []const u8) bool {
 // ============================================================================
 
 /// EventTarget V8 binding
-pub const EventTarget = V8Interface(interfaces.EventTarget.EventTarget);
+pub const EventTarget = V8Interface(interfaces.EventTarget);
 
 /// Event V8 binding
-pub const Event = V8Interface(interfaces.Event.Event);
+pub const Event = V8Interface(interfaces.Event);
 
 /// Node V8 binding
-pub const Node = V8Interface(interfaces.Node.Node);
+pub const Node = V8Interface(interfaces.Node);
 
 /// Element V8 binding
-pub const Element = V8Interface(interfaces.Element.Element);
+pub const Element = V8Interface(interfaces.Element);
 
 /// Document V8 binding
-pub const Document = V8Interface(interfaces.Document.Document);
+pub const Document = V8Interface(interfaces.Document);
 
 /// Window V8 binding
 pub const Window = V8Interface(interfaces.Window);
