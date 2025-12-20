@@ -3842,10 +3842,9 @@ pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!
     // Check document for named elements (elements with matching id or name attributes)
     // The document might be stored in internal.document, OR we might need to get it from the
     // browsing context's active document
-    const document = internal.document orelse blk: {
-        // Try to get document from browsing context if not cached in Window
-        // The browsing context's active document should be accessible
-        break :blk null;
+    const document: ?*runtime.Instance = internal.document orelse blk: {
+        const active_doc_ptr = internal.browsing_context.getActiveDocument() orelse break :blk null;
+        break :blk @ptrCast(@alignCast(active_doc_ptr));
     };
 
     if (document) |doc| {
@@ -3870,8 +3869,13 @@ pub fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
     }
 
     // Check document for named elements
-    if (internal.document) |document| {
-        if (hasNamedElementRecursive(document, name)) {
+    // Use internal.document if available, otherwise get from browsing context
+    const document: ?*runtime.Instance = internal.document orelse blk: {
+        const active_doc_ptr = internal.browsing_context.getActiveDocument() orelse break :blk null;
+        break :blk @ptrCast(@alignCast(active_doc_ptr));
+    };
+    if (document) |doc| {
+        if (hasNamedElementRecursive(doc, name)) {
             return true;
         }
     }
@@ -3900,8 +3904,13 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     }
 
     // Add named elements from document
-    if (internal.document) |document| {
-        try collectNamedElementNames(document, &names, allocator);
+    // Use internal.document if available, otherwise get from browsing context
+    const document: ?*runtime.Instance = internal.document orelse blk: {
+        const active_doc_ptr = internal.browsing_context.getActiveDocument() orelse break :blk null;
+        break :blk @ptrCast(@alignCast(active_doc_ptr));
+    };
+    if (document) |doc| {
+        try collectNamedElementNames(doc, &names, allocator);
     }
 
     return names.toOwnedSlice(allocator);

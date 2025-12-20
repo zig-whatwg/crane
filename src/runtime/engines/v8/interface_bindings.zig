@@ -260,11 +260,10 @@ pub fn initializeBindings(
     // e.g., HTMLDocument is an alias for Document per HTML spec
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: Re-enable WindowProperties manual insertion.
-    // SetPrototypeProviderTemplate alone is insufficient for the full exotic Proxy behavior
-    // required for named properties (§3.7.4).
-    const window_properties = @import("window_properties.zig");
-    _ = window_properties.insertIntoPrototypeChain(isolate, context);
+    // Step 7: WindowProperties insertion is deferred.
+    // WindowProperties must be inserted AFTER the Window instance is created and bound
+    // to the global's internal field. This is done in context_manager.zig after Window.init().
+    // See createChildContext() for the call to window_properties.insertIntoPrototypeChain().
 
     // NOTE: Window properties as own properties on the global are registered
     // in createChildContext AFTER the Window instance is bound to the global.

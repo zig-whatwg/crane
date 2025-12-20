@@ -1201,6 +1201,12 @@ fn createWindowForExistingBrowsingContext(
     WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
     cache_ptr.set(window_instance, global, isolate) catch {};
 
+    // 10. Insert WindowProperties into prototype chain NOW that Window instance exists
+    // This must happen AFTER the Window instance is bound to the global's internal field
+    // so that named property lookups can find the correct Window (especially for cross-realm access).
+    const window_properties = @import("window_properties.zig");
+    _ = window_properties.insertIntoPrototypeChain(isolate, child_context, window_instance);
+
     // 11. Heap-allocate entry so it doesn't move when HashMap rehashes
     const child_entry = state.allocator.create(ContextEntry) catch return null;
 
@@ -1446,7 +1452,9 @@ pub fn windowIndexedPropertyEnumerator(
         return;
     };
 
-    // Create array of indices
+    // Create array of indices as integers
+    // V8's indexed property interceptor expects integer indices here.
+    // V8 internally converts these to strings when needed for ownKeys.
     const arr = v8.v8_Array_New(isolate, @intCast(length));
     var i: u32 = 0;
     while (i < length) : (i += 1) {
