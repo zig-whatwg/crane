@@ -31,6 +31,7 @@ const storage_mod = @import("storage/Storage.zig");
 const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
 const context_manager = v8.context_manager;
+const impls = @import("impls");
 
 // Timer support
 const TimerInterface = runtime.TimerInterface;
@@ -1188,6 +1189,177 @@ pub const Context = struct {
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
         return result;
+    }
+
+    // ============================================================================
+    // HTML Loading and Parsing
+    // ============================================================================
+
+    /// Script loader callback type for external script loading
+    /// Returns script content for the given URL, or null if loading failed
+    pub const ScriptLoaderFn = *const fn (ctx: *anyopaque, url: []const u8) ?[]const u8;
+
+    /// Script loader interface for customizing how external scripts are loaded
+    pub const ScriptLoader = struct {
+        context: *anyopaque,
+        loadScript: ScriptLoaderFn,
+    };
+
+    /// Options for HTML loading
+    pub const LoadHTMLOptions = struct {
+        /// Base URL for resolving relative URLs
+        base_url: []const u8,
+        /// Enable script execution during parsing (default: true)
+        scripting_enabled: bool = true,
+        /// Custom script loader (optional)
+        /// If null, external scripts will use default HTTP fetch
+        script_loader: ?ScriptLoader = null,
+    };
+
+    /// Load and parse HTML content into the document
+    ///
+    /// This method:
+    /// 1. Sets up the document URL and Window origin
+    /// 2. Parses HTML using HTMLParser.parseHTMLWithScripting()
+    /// 3. Executes inline and external scripts during parsing
+    /// 4. Initializes iframe browsing contexts
+    /// 5. Fires DOMContentLoaded after parsing
+    ///
+    /// Per HTML Standard §13.2.7 "The end":
+    /// - Scripts execute during parsing (inline and deferred)
+    /// - DOMContentLoaded fires after parsing completes
+    ///
+    /// ## Example
+    /// ```zig
+    /// const html =
+    ///     \\<html>
+    ///     \\<body>
+    ///     \\<div id="test">Hello</div>
+    ///     \\<script>
+    ///     \\  window.found = document.getElementById('test').textContent;
+    ///     \\</script>
+    ///     \\</body>
+    ///     \\</html>
+    /// ;
+    /// try ctx.loadHTML(html, .{ .base_url = "about:blank" });
+    /// const result = try ctx.evaluateScript("window.found");
+    /// // result === "Hello"
+    /// ```
+    pub fn loadHTML(self: *Context, html_content: []const u8, options: LoadHTMLOptions) !void {
+        const isolate = self.isolate;
+        const v8_ctx = self.v8_context orelse return error.NotInitialized;
+
+        // Get runtime context for HTMLParser
+        const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
+            std.debug.print("Failed to get runtime context: {}\n", .{err});
+            return error.NotInitialized;
+        };
+
+        // Update location object with the document's URL
+        try self.setUrl(options.base_url);
+
+        // Set the Window's origin from the base URL for storage access
+        // This is needed for sessionStorage/localStorage to work properly
+        if (self.window_instance) |win| {
+            if (std.mem.startsWith(u8, options.base_url, "http://") or std.mem.startsWith(u8, options.base_url, "https://")) {
+                // Extract origin from URL (scheme://host:port)
+                const scheme_end = std.mem.indexOf(u8, options.base_url, "://") orelse options.base_url.len;
+                const after_scheme = options.base_url[scheme_end + 3 ..];
+                const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
+                const origin = options.base_url[0 .. scheme_end + 3 + path_start];
+                impls.Window.setOrigin(win, origin) catch |err| {
+                    std.debug.print("Warning: Failed to set Window origin: {}\n", .{err});
+                };
+            }
+        }
+
+        // Get existing document instance - it was created during context initialization
+        // and is already registered in V8. We pass it to the parser so scripts can
+        // access the DOM via document.getElementById(), querySelector(), etc.
+        const document = self.document_instance orelse {
+            std.debug.print("ERROR: document_instance is null - context must be initialized first\n", .{});
+            return error.NotInitialized;
+        };
+
+        // Create HTMLParser script loader
+        const HTMLParser = impls.HTMLParser;
+        const script_loader: ?HTMLParser.ScriptLoader = if (options.script_loader) |loader|
+            HTMLParser.ScriptLoader{
+                .context = loader.context,
+                .loadScript = @ptrCast(loader.loadScript),
+            }
+        else
+            null;
+
+        // Parse HTML into the existing document (already registered in V8)
+        _ = HTMLParser.parseHTMLWithScripting(
+            self.allocator,
+            runtime_ctx,
+            html_content,
+            .{
+                .scripting_enabled = options.scripting_enabled,
+                .base_url = options.base_url,
+                .script_loader = script_loader,
+                .existing_document = document,
+            },
+        ) catch |err| {
+            std.debug.print("HTML parse error: {}\n", .{err});
+            return error.ParseError;
+        };
+
+        // Initialize browsing contexts for any iframes in the document
+        // This is necessary for window.frames[N] to work properly
+        self.initializeIframeBrowsingContexts(document) catch |err| {
+            // Non-fatal - some iframes may not need initialization
+            std.debug.print("Warning: Failed to initialize iframe browsing contexts: {}\n", .{err});
+        };
+
+        // Fire DOMContentLoaded event
+        // Per HTML Standard §13.2.7 "The end" step 4
+        navigation.fireDOMContentLoaded(isolate, v8_ctx);
+    }
+
+    /// Initialize browsing contexts for all iframes in a document.
+    /// This triggers lazy initialization of iframe browsing contexts by accessing
+    /// their contentWindow property, which is required for window.frames[N] to work.
+    fn initializeIframeBrowsingContexts(self: *Context, document: *runtime.Instance) !void {
+        _ = self;
+
+        // Get all iframe elements using getElementsByTagName
+        const iframes = try interfaces.Document.call_getElementsByTagName(
+            document,
+            runtime.DOMString.initInterned("iframe"),
+        );
+
+        // Get the collection length
+        const length = try interfaces.HTMLCollection.get_length(iframes);
+        if (length == 0) return;
+
+        // Access contentWindow on each iframe to trigger browsing context initialization
+        var i: u32 = 0;
+        while (i < length) : (i += 1) {
+            const element = try interfaces.HTMLCollection.call_item(iframes, i);
+            if (element) |iframe_elem| {
+                // Access contentWindow to trigger IFrameIntegration.ensureBrowsingContext
+                _ = impls.HTMLIFrameElement.get_contentWindow(iframe_elem) catch |err| {
+                    std.debug.print("Warning: Failed to initialize iframe {d}: {}\n", .{ i, err });
+                };
+            }
+        }
+    }
+
+    /// Set the context URL (updates location object)
+    fn setUrl(self: *Context, url: []const u8) !void {
+        // Update internal URL
+        self.allocator.free(self.url);
+        self.url = try self.allocator.dupe(u8, url);
+
+        // Update location object if it exists
+        if (self.location_instance) |loc| {
+            impls.Location.setHref(loc, url) catch |err| {
+                std.debug.print("Warning: Failed to update location href: {}\n", .{err});
+            };
+        }
     }
 
     /// Evaluate JavaScript in this context
