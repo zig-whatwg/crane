@@ -759,13 +759,13 @@ pub fn fromV8Value(
     // This means null -> "null", undefined -> "undefined", 123 -> "123", etc.
     if (T == runtime.DOMString) {
         // Check for Symbol - throws TypeError per WebIDL spec
-        // Use _Local version which safely handles raw V8 pointers including Smis
-        if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
+        if (v8.v8_Value_IsSymbol(value)) {
             return ConversionError.TypeError;
         }
         // Use ToString coercion for everything else (null, undefined, numbers, booleans, objects, etc.)
-        // Use _Local version which safely handles raw V8 pointers from interceptors
-        const string = v8.v8_Value_ToString_Local(@ptrCast(value), context) orelse return ConversionError.TypeError;
+        // The value parameter must be a Global<Value>* - interceptor callbacks should persist raw
+        // pointers to Global handles before calling fromV8Value.
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
         return try fromV8String(allocator, isolate, context, string);
     }
 

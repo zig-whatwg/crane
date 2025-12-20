@@ -4538,7 +4538,12 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
             // Unwrap the optional value for use below
-            const v8_value = value.?;
+            const raw_value = value.?;
+
+            // Persist the raw V8 value to a Global handle
+            // Interceptor callbacks pass raw V8 internal pointers, but fromV8Value expects Global<Value>*
+            const v8_value = v8.v8_Value_Persist(isolate, @ptrCast(raw_value)) orelse return .kNo;
+            defer v8.v8_Value_Dispose(v8_value);
 
             // Convert property name to Zig string
             const prop_str: *v8.String = @ptrCast(property.?);
