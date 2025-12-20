@@ -6172,6 +6172,8 @@ void LegacyPlatformObjectOwnKeys(const FunctionCallbackInfo<Value>& info) {
     }
     
     // Categorize each key
+    // V8's ownKeys trap requires all returned values to be Name objects (String or Symbol).
+    // Reflect.ownKeys can return numeric indices as integers, so we must convert them.
     for (uint32_t i = 0; i < all_keys->Length(); i++) {
         MaybeLocal<Value> maybe_key = all_keys->Get(context, i);
         if (maybe_key.IsEmpty()) continue;
@@ -6180,6 +6182,21 @@ void LegacyPlatformObjectOwnKeys(const FunctionCallbackInfo<Value>& info) {
         
         if (key->IsSymbol()) {
             symbols.push_back(key);
+        } else if (key->IsNumber()) {
+            // Numeric keys must be converted to strings for V8's KeyAccumulator
+            // which expects all keys to be Name objects (String or Symbol).
+            // This handles indexed properties returned as integers.
+            double num_val = key->NumberValue(context).FromMaybe(0);
+            if (num_val >= 0 && num_val < 0xFFFFFFFF) {
+                uint32_t idx = static_cast<uint32_t>(num_val);
+                if (idx < length) {
+                    indices.push_back(idx);
+                } else {
+                    // Index out of range - treat as own property string
+                    Local<String> idx_str = String::NewFromUtf8(isolate, std::to_string(idx).c_str()).ToLocalChecked();
+                    own_props.push_back(idx_str);
+                }
+            }
         } else if (key->IsString()) {
             String::Utf8Value utf8(isolate, key);
             std::string key_str(*utf8);
@@ -6208,6 +6225,8 @@ void LegacyPlatformObjectOwnKeys(const FunctionCallbackInfo<Value>& info) {
                 }
             }
         }
+        // Note: Keys that are not Symbol, Number, or String are silently ignored.
+        // This should not happen with well-formed ownKeys results.
     }
     
     // Sort indices
