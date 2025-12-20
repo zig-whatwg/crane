@@ -53,7 +53,6 @@
 pub const config = @import("config.zig");
 pub const test_parser = @import("test_parser.zig");
 pub const test_harness = @import("test_harness.zig");
-pub const browser_context = @import("browser_context.zig");
 pub const result_reporter = @import("result_reporter.zig");
 pub const http_server = @import("http_server.zig");
 pub const browser_adapter = @import("browser_adapter.zig");

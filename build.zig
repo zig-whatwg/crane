@@ -2500,57 +2500,10 @@ pub fn build(b: *std.Build) void {
     interfaces_tool_step.dependOn(&run_interfaces_tool.step);
 
     // ========================================================================
-    // WPT BROWSER CONTEXT MODULE (shared between REPL and WPT runner)
+    // REPL TOOL
     // ========================================================================
 
-    // WPT config module
-    const wpt_config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/wpt_runner/config.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // WPT test harness module
-    const wpt_test_harness_mod = b.createModule(.{
-        .root_source_file = b.path("tests/wpt_runner/test_harness.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // WPT test parser module
-    const wpt_test_parser_mod = b.createModule(.{
-        .root_source_file = b.path("tests/wpt_runner/test_parser.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "config", .module = wpt_config_mod },
-        },
-    });
-
-    // Browser context module - full headless browser environment
-    const browser_context_mod = b.createModule(.{
-        .root_source_file = b.path("tests/wpt_runner/browser_context.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "config", .module = wpt_config_mod },
-            .{ .name = "test_parser", .module = wpt_test_parser_mod },
-            .{ .name = "test_harness", .module = wpt_test_harness_mod },
-            .{ .name = "v8", .module = v8_mod },
-            .{ .name = "runtime", .module = runtime_mod },
-            .{ .name = "interfaces", .module = interfaces_mod },
-            .{ .name = "namespaces", .module = namespaces_mod },
-            .{ .name = "impls", .module = impls_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "dictionaries", .module = dictionaries_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "html_full", .module = html_mod },
-            .{ .name = "platform", .module = platform_mod },
-            .{ .name = "fetch", .module = fetch_mod },
-        },
-    });
-
-    // REPL tool - uses same browser context as WPT runner for consistency
+    // REPL tool - uses Browser API for headless browser functionality
     const repl_exe = b.addExecutable(.{
         .name = "repl",
         .root_module = b.createModule(.{
@@ -2581,8 +2534,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "webidl", .module = webidl_mod },
                 // Dictionaries module for Event init dictionaries
                 .{ .name = "dictionaries", .module = dictionaries_mod },
-                // Browser context module - full headless browser environment
-                .{ .name = "browser_context", .module = browser_context_mod },
             },
         }),
     });

@@ -1,7 +1,7 @@
 //! JavaScript REPL - Headless Browser
 //!
-//! Interactive Read-Eval-Print Loop using the same browser context as WPT tests.
-//! This ensures the REPL has identical behavior to the WPT test environment:
+//! Interactive Read-Eval-Print Loop using the Browser API.
+//! This ensures the REPL has identical behavior to a browser environment:
 //! - Full browser globals (window, document, navigator, etc.)
 //! - Correct prototype chains (Window.prototype → WindowProperties → EventTarget.prototype)
 //! - Timer support (setTimeout, setInterval)
@@ -14,32 +14,26 @@ const std = @import("std");
 const v8 = @import("v8");
 const runtime = @import("runtime");
 
-// Import BrowserContext from WPT runner - this is the single source of truth
-// for browser initialization, ensuring REPL matches WPT test environment exactly
-const BrowserContext = @import("browser_context").BrowserContext;
+// Import Browser from the browser module
+const Browser = @import("browser").Browser;
+const Context = @import("browser").Context;
 
-/// REPL state - wraps BrowserContext with REPL-specific UI features
+/// REPL state - wraps Browser with REPL-specific UI features
 const Repl = struct {
     allocator: std.mem.Allocator,
-    browser: BrowserContext,
+    browser: *Browser,
     input_buffer: std.ArrayListUnmanaged(u8),
     history: std.ArrayListUnmanaged([]const u8),
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        // Create browser context with window type (same as WPT .html tests)
-        var browser = BrowserContext.init(allocator, .window, ".") catch |err| {
-            std.debug.print("Failed to create BrowserContext: {}\n", .{err});
-            return err;
-        };
+        // Create browser with default config
+        const browser = try Browser.init(allocator, .{});
         errdefer browser.deinit();
 
-        // Initialize the browser (creates V8 isolate, context, registers all globals)
-        browser.initialize() catch |err| {
-            std.debug.print("Failed to initialize BrowserContext: {}\n", .{err});
-            return err;
-        };
+        // Navigate to a blank page to create a window context
+        try browser.navigate("about:blank", .window);
 
         return Self{
             .allocator = allocator,
@@ -57,18 +51,19 @@ const Repl = struct {
         self.history.deinit(self.allocator);
         self.input_buffer.deinit(self.allocator);
 
-        // BrowserContext handles all V8 and runtime cleanup
+        // Browser handles all V8 and runtime cleanup
         self.browser.deinit();
+        self.allocator.destroy(self.browser);
     }
 
-    /// Get V8 isolate from browser context
+    /// Get V8 isolate from browser
     fn getIsolate(self: *Self) *v8.ffi.Isolate {
         return self.browser.isolate.?;
     }
 
-    /// Get V8 context from browser context
+    /// Get V8 context from browser's current context
     fn getContext(self: *Self) *v8.ffi.Context {
-        return self.browser.context.?;
+        return self.browser.current_context.?.v8_context.?;
     }
 
     /// Execute JavaScript code and return result
