@@ -1026,9 +1026,28 @@ bool v8_Value_IsObject(Global<Value>* value) {
 // Version for Local handle internal pointers
 bool v8_Value_IsObject_Local(void* value_ptr) {
     if (!value_ptr) return false;
-    // Reconstruct Local from internal pointer
-    Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
+    // The value_ptr IS the internal Value* pointer from a Local<Value>
+    // Cast it directly to Value* - V8 handles pointer tagging internally
+    Value* val = reinterpret_cast<Value*>(value_ptr);
     return val->IsObject();
+}
+
+// Version for Local handle internal pointers - safe for Smis and raw V8 pointers
+bool v8_Value_IsSymbol_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    // The value_ptr IS the internal Value* pointer from a Local<Value>
+    // Cast it directly to Value* - V8 handles pointer tagging internally
+    Value* val = reinterpret_cast<Value*>(value_ptr);
+    return val->IsSymbol();
+}
+
+// Version for Local handle internal pointers - safe for Smis and raw V8 pointers
+bool v8_Value_IsString_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    // The value_ptr IS the internal Value* pointer from a Local<Value>
+    // Cast it directly to Value* - V8 handles pointer tagging internally
+    Value* val = reinterpret_cast<Value*>(value_ptr);
+    return val->IsString();
 }
 
 bool v8_Value_IsFunction(Global<Value>* value) {
@@ -1156,6 +1175,25 @@ Global<String>* v8_Value_ToString(Global<Value>* value, Global<Context>* context
     
     Local<Context> ctx = context->Get(isolate);
     Local<Value> val = value->Get(isolate);
+    
+    MaybeLocal<String> maybe_str = val->ToString(ctx);
+    if (maybe_str.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<String> str = maybe_str.ToLocalChecked();
+    return trackHandle(new Global<String>(isolate, str));
+}
+
+// Version for raw V8 internal pointers (from interceptor callbacks)
+Global<String>* v8_Value_ToString_Local(void* value_ptr, Global<Context>* context) {
+    if (!value_ptr) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<Context> ctx = context->Get(isolate);
+    // Cast raw pointer directly to Value* - V8 handles pointer tagging internally
+    Value* val = reinterpret_cast<Value*>(value_ptr);
     
     MaybeLocal<String> maybe_str = val->ToString(ctx);
     if (maybe_str.IsEmpty()) {

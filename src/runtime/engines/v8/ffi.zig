@@ -690,6 +690,9 @@ pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsArray_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsNullOrUndefined_Local(value_ptr: *anyopaque) bool;
+pub extern fn v8_Value_IsSymbol_Local(value_ptr: *anyopaque) bool;
+pub extern fn v8_Value_IsString_Local(value_ptr: *anyopaque) bool;
+pub extern fn v8_Value_ToString_Local(value_ptr: *anyopaque, context: *Context) ?*String;
 pub extern fn v8_Value_IsPromise(value: *Value) bool;
 
 /// Check if a value has [[IsHTMLDDA]] internal slot (document.all).

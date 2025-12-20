@@ -428,7 +428,7 @@ fn convertHeadersInit(
             for (0..pair_len) |j| {
                 const item = v8.v8_Array_Get(context, pair_array, @intCast(j));
                 if (item) |it| {
-                    if (v8.v8_Value_IsSymbol(it)) {
+                    if (v8.v8_Value_IsSymbol_Local(@ptrCast(it))) {
                         return ConversionError.TypeError;
                     }
                     const str = v8.v8_Value_ToString(it, context);
@@ -489,7 +489,7 @@ fn convertHeadersInit(
             const prop_val = v8.v8_Object_Get(obj, context, @ptrCast(prop_name_val)) orelse continue;
 
             var val_str: runtime.ByteString = "";
-            if (!v8.v8_Value_IsSymbol(prop_val)) {
+            if (!v8.v8_Value_IsSymbol_Local(@ptrCast(prop_val))) {
                 const str = v8.v8_Value_ToString(prop_val, context);
                 if (str) |s| {
                     const len = v8.v8_String_Utf8Length(s);
@@ -678,6 +678,14 @@ pub fn fromV8Value(
     context: *v8.Context,
     value: *v8.Value,
 ) ConversionError!T {
+    // Validate the value pointer is properly aligned before any V8 API calls
+    // V8 values must be 8-byte aligned on 64-bit systems
+    const value_addr = @intFromPtr(value);
+    if (value_addr == 0 or (value_addr & 0x7) != 0) {
+        // Null or misaligned pointer - this is an internal error
+        return ConversionError.TypeError;
+    }
+
     // Handle optional types (nullable)
     const type_info = @typeInfo(T);
     if (type_info == .optional) {
@@ -718,7 +726,7 @@ pub fn fromV8Value(
         // https://webidl.spec.whatwg.org/#idl-USVString
         if (ElemType == u8) {
             // Check for Symbol - throws TypeError per WebIDL spec
-            if (v8.v8_Value_IsSymbol(value)) {
+            if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
                 return ConversionError.TypeError;
             }
             // Use ToString coercion for everything else (numbers, booleans, objects, etc.)
@@ -751,11 +759,13 @@ pub fn fromV8Value(
     // This means null -> "null", undefined -> "undefined", 123 -> "123", etc.
     if (T == runtime.DOMString) {
         // Check for Symbol - throws TypeError per WebIDL spec
-        if (v8.v8_Value_IsSymbol(value)) {
+        // Use _Local version which safely handles raw V8 pointers including Smis
+        if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
             return ConversionError.TypeError;
         }
         // Use ToString coercion for everything else (null, undefined, numbers, booleans, objects, etc.)
-        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        // Use _Local version which safely handles raw V8 pointers from interceptors
+        const string = v8.v8_Value_ToString_Local(@ptrCast(value), context) orelse return ConversionError.TypeError;
         return try fromV8String(allocator, isolate, context, string);
     }
 
@@ -1289,7 +1299,7 @@ pub fn fromV8Value(
     if (T == runtime.Float) return try fromV8Float(context, value);
     if (T == runtime.DOMString) {
         // Use ToString coercion for all values except Symbol (WebIDL standard behavior)
-        if (v8.v8_Value_IsSymbol(value)) {
+        if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
             return ConversionError.TypeError;
         }
         const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
@@ -2463,7 +2473,7 @@ pub fn toConsoleValue(
     }
 
     // Symbol
-    if (v8.v8_Value_IsSymbol(value)) {
+    if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
         return runtime.ConsoleValue{ .symbol = @ptrCast(value) };
     }
 

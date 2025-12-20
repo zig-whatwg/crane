@@ -4502,8 +4502,8 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Named property setter for legacy platform objects (obj.name = value)
         /// Implements WebIDL §3.9.2 [[Set]] for named properties.
         fn namedPropertySetter(
-            property: *v8.Name,
-            value: *v8.Value,
+            property: ?*v8.Name,
+            value: ?*v8.Value,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             // Only compile if Interface has named setter
@@ -4512,8 +4512,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 return .kNo;
             }
 
+            // Validate inputs - V8 may pass null in edge cases
+            if (property == null or value == null) {
+                return .kNo;
+            }
+
             // Verify property is a string (not a Symbol)
-            if (!v8.v8_Name_IsString(property)) {
+            if (!v8.v8_Name_IsString(property.?)) {
                 return .kNo;
             }
 
@@ -4532,8 +4537,11 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
+            // Unwrap the optional value for use below
+            const v8_value = value.?;
+
             // Convert property name to Zig string
-            const prop_str: *v8.String = @ptrCast(property);
+            const prop_str: *v8.String = @ptrCast(property.?);
             const prop_len = v8.v8_String_Utf8Length_Raw(prop_str);
             if (prop_len <= 0) return .kNo;
 
@@ -4568,7 +4576,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const ValueType = params[2].type orelse return .kNo;
 
             // Convert V8 value to the expected Zig type
-            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
+            const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, v8_value) catch |err| {
                 if (info.shouldThrowOnError()) {
                     conv.throwWebIDLError(isolate, @errorName(err));
                 }
