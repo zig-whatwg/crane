@@ -5781,6 +5781,38 @@ pub fn call_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString
     return error.NotImplemented;
 }
 
+// =============================================================================
+// Named Property Access (HTML Standard § 7.3.3)
+// =============================================================================
+
+/// Get the supported property names for named property access.
+/// Per HTML spec, documents expose named elements (name/id attributes) as properties.
+/// This is used by the named property enumerator for Object.keys(document).
+///
+/// TODO: Implement proper named element collection per HTML spec.
+/// Currently returns empty array to avoid breaking compilation.
+pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
+    _ = instance;
+    _ = allocator;
+    // TODO: Return names of elements with name/id attributes that are
+    // accessible via document.name syntax per HTML spec § 7.3.3
+    return &.{};
+}
+
+/// Named property getter for accessing elements by name/id.
+/// Per HTML spec § 7.3.3, documents expose named elements as properties.
+/// For example: document.myForm returns the form with name="myForm" or id="myForm".
+///
+/// TODO: Implement proper named element access per HTML spec.
+/// Currently returns null to indicate property not found.
+pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = name;
+    // TODO: Implement HTML spec § 7.3.3 named element access
+    // Should return the element with matching name/id, or HTMLCollection if multiple
+    return .null;
+}
+
 /// Clean up ALL remaining internal states.
 pub fn cleanupAllRemainingInternal() void {
     Registry.deinitAllAndClear();

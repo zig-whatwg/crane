@@ -1213,15 +1213,31 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
-            // Register named property handler if interface has call_getNamedItem or call_namedItem
+            // Register named property handler if interface has named getter operations
             // This enables named property access: obj.name, obj["name"]
             // WebIDL interfaces with "getter" operations on DOMString support named property access
             // Examples: NamedNodeMap, DOMStringMap, HTMLCollection (with named item getter)
             //
+            // Named getter method names vary by IDL definition:
+            // - call_getNamedItem: NamedNodeMap (getter Attr? getNamedItem(DOMString name))
+            // - call_namedItem: HTMLCollection (getter Element? namedItem(DOMString name))
+            // - call_getter: DOMStringMap (getter DOMString (DOMString name)) - anonymous getter
+            //   NOTE: call_getter is ALSO used for indexed getters (taking u32), so we must
+            //   check the parameter type to distinguish named vs indexed getters
+            //
             // IMPORTANT: Don't enable named property handler for global objects (Window)
             // because it interferes with global property setting
+            const has_call_getter_with_domstring = comptime blk: {
+                if (!@hasDecl(Interface, "call_getter")) break :blk false;
+                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
+                if (fn_info.params.len < 2) break :blk false;
+                const second_param_type = fn_info.params[1].type orelse break :blk false;
+                // Check if second param is DOMString (which is runtime.DOMString)
+                break :blk second_param_type == runtime.DOMString;
+            };
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem");
+                @hasDecl(Interface, "call_namedItem") or
+                has_call_getter_with_domstring;
             const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
                 std.mem.eql(u8, interface_name, "WorkerGlobalScope");
 
@@ -1234,8 +1250,21 @@ pub fn V8Interface(comptime Interface: type) type {
             const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
             if (has_named_getter and !is_global_object and has_named_enumerator) {
                 // Check if interface has named setter
+                // Named setter method names vary by IDL definition:
+                // - call_setNamedItem: NamedNodeMap (setter void setNamedItem(Attr attr))
+                // - set_namedItem: HTMLCollection-style setter
+                // - call_setter: DOMStringMap (setter void (DOMString name, DOMString value)) - anonymous setter
+                //   NOTE: call_setter could be for indexed setters too, so check param type
+                const has_call_setter_with_domstring = comptime blk: {
+                    if (!@hasDecl(Interface, "call_setter")) break :blk false;
+                    const fn_info = @typeInfo(@TypeOf(Interface.call_setter)).@"fn";
+                    if (fn_info.params.len < 2) break :blk false;
+                    const second_param_type = fn_info.params[1].type orelse break :blk false;
+                    break :blk second_param_type == runtime.DOMString;
+                };
                 const has_named_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
-                    @hasDecl(Interface, "set_namedItem");
+                    @hasDecl(Interface, "set_namedItem") or
+                    has_call_setter_with_domstring;
 
                 // Check for [LegacyOverrideBuiltIns] extended attribute
                 // Per WebIDL §3.9.1, this allows named properties to shadow built-ins on the prototype chain
@@ -4173,14 +4202,30 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Named property getter for legacy platform objects (obj.name, obj["name"])
         /// Called when JavaScript accesses a named property on objects with WebIDL "getter" operations.
-        /// For example, NamedNodeMap has "getter Attr? getNamedItem(DOMString name)".
+        /// For example:
+        /// - NamedNodeMap has "getter Attr? getNamedItem(DOMString name)" -> call_getNamedItem
+        /// - HTMLCollection has "getter Element? namedItem(DOMString name)" -> call_namedItem
+        /// - DOMStringMap has "getter DOMString (DOMString name)" -> call_getter (anonymous)
         fn namedPropertyGetter(
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             // Only compile if Interface has named item getter
+            // Named getter method names vary by IDL definition:
+            // - call_getNamedItem: NamedNodeMap (getter Attr? getNamedItem(DOMString name))
+            // - call_namedItem: HTMLCollection (getter Element? namedItem(DOMString name))
+            // - call_getter: DOMStringMap (getter DOMString (DOMString name)) - anonymous getter
+            //   NOTE: call_getter is also used for indexed getters (u32), so check param type
+            const has_call_getter_with_domstring = comptime blk: {
+                if (!@hasDecl(Interface, "call_getter")) break :blk false;
+                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
+                if (fn_info.params.len < 2) break :blk false;
+                const second_param_type = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param_type == runtime.DOMString;
+            };
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem");
+                @hasDecl(Interface, "call_namedItem") or
+                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo;
             }
@@ -4224,10 +4269,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
+            // Select the appropriate getter function based on what the interface declares
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
+            else if (@hasDecl(Interface, "call_namedItem"))
+                Interface.call_namedItem
             else
-                Interface.call_namedItem;
+                Interface.call_getter;
 
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
@@ -4276,9 +4324,21 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedPropertyEnumerator(
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) void {
-            // Only compile if Interface has getSupportedPropertyNames
+            // Only compile if Interface has named getter
+            // Named getter method names vary by IDL definition:
+            // - call_getNamedItem: NamedNodeMap
+            // - call_namedItem: HTMLCollection
+            // - call_getter: DOMStringMap (anonymous getter with DOMString param)
+            const has_call_getter_with_domstring = comptime blk: {
+                if (!@hasDecl(Interface, "call_getter")) break :blk false;
+                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
+                if (fn_info.params.len < 2) break :blk false;
+                const second_param_type = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param_type == runtime.DOMString;
+            };
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem");
+                @hasDecl(Interface, "call_namedItem") or
+                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return;
             }
@@ -4404,8 +4464,17 @@ pub fn V8Interface(comptime Interface: type) type {
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
+            // Named getter method names vary by IDL definition
+            const has_call_getter_with_domstring = comptime blk: {
+                if (!@hasDecl(Interface, "call_getter")) break :blk false;
+                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
+                if (fn_info.params.len < 2) break :blk false;
+                const second_param_type = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param_type == runtime.DOMString;
+            };
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem");
+                @hasDecl(Interface, "call_namedItem") or
+                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo;
             }
@@ -4456,8 +4525,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // exist on the prototype chain
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
+            else if (@hasDecl(Interface, "call_namedItem"))
+                Interface.call_namedItem
             else
-                Interface.call_namedItem;
+                Interface.call_getter;
 
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
@@ -4508,7 +4579,13 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             // Only compile if Interface has named setter
-            const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or @hasDecl(Interface, "set_namedItem");
+            // Named setter method names vary by IDL definition:
+            // - call_setNamedItem: NamedNodeMap
+            // - set_namedItem: some collections
+            // - call_setter: DOMStringMap (anonymous setter)
+            const has_setter = comptime @hasDecl(Interface, "call_setNamedItem") or
+                @hasDecl(Interface, "set_namedItem") or
+                @hasDecl(Interface, "call_setter");
             if (comptime !has_setter) {
                 return .kNo;
             }
@@ -4564,10 +4641,13 @@ pub fn V8Interface(comptime Interface: type) type {
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Get the setter function at comptime
+            // Named setter method names vary by IDL definition
             const setter_fn = comptime if (@hasDecl(Interface, "call_setNamedItem"))
                 Interface.call_setNamedItem
+            else if (@hasDecl(Interface, "set_namedItem"))
+                Interface.set_namedItem
             else
-                Interface.set_namedItem;
+                Interface.call_setter;
 
             // Get the value type from the setter function signature
             const SetterFnType = @TypeOf(setter_fn);
@@ -4612,8 +4692,16 @@ pub fn V8Interface(comptime Interface: type) type {
             _: *v8.Value, // value - ignored since we don't actually set
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
+            const has_call_getter_with_domstring = comptime blk: {
+                if (!@hasDecl(Interface, "call_getter")) break :blk false;
+                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
+                if (fn_info.params.len < 2) break :blk false;
+                const second_param_type = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param_type == runtime.DOMString;
+            };
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem");
+                @hasDecl(Interface, "call_namedItem") or
+                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo; // Don't intercept - allow fallthrough
             }
@@ -4661,8 +4749,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // Check if this is a supported property name by calling the getter
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
+            else if (@hasDecl(Interface, "call_namedItem"))
+                Interface.call_namedItem
             else
-                Interface.call_namedItem;
+                Interface.call_getter;
 
             const result = getter_fn(instance, dom_str) catch {
                 // Error calling getter - allow fallthrough
@@ -4695,8 +4785,17 @@ pub fn V8Interface(comptime Interface: type) type {
             property: *v8.Name,
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
+            // Named getter method names vary by IDL definition
+            const has_call_getter_with_domstring = comptime blk: {
+                if (!@hasDecl(Interface, "call_getter")) break :blk false;
+                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
+                if (fn_info.params.len < 2) break :blk false;
+                const second_param_type = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param_type == runtime.DOMString;
+            };
             const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
-                @hasDecl(Interface, "call_namedItem");
+                @hasDecl(Interface, "call_namedItem") or
+                has_call_getter_with_domstring;
             if (comptime !has_named_getter) {
                 return .kNo;
             }
@@ -4756,8 +4855,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // exist on the prototype chain
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
+            else if (@hasDecl(Interface, "call_namedItem"))
+                Interface.call_namedItem
             else
-                Interface.call_namedItem;
+                Interface.call_getter;
 
             const result = getter_fn(instance, dom_str) catch |err| {
                 std.debug.print("namedPropertyDescriptor: getter_fn failed with {s}\n", .{@errorName(err)});
