@@ -1707,6 +1707,13 @@ pub fn createChildContext(
     const document_instance = try interfaces.Document.init(allocator, runtime_ctx);
     WindowImpl.setDocument(window_instance, document_instance);
 
+    // 8d. Set the Document on the BrowsingContext so that contentDocument works.
+    // HTMLIFrameElement.get_contentDocument() calls browsing_context.getActiveDocument(),
+    // so we MUST set it here. Without this, contentDocument returns null.
+    if (WindowImpl.getInternal(window_instance)) |win_internal| {
+        win_internal.browsing_context.setActiveDocument(document_instance, window_instance);
+    }
+
     // 9. Heap-allocate the entry so it doesn't move when HashMap rehashes
     const child_entry = try state.allocator.create(ContextEntry);
     errdefer state.allocator.destroy(child_entry);
