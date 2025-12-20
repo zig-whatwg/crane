@@ -991,6 +991,10 @@ pub fn main() !void {
     // Execute tests (prints progress and summary)
     try executeTests(allocator, discovery, options, &report, server);
 
+    // Clean up global storage resources
+    const storage = @import("storage");
+    storage.deinitGlobalStorageShed(allocator);
+
     // Finish and write report
     report.finish();
 

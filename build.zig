@@ -2719,6 +2719,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "webidl", .module = webidl_mod },
                 // Dictionaries module for Event init dictionaries
                 .{ .name = "dictionaries", .module = dictionaries_mod },
+                // Storage module for cleanup
+                .{ .name = "storage", .module = storage_mod },
             },
         }),
     });
