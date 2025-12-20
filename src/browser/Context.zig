@@ -1307,6 +1307,9 @@ pub const Context = struct {
         // from firing after the V8 context is disposed
         clearTimerInterface();
 
+        // Clear iframe src load hook to prevent callbacks after context disposal
+        impls.HTMLIFrameElement.setIframeSrcLoadHook(null);
+
         // NOTE: Do NOT explicitly deinit singleton instances here!
         // The context_manager.deinit() below cleans up the wrapper cache,
         // which calls gc.onObjectFreed() for each instance. If we deinit

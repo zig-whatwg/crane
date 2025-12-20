@@ -37,6 +37,7 @@
 const std = @import("std");
 const v8 = @import("v8");
 const runtime = @import("runtime");
+const impls = @import("impls");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -175,6 +176,9 @@ pub const Browser = struct {
 
         // Cleanup WebIDL runtime
         runtime.deinitializeRuntime();
+
+        // Clean up orphaned DOM nodes from all registries
+        impls.cleanup.cleanupAllDomRegistries();
 
         self.initialized = false;
         self.allocator.destroy(self);
