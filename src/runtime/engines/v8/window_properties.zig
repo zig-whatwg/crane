@@ -73,14 +73,16 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     // which context is calling (important for cross-window access like iframe.wp.propName)
     v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tpl, 1);
 
-    // Register native property interceptors
-    v8.v8_ObjectTemplate_SetNamedPropertyHandlerFull(
+    // Register native property interceptors with definer callback
+    // Using SetNamedPropertyHandlerWithDefiner to intercept Object.defineProperty
+    v8.v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
         instance_tpl,
         namedPropertyGetter,
         namedPropertySetter,
         namedPropertyQuery,
         namedPropertyDeleter,
         namedPropertyEnumerator,
+        namedPropertyDefiner,
         namedPropertyDescriptor,
         .kOnlyInterceptStrings,
     );
@@ -244,26 +246,18 @@ fn namedPropertyGetter(
 }
 
 /// Named property setter - [[Set]] for WindowProperties
-/// Per WebIDL §3.7.4: [[Set]] on WindowProperties always throws TypeError
+/// Per WebIDL §3.7.4: [[Set]] on WindowProperties ALWAYS throws TypeError
+/// This applies to ALL properties, not just named properties
 fn namedPropertySetter(
-    property: *v8.Name,
+    _: *v8.Name,
     _: *v8.Value,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
-    const window = getWindowInstanceFromHolder(info) orelse return .kNo;
 
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
-
-    // Only intercept if this is a named property
-    if (WindowImpl.hasNamedProperty(window, name)) {
-        // Throw TypeError per WebIDL §3.7.4
-        conv.throwTypeError(isolate, "Cannot set property on WindowProperties");
-        return .kYes;
-    }
-
-    return .kNo;
+    // WindowProperties is immutable - [[Set]] always throws TypeError
+    conv.throwTypeError(isolate, "Cannot set property on WindowProperties object");
+    return .kYes;
 }
 
 /// Named property query - [[HasProperty]] for WindowProperties
@@ -285,25 +279,31 @@ fn namedPropertyQuery(
 }
 
 /// Named property deleter - [[Delete]] for WindowProperties
-/// Per WebIDL §3.7.4: [[Delete]] on WindowProperties always throws TypeError
+/// Per WebIDL §3.7.4: [[Delete]] on WindowProperties ALWAYS throws TypeError
+/// This applies to ALL properties, not just named properties
 fn namedPropertyDeleter(
-    property: *v8.Name,
+    _: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
-    const window = getWindowInstanceFromHolder(info) orelse return .kNo;
 
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
+    // WindowProperties is immutable - [[Delete]] always throws TypeError
+    conv.throwTypeError(isolate, "Cannot delete property on WindowProperties object");
+    return .kYes;
+}
 
-    // Only intercept if this is a named property
-    if (WindowImpl.hasNamedProperty(window, name)) {
-        // Throw TypeError per WebIDL §3.7.4
-        conv.throwTypeError(isolate, "Cannot delete property on WindowProperties");
-        return .kYes;
-    }
+/// Named property definer - [[DefineOwnProperty]] for WindowProperties
+/// Per WebIDL §3.7.4: [[DefineOwnProperty]] on WindowProperties ALWAYS throws TypeError
+fn namedPropertyDefiner(
+    _: *v8.Name,
+    _: *const v8.PropertyDescriptor,
+    info: *const v8.PropertyCallbackInfoVoid,
+) callconv(.c) v8.Intercepted {
+    const isolate = info.getIsolate();
 
-    return .kNo;
+    // WindowProperties doesn't support [[DefineOwnProperty]] - always throws TypeError
+    conv.throwTypeError(isolate, "Cannot define property on WindowProperties object");
+    return .kYes;
 }
 
 /// Named property enumerator - [[OwnPropertyKeys]] for WindowProperties
