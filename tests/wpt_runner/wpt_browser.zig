@@ -42,6 +42,17 @@ const test_harness = @import("test_harness.zig");
 const test_parser = @import("test_parser.zig");
 const config = @import("config.zig");
 
+/// Apply WPT URL rewrites (matching wpt serve behavior from tools/serve/serve.py)
+/// These rewrites map friendly URLs to the actual file locations
+fn applyWptRewrites(url: []const u8) []const u8 {
+    // WebIDLParser.js -> webidl2.js (the actual file location)
+    if (std.mem.eql(u8, url, "/resources/WebIDLParser.js")) {
+        return "/resources/webidl2/lib/webidl2.js";
+    }
+    // Add more rewrites here as needed (from tools/serve/serve.py and tools/wpt/testfiles.py)
+    return url;
+}
+
 /// WPT Browser - wraps Browser API with WPT-specific functionality
 pub const WptBrowser = struct {
     allocator: std.mem.Allocator,
@@ -163,8 +174,8 @@ pub const WptBrowser = struct {
         };
 
         // Run event loop until test completes or timeout
-        const timeout_ms = timeout.toMilliseconds();
-        const result = try self.waitForCompletion(ctx, timeout_ms);
+        const timeout_ms = timeout.toMillis();
+        const result = try self.waitForCompletion(ctx, timeout_ms, test_path);
 
         self.tests_run += 1;
         return result;
@@ -230,10 +241,23 @@ pub const WptBrowser = struct {
         const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr));
         const self = loader_ctx.wpt_browser;
 
+        // Skip testharness.js and testharnessreport.js - they're already loaded
+        // via loadTestHarness() before HTML parsing starts. Loading them again
+        // would reinitialize the Tests object and lose our completion callback.
+        if (std.mem.eql(u8, url, "/resources/testharness.js") or
+            std.mem.eql(u8, url, "/resources/testharnessreport.js"))
+        {
+            // Return empty script to prevent double-loading
+            return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
+        }
+
+        // Apply WPT URL rewrites (matching wpt serve behavior)
+        const rewritten_url = applyWptRewrites(url);
+
         // Resolve URL relative to test path or WPT root
-        if (std.mem.startsWith(u8, url, "/")) {
+        if (std.mem.startsWith(u8, rewritten_url, "/")) {
             // Absolute path from WPT root
-            const relative = url[1..]; // Remove leading /
+            const relative = rewritten_url[1..]; // Remove leading /
             return self.loadWptScript(relative) catch null;
         } else if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
             // External URL - not supported in WPT runner
@@ -244,7 +268,8 @@ pub const WptBrowser = struct {
             const full_path = std.fs.path.join(self.allocator, &.{ self.wpt_root, test_dir, url }) catch return null;
             defer self.allocator.free(full_path);
 
-            const file = std.fs.openFileAbsolute(full_path, .{}) catch return null;
+            // Use cwd-relative open since wpt_root may not be absolute
+            const file = std.fs.cwd().openFile(full_path, .{}) catch return null;
             defer file.close();
 
             const stat = file.stat() catch return null;
@@ -455,8 +480,9 @@ pub const WptBrowser = struct {
         } else null;
 
         // Get subtests (Zig 0.15 ArrayList is unmanaged by default)
+        // Note: We don't defer deinit here because ownership transfers to result
         var subtests: std.ArrayList(test_harness.SubtestResult) = .{};
-        defer subtests.deinit(self.allocator);
+        errdefer subtests.deinit(self.allocator);
 
         if (root.object.get("tests")) |tests| {
             if (tests == .array) {

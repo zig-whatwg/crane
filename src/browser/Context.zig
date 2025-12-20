@@ -354,15 +354,19 @@ pub const Context = struct {
     }
 
     /// Create V8 context and register globals
-    /// Note: V8 FunctionTemplates can only be configured ONCE per isolate.
-    /// Template configuration (SetImmutableProto, SetIndexedPropertyHandlerFull, etc.)
-    /// must happen on the FIRST context creation. Subsequent contexts reuse the cached template.
+    /// Uses a global template with internal fields to support Window instance binding.
     fn createV8Context(self: *Context) !void {
-        // Create V8 context - use simple context creation for now
-        // TODO: Implement proper per-isolate template caching for Window template configuration
-        // The template configuration (immutable proto, indexed property handler) should only
-        // happen once per isolate, not per context.
-        const v8_ctx = v8.ffi.v8_Context_New(self.isolate) orelse {
+        // Create a global template with internal fields for Window instance binding
+        // This allows WebIDL method callbacks to get the Zig instance from `this`
+        const global_template = v8.ffi.v8_ObjectTemplate_New(self.isolate);
+        v8.ffi.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+
+        // Per WebIDL spec §3.8, all objects in the global prototype chain must have
+        // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
+        v8.ffi.v8_ObjectTemplate_SetImmutableProto(global_template);
+
+        // Create V8 context with the global template
+        const v8_ctx = v8.ffi.v8_Context_NewWithGlobalTemplate(self.isolate, global_template) orelse {
             return error.ContextCreateFailed;
         };
         self.v8_context = v8_ctx;
@@ -382,8 +386,9 @@ pub const Context = struct {
         // Pass timer and event loop interfaces so all runtime contexts share the same libuv loop
         const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
         const event_loop_iface = if (self.event_loop) |ev| ev.eventLoop() else null;
-        _ = context_manager.getOrCreateWithExternalEventLoop(v8_ctx, timer_iface, event_loop_iface, self.allocator) catch |err| {
+        const runtime_ctx = context_manager.getOrCreateWithExternalEventLoop(v8_ctx, timer_iface, event_loop_iface, self.allocator) catch |err| {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
+            return error.ContextRegistrationFailed;
         };
 
         // Register all WebIDL interfaces
@@ -395,30 +400,50 @@ pub const Context = struct {
         // Register all namespaces
         v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
 
-        // NOTE: Window instance binding is skipped when using simple context creation.
-        // V8 FunctionTemplates can only be configured ONCE per isolate, so template
-        // configuration (SetInternalFieldCount, SetImmutableProto, SetIndexedPropertyHandlerFull)
-        // cannot be done per-context. Without internal fields, bindWindowToContext() would fail.
-        //
-        // TODO: Implement proper per-isolate template initialization in Browser.init()
-        // to enable Window binding and cross-realm support.
-        self.window_instance = null;
+        // Get the global object
+        const global = v8.ffi.v8_Context_Global(v8_ctx) orelse {
+            return error.NoGlobal;
+        };
 
-        // Set up Window prototype chain via JavaScript instead of template configuration
-        const global = v8.ffi.v8_Context_Global(v8_ctx);
-        if (global) |global_obj| {
-            // Set global's prototype to Window.prototype
-            const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
-            if (window_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(wk))) |window_ctor| {
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global_obj, v8_ctx, window_proto);
-                        }
+        // Set up Window prototype chain
+        // Set global's prototype to Window.prototype
+        const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
+        if (window_key) |wk| {
+            if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
+                const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                if (proto_key) |pk| {
+                    if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
+                        _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
                     }
                 }
             }
+        }
+
+        // Create and bind Window instance to global object's internal fields
+        // This is required for WebIDL method callbacks to extract the Zig instance from `this`
+        const Window = interfaces.Window;
+        const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
+            std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
+            self.window_instance = null;
+            return;
+        };
+        self.window_instance = window_instance;
+
+        // Store Window instance in internal field 0
+        v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
+
+        // Store WrapperTypeInfo in internal field 1 for type-safe unwrapping
+        if (v8.dom_type_info.getTypeInfoByName("Window")) |type_info| {
+            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+        }
+
+        // Bind the V8 global to the Window instance for cross-realm access
+        impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+
+        // Register Window in wrapper cache for proper cleanup
+        if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+            const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
+            cache.set(window_instance, global, self.isolate) catch {};
         }
 
         // Set up global aliases FIRST (creates __internal object and accessor properties)
@@ -891,10 +916,13 @@ pub const Context = struct {
         const setup_script = switch (self.context_type) {
             .window =>
             // Window context: Set up __internal for singleton storage and GLOBAL for WPT tests
+            // Also set up self alias which refers to the window/global object
             // NOTE: Do NOT try to set parent, top, opener, frames, length here!
             // These are read-only accessor properties defined by Window interface bindings.
             // The Window impl handles returning the correct values for these properties.
             \\globalThis.__internal = globalThis.__internal || { isSecureContext: false };
+            \\globalThis.self = globalThis;
+            \\globalThis.window = globalThis;
             \\globalThis.GLOBAL = {
             \\  isWindow: function() { return true; },
             \\  isWorker: function() { return false; },

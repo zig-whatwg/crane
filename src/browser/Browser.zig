@@ -159,6 +159,11 @@ pub const Browser = struct {
         // See src/runtime/engines/v8/isolate_lifecycle.zig for the full list
 
         if (self.isolate) |isolate| {
+            // IMPORTANT: Clean up orphaned DOM nodes BEFORE cleaning up V8 resources!
+            // DOM node internal states may use the isolate's allocator, which gets
+            // freed by cleanupAll(). We must clean them up while allocators are valid.
+            impls.cleanup.cleanupAllDomRegistries();
+
             // Central cleanup - calls all registered handlers in priority order
             // This includes: isolate_templates, template_registry, context_manager, etc.
             v8.cleanupAll(isolate, self.allocator);
@@ -176,9 +181,6 @@ pub const Browser = struct {
 
         // Cleanup WebIDL runtime
         runtime.deinitializeRuntime();
-
-        // Clean up orphaned DOM nodes from all registries
-        impls.cleanup.cleanupAllDomRegistries();
 
         self.initialized = false;
         self.allocator.destroy(self);

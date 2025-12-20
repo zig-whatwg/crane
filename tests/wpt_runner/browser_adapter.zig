@@ -136,14 +136,11 @@ pub const BrowserAdapter = struct {
         timeout: config.Timeout,
         context_type: test_parser.GlobalType,
     ) !test_harness.TestResult {
-        const ctx_type = mapContextType(context_type);
-        const timeout_ms = timeout.toMillis();
-
-        const result = self.wpt_browser.runJSTest(
+        const result = self.wpt_browser.runTest(
             test_path,
             test_content,
-            timeout_ms,
-            ctx_type,
+            timeout,
+            context_type,
         ) catch |err| {
             // Convert error to TestResult
             var error_result = try test_harness.TestResult.init(self.allocator, test_path);

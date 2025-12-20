@@ -145,14 +145,22 @@ pub fn getTemplateStorage(isolate: *v8.Isolate) ?*IsolateTemplates {
 ///
 /// Arguments:
 /// - isolate: V8 isolate to cleanup storage for
-/// - allocator: Allocator used when creating the storage
-pub fn cleanupTemplateStorage(isolate: *v8.Isolate, allocator: std.mem.Allocator) void {
+/// - allocator: Unused (kept for API compatibility) - storage uses its own allocator
+pub fn cleanupTemplateStorage(isolate: *v8.Isolate, _: std.mem.Allocator) void {
     const data_ptr = v8.v8_Isolate_GetData(isolate, TEMPLATE_SLOT) orelse return;
     const storage: *IsolateTemplates = @ptrCast(@alignCast(data_ptr));
 
-    // Deinitialize and free
+    // CRITICAL: Use the storage's own allocator, not the passed-in one!
+    // The storage was created with isolate_alloc.getIsolateAllocator() which
+    // returns an internal Arena/GPA allocator, NOT the browser's allocator.
+    // Using the wrong allocator causes "Invalid free" canary errors.
+    const storage_allocator = storage.allocator;
+
+    // Deinitialize the hashmap
     storage.deinit();
-    allocator.destroy(storage);
+
+    // Free the storage struct with its own allocator
+    storage_allocator.destroy(storage);
 
     // Clear isolate data slot
     v8.v8_Isolate_SetData(isolate, TEMPLATE_SLOT, null);
