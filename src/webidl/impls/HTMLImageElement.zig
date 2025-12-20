@@ -541,6 +541,16 @@ fn fireEventTaskCallback(data: ?*anyopaque) void {
         return; // Cancelled
     }
 
+    // CRITICAL: Create JsScope for V8 operations.
+    // Timer callbacks run outside V8's call stack, so there's no HandleScope.
+    // We must create one before any V8 operations (event creation, dispatch).
+    const v8_engine = @import("v8");
+    const js_scope = v8_engine.JsScope.init(instance.ctx) orelse {
+        // Context is invalid (e.g., page navigated away) - silently abort
+        return;
+    };
+    defer js_scope.deinit();
+
     // Fire the event
     const event_name = switch (ctx.event_type) {
         .load => "load",

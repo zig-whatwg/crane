@@ -217,6 +217,16 @@ pub const IsolateLock = locker.IsolateLock;
 pub const IsolateUnlock = locker.IsolateUnlock;
 pub const ThreadCheck = locker.ThreadCheck;
 
+/// RAII Scope Guard for V8 Operations (similar to Chromium's ScriptState::Scope)
+/// Use JsScope at entry points where Zig initiates V8 operations:
+/// - Timer callbacks (setTimeout, setInterval)
+/// - Event dispatch from non-JS contexts
+/// - Promise continuations
+/// - Any async operation entering V8
+pub const js_scope = @import("js_scope.zig");
+pub const JsScope = js_scope.JsScope;
+pub const isV8ContextValid = js_scope.isV8ContextValid;
+
 /// Snapshot-based V8 initialization for fast startup
 pub const snapshot_loader = @import("snapshot_loader.zig");
 pub const initializeV8FromSnapshot = snapshot_loader.initializeV8;

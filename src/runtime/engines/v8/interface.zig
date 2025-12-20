@@ -1053,6 +1053,48 @@ pub fn V8Interface(comptime Interface: type) type {
             // Get prototype template (only used for non-callback interfaces)
             const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(template);
 
+            // ========================================
+            // INHERITANCE SETUP - MUST BE FIRST
+            // ========================================
+            // Per Chromium's pattern, Inherit() must be called BEFORE registering methods.
+            // This ensures the prototype chain is properly established before any
+            // properties or methods are added to the prototype template.
+            //
+            // Use ParentInterface (the actual interface type) for prototype chain setup
+            // ParentInterface is set when BaseType is an embedded state struct
+            //
+            // Window goes through normal inheritance (→ EventTarget).
+            // WindowProperties is inserted into the chain manually in interface_bindings.zig
+            // AFTER the context is created.
+            if (@hasDecl(Meta, "ParentInterface")) {
+                const ParentType = Meta.ParentInterface;
+                if (@hasDecl(ParentType, "Meta")) {
+                    // Create parent template
+                    const ParentBinding = V8Interface(ParentType);
+                    const parent_template = ParentBinding.createTemplate(isolate);
+
+                    // Set up prototype chain - BEFORE registering methods
+                    v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                }
+            } else if (comptime @typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
+                // BaseType is ?type - check if it's non-null
+                if (comptime Meta.BaseType) |BaseType| {
+                    // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
+                    const BaseTypeInfo = @typeInfo(BaseType);
+                    if (BaseTypeInfo == .pointer) {
+                        const ChildType = BaseTypeInfo.pointer.child;
+                        if (@hasDecl(ChildType, "Meta")) {
+                            // Create parent template
+                            const ParentBinding = V8Interface(ChildType);
+                            const parent_template = ParentBinding.createTemplate(isolate);
+
+                            // Set up prototype chain - BEFORE registering methods
+                            v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                        }
+                    }
+                }
+            }
+
             // Per WebIDL spec §3.8, all objects in the global prototype chain must have
             // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
             // Most interfaces get immutable prototypes.
@@ -1330,41 +1372,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
-            // Handle inheritance (prototype chain for V8)
-            // Use ParentInterface (the actual interface type) for prototype chain setup
-            // ParentInterface is set when BaseType is an embedded state struct
-            //
-            // Window goes through normal inheritance (→ EventTarget).
-            // WindowProperties is inserted into the chain manually in interface_bindings.zig
-            // AFTER the context is created.
-            if (@hasDecl(Meta, "ParentInterface")) {
-                const ParentType = Meta.ParentInterface;
-                if (@hasDecl(ParentType, "Meta")) {
-                    // Create parent template
-                    const ParentBinding = V8Interface(ParentType);
-                    const parent_template = ParentBinding.createTemplate(isolate);
-
-                    // Set up prototype chain
-                    v8.v8_FunctionTemplate_Inherit(template, parent_template);
-                }
-            } else if (comptime @typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
-                // BaseType is ?type - check if it's non-null
-                if (comptime Meta.BaseType) |BaseType| {
-                    // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
-                    const BaseTypeInfo = @typeInfo(BaseType);
-                    if (BaseTypeInfo == .pointer) {
-                        const ChildType = BaseTypeInfo.pointer.child;
-                        if (@hasDecl(ChildType, "Meta")) {
-                            // Create parent template
-                            const ParentBinding = V8Interface(ChildType);
-                            const parent_template = ParentBinding.createTemplate(isolate);
-
-                            // Set up prototype chain
-                            v8.v8_FunctionTemplate_Inherit(template, parent_template);
-                        }
-                    }
-                }
-            }
+            // NOTE: Inheritance is now set up earlier (before method registration)
+            // per Chromium's pattern. See the INHERITANCE SETUP section above.
 
             // TODO: Handle mixins
 

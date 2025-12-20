@@ -813,6 +813,77 @@ Run this to find violations:
 rg "^const v8 = @import" src/webidl/impls/ --type zig
 ```
 
+### 16. **NEVER Use Function::NewInstance() for Wrapping Zig Instances** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   🛑🛑🛑 ABSOLUTE PROHIBITION - NO EXCEPTIONS - EVER 🛑🛑🛑                  ║
+║                                                                              ║
+║   This rule exists because it was VIOLATED REPEATEDLY, wasting HOURS        ║
+║   of debugging time on a fundamentally wrong approach.                      ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+**When wrapping existing Zig instances in V8 objects, ALWAYS use `InstanceTemplate()->NewInstance()`.**
+
+**NEVER use `Function::NewInstance()` for this purpose.**
+
+**Why This Rule Exists:**
+
+Chromium/Blink wraps millions of C++ DOM objects using `InstanceTemplate()->NewInstance()` and their prototype chain works correctly. This is **empirical proof** that the API works.
+
+**The Mistake That Was Made (REPEATEDLY):**
+1. V8 documentation mentions `Function::NewInstance()` sets up prototype chains
+2. Agent incorrectly concluded `InstanceTemplate()->NewInstance()` doesn't work
+3. Agent implemented `Function::NewInstance()` with complex "wrapper mode" mechanism
+4. Implementation caused segfaults and memory corruption
+5. Agent was told to revert, then made the SAME mistake again
+6. This cycle repeated multiple times, wasting hours
+
+**The Truth:**
+- Chromium uses `InstanceTemplate()->NewInstance()` - this is FACT
+- If our prototype chain isn't working, the bug is in OUR code, not V8
+- The issue is likely in template configuration, inheritance setup, or method registration
+- NOT in the choice of `InstanceTemplate()->NewInstance()` vs `Function::NewInstance()`
+
+**What To Do When Prototype Chain Doesn't Work:**
+
+1. ✅ Investigate how we configure `FunctionTemplate`
+2. ✅ Check if `FunctionTemplate::Inherit()` is called correctly
+3. ✅ Verify methods are registered on `PrototypeTemplate()`
+4. ✅ Compare our template setup with Chromium's
+5. ❌ **NEVER** switch to `Function::NewInstance()` - this is NOT the solution
+
+**Correct Pattern (What We Use):**
+```zig
+// Get InstanceTemplate from FunctionTemplate
+const instance_template = v8.v8_FunctionTemplate_InstanceTemplate(template);
+
+// Create object - this IS the correct V8 API
+const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context);
+```
+
+**FORBIDDEN Pattern (NEVER DO THIS):**
+```zig
+// ❌ NEVER use Function::NewInstance() for wrapping existing instances
+const func = v8.v8_FunctionTemplate_GetFunction(template, context);
+const v8_object = v8.v8_Function_NewInstance(func, context, 0, null);  // ❌ WRONG
+```
+
+**If You Feel Tempted to Use Function::NewInstance():**
+
+1. STOP
+2. Re-read this rule
+3. Remember: Chromium uses `InstanceTemplate()->NewInstance()` and it works
+4. The bug is in OUR template configuration, not V8's API
+5. Investigate template setup instead
+
+**NO EXCEPTIONS. NO "JUST THIS ONCE." NO "BUT THE V8 DOCS SAY..."**
+
+The Chromium codebase is the authoritative reference, not V8 documentation snippets taken out of context.
+
 ---
 
 ## Critical Project Context

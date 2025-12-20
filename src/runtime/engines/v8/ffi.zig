@@ -1265,6 +1265,11 @@ pub extern fn v8_FunctionTemplate_Dispose(tpl: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetClassName(tpl: *FunctionTemplate, name: *String) void;
 pub extern fn v8_FunctionTemplate_InstanceTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
 pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *ObjectTemplate;
+/// Get the prototype object from a FunctionTemplate.
+/// This is used when wrapping Zig instances as V8 objects - ObjectTemplate::NewInstance()
+/// doesn't automatically link to the FunctionTemplate's prototype, so we need to get
+/// the prototype object and set it manually.
+pub extern fn v8_FunctionTemplate_GetPrototypeObject(tpl: *FunctionTemplate, context: *Context) ?*Object;
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetPrototypeProviderTemplate(self: *FunctionTemplate, provider: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;

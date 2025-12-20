@@ -2522,6 +2522,41 @@ void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
     local_tpl->ReadOnlyPrototype();
 }
 
+// Get the prototype object from a FunctionTemplate.
+// This calls GetFunction() and then gets the "prototype" property from the function.
+// Used when wrapping Zig instances as V8 objects - we need to manually set the prototype
+// because ObjectTemplate::NewInstance() doesn't automatically link to the FunctionTemplate's prototype.
+Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>* tpl, Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    // Get the function from the template
+    MaybeLocal<Function> maybe_fn = local_tpl->GetFunction(ctx);
+    if (maybe_fn.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Function> fn = maybe_fn.ToLocalChecked();
+    
+    // Get the "prototype" property from the function
+    Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
+    MaybeLocal<Value> maybe_proto = fn->Get(ctx, prototype_str);
+    if (maybe_proto.IsEmpty()) {
+        return nullptr;
+    }
+    
+    Local<Value> proto_val = maybe_proto.ToLocalChecked();
+    if (!proto_val->IsObject()) {
+        return nullptr;
+    }
+    
+    Local<Object> proto_obj = proto_val.As<Object>();
+    return trackHandle(new Global<Object>(isolate, proto_obj));
+}
+
 void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

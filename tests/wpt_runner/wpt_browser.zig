@@ -62,7 +62,7 @@ pub const WptBrowser = struct {
         errdefer allocator.destroy(self);
 
         // Create the underlying browser (manages V8 isolate)
-        const browser_instance = try Browser.init(allocator);
+        const browser_instance = try Browser.init(allocator, .{});
         errdefer browser_instance.deinit();
 
         self.* = WptBrowser{
@@ -143,7 +143,7 @@ pub const WptBrowser = struct {
         try self.browser.navigate(test_url, ctx_type);
 
         // Get the context
-        const ctx = self.browser.context orelse return error.NoContext;
+        const ctx = self.browser.current_context orelse return error.NoContext;
 
         // Load testharness.js
         try self.loadTestHarness(ctx);
@@ -151,9 +151,9 @@ pub const WptBrowser = struct {
         // Execute the test script
         _ = ctx.evaluateScript(test_content) catch |err| {
             return test_harness.TestResult{
-                .status = .error_status,
+                .status = .@"error",
                 .message = try std.fmt.allocPrint(self.allocator, "Script execution error: {}", .{err}),
-                .subtests = &[_]test_harness.SubtestResult{},
+                .subtests = .{},
                 .duration_ms = 0,
             };
         };
@@ -173,17 +173,15 @@ pub const WptBrowser = struct {
         self: *WptBrowser,
         test_path: []const u8,
         html_content: []const u8,
-        timeout: config.Timeout,
+        base_url: []const u8,
+        timeout_ms: u64,
+        context_type: browser_mod.ContextType,
     ) !test_harness.TestResult {
-        // Build test URL
-        const test_url = try self.buildTestUrl(test_path);
-        defer self.allocator.free(test_url);
-
-        // Navigate to create fresh context
-        try self.browser.navigate(test_url, .window);
+        // Navigate to create fresh context with the specified context type
+        try self.browser.navigate(base_url, context_type);
 
         // Get the context
-        const ctx = self.browser.context orelse return error.NoContext;
+        const ctx = self.browser.current_context orelse return error.NoContext;
 
         // Load testharness.js BEFORE parsing HTML
         // This ensures testharness globals are available when scripts in HTML execute
@@ -197,24 +195,21 @@ pub const WptBrowser = struct {
 
         // Load HTML with script execution
         ctx.loadHTML(html_content, .{
-            .base_url = test_url,
+            .base_url = base_url,
             .scripting_enabled = true,
             .script_loader = .{
                 .context = @ptrCast(@constCast(&loader_ctx)),
                 .loadScript = scriptLoaderCallback,
             },
         }) catch |err| {
-            return test_harness.TestResult{
-                .status = .error_status,
-                .message = try std.fmt.allocPrint(self.allocator, "HTML parse error: {}", .{err}),
-                .subtests = &[_]test_harness.SubtestResult{},
-                .duration_ms = 0,
-            };
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = try std.fmt.allocPrint(self.allocator, "HTML parse error: {}", .{err});
+            return result;
         };
 
         // Run event loop until test completes or timeout
-        const timeout_ms = timeout.toMilliseconds();
-        const result = try self.waitForCompletion(ctx, timeout_ms);
+        const result = try self.waitForCompletion(ctx, timeout_ms, test_path);
 
         self.tests_run += 1;
         return result;
@@ -307,7 +302,7 @@ pub const WptBrowser = struct {
     }
 
     /// Wait for test completion by polling __wpt_complete
-    fn waitForCompletion(self: *WptBrowser, ctx: *Context, timeout_ms: u64) !test_harness.TestResult {
+    fn waitForCompletion(self: *WptBrowser, ctx: *Context, timeout_ms: u64, test_path: []const u8) !test_harness.TestResult {
         const start_time = std.time.milliTimestamp();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
 
@@ -321,32 +316,35 @@ pub const WptBrowser = struct {
                 // Check if it's true
                 if (self.isV8True(val)) {
                     // Collect results
-                    return try self.collectResults(ctx, start_time);
+                    return try self.collectResults(ctx, start_time, test_path);
                 }
             }
         }
 
         // Timeout
         const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
-        return test_harness.TestResult{
-            .status = .timeout,
-            .message = try std.fmt.allocPrint(self.allocator, "Test timed out after {}ms", .{timeout_ms}),
-            .subtests = &[_]test_harness.SubtestResult{},
-            .duration_ms = duration,
-        };
+        var result = try test_harness.TestResult.init(self.allocator, test_path);
+        result.status = .timeout;
+        result.message = try std.fmt.allocPrint(self.allocator, "Test timed out after {}ms", .{timeout_ms});
+        result.duration_ms = duration;
+        return result;
     }
 
     /// Check if a V8 value is true
     fn isV8True(self: *WptBrowser, val: *anyopaque) bool {
-        _ = self;
-        // Use V8 FFI to check if value is true
+        // Use V8 FFI to check if value is truthy
         const v8 = @import("v8");
         const value: *v8.ffi.Value = @ptrCast(val);
-        return v8.ffi.v8_Value_IsTrue(value);
+        // Check if it's a boolean and get its value
+        if (v8.ffi.v8_Value_IsBoolean(value)) {
+            const isolate = self.browser.isolate orelse return false;
+            return v8.ffi.v8_Value_BooleanValue(value, isolate);
+        }
+        return false;
     }
 
     /// Collect test results from window.__wpt_results
-    fn collectResults(self: *WptBrowser, ctx: *Context, start_time: i64) !test_harness.TestResult {
+    fn collectResults(self: *WptBrowser, ctx: *Context, start_time: i64, test_path: []const u8) !test_harness.TestResult {
         const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
 
         // Get results JSON
@@ -354,37 +352,34 @@ pub const WptBrowser = struct {
             \\JSON.stringify(window.__wpt_results)
         ;
         const json_result = ctx.evaluateScript(json_script) catch {
-            return test_harness.TestResult{
-                .status = .error_status,
-                .message = try self.allocator.dupe(u8, "Failed to collect test results"),
-                .subtests = &[_]test_harness.SubtestResult{},
-                .duration_ms = duration,
-            };
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = try self.allocator.dupe(u8, "Failed to collect test results");
+            result.duration_ms = duration;
+            return result;
         };
 
         if (json_result) |val| {
             // Convert V8 string to Zig string
             const json_str = self.v8StringToZig(val) catch {
-                return test_harness.TestResult{
-                    .status = .error_status,
-                    .message = try self.allocator.dupe(u8, "Failed to convert results to string"),
-                    .subtests = &[_]test_harness.SubtestResult{},
-                    .duration_ms = duration,
-                };
+                var result = try test_harness.TestResult.init(self.allocator, test_path);
+                result.status = .@"error";
+                result.message = try self.allocator.dupe(u8, "Failed to convert results to string");
+                result.duration_ms = duration;
+                return result;
             };
             defer if (json_str) |s| self.allocator.free(s);
 
             if (json_str) |str| {
-                return try self.parseTestResults(str, duration);
+                return try self.parseTestResults(str, duration, test_path);
             }
         }
 
-        return test_harness.TestResult{
-            .status = .error_status,
-            .message = try self.allocator.dupe(u8, "No test results available"),
-            .subtests = &[_]test_harness.SubtestResult{},
-            .duration_ms = duration,
-        };
+        var result = try test_harness.TestResult.init(self.allocator, test_path);
+        result.status = .@"error";
+        result.message = try self.allocator.dupe(u8, "No test results available");
+        result.duration_ms = duration;
+        return result;
     }
 
     /// Convert V8 string value to Zig string
@@ -397,7 +392,7 @@ pub const WptBrowser = struct {
         }
 
         const str: *v8.ffi.String = @ptrCast(value);
-        const len = v8.ffi.v8_String_Utf8Length(str, null);
+        const len = v8.ffi.v8_String_Utf8Length(str);
         if (len <= 0) {
             return null;
         }
@@ -405,7 +400,7 @@ pub const WptBrowser = struct {
         const buffer = try self.allocator.alloc(u8, @intCast(len));
         errdefer self.allocator.free(buffer);
 
-        const written = v8.ffi.v8_String_WriteUtf8(str, null, buffer.ptr, @intCast(len), null);
+        const written = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
         if (written <= 0) {
             self.allocator.free(buffer);
             return null;
@@ -415,26 +410,24 @@ pub const WptBrowser = struct {
     }
 
     /// Parse JSON test results into TestResult struct
-    fn parseTestResults(self: *WptBrowser, json_str: []const u8, duration: u64) !test_harness.TestResult {
+    fn parseTestResults(self: *WptBrowser, json_str: []const u8, duration: u64, test_path: []const u8) !test_harness.TestResult {
         // Parse JSON
         const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, json_str, .{}) catch {
-            return test_harness.TestResult{
-                .status = .error_status,
-                .message = try self.allocator.dupe(u8, "Failed to parse test results JSON"),
-                .subtests = &[_]test_harness.SubtestResult{},
-                .duration_ms = duration,
-            };
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = try self.allocator.dupe(u8, "Failed to parse test results JSON");
+            result.duration_ms = duration;
+            return result;
         };
         defer parsed.deinit();
 
         const root = parsed.value;
         if (root != .object) {
-            return test_harness.TestResult{
-                .status = .error_status,
-                .message = try self.allocator.dupe(u8, "Invalid test results format"),
-                .subtests = &[_]test_harness.SubtestResult{},
-                .duration_ms = duration,
-            };
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .@"error";
+            result.message = try self.allocator.dupe(u8, "Invalid test results format");
+            result.duration_ms = duration;
+            return result;
         }
 
         // Get harness status
@@ -444,11 +437,11 @@ pub const WptBrowser = struct {
             else => 2, // Error
         } else 2;
 
-        const harness_status: test_harness.TestStatus = switch (status_num) {
+        const harness_status: test_harness.HarnessStatus = switch (status_num) {
             0 => .ok,
-            1 => .error_status,
+            1 => .@"error",
             2 => .timeout,
-            else => .error_status,
+            else => .@"error",
         };
 
         // Get message
@@ -457,9 +450,9 @@ pub const WptBrowser = struct {
             else => null,
         } else null;
 
-        // Get subtests
-        var subtests = std.ArrayList(test_harness.SubtestResult).init(self.allocator);
-        defer subtests.deinit();
+        // Get subtests (Zig 0.15 ArrayList is unmanaged by default)
+        var subtests: std.ArrayList(test_harness.SubtestResult) = .{};
+        defer subtests.deinit(self.allocator);
 
         if (root.object.get("tests")) |tests| {
             if (tests == .array) {
@@ -476,11 +469,11 @@ pub const WptBrowser = struct {
                             else => 2,
                         } else 2;
 
-                        const test_status: test_harness.SubtestStatus = switch (test_status_num) {
+                        const test_status: test_harness.TestStatus = switch (test_status_num) {
                             0 => .pass,
                             1 => .fail,
                             2 => .timeout,
-                            3 => .not_run,
+                            3 => .notrun,
                             else => .fail,
                         };
 
@@ -489,7 +482,7 @@ pub const WptBrowser = struct {
                             else => null,
                         } else null;
 
-                        try subtests.append(.{
+                        try subtests.append(self.allocator, .{
                             .name = name,
                             .status = test_status,
                             .message = test_message,
@@ -499,12 +492,12 @@ pub const WptBrowser = struct {
             }
         }
 
-        return test_harness.TestResult{
-            .status = harness_status,
-            .message = message,
-            .subtests = try subtests.toOwnedSlice(),
-            .duration_ms = duration,
-        };
+        var result = try test_harness.TestResult.init(self.allocator, test_path);
+        result.status = harness_status;
+        result.message = message;
+        result.subtests = subtests;
+        result.duration_ms = duration;
+        return result;
     }
 
     /// Build test URL from path

@@ -266,11 +266,19 @@ pub fn wrapInstanceAsV8Object(
     const instance_template = v8.v8_FunctionTemplate_InstanceTemplate(template);
 
     // Create a new V8 object from the template
-    // This creates an object with the correct prototype chain and internal fields
+    // NOTE: ObjectTemplate::NewInstance() does NOT automatically set up the prototype chain.
+    // We must manually set the prototype after creating the object.
     const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
         // NewInstance can fail if there's a JS exception or the context is invalid
         return error.ObjectCreationFailed;
     };
+
+    // Set the prototype chain: Get the prototype object from the FunctionTemplate
+    // and set it on the newly created object. This is required because
+    // ObjectTemplate::NewInstance() doesn't link the object to its prototype.
+    if (v8.v8_FunctionTemplate_GetPrototypeObject(template, context)) |prototype| {
+        _ = v8.v8_Object_SetPrototypeV2(v8_object, context, @ptrCast(prototype));
+    }
 
     // Store the Zig instance in internal field 0
     v8.v8_Object_SetAlignedPointerInInternalField(

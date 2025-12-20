@@ -1587,6 +1587,12 @@ pub const BrowserContext = struct {
         const isolate = self.isolate orelse return error.NotInitialized;
         const context = self.context orelse return error.NotInitialized;
 
+        // Create HandleScope for V8 operations in this function.
+        // This is needed because Worker isolate enter/exit can corrupt the
+        // persistent_handle_scope. Each script execution creates its own scope.
+        const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
         // Create V8 string from content
         const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, content.ptr, @intCast(content.len)) orelse return error.StringCreateFailed;
 

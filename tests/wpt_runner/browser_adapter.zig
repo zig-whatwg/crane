@@ -13,6 +13,14 @@
 //!
 //! This matches the default behavior of `wpt run` (without --reuse-window flag).
 //!
+//! ## Architecture
+//!
+//! BrowserAdapter -> WptBrowser -> Browser (src/browser/)
+//!
+//! - BrowserAdapter: WPT runner integration (test discovery, result collection)
+//! - WptBrowser: WPT-specific functionality (testharness.js, script loading)
+//! - Browser: Production browser core (V8, DOM, timers, events)
+//!
 //! ## Usage
 //!
 //! ```zig
@@ -27,8 +35,7 @@
 //! ```
 
 const std = @import("std");
-const browser_context = @import("browser_context.zig");
-const BrowserContext = browser_context.BrowserContext;
+const WptBrowser = @import("wpt_browser.zig").WptBrowser;
 
 const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
@@ -37,6 +44,7 @@ const test_harness = @import("test_harness.zig");
 // Browser module for HTTP navigation
 const browser = @import("browser");
 const navigation = browser.navigation;
+const Context = browser.Context;
 
 /// Adapter that provides browser-aligned WPT test execution
 /// with fresh context per test (matching real browser behavior)
@@ -46,16 +54,23 @@ pub const BrowserAdapter = struct {
     wpt_root: []const u8,
     /// Number of tests run (for stats)
     tests_run: usize,
+    /// WPT browser wrapper (wraps core Browser with WPT-specific functionality)
+    wpt_browser: *WptBrowser,
 
     /// Initialize the browser adapter
     pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*BrowserAdapter {
         const adapter = try allocator.create(BrowserAdapter);
         errdefer allocator.destroy(adapter);
 
+        // Create WptBrowser (wraps core Browser with WPT functionality)
+        const wpt_browser = try WptBrowser.init(allocator, wpt_root);
+        errdefer wpt_browser.deinit();
+
         adapter.* = BrowserAdapter{
             .allocator = allocator,
             .wpt_root = try allocator.dupe(u8, wpt_root),
             .tests_run = 0,
+            .wpt_browser = wpt_browser,
         };
 
         return adapter;
@@ -63,6 +78,7 @@ pub const BrowserAdapter = struct {
 
     /// Cleanup the adapter
     pub fn deinit(self: *BrowserAdapter) void {
+        self.wpt_browser.deinit();
         self.allocator.free(self.wpt_root);
         self.allocator.destroy(self);
     }
@@ -83,26 +99,9 @@ pub const BrowserAdapter = struct {
         // No-op: each test gets a fresh context
     }
 
-    /// Run a single WPT test (JavaScript content)
-    ///
-    /// Creates a FRESH V8 context for each test, matching real browser behavior.
-    /// This provides complete JavaScript isolation between tests.
-    ///
-    /// Flow:
-    /// 1. Create new BrowserContext (new V8 isolate + context)
-    /// 2. Load testharness.js
-    /// 3. Execute test script
-    /// 4. Wait for completion
-    /// 5. Cleanup context
-    pub fn runTest(
-        self: *BrowserAdapter,
-        test_path: []const u8,
-        test_content: []const u8,
-        timeout: config.Timeout,
-        context_type: test_parser.GlobalType,
-    ) !test_harness.TestResult {
-        // Map GlobalType (from test_parser) to ContextType (from browser_context)
-        const ctx_type: browser_context.ContextType = switch (context_type) {
+    /// Map GlobalType (from test_parser) to ContextType (from browser)
+    fn mapContextType(context_type: test_parser.GlobalType) browser.ContextType {
+        return switch (context_type) {
             .window => .window,
             .worker => .worker,
             .sharedworker => .shared_worker,
@@ -117,19 +116,41 @@ pub const BrowserAdapter = struct {
             .shadowrealm_in_serviceworker,
             => .window,
         };
+    }
 
-        // Create fresh browser context for this test with the specified context type
-        var ctx = try BrowserContext.init(self.allocator, ctx_type, self.wpt_root);
-        defer ctx.deinit();
+    /// Run a single WPT test (JavaScript content)
+    ///
+    /// Creates a FRESH V8 context for each test, matching real browser behavior.
+    /// This provides complete JavaScript isolation between tests.
+    ///
+    /// Flow:
+    /// 1. Create new context (reuses V8 isolate for performance)
+    /// 2. Load testharness.js
+    /// 3. Execute test script
+    /// 4. Wait for completion
+    /// 5. Cleanup context
+    pub fn runTest(
+        self: *BrowserAdapter,
+        test_path: []const u8,
+        test_content: []const u8,
+        timeout: config.Timeout,
+        context_type: test_parser.GlobalType,
+    ) !test_harness.TestResult {
+        const ctx_type = mapContextType(context_type);
+        const timeout_ms = timeout.toMillis();
 
-        // Initialize V8 isolate and context
-        try ctx.initialize();
-
-        // Load testharness.js
-        try ctx.loadTestHarness();
-
-        // Execute the test
-        const result = try ctx.executeTest(test_path, test_content, timeout);
+        const result = self.wpt_browser.runJSTest(
+            test_path,
+            test_content,
+            timeout_ms,
+            ctx_type,
+        ) catch |err| {
+            // Convert error to TestResult
+            var error_result = try test_harness.TestResult.init(self.allocator, test_path);
+            error_result.status = .@"error";
+            error_result.message = try std.fmt.allocPrint(self.allocator, "Test execution failed: {}", .{err});
+            return error_result;
+        };
 
         self.tests_run += 1;
         return result;
@@ -154,70 +175,22 @@ pub const BrowserAdapter = struct {
         timeout: config.Timeout,
         context_type: test_parser.GlobalType,
     ) !test_harness.TestResult {
-        // Map GlobalType (from test_parser) to ContextType (from browser_context)
-        // HTML tests typically run in window context, but we support the parameter for consistency
-        const ctx_type: browser_context.ContextType = switch (context_type) {
-            .window => .window,
-            .worker => .worker,
-            .sharedworker => .shared_worker,
-            .serviceworker => .service_worker,
-            // ShadowRealm variants map to window for now (not implemented)
-            .shadowrealm,
-            .shadowrealm_in_window,
-            .shadowrealm_in_dedicatedworker,
-            .shadowrealm_in_sharedworker,
-            .shadowrealm_in_shadowrealm,
-            .shadowrealm_in_audioworklet,
-            .shadowrealm_in_serviceworker,
-            => .window,
-        };
-
-        // Create fresh browser context for this test with the specified context type
-        var ctx = try BrowserContext.init(self.allocator, ctx_type, self.wpt_root);
-        defer ctx.deinit();
-
-        // Initialize V8 isolate and context
-        try ctx.initialize();
-
-        // NOTE: We do NOT pre-load testharness.js here.
-        // The HTML test file will load it via <script src="/resources/testharness.js">.
-        // Our script loader intercepts /resources/testharnessreport.js and returns
-        // our custom version that registers the result callbacks.
-        // This ensures callbacks are registered with the correct testharness.js instance.
-
-        // Start tracking results for this test file
-        try ctx.result_collector.startTest(test_path);
-
-        // Set result collector for V8 callbacks
-        browser_context.setResultCollector(&ctx.result_collector);
-        defer browser_context.clearResultCollector();
-
-        // Set WPT root, test path, and base URL for URL resolution
-        browser_context.setWptRoot(self.wpt_root);
-        browser_context.setCurrentTestPath(test_path);
-        browser_context.setCurrentBaseUrl(test_path);
-
-        // Parse HTML and build DOM - scripts execute during parsing
-        // DOMContentLoaded is fired by the parser after deferred scripts execute
-        // (per HTML Standard §13.2.7 "The end")
-        ctx.loadHTMLDocument(html_content, test_path) catch |err| {
-            std.debug.print("HTML parse error for {s}: {}\n", .{ test_path, err });
-            // Return a failed result
-            var result = try test_harness.TestResult.init(self.allocator, test_path);
-            result.status = .@"error";
-            result.message = "HTML parsing failed";
-            return result;
-        };
-
-        // Trigger testharness.js completion
-        try ctx.triggerTestHarnessCompletion();
-
-        // Run event loop until completion or timeout
+        const ctx_type = mapContextType(context_type);
         const timeout_ms = timeout.toMillis();
-        try ctx.runEventLoop(timeout_ms);
 
-        // Collect and return results
-        const result = ctx.result_collector.finalize(self.allocator, test_path);
+        const result = self.wpt_browser.runHTMLTest(
+            test_path,
+            html_content,
+            test_path, // Use test_path as base URL
+            timeout_ms,
+            ctx_type,
+        ) catch |err| {
+            // Convert error to TestResult
+            var error_result = try test_harness.TestResult.init(self.allocator, test_path);
+            error_result.status = .@"error";
+            error_result.message = try std.fmt.allocPrint(self.allocator, "HTML test execution failed: {}", .{err});
+            return error_result;
+        };
 
         self.tests_run += 1;
         return result;
@@ -235,70 +208,22 @@ pub const BrowserAdapter = struct {
         context_type: test_parser.GlobalType,
         base_url: []const u8,
     ) !test_harness.TestResult {
-        // Map GlobalType (from test_parser) to ContextType (from browser_context)
-        // HTML tests typically run in window context, but we support the parameter for consistency
-        const ctx_type: browser_context.ContextType = switch (context_type) {
-            .window => .window,
-            .worker => .worker,
-            .sharedworker => .shared_worker,
-            .serviceworker => .service_worker,
-            // ShadowRealm variants map to window for now (not implemented)
-            .shadowrealm,
-            .shadowrealm_in_window,
-            .shadowrealm_in_dedicatedworker,
-            .shadowrealm_in_sharedworker,
-            .shadowrealm_in_shadowrealm,
-            .shadowrealm_in_audioworklet,
-            .shadowrealm_in_serviceworker,
-            => .window,
-        };
-
-        // Create fresh browser context for this test with the specified context type
-        var ctx = try BrowserContext.init(self.allocator, ctx_type, self.wpt_root);
-        defer ctx.deinit();
-
-        // Initialize V8 isolate and context
-        try ctx.initialize();
-
-        // NOTE: We do NOT pre-load testharness.js here.
-        // The HTML test file will load it via <script src="/resources/testharness.js">.
-        // Our script loader intercepts /resources/testharnessreport.js and returns
-        // our custom version that registers the result callbacks.
-        // This ensures callbacks are registered with the correct testharness.js instance.
-
-        // Start tracking results for this test file
-        try ctx.result_collector.startTest(test_path);
-
-        // Set result collector for V8 callbacks
-        browser_context.setResultCollector(&ctx.result_collector);
-        defer browser_context.clearResultCollector();
-
-        // Set WPT root, test path, and base URL for URL resolution
-        browser_context.setWptRoot(self.wpt_root);
-        browser_context.setCurrentTestPath(test_path);
-        browser_context.setCurrentBaseUrl(base_url);
-
-        // Parse HTML and build DOM - scripts execute during parsing
-        // DOMContentLoaded is fired by the parser after deferred scripts execute
-        // (per HTML Standard §13.2.7 "The end")
-        ctx.loadHTMLDocument(html_content, base_url) catch |err| {
-            std.debug.print("HTML parse error for {s}: {}\n", .{ test_path, err });
-            // Return a failed result
-            var result = try test_harness.TestResult.init(self.allocator, test_path);
-            result.status = .@"error";
-            result.message = "HTML parsing failed";
-            return result;
-        };
-
-        // Trigger testharness.js completion
-        try ctx.triggerTestHarnessCompletion();
-
-        // Run event loop until completion or timeout
+        const ctx_type = mapContextType(context_type);
         const timeout_ms = timeout.toMillis();
-        try ctx.runEventLoop(timeout_ms);
 
-        // Collect and return results
-        const result = ctx.result_collector.finalize(self.allocator, test_path);
+        const result = self.wpt_browser.runHTMLTest(
+            test_path,
+            html_content,
+            base_url,
+            timeout_ms,
+            ctx_type,
+        ) catch |err| {
+            // Convert error to TestResult
+            var error_result = try test_harness.TestResult.init(self.allocator, test_path);
+            error_result.status = .@"error";
+            error_result.message = try std.fmt.allocPrint(self.allocator, "HTML test execution failed: {}", .{err});
+            return error_result;
+        };
 
         self.tests_run += 1;
         return result;

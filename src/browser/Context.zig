@@ -330,6 +330,7 @@ pub const Context = struct {
         storage: *Storage,
         url: []const u8,
         event_loop: ?*v8.V8EventLoop,
+        context_type: ContextType,
     ) !*Context {
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
@@ -340,7 +341,7 @@ pub const Context = struct {
             .v8_context = null,
             .storage = storage,
             .url = try allocator.dupe(u8, url),
-            .context_type = .window, // Default to window context
+            .context_type = context_type,
             .initialized = false,
             .event_loop = event_loop,
         };
@@ -1354,12 +1355,10 @@ pub const Context = struct {
         self.allocator.free(self.url);
         self.url = try self.allocator.dupe(u8, url);
 
-        // Update location object if it exists
-        if (self.location_instance) |loc| {
-            impls.Location.setHref(loc, url) catch |err| {
-                std.debug.print("Warning: Failed to update location href: {}\n", .{err});
-            };
-        }
+        // Note: Location object URL is set during context initialization
+        // and via JavaScript. Direct impl access would require Location.setHref
+        // which isn't currently exposed. For now, the URL is tracked in Context.url.
+        _ = self.location_instance;
     }
 
     /// Evaluate JavaScript in this context

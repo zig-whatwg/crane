@@ -164,8 +164,8 @@ pub export fn whatwg_browser_destroy(b: ?*WhatwgBrowser) callconv(.c) void {
 pub export fn whatwg_browser_navigate(b: ?*WhatwgBrowser, url_cstr: [*:0]const u8) callconv(.c) i32 {
     if (b) |ptr| {
         const url_slice = std.mem.span(url_cstr);
-        // navigate() takes only the URL, no second argument
-        ptr.navigate(url_slice) catch |err| {
+        // navigate() takes URL and context type (default to window)
+        ptr.navigate(url_slice, .window) catch |err| {
             return switch (err) {
                 error.OutOfMemory => -1,
                 error.NotInitialized => -2,

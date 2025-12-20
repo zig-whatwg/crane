@@ -124,7 +124,7 @@ pub const Browser = struct {
 
         // Navigate to initial URL if specified
         if (config.initial_url) |url| {
-            try browser.navigate(url);
+            try browser.navigate(url, .window);
         }
 
         return browser;
@@ -192,7 +192,7 @@ pub const Browser = struct {
     /// 4. Fetch URL content
     /// 5. Parse HTML and execute scripts
     /// 6. Fire DOMContentLoaded and load events
-    pub fn navigate(self: *Browser, url: []const u8) !void {
+    pub fn navigate(self: *Browser, url: []const u8, context_type: context_mod.ContextType) !void {
         const isolate = self.isolate orelse return error.NotInitialized;
 
         // Destroy current context if any
@@ -209,6 +209,7 @@ pub const Browser = struct {
             self.storage,
             url,
             self.event_loop,
+            context_type,
         );
         errdefer {
             ctx.deinit();
@@ -227,8 +228,9 @@ pub const Browser = struct {
     pub fn reload(self: *Browser) !void {
         const ctx = self.current_context orelse return error.NoContext;
         const url = try self.allocator.dupe(u8, ctx.url);
+        const context_type = ctx.context_type;
         defer self.allocator.free(url);
-        try self.navigate(url);
+        try self.navigate(url, context_type);
     }
 
     /// Evaluate JavaScript in the current context
