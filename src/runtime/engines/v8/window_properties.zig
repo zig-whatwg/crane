@@ -60,7 +60,7 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     v8.v8_FunctionTemplate_SetClassName(tpl, name.?);
 
     // Set up inheritance: WindowProperties inherits from EventTarget
-    // This sets up the prototype chain at template level, avoiding JavaScript calls
+    // This ensures WindowProperties instance's [[Prototype]] chain includes EventTarget.prototype
     const interface_bindings = @import("interface_bindings.zig");
     const event_target_tpl = interface_bindings.EventTarget.createTemplate(isolate);
     v8.v8_FunctionTemplate_Inherit(tpl, event_target_tpl);
@@ -79,8 +79,8 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
         .kOnlyInterceptStrings,
     );
 
-    // Mark WindowProperties instances as immutable prototype exotic objects
-    // Per WebIDL §3.7.4, all objects in global prototype chain must have immutable [[Prototype]]
+    // Mark WindowProperties instances as having immutable [[Prototype]]
+    // Per WebIDL §3.7.4, the named properties object's prototype is immutable
     v8.v8_ObjectTemplate_SetImmutableProto(instance_tpl);
 
     const proto_tmpl = v8.v8_FunctionTemplate_PrototypeTemplate(tpl);
@@ -127,8 +127,9 @@ pub fn insertIntoPrototypeChain(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) bool {
-    // The prototype chain is now set up at template level via SetPrototypeProviderTemplate.
+    // The prototype chain is set up at template level via SetPrototypeProviderTemplate.
     // We just need to ensure Symbol.toStringTag is set correctly on WindowProperties in the chain.
+
     // Get Window.prototype from the chain
     const global = v8.v8_Context_Global(context) orelse return false;
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse return false;

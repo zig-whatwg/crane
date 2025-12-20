@@ -975,10 +975,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 null,
             ).?;
 
-            const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
-            // For Window, set up prototype chain at template level using WindowProperties
+            // For Window, set up prototype chain at template level using WindowProperties.
             // This ensures the chain is: Window.prototype → WindowProperties → EventTarget.prototype
-            // and allows all prototypes to be immutable (set via SetImmutableProto)
+            // and allows all prototypes to be immutable (required by global-immutable-prototype test).
+            const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
             if (is_window_interface) {
                 const wp_tpl = window_properties.getTemplate(isolate);
                 v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(template, wp_tpl);
@@ -1057,9 +1057,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Per WebIDL spec §3.8, all objects in the global prototype chain must have
             // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
-            // Some specific interfaces also require immutable prototypes (e.g., Location).
-            // Window now uses SetPrototypeProviderTemplate for its chain, so we CAN set
-            // immutable proto on its template (no more dynamic JS prototype changes needed).
+            // Most interfaces get immutable prototypes. Window is included because we use
+            // SetPrototypeProviderTemplate to set up the chain at template level.
+            // Exception: DOMException (special case per WebIDL spec)
             const has_immutable_proto = (comptime std.mem.eql(u8, interface_name, "Location") or
                 (std.mem.eql(u8, interface_name, "DOMException") == false));
 
