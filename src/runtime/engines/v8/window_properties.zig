@@ -120,16 +120,12 @@ pub fn create(
 /// named properties, the prototype chain must be:
 ///   global → Window.prototype → WindowProperties → EventTarget.prototype → Object.prototype
 ///
-/// With SetPrototypeProviderTemplate, the chain Window.prototype → WindowProperties → EventTarget.prototype
-/// is set up at template creation time. This function only needs to set @@toStringTag on the
-/// WindowProperties object in the chain for proper Object.prototype.toString behavior.
+/// This function manually inserts a WindowProperties instance into the chain
+/// since SetPrototypeProviderTemplate may not work as expected for all cases.
 pub fn insertIntoPrototypeChain(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) bool {
-    // The prototype chain is set up at template level via SetPrototypeProviderTemplate.
-    // We just need to ensure Symbol.toStringTag is set correctly on WindowProperties in the chain.
-
     // Get Window.prototype from the chain
     const global = v8.v8_Context_Global(context) orelse return false;
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse return false;
@@ -140,15 +136,19 @@ pub fn insertIntoPrototypeChain(
     const window_proto_val = v8.v8_Object_Get(window_ctor, context, @ptrCast(proto_key)) orelse return false;
     const window_proto = helpers.asObject(window_proto_val) orelse return false;
 
-    // Get WindowProperties (Window.prototype's [[Prototype]])
-    const wp_val = v8.v8_Object_GetPrototype(window_proto) orelse return false;
-    const wp = helpers.asObject(wp_val) orelse return false;
+    // Get EventTarget.prototype (current prototype of Window.prototype)
+    const current_proto_val = v8.v8_Object_GetPrototype(window_proto) orelse return false;
+    const event_target_proto = helpers.asObject(current_proto_val) orelse return false;
 
-    // Set Symbol.toStringTag on WindowProperties for proper toString behavior
-    if (v8.v8_Symbol_GetToStringTag(isolate)) |tag_symbol| {
-        const tag_val = v8.v8_String_NewFromUtf8(isolate, "WindowProperties", 16);
-        _ = v8.v8_Object_DefineProperty(wp, context, @ptrCast(tag_symbol), @ptrCast(tag_val), false, false, true);
-    }
+    // Create a new WindowProperties instance
+    const wp = create(isolate, context, event_target_proto) orelse return false;
+
+    // Set WindowProperties's prototype to EventTarget.prototype
+    _ = v8.v8_Object_SetPrototype(wp, context, @ptrCast(event_target_proto));
+
+    // Insert WindowProperties between Window.prototype and EventTarget.prototype
+    // Window.prototype.__proto__ = WindowProperties
+    _ = v8.v8_Object_SetPrototype(window_proto, context, @ptrCast(wp));
 
     return true;
 }
@@ -158,10 +158,25 @@ pub fn insertIntoPrototypeChain(
 // ============================================================================
 
 /// Get Window instance from the current context
-fn getWindowInstance(context: *v8.Context) ?*runtime.Instance {
+/// With SetPrototypeProviderTemplate, WindowProperties is shared across all Window instances.
+/// We use the current context (not the holder's creation context) to get the correct Window.
+fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.Instance {
+    // Use the current context, not the holder's creation context.
+    // With SetPrototypeProviderTemplate, the holder is shared across all contexts,
+    // so GetCreationContext would return the first context where the template was used.
+    const isolate = info.getIsolate();
+    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+
+    // Get the Window from that context's global
     const global = v8.v8_Context_Global(context) orelse return null;
     const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
     return @ptrCast(@alignCast(ptr));
+}
+
+/// Get the current context for WindowProperties operations
+fn getContextFromHolder(info: *const v8.PropertyCallbackInfo) ?*v8.Context {
+    const isolate = info.getIsolate();
+    return v8.v8_Isolate_GetCurrentContext(isolate);
 }
 
 /// Convert V8 Name to native string
@@ -179,8 +194,8 @@ fn namedPropertyGetter(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
-    const window = getWindowInstance(context) orelse return .kNo;
+    const window = getWindowInstanceFromHolder(info) orelse return .kNo;
+    const context = getContextFromHolder(info) orelse return .kNo;
 
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
@@ -213,8 +228,7 @@ fn namedPropertyQuery(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
-    const window = getWindowInstance(context) orelse return .kNo;
+    const window = getWindowInstanceFromHolder(info) orelse return .kNo;
 
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
@@ -242,8 +256,8 @@ fn namedPropertyEnumerator(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {
     const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    const window = getWindowInstance(context) orelse return;
+    const window = getWindowInstanceFromHolder(info) orelse return;
+    const context = getContextFromHolder(info) orelse return;
 
     const runtime_ctx = context_manager.get(context) orelse return;
     const allocator = runtime_ctx.getAllocator();
@@ -270,8 +284,8 @@ fn namedPropertyDescriptor(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
-    const window = getWindowInstance(context) orelse return .kNo;
+    const window = getWindowInstanceFromHolder(info) orelse return .kNo;
+    const context = getContextFromHolder(info) orelse return .kNo;
 
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;

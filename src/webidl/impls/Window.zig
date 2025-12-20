@@ -3623,6 +3623,204 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
 // Named Property Access Support (for WindowProperties object)
 // ============================================================================
 
+// Import Element and Node impls for internal state access
+const ElementImpl = @import("Element.zig");
+const NodeImpl = @import("Node.zig");
+
+/// Element types that participate in named access via the "name" attribute.
+/// Per HTML spec §7.4 "Named access on the Window object":
+/// - embed, form, img, object: name attribute exposes the element
+/// - iframe, frame, object: name attribute exposes the nested browsing context (if any)
+const named_element_types = [_][]const u8{
+    "a",
+    "embed",
+    "form",
+    "img",
+    "object",
+};
+
+/// Element types whose name attribute exposes a browsing context
+const browsing_context_element_types = [_][]const u8{
+    "iframe",
+    "frame",
+    "object",
+};
+
+/// Check if an element type uses the name attribute for named property access
+fn isNamedElementType(local_name: []const u8) bool {
+    for (named_element_types) |t| {
+        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
+    }
+    for (browsing_context_element_types) |t| {
+        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
+    }
+    return false;
+}
+
+/// Check if the element should return a browsing context (contentWindow) for named access
+fn shouldReturnBrowsingContext(local_name: []const u8) bool {
+    for (browsing_context_element_types) |t| {
+        if (std.ascii.eqlIgnoreCase(local_name, t)) return true;
+    }
+    return false;
+}
+
+/// Get the "name" attribute value from an element, if it has one
+fn getElementName(elem_internal: *const ElementImpl.InternalState) ?[]const u8 {
+    if (elem_internal.findAttribute(null, "name")) |entry| {
+        if (entry.value.len > 0) {
+            return entry.value;
+        }
+    }
+    return null;
+}
+
+/// Search the document tree for elements matching the given name.
+/// Returns the first matching element (or its browsing context for iframe/frame).
+fn findNamedElement(document: *runtime.Instance, name: []const u8) ?runtime.JSValue {
+    // Traverse tree in tree order (preorder depth-first)
+    return findNamedElementRecursive(document, name);
+}
+
+fn findNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) ?runtime.JSValue {
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                const local_name = elem_internal.local_name.asSlice();
+
+                // Check 1: Does element have id matching target_name?
+                const elem_id = elem_internal.id.asSlice();
+                if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
+                    // For iframe/frame, return contentWindow
+                    if (shouldReturnBrowsingContext(local_name)) {
+                        if (getIframeContentWindow(c)) |window_val| {
+                            return window_val;
+                        }
+                    }
+                    // Return the element itself
+                    return runtime.JSValue.fromInstance(c);
+                }
+
+                // Check 2: Does element have name attribute matching target_name?
+                // Only certain element types participate in named property access via name attr
+                if (isNamedElementType(local_name)) {
+                    if (getElementName(elem_internal)) |element_name| {
+                        if (std.mem.eql(u8, element_name, target_name)) {
+                            // For iframe/frame/object, return contentWindow
+                            if (shouldReturnBrowsingContext(local_name)) {
+                                if (getIframeContentWindow(c)) |window_val| {
+                                    return window_val;
+                                }
+                            }
+                            // Return the element itself
+                            return runtime.JSValue.fromInstance(c);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively search descendants
+        if (findNamedElementRecursive(c, target_name)) |found| {
+            return found;
+        }
+
+        child = NodeImpl.getNextSibling(c);
+    }
+    return null;
+}
+
+/// Get the contentWindow from an iframe element
+fn getIframeContentWindow(iframe_element: *runtime.Instance) ?runtime.JSValue {
+    // Try to get HTMLIFrameElement's contentWindow via the interface
+    // This handles all the lazy initialization and V8 context creation
+    const HTMLIFrameElement = interfaces.HTMLIFrameElement;
+    const window_proxy = HTMLIFrameElement.get_contentWindow(iframe_element) catch return null;
+    if (window_proxy) |wp| {
+        // WindowProxy is defined as ?*const anyopaque, convert to JSValue
+        return runtime.JSValue.fromInstanceAnyopaque(@ptrCast(@constCast(wp)));
+    }
+    return null;
+}
+
+/// Check if an element matches the target name (by id or name attribute)
+fn elementMatchesName(elem_internal: *const ElementImpl.InternalState, target_name: []const u8) bool {
+    // Check id attribute
+    const elem_id = elem_internal.id.asSlice();
+    if (elem_id.len > 0 and std.mem.eql(u8, elem_id, target_name)) {
+        return true;
+    }
+
+    // Check name attribute for specific element types
+    const local_name = elem_internal.local_name.asSlice();
+    if (isNamedElementType(local_name)) {
+        if (getElementName(elem_internal)) |element_name| {
+            if (std.mem.eql(u8, element_name, target_name)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/// Recursively check if document contains an element matching the name
+fn hasNamedElementRecursive(node: *runtime.Instance, target_name: []const u8) bool {
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                if (elementMatchesName(elem_internal, target_name)) {
+                    return true;
+                }
+            }
+        }
+
+        // Recursively search descendants
+        if (hasNamedElementRecursive(c, target_name)) {
+            return true;
+        }
+
+        child = NodeImpl.getNextSibling(c);
+    }
+    return false;
+}
+
+/// Collect all named property names from the document (for enumeration)
+fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runtime.DOMString), allocator: std.mem.Allocator) !void {
+    var child = NodeImpl.getFirstChild(node);
+    while (child) |c| {
+        const node_type = NodeImpl.getNodeType(c) orelse 0;
+        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
+            if (ElementImpl.getInternal(c)) |elem_internal| {
+                // Add id if present
+                const elem_id = elem_internal.id.asSlice();
+                if (elem_id.len > 0) {
+                    const name = try runtime.DOMString.initDupe(allocator, elem_id);
+                    try names.append(allocator, name);
+                }
+
+                // Add name attribute if element type participates
+                const local_name = elem_internal.local_name.asSlice();
+                if (isNamedElementType(local_name)) {
+                    if (getElementName(elem_internal)) |element_name| {
+                        const name = try runtime.DOMString.initDupe(allocator, element_name);
+                        try names.append(allocator, name);
+                    }
+                }
+            }
+        }
+
+        // Recursively collect from descendants
+        try collectNamedElementNames(c, names, allocator);
+
+        child = NodeImpl.getNextSibling(c);
+    }
+}
+
 /// Get a named property by name.
 /// This is called by window_properties.zig for the WindowProperties named property getter.
 /// Named properties on Window include:
@@ -3641,12 +3839,21 @@ pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!
         }
     }
 
-    // TODO: Check document for named elements (elements with matching id or name attributes)
-    // This would require searching the document for:
-    // 1. Elements with id="name"
-    // 2. Elements with name="name" (for certain element types like form, iframe, etc.)
-    //
-    // For now, return null to indicate property not found
+    // Check document for named elements (elements with matching id or name attributes)
+    // The document might be stored in internal.document, OR we might need to get it from the
+    // browsing context's active document
+    const document = internal.document orelse blk: {
+        // Try to get document from browsing context if not cached in Window
+        // The browsing context's active document should be accessible
+        break :blk null;
+    };
+
+    if (document) |doc| {
+        if (findNamedElement(doc, name)) |result| {
+            return result;
+        }
+    }
+
     return null;
 }
 
@@ -3662,7 +3869,13 @@ pub fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
         }
     }
 
-    // TODO: Check document for named elements
+    // Check document for named elements
+    if (internal.document) |document| {
+        if (hasNamedElementRecursive(document, name)) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -3686,7 +3899,10 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
         }
     }
 
-    // TODO: Add named elements from document
+    // Add named elements from document
+    if (internal.document) |document| {
+        try collectNamedElementNames(document, &names, allocator);
+    }
 
     return names.toOwnedSlice(allocator);
 }

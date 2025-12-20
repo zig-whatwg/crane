@@ -975,14 +975,12 @@ pub fn V8Interface(comptime Interface: type) type {
                 null,
             ).?;
 
-            // For Window, set up prototype chain at template level using WindowProperties.
-            // This ensures the chain is: Window.prototype → WindowProperties → EventTarget.prototype
-            // and allows all prototypes to be immutable (required by global-immutable-prototype test).
-            const is_window_interface = comptime std.mem.eql(u8, interface_name, "Window");
-            if (is_window_interface) {
-                const wp_tpl = window_properties.getTemplate(isolate);
-                v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(template, wp_tpl);
-            }
+            // NOTE: Window's prototype chain is set up manually in interface_bindings.zig
+            // via window_properties.insertIntoPrototypeChain() AFTER the context is created.
+            // This is necessary because we need to insert a WindowProperties INSTANCE
+            // (not WindowProperties.prototype) into the chain.
+            // SetPrototypeProviderTemplate is NOT used because it uses the provider's
+            // .prototype property, not an instance.
 
             // Set class name
             const name_str = v8.v8_String_NewFromUtf8(
@@ -1057,11 +1055,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Per WebIDL spec §3.8, all objects in the global prototype chain must have
             // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
-            // Most interfaces get immutable prototypes. Window is included because we use
-            // SetPrototypeProviderTemplate to set up the chain at template level.
+            // Most interfaces get immutable prototypes.
             // Exception: DOMException (special case per WebIDL spec)
-            const has_immutable_proto = (comptime std.mem.eql(u8, interface_name, "Location") or
-                (std.mem.eql(u8, interface_name, "DOMException") == false));
+            // Exception: Window - we need to modify Window.prototype's [[Prototype]] after creation
+            //   to insert WindowProperties into the chain. Immutability is set in window_properties.zig
+            //   AFTER the chain is set up.
+            const has_immutable_proto = comptime !(std.mem.eql(u8, interface_name, "DOMException") or
+                std.mem.eql(u8, interface_name, "Window"));
 
             if (has_immutable_proto) {
                 v8.v8_ObjectTemplate_SetImmutableProto(proto_tmpl);
@@ -1305,33 +1305,33 @@ pub fn V8Interface(comptime Interface: type) type {
             // Use ParentInterface (the actual interface type) for prototype chain setup
             // ParentInterface is set when BaseType is an embedded state struct
             //
-            // SPECIAL CASE: Window prototype chain was set up above using provider template
-            if (!is_window_interface) {
-                if (@hasDecl(Meta, "ParentInterface")) {
-                    const ParentType = Meta.ParentInterface;
-                    if (@hasDecl(ParentType, "Meta")) {
-                        // Create parent template
-                        const ParentBinding = V8Interface(ParentType);
-                        const parent_template = ParentBinding.createTemplate(isolate);
+            // Window goes through normal inheritance (→ EventTarget).
+            // WindowProperties is inserted into the chain manually in interface_bindings.zig
+            // AFTER the context is created.
+            if (@hasDecl(Meta, "ParentInterface")) {
+                const ParentType = Meta.ParentInterface;
+                if (@hasDecl(ParentType, "Meta")) {
+                    // Create parent template
+                    const ParentBinding = V8Interface(ParentType);
+                    const parent_template = ParentBinding.createTemplate(isolate);
 
-                        // Set up prototype chain
-                        v8.v8_FunctionTemplate_Inherit(template, parent_template);
-                    }
-                } else if (comptime @typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
-                    // BaseType is ?type - check if it's non-null
-                    if (comptime Meta.BaseType) |BaseType| {
-                        // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
-                        const BaseTypeInfo = @typeInfo(BaseType);
-                        if (BaseTypeInfo == .pointer) {
-                            const ChildType = BaseTypeInfo.pointer.child;
-                            if (@hasDecl(ChildType, "Meta")) {
-                                // Create parent template
-                                const ParentBinding = V8Interface(ChildType);
-                                const parent_template = ParentBinding.createTemplate(isolate);
+                    // Set up prototype chain
+                    v8.v8_FunctionTemplate_Inherit(template, parent_template);
+                }
+            } else if (comptime @typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
+                // BaseType is ?type - check if it's non-null
+                if (comptime Meta.BaseType) |BaseType| {
+                    // Fallback: check if BaseType is a pointer to an interface (for backwards compatibility)
+                    const BaseTypeInfo = @typeInfo(BaseType);
+                    if (BaseTypeInfo == .pointer) {
+                        const ChildType = BaseTypeInfo.pointer.child;
+                        if (@hasDecl(ChildType, "Meta")) {
+                            // Create parent template
+                            const ParentBinding = V8Interface(ChildType);
+                            const parent_template = ParentBinding.createTemplate(isolate);
 
-                                // Set up prototype chain
-                                v8.v8_FunctionTemplate_Inherit(template, parent_template);
-                            }
+                            // Set up prototype chain
+                            v8.v8_FunctionTemplate_Inherit(template, parent_template);
                         }
                     }
                 }
