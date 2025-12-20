@@ -214,6 +214,30 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
     }
 }
 
+/// Document creation callback for iframe navigation
+/// Called when navigateToSrcDoc or navigateToSrc needs to create a Document instance.
+/// Parameters: (runtime_context, browsing_context) -> document_instance
+fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext) ?*anyopaque {
+    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse return null));
+    const allocator = runtime_ctx.allocator;
+
+    // Create a Document instance using the WebIDL interface
+    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch return null;
+
+    // Get the active window for this browsing context to associate with the document
+    if (browsing_ctx_ptr.getActiveWindow()) |window_ptr| {
+        // Set the document on the browsing context
+        browsing_ctx_ptr.setActiveDocument(document_instance, window_ptr);
+
+        // Also set the document on the Window
+        const WindowImpl = @import("Window.zig");
+        const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+        WindowImpl.setDocument(window_instance, document_instance);
+    }
+
+    return document_instance;
+}
+
 /// Getter for contentWindow
 /// Returns the WindowProxy for the nested browsing context, or null if none.
 ///
@@ -306,6 +330,8 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             @ptrCast(entry.v8_ctx),
             @ptrCast(entry.realm),
             @ptrCast(entry),
+            @ptrCast(&entry.runtime_ctx),
+            createDocumentForIframe,
             iframeContextCleanup,
         );
     }

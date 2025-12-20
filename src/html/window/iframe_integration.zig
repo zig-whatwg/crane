@@ -256,6 +256,15 @@ pub const IFrameIntegration = struct {
     /// Opaque pointer to cleanup data (e.g., ContextEntry* for cleanup)
     context_cleanup_data: ?*anyopaque,
 
+    /// Opaque pointer to the runtime context (e.g., runtime.Context*)
+    /// Used for creating Document instances during navigation
+    runtime_context: ?*anyopaque,
+
+    /// Callback to create a Document instance from the runtime context
+    /// Parameters: (runtime_context, browsing_context) -> document_instance
+    /// Set by modules with WebIDL interface access (e.g., impls/HTMLIFrameElement.zig)
+    create_document_callback: ?*const fn (?*anyopaque, *BrowsingContext) ?*anyopaque,
+
     /// Callback to clean up the realm and context
     /// Set by the module that created the context
     cleanup_callback: ?*const fn (*IFrameIntegration) void,
@@ -282,6 +291,8 @@ pub const IFrameIntegration = struct {
             .engine_context = null,
             .realm = null,
             .context_cleanup_data = null,
+            .runtime_context = null,
+            .create_document_callback = null,
             .cleanup_callback = null,
             .cleanup_in_progress = false,
         };
@@ -323,19 +334,24 @@ pub const IFrameIntegration = struct {
     ///
     /// Parameters:
     /// - context: Opaque pointer to engine context (e.g., V8 Context*)
-    /// - realm_ptr: Opaque pointer to realm (e.g., runtime.Realm*)
+    /// - realm_ptr: Opaque pointer to realm (e.e., runtime.Realm*)
     /// - cleanup_data: Opaque pointer to cleanup data (e.g., ContextEntry*)
+    /// - runtime_ctx: Opaque pointer to runtime context (e.g., runtime.Context*)
     /// - cleanup_fn: Callback to clean up context when iframe is removed
     pub fn setRealmContext(
         self: *IFrameIntegration,
         context: ?*anyopaque,
         realm_ptr: ?*anyopaque,
         cleanup_data: ?*anyopaque,
+        runtime_ctx: ?*anyopaque,
+        create_doc_fn: ?*const fn (?*anyopaque, *BrowsingContext) ?*anyopaque,
         cleanup_fn: ?*const fn (*IFrameIntegration) void,
     ) void {
         self.engine_context = context;
         self.realm = realm_ptr;
         self.context_cleanup_data = cleanup_data;
+        self.runtime_context = runtime_ctx;
+        self.create_document_callback = create_doc_fn;
         self.cleanup_callback = cleanup_fn;
     }
 
@@ -358,6 +374,8 @@ pub const IFrameIntegration = struct {
         self.engine_context = null;
         self.realm = null;
         self.context_cleanup_data = null;
+        self.runtime_context = null;
+        self.create_document_callback = null;
         self.cleanup_callback = null;
         // Note: cleanup_in_progress stays true to prevent any further cleanup attempts
     }
@@ -531,16 +549,14 @@ pub const IFrameIntegration = struct {
             self.allocator.destroy(tree_builder);
         }
 
-        // TODO: Convert TreeBuilder.document to runtime.Instance when we have
-        // full Document interface implementation. The parsed DOM tree exists
-        // in tree_builder.document but we need runtime.Instance for storage.
-        //
-        // When Document interface is fully implemented:
-        //   const doc = try createDocumentFromTreeBuilder(self.allocator, tree_builder);
-        //   const window = try createWindowForDocument(self.allocator, doc);
-        //   if (self.browsing_context) |ctx| {
-        //       ctx.setActiveDocument(doc, window);
-        //   }
+        // Create a Document instance using the callback if available.
+        // The callback handles creating the runtime.Instance and linking it
+        // to the BrowsingContext and Window.
+        if (self.create_document_callback) |create_doc| {
+            if (self.browsing_context) |ctx| {
+                _ = create_doc(self.runtime_context, ctx);
+            }
+        }
 
         self.state = .ready;
     }
@@ -615,17 +631,14 @@ pub const IFrameIntegration = struct {
         // Store encoding info for potential use by scripts
         _ = detected_encoding;
 
-        // TODO: Convert TreeBuilder.document to runtime.Instance when we have
-        // full Document interface implementation. For now, the parsed DOM tree
-        // exists in tree_builder.document (TreeNode) but we can't store it
-        // in browsing_context.active_document (requires runtime.Instance).
-        //
-        // When Document interface is fully implemented:
-        //   const doc = try createDocumentFromTreeBuilder(self.allocator, tree_builder);
-        //   const window = try createWindowForDocument(self.allocator, doc);
-        //   if (self.browsing_context) |ctx| {
-        //       ctx.setActiveDocument(doc, window);
-        //   }
+        // Create a Document instance using the callback if available.
+        // The callback handles creating the runtime.Instance and linking it
+        // to the BrowsingContext and Window.
+        if (self.create_document_callback) |create_doc| {
+            if (self.browsing_context) |ctx| {
+                _ = create_doc(self.runtime_context, ctx);
+            }
+        }
 
         self.state = .ready;
     }
