@@ -6152,24 +6152,12 @@ void LegacyPlatformObjectOwnKeys(const FunctionCallbackInfo<Value>& info) {
         }
     }
     
-    // Get named property names from the interceptor
-    std::set<std::string> named_set;
-    PropertyFilter filter = static_cast<PropertyFilter>(
-        PropertyFilter::ONLY_ENUMERABLE | PropertyFilter::SKIP_SYMBOLS
-    );
-    MaybeLocal<Array> maybe_named = target->GetPropertyNames(
-        context, KeyCollectionMode::kOwnOnly, filter, IndexFilter::kSkipIndices
-    );
-    if (!maybe_named.IsEmpty()) {
-        Local<Array> named_arr = maybe_named.ToLocalChecked();
-        for (uint32_t i = 0; i < named_arr->Length(); i++) {
-            MaybeLocal<Value> mk = named_arr->Get(context, i);
-            if (!mk.IsEmpty() && mk.ToLocalChecked()->IsString()) {
-                String::Utf8Value utf8(isolate, mk.ToLocalChecked());
-                named_set.insert(std::string(*utf8));
-            }
-        }
-    }
+    // NOTE: We intentionally do NOT call target->GetPropertyNames() here.
+    // V8's KeyAccumulator::FilterForEnumerableProperties expects all keys to be
+    // Name objects (String or Symbol), but indexed property interceptors return
+    // integer indices. This causes a crash: "Check failed: IsName(*element)".
+    // Instead, we use the keys from Reflect.ownKeys(target) which we already have,
+    // and use HasRealNamedProperty to distinguish own vs interceptor-provided keys.
     
     // Categorize each key
     // V8's ownKeys trap requires all returned values to be Name objects (String or Symbol).
