@@ -7,13 +7,21 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1766257497998,
-  "time_end": 1766257498164,
+  "time_start": 1766266480936,
+  "time_end": 1766266481002,
   "results": [
     {
-      "test": "webidl/ecmascript-binding/sequence-conversion.html",
-      "status": "OK",
-      "message": null,
+      "test": "url/url-constructor.any.js [window]",
+      "status": "ERROR",
+      "message": "HTML test execution failed: error.RuntimeError",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "url/url-constructor.any.js [worker]",
+      "status": "ERROR",
+      "message": "HTML test execution failed: error.RuntimeError",
       "duration": 0,
       "subtests": [
       ]

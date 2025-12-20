@@ -99,7 +99,11 @@ pub const WptBrowser = struct {
         const full_path = try std.fs.path.join(self.allocator, &.{ self.wpt_root, relative_path });
         defer self.allocator.free(full_path);
 
-        const file = try std.fs.openFileAbsolute(full_path, .{});
+        // Use cwd-relative open since wpt_root may not be absolute
+        const file = std.fs.cwd().openFile(full_path, .{}) catch |err| {
+            std.debug.print("Failed to open WPT script: {s} - {}\n", .{ full_path, err });
+            return err;
+        };
         defer file.close();
 
         const stat = try file.stat();
