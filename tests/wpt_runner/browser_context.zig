@@ -1,5 +1,14 @@
 //! WPT Browser Context Setup
 //!
+//! @deprecated This module is deprecated in favor of src/browser/Browser.zig and
+//! src/browser/Context.zig. New code should use the Browser API instead.
+//! This module will be removed once WPT-specific functionality is migrated.
+//!
+//! Migration path:
+//! - General browser functionality → src/browser/Browser.zig
+//! - Context creation/management → src/browser/Context.zig
+//! - WPT test harness → tests/wpt_runner/wpt_browser.zig (uses Browser API)
+//!
 //! This module creates and manages browser-like execution contexts for WPT tests.
 //! It sets up Window/WorkerGlobalScope as the global object in V8 and registers
 //! all required browser globals (document, navigator, location, history, etc.).
