@@ -150,6 +150,7 @@ pub const BrowserContext = struct {
         }
 
         // Cleanup context manager (this cleans up wrapper cache which deinits all instances)
+        // CRITICAL: Must be called while HandleScope is still valid since it may access V8 objects
         if (self.context != null) {
             context_manager.deinit();
         }
@@ -171,6 +172,14 @@ pub const BrowserContext = struct {
         // Failure to clear before creating a new isolate causes bus errors when
         // trying to use stale template references.
         v8.template_registry.clear();
+
+        // CRITICAL: Cleanup per-isolate template storage BEFORE disposing isolate
+        // The IsolateTemplates struct stores FunctionTemplate pointers that become
+        // invalid when the isolate is disposed. This must be called BEFORE
+        // HandleScope disposal because cleanup may need to access V8 APIs.
+        if (self.isolate) |isolate| {
+            v8.isolate_templates.cleanupTemplateStorage(isolate, self.allocator);
+        }
 
         // Dispose persistent HandleScope BEFORE exiting context
         // The HandleScope must be disposed while we're still in the isolate/context

@@ -752,19 +752,47 @@ void v8_Platform_Dispose() {
 // Isolate Management
 // ============================================================================
 
+// Map to track ArrayBuffer::Allocators per isolate for cleanup
+static std::unordered_map<Isolate*, ArrayBuffer::Allocator*> g_isolate_allocators;
+
 Isolate* v8_Isolate_New() {
     if (!v8_initialized) {
         v8_Platform_Initialize();
     }
     
     Isolate::CreateParams create_params;
-    create_params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
-    return Isolate::New(create_params);
+    ArrayBuffer::Allocator* allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
+    create_params.array_buffer_allocator = allocator;
+    Isolate* isolate = Isolate::New(create_params);
+    
+    // Track the allocator for cleanup when isolate is disposed
+    if (isolate) {
+        g_isolate_allocators[isolate] = allocator;
+    } else {
+        // Isolate creation failed, clean up the allocator
+        delete allocator;
+    }
+    
+    return isolate;
 }
 
 void v8_Isolate_Dispose(Isolate* isolate) {
     if (isolate) {
+        // Get the allocator before disposing the isolate
+        ArrayBuffer::Allocator* allocator = nullptr;
+        auto it = g_isolate_allocators.find(isolate);
+        if (it != g_isolate_allocators.end()) {
+            allocator = it->second;
+            g_isolate_allocators.erase(it);
+        }
+        
+        // Dispose the isolate first
         isolate->Dispose();
+        
+        // Then delete the allocator
+        if (allocator) {
+            delete allocator;
+        }
     }
 }
 
