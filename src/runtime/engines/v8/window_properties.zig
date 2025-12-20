@@ -307,29 +307,30 @@ fn namedPropertyDefiner(
 }
 
 /// Named property enumerator - [[OwnPropertyKeys]] for WindowProperties
+///
+/// Per WebIDL §3.7.4, the named properties object (WindowProperties) has special
+/// [[OwnPropertyKeys]] behavior that differs from regular legacy platform objects:
+///
+/// "The [[OwnPropertyKeys]] internal method of a named properties object O takes
+/// no arguments and returns a normal completion containing a List of property keys.
+/// It performs the following steps when called:
+///   1. Return « @@toStringTag »."
+///
+/// This means WindowProperties should return ONLY Symbol.toStringTag as an own key.
+/// Named properties are accessible via [[Get]] but are NOT enumerated as own properties.
+/// This is why Object.getOwnPropertyNames(wp) returns [] and Reflect.ownKeys(wp)
+/// returns only [Symbol.toStringTag].
 fn namedPropertyEnumerator(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {
     const isolate = info.getIsolate();
-    const window = getWindowInstanceFromHolder(info) orelse return;
-    const context = getContextFromHolder(info) orelse return;
 
-    const runtime_ctx = context_manager.get(context) orelse return;
-    const allocator = runtime_ctx.getAllocator();
-
-    const names = WindowImpl.getSupportedPropertyNames(window, allocator) catch return;
-    defer {
-        for (names) |*name| name.deinit(allocator);
-        allocator.free(names);
-    }
-
-    const arr = v8.v8_Array_New(isolate, @intCast(names.len));
-    for (names, 0..) |name, i| {
-        const s = name.asSlice();
-        const v8_str = v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len));
-        _ = v8.v8_Array_Set(arr, context, @intCast(i), @ptrCast(v8_str));
-    }
-
+    // Per WebIDL §3.7.4: [[OwnPropertyKeys]] returns only « @@toStringTag »
+    // We return an EMPTY array for string property names.
+    // V8 will add Symbol.toStringTag separately since it was defined on the object.
+    // The named properties are NOT own properties - they're accessed via interceptors
+    // but don't appear in [[OwnPropertyKeys]].
+    const arr = v8.v8_Array_New(isolate, 0);
     info.setReturnValue(@ptrCast(arr));
 }
 
