@@ -890,13 +890,11 @@ pub const Context = struct {
     fn setupGlobalAliases(self: *Context) !void {
         const setup_script = switch (self.context_type) {
             .window =>
-            // Window context: simplified setup that works with existing bindings
+            // Window context: Set up __internal for singleton storage and GLOBAL for WPT tests
+            // NOTE: Do NOT try to set parent, top, opener, frames, length here!
+            // These are read-only accessor properties defined by Window interface bindings.
+            // The Window impl handles returning the correct values for these properties.
             \\globalThis.__internal = globalThis.__internal || { isSecureContext: false };
-            \\globalThis.parent = globalThis;
-            \\globalThis.top = globalThis;
-            \\globalThis.opener = null;
-            \\globalThis.frames = globalThis;
-            \\globalThis.length = 0;
             \\globalThis.GLOBAL = {
             \\  isWindow: function() { return true; },
             \\  isWorker: function() { return false; },
@@ -1309,30 +1307,18 @@ pub const Context = struct {
         // from firing after the V8 context is disposed
         clearTimerInterface();
 
-        // Clean up WebIDL singleton instances
-        // These are allocated in registerWindowGlobals() and must be freed
-        if (self.document_instance) |inst| {
-            interfaces.Document.deinit(inst);
-            self.document_instance = null;
-        }
-        if (self.navigator_instance) |inst| {
-            interfaces.Navigator.deinit(inst);
-            self.navigator_instance = null;
-        }
-        if (self.location_instance) |inst| {
-            interfaces.Location.deinit(inst);
-            self.location_instance = null;
-        }
-        if (self.history_instance) |inst| {
-            interfaces.History.deinit(inst);
-            self.history_instance = null;
-        }
-        if (self.performance_instance) |inst| {
-            interfaces.Performance.deinit(inst);
-            self.performance_instance = null;
-        }
+        // NOTE: Do NOT explicitly deinit singleton instances here!
+        // The context_manager.deinit() below cleans up the wrapper cache,
+        // which calls gc.onObjectFreed() for each instance. If we deinit
+        // instances here AND the wrapper cache also deinits them, we get
+        // double-free crashes. Let the wrapper cache handle all cleanup.
+        self.document_instance = null;
+        self.navigator_instance = null;
+        self.location_instance = null;
+        self.history_instance = null;
+        self.performance_instance = null;
 
-        // Cleanup context manager
+        // Cleanup context manager (this cleans up all instances via wrapper cache)
         if (self.v8_context) |ctx| {
             context_manager.deinit();
 
