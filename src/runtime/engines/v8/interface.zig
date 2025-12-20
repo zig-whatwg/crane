@@ -3724,9 +3724,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             };
 
-            // Create an array of indices
+            // Create an array of indices as integers
+            // V8's indexed property interceptor expects integer indices here.
+            // V8 internally converts these to strings when needed for ownKeys.
             const indices_arr = v8.v8_Array_New(isolate, @intCast(length));
-            // Populate array with indices as integers (V8 converts to strings for ownKeys)
             var i: u32 = 0;
             while (i < length) : (i += 1) {
                 const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
@@ -4587,6 +4588,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
                 return .kYes; // Intercepted even if it failed
             };
+
+            // Free the converted value after use (handles DOMString, USVString, []const u8, etc.)
+            defer freeConvertedValue(ValueType, instance.ctx.allocator, zig_value);
 
             // Call the setter
             setter_fn(instance, dom_str, zig_value) catch |err| {
