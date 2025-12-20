@@ -1148,12 +1148,11 @@ test "multi-context: parsing and context iteration integration" {
         }
     }
 
-    // Should have 2 results (window and worker are implemented, sharedworker is not)
-    try std.testing.expectEqual(@as(usize, 2), results.items.len);
+    // Should have 1 result (only window is implemented, worker/sharedworker are not)
+    try std.testing.expectEqual(@as(usize, 1), results.items.len);
 
     // Verify contexts
     try std.testing.expectEqualStrings("window", results.items[0].context.?);
-    try std.testing.expectEqualStrings("worker", results.items[1].context.?);
 }
 
 test "multi-context: GlobalType iteration for test execution" {
@@ -1177,10 +1176,10 @@ test "multi-context: GlobalType iteration for test execution" {
         }
     }
 
-    // window and worker are implemented
-    try std.testing.expectEqual(@as(usize, 2), implemented_count);
-    // sharedworker, serviceworker, shadowrealm are not implemented
-    try std.testing.expectEqual(@as(usize, 3), skipped_count);
+    // only window is implemented (worker disabled due to missing fetch_tests_from_worker)
+    try std.testing.expectEqual(@as(usize, 1), implemented_count);
+    // worker, sharedworker, serviceworker, shadowrealm are not implemented
+    try std.testing.expectEqual(@as(usize, 4), skipped_count);
 }
 
 test "multi-context: result collection per context" {
@@ -1223,16 +1222,16 @@ test "calculateTotalTests counts implemented contexts" {
     // for multi-context execution.
 
     // Test the counting logic directly:
-    // - .any.js with no META: defaults to window + worker = 2
+    // - .any.js with no META: defaults to window + worker, but only window is implemented = 1
     // - .any.js with global=window: explicit window = 1
-    // - .any.js with global=window,worker: = 2
-    // - .any.js with global=window,worker,sharedworker: = 2 (sharedworker not implemented)
+    // - .any.js with global=window,worker: only window is implemented = 1
+    // - .any.js with global=window,worker,sharedworker: only window is implemented = 1
     // - .window.js: always window = 1
-    // - .worker.js: always worker = 1
+    // - .worker.js: always worker = 0 (worker not implemented)
 
     const allocator = std.testing.allocator;
 
-    // Test case 1: .any.js with no META defaults to window+worker
+    // Test case 1: .any.js with no META defaults to window+worker, but only window implemented
     {
         const content = "test(() => {});";
         var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
@@ -1242,7 +1241,7 @@ test "calculateTotalTests counts implemented contexts" {
         for (parsed.metadata.globals.items) |ctx| {
             if (ctx.isImplemented()) implemented_count += 1;
         }
-        try std.testing.expectEqual(@as(usize, 2), implemented_count);
+        try std.testing.expectEqual(@as(usize, 1), implemented_count);
     }
 
     // Test case 2: explicit single context
@@ -1274,8 +1273,8 @@ test "calculateTotalTests counts implemented contexts" {
         for (parsed.metadata.globals.items) |ctx| {
             if (ctx.isImplemented()) implemented_count += 1;
         }
-        // window and worker are implemented, sharedworker and serviceworker are not
-        try std.testing.expectEqual(@as(usize, 2), implemented_count);
+        // only window is implemented (worker, sharedworker, serviceworker are not)
+        try std.testing.expectEqual(@as(usize, 1), implemented_count);
     }
 
     // Test case 4: .window.js forces window only
@@ -1295,7 +1294,7 @@ test "calculateTotalTests counts implemented contexts" {
         try std.testing.expectEqual(test_parser.GlobalType.window, parsed.metadata.globals.items[0]);
     }
 
-    // Test case 5: .worker.js forces worker only
+    // Test case 5: .worker.js forces worker only (but worker is not implemented)
     {
         const content = "test(() => {});";
         var parsed = try test_parser.parseTestFile(allocator, "test.worker.js", content);
@@ -1305,7 +1304,8 @@ test "calculateTotalTests counts implemented contexts" {
         for (parsed.metadata.globals.items) |ctx| {
             if (ctx.isImplemented()) implemented_count += 1;
         }
-        try std.testing.expectEqual(@as(usize, 1), implemented_count);
+        // Worker is not implemented, so 0 contexts will execute
+        try std.testing.expectEqual(@as(usize, 0), implemented_count);
         try std.testing.expectEqual(test_parser.GlobalType.worker, parsed.metadata.globals.items[0]);
     }
 }
