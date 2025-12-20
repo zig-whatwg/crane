@@ -32,6 +32,255 @@ const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
 const context_manager = v8.context_manager;
 
+// Timer support
+const TimerInterface = runtime.TimerInterface;
+const TimerId = runtime.TimerId;
+const TimerCallback = runtime.TimerCallback;
+const typed_callback = runtime.typed_callback;
+const SelfContainedWorkCallback = typed_callback.SelfContainedWorkCallback;
+
+// ============================================================================
+// Thread-local storage for timer interface (mirrors browser_context.zig pattern)
+// ============================================================================
+
+threadlocal var current_timer_interface: ?TimerInterface = null;
+threadlocal var current_allocator: ?std.mem.Allocator = null;
+threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = null;
+
+/// Set the current timer interface for V8 callbacks
+pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
+    current_timer_interface = timer;
+    current_allocator = allocator;
+    // Initialize timer contexts map if needed
+    if (timer_contexts == null) {
+        timer_contexts = std.AutoHashMap(TimerId, *V8TimerCallback).init(allocator);
+    }
+}
+
+/// Get the current timer interface (for V8 callbacks)
+pub fn getTimerInterface() ?TimerInterface {
+    return current_timer_interface;
+}
+
+/// Clear the timer interface reference and clean up ALL pending timer contexts
+/// This properly cancels libuv timers to prevent handle accumulation
+pub fn clearTimerInterface() void {
+    // Clean up any remaining timer contexts (both one-shot and intervals)
+    if (timer_contexts) |*map| {
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            const wrapper = entry.value_ptr.*;
+            // Cancel the timer at the libuv level to prevent callback from firing
+            // and to properly clean up the libuv timer handle
+            if (current_timer_interface) |timer| {
+                timer.clearTimeout(wrapper.getData().current_timer_id);
+            }
+            wrapper.destroy();
+        }
+        map.deinit();
+        timer_contexts = null;
+    }
+
+    current_timer_interface = null;
+    current_allocator = null;
+}
+
+/// Clear ALL pending timer contexts but keep the timer interface
+/// This is used during test isolation to cancel timers without tearing down the interface
+pub fn clearPendingTimers() void {
+    if (timer_contexts) |*map| {
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            const wrapper = entry.value_ptr.*;
+            // Cancel the timer at the libuv level
+            if (current_timer_interface) |timer| {
+                timer.clearTimeout(wrapper.getData().current_timer_id);
+            }
+            // Destroy the timer wrapper
+            wrapper.destroy();
+        }
+        map.clearRetainingCapacity();
+    }
+}
+
+/// Register a timer context for cleanup tracking (both one-shot and intervals)
+fn registerTimerContext(timer_id: TimerId, wrapper: *V8TimerCallback) void {
+    if (timer_contexts) |*map| {
+        map.put(timer_id, wrapper) catch |err| {
+            // If we can't track the timer, we must destroy it to prevent leaks
+            std.debug.print("Warning: Failed to register timer context {}: {}\n", .{ timer_id, err });
+            wrapper.destroy();
+        };
+    } else {
+        // timer_contexts is null - this shouldn't happen if setTimerInterface was called
+        // Destroy the context to prevent memory leak
+        std.debug.print("Warning: timer_contexts is null, destroying untracked timer {}\n", .{timer_id});
+        wrapper.destroy();
+    }
+}
+
+/// Unregister a timer context (cancels and destroys it)
+fn unregisterTimerContext(timer_id: TimerId) void {
+    if (timer_contexts) |*map| {
+        if (map.fetchRemove(timer_id)) |kv| {
+            const wrapper = kv.value;
+            // Mark as cancelled so interval callbacks know to stop rescheduling
+            wrapper.getData().cancelled = true;
+            // Cancel the timer at the libuv level to prevent callback from firing
+            if (current_timer_interface) |timer| {
+                timer.clearTimeout(timer_id);
+            }
+            // Destroy the wrapper immediately - the timer won't fire anymore
+            wrapper.destroy();
+        }
+    }
+}
+
+// ============================================================================
+// V8 Timer Context Types
+// ============================================================================
+
+/// V8 Timer Context Data
+///
+/// Holds the V8 function reference and metadata for timer/interval callbacks.
+/// This works for short-lived tests but could cause issues if V8 GCs
+/// the function before the timer fires. For production use, the V8 FFI
+/// would need to expose v8::Global<v8::Function> creation.
+///
+/// NOTE: This stores raw V8 function pointers without proper persistent handles.
+/// The V8 FFI doesn't currently support Persistent/Global handle creation.
+const V8TimerContextData = struct {
+    /// Raw pointer to the V8 function (not GC-protected!)
+    callback_fn: *v8.ffi.Function,
+    /// V8 isolate
+    isolate: *v8.ffi.Isolate,
+    /// Whether this is an interval (repeating) timer - affects cleanup
+    is_interval: bool,
+    /// For intervals: the delay in ms for rescheduling
+    interval_delay_ms: u64 = 0,
+    /// For intervals: the current timer ID (updated on each reschedule)
+    current_timer_id: TimerId = 0,
+    /// For intervals: whether the interval has been cancelled
+    cancelled: bool = false,
+};
+
+/// Type-safe timer callback wrapper for V8 timer contexts.
+///
+/// Uses SelfContainedWorkCallback to bundle the callback function and context data
+/// together, providing compile-time type safety and eliminating manual
+/// anyopaque casts in callback functions. The work callback variant stores
+/// the allocator internally for no-argument destroy().
+const V8TimerCallback = SelfContainedWorkCallback(V8TimerContextData);
+
+/// Create a new V8 timer context wrapper
+fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, callback_value: *v8.ffi.Value, is_interval: bool) !*V8TimerCallback {
+    // Verify it's a function
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        return error.NotAFunction;
+    }
+
+    const callback_fn = if (is_interval) &v8IntervalHandler else &v8TimerHandler;
+    return try V8TimerCallback.create(
+        allocator,
+        callback_fn,
+        .{
+            .callback_fn = @ptrCast(callback_value),
+            .isolate = isolate,
+            .is_interval = is_interval,
+        },
+    );
+}
+
+/// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
+fn v8TimerHandler(data: *V8TimerContextData) void {
+    // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
+    if (timer_contexts) |*map| {
+        _ = map.remove(data.current_timer_id);
+    }
+
+    const isolate = data.isolate;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const global = v8.ffi.v8_Context_Global(context) orelse return;
+
+    // Invoke the V8 function (stored directly, not via persistent handle)
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+
+    // Run microtasks after the timer callback (per event loop semantics)
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // Destroy the wrapper - this is a one-shot timer, so clean up after execution
+    // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedCallback)
+    const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+    wrapper.destroy();
+}
+
+/// Handler function for interval callbacks (invoked via SelfContainedCallback trampoline)
+fn v8IntervalHandler(data: *V8TimerContextData) void {
+    // Check if interval was cancelled
+    if (data.cancelled) {
+        if (timer_contexts) |*map| {
+            _ = map.remove(data.current_timer_id);
+        }
+        return;
+    }
+
+    const isolate = data.isolate;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const global = v8.ffi.v8_Context_Global(context) orelse return;
+
+    // Invoke the V8 function
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+
+    // Run microtasks after the timer callback
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // Reschedule the interval if not cancelled
+    if (!data.cancelled) {
+        if (getTimerInterface()) |timer| {
+            // Get the wrapper pointer from the data pointer
+            const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+
+            const new_timer_id = timer.setTimeout(
+                data.interval_delay_ms,
+                V8TimerCallback.getTrampolineCallback(),
+                wrapper.eraseForFFI(),
+            );
+            if (new_timer_id != 0) {
+                // Update the timer ID for potential clearInterval calls
+                const old_id = data.current_timer_id;
+                data.current_timer_id = new_timer_id;
+                // Update the timer context map with new ID
+                if (timer_contexts) |*map| {
+                    _ = map.remove(old_id);
+                    map.put(new_timer_id, wrapper) catch {};
+                }
+            } else {
+                // Failed to reschedule, clean up
+                if (timer_contexts) |*map| {
+                    _ = map.remove(data.current_timer_id);
+                }
+                wrapper.destroy();
+            }
+        } else {
+            // No timer interface, clean up
+            if (timer_contexts) |*map| {
+                _ = map.remove(data.current_timer_id);
+            }
+            const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+            wrapper.destroy();
+        }
+    } else {
+        // Cancelled, clean up
+        if (timer_contexts) |*map| {
+            _ = map.remove(data.current_timer_id);
+        }
+        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+        wrapper.destroy();
+    }
+}
+
 /// Context type for determining which globals to register
 pub const ContextType = enum {
     /// Window context (for HTML pages)
@@ -148,11 +397,13 @@ pub const Context = struct {
             }
         }
 
-        // Register browser globals based on context type
-        try self.registerBrowserGlobals();
-
-        // Set up global aliases (window, self, GLOBAL)
+        // Set up global aliases FIRST (creates __internal object and accessor properties)
+        // This must happen before registerBrowserGlobals() which stores singletons in __internal
         try self.setupGlobalAliases();
+
+        // Register browser globals based on context type
+        // For window context, stores Document, Navigator, etc. in __internal
+        try self.registerBrowserGlobals();
 
         self.initialized = true;
     }
@@ -179,6 +430,8 @@ pub const Context = struct {
     }
 
     /// Register Window context globals
+    /// NOTE: Singletons are stored in __internal object, accessed via accessor properties
+    /// defined in setupGlobalAliases(). This follows the WebIDL spec pattern.
     fn registerWindowGlobals(
         self: *Context,
         global_obj: *v8.ffi.Object,
@@ -187,7 +440,15 @@ pub const Context = struct {
         const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
-        // Register Document singleton
+        // Get __internal object for storing singleton values
+        // The accessor properties defined in setupGlobalAliases() read from __internal
+        const internal_key = v8.ffi.v8_String_NewFromUtf8(isolate, "__internal", 10) orelse return error.StringCreateFailed;
+        const internal_obj = v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(internal_key)) orelse {
+            std.debug.print("Warning: __internal object not found on global\n", .{});
+            return error.ObjectNotFound;
+        };
+
+        // Register Document singleton (stored in __internal.document)
         {
             const Document = interfaces.Document;
             const doc_instance = Document.init(self.allocator, runtime_ctx) catch |err| {
@@ -206,11 +467,11 @@ pub const Context = struct {
                 return;
             };
 
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(v8_document));
+            const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(doc_key), @ptrCast(v8_document));
         }
 
-        // Register Navigator singleton
+        // Register Navigator singleton (stored in __internal.navigator)
         {
             const Navigator = interfaces.Navigator;
             const nav_instance = Navigator.init(self.allocator, runtime_ctx) catch |err| {
@@ -229,11 +490,11 @@ pub const Context = struct {
                 return;
             };
 
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "navigator", 9) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(v8_navigator));
+            const nav_key = v8.ffi.v8_String_NewFromUtf8(isolate, "navigator", 9) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(nav_key), @ptrCast(v8_navigator));
         }
 
-        // Register Location singleton
+        // Register Location singleton (stored in __internal.location)
         {
             const Location = interfaces.Location;
             const loc_instance = Location.init(self.allocator, runtime_ctx) catch |err| {
@@ -252,11 +513,11 @@ pub const Context = struct {
                 return;
             };
 
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "location", 8) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(v8_location));
+            const loc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "location", 8) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(loc_key), @ptrCast(v8_location));
         }
 
-        // Register History singleton
+        // Register History singleton (stored in __internal.history)
         {
             const History = interfaces.History;
             const hist_instance = History.init(self.allocator, runtime_ctx) catch |err| {
@@ -275,11 +536,11 @@ pub const Context = struct {
                 return;
             };
 
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "history", 7) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(v8_history));
+            const hist_key = v8.ffi.v8_String_NewFromUtf8(isolate, "history", 7) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(hist_key), @ptrCast(v8_history));
         }
 
-        // Register Performance singleton
+        // Register Performance singleton (stored in __internal.performance)
         {
             const Performance = interfaces.Performance;
             const perf_instance = Performance.init(self.allocator, runtime_ctx) catch |err| {
@@ -298,8 +559,19 @@ pub const Context = struct {
                 return;
             };
 
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "performance", 11) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(v8_performance));
+            const perf_key = v8.ffi.v8_String_NewFromUtf8(isolate, "performance", 11) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(perf_key), @ptrCast(v8_performance));
+        }
+
+        // Register HTMLDocument as legacy alias for Document
+        // Per HTML spec, HTMLDocument is a historical alias that maps to Document
+        {
+            const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Document", 8) orelse return error.StringCreateFailed;
+            const doc_ctor = v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(doc_key));
+            if (doc_ctor) |ctor| {
+                const html_doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "HTMLDocument", 12) orelse return error.StringCreateFailed;
+                _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(html_doc_key), ctor);
+            }
         }
     }
 
@@ -406,24 +678,339 @@ pub const Context = struct {
             const key = v8.ffi.v8_String_NewFromUtf8(isolate, "dispatchEvent", 13) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
+
+        // Register console object with proper WebIDL namespace semantics
+        // Per WebIDL spec §3.8.1 "Namespace objects":
+        // - The prototype chain is: console -> empty object -> Object.prototype
+        // - The namespace has Symbol.toStringTag = "console" (non-writable, non-enumerable, configurable)
+        // - All console methods are own properties
+        {
+            const console_script =
+                \\(function() {
+                \\  function consoleNoop() {}
+                \\  
+                \\  // Helper to convert label to string per WHATWG Console Standard
+                \\  function convertLabel(label) {
+                \\    if (label === undefined) {
+                \\      return "default";
+                \\    }
+                \\    if (label !== null && typeof label === "object") {
+                \\      return label.toString();
+                \\    }
+                \\    return String(label);
+                \\  }
+                \\  
+                \\  // Internal state for count and time operations
+                \\  var countMap = {};
+                \\  var timerMap = {};
+                \\  
+                \\  // Create the empty prototype object
+                \\  var consoleProto = Object.create(Object.prototype);
+                \\  Object.freeze(consoleProto);
+                \\  
+                \\  // Create console object with the proper prototype chain
+                \\  globalThis.console = Object.create(consoleProto);
+                \\  
+                \\  // Define all console methods as own properties
+                \\  var methods = {
+                \\    log: consoleNoop,
+                \\    warn: consoleNoop,
+                \\    error: consoleNoop,
+                \\    info: consoleNoop,
+                \\    debug: consoleNoop,
+                \\    trace: consoleNoop,
+                \\    dir: consoleNoop,
+                \\    dirxml: consoleNoop,
+                \\    table: consoleNoop,
+                \\    assert: consoleNoop,
+                \\    clear: consoleNoop,
+                \\    group: consoleNoop,
+                \\    groupCollapsed: consoleNoop,
+                \\    groupEnd: consoleNoop,
+                \\  };
+                \\  
+                \\  function createLabelMethod(fn, length) {
+                \\    Object.defineProperty(fn, 'length', { value: length, configurable: true });
+                \\    return fn;
+                \\  }
+                \\  
+                \\  methods.count = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    countMap[key] = (countMap[key] || 0) + 1;
+                \\  }, 0);
+                \\  
+                \\  methods.countReset = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    delete countMap[key];
+                \\  }, 0);
+                \\  
+                \\  methods.time = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    if (!(key in timerMap)) {
+                \\      timerMap[key] = Date.now();
+                \\    }
+                \\  }, 0);
+                \\  
+                \\  methods.timeLog = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\  }, 0);
+                \\  
+                \\  methods.timeEnd = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    delete timerMap[key];
+                \\  }, 0);
+                \\  
+                \\  for (var name in methods) {
+                \\    Object.defineProperty(globalThis.console, name, {
+                \\      value: methods[name],
+                \\      writable: true,
+                \\      enumerable: true,
+                \\      configurable: true
+                \\    });
+                \\  }
+                \\  
+                \\  // Add Symbol.toStringTag per WebIDL namespace semantics
+                \\  Object.defineProperty(globalThis.console, Symbol.toStringTag, {
+                \\    value: "console",
+                \\    writable: false,
+                \\    enumerable: false,
+                \\    configurable: true
+                \\  });
+                \\})();
+            ;
+            _ = self.evaluateScript(console_script) catch |err| {
+                std.debug.print("Warning: Failed to register console: {}\n", .{err});
+            };
+        }
+
+        // Register btoa/atob for base64 encoding/decoding
+        {
+            const btoa_atob_script =
+                \\(function() {
+                \\  // btoa: binary string to base64
+                \\  globalThis.btoa = function(str) {
+                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                \\    var result = '';
+                \\    var i = 0;
+                \\    while (i < str.length) {
+                \\      var a = str.charCodeAt(i++) || 0;
+                \\      var b = str.charCodeAt(i++) || 0;
+                \\      var c = str.charCodeAt(i++) || 0;
+                \\      var triplet = (a << 16) | (b << 8) | c;
+                \\      result += chars[(triplet >> 18) & 63];
+                \\      result += chars[(triplet >> 12) & 63];
+                \\      result += (i > str.length + 1) ? '=' : chars[(triplet >> 6) & 63];
+                \\      result += (i > str.length) ? '=' : chars[triplet & 63];
+                \\    }
+                \\    return result;
+                \\  };
+                \\  
+                \\  // atob: base64 to binary string
+                \\  globalThis.atob = function(str) {
+                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                \\    str = str.replace(/=+$/, '');
+                \\    var result = '';
+                \\    var i = 0;
+                \\    while (i < str.length) {
+                \\      var a = chars.indexOf(str[i++]);
+                \\      var b = chars.indexOf(str[i++]);
+                \\      var c = chars.indexOf(str[i++]);
+                \\      var d = chars.indexOf(str[i++]);
+                \\      var triplet = (a << 18) | (b << 12) | (c << 6) | d;
+                \\      result += String.fromCharCode((triplet >> 16) & 255);
+                \\      if (c !== -1) result += String.fromCharCode((triplet >> 8) & 255);
+                \\      if (d !== -1) result += String.fromCharCode(triplet & 255);
+                \\    }
+                \\    return result;
+                \\  };
+                \\})();
+            ;
+            _ = self.evaluateScript(btoa_atob_script) catch |err| {
+                std.debug.print("Warning: Failed to register btoa/atob: {}\n", .{err});
+            };
+        }
+
+        // Register getComputedStyle as a global function
+        // Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, getComputedStyleCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "getComputedStyle", 16) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register fetch() as a global function
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, fetchCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch", 5) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
     }
 
     /// Set up global aliases via JavaScript
+    /// Per WebIDL spec, window properties use accessor properties with proper this validation
     fn setupGlobalAliases(self: *Context) !void {
-        const setup_script =
-            \\globalThis.self = globalThis;
-            \\globalThis.window = globalThis;
+        const setup_script = switch (self.context_type) {
+            .window =>
+            // Window context: full window, self, document, navigator, location, etc.
+            // Per WebIDL spec, these are accessor properties that validate 'this'
+            \\// Create __internal object to store singleton values
+            \\// The accessor properties read from __internal to return the same object each time
+            \\globalThis.__internal = {
+            \\  isSecureContext: false,
+            \\};
+            \\
+            \\// Helper function to check 'this' value for accessor properties
+            \\// Per WebIDL spec, getters must validate that 'this' is the global object
+            \\function __checkGlobalThis(thisArg, propName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return globalThis;
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return globalThis;
+            \\  }
+            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface Window.");
+            \\}
+            \\globalThis.__checkGlobalThis = __checkGlobalThis;
+            \\
+            \\// Define window as an accessor property per WebIDL
+            \\Object.defineProperty(globalThis, 'window', {
+            \\  get: function() { return __checkGlobalThis(this, 'window'); },
+            \\  enumerable: true, configurable: false
+            \\});
+            \\
+            \\// Define self as an accessor property per WebIDL
+            \\Object.defineProperty(globalThis, 'self', {
+            \\  get: function() { return __checkGlobalThis(this, 'self'); },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Define document as an accessor property that reads from __internal
+            \\Object.defineProperty(globalThis, 'document', {
+            \\  get: function() {
+            \\    __checkGlobalThis(this, 'document');
+            \\    return globalThis.__internal.document;
+            \\  },
+            \\  enumerable: true, configurable: false
+            \\});
+            \\
+            \\// Define navigator as an accessor property that reads from __internal
+            \\Object.defineProperty(globalThis, 'navigator', {
+            \\  get: function() {
+            \\    __checkGlobalThis(this, 'navigator');
+            \\    return globalThis.__internal.navigator;
+            \\  },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Define location as an accessor property that reads from __internal
+            \\Object.defineProperty(globalThis, 'location', {
+            \\  get: function() {
+            \\    __checkGlobalThis(this, 'location');
+            \\    return globalThis.__internal.location;
+            \\  },
+            \\  set: function(value) {
+            \\    __checkGlobalThis(this, 'location');
+            \\    if (globalThis.__internal.location) {
+            \\      globalThis.__internal.location.href = String(value);
+            \\    }
+            \\  },
+            \\  enumerable: true, configurable: false
+            \\});
+            \\
+            \\// Define history as an accessor property that reads from __internal
+            \\Object.defineProperty(globalThis, 'history', {
+            \\  get: function() {
+            \\    __checkGlobalThis(this, 'history');
+            \\    return globalThis.__internal.history;
+            \\  },
+            \\  enumerable: true, configurable: false
+            \\});
+            \\
+            \\// Define performance as an accessor property that reads from __internal
+            \\Object.defineProperty(globalThis, 'performance', {
+            \\  get: function() {
+            \\    __checkGlobalThis(this, 'performance');
+            \\    return globalThis.__internal.performance;
+            \\  },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Define isSecureContext as an accessor property
+            \\Object.defineProperty(globalThis, 'isSecureContext', {
+            \\  get: function() {
+            \\    __checkGlobalThis(this, 'isSecureContext');
+            \\    return globalThis.__internal.isSecureContext;
+            \\  },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Simple property assignments for frame-related globals
             \\globalThis.parent = globalThis;
             \\globalThis.top = globalThis;
             \\globalThis.opener = null;
             \\globalThis.frames = globalThis;
             \\globalThis.length = 0;
-            \\self.GLOBAL = {
+            \\
+            \\// Set up GLOBAL object for WPT tests - WINDOW context
+            \\globalThis.GLOBAL = {
             \\  isWindow: function() { return true; },
             \\  isWorker: function() { return false; },
             \\  isShadowRealm: function() { return false; },
             \\};
-        ;
+            ,
+            .worker =>
+            // Dedicated worker context: self, navigator, location
+            \\function __checkGlobalThis(thisArg, propName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return globalThis;
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return globalThis;
+            \\  }
+            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface DedicatedWorkerGlobalScope.");
+            \\}
+            \\
+            \\Object.defineProperty(globalThis, 'self', {
+            \\  get: function() { return __checkGlobalThis(this, 'self'); },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Set up GLOBAL object for WPT tests - WORKER context
+            \\globalThis.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+            ,
+            .shared_worker, .service_worker =>
+            // Shared/Service worker context: only self, no window
+            \\function __checkGlobalThis(thisArg, propName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return globalThis;
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return globalThis;
+            \\  }
+            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface WorkerGlobalScope.");
+            \\}
+            \\
+            \\Object.defineProperty(globalThis, 'self', {
+            \\  get: function() { return __checkGlobalThis(this, 'self'); },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Set up GLOBAL object for WPT tests - WORKER context
+            \\globalThis.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+            ,
+        };
 
         _ = self.evaluateScript(setup_script) catch |err| {
             std.debug.print("ERROR: Failed to set up global aliases: {}\n", .{err});
@@ -622,19 +1209,241 @@ pub const Context = struct {
 };
 
 // ============================================================================
-// V8 Callback Implementations (stubs for now, full implementation in browser_context.zig)
+// V8 Callback Implementations
 // ============================================================================
 
-fn setTimeoutCallback(_: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    // TODO: Implement using timer interface
+/// setTimeout callback - schedules callback to run after delay using TimerManager
+fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Get the callback function (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Get delay (second argument, default 0)
+    var delay_ms: i64 = 0;
+    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
+        const delay_value = info.get(1);
+        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
+            const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+                const result = v8.ffi.v8_Integer_New(isolate, 0);
+                info.setReturnValue(@ptrCast(result));
+                return;
+            };
+            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, context);
+            // Safety check for NaN/Inf/negative values
+            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0 and delay_f64 <= @as(f64, @floatFromInt(std.math.maxInt(i64)))) {
+                delay_ms = @intFromFloat(delay_f64);
+            }
+        }
+    }
+
+    // Get timer interface from thread-local storage
+    const timer = getTimerInterface() orelse {
+        // Fallback: execute immediately if no timer interface
+        const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+            const result = v8.ffi.v8_Integer_New(isolate, 0);
+            info.setReturnValue(@ptrCast(result));
+            return;
+        };
+        const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
+        const global = v8.ffi.v8_Context_Global(context) orelse {
+            const result = v8.ffi.v8_Integer_New(isolate, 0);
+            info.setReturnValue(@ptrCast(result));
+            return;
+        };
+        var empty_args: [1]*v8.ffi.Value = undefined;
+        _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
+        const result = v8.ffi.v8_Integer_New(isolate, 1);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    const allocator = current_allocator orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Create typed timer context wrapper (one-shot timer)
+    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, false) catch {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Schedule the timer using TimerInterface with typed callback trampoline
+    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    const timer_id = timer.setTimeout(
+        delay_u64,
+        V8TimerCallback.getTrampolineCallback(),
+        timer_wrapper.eraseForFFI(),
+    );
+    if (timer_id == 0) {
+        timer_wrapper.destroy();
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Store the timer ID in the context so the callback can unregister it
+    timer_wrapper.getData().current_timer_id = timer_id;
+
+    // Register the timer context for cleanup tracking (prevents memory leak on deinit)
+    registerTimerContext(timer_id, timer_wrapper);
+
+    // Return timer ID (truncate to i32 for V8 Integer)
+    const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
+    info.setReturnValue(@ptrCast(result));
 }
 
-fn clearTimeoutCallback(_: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    // TODO: Implement using timer interface
+/// clearTimeout callback - cancels a pending timer
+fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Get timer ID (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const id_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsNumber(id_value)) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    const timer_id_f64 = v8.ffi.v8_Value_NumberValue(id_value, context);
+
+    // Safety check: ensure the float is a valid positive integer that fits in TimerId
+    if (std.math.isNan(timer_id_f64) or std.math.isInf(timer_id_f64) or
+        timer_id_f64 < 0 or timer_id_f64 > @as(f64, @floatFromInt(std.math.maxInt(TimerId))))
+    {
+        // Invalid timer ID - just return without doing anything
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+    const timer_id: TimerId = @intFromFloat(timer_id_f64);
+
+    // Get timer interface and cancel the timer
+    if (getTimerInterface()) |timer| {
+        timer.clearTimeout(timer_id);
+    }
+
+    // Clean up interval context if this was an interval timer
+    // (clearTimeout and clearInterval use the same underlying mechanism)
+    unregisterTimerContext(timer_id);
+
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
 }
 
-fn setIntervalCallback(_: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    // TODO: Implement using timer interface
+/// setInterval callback - schedules repeating callback using TimerManager
+fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Get the callback function (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Get delay (second argument, default 0)
+    var delay_ms: i64 = 0;
+    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
+        const delay_value = info.get(1);
+        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
+            const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+                const result = v8.ffi.v8_Integer_New(isolate, 0);
+                info.setReturnValue(@ptrCast(result));
+                return;
+            };
+            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, context);
+            // Safety check for NaN/Inf/negative values
+            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0 and delay_f64 <= @as(f64, @floatFromInt(std.math.maxInt(i64)))) {
+                delay_ms = @intFromFloat(delay_f64);
+            }
+        }
+    }
+
+    // Get timer interface from thread-local storage
+    const timer = getTimerInterface() orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    const allocator = current_allocator orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Create typed timer context wrapper (interval timer)
+    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, true) catch {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Store the interval delay in the context for re-scheduling
+    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    timer_wrapper.getData().interval_delay_ms = delay_u64;
+
+    // Schedule the first timeout (intervals reschedule themselves in v8IntervalHandler)
+    const timer_id = timer.setTimeout(
+        delay_u64,
+        V8TimerCallback.getTrampolineCallback(),
+        timer_wrapper.eraseForFFI(),
+    );
+    if (timer_id == 0) {
+        timer_wrapper.destroy();
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Store the timer ID in the context so it can be used for rescheduling
+    timer_wrapper.getData().current_timer_id = timer_id;
+
+    // Register the interval context for cleanup when clearInterval is called
+    registerTimerContext(timer_id, timer_wrapper);
+
+    // Return timer ID (truncate to i32 for V8 Integer)
+    const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
+    info.setReturnValue(@ptrCast(result));
 }
 
 fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
@@ -656,4 +1465,84 @@ fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
     if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
         info.setReturnValue(result);
     }
+}
+
+/// getComputedStyle callback - returns CSSStyleDeclaration-like object
+/// Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
+fn getComputedStyleCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Null(isolate)) |null_val| {
+            info.setReturnValue(null_val);
+        }
+        return;
+    };
+
+    // Create an empty CSSStyleDeclaration-like object
+    // In a full implementation, this would compute styles from the element
+    const style_obj = v8.ffi.v8_Object_New(isolate) orelse {
+        if (v8.ffi.v8_Null(isolate)) |null_val| {
+            info.setReturnValue(null_val);
+        }
+        return;
+    };
+
+    // Add getPropertyValue method
+    const get_prop_template = v8.ffi.v8_FunctionTemplate_New(isolate, getPropertyValueCallback, null) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    const get_prop_func = v8.ffi.v8_FunctionTemplate_GetFunction(get_prop_template, v8_ctx) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    const get_prop_key = v8.ffi.v8_String_NewFromUtf8(isolate, "getPropertyValue", 16) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(get_prop_key), @ptrCast(get_prop_func));
+
+    // Add length property (0 for stub)
+    const length_key = v8.ffi.v8_String_NewFromUtf8(isolate, "length", 6) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    const length_val = v8.ffi.v8_Integer_New(isolate, 0);
+    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(length_key), @ptrCast(length_val));
+
+    info.setReturnValue(@ptrCast(style_obj));
+}
+
+/// getPropertyValue helper for CSSStyleDeclaration
+fn getPropertyValueCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // Return empty string for any property (stub implementation)
+    const empty_str = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    info.setReturnValue(@ptrCast(empty_str));
+}
+
+/// fetch callback - stub implementation that throws TypeError
+/// Full implementation requires HTTP client integration
+fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Throw TypeError indicating fetch is not implemented
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch is not yet implemented", 28) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
 }
