@@ -534,7 +534,6 @@ pub const Context = struct {
 
             const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(doc_key), @ptrCast(v8_document));
-            std.debug.print("[DEBUG-ZIG] Stored document in __internal.document\n", .{});
         }
 
         // Register Navigator singleton (stored in __internal.navigator)
