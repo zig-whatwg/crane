@@ -165,10 +165,17 @@ pub fn markCleanupStarted(instance: *const Instance) bool {
     return true; // First call, proceed with cleanup
 }
 
-/// Mark cleanup as complete
+/// Mark cleanup as complete and remove from registry
+/// This is important because slab allocator reuses memory addresses.
+/// If we don't remove the entry, a new instance at the same address
+/// would be detected as "already cleaned up" and deinit would be skipped.
 pub fn markCleanupComplete(instance: *const Instance) void {
-    const flags = getOrCreate(instance);
-    flags.cleanup_complete = true;
+    if (registry) |*r| {
+        // Remove the entry entirely - this is critical for memory reuse!
+        // When slab allocator reuses this address for a new instance,
+        // we need markCleanupStarted to return true (fresh state).
+        _ = r.remove(instance);
+    }
 }
 
 /// Mark instance as attached to DOM
