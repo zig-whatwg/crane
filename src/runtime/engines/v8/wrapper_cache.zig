@@ -205,8 +205,6 @@ pub const WrapperCache = struct {
         }
 
         // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
-        var count_cleaned: usize = 0;
-        var count_skipped: usize = 0;
         var iter = self.cache.valueIterator();
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
@@ -214,12 +212,9 @@ pub const WrapperCache = struct {
             // Only call deinit if not already cleaned up externally
             // (e.g., DOM nodes cleaned via Document.deinit already called their deinit)
             if (!entry.instance_already_cleaned) {
-                count_cleaned += 1;
                 // Call GC integration to invoke type-specific deinit
                 // This is essential for cleanup since weak callbacks may not fire during shutdown
                 runtime.gc.onObjectFreed(entry.instance);
-            } else {
-                count_skipped += 1;
             }
 
             // Dispose the Global<Object>* handle

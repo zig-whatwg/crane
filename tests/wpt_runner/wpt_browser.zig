@@ -303,6 +303,21 @@ pub const WptBrowser = struct {
             _ = try ctx.evaluateScript(js);
         }
 
+        // Verify testharness.js loaded correctly by checking for globals
+        // This catches cases where testharness.js execution fails silently
+        const verify_script =
+            \\if (typeof test !== 'function' || typeof async_test !== 'function' ||
+            \\    typeof promise_test !== 'function' || typeof setup !== 'function') {
+            \\  throw new Error('testharness.js failed to load: globals not defined. ' +
+            \\    'test=' + typeof test + ', async_test=' + typeof async_test +
+            \\    ', promise_test=' + typeof promise_test + ', setup=' + typeof setup);
+            \\}
+        ;
+        _ = ctx.evaluateScript(verify_script) catch |err| {
+            std.debug.print("ERROR: testharness.js verification failed: {}\n", .{err});
+            return error.TestHarnessLoadFailed;
+        };
+
         // Set up completion callback to capture results
         const setup_script =
             \\(function() {

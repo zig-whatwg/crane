@@ -67,6 +67,12 @@ pub const Instance = struct {
         const instance = try SlabAllocator.get().alloc(vtable);
         errdefer SlabAllocator.get().free(instance);
 
+        // Step 1a: Clear any stale lifecycle flags from previous instance at this address
+        // The slab allocator reuses memory addresses, so we must clear old flags
+        // to prevent markCleanupStarted() from incorrectly returning false for new instances.
+        const instance_lifecycle = @import("instance_lifecycle.zig");
+        instance_lifecycle.reset(instance);
+
         // Step 2: Allocate state from arena allocator (variable size based on StateType)
         const state = try ArenaAllocator.get().create(StateType);
 
