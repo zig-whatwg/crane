@@ -534,6 +534,7 @@ pub const Context = struct {
 
             const doc_key = v8.ffi.v8_String_NewFromUtf8(isolate, "document", 8) orelse return error.StringCreateFailed;
             _ = v8.ffi.v8_Object_Set(@ptrCast(internal_obj), v8_ctx, @ptrCast(doc_key), @ptrCast(v8_document));
+            std.debug.print("[DEBUG-ZIG] Stored document in __internal.document\n", .{});
         }
 
         // Register Navigator singleton (stored in __internal.navigator)
@@ -933,6 +934,10 @@ pub const Context = struct {
             \\  isWorker: function() { return false; },
             \\  isShadowRealm: function() { return false; }
             \\};
+            \\
+            \\// NOTE: document, navigator, location, history, performance are exposed via
+            \\// the Window interface's attribute getters. We only set up __internal for
+            \\// storage, and the Window impl's getters retrieve from there.
             ,
             .worker =>
             // Dedicated worker context: self, navigator, location

@@ -295,6 +295,7 @@ V8ScriptCompileResult* v8_Script_Compile_Safe(Global<Context>* context, Global<S
     HandleScope handle_scope(isolate);
     
     Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);  // Ensure context is entered for compilation
     Local<String> local_source = source->Get(isolate);
     
     V8ScriptCompileResult* result = new V8ScriptCompileResult();
@@ -338,6 +339,7 @@ V8ScriptCompileResult* v8_Script_CompileWithOrigin_Safe(
     HandleScope handle_scope(isolate);
     
     Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);  // Ensure context is entered for compilation
     Local<String> local_source = source->Get(isolate);
     Local<String> local_resource_name = resource_name->Get(isolate);
     
@@ -387,6 +389,7 @@ V8ScriptRunResult* v8_Script_Run_Safe(Global<Context>* context, Global<Script>* 
     HandleScope handle_scope(isolate);
     
     Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);  // Ensure context is entered for global resolution
     Local<Script> local_script = script->Get(isolate);
     
     V8ScriptRunResult* result = new V8ScriptRunResult();
@@ -1645,6 +1648,7 @@ Global<Script>* v8_Script_Compile(Global<Context>* context, Global<String>* sour
     HandleScope handle_scope(isolate);
     
     Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);  // Ensure context is entered for compilation
     Local<String> local_source = source->Get(isolate);
     
     MaybeLocal<Script> maybe_script = Script::Compile(local_context, local_source);
@@ -1662,6 +1666,7 @@ Global<Script>* v8_Script_CompileWithOrigin(Global<Context>* context, Global<Str
     HandleScope handle_scope(isolate);
     
     Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);  // Ensure context is entered for compilation
     Local<String> local_source = source->Get(isolate);
     Local<String> local_resource_name = resource_name->Get(isolate);
     
@@ -1683,6 +1688,7 @@ Global<Value>* v8_Script_Run(Global<Context>* context, Global<Script>* script) {
     HandleScope handle_scope(isolate);
     
     Local<Context> local_context = context->Get(isolate);
+    Context::Scope context_scope(local_context);  // Ensure context is entered for global resolution
     Local<Script> local_script = script->Get(isolate);
     
     MaybeLocal<Value> maybe_result = local_script->Run(local_context);
