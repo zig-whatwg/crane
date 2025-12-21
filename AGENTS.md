@@ -884,6 +884,67 @@ const v8_object = v8.v8_Function_NewInstance(func, context, 0, null);  // ❌ WR
 
 The Chromium codebase is the authoritative reference, not V8 documentation snippets taken out of context.
 
+### 17. **WPT Tests MUST Run Through the Browser - NO SHORTCUTS** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   🛑🛑🛑 WPT TESTS ARE BROWSER CONFORMANCE TESTS 🛑🛑🛑                      ║
+║                                                                              ║
+║   They MUST exercise the actual browser implementation, not shortcuts.      ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+**WPT (Web Platform Tests) exist to verify browser conformance.** They must run through the ACTUAL browser implementation, exercising the real code paths that a web page would use.
+
+**What a Real Browser Does:**
+1. Navigates to a URL
+2. Receives HTML from the server via HTTP
+3. Parses the HTML
+4. When it encounters `<script src="...">`, it fetches the script via HTTP and executes it
+5. Scripts execute in document order via the HTML parser's script execution mechanism
+6. The DOM is built as parsing progresses
+
+**FORBIDDEN Shortcuts:**
+- ❌ **Pre-loading testharness.js via direct script injection** before HTML parsing
+- ❌ **Bypassing the HTTP server** by reading files directly
+- ❌ **Injecting scripts via `evaluateScript()`** instead of letting the HTML parser handle `<script>` tags
+- ❌ **Skipping script tags** because "they're already loaded"
+- ❌ **Any mechanism that avoids exercising the real browser code paths**
+
+**Why This Matters:**
+1. **The point of WPT is to test the browser** - shortcuts defeat the purpose
+2. **Script loading order bugs** only manifest when scripts load via HTML parsing
+3. **Context and scope issues** only appear when the real code path is used
+4. **If tests pass via shortcuts but fail in real browsers, we've tested nothing**
+
+**Correct WPT Runner Architecture:**
+```
+1. Start WPT HTTP server (`wpt serve`)
+2. For each test:
+   a. Browser navigates to test URL (e.g., http://localhost:8000/webidl/foo.html)
+   b. Browser fetches HTML via HTTP
+   c. HTML parser parses the document
+   d. HTML parser encounters <script src="/resources/testharness.js">
+   e. Browser fetches testharness.js via HTTP
+   f. Browser executes testharness.js via the script execution pipeline
+   g. HTML parser continues, encounters test script
+   h. Browser fetches and executes test script
+   i. Results are collected
+```
+
+**Signs You're Using Shortcuts (RED FLAGS):**
+- `ctx.evaluateScript(testharness_js)` called BEFORE `loadHTML()`
+- Scripts loaded from filesystem instead of HTTP
+- `scriptLoaderCallback` that skips certain scripts
+- Any code path that doesn't go through the HTML parser's script execution
+
+**The Test:**
+If you can make tests pass by injecting scripts directly, but they fail when running through the actual HTML parsing and script loading pipeline, **the browser is broken and must be fixed**.
+
+**NO EXCEPTIONS. Fix the browser, don't work around it.**
+
 ---
 
 ## Critical Project Context
