@@ -822,10 +822,13 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
-    _ = runScript(engine_ctx, script) catch {
+    const script_result = runScript(engine_ctx, script) catch {
         return;
-    } orelse {
+    };
+
+    if (script_result == null) {
         // Script threw an uncaught exception
+        std.debug.print("DEBUG runClassicScript: script threw exception (returned null)\n", .{});
         // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
         //
         // Per spec, we should:
@@ -859,7 +862,7 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
             }
         }
         return;
-    };
+    }
 }
 
 /// Run a module script

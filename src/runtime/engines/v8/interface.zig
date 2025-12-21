@@ -309,6 +309,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // Register PutForwards setter callbacks if interface has put_forwards_attributes
+            // Per WebIDL §4.3.10: [PutForwards] attributes use a special setter that
+            // forwards to a property on the attribute's value
+            if (@hasDecl(Meta, "put_forwards_attributes")) {
+                inline for (Meta.put_forwards_attributes) |pf| {
+                    const attr_name: []const u8 = pf[0];
+                    const forward_prop: []const u8 = pf[1];
+                    const PutForwardsSetter = PutForwardsSetterCallback(attr_name, forward_prop);
+                    ext_refs.registerCallbackRuntime(PutForwardsSetter.callback);
+                }
+            }
+
             // Register method callbacks
             // Method tuple format: { js_name, zig_call_name, arg_count }
             inline for (methods) |method| {
@@ -318,10 +330,19 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // Register static method callbacks
-            // Static methods are defined in Meta.static_operations
+            // Static methods are defined in Meta.static_operations or Meta.static_methods
             // Static operation tuple format: { js_name, zig_call_name, arg_count }
             if (@hasDecl(Meta, "static_operations")) {
                 inline for (Meta.static_operations) |op| {
+                    const zig_name: []const u8 = op[1];
+                    const StaticCallback = StaticMethodCallback(zig_name);
+                    ext_refs.registerCallbackRuntime(StaticCallback.callback);
+                }
+            }
+
+            // Also check for static_methods (another name for the same thing)
+            if (@hasDecl(Meta, "static_methods")) {
+                inline for (Meta.static_methods) |op| {
                     const zig_name: []const u8 = op[1];
                     const StaticCallback = StaticMethodCallback(zig_name);
                     ext_refs.registerCallbackRuntime(StaticCallback.callback);
@@ -346,12 +367,16 @@ pub fn V8Interface(comptime Interface: type) type {
             if (@hasDecl(Meta, "pair_iterable")) {
                 ext_refs.registerCallbackRuntime(iteratorSelfCallback);
                 ext_refs.registerCallbackRuntime(pairIteratorNextCallback);
+                // Also register the unified iterator callback (used for shared iterator prototype)
+                ext_refs.registerCallbackRuntime(unifiedIteratorNextCallback);
             }
 
             // Register value iterator callbacks
             if (@hasDecl(Meta, "value_iterable")) {
                 ext_refs.registerCallbackRuntime(iteratorSelfCallback);
                 ext_refs.registerCallbackRuntime(iteratorNextCallback);
+                // Also register the unified iterator callback (used for shared iterator prototype)
+                ext_refs.registerCallbackRuntime(unifiedIteratorNextCallback);
             }
 
             // Register lazy property handlers if there are lazy properties
@@ -361,10 +386,50 @@ pub fn V8Interface(comptime Interface: type) type {
                 ext_refs.registerPointer(@intFromPtr(&lazyPropertySetter));
             }
 
-            // Register indexed property handler if interface is iterable
-            // Note: This is an IndexedPropertyCallback, not a FunctionCallback
-            if (@hasDecl(Meta, "iterable") and @hasDecl(Interface, "call_item")) {
+            // Register indexed property callbacks if interface has call_item with u32 parameter
+            // This matches the condition in createTemplate() for indexed property handler registration
+            const has_indexed_item = comptime blk: {
+                if (!@hasDecl(Interface, "call_item")) break :blk false;
+                const CallItemFn = @TypeOf(Interface.call_item);
+                const fn_info = @typeInfo(CallItemFn).@"fn";
+                if (fn_info.params.len != 2) break :blk false;
+                const second_param = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param == u32;
+            };
+            if (has_indexed_item) {
                 ext_refs.registerPointer(@intFromPtr(&indexedPropertyGetter));
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertySetter));
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertySetterReadOnly));
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertyQuery));
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertyEnumerator));
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertyDefiner));
+                ext_refs.registerPointer(@intFromPtr(&indexedPropertyDescriptor));
+            }
+
+            // Register named property callbacks if interface has named getter
+            // This matches the condition in createTemplate() for named property handler registration
+            const has_call_getter_with_domstring = comptime blk: {
+                if (!@hasDecl(Interface, "call_getter")) break :blk false;
+                const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
+                if (fn_info.params.len < 2) break :blk false;
+                const second_param_type = fn_info.params[1].type orelse break :blk false;
+                break :blk second_param_type == runtime.DOMString;
+            };
+            const has_named_getter = comptime @hasDecl(Interface, "call_getNamedItem") or
+                @hasDecl(Interface, "call_namedItem") or
+                has_call_getter_with_domstring;
+            const is_global_object = comptime std.mem.eql(u8, interface_name, "Window") or
+                std.mem.eql(u8, interface_name, "WorkerGlobalScope");
+            const has_named_enumerator = comptime @hasDecl(Interface, "getSupportedPropertyNames");
+
+            if (has_named_getter and !is_global_object and has_named_enumerator) {
+                ext_refs.registerPointer(@intFromPtr(&namedPropertyGetter));
+                ext_refs.registerPointer(@intFromPtr(&namedPropertySetter));
+                ext_refs.registerPointer(@intFromPtr(&namedPropertySetterReadOnly));
+                ext_refs.registerPointer(@intFromPtr(&namedPropertyQuery));
+                ext_refs.registerPointer(@intFromPtr(&namedPropertyEnumerator));
+                ext_refs.registerPointer(@intFromPtr(&namedPropertyDefiner));
+                ext_refs.registerPointer(@intFromPtr(&namedPropertyDescriptor));
             }
 
             // Register HTMLAllCollection call handler if this is HTMLAllCollection
@@ -1890,9 +1955,13 @@ pub fn V8Interface(comptime Interface: type) type {
                                     const untagged = ptr_tag.untagPointer(@ptrCast(tagged_ptr));
 
                                     if (untagged.tag == .global_handle) {
-                                        // This is a GlobalHandle - the ptr field IS the V8 Value
-                                        // V8's Global<Value>* can be used directly as a Value*
-                                        break :comptime_convert @ptrCast(untagged.ptr);
+                                        // This is a GlobalHandle - we need to call v8_Global_Get to get the actual V8 value
+                                        // The untagged.ptr is the Global<Value>* handle, NOT the value itself
+                                        const global_handles_mod = @import("global_handles.zig");
+                                        const handle = global_handles_mod.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+                                        if (handle.get(isolate_inner)) |local_value| {
+                                            break :comptime_convert local_value;
+                                        }
                                     }
                                     // Fallback: return null if we can't extract the V8 value
                                     break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
@@ -4296,6 +4365,14 @@ pub fn V8Interface(comptime Interface: type) type {
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
+            // WebIDL named property visibility algorithm step 1:
+            // If P is NOT a supported property name, do not intercept.
+            // This ensures that properties like __proto__, toString, etc. fall through
+            // to the prototype chain instead of being incorrectly intercepted.
+            if (!isSupportedPropertyName(instance, prop_name)) {
+                return .kNo;
+            }
+
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Select the appropriate getter function based on what the interface declares
@@ -4473,6 +4550,42 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
+        /// Check if a property name is a supported property name per WebIDL spec.
+        /// This implements step 1 of the named property visibility algorithm (WebIDL §3.9).
+        ///
+        /// The named property visibility algorithm determines if a named property should be exposed:
+        /// 1. If P is NOT a supported property name of O, return false <- THIS CHECK
+        /// 2. If O has an own property named P, return false
+        /// 3. If O has [LegacyOverrideBuiltIns], return true
+        /// 4. Otherwise, check prototype chain for property P
+        ///
+        /// This check ensures that properties like __proto__, toString, etc. are NOT intercepted
+        /// because they are never in the list of supported property names.
+        fn isSupportedPropertyName(instance: *runtime.Instance, prop_name: []const u8) bool {
+            // Only check if interface has getSupportedPropertyNames
+            if (comptime !@hasDecl(Interface, "getSupportedPropertyNames")) {
+                return false;
+            }
+
+            // Get supported property names from the interface
+            // Use a fixed buffer allocator to avoid heap allocation in hot path
+            var buf: [8192]u8 = undefined;
+            var fba = std.heap.FixedBufferAllocator.init(&buf);
+
+            const names = Interface.getSupportedPropertyNames(instance, fba.allocator()) catch {
+                return false;
+            };
+
+            // Check if prop_name is in the list of supported property names
+            for (names) |supported_name| {
+                if (std.mem.eql(u8, supported_name.asSlice(), prop_name)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         /// Check if a string is a valid array index (non-negative integer < 2^32 - 1)
         fn isArrayIndex(s: []const u8) bool {
             if (s.len == 0 or s.len > 10) return false;
@@ -4546,12 +4659,16 @@ pub fn V8Interface(comptime Interface: type) type {
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
+            // WebIDL named property visibility algorithm step 1:
+            // If P is NOT a supported property name, do not intercept.
+            if (!isSupportedPropertyName(instance, prop_name)) {
+                return .kNo;
+            }
+
             // Create a DOMString from the property name
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Call the named item getter to check if property exists
-            // Note: kNonMasking flag ensures this is only called for properties that don't
-            // exist on the prototype chain
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
             else if (@hasDecl(Interface, "call_namedItem"))
@@ -4666,6 +4783,16 @@ pub fn V8Interface(comptime Interface: type) type {
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
+            // WebIDL named property visibility algorithm step 1:
+            // If P is NOT a supported property name, do not intercept.
+            // This allows built-in properties like __proto__ to fall through to prototype chain.
+            // Note: For named setters, we still intercept even for unsupported names if
+            // the interface allows creating new named properties. However, the visibility
+            // check ensures we don't shadow prototype chain properties.
+            if (!isSupportedPropertyName(instance, prop_name)) {
+                return .kNo;
+            }
+
             // Create a DOMString from the property name
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
@@ -4772,6 +4899,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
+            // WebIDL named property visibility algorithm step 1:
+            // If P is NOT a supported property name, do not intercept.
+            if (!isSupportedPropertyName(instance, prop_name)) {
+                return .kNo;
+            }
+
             // Create a DOMString from the property name
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
@@ -4876,12 +5009,16 @@ pub fn V8Interface(comptime Interface: type) type {
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
+            // WebIDL named property visibility algorithm step 1:
+            // If P is NOT a supported property name, do not intercept.
+            if (!isSupportedPropertyName(instance, prop_name)) {
+                return .kNo;
+            }
+
             // Create a DOMString from the property name
             const dom_str = runtime.DOMString.initInterned(prop_name);
 
             // Call the named item getter
-            // Note: kNonMasking flag ensures this is only called for properties that don't
-            // exist on the prototype chain
             const getter_fn = comptime if (@hasDecl(Interface, "call_getNamedItem"))
                 Interface.call_getNamedItem
             else if (@hasDecl(Interface, "call_namedItem"))
