@@ -1414,6 +1414,25 @@ pub fn V8Interface(comptime Interface: type) type {
             return false;
         }
 
+        /// Check if a type is a pointer to runtime.Instance (handles typedefs like WindowProxy)
+        /// This is needed because type aliases from different modules may not compare equal
+        /// with direct == comparison at comptime.
+        fn isRuntimeInstancePtr(comptime T: type) bool {
+            const type_info = @typeInfo(T);
+            if (type_info != .pointer) return false;
+            // Check if it's a pointer to runtime.Instance by comparing child type
+            return type_info.pointer.child == runtime.Instance;
+        }
+
+        /// Check if a type is an optional pointer to runtime.Instance
+        fn isOptionalRuntimeInstancePtr(comptime T: type) bool {
+            const type_info = @typeInfo(T);
+            if (type_info != .optional) return false;
+            const child_info = @typeInfo(type_info.optional.child);
+            if (child_info != .pointer) return false;
+            return child_info.pointer.child == runtime.Instance;
+        }
+
         /// Check if a type is an optional callback type (like EventHandler = ?*const fn(...))
         /// These types are stored as tagged pointers to V8 GlobalHandles and need special
         /// handling for return value conversion.
@@ -1823,10 +1842,11 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // WebIDL enum - convert to string using @tagName
                                 // This is a runtime conversion so we use a helper function
                                 break :comptime_convert @ptrCast(conv.enumToV8String(PayloadType, isolate_inner, result));
-                            } else if (PayloadType == *runtime.Instance) {
+                            } else if (PayloadType == *runtime.Instance or comptime isRuntimeInstancePtr(PayloadType)) {
                                 // Instance pointer - wrap with correct V8 prototype
+                                // This handles both *runtime.Instance directly and typedefs like WindowProxy
                                 break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, result));
-                            } else if (PayloadType == ?*runtime.Instance) {
+                            } else if (PayloadType == ?*runtime.Instance or comptime isOptionalRuntimeInstancePtr(PayloadType)) {
                                 // Optional Instance pointer - null or wrap
                                 if (result) |inst| {
                                     break :comptime_convert @ptrCast(conv.instanceToV8(isolate_inner, inst));

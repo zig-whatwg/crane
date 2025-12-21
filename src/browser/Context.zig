@@ -446,6 +446,12 @@ pub const Context = struct {
             cache.set(window_instance, global, self.isolate) catch {};
         }
 
+        // Register Window properties (document, navigator, etc.) as own properties on the global object.
+        // This is required because the global's prototype is immutable (set via SetImmutableProto),
+        // so we can't inherit properties from Window.prototype through the prototype chain.
+        // This matches how child contexts (iframes) register Window properties.
+        v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
+
         // Set up global aliases FIRST (creates __internal object and accessor properties)
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
         self.setupGlobalAliases() catch |err| {
@@ -921,13 +927,13 @@ pub const Context = struct {
         const setup_script = switch (self.context_type) {
             .window =>
             // Window context: Set up __internal for singleton storage and GLOBAL for WPT tests
-            // Also set up self alias which refers to the window/global object
+            // NOTE: Do NOT set self or window here! They are accessor properties registered by
+            // registerPropertiesAsOwnOnObject() via the Window interface. Setting them here
+            // would overwrite the accessor with a data property, breaking the getter mechanism.
             // NOTE: Do NOT try to set parent, top, opener, frames, length here!
             // These are read-only accessor properties defined by Window interface bindings.
             // The Window impl handles returning the correct values for these properties.
             \\globalThis.__internal = globalThis.__internal || { isSecureContext: false };
-            \\globalThis.self = globalThis;
-            \\globalThis.window = globalThis;
             \\globalThis.GLOBAL = {
             \\  isWindow: function() { return true; },
             \\  isWorker: function() { return false; },
