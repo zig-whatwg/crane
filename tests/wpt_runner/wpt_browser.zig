@@ -73,7 +73,12 @@ pub const WptBrowser = struct {
         errdefer allocator.destroy(self);
 
         // Create the underlying browser (manages V8 isolate)
-        const browser_instance = try Browser.init(allocator, .{});
+        // Disable snapshots for now - they cause crashes
+        // TODO: Fix snapshot loading (whatwg-XXXX)
+        const browser_instance = try Browser.init(allocator, .{
+            .log_performance = true,
+            .snapshot_path = "", // Empty string disables snapshot loading
+        });
         errdefer browser_instance.deinit();
 
         self.* = WptBrowser{
@@ -201,6 +206,19 @@ pub const WptBrowser = struct {
         // Load testharness.js BEFORE parsing HTML
         // This ensures testharness globals are available when scripts in HTML execute
         try self.loadTestHarness(ctx);
+
+        // DEBUG: Verify globals still exist before HTML parsing
+        const pre_parse_check =
+            \\(function() {
+            \\  if (typeof setup !== 'function') {
+            \\    throw new Error('GLOBALS LOST before HTML parse! setup=' + typeof setup);
+            \\  }
+            \\  return 'globals OK before parse';
+            \\})();
+        ;
+        _ = ctx.evaluateScript(pre_parse_check) catch |err| {
+            std.debug.print("ERROR: Globals lost before HTML parsing: {}\n", .{err});
+        };
 
         // Create script loader that loads from WPT root
         const loader_ctx = ScriptLoaderContext{

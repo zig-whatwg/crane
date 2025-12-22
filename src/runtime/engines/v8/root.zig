@@ -80,6 +80,9 @@ pub const context_manager = @import("context_manager.zig");
 // pub const bindings = @import("v8/bindings.zig");
 pub const interface_bindings = @import("interface_bindings.zig");
 
+/// Intl binding for V8 Intl object registration
+pub const intl_binding = @import("intl_binding.zig");
+
 /// External references registry for V8 snapshots
 pub const external_references = @import("external_references.zig");
 

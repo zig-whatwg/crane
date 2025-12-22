@@ -518,6 +518,11 @@ pub const Context = struct {
         const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
+        // NOTE: 'self' is handled by Window interface accessor property (get_self).
+        // Do NOT set 'self' as a data property here - it would overwrite the accessor
+        // and result in the raw Global<Object>* pointer being visible to JavaScript
+        // as a number instead of the actual global object.
+
         // Get __internal object for storing singleton values
         // The accessor properties defined in setupGlobalAliases() read from __internal
         const internal_key = v8.ffi.v8_String_NewFromUtf8(isolate, "__internal", 10) orelse return error.StringCreateFailed;
@@ -1230,15 +1235,15 @@ pub const Context = struct {
         const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
+        std.debug.print("loadHTML: Browser.Context v8_context={*}\n", .{v8_ctx});
+
         // Get runtime context for HTMLParser
         const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
             std.debug.print("Failed to get runtime context: {}\n", .{err});
             return error.NotInitialized;
         };
 
-        // Debug: verify runtime_ctx.engine_ctx matches v8_ctx
-        const engine_ctx = runtime_ctx.getEngineContext();
-        std.debug.print("DEBUG loadHTML: v8_ctx={*}, runtime_ctx.engine_ctx={?*}, match={}\n", .{ v8_ctx, engine_ctx, @intFromPtr(v8_ctx) == @intFromPtr(engine_ctx orelse null) });
+        std.debug.print("loadHTML: runtime_ctx engine_ctx={*}\n", .{runtime_ctx.getEngineContext()});
 
         // Update location object with the document's URL
         try self.setUrl(options.base_url);

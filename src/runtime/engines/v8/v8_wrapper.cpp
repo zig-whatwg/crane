@@ -4045,6 +4045,41 @@ Global<Value>* v8_Function_Call(
 }
 
 // ============================================================================
+// Function::NewInstance - Create object via constructor (sets up prototype chain)
+// ============================================================================
+
+/// Create a new instance of a function (like calling `new Func()`)
+/// This properly sets up the prototype chain, unlike ObjectTemplate::NewInstance()
+Global<Object>* v8_Function_NewInstance(
+    Global<Function>* function,
+    Global<Context>* context,
+    int argc,
+    Global<Value>** argv
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Function> func = function->Get(isolate);
+    
+    // Convert argv to Local<Value> array
+    std::vector<Local<Value>> local_argv;
+    if (argc > 0 && argv != nullptr) {
+        local_argv.reserve(argc);
+        for (int i = 0; i < argc; i++) {
+            local_argv.push_back(argv[i]->Get(isolate));
+        }
+    }
+    
+    MaybeLocal<Object> maybe_obj = func->NewInstance(ctx, argc, argc > 0 ? local_argv.data() : nullptr);
+    if (maybe_obj.IsEmpty()) {
+        return nullptr;
+    }
+    
+    return trackHandle(new Global<Object>(isolate, maybe_obj.ToLocalChecked()));
+}
+
+// ============================================================================
 // Promise API (Phase 2: Runtime Callback Infrastructure  
 // ============================================================================
 
@@ -5342,7 +5377,10 @@ Isolate* v8_SnapshotCreator_GetIsolate(void* creator) {
 /// @param creator - SnapshotCreator handle
 /// @param context - Global handle to the context to snapshot
 void v8_SnapshotCreator_SetDefaultContext(void* creator, Global<Context>* context) {
-    if (!creator || !context) return;
+    if (!creator || !context) {
+        fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] ERROR: creator or context is null\n");
+        return;
+    }
     
     SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
     Isolate* isolate = sc->GetIsolate();
@@ -5350,9 +5388,14 @@ void v8_SnapshotCreator_SetDefaultContext(void* creator, Global<Context>* contex
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
     
-    // SetDefaultContext requires exiting any HandleScope, so we need to
-    // get a local handle and then exit the scope
+    if (ctx.IsEmpty()) {
+        fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] ERROR: context is empty\n");
+        return;
+    }
+    
+    fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Setting default context\n");
     sc->SetDefaultContext(ctx);
+    fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Default context set successfully\n");
 }
 
 /// Create the snapshot blob
@@ -5445,13 +5488,33 @@ Isolate* v8_Isolate_NewFromSnapshot(
     }
     
     if (!snapshot_data || snapshot_size <= 0) {
+        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Invalid snapshot data\n");
         return nullptr;
     }
     
+    fprintf(stderr, "[v8_Isolate_NewFromSnapshot] Creating isolate from snapshot (%d bytes)...\n", snapshot_size);
+    
+    // Count external references
+    if (external_references) {
+        int ref_count = 0;
+        while (external_references[ref_count] != 0) ref_count++;
+        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] External references: %d\n", ref_count);
+    } else {
+        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] No external references provided\n");
+    }
+    
     // Create StartupData from the provided blob
+    // IMPORTANT: This must remain valid until Isolate::New completes
     StartupData startup_data;
     startup_data.data = snapshot_data;
     startup_data.raw_size = snapshot_size;
+    
+    // Validate the snapshot
+    if (!startup_data.IsValid()) {
+        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Snapshot data is not valid\n");
+        return nullptr;
+    }
+    fprintf(stderr, "[v8_Isolate_NewFromSnapshot] Snapshot validation passed\n");
     
     // Create isolate params with snapshot and external references
     Isolate::CreateParams create_params;
@@ -5459,7 +5522,14 @@ Isolate* v8_Isolate_NewFromSnapshot(
     create_params.snapshot_blob = &startup_data;
     create_params.external_references = external_references;
     
-    return Isolate::New(create_params);
+    Isolate* isolate = Isolate::New(create_params);
+    if (!isolate) {
+        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Isolate::New returned nullptr\n");
+        return nullptr;
+    }
+    
+    fprintf(stderr, "[v8_Isolate_NewFromSnapshot] SUCCESS: Isolate created at %p\n", (void*)isolate);
+    return isolate;
 }
 
 /// Create a context from the snapshot's default context
@@ -5471,19 +5541,29 @@ Isolate* v8_Isolate_NewFromSnapshot(
 /// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
 /// @return New context with snapshot state
 Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
-    if (!isolate) return nullptr;
-    
-    HandleScope handle_scope(isolate);
-    
-    // Create context from the snapshot's default context
-    // The snapshot contains the serialized heap state including
-    // all registered FunctionTemplates and their prototypes
-    Local<Context> context = Context::New(isolate);
-    
-    if (context.IsEmpty()) {
+    if (!isolate) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: isolate is null\n");
         return nullptr;
     }
     
+    fprintf(stderr, "[v8_Context_NewFromSnapshot] Creating context...\n");
+    
+    HandleScope handle_scope(isolate);
+    
+    // When loading a snapshot with a DEFAULT context (set via SetDefaultContext),
+    // V8's Context::New() should automatically use the snapshotted default context.
+    // Context::FromSnapshot with index 0 is for additional contexts added via AddContext.
+    //
+    // Let's try Context::New() first, which should give us the default context
+    // from the snapshot if one exists.
+    Local<Context> context = Context::New(isolate);
+    
+    if (context.IsEmpty()) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: Context::New returned empty context\n");
+        return nullptr;
+    }
+    
+    fprintf(stderr, "[v8_Context_NewFromSnapshot] SUCCESS: Context created\n");
     return trackHandle(new Global<Context>(isolate, context));
 }
 

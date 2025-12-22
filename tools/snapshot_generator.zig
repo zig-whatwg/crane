@@ -42,6 +42,10 @@ const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 const ext_refs = v8.external_references;
 const interface_bindings = v8.interface_bindings;
+// Additional modules for external reference parity with snapshot_loader
+const intl_binding = v8.intl_binding;
+const window_properties = v8.window_properties;
+const context_manager = v8.context_manager;
 
 /// Default output file for the snapshot blob
 const DEFAULT_OUTPUT_PATH = "whatwg_snapshot.bin";
@@ -232,19 +236,9 @@ fn registerAllExternalReferences() void {
         }
     }
 
-    // Also register namespace callbacks if any
-    // (Namespaces typically don't have callbacks, but some might)
-    const ns_decls = @typeInfo(namespaces).@"struct".decls;
-    inline for (ns_decls) |decl| {
-        const NamespaceType = @field(namespaces, decl.name);
-
-        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-            // V8Namespace might not have registerExternalReferences, but if it does, call it
-            if (@hasDecl(v8.V8Namespace(NamespaceType), "registerExternalReferences")) {
-                v8.V8Namespace(NamespaceType).registerExternalReferences();
-            }
-        }
-    }
+    // NOTE: Namespace callbacks are registered AFTER all other callbacks
+    // to match the order in snapshot_loader.registerAllExternalReferences()
+    // followed by registerNamespaceExternalReferences()
 
     // Register C++ callbacks that are created in v8_wrapper.cpp
     // These are used by FunctionTemplates but are defined in C++, not Zig
@@ -256,6 +250,33 @@ fn registerAllExternalReferences() void {
     // These are created by zig_callbacks.zig when streams invoke JS callbacks
     const zig_callbacks = @import("v8").zig_callbacks;
     ext_refs.registerCallbackRuntime(zig_callbacks.genericZigCallback);
+
+    // Register Intl callbacks for V8 snapshot compatibility
+    // MUST match snapshot_loader.registerAllExternalReferences()
+    intl_binding.registerExternalReferences();
+
+    // Register WindowProperties named property callbacks
+    // MUST match snapshot_loader.registerAllExternalReferences()
+    window_properties.registerExternalReferences();
+
+    // Register context manager callbacks (Window indexed property handlers)
+    // MUST match snapshot_loader.registerAllExternalReferences()
+    context_manager.registerExternalReferences();
+
+    // FINALLY: Register namespace callbacks (console, etc.)
+    // This MUST be last to match the order in Browser.registerSnapshotExternalReferences()
+    // which calls registerAllExternalReferences() THEN registerNamespaceExternalReferences()
+    const ns_decls = @typeInfo(namespaces).@"struct".decls;
+    inline for (ns_decls) |decl| {
+        const NamespaceType = @field(namespaces, decl.name);
+
+        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+            // V8Namespace might not have registerExternalReferences, but if it does, call it
+            if (@hasDecl(v8.V8Namespace(NamespaceType), "registerExternalReferences")) {
+                v8.V8Namespace(NamespaceType).registerExternalReferences();
+            }
+        }
+    }
 }
 
 test "snapshot generator - external reference collection" {
