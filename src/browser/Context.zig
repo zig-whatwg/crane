@@ -311,6 +311,8 @@ pub const Context = struct {
     initialized: bool,
     /// Event loop reference (owned by Browser)
     event_loop: ?*v8.V8EventLoop,
+    /// Whether to skip interface binding registration (when using snapshot)
+    skip_bindings: bool,
 
     // Singleton instances for cleanup
     window_instance: ?*runtime.Instance = null,
@@ -324,6 +326,10 @@ pub const Context = struct {
     ///
     /// Creates a V8 context within the existing isolate and registers all
     /// browser globals.
+    ///
+    /// If `skip_bindings` is true (when isolate was created from snapshot),
+    /// the interface registration step is skipped since interfaces are already
+    /// available in the snapshot.
     pub fn init(
         allocator: std.mem.Allocator,
         isolate: *v8.ffi.Isolate,
@@ -331,6 +337,7 @@ pub const Context = struct {
         url: []const u8,
         event_loop: ?*v8.V8EventLoop,
         context_type: ContextType,
+        skip_bindings: bool,
     ) !*Context {
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
@@ -347,6 +354,7 @@ pub const Context = struct {
             .context_type = context_type,
             .initialized = false,
             .event_loop = event_loop,
+            .skip_bindings = skip_bindings,
         };
 
         try ctx.createV8Context();
@@ -395,10 +403,14 @@ pub const Context = struct {
         // This also inserts WindowProperties into Window.prototype's chain via
         // insertIntoPrototypeChain(), creating:
         //   Window.prototype → WindowProperties → EventTarget.prototype
-        v8.interface_bindings.initializeBindings(self.isolate, v8_ctx);
+        //
+        // Skip if isolate was created from snapshot - interfaces are already registered
+        if (!self.skip_bindings) {
+            v8.interface_bindings.initializeBindings(self.isolate, v8_ctx);
 
-        // Register all namespaces
-        v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
+            // Register all namespaces
+            v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
+        }
 
         // Get the global object
         const global = v8.ffi.v8_Context_Global(v8_ctx) orelse {
@@ -551,6 +563,11 @@ pub const Context = struct {
             };
             self.navigator_instance = nav_instance;
 
+            // Link the navigator to the Window instance so window.navigator accessor works
+            if (self.window_instance) |win| {
+                impls.Window.setNavigator(win, nav_instance);
+            }
+
             const v8_navigator = v8.template_registry.wrapInstanceAsV8Object(
                 nav_instance,
                 "Navigator",
@@ -558,6 +575,9 @@ pub const Context = struct {
                 v8_ctx,
             ) catch |err| {
                 std.debug.print("Warning: Failed to wrap navigator: {}\n", .{err});
+                // Clean up the instance we just created to avoid memory leak
+                Navigator.deinit(nav_instance);
+                self.navigator_instance = null;
                 return;
             };
 
@@ -574,6 +594,11 @@ pub const Context = struct {
             };
             self.location_instance = loc_instance;
 
+            // Link the location to the Window instance so window.location accessor works
+            if (self.window_instance) |win| {
+                impls.Window.setLocation(win, loc_instance);
+            }
+
             const v8_location = v8.template_registry.wrapInstanceAsV8Object(
                 loc_instance,
                 "Location",
@@ -581,6 +606,9 @@ pub const Context = struct {
                 v8_ctx,
             ) catch |err| {
                 std.debug.print("Warning: Failed to wrap location: {}\n", .{err});
+                // Clean up the instance we just created to avoid memory leak
+                Location.deinit(loc_instance);
+                self.location_instance = null;
                 return;
             };
 
@@ -597,6 +625,11 @@ pub const Context = struct {
             };
             self.history_instance = hist_instance;
 
+            // Link the history to the Window instance so window.history accessor works
+            if (self.window_instance) |win| {
+                impls.Window.setHistory(win, hist_instance);
+            }
+
             const v8_history = v8.template_registry.wrapInstanceAsV8Object(
                 hist_instance,
                 "History",
@@ -604,6 +637,9 @@ pub const Context = struct {
                 v8_ctx,
             ) catch |err| {
                 std.debug.print("Warning: Failed to wrap history: {}\n", .{err});
+                // Clean up the instance we just created to avoid memory leak
+                History.deinit(hist_instance);
+                self.history_instance = null;
                 return;
             };
 
@@ -620,6 +656,11 @@ pub const Context = struct {
             };
             self.performance_instance = perf_instance;
 
+            // Link the performance to the Window instance so window.performance accessor works
+            if (self.window_instance) |win| {
+                impls.Window.setPerformance(win, perf_instance);
+            }
+
             const v8_performance = v8.template_registry.wrapInstanceAsV8Object(
                 perf_instance,
                 "Performance",
@@ -627,6 +668,9 @@ pub const Context = struct {
                 v8_ctx,
             ) catch |err| {
                 std.debug.print("Warning: Failed to wrap performance: {}\n", .{err});
+                // Clean up the instance we just created to avoid memory leak
+                Performance.deinit(perf_instance);
+                self.performance_instance = null;
                 return;
             };
 
@@ -1192,6 +1236,10 @@ pub const Context = struct {
             return error.NotInitialized;
         };
 
+        // Debug: verify runtime_ctx.engine_ctx matches v8_ctx
+        const engine_ctx = runtime_ctx.getEngineContext();
+        std.debug.print("DEBUG loadHTML: v8_ctx={*}, runtime_ctx.engine_ctx={?*}, match={}\n", .{ v8_ctx, engine_ctx, @intFromPtr(v8_ctx) == @intFromPtr(engine_ctx orelse null) });
+
         // Update location object with the document's URL
         try self.setUrl(options.base_url);
 
@@ -1254,6 +1302,10 @@ pub const Context = struct {
         // Fire DOMContentLoaded event
         // Per HTML Standard §13.2.7 "The end" step 4
         navigation.fireDOMContentLoaded(isolate, v8_ctx);
+
+        // Fire load event
+        // Per HTML Standard §13.2.7 "The end" step 9
+        navigation.fireLoad(isolate, v8_ctx);
     }
 
     /// Initialize browsing contexts for all iframes in a document.
@@ -1302,8 +1354,12 @@ pub const Context = struct {
         const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
+        // Debug: v8_ctx and script.len available if needed
+
         // Create V8 string from content
-        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse return error.StringCreateFailed;
+        const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse {
+            return error.StringCreateFailed;
+        };
 
         // Compile script
         const compiled = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse {
@@ -1312,7 +1368,7 @@ pub const Context = struct {
                 const exc_str = v8.ffi.v8_Value_ToString(exc, v8_ctx);
                 if (exc_str) |str| {
                     const len = v8.ffi.v8_String_Utf8Length(str);
-                    const buffer = try self.allocator.alloc(u8, @intCast(len));
+                    const buffer = self.allocator.alloc(u8, @intCast(len)) catch return error.CompileError;
                     defer self.allocator.free(buffer);
                     _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
                     std.debug.print("Script compile error: {s}\n", .{buffer});
@@ -1321,26 +1377,31 @@ pub const Context = struct {
             return error.CompileError;
         };
 
-        // Run script
-        const result = v8.ffi.v8_Script_Run(v8_ctx, compiled) orelse {
-            const exception = v8.ffi.v8_TryCatch_Exception(v8_ctx);
-            if (exception) |exc| {
-                const exc_str = v8.ffi.v8_Value_ToString(exc, v8_ctx);
-                if (exc_str) |str| {
-                    const len = v8.ffi.v8_String_Utf8Length(str);
-                    const buffer = try self.allocator.alloc(u8, @intCast(len));
-                    defer self.allocator.free(buffer);
-                    _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-                    std.debug.print("Script runtime error: {s}\n", .{buffer});
-                }
+        // Run script using safe variant that properly captures exceptions
+        const run_result = v8.ffi.v8_Script_Run_Safe(v8_ctx, compiled);
+        defer v8.ffi.v8_FreeScriptRunResult(run_result);
+
+        if (run_result.error_info) |err_info| {
+            // Print detailed error information
+            if (err_info.message) |msg| {
+                std.debug.print("Script runtime error: {s}\n", .{msg});
+            }
+            if (err_info.source_line) |line| {
+                std.debug.print("  Source line: {s}\n", .{line});
+            }
+            if (err_info.resource_name) |name| {
+                std.debug.print("  Resource: {s}:{d}:{d}\n", .{ name, err_info.line_number, err_info.column_number });
+            }
+            if (err_info.stack_trace) |stack| {
+                std.debug.print("  Stack trace:\n{s}\n", .{stack});
             }
             return error.RuntimeError;
-        };
+        }
 
         // Run microtasks
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 
-        return result;
+        return run_result.value;
     }
 
     /// Deinitialize the context
