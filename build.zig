@@ -3403,22 +3403,15 @@ pub fn build(b: *std.Build) void {
         \\if [ ! -d "$SPECS_DIR/algorithms" ] || [ ! -d "$SPECS_DIR/idl" ]; then
         \\    echo "==> Downloading W3C WebRef data..."
         \\    
-        \\    # Clone webref repo with sparse checkout for just algorithms and idl
+        \\    # Download tarball (no auth required for public repos)
         \\    WEBREF_TMP=$(mktemp -d)
-        \\    cd "$WEBREF_TMP"
-        \\    git init -q
-        \\    git remote add origin https://github.com/AntoineMartinWorique/w3c-webref.git
-        \\    git config core.sparseCheckout true
-        \\    echo "ed/algorithms" >> .git/info/sparse-checkout
-        \\    echo "ed/idl" >> .git/info/sparse-checkout
-        \\    git pull --depth=1 origin main -q
-        \\    cd - > /dev/null
+        \\    curl -sL "https://github.com/w3c/webref/archive/refs/heads/main.tar.gz" | tar -xz -C "$WEBREF_TMP"
         \\    
-        \\    # Copy to specs directory
+        \\    # Copy to specs directory (tarball extracts to webref-main/)
         \\    mkdir -p "$SPECS_DIR"
         \\    rm -rf "$SPECS_DIR/algorithms" "$SPECS_DIR/idl"
-        \\    cp -r "$WEBREF_TMP/ed/algorithms" "$SPECS_DIR/algorithms"
-        \\    cp -r "$WEBREF_TMP/ed/idl" "$SPECS_DIR/idl"
+        \\    cp -r "$WEBREF_TMP/webref-main/ed/algorithms" "$SPECS_DIR/algorithms"
+        \\    cp -r "$WEBREF_TMP/webref-main/ed/idl" "$SPECS_DIR/idl"
         \\    rm -rf "$WEBREF_TMP"
         \\    
         \\    echo "    WebRef data downloaded successfully"
