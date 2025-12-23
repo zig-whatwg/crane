@@ -33,6 +33,33 @@ const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const intl_binding = @import("intl_binding.zig");
 
+/// Standard V8 flags for deterministic snapshot creation and loading.
+/// These MUST be set BEFORE v8_Platform_Initialize() is called.
+/// They ensure consistent hash behavior between snapshot creation and loading.
+///
+/// Note: --no-random-gc was removed as it's not a valid V8 flag in current versions.
+/// The --predictable flag already handles deterministic behavior.
+pub const SNAPSHOT_V8_FLAGS = "--hash-seed=0 --predictable";
+
+/// Initialize V8 platform with proper flags for snapshot support.
+/// This MUST be called instead of v8_Platform_Initialize() when using snapshots.
+///
+/// The order is critical:
+/// 1. Set V8 flags (--hash-seed=0, --predictable)
+/// 2. Initialize V8 platform
+///
+/// Calling v8_Platform_Initialize() directly without setting flags first
+/// will cause snapshot loading to fail with "rehashability" assertion errors.
+pub fn initializePlatformForSnapshots() void {
+    // CRITICAL: Flags MUST be set BEFORE platform initialization
+    std.log.info("[V8 snapshot_loader] Setting V8 flags BEFORE platform init: {s}", .{SNAPSHOT_V8_FLAGS});
+    ffi.v8_SetFlagsFromString(SNAPSHOT_V8_FLAGS);
+
+    // Now initialize the platform
+    std.log.info("[V8 snapshot_loader] Initializing V8 platform", .{});
+    ffi.v8_Platform_Initialize();
+}
+
 /// Result of V8 initialization
 pub const InitResult = struct {
     /// The V8 isolate (caller owns, must dispose)
@@ -151,16 +178,68 @@ const SnapshotResult = struct {
 
 /// Try to initialize from in-memory snapshot data
 fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResult {
-    // Validate snapshot before using
-    if (!ffi.v8_Snapshot_IsValid(data.ptr, @intCast(data.len))) {
+    // === Snapshot Validation ===
+    // Validate snapshot data thoroughly before attempting to load.
+    // This helps provide clear error messages and fail fast.
+
+    // Step 1: Basic size check
+    if (data.len < 8) {
         if (log_performance) {
-            std.log.warn("Snapshot data is invalid, falling back to manual init", .{});
+            std.log.warn("Snapshot validation failed: data too small ({d} bytes, minimum 8)", .{data.len});
         }
         return null;
     }
 
-    // Get external references (must match snapshot creation order)
-    const refs_ptr = ext_refs.getRuntimeExternalReferencesPtr();
+    // Step 2: Check if snapshot data is valid (V8's internal validation)
+    const is_valid = ffi.v8_Snapshot_IsValid(data.ptr, @intCast(data.len));
+    if (!is_valid) {
+        if (log_performance) {
+            std.log.warn("Snapshot validation failed: v8_Snapshot_IsValid returned false", .{});
+            std.log.warn("  This usually means the snapshot is corrupted or was created with an incompatible V8 version", .{});
+        }
+        return null;
+    }
+
+    // Step 3: Check if the snapshot can be rehashed (required for cross-isolate loading)
+    const can_rehash = ffi.v8_Snapshot_CanBeRehashed(data.ptr, @intCast(data.len));
+    if (log_performance) {
+        if (can_rehash) {
+            std.log.info("Snapshot validation passed: valid and rehashable", .{});
+        } else {
+            std.log.warn("Snapshot validation warning: not rehashable", .{});
+            std.log.warn("  This snapshot can only be loaded by an isolate with the same hash seed", .{});
+            std.log.warn("  Ensure --hash-seed=0 was set BEFORE v8_Platform_Initialize()", .{});
+        }
+    }
+
+    // Register and use external references - REQUIRED for V8 snapshot context restoration.
+    // External references must be registered in the SAME ORDER as during snapshot creation.
+    // This allows V8 to resolve callback function pointers when restoring context.
+    //
+    // IMPORTANT: The hash of external references differs between binaries because function
+    // pointers have different addresses in each binary. What matters is:
+    // 1. The COUNT must be the same (11168)
+    // 2. The ORDER must be the same (alphabetical by interface name)
+    //
+    // V8 uses indices into the external references array, not actual addresses.
+    // As long as the order is deterministic, snapshots work correctly.
+    const external_refs = @import("external_references.zig");
+    external_refs.registerAllExternalReferences();
+    const stats = external_refs.getExternalReferenceStats();
+    if (log_performance) {
+        std.log.info("Registered {d} external references for snapshot loading", .{stats.count});
+        // Hash is for debugging - different binaries have different hashes but same order
+        std.log.info("Reference hash: 0x{x:0>16} (order verification - may differ from snapshot generator)", .{stats.hash});
+    }
+    const refs_ptr: ?[*]const isize = external_refs.getRuntimeExternalReferencesPtr();
+
+    // NOTE: V8 flags (--hash-seed=0, --predictable, --no-random-gc) MUST be set
+    // BEFORE v8_Platform_Initialize() is called, not here.
+    // Use initializePlatformForSnapshots() or set flags manually before platform init.
+    // Setting flags here is too late - the platform has already been initialized.
+    //
+    // If you're seeing "rehashability" assertion failures, ensure you're using
+    // initializePlatformForSnapshots() instead of v8_Platform_Initialize() directly.
 
     // Create isolate from snapshot
     const isolate = ffi.v8_Isolate_NewFromSnapshot(
@@ -178,10 +257,19 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
     ffi.v8_Isolate_Enter(isolate);
     errdefer ffi.v8_Isolate_Exit(isolate);
 
-    // Create context from snapshot
-    const context = ffi.v8_Context_NewFromSnapshot(isolate) orelse {
+    // Create a context on the snapshot isolate using Context::New().
+    // This restores from the default snapshot context (set via SetDefaultContext()).
+    //
+    // Note: We do NOT use Context::FromSnapshot() with indexed contexts because
+    // V8 13.1 has rehashability assertion issues with that approach.
+    // Instead, we use Context::New() which works with the default context.
+    //
+    // This gives us:
+    // - Fast isolate startup (~2ms vs ~40ms) from snapshot's pre-compiled builtins
+    // - Context from the default snapshot (currently empty, will contain WebIDL interfaces later)
+    const context = ffi.v8_Context_New(isolate) orelse {
         if (log_performance) {
-            std.log.warn("Failed to create context from snapshot, falling back", .{});
+            std.log.warn("Failed to create context on snapshot isolate, falling back", .{});
         }
         ffi.v8_Isolate_Exit(isolate);
         return null;
@@ -218,7 +306,11 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_perf
         }
         return null;
     };
-    defer allocator.free(snapshot_data);
+    // NOTE: snapshot_data is intentionally NOT freed here!
+    // V8 keeps a reference to the snapshot data for lazy deserialization.
+    // The data must remain valid for the entire lifetime of the isolate.
+    // This is a small memory "leak" (~350KB) that we accept.
+    // TODO: Track this allocation and free it when the isolate is disposed.
 
     const bytes_read = file.readAll(snapshot_data) catch |err| {
         if (log_performance) {
@@ -245,26 +337,62 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_perf
 ///
 /// This MUST be called before attempting to load a snapshot.
 /// The external references must match the order used when creating the snapshot.
+///
+/// IMPORTANT: This now uses the centralized registerAllExternalReferences()
+/// from external_references.zig which registers ALL callbacks in deterministic
+/// order, including all interface callbacks.
 pub fn registerExternalReferences() void {
-    // Clear any previous registrations
-    ext_refs.clearRuntimeReferences();
+    // Use the centralized external reference registration
+    // This ensures the same order at snapshot creation and loading time
+    ext_refs.registerAllExternalReferences();
+}
 
-    // Register C++ callbacks from v8_wrapper.cpp
-    ext_refs.registerCallbackRuntime(ffi.v8_GetAsyncIteratorNextCallback());
-    ext_refs.registerCallbackRuntime(ffi.v8_GetAsyncIteratorReturnCallback());
-    ext_refs.registerCallbackRuntime(ffi.v8_GetAsyncIteratorSelfCallback());
+/// Snapshot validation result with detailed diagnostics
+pub const SnapshotValidation = struct {
+    is_valid: bool,
+    can_rehash: bool,
+    size: usize,
+    error_message: ?[]const u8,
 
-    // Register Zig callbacks used by streams and promise handlers
-    const zig_callbacks = @import("zig_callbacks.zig");
-    ext_refs.registerCallbackRuntime(zig_callbacks.genericZigCallback);
+    pub fn isUsable(self: SnapshotValidation) bool {
+        return self.is_valid and self.can_rehash;
+    }
+};
 
-    // Register Intl callbacks for V8 snapshot compatibility
-    intl_binding.registerExternalReferences();
+/// Validate snapshot data without attempting to load it.
+/// Use this to check if a snapshot is valid before loading.
+///
+/// Returns detailed validation results including:
+/// - is_valid: Whether V8 considers the snapshot data valid
+/// - can_rehash: Whether the snapshot can be loaded with different hash seeds
+/// - error_message: Description of any validation failure
+pub fn validateSnapshotData(data: []const u8) SnapshotValidation {
+    if (data.len < 8) {
+        return .{
+            .is_valid = false,
+            .can_rehash = false,
+            .size = data.len,
+            .error_message = "Snapshot data too small (minimum 8 bytes required)",
+        };
+    }
 
-    // Note: Interface-specific callbacks are registered dynamically when
-    // interface_bindings.initializeBindings() is called. For snapshot loading,
-    // these callbacks must have been registered in the same order during
-    // snapshot creation.
+    const is_valid = ffi.v8_Snapshot_IsValid(data.ptr, @intCast(data.len));
+    if (!is_valid) {
+        return .{
+            .is_valid = false,
+            .can_rehash = false,
+            .size = data.len,
+            .error_message = "Snapshot data is invalid or corrupted",
+        };
+    }
+
+    const can_rehash = ffi.v8_Snapshot_CanBeRehashed(data.ptr, @intCast(data.len));
+    return .{
+        .is_valid = true,
+        .can_rehash = can_rehash,
+        .size = data.len,
+        .error_message = if (!can_rehash) "Snapshot not rehashable - requires matching hash seed" else null,
+    };
 }
 
 /// Check if a valid snapshot file exists at the given path
@@ -289,8 +417,9 @@ pub fn hasValidSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
 // ============================================================================
 
 test "snapshot loader - initializeV8 without snapshot" {
-    // Initialize V8 platform first (required)
-    ffi.v8_Platform_Initialize();
+    // Initialize V8 platform with proper flags for snapshots
+    // This MUST use initializePlatformForSnapshots() to set flags before platform init
+    initializePlatformForSnapshots();
     defer ffi.v8_Platform_Dispose();
 
     // Register external references
