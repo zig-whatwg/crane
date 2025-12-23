@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "nl-t-d0-title",
-  "_source": "nl",
-  "_direction": "forward",
-  "_target": "Title",
-  "_rulesFile": "nl-Title.txt"
-}

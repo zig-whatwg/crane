@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "si-Latn-t-si",
-  "_source": "si",
-  "_direction": "forward",
-  "_target": "si_Latn",
-  "_rulesFile": "si-si_Latn.txt"
-}

@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ar-t-sk",
-  "_source": "sk",
-  "_direction": "forward",
-  "_target": "ar",
-  "_rulesFile": "sk-ar.txt"
-}

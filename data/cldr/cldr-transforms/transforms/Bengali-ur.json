@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ur-t-und-beng",
-  "_source": "Beng",
-  "_direction": "forward",
-  "_target": "ur",
-  "_rulesFile": "Bengali-ur.txt"
-}

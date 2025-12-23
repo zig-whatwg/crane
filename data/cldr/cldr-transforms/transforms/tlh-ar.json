@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ar-t-tlh",
-  "_source": "tlh",
-  "_direction": "forward",
-  "_target": "ar",
-  "_rulesFile": "tlh-ar.txt"
-}

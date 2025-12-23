@@ -1,2 +1,0 @@
-::ch-ch_FONIPA;
-::am_FONIPA-am;

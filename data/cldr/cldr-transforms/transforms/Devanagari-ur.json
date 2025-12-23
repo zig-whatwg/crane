@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ur-t-und-deva",
-  "_source": "Deva",
-  "_direction": "forward",
-  "_target": "ur",
-  "_rulesFile": "Devanagari-ur.txt"
-}

@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "chr-t-zu",
-  "_source": "zu",
-  "_direction": "forward",
-  "_target": "chr",
-  "_rulesFile": "zu-chr.txt"
-}

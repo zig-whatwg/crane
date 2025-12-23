@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "fa-t-ro",
-  "_source": "ro",
-  "_direction": "forward",
-  "_target": "fa",
-  "_rulesFile": "ro-fa.txt"
-}

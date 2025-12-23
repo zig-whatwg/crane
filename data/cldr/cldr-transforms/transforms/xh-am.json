@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "am-t-xh",
-  "_source": "xh",
-  "_direction": "forward",
-  "_target": "am",
-  "_rulesFile": "xh-am.txt"
-}

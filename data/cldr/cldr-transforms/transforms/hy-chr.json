@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "chr-t-hy",
-  "_source": "hy",
-  "_direction": "forward",
-  "_target": "chr",
-  "_rulesFile": "hy-chr.txt"
-}

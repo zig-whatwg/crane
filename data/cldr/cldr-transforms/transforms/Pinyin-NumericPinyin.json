@@ -1,7 +1,0 @@
-{
-  "_visibility": "external",
-  "_source": "Pinyin",
-  "_direction": "both",
-  "_target": "NumericPinyin",
-  "_rulesFile": "Pinyin-NumericPinyin.txt"
-}

@@ -1,7 +1,0 @@
-{
-  "_visibility": "internal",
-  "_source": "ThaiLogical",
-  "_direction": "both",
-  "_target": "Latin",
-  "_rulesFile": "ThaiLogical-Latin.txt"
-}

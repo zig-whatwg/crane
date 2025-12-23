@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ko-t-cs",
-  "_source": "cs",
-  "_direction": "forward",
-  "_target": "ko",
-  "_rulesFile": "cs-ko.txt"
-}

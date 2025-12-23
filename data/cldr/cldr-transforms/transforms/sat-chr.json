@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "chr-t-sat",
-  "_source": "sat",
-  "_direction": "forward",
-  "_target": "chr",
-  "_rulesFile": "sat-chr.txt"
-}

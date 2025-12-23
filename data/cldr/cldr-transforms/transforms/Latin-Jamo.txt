@@ -1,5 +1,0 @@
-::[[:script=Latin:][:M:]-];
-::NFD;
-::Lower;
-::Latin-ConjoiningJamo;
-::[[:script=Latin:][:M:]] NFC;

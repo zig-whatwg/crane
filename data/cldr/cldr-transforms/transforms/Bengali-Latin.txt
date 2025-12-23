@@ -1,5 +1,0 @@
-::[[:script=bengali:][।-॥ঁ-ঃঅ-ঌএ-ঐও-নপ-রলশ-হ়-ৄে-ৈো-্ৗড়-ঢ়য়-ৣ০-৺ৎ]];
-::NFD;
-::Bengali-InterIndic;
-::InterIndic-Latin;
-::NFC;

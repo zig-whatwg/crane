@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "az-t-d0-lower",
-  "_source": "az",
-  "_direction": "forward",
-  "_target": "Lower",
-  "_rulesFile": "az-Lower.txt"
-}

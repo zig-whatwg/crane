@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "el-t-d0-lower",
-  "_source": "el",
-  "_direction": "forward",
-  "_target": "Lower",
-  "_rulesFile": "el-Lower.txt"
-}

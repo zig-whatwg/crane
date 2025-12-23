@@ -1,3 +1,0 @@
-# Copyright (C) 2011-2013, Apple Inc.; Unicode, Inc.; and others. All Rights Reserved.
-i→İ;
-::Any-Upper();

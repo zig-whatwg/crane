@@ -1,2 +1,0 @@
-::hy-hy_FONIPA;
-::und_FONIPA-fa;

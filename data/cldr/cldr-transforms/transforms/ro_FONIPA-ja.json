@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ja-t-ro-fonipa",
-  "_source": "ro_FONIPA",
-  "_direction": "forward",
-  "_target": "ja",
-  "_rulesFile": "ro_FONIPA-ja.txt"
-}

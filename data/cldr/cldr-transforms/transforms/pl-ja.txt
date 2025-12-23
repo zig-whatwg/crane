@@ -1,2 +1,0 @@
-::pl-pl_FONIPA;
-::pl_FONIPA-ja;

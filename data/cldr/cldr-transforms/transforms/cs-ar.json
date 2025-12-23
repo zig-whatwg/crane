@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ar-t-cs",
-  "_source": "cs",
-  "_direction": "forward",
-  "_target": "ar",
-  "_rulesFile": "cs-ar.txt"
-}

@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "am-t-sat",
-  "_source": "sat",
-  "_direction": "forward",
-  "_target": "am",
-  "_rulesFile": "sat-am.txt"
-}

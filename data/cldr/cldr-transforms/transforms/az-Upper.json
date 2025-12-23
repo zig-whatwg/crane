@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "az-t-d0-upper",
-  "_source": "az",
-  "_direction": "forward",
-  "_target": "Upper",
-  "_rulesFile": "az-Upper.txt"
-}

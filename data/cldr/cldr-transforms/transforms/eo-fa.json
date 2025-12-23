@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "fa-t-eo",
-  "_source": "eo",
-  "_direction": "forward",
-  "_target": "fa",
-  "_rulesFile": "eo-fa.txt"
-}

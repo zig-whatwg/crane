@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ar-t-eo",
-  "_source": "eo",
-  "_direction": "forward",
-  "_target": "ar",
-  "_rulesFile": "eo-ar.txt"
-}

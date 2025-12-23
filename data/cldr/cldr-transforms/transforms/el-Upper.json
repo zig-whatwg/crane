@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "el-t-d0-upper",
-  "_source": "el",
-  "_direction": "forward",
-  "_target": "Upper",
-  "_rulesFile": "el-Upper.txt"
-}

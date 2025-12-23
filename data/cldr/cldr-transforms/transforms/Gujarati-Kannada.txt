@@ -1,5 +1,0 @@
-::[।-॥ઁ-ઃઅ-ઍએ-ઑઓ-નપ-રલ-ળવ-હ઼-ૅે-ૉો-્ૐૠૡ૦-૯];
-::NFD;
-::Gujarati-InterIndic;
-::InterIndic-Kannada;
-::NFC;

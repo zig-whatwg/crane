@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "fa-t-sat",
-  "_source": "sat",
-  "_direction": "forward",
-  "_target": "fa",
-  "_rulesFile": "sat-fa.txt"
-}

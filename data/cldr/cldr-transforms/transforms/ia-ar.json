@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ar-t-ia",
-  "_source": "ia",
-  "_direction": "forward",
-  "_target": "ar",
-  "_rulesFile": "ia-ar.txt"
-}

@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "am-t-rm-sursilv",
-  "_source": "rm_SURSILV",
-  "_direction": "forward",
-  "_target": "am",
-  "_rulesFile": "rm_SURSILV-am.txt"
-}

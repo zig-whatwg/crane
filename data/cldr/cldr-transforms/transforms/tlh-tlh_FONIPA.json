@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "tlh-fonipa-t-tlh",
-  "_source": "tlh",
-  "_direction": "forward",
-  "_target": "tlh_FONIPA",
-  "_rulesFile": "tlh-tlh_FONIPA.txt"
-}

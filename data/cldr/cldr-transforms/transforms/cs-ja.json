@@ -1,8 +1,0 @@
-{
-  "_visibility": "external",
-  "_aliasBcp47": "ja-t-cs",
-  "_source": "cs",
-  "_direction": "forward",
-  "_target": "ja",
-  "_rulesFile": "cs-ja.txt"
-}
