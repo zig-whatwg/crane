@@ -194,8 +194,7 @@ pub const Browser = struct {
         };
 
         // Initialize isolate-scoped allocator for template caching
-        // This MUST be done before GlobalTemplateRegistry initialization so that
-        // FunctionTemplates can be cached at the isolate level.
+        // This allows FunctionTemplates to be cached at the isolate level.
         v8.isolate_allocator.initIsolateAllocator(isolate, allocator, false) catch |err| {
             // Already initialized is OK (e.g., from snapshot loading)
             if (err != error.AllocatorAlreadyInitialized) {
