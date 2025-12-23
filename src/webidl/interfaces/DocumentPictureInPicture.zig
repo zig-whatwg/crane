@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DocumentPictureInPictureImpl = @import("impls").DocumentPictureInPicture;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const Window = @import("interfaces").Window;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -78,7 +81,7 @@ pub const DocumentPictureInPicture = struct {
         Meta.MixinTypes,
         struct {
             window: *runtime.Instance = undefined,
-            onenter: EventHandler = undefined,
+            onenter: typedefs.EventHandler = undefined,
             _internal: ?*DocumentPictureInPictureImpl.InternalState = null,
         },
     );

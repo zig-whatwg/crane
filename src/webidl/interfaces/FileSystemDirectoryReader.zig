@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FileSystemDirectoryReaderImpl = @import("impls").FileSystemDirectoryReader;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FileSystemEntriesCallback = @import("callbacks").FileSystemEntriesCallback;
 const ErrorCallback = @import("callbacks").ErrorCallback;
 

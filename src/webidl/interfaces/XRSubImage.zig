@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRSubImageImpl = @import("impls").XRSubImage;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRViewport = @import("interfaces").XRViewport;
 
 pub const XRSubImage = struct {

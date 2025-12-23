@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasShadowStylesImpl = @import("impls").CanvasShadowStyles;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const CanvasShadowStyles = struct {
@@ -61,7 +64,7 @@ pub const CanvasShadowStyles = struct {
             shadowOffsetX: f64 = undefined,
             shadowOffsetY: f64 = undefined,
             shadowBlur: f64 = undefined,
-            shadowColor: runtime.DOMString = undefined,
+            shadowColor: typedefs.DOMString = undefined,
             _internal: ?*CanvasShadowStylesImpl.InternalState = null,
         },
     );

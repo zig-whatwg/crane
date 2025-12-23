@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WorkerImpl = @import("impls").Worker;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const AbstractWorker = @import("interfaces").AbstractWorker;
-const MessageEventTarget = @import("interfaces").MessageEventTarget;
+const AbstractWorker = @import("mixins").AbstractWorker;
+const MessageEventTarget = @import("mixins").MessageEventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const WorkerOptions = @import("dictionaries").WorkerOptions;
@@ -91,9 +94,9 @@ pub const Worker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: EventHandler = undefined,
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*WorkerImpl.InternalState = null,
         },
     );

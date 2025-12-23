@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ByteLengthQueuingStrategyImpl = @import("impls").ByteLengthQueuingStrategy;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Function = @import("callbacks").Function;
 const QueuingStrategyInit = @import("dictionaries").QueuingStrategyInit;
 
@@ -61,7 +64,7 @@ pub const ByteLengthQueuingStrategy = struct {
         Meta.MixinTypes,
         struct {
             highWaterMark: f64 = undefined,
-            size: Function = undefined,
+            size: runtime.JSValue = undefined,
             _internal: ?*ByteLengthQueuingStrategyImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextFormatImpl = @import("impls").TextFormat;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TextFormatInit = @import("dictionaries").TextFormatInit;
 const UnderlineThickness = @import("enums").UnderlineThickness;
 const UnderlineStyle = @import("enums").UnderlineStyle;
@@ -67,8 +70,8 @@ pub const TextFormat = struct {
         struct {
             rangeStart: u32 = undefined,
             rangeEnd: u32 = undefined,
-            underlineStyle: UnderlineStyle = undefined,
-            underlineThickness: UnderlineThickness = undefined,
+            underlineStyle: enums.UnderlineStyle = undefined,
+            underlineThickness: enums.UnderlineThickness = undefined,
             _internal: ?*TextFormatImpl.InternalState = null,
         },
     );

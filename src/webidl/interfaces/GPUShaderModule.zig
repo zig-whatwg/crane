@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUShaderModuleImpl = @import("impls").GPUShaderModule;
 const mixins = @import("mixins");
-const GPUObjectBase = @import("interfaces").GPUObjectBase;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const GPUObjectBase = @import("mixins").GPUObjectBase;
 const GPUCompilationInfo = @import("interfaces").GPUCompilationInfo;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const GPUShaderModule = struct {
     pub const Meta = struct {

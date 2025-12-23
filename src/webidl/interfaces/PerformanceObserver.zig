@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceObserverImpl = @import("impls").PerformanceObserver;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntryList = @import("typedefs").PerformanceEntryList;
 const PerformanceObserverInit = @import("dictionaries").PerformanceObserverInit;
 const DOMString = @import("typedefs").DOMString;
@@ -116,14 +119,7 @@ pub const PerformanceObserver = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_supportedEntryTypes(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_supportedEntryTypes) |cached| {
-            return cached;
-        }
-        const value = try PerformanceObserverImpl.get_supportedEntryTypes(instance);
-        state.own.cached_supportedEntryTypes = value;
-        return value;
+        return try PerformanceObserverImpl.get_supportedEntryTypes(instance);
     }
 
     pub fn call_observe(instance: *runtime.Instance, options: webidl.Opt(PerformanceObserverInit)) anyerror!void {

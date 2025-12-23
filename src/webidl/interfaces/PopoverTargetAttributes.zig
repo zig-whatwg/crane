@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PopoverTargetAttributesImpl = @import("impls").PopoverTargetAttributes;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const DOMString = @import("typedefs").DOMString;
 
@@ -56,7 +59,7 @@ pub const PopoverTargetAttributes = struct {
         Meta.MixinTypes,
         struct {
             popoverTargetElement: ?*runtime.Instance = null,
-            popoverTargetAction: runtime.DOMString = undefined,
+            popoverTargetAction: typedefs.DOMString = undefined,
             _internal: ?*PopoverTargetAttributesImpl.InternalState = null,
         },
     );

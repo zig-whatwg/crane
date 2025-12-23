@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VirtualKeyboardImpl = @import("impls").VirtualKeyboard;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -82,7 +85,7 @@ pub const VirtualKeyboard = struct {
         struct {
             boundingRect: *runtime.Instance = undefined,
             overlaysContent: bool = undefined,
-            ongeometrychange: EventHandler = undefined,
+            ongeometrychange: typedefs.EventHandler = undefined,
             _internal: ?*VirtualKeyboardImpl.InternalState = null,
         },
     );

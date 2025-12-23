@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WakeLockImpl = @import("impls").WakeLock;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WakeLockSentinel = @import("interfaces").WakeLockSentinel;
 const WakeLockType = @import("enums").WakeLockType;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const OES_texture_floatImpl = @import("impls").OES_texture_float;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const OES_texture_float = struct {
     pub const Meta = struct {

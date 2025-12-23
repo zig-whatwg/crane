@@ -7,9 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const Path2DImpl = @import("impls").Path2D;
 const mixins = @import("mixins");
-const CanvasPath = @import("interfaces").CanvasPath;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const CanvasPath = @import("mixins").CanvasPath;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const sequence = @import("interfaces").sequence;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const DOMString = @import("typedefs").DOMString;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechSynthesisUtteranceImpl = @import("impls").SpeechSynthesisUtterance;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -95,19 +98,19 @@ pub const SpeechSynthesisUtterance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: runtime.DOMString = undefined,
-            lang: runtime.DOMString = undefined,
+            text: typedefs.DOMString = undefined,
+            lang: typedefs.DOMString = undefined,
             voice: ?*runtime.Instance = null,
             volume: f32 = undefined,
             rate: f32 = undefined,
             pitch: f32 = undefined,
-            onstart: EventHandler = undefined,
-            onend: EventHandler = undefined,
-            onerror: EventHandler = undefined,
-            onpause: EventHandler = undefined,
-            onresume: EventHandler = undefined,
-            onmark: EventHandler = undefined,
-            onboundary: EventHandler = undefined,
+            onstart: typedefs.EventHandler = undefined,
+            onend: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onpause: typedefs.EventHandler = undefined,
+            onresume: typedefs.EventHandler = undefined,
+            onmark: typedefs.EventHandler = undefined,
+            onboundary: typedefs.EventHandler = undefined,
             _internal: ?*SpeechSynthesisUtteranceImpl.InternalState = null,
         },
     );

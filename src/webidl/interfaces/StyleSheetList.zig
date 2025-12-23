@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const StyleSheetListImpl = @import("impls").StyleSheetList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const StyleSheet = @import("interfaces").StyleSheet;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRRenderStateImpl = @import("impls").XRRenderState;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRWebGLLayer = @import("interfaces").XRWebGLLayer;
 const XRLayer = @import("interfaces").XRLayer;
 
@@ -74,7 +77,7 @@ pub const XRRenderState = struct {
             passthroughFullyObscured: ?bool = null,
             inlineVerticalFieldOfView: ?f64 = null,
             baseLayer: ?*runtime.Instance = null,
-            layers: runtime.FrozenArray(XRLayer) = undefined,
+            layers: runtime.JSValue = undefined,
             _internal: ?*XRRenderStateImpl.InternalState = null,
         },
     );

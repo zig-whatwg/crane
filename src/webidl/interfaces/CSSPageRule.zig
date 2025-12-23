@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSPageRuleImpl = @import("impls").CSSPageRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -75,7 +78,7 @@ pub const CSSPageRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            selectorText: CSSOMString = undefined,
+            selectorText: typedefs.CSSOMString = undefined,
             style: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSPageRuleImpl.InternalState = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioParamImpl = @import("impls").AudioParam;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AutomationRate = @import("enums").AutomationRate;
 
 pub const AudioParam = struct {
@@ -80,7 +83,7 @@ pub const AudioParam = struct {
         Meta.MixinTypes,
         struct {
             value: f32 = undefined,
-            automationRate: AutomationRate = undefined,
+            automationRate: enums.AutomationRate = undefined,
             defaultValue: f32 = undefined,
             minValue: f32 = undefined,
             maxValue: f32 = undefined,

@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SummarizerImpl = @import("impls").Summarizer;
 const mixins = @import("mixins");
-const DestroyableModel = @import("interfaces").DestroyableModel;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const DestroyableModel = @import("mixins").DestroyableModel;
 const Availability = @import("enums").Availability;
 const ReadableStream = @import("interfaces").ReadableStream;
 const SummarizerSummarizeOptions = @import("dictionaries").SummarizerSummarizeOptions;
@@ -99,13 +102,13 @@ pub const Summarizer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: runtime.DOMString = undefined,
-            @"type": SummarizerType = undefined,
-            format: SummarizerFormat = undefined,
-            length: SummarizerLength = undefined,
-            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
-            expectedContextLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
-            outputLanguage: ?runtime.DOMString = null,
+            sharedContext: typedefs.DOMString = undefined,
+            @"type": enums.SummarizerType = undefined,
+            format: enums.SummarizerFormat = undefined,
+            length: enums.SummarizerLength = undefined,
+            expectedInputLanguages: ?runtime.JSValue = null,
+            expectedContextLanguages: ?runtime.JSValue = null,
+            outputLanguage: ?typedefs.DOMString = null,
             inputQuota: f64 = undefined,
             _internal: ?*SummarizerImpl.InternalState = null,
         },

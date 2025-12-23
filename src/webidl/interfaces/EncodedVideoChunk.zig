@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EncodedVideoChunkImpl = @import("impls").EncodedVideoChunk;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EncodedVideoChunkType = @import("enums").EncodedVideoChunkType;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const EncodedVideoChunkInit = @import("dictionaries").EncodedVideoChunkInit;
@@ -71,7 +74,7 @@ pub const EncodedVideoChunk = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": EncodedVideoChunkType = undefined,
+            @"type": enums.EncodedVideoChunkType = undefined,
             timestamp: i64 = undefined,
             duration: ?u64 = null,
             byteLength: u32 = undefined,

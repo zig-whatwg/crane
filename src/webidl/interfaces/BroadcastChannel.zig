@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BroadcastChannelImpl = @import("impls").BroadcastChannel;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -81,9 +84,9 @@ pub const BroadcastChannel = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
+            name: typedefs.DOMString = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*BroadcastChannelImpl.InternalState = null,
         },
     );

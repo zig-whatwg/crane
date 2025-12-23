@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const StyleSheetImpl = @import("impls").StyleSheet;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
 const Node = @import("interfaces").Node;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MediaList = @import("interfaces").MediaList;
 
@@ -82,14 +85,14 @@ pub const StyleSheet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": CSSOMString = undefined,
+            @"type": typedefs.CSSOMString = undefined,
             href: ?runtime.USVString = null,
             ownerNode: ?union(enum) {
                 Element: Element,
                 ProcessingInstruction: ProcessingInstruction,
             } = null,
             parentStyleSheet: ?*runtime.Instance = null,
-            title: ?runtime.DOMString = null,
+            title: ?typedefs.DOMString = null,
             media: *runtime.Instance = undefined,
             disabled: bool = undefined,
             cached_media: ?*runtime.Instance = null,

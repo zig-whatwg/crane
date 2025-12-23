@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NDEFReaderImpl = @import("impls").NDEFReader;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const NDEFMessageSource = @import("typedefs").NDEFMessageSource;
@@ -83,8 +86,8 @@ pub const NDEFReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onreading: EventHandler = undefined,
-            onreadingerror: EventHandler = undefined,
+            onreading: typedefs.EventHandler = undefined,
+            onreadingerror: typedefs.EventHandler = undefined,
             _internal: ?*NDEFReaderImpl.InternalState = null,
         },
     );

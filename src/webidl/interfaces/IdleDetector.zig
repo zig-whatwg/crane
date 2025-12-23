@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IdleDetectorImpl = @import("impls").IdleDetector;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -90,9 +93,9 @@ pub const IdleDetector = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userState: ?UserIdleState = null,
-            screenState: ?ScreenIdleState = null,
-            onchange: EventHandler = undefined,
+            userState: ?enums.UserIdleState = null,
+            screenState: ?enums.ScreenIdleState = null,
+            onchange: typedefs.EventHandler = undefined,
             _internal: ?*IdleDetectorImpl.InternalState = null,
         },
     );

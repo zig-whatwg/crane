@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigationTransitionImpl = @import("impls").NavigationTransition;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const NavigationType = @import("enums").NavigationType;
 const NavigationHistoryEntry = @import("interfaces").NavigationHistoryEntry;
 
@@ -64,10 +67,10 @@ pub const NavigationTransition = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            navigationType: NavigationType = undefined,
+            navigationType: enums.NavigationType = undefined,
             from: *runtime.Instance = undefined,
-            committed: runtime.Promise(void) = undefined,
-            finished: runtime.Promise(void) = undefined,
+            committed: runtime.JSValue = undefined,
+            finished: runtime.JSValue = undefined,
             _internal: ?*NavigationTransitionImpl.InternalState = null,
         },
     );

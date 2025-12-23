@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceServerTimingImpl = @import("impls").PerformanceServerTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
 
@@ -67,9 +70,9 @@ pub const PerformanceServerTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            duration: DOMHighResTimeStamp = undefined,
-            description: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            duration: typedefs.DOMHighResTimeStamp = undefined,
+            description: typedefs.DOMString = undefined,
             _internal: ?*PerformanceServerTimingImpl.InternalState = null,
         },
     );

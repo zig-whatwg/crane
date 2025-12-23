@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PushMessageDataImpl = @import("impls").PushMessageData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Blob = @import("interfaces").Blob;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const PushMessageData = struct {
     pub const Meta = struct {

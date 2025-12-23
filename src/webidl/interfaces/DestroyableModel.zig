@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DestroyableModelImpl = @import("impls").DestroyableModel;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const DestroyableModel = struct {
     pub const Meta = struct {

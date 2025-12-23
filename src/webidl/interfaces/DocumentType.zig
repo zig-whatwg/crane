@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DocumentTypeImpl = @import("impls").DocumentType;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
-const ChildNode = @import("interfaces").ChildNode;
+const ChildNode = @import("mixins").ChildNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Document = @import("interfaces").Document;
 const NodeList = @import("interfaces").NodeList;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
 const Element = @import("interfaces").Element;
@@ -112,9 +115,9 @@ pub const DocumentType = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            publicId: runtime.DOMString = undefined,
-            systemId: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            publicId: typedefs.DOMString = undefined,
+            systemId: typedefs.DOMString = undefined,
             _internal: ?*DocumentTypeImpl.InternalState = null,
         },
     );

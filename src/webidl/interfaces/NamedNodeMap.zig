@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NamedNodeMapImpl = @import("impls").NamedNodeMap;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Attr = @import("interfaces").Attr;
 const DOMString = @import("typedefs").DOMString;
 

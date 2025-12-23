@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSCustomMediaRuleImpl = @import("impls").CSSCustomMediaRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CustomMediaQuery = @import("typedefs").CustomMediaQuery;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
@@ -64,8 +67,8 @@ pub const CSSCustomMediaRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
-            query: CustomMediaQuery = undefined,
+            name: typedefs.CSSOMString = undefined,
+            query: typedefs.CustomMediaQuery = undefined,
             _internal: ?*CSSCustomMediaRuleImpl.InternalState = null,
         },
     );

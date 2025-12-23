@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorPluginsImpl = @import("impls").NavigatorPlugins;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MimeTypeArray = @import("interfaces").MimeTypeArray;
 const PluginArray = @import("interfaces").PluginArray;
 

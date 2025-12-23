@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSPositionTryRuleImpl = @import("impls").CSSPositionTryRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -70,7 +73,7 @@ pub const CSSPositionTryRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
+            name: typedefs.CSSOMString = undefined,
             style: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSPositionTryRuleImpl.InternalState = null,

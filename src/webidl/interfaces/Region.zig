@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RegionImpl = @import("impls").Region;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
 const Range = @import("interfaces").Range;
 
@@ -55,7 +58,7 @@ pub const Region = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            regionOverset: CSSOMString = undefined,
+            regionOverset: typedefs.CSSOMString = undefined,
             _internal: ?*RegionImpl.InternalState = null,
         },
     );

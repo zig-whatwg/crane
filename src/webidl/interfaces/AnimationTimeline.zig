@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AnimationTimelineImpl = @import("impls").AnimationTimeline;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const Animation = @import("interfaces").Animation;
@@ -64,7 +67,7 @@ pub const AnimationTimeline = struct {
         Meta.MixinTypes,
         struct {
             currentTime: ?f64 = null,
-            duration: ?CSSNumberish = null,
+            duration: ?typedefs.CSSNumberish = null,
             _internal: ?*AnimationTimelineImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCIceCandidatePairImpl = @import("impls").RTCIceCandidatePair;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCIceCandidate = @import("interfaces").RTCIceCandidate;
 
 pub const RTCIceCandidatePair = struct {

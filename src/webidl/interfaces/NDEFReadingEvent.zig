@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NDEFReadingEventImpl = @import("impls").NDEFReadingEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const NDEFReadingEventInit = @import("dictionaries").NDEFReadingEventInit;
@@ -72,7 +75,7 @@ pub const NDEFReadingEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            serialNumber: runtime.DOMString = undefined,
+            serialNumber: typedefs.DOMString = undefined,
             message: *runtime.Instance = undefined,
             cached_message: ?*runtime.Instance = null,
             _internal: ?*NDEFReadingEventImpl.InternalState = null,

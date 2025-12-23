@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FontFaceSetLoadEventImpl = @import("impls").FontFaceSetLoadEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const CSSOMString = @import("typedefs").CSSOMString;
 const EventTarget = @import("interfaces").EventTarget;
@@ -73,8 +76,8 @@ pub const FontFaceSetLoadEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            fontfaces: runtime.FrozenArray(FontFace) = undefined,
-            cached_fontfaces: ?runtime.FrozenArray(FontFace) = null,
+            fontfaces: runtime.JSValue = undefined,
+            cached_fontfaces: ?runtime.JSValue = null,
             _internal: ?*FontFaceSetLoadEventImpl.InternalState = null,
         },
     );

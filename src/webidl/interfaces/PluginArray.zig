@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PluginArrayImpl = @import("impls").PluginArray;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Plugin = @import("interfaces").Plugin;
 const DOMString = @import("typedefs").DOMString;
 

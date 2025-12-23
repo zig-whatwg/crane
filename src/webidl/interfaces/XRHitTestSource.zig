@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRHitTestSourceImpl = @import("impls").XRHitTestSource;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const XRHitTestSource = struct {
     pub const Meta = struct {

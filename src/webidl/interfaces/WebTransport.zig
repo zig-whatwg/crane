@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebTransportImpl = @import("impls").WebTransport;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 const WebTransportConnectionStats = @import("dictionaries").WebTransportConnectionStats;
 const WebTransportSendStream = @import("interfaces").WebTransportSendStream;
 const WebTransportDatagramDuplexStream = @import("interfaces").WebTransportDatagramDuplexStream;
 const WebTransportReliabilityMode = @import("enums").WebTransportReliabilityMode;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const WebTransportOptions = @import("dictionaries").WebTransportOptions;
 const WebTransportBidirectionalStream = @import("interfaces").WebTransportBidirectionalStream;
 const ReadableStream = @import("interfaces").ReadableStream;
@@ -108,14 +111,14 @@ pub const WebTransport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ready: runtime.Promise(void) = undefined,
-            reliability: WebTransportReliabilityMode = undefined,
-            congestionControl: WebTransportCongestionControl = undefined,
+            ready: runtime.JSValue = undefined,
+            reliability: enums.WebTransportReliabilityMode = undefined,
+            congestionControl: enums.WebTransportCongestionControl = undefined,
             anticipatedConcurrentIncomingUnidirectionalStreams: ?u16 = null,
             anticipatedConcurrentIncomingBidirectionalStreams: ?u16 = null,
-            protocol: runtime.DOMString = undefined,
-            closed: runtime.Promise(WebTransportCloseInfo) = undefined,
-            draining: runtime.Promise(void) = undefined,
+            protocol: typedefs.DOMString = undefined,
+            closed: runtime.JSValue = undefined,
+            draining: runtime.JSValue = undefined,
             datagrams: *runtime.Instance = undefined,
             incomingBidirectionalStreams: *runtime.Instance = undefined,
             incomingUnidirectionalStreams: *runtime.Instance = undefined,

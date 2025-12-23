@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TCPSocketImpl = @import("impls").TCPSocket;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TCPSocketOptions = @import("dictionaries").TCPSocketOptions;
 const TCPSocketOpenInfo = @import("dictionaries").TCPSocketOpenInfo;
 const DOMString = @import("typedefs").DOMString;
@@ -68,8 +71,8 @@ pub const TCPSocket = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            opened: runtime.Promise(TCPSocketOpenInfo) = undefined,
-            closed: runtime.Promise(void) = undefined,
+            opened: runtime.JSValue = undefined,
+            closed: runtime.JSValue = undefined,
             _internal: ?*TCPSocketImpl.InternalState = null,
         },
     );

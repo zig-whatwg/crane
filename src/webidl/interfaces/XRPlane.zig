@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRPlaneImpl = @import("impls").XRPlane;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const XRPlaneOrientation = @import("enums").XRPlaneOrientation;
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
@@ -65,10 +68,10 @@ pub const XRPlane = struct {
         Meta.MixinTypes,
         struct {
             planeSpace: *runtime.Instance = undefined,
-            polygon: runtime.FrozenArray(DOMPointReadOnly) = undefined,
-            orientation: ?XRPlaneOrientation = null,
-            lastChangedTime: DOMHighResTimeStamp = undefined,
-            semanticLabel: ?runtime.DOMString = null,
+            polygon: runtime.JSValue = undefined,
+            orientation: ?enums.XRPlaneOrientation = null,
+            lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
+            semanticLabel: ?typedefs.DOMString = null,
             cached_planeSpace: ?*runtime.Instance = null,
             _internal: ?*XRPlaneImpl.InternalState = null,
         },

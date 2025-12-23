@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CredentialImpl = @import("impls").Credential;
 const mixins = @import("mixins");
-const USVString = @import("interfaces").USVString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Credential = struct {
@@ -70,7 +73,7 @@ pub const Credential = struct {
         Meta.MixinTypes,
         struct {
             id: runtime.USVString = undefined,
-            @"type": runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
             _internal: ?*CredentialImpl.InternalState = null,
         },
     );

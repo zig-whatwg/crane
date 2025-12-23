@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RestrictionTargetImpl = @import("impls").RestrictionTarget;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 
 pub const RestrictionTarget = struct {

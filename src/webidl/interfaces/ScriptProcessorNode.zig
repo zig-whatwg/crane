@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ScriptProcessorNodeImpl = @import("impls").ScriptProcessorNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -85,7 +88,7 @@ pub const ScriptProcessorNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onaudioprocess: EventHandler = undefined,
+            onaudioprocess: typedefs.EventHandler = undefined,
             bufferSize: i32 = undefined,
             _internal: ?*ScriptProcessorNodeImpl.InternalState = null,
         },

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechRecognitionResultListImpl = @import("impls").SpeechRecognitionResultList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SpeechRecognitionResult = @import("interfaces").SpeechRecognitionResult;
 
 pub const SpeechRecognitionResultList = struct {

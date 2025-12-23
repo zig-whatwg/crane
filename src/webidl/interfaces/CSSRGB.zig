@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSRGBImpl = @import("impls").CSSRGB;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSColorRGBComp = @import("typedefs").CSSColorRGBComp;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSRGB = struct {
@@ -77,10 +80,10 @@ pub const CSSRGB = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            r: CSSColorRGBComp = undefined,
-            g: CSSColorRGBComp = undefined,
-            b: CSSColorRGBComp = undefined,
-            alpha: CSSColorPercent = undefined,
+            r: typedefs.CSSColorRGBComp = undefined,
+            g: typedefs.CSSColorRGBComp = undefined,
+            b: typedefs.CSSColorRGBComp = undefined,
+            alpha: typedefs.CSSColorPercent = undefined,
             _internal: ?*CSSRGBImpl.InternalState = null,
         },
     );

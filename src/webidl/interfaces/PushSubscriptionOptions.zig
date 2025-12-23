@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PushSubscriptionOptionsImpl = @import("impls").PushSubscriptionOptions;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const PushSubscriptionOptions = struct {
     pub const Meta = struct {
@@ -64,7 +67,7 @@ pub const PushSubscriptionOptions = struct {
         struct {
             userVisibleOnly: bool = undefined,
             applicationServerKey: ?runtime.ArrayBuffer = null,
-            cached_applicationServerKey: ?runtime.ArrayBuffer = null,
+            cached_applicationServerKey: ?runtime.JSValue = null,
             _internal: ?*PushSubscriptionOptionsImpl.InternalState = null,
         },
     );

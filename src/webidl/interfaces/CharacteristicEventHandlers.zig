@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CharacteristicEventHandlersImpl = @import("impls").CharacteristicEventHandlers;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const CharacteristicEventHandlers = struct {
@@ -54,7 +57,7 @@ pub const CharacteristicEventHandlers = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oncharacteristicvaluechanged: EventHandler = undefined,
+            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
             _internal: ?*CharacteristicEventHandlersImpl.InternalState = null,
         },
     );

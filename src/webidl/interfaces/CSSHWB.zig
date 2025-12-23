@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSHWBImpl = @import("impls").CSSHWB;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSHWB = struct {
@@ -78,9 +81,9 @@ pub const CSSHWB = struct {
         Meta.MixinTypes,
         struct {
             h: *runtime.Instance = undefined,
-            w: CSSNumberish = undefined,
-            b: CSSNumberish = undefined,
-            alpha: CSSNumberish = undefined,
+            w: typedefs.CSSNumberish = undefined,
+            b: typedefs.CSSNumberish = undefined,
+            alpha: typedefs.CSSNumberish = undefined,
             _internal: ?*CSSHWBImpl.InternalState = null,
         },
     );

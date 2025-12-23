@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCIceTransportImpl = @import("impls").RTCIceTransport;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -113,15 +116,15 @@ pub const RTCIceTransport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            role: RTCIceRole = undefined,
-            component: RTCIceComponent = undefined,
-            state: RTCIceTransportState = undefined,
-            gatheringState: RTCIceGathererState = undefined,
-            onstatechange: EventHandler = undefined,
-            ongatheringstatechange: EventHandler = undefined,
-            onselectedcandidatepairchange: EventHandler = undefined,
-            onerror: EventHandler = undefined,
-            onicecandidate: EventHandler = undefined,
+            role: enums.RTCIceRole = undefined,
+            component: enums.RTCIceComponent = undefined,
+            state: enums.RTCIceTransportState = undefined,
+            gatheringState: enums.RTCIceGathererState = undefined,
+            onstatechange: typedefs.EventHandler = undefined,
+            ongatheringstatechange: typedefs.EventHandler = undefined,
+            onselectedcandidatepairchange: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onicecandidate: typedefs.EventHandler = undefined,
             _internal: ?*RTCIceTransportImpl.InternalState = null,
         },
     );

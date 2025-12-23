@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCRtpScriptTransformerImpl = @import("impls").RTCRtpScriptTransformer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
@@ -84,7 +87,7 @@ pub const RTCRtpScriptTransformer = struct {
         struct {
             readable: *runtime.Instance = undefined,
             writable: *runtime.Instance = undefined,
-            onkeyframerequest: EventHandler = undefined,
+            onkeyframerequest: typedefs.EventHandler = undefined,
             options: runtime.JSValue = undefined,
             _internal: ?*RTCRtpScriptTransformerImpl.InternalState = null,
         },

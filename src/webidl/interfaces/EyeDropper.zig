@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EyeDropperImpl = @import("impls").EyeDropper;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ColorSelectionOptions = @import("dictionaries").ColorSelectionOptions;
 const ColorSelectionResult = @import("dictionaries").ColorSelectionResult;
 

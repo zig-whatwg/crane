@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioListenerImpl = @import("impls").AudioListener;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioParam = @import("interfaces").AudioParam;
 
 pub const AudioListener = struct {

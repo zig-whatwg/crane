@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothRemoteGATTServiceImpl = @import("impls").BluetoothRemoteGATTService;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
-const ServiceEventHandlers = @import("interfaces").ServiceEventHandlers;
+const CharacteristicEventHandlers = @import("mixins").CharacteristicEventHandlers;
+const ServiceEventHandlers = @import("mixins").ServiceEventHandlers;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
@@ -102,12 +105,12 @@ pub const BluetoothRemoteGATTService = struct {
         Meta.MixinTypes,
         struct {
             device: *runtime.Instance = undefined,
-            uuid: UUID = undefined,
+            uuid: typedefs.UUID = undefined,
             isPrimary: bool = undefined,
-            oncharacteristicvaluechanged: EventHandler = undefined,
-            onserviceadded: EventHandler = undefined,
-            onservicechanged: EventHandler = undefined,
-            onserviceremoved: EventHandler = undefined,
+            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
+            onserviceadded: typedefs.EventHandler = undefined,
+            onservicechanged: typedefs.EventHandler = undefined,
+            onserviceremoved: typedefs.EventHandler = undefined,
             cached_device: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTServiceImpl.InternalState = null,
         },

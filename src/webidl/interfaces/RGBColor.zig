@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RGBColorImpl = @import("impls").RGBColor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSPrimitiveValue = @import("interfaces").CSSPrimitiveValue;
 
 pub const RGBColor = struct {

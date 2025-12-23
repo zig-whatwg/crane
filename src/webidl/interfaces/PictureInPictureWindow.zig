@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PictureInPictureWindowImpl = @import("impls").PictureInPictureWindow;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -76,7 +79,7 @@ pub const PictureInPictureWindow = struct {
         struct {
             width: i32 = undefined,
             height: i32 = undefined,
-            onresize: EventHandler = undefined,
+            onresize: typedefs.EventHandler = undefined,
             _internal: ?*PictureInPictureWindowImpl.InternalState = null,
         },
     );

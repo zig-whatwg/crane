@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SFrameDecrypterStreamImpl = @import("impls").SFrameDecrypterStream;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const GenericTransformStream = @import("interfaces").GenericTransformStream;
-const SFrameKeyManagement = @import("interfaces").SFrameKeyManagement;
+const GenericTransformStream = @import("mixins").GenericTransformStream;
+const SFrameKeyManagement = @import("mixins").SFrameKeyManagement;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -91,7 +94,7 @@ pub const SFrameDecrypterStream = struct {
         struct {
             readable: *runtime.Instance = undefined,
             writable: *runtime.Instance = undefined,
-            onerror: EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SFrameDecrypterStreamImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IdentityProviderImpl = @import("impls").IdentityProvider;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const IdentityResolveOptions = @import("dictionaries").IdentityResolveOptions;
 const IdentityProviderConfig = @import("dictionaries").IdentityProviderConfig;
 

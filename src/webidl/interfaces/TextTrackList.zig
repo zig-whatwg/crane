@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextTrackListImpl = @import("impls").TextTrackList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -80,9 +83,9 @@ pub const TextTrackList = struct {
         Meta.MixinTypes,
         struct {
             length: u32 = undefined,
-            onchange: EventHandler = undefined,
-            onaddtrack: EventHandler = undefined,
-            onremovetrack: EventHandler = undefined,
+            onchange: typedefs.EventHandler = undefined,
+            onaddtrack: typedefs.EventHandler = undefined,
+            onremovetrack: typedefs.EventHandler = undefined,
             _internal: ?*TextTrackListImpl.InternalState = null,
         },
     );

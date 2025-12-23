@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BackgroundFetchRegistrationImpl = @import("impls").BackgroundFetchRegistration;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -100,15 +103,15 @@ pub const BackgroundFetchRegistration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             uploadTotal: u64 = undefined,
             uploaded: u64 = undefined,
             downloadTotal: u64 = undefined,
             downloaded: u64 = undefined,
-            result: BackgroundFetchResult = undefined,
-            failureReason: BackgroundFetchFailureReason = undefined,
+            result: enums.BackgroundFetchResult = undefined,
+            failureReason: enums.BackgroundFetchFailureReason = undefined,
             recordsAvailable: bool = undefined,
-            onprogress: EventHandler = undefined,
+            onprogress: typedefs.EventHandler = undefined,
             _internal: ?*BackgroundFetchRegistrationImpl.InternalState = null,
         },
     );

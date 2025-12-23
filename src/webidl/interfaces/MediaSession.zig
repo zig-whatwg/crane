@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaSessionImpl = @import("impls").MediaSession;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MediaSessionPlaybackState = @import("enums").MediaSessionPlaybackState;
 const MediaPositionState = @import("dictionaries").MediaPositionState;
 const MediaSessionActionHandler = @import("callbacks").MediaSessionActionHandler;
@@ -74,7 +77,7 @@ pub const MediaSession = struct {
         Meta.MixinTypes,
         struct {
             metadata: ?*runtime.Instance = null,
-            playbackState: MediaSessionPlaybackState = undefined,
+            playbackState: enums.MediaSessionPlaybackState = undefined,
             _internal: ?*MediaSessionImpl.InternalState = null,
         },
     );

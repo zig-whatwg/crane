@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasImageDataImpl = @import("impls").CanvasImageData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ImageDataSettings = @import("dictionaries").ImageDataSettings;
 const ImageData = @import("interfaces").ImageData;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCDtlsTransportImpl = @import("impls").RTCDtlsTransport;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -81,9 +84,9 @@ pub const RTCDtlsTransport = struct {
         Meta.MixinTypes,
         struct {
             iceTransport: *runtime.Instance = undefined,
-            state: RTCDtlsTransportState = undefined,
-            onstatechange: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            state: enums.RTCDtlsTransportState = undefined,
+            onstatechange: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             cached_iceTransport: ?*runtime.Instance = null,
             _internal: ?*RTCDtlsTransportImpl.InternalState = null,
         },

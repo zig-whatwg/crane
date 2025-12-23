@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FontFaceSetImpl = @import("impls").FontFaceSet;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -94,11 +97,11 @@ pub const FontFaceSet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onloading: EventHandler = undefined,
-            onloadingdone: EventHandler = undefined,
-            onloadingerror: EventHandler = undefined,
-            ready: runtime.Promise(FontFaceSet) = undefined,
-            status: FontFaceSetLoadStatus = undefined,
+            onloading: typedefs.EventHandler = undefined,
+            onloadingdone: typedefs.EventHandler = undefined,
+            onloadingerror: typedefs.EventHandler = undefined,
+            ready: runtime.JSValue = undefined,
+            status: enums.FontFaceSetLoadStatus = undefined,
             _internal: ?*FontFaceSetImpl.InternalState = null,
         },
     );

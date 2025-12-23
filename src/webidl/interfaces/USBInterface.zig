@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBInterfaceImpl = @import("impls").USBInterface;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const USBConfiguration = @import("interfaces").USBConfiguration;
 const USBAlternateInterface = @import("interfaces").USBAlternateInterface;
 
@@ -70,7 +73,7 @@ pub const USBInterface = struct {
         struct {
             interfaceNumber: u8 = undefined,
             alternate: *runtime.Instance = undefined,
-            alternates: runtime.FrozenArray(USBAlternateInterface) = undefined,
+            alternates: runtime.JSValue = undefined,
             claimed: bool = undefined,
             _internal: ?*USBInterfaceImpl.InternalState = null,
         },

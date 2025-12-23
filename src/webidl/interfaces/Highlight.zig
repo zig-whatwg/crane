@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HighlightImpl = @import("impls").Highlight;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HighlightType = @import("enums").HighlightType;
 const AbstractRange = @import("interfaces").AbstractRange;
 
@@ -61,7 +64,7 @@ pub const Highlight = struct {
         Meta.MixinTypes,
         struct {
             priority: i32 = undefined,
-            @"type": HighlightType = undefined,
+            @"type": enums.HighlightType = undefined,
             _internal: ?*HighlightImpl.InternalState = null,
         },
     );

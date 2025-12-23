@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HighlightRegistryImpl = @import("impls").HighlightRegistry;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HighlightsFromPointOptions = @import("dictionaries").HighlightsFromPointOptions;
 const HighlightHitResult = @import("dictionaries").HighlightHitResult;
 

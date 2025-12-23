@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSFontPaletteValuesRuleImpl = @import("impls").CSSFontPaletteValuesRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -67,10 +70,10 @@ pub const CSSFontPaletteValuesRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
-            fontFamily: CSSOMString = undefined,
-            basePalette: CSSOMString = undefined,
-            overrideColors: CSSOMString = undefined,
+            name: typedefs.CSSOMString = undefined,
+            fontFamily: typedefs.CSSOMString = undefined,
+            basePalette: typedefs.CSSOMString = undefined,
+            overrideColors: typedefs.CSSOMString = undefined,
             _internal: ?*CSSFontPaletteValuesRuleImpl.InternalState = null,
         },
     );

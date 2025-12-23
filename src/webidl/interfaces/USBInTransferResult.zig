@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBInTransferResultImpl = @import("impls").USBInTransferResult;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const USBTransferStatus = @import("enums").USBTransferStatus;
 
 pub const USBInTransferResult = struct {
@@ -64,7 +67,7 @@ pub const USBInTransferResult = struct {
         Meta.MixinTypes,
         struct {
             data: ?runtime.DataView = null,
-            status: USBTransferStatus = undefined,
+            status: enums.USBTransferStatus = undefined,
             _internal: ?*USBInTransferResultImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigationCurrentEntryChangeEventImpl = @import("impls").NavigationCurrentEntryChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const NavigationCurrentEntryChangeEventInit = @import("dictionaries").NavigationCurrentEntryChangeEventInit;
 const NavigationType = @import("enums").NavigationType;
@@ -72,7 +75,7 @@ pub const NavigationCurrentEntryChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            navigationType: ?NavigationType = null,
+            navigationType: ?enums.NavigationType = null,
             from: *runtime.Instance = undefined,
             _internal: ?*NavigationCurrentEntryChangeEventImpl.InternalState = null,
         },

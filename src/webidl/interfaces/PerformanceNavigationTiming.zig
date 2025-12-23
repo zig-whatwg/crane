@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceNavigationTimingImpl = @import("impls").PerformanceNavigationTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceResourceTiming = @import("interfaces").PerformanceResourceTiming;
-const ByteString = @import("interfaces").ByteString;
+const ByteString = @import("typedefs").ByteString;
 const NotRestoredReasons = @import("interfaces").NotRestoredReasons;
 const PerformanceServerTiming = @import("interfaces").PerformanceServerTiming;
 const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;
@@ -91,19 +94,19 @@ pub const PerformanceNavigationTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            unloadEventStart: DOMHighResTimeStamp = undefined,
-            unloadEventEnd: DOMHighResTimeStamp = undefined,
-            domInteractive: DOMHighResTimeStamp = undefined,
-            domContentLoadedEventStart: DOMHighResTimeStamp = undefined,
-            domContentLoadedEventEnd: DOMHighResTimeStamp = undefined,
-            domComplete: DOMHighResTimeStamp = undefined,
-            loadEventStart: DOMHighResTimeStamp = undefined,
-            loadEventEnd: DOMHighResTimeStamp = undefined,
-            @"type": NavigationTimingType = undefined,
+            unloadEventStart: typedefs.DOMHighResTimeStamp = undefined,
+            unloadEventEnd: typedefs.DOMHighResTimeStamp = undefined,
+            domInteractive: typedefs.DOMHighResTimeStamp = undefined,
+            domContentLoadedEventStart: typedefs.DOMHighResTimeStamp = undefined,
+            domContentLoadedEventEnd: typedefs.DOMHighResTimeStamp = undefined,
+            domComplete: typedefs.DOMHighResTimeStamp = undefined,
+            loadEventStart: typedefs.DOMHighResTimeStamp = undefined,
+            loadEventEnd: typedefs.DOMHighResTimeStamp = undefined,
+            @"type": enums.NavigationTimingType = undefined,
             redirectCount: u16 = undefined,
-            criticalCHRestart: DOMHighResTimeStamp = undefined,
+            criticalCHRestart: typedefs.DOMHighResTimeStamp = undefined,
             notRestoredReasons: ?*runtime.Instance = null,
-            activationStart: DOMHighResTimeStamp = undefined,
+            activationStart: typedefs.DOMHighResTimeStamp = undefined,
             _internal: ?*PerformanceNavigationTimingImpl.InternalState = null,
         },
     );

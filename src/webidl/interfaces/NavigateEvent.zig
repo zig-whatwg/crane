@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigateEventImpl = @import("impls").NavigateEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const NavigationType = @import("enums").NavigationType;
 const NavigationDestination = @import("interfaces").NavigationDestination;
@@ -98,14 +101,14 @@ pub const NavigateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            navigationType: NavigationType = undefined,
+            navigationType: enums.NavigationType = undefined,
             destination: *runtime.Instance = undefined,
             canIntercept: bool = undefined,
             userInitiated: bool = undefined,
             hashChange: bool = undefined,
             signal: *runtime.Instance = undefined,
             formData: ?*runtime.Instance = null,
-            downloadRequest: ?runtime.DOMString = null,
+            downloadRequest: ?typedefs.DOMString = null,
             info: runtime.JSValue = undefined,
             hasUAVisualTransition: bool = undefined,
             sourceElement: ?*runtime.Instance = null,

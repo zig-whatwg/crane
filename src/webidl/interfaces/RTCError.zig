@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCErrorImpl = @import("impls").RTCError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMException = @import("interfaces").DOMException;
 const RTCErrorInit = @import("dictionaries").RTCErrorInit;
 const DOMString = @import("typedefs").DOMString;
@@ -71,7 +74,7 @@ pub const RTCError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            errorDetail: RTCErrorDetailType = undefined,
+            errorDetail: enums.RTCErrorDetailType = undefined,
             sdpLineNumber: ?i32 = null,
             sctpCauseCode: ?i32 = null,
             receivedAlert: ?u32 = null,

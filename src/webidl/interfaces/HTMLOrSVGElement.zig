@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HTMLOrSVGElementImpl = @import("impls").HTMLOrSVGElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const DOMString = @import("typedefs").DOMString;
 const FocusOptions = @import("dictionaries").FocusOptions;
@@ -65,7 +68,7 @@ pub const HTMLOrSVGElement = struct {
         Meta.MixinTypes,
         struct {
             dataset: *runtime.Instance = undefined,
-            nonce: runtime.DOMString = undefined,
+            nonce: typedefs.DOMString = undefined,
             autofocus: bool = undefined,
             tabIndex: i32 = undefined,
             cached_dataset: ?*runtime.Instance = null,

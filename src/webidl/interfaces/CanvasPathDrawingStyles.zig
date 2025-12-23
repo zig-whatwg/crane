@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasPathDrawingStylesImpl = @import("impls").CanvasPathDrawingStyles;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
 const CanvasLineCap = @import("enums").CanvasLineCap;
 
@@ -66,8 +69,8 @@ pub const CanvasPathDrawingStyles = struct {
         Meta.MixinTypes,
         struct {
             lineWidth: f64 = undefined,
-            lineCap: CanvasLineCap = undefined,
-            lineJoin: CanvasLineJoin = undefined,
+            lineCap: enums.CanvasLineCap = undefined,
+            lineJoin: enums.CanvasLineJoin = undefined,
             miterLimit: f64 = undefined,
             lineDashOffset: f64 = undefined,
             _internal: ?*CanvasPathDrawingStylesImpl.InternalState = null,

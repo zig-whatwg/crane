@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FontFaceVariationsImpl = @import("impls").FontFaceVariations;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const FontFaceVariations = struct {
     pub const Meta = struct {

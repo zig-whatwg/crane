@@ -7,14 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PaymentRequestEventImpl = @import("impls").PaymentRequestEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const PaymentMethodData = @import("dictionaries").PaymentMethodData;
 const WindowClient = @import("interfaces").WindowClient;
 const PaymentShippingOption = @import("dictionaries").PaymentShippingOption;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const PaymentRequestEventInit = @import("dictionaries").PaymentRequestEventInit;
-const AddressInit = @import("interfaces").AddressInit;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const EventTarget = @import("interfaces").EventTarget;
 const PaymentDetailsModifier = @import("dictionaries").PaymentDetailsModifier;
@@ -104,12 +106,12 @@ pub const PaymentRequestEvent = struct {
         struct {
             topOrigin: runtime.USVString = undefined,
             paymentRequestOrigin: runtime.USVString = undefined,
-            paymentRequestId: runtime.DOMString = undefined,
-            methodData: runtime.FrozenArray(PaymentMethodData) = undefined,
+            paymentRequestId: typedefs.DOMString = undefined,
+            methodData: runtime.JSValue = undefined,
             total: runtime.JSValue = undefined,
-            modifiers: runtime.FrozenArray(PaymentDetailsModifier) = undefined,
+            modifiers: runtime.JSValue = undefined,
             paymentOptions: ?runtime.JSValue = null,
-            shippingOptions: ?runtime.FrozenArray(PaymentShippingOption) = null,
+            shippingOptions: ?runtime.JSValue = null,
             _internal: ?*PaymentRequestEventImpl.InternalState = null,
         },
     );

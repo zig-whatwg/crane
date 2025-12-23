@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSKeywordValueImpl = @import("impls").CSSKeywordValue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSKeywordValue = struct {

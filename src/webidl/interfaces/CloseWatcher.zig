@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CloseWatcherImpl = @import("impls").CloseWatcher;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -79,8 +82,8 @@ pub const CloseWatcher = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oncancel: EventHandler = undefined,
-            onclose: EventHandler = undefined,
+            oncancel: typedefs.EventHandler = undefined,
+            onclose: typedefs.EventHandler = undefined,
             _internal: ?*CloseWatcherImpl.InternalState = null,
         },
     );

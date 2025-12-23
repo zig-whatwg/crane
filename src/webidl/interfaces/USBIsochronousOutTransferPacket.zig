@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBIsochronousOutTransferPacketImpl = @import("impls").USBIsochronousOutTransferPacket;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const USBTransferStatus = @import("enums").USBTransferStatus;
 
 pub const USBIsochronousOutTransferPacket = struct {
@@ -64,7 +67,7 @@ pub const USBIsochronousOutTransferPacket = struct {
         Meta.MixinTypes,
         struct {
             bytesWritten: u32 = undefined,
-            status: USBTransferStatus = undefined,
+            status: enums.USBTransferStatus = undefined,
             _internal: ?*USBIsochronousOutTransferPacketImpl.InternalState = null,
         },
     );

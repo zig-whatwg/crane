@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SelectionImpl = @import("impls").Selection;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
 const GetComposedRangesOptions = @import("dictionaries").GetComposedRangesOptions;
 const Range = @import("interfaces").Range;
@@ -115,8 +118,8 @@ pub const Selection = struct {
             focusOffset: u32 = undefined,
             isCollapsed: bool = undefined,
             rangeCount: u32 = undefined,
-            @"type": runtime.DOMString = undefined,
-            direction: runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
+            direction: typedefs.DOMString = undefined,
             _internal: ?*SelectionImpl.InternalState = null,
         },
     );

@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCPeerConnectionIceErrorEventImpl = @import("impls").RTCPeerConnectionIceErrorEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const RTCPeerConnectionIceErrorEventInit = @import("dictionaries").RTCPeerConnectionIceErrorEventInit;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const RTCPeerConnectionIceErrorEvent = struct {
@@ -77,7 +80,7 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            address: ?runtime.DOMString = null,
+            address: ?typedefs.DOMString = null,
             port: ?u16 = null,
             url: runtime.USVString = undefined,
             errorCode: u16 = undefined,

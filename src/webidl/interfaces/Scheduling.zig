@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SchedulingImpl = @import("impls").Scheduling;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const IsInputPendingOptions = @import("dictionaries").IsInputPendingOptions;
 
 pub const Scheduling = struct {

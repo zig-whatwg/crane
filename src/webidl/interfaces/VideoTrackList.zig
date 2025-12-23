@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VideoTrackListImpl = @import("impls").VideoTrackList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
@@ -83,9 +86,9 @@ pub const VideoTrackList = struct {
         struct {
             length: u32 = undefined,
             selectedIndex: i32 = undefined,
-            onchange: EventHandler = undefined,
-            onaddtrack: EventHandler = undefined,
-            onremovetrack: EventHandler = undefined,
+            onchange: typedefs.EventHandler = undefined,
+            onaddtrack: typedefs.EventHandler = undefined,
+            onremovetrack: typedefs.EventHandler = undefined,
             _internal: ?*VideoTrackListImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextEventImpl = @import("impls").TextEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const UIEvent = @import("interfaces").UIEvent;
 const Window = @import("interfaces").Window;
 const UIEventInit = @import("dictionaries").UIEventInit;
@@ -73,7 +76,7 @@ pub const TextEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.DOMString = undefined,
+            data: typedefs.DOMString = undefined,
             _internal: ?*TextEventImpl.InternalState = null,
         },
     );

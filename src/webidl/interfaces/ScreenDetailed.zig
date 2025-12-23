@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ScreenDetailedImpl = @import("impls").ScreenDetailed;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Screen = @import("interfaces").Screen;
 const EventHandler = @import("typedefs").EventHandler;
 const ScreenOrientation = @import("interfaces").ScreenOrientation;
@@ -83,7 +86,7 @@ pub const ScreenDetailed = struct {
             isPrimary: bool = undefined,
             isInternal: bool = undefined,
             devicePixelRatio: f32 = undefined,
-            label: runtime.DOMString = undefined,
+            label: typedefs.DOMString = undefined,
             _internal: ?*ScreenDetailedImpl.InternalState = null,
         },
     );

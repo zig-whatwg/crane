@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGPathDataImpl = @import("impls").SVGPathData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGPathDataSettings = @import("dictionaries").SVGPathDataSettings;
 const SVGPathSegment = @import("interfaces").SVGPathSegment;
 

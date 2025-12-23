@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TrustedScriptImpl = @import("impls").TrustedScript;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const TrustedScript = struct {

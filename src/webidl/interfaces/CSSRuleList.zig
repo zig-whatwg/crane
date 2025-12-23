@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSRuleListImpl = @import("impls").CSSRuleList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 
 pub const CSSRuleList = struct {

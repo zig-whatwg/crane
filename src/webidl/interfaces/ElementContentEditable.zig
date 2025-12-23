@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ElementContentEditableImpl = @import("impls").ElementContentEditable;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const ElementContentEditable = struct {
@@ -60,11 +63,11 @@ pub const ElementContentEditable = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            contentEditable: runtime.DOMString = undefined,
-            enterKeyHint: runtime.DOMString = undefined,
+            contentEditable: typedefs.DOMString = undefined,
+            enterKeyHint: typedefs.DOMString = undefined,
             isContentEditable: bool = undefined,
-            inputMode: runtime.DOMString = undefined,
-            virtualKeyboardPolicy: runtime.DOMString = undefined,
+            inputMode: typedefs.DOMString = undefined,
+            virtualKeyboardPolicy: typedefs.DOMString = undefined,
             _internal: ?*ElementContentEditableImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasUserInterfaceImpl = @import("impls").CanvasUserInterface;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const Path2D = @import("interfaces").Path2D;
 

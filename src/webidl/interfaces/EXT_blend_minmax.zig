@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EXT_blend_minmaxImpl = @import("impls").EXT_blend_minmax;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
 
 pub const EXT_blend_minmax = struct {

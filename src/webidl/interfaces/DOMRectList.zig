@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DOMRectListImpl = @import("impls").DOMRectList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMRect = @import("interfaces").DOMRect;
 
 pub const DOMRectList = struct {

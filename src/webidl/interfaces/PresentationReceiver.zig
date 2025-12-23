@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PresentationReceiverImpl = @import("impls").PresentationReceiver;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PresentationConnectionList = @import("interfaces").PresentationConnectionList;
 
 pub const PresentationReceiver = struct {
@@ -58,7 +61,7 @@ pub const PresentationReceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            connectionList: runtime.Promise(PresentationConnectionList) = undefined,
+            connectionList: runtime.JSValue = undefined,
             _internal: ?*PresentationReceiverImpl.InternalState = null,
         },
     );

@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ShadowRootImpl = @import("impls").ShadowRoot;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DocumentFragment = @import("interfaces").DocumentFragment;
-const DocumentOrShadowRoot = @import("interfaces").DocumentOrShadowRoot;
+const DocumentOrShadowRoot = @import("mixins").DocumentOrShadowRoot;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const Document = @import("interfaces").Document;
 const HTMLCollection = @import("interfaces").HTMLCollection;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const ShadowRootMode = @import("enums").ShadowRootMode;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
@@ -150,13 +153,13 @@ pub const ShadowRoot = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mode: ShadowRootMode = undefined,
+            mode: enums.ShadowRootMode = undefined,
             delegatesFocus: bool = undefined,
-            slotAssignment: SlotAssignmentMode = undefined,
+            slotAssignment: enums.SlotAssignmentMode = undefined,
             clonable: bool = undefined,
             serializable: bool = undefined,
             host: *runtime.Instance = undefined,
-            onslotchange: EventHandler = undefined,
+            onslotchange: typedefs.EventHandler = undefined,
             innerHTML: union(enum) {
                 TrustedHTML: TrustedHTML,
                 DOMString: runtime.DOMString,
@@ -166,7 +169,7 @@ pub const ShadowRoot = struct {
             pictureInPictureElement: ?*runtime.Instance = null,
             pointerLockElement: ?*runtime.Instance = null,
             styleSheets: *runtime.Instance = undefined,
-            adoptedStyleSheets: runtime.ObservableArray(CSSStyleSheet) = undefined,
+            adoptedStyleSheets: runtime.JSValue = undefined,
             activeElement: ?*runtime.Instance = null,
             cached_styleSheets: ?*runtime.Instance = null,
             _internal: ?*ShadowRootImpl.InternalState = null,

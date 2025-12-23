@@ -7,10 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DOMMatrixReadOnlyImpl = @import("impls").DOMMatrixReadOnly;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMPoint = @import("interfaces").DOMPoint;
 const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
 const DOMMatrix = @import("interfaces").DOMMatrix;
-const sequence = @import("interfaces").sequence;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const DOMString = @import("typedefs").DOMString;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUErrorImpl = @import("impls").GPUError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const GPUError = struct {
@@ -61,7 +64,7 @@ pub const GPUError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: runtime.DOMString = undefined,
+            message: typedefs.DOMString = undefined,
             _internal: ?*GPUErrorImpl.InternalState = null,
         },
     );

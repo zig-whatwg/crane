@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUBindGroupImpl = @import("impls").GPUBindGroup;
 const mixins = @import("mixins");
-const GPUObjectBase = @import("interfaces").GPUObjectBase;
-const USVString = @import("interfaces").USVString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const GPUObjectBase = @import("mixins").GPUObjectBase;
+const USVString = @import("typedefs").USVString;
 
 pub const GPUBindGroup = struct {
     pub const Meta = struct {

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AnimationTriggerImpl = @import("impls").AnimationTrigger;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AnimationTriggerBehavior = @import("enums").AnimationTriggerBehavior;
 const AnimationTriggerOptions = @import("dictionaries").AnimationTriggerOptions;
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
@@ -70,7 +73,7 @@ pub const AnimationTrigger = struct {
         Meta.MixinTypes,
         struct {
             timeline: *runtime.Instance = undefined,
-            behavior: AnimationTriggerBehavior = undefined,
+            behavior: enums.AnimationTriggerBehavior = undefined,
             rangeStart: runtime.JSValue = undefined,
             rangeEnd: runtime.JSValue = undefined,
             exitRangeStart: runtime.JSValue = undefined,

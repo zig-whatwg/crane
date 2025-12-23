@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBPermissionResultImpl = @import("impls").USBPermissionResult;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PermissionStatus = @import("interfaces").PermissionStatus;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -75,7 +78,7 @@ pub const USBPermissionResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            devices: runtime.FrozenArray(USBDevice) = undefined,
+            devices: runtime.JSValue = undefined,
             _internal: ?*USBPermissionResultImpl.InternalState = null,
         },
     );

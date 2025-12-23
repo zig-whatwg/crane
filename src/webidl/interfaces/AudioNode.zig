@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioNodeImpl = @import("impls").AudioNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -91,8 +94,8 @@ pub const AudioNode = struct {
             numberOfInputs: u32 = undefined,
             numberOfOutputs: u32 = undefined,
             channelCount: u32 = undefined,
-            channelCountMode: ChannelCountMode = undefined,
-            channelInterpretation: ChannelInterpretation = undefined,
+            channelCountMode: enums.ChannelCountMode = undefined,
+            channelInterpretation: enums.ChannelInterpretation = undefined,
             _internal: ?*AudioNodeImpl.InternalState = null,
         },
     );

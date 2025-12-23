@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CommandEventImpl = @import("impls").CommandEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const Element = @import("interfaces").Element;
 const EventTarget = @import("interfaces").EventTarget;
@@ -72,7 +75,7 @@ pub const CommandEvent = struct {
         Meta.MixinTypes,
         struct {
             source: ?*runtime.Instance = null,
-            command: runtime.DOMString = undefined,
+            command: typedefs.DOMString = undefined,
             _internal: ?*CommandEventImpl.InternalState = null,
         },
     );

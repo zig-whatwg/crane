@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XPathResultImpl = @import("impls").XPathResult;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
 
@@ -90,7 +93,7 @@ pub const XPathResult = struct {
         struct {
             resultType: u16 = undefined,
             numberValue: f64 = undefined,
-            stringValue: runtime.DOMString = undefined,
+            stringValue: typedefs.DOMString = undefined,
             booleanValue: bool = undefined,
             singleNodeValue: ?*runtime.Instance = null,
             invalidIteratorState: bool = undefined,

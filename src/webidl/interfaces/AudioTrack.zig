@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioTrackImpl = @import("impls").AudioTrack;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SourceBuffer = @import("interfaces").SourceBuffer;
 const DOMString = @import("typedefs").DOMString;
 
@@ -71,10 +74,10 @@ pub const AudioTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            kind: runtime.DOMString = undefined,
-            label: runtime.DOMString = undefined,
-            language: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
+            kind: typedefs.DOMString = undefined,
+            label: typedefs.DOMString = undefined,
+            language: typedefs.DOMString = undefined,
             enabled: bool = undefined,
             sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*AudioTrackImpl.InternalState = null,

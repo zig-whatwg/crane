@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SharedStorageWorkletNavigatorImpl = @import("impls").SharedStorageWorkletNavigator;
 const mixins = @import("mixins");
-const NavigatorLocks = @import("interfaces").NavigatorLocks;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const NavigatorLocks = @import("mixins").NavigatorLocks;
 const LockManager = @import("interfaces").LockManager;
 
 pub const SharedStorageWorkletNavigator = struct {

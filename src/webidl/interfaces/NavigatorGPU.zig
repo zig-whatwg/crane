@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorGPUImpl = @import("impls").NavigatorGPU;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GPU = @import("interfaces").GPU;
 
 pub const NavigatorGPU = struct {

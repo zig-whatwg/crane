@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PortalHostImpl = @import("impls").PortalHost;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -75,8 +78,8 @@ pub const PortalHost = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*PortalHostImpl.InternalState = null,
         },
     );

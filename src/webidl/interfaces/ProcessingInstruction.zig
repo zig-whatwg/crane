@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ProcessingInstructionImpl = @import("impls").ProcessingInstruction;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CharacterData = @import("interfaces").CharacterData;
 const LinkStyle = @import("interfaces").LinkStyle;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -15,7 +18,7 @@ const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const Document = @import("interfaces").Document;
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const Element = @import("interfaces").Element;
@@ -106,7 +109,7 @@ pub const ProcessingInstruction = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: runtime.DOMString = undefined,
+            target: typedefs.DOMString = undefined,
             sheet: ?*runtime.Instance = null,
             _internal: ?*ProcessingInstructionImpl.InternalState = null,
         },

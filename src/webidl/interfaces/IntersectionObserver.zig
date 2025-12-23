@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IntersectionObserverImpl = @import("impls").IntersectionObserver;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Document = @import("interfaces").Document;
 const Element = @import("interfaces").Element;
 const IntersectionObserverCallback = @import("callbacks").IntersectionObserverCallback;
@@ -84,9 +87,9 @@ pub const IntersectionObserver = struct {
                 Element: Element,
                 Document: Document,
             } = null,
-            rootMargin: runtime.DOMString = undefined,
-            scrollMargin: runtime.DOMString = undefined,
-            thresholds: runtime.FrozenArray(f64) = undefined,
+            rootMargin: typedefs.DOMString = undefined,
+            scrollMargin: typedefs.DOMString = undefined,
+            thresholds: runtime.JSValue = undefined,
             delay: i32 = undefined,
             trackVisibility: bool = undefined,
             _internal: ?*IntersectionObserverImpl.InternalState = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MulticastControllerImpl = @import("impls").MulticastController;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const MulticastController = struct {
@@ -66,7 +69,7 @@ pub const MulticastController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            joinedGroups: runtime.FrozenArray(runtime.DOMString) = undefined,
+            joinedGroups: runtime.JSValue = undefined,
             _internal: ?*MulticastControllerImpl.InternalState = null,
         },
     );

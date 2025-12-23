@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGAnimatedStringImpl = @import("impls").SVGAnimatedString;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const DOMString = @import("typedefs").DOMString;
 
@@ -64,7 +67,7 @@ pub const SVGAnimatedString = struct {
                 DOMString: runtime.DOMString,
                 TrustedScriptURL: TrustedScriptURL,
             } = undefined,
-            animVal: runtime.DOMString = undefined,
+            animVal: typedefs.DOMString = undefined,
             _internal: ?*SVGAnimatedStringImpl.InternalState = null,
         },
     );

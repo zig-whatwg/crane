@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextDetectorImpl = @import("impls").TextDetector;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 
 pub const TextDetector = struct {

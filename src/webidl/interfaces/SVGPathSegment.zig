@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGPathSegmentImpl = @import("impls").SVGPathSegment;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const SVGPathSegment = struct {
@@ -56,8 +59,8 @@ pub const SVGPathSegment = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
-            values: runtime.sequence(f32) = undefined,
+            @"type": typedefs.DOMString = undefined,
+            values: runtime.JSValue = undefined,
             _internal: ?*SVGPathSegmentImpl.InternalState = null,
         },
     );

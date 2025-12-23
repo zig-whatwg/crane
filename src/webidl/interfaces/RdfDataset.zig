@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RdfDatasetImpl = @import("impls").RdfDataset;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RdfGraph = @import("interfaces").RdfGraph;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const RdfDataset = struct {
     pub const Meta = struct {

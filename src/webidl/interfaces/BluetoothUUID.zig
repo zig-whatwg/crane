@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothUUIDImpl = @import("impls").BluetoothUUID;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const UUID = @import("typedefs").UUID;
 const DOMString = @import("typedefs").DOMString;
 

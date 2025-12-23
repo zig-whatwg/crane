@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceLongTaskTimingImpl = @import("impls").PerformanceLongTaskTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const TaskAttributionTiming = @import("interfaces").TaskAttributionTiming;
@@ -71,11 +74,11 @@ pub const PerformanceLongTaskTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startTime: DOMHighResTimeStamp = undefined,
-            duration: DOMHighResTimeStamp = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            attribution: runtime.FrozenArray(TaskAttributionTiming) = undefined,
+            startTime: typedefs.DOMHighResTimeStamp = undefined,
+            duration: typedefs.DOMHighResTimeStamp = undefined,
+            name: typedefs.DOMString = undefined,
+            entryType: typedefs.DOMString = undefined,
+            attribution: runtime.JSValue = undefined,
             _internal: ?*PerformanceLongTaskTimingImpl.InternalState = null,
         },
     );

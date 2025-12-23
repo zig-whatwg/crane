@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGLengthImpl = @import("impls").SVGLength;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const SVGLength = struct {
@@ -85,7 +88,7 @@ pub const SVGLength = struct {
             unitType: u16 = undefined,
             value: f32 = undefined,
             valueInSpecifiedUnits: f32 = undefined,
-            valueAsString: runtime.DOMString = undefined,
+            valueAsString: typedefs.DOMString = undefined,
             _internal: ?*SVGLengthImpl.InternalState = null,
         },
     );

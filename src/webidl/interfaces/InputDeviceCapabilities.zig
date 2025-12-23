@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const InputDeviceCapabilitiesImpl = @import("impls").InputDeviceCapabilities;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const InputDeviceCapabilitiesInit = @import("dictionaries").InputDeviceCapabilitiesInit;
 
 pub const InputDeviceCapabilities = struct {

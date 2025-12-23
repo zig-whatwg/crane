@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSPseudoElementImpl = @import("impls").CSSPseudoElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const GeometryUtils = @import("interfaces").GeometryUtils;
+const GeometryUtils = @import("mixins").GeometryUtils;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -96,7 +99,7 @@ pub const CSSPseudoElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": CSSOMString = undefined,
+            @"type": typedefs.CSSOMString = undefined,
             element: *runtime.Instance = undefined,
             parent: union(enum) {
                 Element: Element,

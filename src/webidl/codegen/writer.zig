@@ -113,6 +113,12 @@ pub fn writeImports(
     // Import mixins module (for ParentNode.NodeOrString and other mixin types)
     try writer.writeAll("const mixins = @import(\"mixins\");\n");
 
+    // Import type category modules for State struct field types
+    // These are needed because State uses fully-qualified type paths (e.g., typedefs.DOMString)
+    try writer.writeAll("const typedefs = @import(\"typedefs\");\n");
+    try writer.writeAll("const enums = @import(\"enums\");\n");
+    try writer.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+
     // Track which types we've already imported to avoid duplicates
     var imported = std.StringHashMap(void).init(std.heap.page_allocator);
     defer imported.deinit();
@@ -135,6 +141,32 @@ pub fn writeImports(
         "BigUint64Array",
     };
 
+    // WebIDL primitives that should NOT be imported
+    // These are mapped to Zig types directly (u32, i32, bool, etc.)
+    // NOTE: DOMString, USVString, ByteString are typedefs and SHOULD be imported
+    const primitive_types = [_][]const u8{
+        // WebIDL primitives (with and without spaces - parser may collapse them)
+        "void",
+        "undefined",
+        "boolean",
+        "byte",
+        "octet",
+        "short",
+        "long",
+        "float",
+        "double",
+        "any",
+        "object",
+        "symbol",
+        // Compound primitives without spaces (parser may collapse spaces)
+        "unsignedshort",
+        "unsignedlong",
+        "longlong",
+        "unsignedlonglong",
+        "unrestrictedfloat",
+        "unrestricteddouble",
+    };
+
     // Helper to check if a type is a JS built-in
     const isJsBuiltin = struct {
         fn call(type_name: []const u8) bool {
@@ -145,9 +177,30 @@ pub fn writeImports(
         }
     }.call;
 
+    // Helper to check if a type is a WebIDL primitive or string type
+    const isPrimitiveOrString = struct {
+        fn call(type_name: []const u8) bool {
+            for (primitive_types) |prim| {
+                if (std.mem.eql(u8, type_name, prim)) return true;
+            }
+            return false;
+        }
+    }.call;
+
     // Helper to get the import module for a type name
+    // Returns null if the type should be skipped (not in registry and not a known type)
     const getImportModule = struct {
-        fn call(type_name: []const u8, reg: ?*const @import("ir.zig").TypeRegistry) []const u8 {
+        fn call(type_name: []const u8, reg: ?*const @import("ir.zig").TypeRegistry) ?[]const u8 {
+            // Special case: DOMString, USVString, ByteString are registered as primitives
+            // but they have typedef files that re-export runtime types.
+            // These should be imported from typedefs when used in signatures.
+            if (std.mem.eql(u8, type_name, "DOMString") or
+                std.mem.eql(u8, type_name, "USVString") or
+                std.mem.eql(u8, type_name, "ByteString"))
+            {
+                return "typedefs";
+            }
+
             if (reg) |r| {
                 if (r.lookup(type_name)) |kind| {
                     return switch (kind) {
@@ -159,28 +212,30 @@ pub fn writeImports(
                         .callback => "callbacks",
                         .namespace => "namespaces",
                         .mixin => "mixins",
-                        .primitive => "interfaces", // Shouldn't happen, but fallback
+                        .primitive => null, // Skip primitives - they're Zig native types
                     };
                 }
             }
-            // Default fallback: assume it's an interface
-            return "interfaces";
+            // Type not in registry - skip it to avoid importing non-existent types
+            return null;
         }
     }.call;
 
     // Import base type if present
     if (base_type) |base| {
-        const module = getImportModule(base, type_registry);
-        try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ base, module, base });
-        try imported.put(base, {});
+        if (getImportModule(base, type_registry)) |module| {
+            try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ base, module, base });
+            try imported.put(base, {});
+        }
     }
 
     // Import mixin types
     for (mixins) |mixin| {
         if (!imported.contains(mixin)) {
-            const module = getImportModule(mixin, type_registry);
-            try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
-            try imported.put(mixin, {});
+            if (getImportModule(mixin, type_registry)) |module| {
+                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
+                try imported.put(mixin, {});
+            }
         }
     }
 
@@ -218,9 +273,19 @@ pub fn writeImports(
                 continue; // Skip - available from runtime
             }
 
-            const module = getImportModule(ref, type_registry);
-            try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ ref, module, ref });
-            try imported.put(ref, {});
+            // Skip WebIDL primitive and string types (mapped to Zig native types)
+            // e.g., "unsignedlong", "DOMString", "USVString", etc.
+            if (isPrimitiveOrString(ref)) {
+                continue; // Skip - these are Zig native types or runtime types
+            }
+
+            // Try to get the import module - skip if type is not registered
+            if (getImportModule(ref, type_registry)) |module| {
+                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ ref, module, ref });
+                try imported.put(ref, {});
+            }
+            // If module is null, the type is not in the registry - skip it silently
+            // This handles missing interfaces like AbstractView, CSSMarginDescriptors
         }
     }
 
@@ -1221,7 +1286,8 @@ fn writeZigType(writer: anytype, idl_type_name: []const u8) !void {
 }
 
 fn idlTypeToZig(idl_type_name: []const u8) []const u8 {
-    // Map primitive types
+    // Map primitive types - both with spaces and collapsed forms
+    // The parser sometimes produces collapsed forms like "unsignedlong" instead of "unsigned long"
     if (std.mem.eql(u8, idl_type_name, "boolean")) {
         return "bool";
     } else if (std.mem.eql(u8, idl_type_name, "byte")) {
@@ -1230,23 +1296,23 @@ fn idlTypeToZig(idl_type_name: []const u8) []const u8 {
         return "u8";
     } else if (std.mem.eql(u8, idl_type_name, "short")) {
         return "i16";
-    } else if (std.mem.eql(u8, idl_type_name, "unsigned short")) {
+    } else if (std.mem.eql(u8, idl_type_name, "unsigned short") or std.mem.eql(u8, idl_type_name, "unsignedshort")) {
         return "u16";
     } else if (std.mem.eql(u8, idl_type_name, "long")) {
         return "i32";
-    } else if (std.mem.eql(u8, idl_type_name, "unsigned long")) {
+    } else if (std.mem.eql(u8, idl_type_name, "unsigned long") or std.mem.eql(u8, idl_type_name, "unsignedlong")) {
         return "u32";
-    } else if (std.mem.eql(u8, idl_type_name, "long long")) {
+    } else if (std.mem.eql(u8, idl_type_name, "long long") or std.mem.eql(u8, idl_type_name, "longlong")) {
         return "i64";
-    } else if (std.mem.eql(u8, idl_type_name, "unsigned long long")) {
+    } else if (std.mem.eql(u8, idl_type_name, "unsigned long long") or std.mem.eql(u8, idl_type_name, "unsignedlonglong")) {
         return "u64";
     } else if (std.mem.eql(u8, idl_type_name, "float")) {
         return "f32";
-    } else if (std.mem.eql(u8, idl_type_name, "unrestricted float")) {
+    } else if (std.mem.eql(u8, idl_type_name, "unrestricted float") or std.mem.eql(u8, idl_type_name, "unrestrictedfloat")) {
         return "f32";
     } else if (std.mem.eql(u8, idl_type_name, "double")) {
         return "f64";
-    } else if (std.mem.eql(u8, idl_type_name, "unrestricted double")) {
+    } else if (std.mem.eql(u8, idl_type_name, "unrestricted double") or std.mem.eql(u8, idl_type_name, "unrestricteddouble")) {
         return "f64";
     } else if (std.mem.eql(u8, idl_type_name, "DOMString")) {
         return "runtime.DOMString";
@@ -1469,21 +1535,59 @@ pub fn writeGeneratedState(
 
                 try writeUnionTypeFromStrings(writer, union_members);
             } else {
-                // Check if it's an interface type - if so, use *runtime.Instance
-                // Callback interfaces use ?*runtime.CallbackWrapper
+                // Check the type kind in the registry
                 const type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
-                const is_interface_type = type_kind != null and type_kind.? == .interface;
-                const is_callback_interface_type = type_kind != null and type_kind.? == .callback_interface;
 
-                if (is_callback_interface_type) {
-                    // Callback interface types use ?*runtime.CallbackWrapper
-                    try writer.writeAll("?*runtime.CallbackWrapper");
-                } else if (is_interface_type) {
-                    // Interface types use *runtime.Instance
-                    try writer.writeAll("*runtime.Instance");
+                if (type_kind) |kind| {
+                    switch (kind) {
+                        .callback_interface => {
+                            // Callback interface types use ?*runtime.CallbackWrapper
+                            try writer.writeAll("?*runtime.CallbackWrapper");
+                        },
+                        .interface, .mixin => {
+                            // Interface/mixin types use *runtime.Instance
+                            try writer.writeAll("*runtime.Instance");
+                        },
+                        .enum_type => {
+                            // Enum types must be prefixed with enums module
+                            try writer.writeAll("enums.");
+                            try writer.writeAll(attr.idlType.type);
+                        },
+                        .dictionary => {
+                            // Dictionary types are prefixed with dictionaries module
+                            try writer.writeAll("dictionaries.");
+                            try writer.writeAll(attr.idlType.type);
+                        },
+                        .typedef => {
+                            // Typedef types are prefixed with typedefs module
+                            try writer.writeAll("typedefs.");
+                            try writer.writeAll(attr.idlType.type);
+                        },
+                        .callback => {
+                            // Callback types use runtime.JSValue (function values)
+                            try writer.writeAll("runtime.JSValue");
+                        },
+                        .namespace => {
+                            // Namespace types shouldn't appear in State, use JSValue as fallback
+                            try writer.writeAll("runtime.JSValue");
+                        },
+                        .primitive => {
+                            // Primitive types get mapped via idlTypeToZig
+                            const zig_type = idlTypeToZig(attr.idlType.type);
+                            try writer.writeAll(zig_type);
+                        },
+                    }
                 } else {
-                    // Write the type using structured IDLType (handles sequence, record, etc.)
-                    try writeIDLType(writer, attr.idlType);
+                    // Type not found in registry - check if it's a primitive
+                    const zig_type = idlTypeToZig(attr.idlType.type);
+                    if (std.mem.eql(u8, zig_type, attr.idlType.type)) {
+                        // idlTypeToZig returned the type unchanged - it's not a known primitive
+                        // Use runtime.JSValue for missing/unknown types
+                        try writer.writeAll("runtime.JSValue");
+                    } else {
+                        // It's a mapped primitive type
+                        try writer.writeAll(zig_type);
+                    }
                 }
             }
 
@@ -1519,27 +1623,17 @@ pub fn writeGeneratedState(
             try writeEscapedIdentifier(writer, cached_field_name);
             try writer.writeAll(": ?");
 
-            // Write the type - handle unions specially
-            var cached_type_name = attr.idlType.type;
+            // Write the type - must match getter return type exactly
+            const cached_type_name = attr.idlType.type;
 
-            // Check for union types
-            if (attr.idlType.unionTypes) |union_types| {
-                // Structured union - write it properly
-                try writeUnionType(writer, union_types);
-            } else if (std.mem.startsWith(u8, cached_type_name, "(")) {
-                // String-based union: "(Type1 or Type2 or Type3)"
-                // Strip trailing '?' if present (we already added '?' prefix)
-                if (cached_type_name.len > 0 and cached_type_name[cached_type_name.len - 1] == '?') {
-                    cached_type_name = cached_type_name[0 .. cached_type_name.len - 1];
-                }
-
-                // Parse and write the union
-                const union_members = try parseUnionTypeString(allocator, cached_type_name);
-                defer allocator.free(union_members);
-                try writeUnionTypeFromStrings(writer, union_members);
+            // Check for union types - these always return runtime.JSValue from getters
+            // because union types are mapped to anyopaque which becomes JSValue
+            if (attr.idlType.unionTypes != null or std.mem.startsWith(u8, cached_type_name, "(")) {
+                // Union types: getter returns runtime.JSValue, so cache must store JSValue
+                try writer.writeAll("runtime.JSValue");
             } else {
-                // Regular type - check if it's an interface type
-                // Callback interfaces use ?*runtime.CallbackWrapper
+                // Regular type - use same type mapping as getter to ensure consistency
+                // This is critical: cached field type MUST match getter return type
                 const type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
                 const is_interface_type = type_kind != null and type_kind.? == .interface;
                 const is_callback_interface_type = type_kind != null and type_kind.? == .callback_interface;
@@ -1551,10 +1645,19 @@ pub fn writeGeneratedState(
                     // Interface types use *runtime.Instance
                     try writer.writeAll("*runtime.Instance");
                 } else {
-                    // Non-interface types - use writeIDLType
-                    var cached_type = attr.idlType;
-                    cached_type.nullable = false; // Strip nullability, we handle it with our own '?'
-                    try writeIDLType(writer, cached_type);
+                    // Non-interface types - use mapWebIDLTypeWithRegistry to match getter
+                    // This ensures cached value type matches what the getter returns
+                    var return_type = if (type_registry) |reg|
+                        mapWebIDLTypeWithRegistry(attr.idlType, reg).type_name
+                    else
+                        mapWebIDLType(attr.idlType);
+
+                    // Convert bare anyopaque to JSValue (same as getter does)
+                    if (std.mem.eql(u8, return_type, "anyopaque")) {
+                        return_type = "runtime.JSValue";
+                    }
+
+                    try writer.writeAll(return_type);
                 }
             }
 
@@ -2894,7 +2997,8 @@ pub fn writeDelegateFunctions(
         }
 
         // Use caching for [SameObject] attributes (all attributes here are own)
-        if (has_same_object) {
+        // NOTE: Static attributes cannot use instance caching - they don't have instance state
+        if (has_same_object and !attr.static) {
             // [SameObject] - Cache the result and return same instance every time
             try writer.writeAll("        const state = instance.getState(State);\n");
             try writer.print("        // [SameObject] - Return cached instance\n", .{});
@@ -2905,6 +3009,7 @@ pub fn writeDelegateFunctions(
             try writer.print("        state.own.cached_{s} = value;\n", .{sanitized_name});
             try writer.writeAll("        return value;\n");
         } else {
+            // Static attributes or non-[SameObject] - delegate directly to impl
             try writer.print("        return try {s}.get_{s}(instance);\n", .{ impl_name, sanitized_name });
         }
 

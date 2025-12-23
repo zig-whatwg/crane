@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRCubeLayerImpl = @import("impls").XRCubeLayer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRCompositionLayer = @import("interfaces").XRCompositionLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -81,7 +84,7 @@ pub const XRCubeLayer = struct {
         struct {
             space: *runtime.Instance = undefined,
             orientation: *runtime.Instance = undefined,
-            onredraw: EventHandler = undefined,
+            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XRCubeLayerImpl.InternalState = null,
         },
     );

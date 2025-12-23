@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ReadableByteStreamControllerImpl = @import("impls").ReadableByteStreamController;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
 const ReadableStreamBYOBRequest = @import("interfaces").ReadableStreamBYOBRequest;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ImageDataImpl = @import("impls").ImageData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PredefinedColorSpace = @import("enums").PredefinedColorSpace;
 const ImageDataArray = @import("typedefs").ImageDataArray;
 const ImageDataSettings = @import("dictionaries").ImageDataSettings;
@@ -74,9 +77,9 @@ pub const ImageData = struct {
         struct {
             width: u32 = undefined,
             height: u32 = undefined,
-            data: ImageDataArray = undefined,
-            pixelFormat: ImageDataPixelFormat = undefined,
-            colorSpace: PredefinedColorSpace = undefined,
+            data: typedefs.ImageDataArray = undefined,
+            pixelFormat: enums.ImageDataPixelFormat = undefined,
+            colorSpace: enums.PredefinedColorSpace = undefined,
             _internal: ?*ImageDataImpl.InternalState = null,
         },
     );

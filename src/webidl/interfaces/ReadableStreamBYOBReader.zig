@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ReadableStreamBYOBReaderImpl = @import("impls").ReadableStreamBYOBReader;
 const mixins = @import("mixins");
-const ReadableStreamGenericReader = @import("interfaces").ReadableStreamGenericReader;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const ReadableStreamGenericReader = @import("mixins").ReadableStreamGenericReader;
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
 const ReadableStream = @import("interfaces").ReadableStream;
 const ReadableStreamBYOBReaderReadOptions = @import("dictionaries").ReadableStreamBYOBReaderReadOptions;
@@ -69,7 +72,7 @@ pub const ReadableStreamBYOBReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            closed: runtime.Promise(void) = undefined,
+            closed: runtime.JSValue = undefined,
             _internal: ?*ReadableStreamBYOBReaderImpl.InternalState = null,
         },
     );

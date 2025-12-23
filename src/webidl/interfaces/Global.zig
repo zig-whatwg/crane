@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GlobalImpl = @import("impls").Global;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GlobalDescriptor = @import("dictionaries").GlobalDescriptor;
 
 pub const Global = struct {

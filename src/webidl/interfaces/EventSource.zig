@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EventSourceImpl = @import("impls").EventSource;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -15,7 +18,7 @@ const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventSourceInit = @import("dictionaries").EventSourceInit;
 const EventListener = @import("interfaces").EventListener;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const EventHandler = @import("typedefs").EventHandler;
 const Observable = @import("interfaces").Observable;
 
@@ -97,9 +100,9 @@ pub const EventSource = struct {
             url: runtime.USVString = undefined,
             withCredentials: bool = undefined,
             readyState: u16 = undefined,
-            onopen: EventHandler = undefined,
-            onmessage: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            onopen: typedefs.EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*EventSourceImpl.InternalState = null,
         },
     );

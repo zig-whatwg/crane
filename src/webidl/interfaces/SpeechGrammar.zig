@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechGrammarImpl = @import("impls").SpeechGrammar;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechGrammar = struct {
@@ -59,7 +62,7 @@ pub const SpeechGrammar = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            src: runtime.DOMString = undefined,
+            src: typedefs.DOMString = undefined,
             weight: f32 = undefined,
             _internal: ?*SpeechGrammarImpl.InternalState = null,
         },

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PresentationConnectionCloseEventImpl = @import("impls").PresentationConnectionCloseEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const PresentationConnectionCloseReason = @import("enums").PresentationConnectionCloseReason;
 const EventTarget = @import("interfaces").EventTarget;
@@ -72,8 +75,8 @@ pub const PresentationConnectionCloseEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: PresentationConnectionCloseReason = undefined,
-            message: runtime.DOMString = undefined,
+            reason: enums.PresentationConnectionCloseReason = undefined,
+            message: typedefs.DOMString = undefined,
             _internal: ?*PresentationConnectionCloseEventImpl.InternalState = null,
         },
     );

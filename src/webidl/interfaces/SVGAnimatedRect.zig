@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGAnimatedRectImpl = @import("impls").SVGAnimatedRect;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMRect = @import("interfaces").DOMRect;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 

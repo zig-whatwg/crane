@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EXT_disjoint_timer_queryImpl = @import("impls").EXT_disjoint_timer_query;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
 const WebGLTimerQueryEXT = @import("interfaces").WebGLTimerQueryEXT;
 

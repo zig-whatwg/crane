@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextTrackCueImpl = @import("impls").TextTrackCue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -84,12 +87,12 @@ pub const TextTrackCue = struct {
         Meta.MixinTypes,
         struct {
             track: ?*runtime.Instance = null,
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             startTime: f64 = undefined,
             endTime: f64 = undefined,
             pauseOnExit: bool = undefined,
-            onenter: EventHandler = undefined,
-            onexit: EventHandler = undefined,
+            onenter: typedefs.EventHandler = undefined,
+            onexit: typedefs.EventHandler = undefined,
             _internal: ?*TextTrackCueImpl.InternalState = null,
         },
     );

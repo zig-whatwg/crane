@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCDTMFSenderImpl = @import("impls").RTCDTMFSender;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -76,9 +79,9 @@ pub const RTCDTMFSender = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ontonechange: EventHandler = undefined,
+            ontonechange: typedefs.EventHandler = undefined,
             canInsertDTMF: bool = undefined,
-            toneBuffer: runtime.DOMString = undefined,
+            toneBuffer: typedefs.DOMString = undefined,
             _internal: ?*RTCDTMFSenderImpl.InternalState = null,
         },
     );

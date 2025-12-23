@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRInputSourceImpl = @import("impls").XRInputSource;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRHandedness = @import("enums").XRHandedness;
 const Gamepad = @import("interfaces").Gamepad;
 const XRSpace = @import("interfaces").XRSpace;
@@ -77,17 +80,17 @@ pub const XRInputSource = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            handedness: XRHandedness = undefined,
-            targetRayMode: XRTargetRayMode = undefined,
+            handedness: enums.XRHandedness = undefined,
+            targetRayMode: enums.XRTargetRayMode = undefined,
             targetRaySpace: *runtime.Instance = undefined,
             gripSpace: ?*runtime.Instance = null,
-            profiles: runtime.FrozenArray(runtime.DOMString) = undefined,
+            profiles: runtime.JSValue = undefined,
             skipRendering: bool = undefined,
             gamepad: ?*runtime.Instance = null,
             hand: ?*runtime.Instance = null,
             cached_targetRaySpace: ?*runtime.Instance = null,
             cached_gripSpace: ?*runtime.Instance = null,
-            cached_profiles: ?runtime.FrozenArray(runtime.DOMString) = null,
+            cached_profiles: ?runtime.JSValue = null,
             cached_gamepad: ?*runtime.Instance = null,
             cached_hand: ?*runtime.Instance = null,
             _internal: ?*XRInputSourceImpl.InternalState = null,

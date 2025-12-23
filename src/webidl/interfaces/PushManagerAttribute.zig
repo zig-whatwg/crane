@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PushManagerAttributeImpl = @import("impls").PushManagerAttribute;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PushManager = @import("interfaces").PushManager;
 
 pub const PushManagerAttribute = struct {

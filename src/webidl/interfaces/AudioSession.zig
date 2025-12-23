@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioSessionImpl = @import("impls").AudioSession;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
@@ -76,9 +79,9 @@ pub const AudioSession = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": AudioSessionType = undefined,
-            state: AudioSessionState = undefined,
-            onstatechange: EventHandler = undefined,
+            @"type": enums.AudioSessionType = undefined,
+            state: enums.AudioSessionState = undefined,
+            onstatechange: typedefs.EventHandler = undefined,
             _internal: ?*AudioSessionImpl.InternalState = null,
         },
     );

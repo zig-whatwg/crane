@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSLCHImpl = @import("impls").CSSLCH;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSColorAngle = @import("typedefs").CSSColorAngle;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSLCH = struct {
@@ -77,10 +80,10 @@ pub const CSSLCH = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            l: CSSColorPercent = undefined,
-            c: CSSColorPercent = undefined,
-            h: CSSColorAngle = undefined,
-            alpha: CSSColorPercent = undefined,
+            l: typedefs.CSSColorPercent = undefined,
+            c: typedefs.CSSColorPercent = undefined,
+            h: typedefs.CSSColorAngle = undefined,
+            alpha: typedefs.CSSColorPercent = undefined,
             _internal: ?*CSSLCHImpl.InternalState = null,
         },
     );

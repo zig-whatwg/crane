@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GetSVGDocumentImpl = @import("impls").GetSVGDocument;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Document = @import("interfaces").Document;
 
 pub const GetSVGDocument = struct {

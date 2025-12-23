@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRPermissionStatusImpl = @import("impls").XRPermissionStatus;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PermissionStatus = @import("interfaces").PermissionStatus;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -71,7 +74,7 @@ pub const XRPermissionStatus = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            granted: runtime.FrozenArray(runtime.DOMString) = undefined,
+            granted: runtime.JSValue = undefined,
             _internal: ?*XRPermissionStatusImpl.InternalState = null,
         },
     );

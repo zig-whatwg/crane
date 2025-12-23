@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ContactAddressImpl = @import("impls").ContactAddress;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const ContactAddress = struct {
@@ -77,16 +80,16 @@ pub const ContactAddress = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            city: runtime.DOMString = undefined,
-            country: runtime.DOMString = undefined,
-            dependentLocality: runtime.DOMString = undefined,
-            organization: runtime.DOMString = undefined,
-            phone: runtime.DOMString = undefined,
-            postalCode: runtime.DOMString = undefined,
-            recipient: runtime.DOMString = undefined,
-            region: runtime.DOMString = undefined,
-            sortingCode: runtime.DOMString = undefined,
-            addressLine: runtime.FrozenArray(runtime.DOMString) = undefined,
+            city: typedefs.DOMString = undefined,
+            country: typedefs.DOMString = undefined,
+            dependentLocality: typedefs.DOMString = undefined,
+            organization: typedefs.DOMString = undefined,
+            phone: typedefs.DOMString = undefined,
+            postalCode: typedefs.DOMString = undefined,
+            recipient: typedefs.DOMString = undefined,
+            region: typedefs.DOMString = undefined,
+            sortingCode: typedefs.DOMString = undefined,
+            addressLine: runtime.JSValue = undefined,
             _internal: ?*ContactAddressImpl.InternalState = null,
         },
     );

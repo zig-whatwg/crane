@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CookieStoreImpl = @import("impls").CookieStore;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CookieStoreGetOptions = @import("dictionaries").CookieStoreGetOptions;
 const CookieStoreDeleteOptions = @import("dictionaries").CookieStoreDeleteOptions;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const CookieListItem = @import("dictionaries").CookieListItem;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
@@ -88,7 +91,7 @@ pub const CookieStore = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onchange: EventHandler = undefined,
+            onchange: typedefs.EventHandler = undefined,
             _internal: ?*CookieStoreImpl.InternalState = null,
         },
     );

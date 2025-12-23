@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MIDIInputImpl = @import("impls").MIDIInput;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MIDIPort = @import("interfaces").MIDIPort;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -79,7 +82,7 @@ pub const MIDIInput = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmidimessage: EventHandler = undefined,
+            onmidimessage: typedefs.EventHandler = undefined,
             _internal: ?*MIDIInputImpl.InternalState = null,
         },
     );

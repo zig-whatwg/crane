@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceEventTimingImpl = @import("impls").PerformanceEventTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const Node = @import("interfaces").Node;
@@ -73,11 +76,11 @@ pub const PerformanceEventTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            processingStart: DOMHighResTimeStamp = undefined,
-            processingEnd: DOMHighResTimeStamp = undefined,
+            processingStart: typedefs.DOMHighResTimeStamp = undefined,
+            processingEnd: typedefs.DOMHighResTimeStamp = undefined,
             cancelable: bool = undefined,
             target: ?*runtime.Instance = null,
-            targetSelector: runtime.DOMString = undefined,
+            targetSelector: typedefs.DOMString = undefined,
             interactionId: u64 = undefined,
             _internal: ?*PerformanceEventTimingImpl.InternalState = null,
         },

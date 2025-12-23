@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FontFaceVariationAxisImpl = @import("impls").FontFaceVariationAxis;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const FontFaceVariationAxis = struct {
@@ -68,8 +71,8 @@ pub const FontFaceVariationAxis = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            axisTag: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            axisTag: typedefs.DOMString = undefined,
             minimumValue: f64 = undefined,
             maximumValue: f64 = undefined,
             defaultValue: f64 = undefined,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AuthenticatorAttestationResponseImpl = @import("impls").AuthenticatorAttestationResponse;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AuthenticatorResponse = @import("interfaces").AuthenticatorResponse;
 const COSEAlgorithmIdentifier = @import("typedefs").COSEAlgorithmIdentifier;
 const DOMString = @import("typedefs").DOMString;
@@ -70,7 +73,7 @@ pub const AuthenticatorAttestationResponse = struct {
         Meta.MixinTypes,
         struct {
             attestationObject: runtime.ArrayBuffer = undefined,
-            cached_attestationObject: ?runtime.ArrayBuffer = null,
+            cached_attestationObject: ?runtime.JSValue = null,
             _internal: ?*AuthenticatorAttestationResponseImpl.InternalState = null,
         },
     );

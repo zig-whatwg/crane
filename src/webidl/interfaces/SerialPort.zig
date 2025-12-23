@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SerialPortImpl = @import("impls").SerialPort;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const SerialOutputSignals = @import("dictionaries").SerialOutputSignals;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -100,8 +103,8 @@ pub const SerialPort = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onconnect: EventHandler = undefined,
-            ondisconnect: EventHandler = undefined,
+            onconnect: typedefs.EventHandler = undefined,
+            ondisconnect: typedefs.EventHandler = undefined,
             connected: bool = undefined,
             readable: *runtime.Instance = undefined,
             writable: *runtime.Instance = undefined,

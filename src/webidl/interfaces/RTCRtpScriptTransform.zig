@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCRtpScriptTransformImpl = @import("impls").RTCRtpScriptTransform;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Worker = @import("interfaces").Worker;
 
 pub const RTCRtpScriptTransform = struct {

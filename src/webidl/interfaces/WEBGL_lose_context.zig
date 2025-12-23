@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WEBGL_lose_contextImpl = @import("impls").WEBGL_lose_context;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const WEBGL_lose_context = struct {
     pub const Meta = struct {

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MimeTypeImpl = @import("impls").MimeType;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 const Plugin = @import("interfaces").Plugin;
 
@@ -64,9 +67,9 @@ pub const MimeType = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
-            description: runtime.DOMString = undefined,
-            suffixes: runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
+            description: typedefs.DOMString = undefined,
+            suffixes: typedefs.DOMString = undefined,
             enabledPlugin: *runtime.Instance = undefined,
             _internal: ?*MimeTypeImpl.InternalState = null,
         },

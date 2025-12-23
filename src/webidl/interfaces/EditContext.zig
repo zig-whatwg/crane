@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EditContextImpl = @import("impls").EditContext;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
@@ -103,15 +106,15 @@ pub const EditContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: runtime.DOMString = undefined,
+            text: typedefs.DOMString = undefined,
             selectionStart: u32 = undefined,
             selectionEnd: u32 = undefined,
             characterBoundsRangeStart: u32 = undefined,
-            ontextupdate: EventHandler = undefined,
-            ontextformatupdate: EventHandler = undefined,
-            oncharacterboundsupdate: EventHandler = undefined,
-            oncompositionstart: EventHandler = undefined,
-            oncompositionend: EventHandler = undefined,
+            ontextupdate: typedefs.EventHandler = undefined,
+            ontextformatupdate: typedefs.EventHandler = undefined,
+            oncharacterboundsupdate: typedefs.EventHandler = undefined,
+            oncompositionstart: typedefs.EventHandler = undefined,
+            oncompositionend: typedefs.EventHandler = undefined,
             _internal: ?*EditContextImpl.InternalState = null,
         },
     );

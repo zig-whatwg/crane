@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WEBGL_provoking_vertexImpl = @import("impls").WEBGL_provoking_vertex;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
 
 pub const WEBGL_provoking_vertex = struct {

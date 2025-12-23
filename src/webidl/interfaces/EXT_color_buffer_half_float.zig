@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EXT_color_buffer_half_floatImpl = @import("impls").EXT_color_buffer_half_float;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
 
 pub const EXT_color_buffer_half_float = struct {

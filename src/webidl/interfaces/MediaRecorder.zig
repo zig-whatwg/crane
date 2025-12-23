@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaRecorderImpl = @import("impls").MediaRecorder;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -113,17 +116,17 @@ pub const MediaRecorder = struct {
         Meta.MixinTypes,
         struct {
             stream: *runtime.Instance = undefined,
-            mimeType: runtime.DOMString = undefined,
-            state: RecordingState = undefined,
-            onstart: EventHandler = undefined,
-            onstop: EventHandler = undefined,
-            ondataavailable: EventHandler = undefined,
-            onpause: EventHandler = undefined,
-            onresume: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            mimeType: typedefs.DOMString = undefined,
+            state: enums.RecordingState = undefined,
+            onstart: typedefs.EventHandler = undefined,
+            onstop: typedefs.EventHandler = undefined,
+            ondataavailable: typedefs.EventHandler = undefined,
+            onpause: typedefs.EventHandler = undefined,
+            onresume: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             videoBitsPerSecond: u32 = undefined,
             audioBitsPerSecond: u32 = undefined,
-            audioBitrateMode: BitrateMode = undefined,
+            audioBitrateMode: enums.BitrateMode = undefined,
             _internal: ?*MediaRecorderImpl.InternalState = null,
         },
     );

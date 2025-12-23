@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CryptoKeyImpl = @import("impls").CryptoKey;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const KeyType = @import("enums").KeyType;
 
 pub const CryptoKey = struct {
@@ -68,7 +71,7 @@ pub const CryptoKey = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": KeyType = undefined,
+            @"type": enums.KeyType = undefined,
             extractable: bool = undefined,
             algorithm: runtime.JSValue = undefined,
             usages: runtime.JSValue = undefined,

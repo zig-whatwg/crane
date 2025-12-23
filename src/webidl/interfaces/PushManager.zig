@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PushManagerImpl = @import("impls").PushManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PermissionState = @import("enums").PermissionState;
 const PushSubscription = @import("interfaces").PushSubscription;
 const PushSubscriptionOptionsInit = @import("dictionaries").PushSubscriptionOptionsInit;
@@ -109,14 +112,7 @@ pub const PushManager = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_supportedContentEncodings) |cached| {
-            return cached;
-        }
-        const value = try PushManagerImpl.get_supportedContentEncodings(instance);
-        state.own.cached_supportedContentEncodings = value;
-        return value;
+        return try PushManagerImpl.get_supportedContentEncodings(instance);
     }
 
     pub fn call_subscribe(instance: *runtime.Instance, options: webidl.Opt(PushSubscriptionOptionsInit)) anyerror!runtime.JSValue {

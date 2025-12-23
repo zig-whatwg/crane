@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HTMLButtonElementImpl = @import("impls").HTMLButtonElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HTMLElement = @import("interfaces").HTMLElement;
-const PopoverTargetAttributes = @import("interfaces").PopoverTargetAttributes;
+const PopoverTargetAttributes = @import("mixins").PopoverTargetAttributes;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -17,7 +20,7 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -258,24 +261,24 @@ pub const HTMLButtonElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            command: runtime.DOMString = undefined,
+            command: typedefs.DOMString = undefined,
             commandForElement: ?*runtime.Instance = null,
             disabled: bool = undefined,
             form: ?*runtime.Instance = null,
             formAction: runtime.USVString = undefined,
-            formEnctype: runtime.DOMString = undefined,
-            formMethod: runtime.DOMString = undefined,
+            formEnctype: typedefs.DOMString = undefined,
+            formMethod: typedefs.DOMString = undefined,
             formNoValidate: bool = undefined,
-            formTarget: runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
-            @"type": runtime.DOMString = undefined,
-            value: runtime.DOMString = undefined,
+            formTarget: typedefs.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
+            value: typedefs.DOMString = undefined,
             willValidate: bool = undefined,
             validity: *runtime.Instance = undefined,
-            validationMessage: runtime.DOMString = undefined,
+            validationMessage: typedefs.DOMString = undefined,
             labels: *runtime.Instance = undefined,
             popoverTargetElement: ?*runtime.Instance = null,
-            popoverTargetAction: runtime.DOMString = undefined,
+            popoverTargetAction: typedefs.DOMString = undefined,
             _internal: ?*HTMLButtonElementImpl.InternalState = null,
         },
     );

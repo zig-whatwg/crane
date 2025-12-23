@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ClipboardItemImpl = @import("impls").ClipboardItem;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ClipboardItemOptions = @import("dictionaries").ClipboardItemOptions;
 const PresentationStyle = @import("enums").PresentationStyle;
 const Blob = @import("interfaces").Blob;
@@ -71,8 +74,8 @@ pub const ClipboardItem = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            presentationStyle: PresentationStyle = undefined,
-            types: runtime.FrozenArray(runtime.DOMString) = undefined,
+            presentationStyle: enums.PresentationStyle = undefined,
+            types: runtime.JSValue = undefined,
             _internal: ?*ClipboardItemImpl.InternalState = null,
         },
     );

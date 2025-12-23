@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebGLActiveInfoImpl = @import("impls").WebGLActiveInfo;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLint = @import("typedefs").GLint;
 const GLenum = @import("typedefs").GLenum;
 const DOMString = @import("typedefs").DOMString;
@@ -66,9 +69,9 @@ pub const WebGLActiveInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: GLint = undefined,
-            @"type": GLenum = undefined,
-            name: runtime.DOMString = undefined,
+            size: typedefs.GLint = undefined,
+            @"type": typedefs.GLenum = undefined,
+            name: typedefs.DOMString = undefined,
             _internal: ?*WebGLActiveInfoImpl.InternalState = null,
         },
     );

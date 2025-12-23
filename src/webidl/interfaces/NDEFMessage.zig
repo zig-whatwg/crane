@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NDEFMessageImpl = @import("impls").NDEFMessage;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const NDEFRecord = @import("interfaces").NDEFRecord;
 const NDEFMessageInit = @import("dictionaries").NDEFMessageInit;
 
@@ -59,7 +62,7 @@ pub const NDEFMessage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            records: runtime.FrozenArray(NDEFRecord) = undefined,
+            records: runtime.JSValue = undefined,
             _internal: ?*NDEFMessageImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSTransitionImpl = @import("impls").CSSTransition;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Animation = @import("interfaces").Animation;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -88,7 +91,7 @@ pub const CSSTransition = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transitionProperty: CSSOMString = undefined,
+            transitionProperty: typedefs.CSSOMString = undefined,
             _internal: ?*CSSTransitionImpl.InternalState = null,
         },
     );

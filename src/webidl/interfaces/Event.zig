@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EventImpl = @import("impls").Event;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -102,7 +105,7 @@ pub const Event = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
             target: ?*runtime.Instance = null,
             srcElement: ?*runtime.Instance = null,
             currentTarget: ?*runtime.Instance = null,
@@ -114,7 +117,7 @@ pub const Event = struct {
             defaultPrevented: bool = undefined,
             composed: bool = undefined,
             isTrusted: bool = undefined,
-            timeStamp: DOMHighResTimeStamp = undefined,
+            timeStamp: typedefs.DOMHighResTimeStamp = undefined,
             _internal: ?*EventImpl.InternalState = null,
         },
     );

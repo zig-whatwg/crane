@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NonElementParentNodeImpl = @import("impls").NonElementParentNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const DOMString = @import("typedefs").DOMString;
 

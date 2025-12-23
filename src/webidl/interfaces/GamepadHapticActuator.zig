@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GamepadHapticActuatorImpl = @import("impls").GamepadHapticActuator;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GamepadHapticEffectType = @import("enums").GamepadHapticEffectType;
 const GamepadHapticsResult = @import("enums").GamepadHapticsResult;
 const GamepadEffectParameters = @import("dictionaries").GamepadEffectParameters;
@@ -65,8 +68,8 @@ pub const GamepadHapticActuator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            effects: runtime.FrozenArray(GamepadHapticEffectType) = undefined,
-            cached_effects: ?runtime.FrozenArray(GamepadHapticEffectType) = null,
+            effects: runtime.JSValue = undefined,
+            cached_effects: ?runtime.JSValue = null,
             _internal: ?*GamepadHapticActuatorImpl.InternalState = null,
         },
     );

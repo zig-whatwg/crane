@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaKeySessionImpl = @import("impls").MediaKeySession;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
@@ -94,12 +97,12 @@ pub const MediaKeySession = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sessionId: runtime.DOMString = undefined,
+            sessionId: typedefs.DOMString = undefined,
             expiration: f64 = undefined,
-            closed: runtime.Promise(MediaKeySessionClosedReason) = undefined,
+            closed: runtime.JSValue = undefined,
             keyStatuses: *runtime.Instance = undefined,
-            onkeystatuseschange: EventHandler = undefined,
-            onmessage: EventHandler = undefined,
+            onkeystatuseschange: typedefs.EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
             _internal: ?*MediaKeySessionImpl.InternalState = null,
         },
     );

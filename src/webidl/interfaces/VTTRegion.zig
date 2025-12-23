@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VTTRegionImpl = @import("impls").VTTRegion;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ScrollSetting = @import("enums").ScrollSetting;
 const DOMString = @import("typedefs").DOMString;
 
@@ -72,14 +75,14 @@ pub const VTTRegion = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             width: f64 = undefined,
             lines: u32 = undefined,
             regionAnchorX: f64 = undefined,
             regionAnchorY: f64 = undefined,
             viewportAnchorX: f64 = undefined,
             viewportAnchorY: f64 = undefined,
-            scroll: ScrollSetting = undefined,
+            scroll: enums.ScrollSetting = undefined,
             _internal: ?*VTTRegionImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceEntryImpl = @import("impls").PerformanceEntry;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
 
@@ -74,10 +77,10 @@ pub const PerformanceEntry = struct {
         Meta.MixinTypes,
         struct {
             id: u64 = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            startTime: DOMHighResTimeStamp = undefined,
-            duration: DOMHighResTimeStamp = undefined,
+            name: typedefs.DOMString = undefined,
+            entryType: typedefs.DOMString = undefined,
+            startTime: typedefs.DOMHighResTimeStamp = undefined,
+            duration: typedefs.DOMHighResTimeStamp = undefined,
             navigationId: u64 = undefined,
             _internal: ?*PerformanceEntryImpl.InternalState = null,
         },

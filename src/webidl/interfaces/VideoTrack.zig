@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VideoTrackImpl = @import("impls").VideoTrack;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SourceBuffer = @import("interfaces").SourceBuffer;
 const DOMString = @import("typedefs").DOMString;
 
@@ -71,10 +74,10 @@ pub const VideoTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            kind: runtime.DOMString = undefined,
-            label: runtime.DOMString = undefined,
-            language: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
+            kind: typedefs.DOMString = undefined,
+            label: typedefs.DOMString = undefined,
+            language: typedefs.DOMString = undefined,
             selected: bool = undefined,
             sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*VideoTrackImpl.InternalState = null,

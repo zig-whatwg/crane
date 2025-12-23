@@ -14,6 +14,56 @@ const config_mod = @import("config.zig");
 const overload = @import("overload.zig");
 const CodegenConfig = config_mod.CodegenConfig;
 
+/// Escape a name if it's a Zig keyword (e.g., "type" -> "@\"type\"")
+fn escapeIfKeyword(name: []const u8) []const u8 {
+    if (isZigKeyword(name)) {
+        // Return the escaped version - these are compile-time known strings
+        // so we can use static strings for common keywords
+        if (std.mem.eql(u8, name, "type")) return "@\"type\"";
+        if (std.mem.eql(u8, name, "error")) return "@\"error\"";
+        if (std.mem.eql(u8, name, "defer")) return "@\"defer\"";
+        if (std.mem.eql(u8, name, "return")) return "@\"return\"";
+        if (std.mem.eql(u8, name, "var")) return "@\"var\"";
+        if (std.mem.eql(u8, name, "const")) return "@\"const\"";
+        if (std.mem.eql(u8, name, "fn")) return "@\"fn\"";
+        if (std.mem.eql(u8, name, "struct")) return "@\"struct\"";
+        if (std.mem.eql(u8, name, "enum")) return "@\"enum\"";
+        if (std.mem.eql(u8, name, "union")) return "@\"union\"";
+        if (std.mem.eql(u8, name, "opaque")) return "@\"opaque\"";
+        if (std.mem.eql(u8, name, "try")) return "@\"try\"";
+        if (std.mem.eql(u8, name, "catch")) return "@\"catch\"";
+        if (std.mem.eql(u8, name, "async")) return "@\"async\"";
+        if (std.mem.eql(u8, name, "await")) return "@\"await\"";
+        if (std.mem.eql(u8, name, "suspend")) return "@\"suspend\"";
+        if (std.mem.eql(u8, name, "resume")) return "@\"resume\"";
+        if (std.mem.eql(u8, name, "export")) return "@\"export\"";
+        if (std.mem.eql(u8, name, "extern")) return "@\"extern\"";
+        if (std.mem.eql(u8, name, "pub")) return "@\"pub\"";
+        if (std.mem.eql(u8, name, "inline")) return "@\"inline\"";
+        if (std.mem.eql(u8, name, "comptime")) return "@\"comptime\"";
+        if (std.mem.eql(u8, name, "callconv")) return "@\"callconv\"";
+        if (std.mem.eql(u8, name, "test")) return "@\"test\"";
+        if (std.mem.eql(u8, name, "and")) return "@\"and\"";
+        if (std.mem.eql(u8, name, "or")) return "@\"or\"";
+        if (std.mem.eql(u8, name, "switch")) return "@\"switch\"";
+        if (std.mem.eql(u8, name, "if")) return "@\"if\"";
+        if (std.mem.eql(u8, name, "else")) return "@\"else\"";
+        if (std.mem.eql(u8, name, "while")) return "@\"while\"";
+        if (std.mem.eql(u8, name, "for")) return "@\"for\"";
+        if (std.mem.eql(u8, name, "break")) return "@\"break\"";
+        if (std.mem.eql(u8, name, "continue")) return "@\"continue\"";
+        if (std.mem.eql(u8, name, "unreachable")) return "@\"unreachable\"";
+        if (std.mem.eql(u8, name, "anytype")) return "@\"anytype\"";
+        if (std.mem.eql(u8, name, "anyframe")) return "@\"anyframe\"";
+        if (std.mem.eql(u8, name, "anyerror")) return "@\"anyerror\"";
+        if (std.mem.eql(u8, name, "anyopaque")) return "@\"anyopaque\"";
+        if (std.mem.eql(u8, name, "align")) return "@\"align\"";
+        // Fallback - shouldn't happen if isZigKeyword is in sync
+        return name;
+    }
+    return name;
+}
+
 /// Check if a name is a Zig reserved keyword
 fn isZigKeyword(name: []const u8) bool {
     const keywords = [_][]const u8{
@@ -496,6 +546,447 @@ pub fn generateNamespacesRoot(
     }
 
     try w.flush();
+}
+
+/// Generate root.zig file that exports all mixins
+pub fn generateMixinsRoot(
+    allocator: std.mem.Allocator,
+    mixins_path: []const u8,
+    mixin_names: []const []const u8,
+) !void {
+    const root_path = try std.fs.path.join(allocator, &.{ mixins_path, "root.zig" });
+    defer allocator.free(root_path);
+
+    // Ensure the mixins directory exists
+    std.fs.cwd().makePath(mixins_path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+
+    const root_file = try std.fs.cwd().createFile(root_path, .{});
+    defer root_file.close();
+
+    var buffer: [4096]u8 = undefined;
+    var file_writer = root_file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    try w.writeAll("//! Auto-generated root file for all WebIDL mixins\n\n");
+
+    const sorted_names = try allocator.dupe([]const u8, mixin_names);
+    defer allocator.free(sorted_names);
+    std.mem.sort([]const u8, sorted_names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    for (sorted_names) |name| {
+        try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
+    }
+
+    try w.flush();
+}
+
+/// Generate a single mixin file with delegate functions to impl
+pub fn generateMixin(
+    allocator: std.mem.Allocator,
+    mixins_path: []const u8,
+    mixin: @import("ir.zig").Interface,
+    type_registry: *const @import("ir.zig").TypeRegistry,
+) !void {
+    const mixin_name = mixin.name;
+
+    const file_path = try std.fs.path.join(allocator, &.{ mixins_path, try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name}) });
+    defer allocator.free(file_path);
+
+    // Ensure the mixins directory exists
+    std.fs.cwd().makePath(mixins_path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+
+    const file = try std.fs.cwd().createFile(file_path, .{});
+    defer file.close();
+
+    var buffer: [16384]u8 = undefined;
+    var file_writer = file.writer(&buffer);
+    const w = &file_writer.interface;
+
+    // Header
+    try w.print("//! Auto-generated mixin: {s}\n", .{mixin_name});
+    try w.writeAll("//! Delegates to impl for actual implementation.\n\n");
+
+    // Imports
+    try w.writeAll("const std = @import(\"std\");\n");
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n");
+    try w.writeAll("const mixins = @import(\"mixins\");\n");
+    try w.writeAll("const typedefs = @import(\"typedefs\");\n");
+    try w.writeAll("const enums = @import(\"enums\");\n");
+    try w.writeAll("const dictionaries = @import(\"dictionaries\");\n");
+    try w.writeAll("const callbacks = @import(\"callbacks\");\n");
+    try w.print("const {s}Impl = @import(\"impls\").{s};\n\n", .{ mixin_name, mixin_name });
+
+    // Re-export types from impl (like NodeOrString)
+    try w.print("// Re-export types from impl\n", .{});
+    try w.print("pub const impl = @import(\"impls\").{s};\n", .{mixin_name});
+    // Re-export NodeOrString if this is ParentNode (commonly needed by interfaces)
+    if (std.mem.eql(u8, mixin_name, "ParentNode")) {
+        try w.writeAll("pub const NodeOrString = impl.NodeOrString;\n");
+    }
+    try w.writeAll("\n");
+
+    // Collect operations and attributes from members
+    var all_ops = std.ArrayList(types.Operation).empty;
+    defer all_ops.deinit(allocator);
+
+    var all_attrs = std.ArrayList(types.Attribute).empty;
+    defer all_attrs.deinit(allocator);
+
+    for (mixin.members.items) |member| {
+        if (member.asOperation()) |op| {
+            if (op.name != null) {
+                try all_ops.append(allocator, op);
+            }
+        }
+        if (member.asAttribute()) |attr| {
+            try all_attrs.append(allocator, attr);
+        }
+    }
+
+    // Generate attribute delegates
+    for (all_attrs.items) |attr| {
+        const attr_name = attr.name;
+
+        // Getter
+        try w.print("pub fn get_{s}(instance: *runtime.Instance) ", .{attr_name});
+        try writeMixinReturnType(w, attr.idlType, type_registry);
+        try w.writeAll(" {\n");
+        try w.print("    return {s}Impl.get_{s}(instance);\n", .{ mixin_name, attr_name });
+        try w.writeAll("}\n\n");
+
+        // Setter (if not readonly)
+        if (!attr.readonly) {
+            try w.print("pub fn set_{s}(instance: *runtime.Instance, value: ", .{attr_name});
+            try writeMixinParamType(w, attr.idlType, type_registry);
+            try w.writeAll(") !void {\n");
+            try w.print("    return {s}Impl.set_{s}(instance, value);\n", .{ mixin_name, attr_name });
+            try w.writeAll("}\n\n");
+        }
+    }
+
+    // Group operations by name to detect overloads
+    const overload_sets = try overload.groupOperationsByName(allocator, all_ops.items);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+
+    // Generate operation delegates (with overload support)
+    for (overload_sets) |set| {
+        if (set.isOverloaded()) {
+            // Multiple overloads - generate tagged union and dispatch function
+            try writeMixinOverloadedOperation(allocator, w, mixin_name, set, type_registry);
+        } else {
+            // Single operation - generate normal delegate function
+            const op = set.operations[0];
+            try writeMixinSingleOperation(w, mixin_name, op, type_registry);
+        }
+    }
+
+    try w.flush();
+}
+
+/// Capitalize first letter of a string (for mixin Args union names)
+fn capitalizeMixin(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
+    if (s.len == 0) return try allocator.dupe(u8, s);
+
+    var result = try allocator.alloc(u8, s.len);
+    result[0] = std.ascii.toUpper(s[0]);
+    @memcpy(result[1..], s[1..]);
+    return result;
+}
+
+/// Write a single (non-overloaded) mixin operation delegate
+fn writeMixinSingleOperation(
+    w: anytype,
+    mixin_name: []const u8,
+    op: types.Operation,
+    type_registry: *const @import("ir.zig").TypeRegistry,
+) !void {
+    const op_name = op.name orelse return;
+
+    // Build parameter list
+    try w.print("pub fn call_{s}(", .{op_name});
+
+    // First param is always instance
+    try w.writeAll("instance: *runtime.Instance");
+
+    // Add other parameters
+    for (op.arguments) |arg| {
+        try w.writeAll(", ");
+        const escaped_name = escapeIfKeyword(arg.name);
+        try w.print("{s}: ", .{escaped_name});
+        // Handle nullable parameters: T? becomes ?T
+        if (arg.idlType.nullable) {
+            try w.writeAll("?");
+        }
+        try writeMixinParamType(w, arg.idlType, type_registry);
+    }
+
+    try w.writeAll(") ");
+
+    // Return type
+    try writeMixinReturnType(w, op.idlType, type_registry);
+
+    try w.writeAll(" {\n");
+    try w.print("    return {s}Impl.call_{s}(instance", .{ mixin_name, op_name });
+
+    // Forward arguments
+    for (op.arguments) |arg| {
+        const escaped_name = escapeIfKeyword(arg.name);
+        try w.print(", {s}", .{escaped_name});
+    }
+
+    try w.writeAll(");\n}\n\n");
+}
+
+/// Write an overloaded mixin operation with tagged union dispatch
+fn writeMixinOverloadedOperation(
+    allocator: std.mem.Allocator,
+    w: anytype,
+    mixin_name: []const u8,
+    set: overload.OverloadSet,
+    type_registry: *const @import("ir.zig").TypeRegistry,
+) !void {
+    const name = set.name;
+
+    // Determine the common return type
+    const return_type = getMixinReturnTypeString(set.operations[0].idlType, type_registry);
+    const is_nullable_return = set.operations[0].idlType.nullable;
+
+    // Generate Args union type
+    try w.print("/// Arguments for {s} (WebIDL overloading)\n", .{name});
+    const cap_name = try capitalizeMixin(allocator, name);
+    defer allocator.free(cap_name);
+    try w.print("pub const {s}Args = union(enum) {{\n", .{cap_name});
+
+    // Generate variant for each overload
+    for (set.operations) |op| {
+        const variant_name = try overload.generateVariantName(allocator, op);
+        defer allocator.free(variant_name);
+
+        if (op.arguments.len == 0) {
+            try w.print("    /// {s}()\n", .{name});
+            try w.print("    {s}: void,\n", .{variant_name});
+        } else if (op.arguments.len == 1) {
+            const arg = op.arguments[0];
+            try w.print("    /// {s}({s})\n", .{ name, arg.name });
+            try w.print("    {s}: ", .{variant_name});
+            try writeMixinArgType(w, arg, type_registry);
+            try w.writeAll(",\n");
+        } else {
+            try w.print("    /// {s}(", .{name});
+            for (op.arguments, 0..) |arg, i| {
+                if (i > 0) try w.writeAll(", ");
+                try w.print("{s}", .{arg.name});
+            }
+            try w.writeAll(")\n");
+
+            try w.print("    {s}: struct {{\n", .{variant_name});
+            for (op.arguments) |arg| {
+                const escaped_name = escapeIfKeyword(arg.name);
+                try w.print("        {s}: ", .{escaped_name});
+                try writeMixinArgType(w, arg, type_registry);
+                try w.writeAll(",\n");
+            }
+            try w.writeAll("    },\n");
+        }
+    }
+
+    try w.writeAll("};\n\n");
+
+    // Generate dispatch function
+    if (is_nullable_return) {
+        try w.print("pub fn call_{s}(instance: *runtime.Instance, args: {s}Args) anyerror!?{s} {{\n", .{ name, cap_name, return_type });
+    } else {
+        try w.print("pub fn call_{s}(instance: *runtime.Instance, args: {s}Args) anyerror!{s} {{\n", .{ name, cap_name, return_type });
+    }
+    try w.print("    return {s}Impl.call_{s}(instance, args);\n", .{ mixin_name, name });
+    try w.writeAll("}\n\n");
+}
+
+/// Write an argument type for mixin overload structs
+fn writeMixinArgType(w: anytype, arg: types.Argument, type_registry: *const @import("ir.zig").TypeRegistry) !void {
+    // Handle optional parameters
+    if (arg.optional) {
+        try w.writeAll("webidl.Opt(");
+    }
+
+    // Handle variadic parameters
+    if (arg.variadic) {
+        try w.writeAll("[]const ");
+    }
+
+    // Handle nullable (but not for variadic)
+    if (arg.idlType.nullable and !arg.variadic) {
+        try w.writeAll("?");
+    }
+
+    // Write base type
+    try writeMixinParamType(w, arg.idlType, type_registry);
+
+    // Close optional wrapper
+    if (arg.optional) {
+        try w.writeAll(")");
+    }
+}
+
+/// Get return type as string for mixin operations
+fn getMixinReturnTypeString(idl_type: types.IDLType, type_registry: *const @import("ir.zig").TypeRegistry) []const u8 {
+    const type_name = idl_type.type;
+
+    if (type_registry.lookup(type_name)) |kind| {
+        return switch (kind) {
+            .interface => "*runtime.Instance",
+            else => "void",
+        };
+    } else if (std.mem.eql(u8, type_name, "undefined") or std.mem.eql(u8, type_name, "void")) {
+        return "void";
+    } else {
+        return "void";
+    }
+}
+
+/// Write a parameter type for mixin functions
+fn writeMixinParamType(w: anytype, idl_type: types.IDLType, type_registry: *const @import("ir.zig").TypeRegistry) !void {
+    const type_name = idl_type.type;
+
+    // Check if it's a known type
+    if (type_registry.lookup(type_name)) |kind| {
+        switch (kind) {
+            .interface => try w.writeAll("*runtime.Instance"),
+            .mixin => try w.print("mixins.{s}", .{type_name}),
+            .dictionary => try w.print("dictionaries.{s}", .{type_name}),
+            .enum_type => try w.print("enums.{s}", .{type_name}),
+            .typedef => try w.print("typedefs.{s}", .{type_name}),
+            .callback => try w.print("callbacks.{s}", .{type_name}),
+            .callback_interface => try w.writeAll("?*runtime.CallbackWrapper"),
+            else => try w.writeAll("runtime.JSValue"),
+        }
+    } else {
+        // Map primitives to concrete Zig types
+        if (std.mem.eql(u8, type_name, "boolean")) {
+            try w.writeAll("bool");
+        } else if (std.mem.eql(u8, type_name, "byte")) {
+            try w.writeAll("i8");
+        } else if (std.mem.eql(u8, type_name, "octet")) {
+            try w.writeAll("u8");
+        } else if (std.mem.eql(u8, type_name, "short")) {
+            try w.writeAll("i16");
+        } else if (std.mem.eql(u8, type_name, "unsigned short")) {
+            try w.writeAll("u16");
+        } else if (std.mem.eql(u8, type_name, "long")) {
+            try w.writeAll("i32");
+        } else if (std.mem.eql(u8, type_name, "unsigned long")) {
+            try w.writeAll("u32");
+        } else if (std.mem.eql(u8, type_name, "long long")) {
+            try w.writeAll("i64");
+        } else if (std.mem.eql(u8, type_name, "unsigned long long")) {
+            try w.writeAll("u64");
+        } else if (std.mem.eql(u8, type_name, "float") or std.mem.eql(u8, type_name, "unrestricted float")) {
+            try w.writeAll("f32");
+        } else if (std.mem.eql(u8, type_name, "double") or std.mem.eql(u8, type_name, "unrestricted double")) {
+            try w.writeAll("f64");
+        } else if (std.mem.eql(u8, type_name, "DOMString")) {
+            try w.writeAll("runtime.DOMString");
+        } else if (std.mem.eql(u8, type_name, "USVString")) {
+            try w.writeAll("runtime.USVString");
+        } else if (std.mem.eql(u8, type_name, "ByteString")) {
+            try w.writeAll("runtime.ByteString");
+        } else if (std.mem.eql(u8, type_name, "any") or std.mem.eql(u8, type_name, "object")) {
+            try w.writeAll("runtime.JSValue");
+        } else {
+            // Unknown type - use runtime.JSValue for type safety
+            try w.writeAll("runtime.JSValue");
+        }
+    }
+}
+
+/// Write a return type for mixin functions
+fn writeMixinReturnType(w: anytype, idl_type: ?types.IDLType, type_registry: *const @import("ir.zig").TypeRegistry) !void {
+    if (idl_type) |t| {
+        const type_name = t.type;
+
+        if (type_registry.lookup(type_name)) |kind| {
+            switch (kind) {
+                .interface => {
+                    if (t.nullable) {
+                        try w.writeAll("!?*runtime.Instance");
+                    } else {
+                        try w.writeAll("!*runtime.Instance");
+                    }
+                    return;
+                },
+                .dictionary => {
+                    try w.print("anyerror!dictionaries.{s}", .{type_name});
+                    return;
+                },
+                .enum_type => {
+                    try w.print("anyerror!enums.{s}", .{type_name});
+                    return;
+                },
+                .typedef => {
+                    try w.print("anyerror!typedefs.{s}", .{type_name});
+                    return;
+                },
+                // For primitives, fall through to the primitive handling below
+                .primitive => {},
+                // For other types (namespace, mixin, callback, callback_interface), use void
+                else => {
+                    try w.writeAll("anyerror!void");
+                    return;
+                },
+            }
+        }
+
+        // Handle primitives and undefined/void types
+        if (std.mem.eql(u8, type_name, "undefined") or std.mem.eql(u8, type_name, "void")) {
+            try w.writeAll("anyerror!void");
+        } else if (std.mem.eql(u8, type_name, "boolean")) {
+            try w.writeAll("anyerror!bool");
+        } else if (std.mem.eql(u8, type_name, "byte")) {
+            try w.writeAll("anyerror!i8");
+        } else if (std.mem.eql(u8, type_name, "octet")) {
+            try w.writeAll("anyerror!u8");
+        } else if (std.mem.eql(u8, type_name, "short")) {
+            try w.writeAll("anyerror!i16");
+        } else if (std.mem.eql(u8, type_name, "unsigned short")) {
+            try w.writeAll("anyerror!u16");
+        } else if (std.mem.eql(u8, type_name, "long")) {
+            try w.writeAll("anyerror!i32");
+        } else if (std.mem.eql(u8, type_name, "unsigned long")) {
+            try w.writeAll("anyerror!u32");
+        } else if (std.mem.eql(u8, type_name, "long long")) {
+            try w.writeAll("anyerror!i64");
+        } else if (std.mem.eql(u8, type_name, "unsigned long long")) {
+            try w.writeAll("anyerror!u64");
+        } else if (std.mem.eql(u8, type_name, "float") or std.mem.eql(u8, type_name, "unrestricted float")) {
+            try w.writeAll("anyerror!f32");
+        } else if (std.mem.eql(u8, type_name, "double") or std.mem.eql(u8, type_name, "unrestricted double")) {
+            try w.writeAll("anyerror!f64");
+        } else if (std.mem.eql(u8, type_name, "DOMString")) {
+            try w.writeAll("anyerror!runtime.DOMString");
+        } else if (std.mem.eql(u8, type_name, "USVString")) {
+            try w.writeAll("anyerror!runtime.USVString");
+        } else if (std.mem.eql(u8, type_name, "ByteString")) {
+            try w.writeAll("anyerror!runtime.ByteString");
+        } else if (std.mem.eql(u8, type_name, "any") or std.mem.eql(u8, type_name, "object")) {
+            try w.writeAll("anyerror!runtime.JSValue");
+        } else {
+            // Unknown type - use void as fallback for operations that don't return anything meaningful
+            try w.writeAll("anyerror!void");
+        }
+    } else {
+        try w.writeAll("anyerror!void");
+    }
 }
 
 /// Check if a typedef has a special hand-written implementation that should not be generated
@@ -1327,15 +1818,21 @@ fn generateInterfaceFile(
     // Check if base type is an interface (vs dictionary/typedef)
     // If base is an interface, we use BaseType = ParentInterface.State for embedded inheritance
     // If base is not an interface (e.g., dictionary), we use BaseType = *Dictionary pointer
-    const base_is_interface = if (interface.inheritance) |base_name| blk: {
+    // If base type doesn't exist in registry, treat as no inheritance
+    const base_info: struct { inheritance: ?[]const u8, is_interface: bool } = if (interface.inheritance) |base_name| blk: {
         if (type_registry) |reg| {
             if (reg.lookup(base_name)) |kind| {
-                break :blk (kind == .interface or kind == .callback_interface);
+                // Base type exists in registry
+                break :blk .{
+                    .inheritance = base_name,
+                    .is_interface = (kind == .interface or kind == .callback_interface),
+                };
             }
         }
-        // Default to true if we can't determine (most common case)
-        break :blk true;
-    } else false;
+        // Base type not found in registry - treat as no inheritance
+        // This handles cases like AbstractView which is defined in IDL but doesn't exist
+        break :blk .{ .inheritance = null, .is_interface = false };
+    } else .{ .inheritance = null, .is_interface = false };
 
     // Deduplicate own attributes BEFORE generating metadata
     // Partial interfaces can cause duplicate attribute definitions (e.g., style from partials)
@@ -1354,8 +1851,8 @@ fn generateInterfaceFile(
         w,
         interface.name,
         null, // spec_url - would come from extended attributes
-        interface.inheritance,
-        base_is_interface,
+        base_info.inheritance,
+        base_info.is_interface,
         mixin_list.items,
         interface.extAttrs,
         all_attrs.items, // Metadata includes all attributes (for reflection)

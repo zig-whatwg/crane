@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AnimationFrameProviderImpl = @import("impls").AnimationFrameProvider;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FrameRequestCallback = @import("callbacks").FrameRequestCallback;
 
 pub const AnimationFrameProvider = struct {

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const KeyFrameRequestEventImpl = @import("impls").KeyFrameRequestEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -67,7 +70,7 @@ pub const KeyFrameRequestEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rid: ?runtime.DOMString = null,
+            rid: ?typedefs.DOMString = null,
             _internal: ?*KeyFrameRequestEventImpl.InternalState = null,
         },
     );

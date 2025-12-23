@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SyncEventImpl = @import("impls").SyncEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const SyncEventInit = @import("dictionaries").SyncEventInit;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
@@ -72,7 +75,7 @@ pub const SyncEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tag: runtime.DOMString = undefined,
+            tag: typedefs.DOMString = undefined,
             lastChance: bool = undefined,
             _internal: ?*SyncEventImpl.InternalState = null,
         },

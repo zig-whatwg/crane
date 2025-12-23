@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaListImpl = @import("impls").MediaList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -68,7 +71,7 @@ pub const MediaList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mediaText: CSSOMString = undefined,
+            mediaText: typedefs.CSSOMString = undefined,
             length: u32 = undefined,
             _internal: ?*MediaListImpl.InternalState = null,
         },

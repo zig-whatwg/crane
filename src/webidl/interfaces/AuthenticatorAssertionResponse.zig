@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AuthenticatorAssertionResponseImpl = @import("impls").AuthenticatorAssertionResponse;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AuthenticatorResponse = @import("interfaces").AuthenticatorResponse;
 
 pub const AuthenticatorAssertionResponse = struct {
@@ -66,9 +69,9 @@ pub const AuthenticatorAssertionResponse = struct {
             authenticatorData: runtime.ArrayBuffer = undefined,
             signature: runtime.ArrayBuffer = undefined,
             userHandle: ?runtime.ArrayBuffer = null,
-            cached_authenticatorData: ?runtime.ArrayBuffer = null,
-            cached_signature: ?runtime.ArrayBuffer = null,
-            cached_userHandle: ?runtime.ArrayBuffer = null,
+            cached_authenticatorData: ?runtime.JSValue = null,
+            cached_signature: ?runtime.JSValue = null,
+            cached_userHandle: ?runtime.JSValue = null,
             _internal: ?*AuthenticatorAssertionResponseImpl.InternalState = null,
         },
     );

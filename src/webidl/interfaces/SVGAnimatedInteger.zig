@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGAnimatedIntegerImpl = @import("impls").SVGAnimatedInteger;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const SVGAnimatedInteger = struct {
     pub const Meta = struct {

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FetchEventImpl = @import("impls").FetchEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -85,11 +88,11 @@ pub const FetchEvent = struct {
         Meta.MixinTypes,
         struct {
             request: *runtime.Instance = undefined,
-            preloadResponse: runtime.Promise(runtime.JSValue) = undefined,
-            clientId: runtime.DOMString = undefined,
-            resultingClientId: runtime.DOMString = undefined,
-            replacesClientId: runtime.DOMString = undefined,
-            handled: runtime.Promise(void) = undefined,
+            preloadResponse: runtime.JSValue = undefined,
+            clientId: typedefs.DOMString = undefined,
+            resultingClientId: typedefs.DOMString = undefined,
+            replacesClientId: typedefs.DOMString = undefined,
+            handled: runtime.JSValue = undefined,
             cached_request: ?*runtime.Instance = null,
             _internal: ?*FetchEventImpl.InternalState = null,
         },

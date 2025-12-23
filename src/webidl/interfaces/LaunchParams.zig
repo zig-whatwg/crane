@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const LaunchParamsImpl = @import("impls").LaunchParams;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 const FileSystemHandle = @import("interfaces").FileSystemHandle;
 
@@ -60,8 +63,8 @@ pub const LaunchParams = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            targetURL: ?runtime.DOMString = null,
-            files: runtime.FrozenArray(FileSystemHandle) = undefined,
+            targetURL: ?typedefs.DOMString = null,
+            files: runtime.JSValue = undefined,
             _internal: ?*LaunchParamsImpl.InternalState = null,
         },
     );

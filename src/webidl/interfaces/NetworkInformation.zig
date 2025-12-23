@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NetworkInformationImpl = @import("impls").NetworkInformation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const NetworkInformationSaveData = @import("interfaces").NetworkInformationSaveData;
+const NetworkInformationSaveData = @import("mixins").NetworkInformationSaveData;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Observable = @import("interfaces").Observable;
@@ -92,12 +95,12 @@ pub const NetworkInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": ConnectionType = undefined,
-            effectiveType: EffectiveConnectionType = undefined,
-            downlinkMax: Megabit = undefined,
-            downlink: Megabit = undefined,
-            rtt: Millisecond = undefined,
-            onchange: EventHandler = undefined,
+            @"type": enums.ConnectionType = undefined,
+            effectiveType: enums.EffectiveConnectionType = undefined,
+            downlinkMax: typedefs.Megabit = undefined,
+            downlink: typedefs.Megabit = undefined,
+            rtt: typedefs.Millisecond = undefined,
+            onchange: typedefs.EventHandler = undefined,
             saveData: bool = undefined,
             cached_saveData: ?bool = null,
             _internal: ?*NetworkInformationImpl.InternalState = null,

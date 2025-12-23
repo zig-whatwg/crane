@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SFrameKeyManagementImpl = @import("impls").SFrameKeyManagement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const EventHandler = @import("typedefs").EventHandler;
 const CryptoKey = @import("interfaces").CryptoKey;
@@ -56,7 +59,7 @@ pub const SFrameKeyManagement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SFrameKeyManagementImpl.InternalState = null,
         },
     );

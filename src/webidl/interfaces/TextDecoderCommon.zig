@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextDecoderCommonImpl = @import("impls").TextDecoderCommon;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const TextDecoderCommon = struct {
@@ -56,7 +59,7 @@ pub const TextDecoderCommon = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: runtime.DOMString = undefined,
+            encoding: typedefs.DOMString = undefined,
             fatal: bool = undefined,
             ignoreBOM: bool = undefined,
             _internal: ?*TextDecoderCommonImpl.InternalState = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCCertificateImpl = @import("impls").RTCCertificate;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
 const RTCDtlsFingerprint = @import("dictionaries").RTCDtlsFingerprint;
 
@@ -61,7 +64,7 @@ pub const RTCCertificate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            expires: EpochTimeStamp = undefined,
+            expires: typedefs.EpochTimeStamp = undefined,
             _internal: ?*RTCCertificateImpl.InternalState = null,
         },
     );

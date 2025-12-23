@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AnimationImpl = @import("impls").Animation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -129,20 +132,20 @@ pub const Animation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             effect: ?*runtime.Instance = null,
             timeline: ?*runtime.Instance = null,
             startTime: ?f64 = null,
             currentTime: ?f64 = null,
             playbackRate: f64 = undefined,
-            playState: AnimationPlayState = undefined,
-            replaceState: AnimationReplaceState = undefined,
+            playState: enums.AnimationPlayState = undefined,
+            replaceState: enums.AnimationReplaceState = undefined,
             pending: bool = undefined,
-            ready: runtime.Promise(Animation) = undefined,
-            finished: runtime.Promise(Animation) = undefined,
-            onfinish: EventHandler = undefined,
-            oncancel: EventHandler = undefined,
-            onremove: EventHandler = undefined,
+            ready: runtime.JSValue = undefined,
+            finished: runtime.JSValue = undefined,
+            onfinish: typedefs.EventHandler = undefined,
+            oncancel: typedefs.EventHandler = undefined,
+            onremove: typedefs.EventHandler = undefined,
             trigger: ?*runtime.Instance = null,
             rangeStart: union(enum) {
                 TimelineRangeOffset: TimelineRangeOffset,

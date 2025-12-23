@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorManagedDataImpl = @import("impls").NavigatorManagedData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
@@ -83,7 +86,7 @@ pub const NavigatorManagedData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmanagedconfigurationchange: EventHandler = undefined,
+            onmanagedconfigurationchange: typedefs.EventHandler = undefined,
             _internal: ?*NavigatorManagedDataImpl.InternalState = null,
         },
     );

@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SharedWorkerImpl = @import("impls").SharedWorker;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const AbstractWorker = @import("interfaces").AbstractWorker;
+const AbstractWorker = @import("mixins").AbstractWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const WorkerOptions = @import("dictionaries").WorkerOptions;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
@@ -80,7 +83,7 @@ pub const SharedWorker = struct {
         Meta.MixinTypes,
         struct {
             port: *runtime.Instance = undefined,
-            onerror: EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SharedWorkerImpl.InternalState = null,
         },
     );

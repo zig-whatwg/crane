@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorStorageBucketsImpl = @import("impls").NavigatorStorageBuckets;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const StorageBucketManager = @import("interfaces").StorageBucketManager;
 
 pub const NavigatorStorageBuckets = struct {

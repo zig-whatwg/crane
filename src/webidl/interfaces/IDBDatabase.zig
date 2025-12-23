@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IDBDatabaseImpl = @import("impls").IDBDatabase;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -17,7 +20,6 @@ const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const DOMStringList = @import("interfaces").DOMStringList;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const sequence = @import("interfaces").sequence;
 const IDBObjectStoreParameters = @import("dictionaries").IDBObjectStoreParameters;
 const IDBTransactionMode = @import("enums").IDBTransactionMode;
 const EventListener = @import("interfaces").EventListener;
@@ -100,13 +102,13 @@ pub const IDBDatabase = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             version: u64 = undefined,
             objectStoreNames: *runtime.Instance = undefined,
-            onabort: EventHandler = undefined,
-            onclose: EventHandler = undefined,
-            onerror: EventHandler = undefined,
-            onversionchange: EventHandler = undefined,
+            onabort: typedefs.EventHandler = undefined,
+            onclose: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onversionchange: typedefs.EventHandler = undefined,
             _internal: ?*IDBDatabaseImpl.InternalState = null,
         },
     );

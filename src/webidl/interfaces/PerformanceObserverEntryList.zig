@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceObserverEntryListImpl = @import("impls").PerformanceObserverEntryList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntryList = @import("typedefs").PerformanceEntryList;
 const DOMString = @import("typedefs").DOMString;
 

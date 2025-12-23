@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRLightEstimateImpl = @import("impls").XRLightEstimate;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 
 pub const XRLightEstimate = struct {

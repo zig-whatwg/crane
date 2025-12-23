@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DigitalCredentialImpl = @import("impls").DigitalCredential;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Credential = @import("interfaces").Credential;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const DigitalCredential = struct {
@@ -73,7 +76,7 @@ pub const DigitalCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            protocol: runtime.DOMString = undefined,
+            protocol: typedefs.DOMString = undefined,
             data: runtime.JSValue = undefined,
             cached_data: ?runtime.JSValue = null,
             _internal: ?*DigitalCredentialImpl.InternalState = null,

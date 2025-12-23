@@ -7,9 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const URLSearchParamsImpl = @import("impls").URLSearchParams;
 const mixins = @import("mixins");
-const record = @import("interfaces").record;
-const sequence = @import("interfaces").sequence;
-const USVString = @import("interfaces").USVString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const URLSearchParams = struct {

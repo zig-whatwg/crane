@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebGL2RenderingContextImpl = @import("impls").WebGL2RenderingContext;
 const mixins = @import("mixins");
-const WebGLRenderingContextBase = @import("interfaces").WebGLRenderingContextBase;
-const WebGL2RenderingContextBase = @import("interfaces").WebGL2RenderingContextBase;
-const WebGL2RenderingContextOverloads = @import("interfaces").WebGL2RenderingContextOverloads;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const WebGLRenderingContextBase = @import("mixins").WebGLRenderingContextBase;
+const WebGL2RenderingContextBase = @import("mixins").WebGL2RenderingContextBase;
+const WebGL2RenderingContextOverloads = @import("mixins").WebGL2RenderingContextOverloads;
 const WebGLActiveInfo = @import("interfaces").WebGLActiveInfo;
 const GLboolean = @import("typedefs").GLboolean;
 const WebGLSampler = @import("interfaces").WebGLSampler;
@@ -1132,11 +1135,11 @@ pub const WebGL2RenderingContext = struct {
                 HTMLCanvasElement: HTMLCanvasElement,
                 OffscreenCanvas: OffscreenCanvas,
             } = undefined,
-            drawingBufferWidth: GLsizei = undefined,
-            drawingBufferHeight: GLsizei = undefined,
-            drawingBufferFormat: GLenum = undefined,
-            drawingBufferColorSpace: PredefinedColorSpace = undefined,
-            unpackColorSpace: PredefinedColorSpace = undefined,
+            drawingBufferWidth: typedefs.GLsizei = undefined,
+            drawingBufferHeight: typedefs.GLsizei = undefined,
+            drawingBufferFormat: typedefs.GLenum = undefined,
+            drawingBufferColorSpace: enums.PredefinedColorSpace = undefined,
+            unpackColorSpace: enums.PredefinedColorSpace = undefined,
             _internal: ?*WebGL2RenderingContextImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NamedFlowImpl = @import("impls").NamedFlow;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Element = @import("interfaces").Element;
@@ -82,7 +85,7 @@ pub const NamedFlow = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
+            name: typedefs.CSSOMString = undefined,
             overset: bool = undefined,
             firstEmptyRegionIndex: i16 = undefined,
             _internal: ?*NamedFlowImpl.InternalState = null,

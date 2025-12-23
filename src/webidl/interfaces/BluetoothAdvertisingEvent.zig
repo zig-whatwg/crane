@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothAdvertisingEventImpl = @import("impls").BluetoothAdvertisingEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
 const BluetoothManufacturerDataMap = @import("interfaces").BluetoothManufacturerDataMap;
@@ -88,8 +91,8 @@ pub const BluetoothAdvertisingEvent = struct {
         Meta.MixinTypes,
         struct {
             device: *runtime.Instance = undefined,
-            uuids: runtime.FrozenArray(UUID) = undefined,
-            name: ?runtime.DOMString = null,
+            uuids: runtime.JSValue = undefined,
+            name: ?typedefs.DOMString = null,
             appearance: ?u16 = null,
             txPower: ?i8 = null,
             rssi: ?i8 = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TimeEventImpl = @import("impls").TimeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const Window = @import("interfaces").Window;
 const EventTarget = @import("interfaces").EventTarget;
@@ -73,7 +76,7 @@ pub const TimeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            view: ?WindowProxy = null,
+            view: ?typedefs.WindowProxy = null,
             detail: i32 = undefined,
             _internal: ?*TimeEventImpl.InternalState = null,
         },

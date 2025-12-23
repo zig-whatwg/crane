@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CaptureControllerImpl = @import("impls").CaptureController;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -90,8 +93,8 @@ pub const CaptureController = struct {
         Meta.MixinTypes,
         struct {
             zoomLevel: ?i32 = null,
-            onzoomlevelchange: EventHandler = undefined,
-            oncapturedmousechange: EventHandler = undefined,
+            onzoomlevelchange: typedefs.EventHandler = undefined,
+            oncapturedmousechange: typedefs.EventHandler = undefined,
             _internal: ?*CaptureControllerImpl.InternalState = null,
         },
     );

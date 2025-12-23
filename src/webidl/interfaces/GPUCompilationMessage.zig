@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUCompilationMessageImpl = @import("impls").GPUCompilationMessage;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GPUCompilationMessageType = @import("enums").GPUCompilationMessageType;
 const DOMString = @import("typedefs").DOMString;
 
@@ -73,8 +76,8 @@ pub const GPUCompilationMessage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: runtime.DOMString = undefined,
-            @"type": GPUCompilationMessageType = undefined,
+            message: typedefs.DOMString = undefined,
+            @"type": enums.GPUCompilationMessageType = undefined,
             lineNum: u64 = undefined,
             linePos: u64 = undefined,
             offset: u64 = undefined,

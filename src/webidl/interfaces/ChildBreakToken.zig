@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ChildBreakTokenImpl = @import("impls").ChildBreakToken;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BreakType = @import("enums").BreakType;
 const LayoutChild = @import("interfaces").LayoutChild;
 
@@ -60,7 +63,7 @@ pub const ChildBreakToken = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            breakType: BreakType = undefined,
+            breakType: enums.BreakType = undefined,
             child: *runtime.Instance = undefined,
             _internal: ?*ChildBreakTokenImpl.InternalState = null,
         },

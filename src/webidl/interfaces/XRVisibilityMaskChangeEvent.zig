@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRVisibilityMaskChangeEventImpl = @import("impls").XRVisibilityMaskChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const XRSession = @import("interfaces").XRSession;
@@ -80,13 +83,13 @@ pub const XRVisibilityMaskChangeEvent = struct {
         Meta.MixinTypes,
         struct {
             session: *runtime.Instance = undefined,
-            eye: XREye = undefined,
+            eye: enums.XREye = undefined,
             index: u32 = undefined,
             vertices: runtime.Float32Array = undefined,
             indices: runtime.Uint32Array = undefined,
             cached_session: ?*runtime.Instance = null,
-            cached_vertices: ?runtime.Float32Array = null,
-            cached_indices: ?runtime.Uint32Array = null,
+            cached_vertices: ?runtime.JSValue = null,
+            cached_indices: ?runtime.JSValue = null,
             _internal: ?*XRVisibilityMaskChangeEventImpl.InternalState = null,
         },
     );

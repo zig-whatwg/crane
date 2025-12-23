@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRBoundedReferenceSpaceImpl = @import("impls").XRBoundedReferenceSpace;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -74,7 +77,7 @@ pub const XRBoundedReferenceSpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            boundsGeometry: runtime.FrozenArray(DOMPointReadOnly) = undefined,
+            boundsGeometry: runtime.JSValue = undefined,
             _internal: ?*XRBoundedReferenceSpaceImpl.InternalState = null,
         },
     );

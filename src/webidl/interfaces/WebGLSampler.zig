@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebGLSamplerImpl = @import("impls").WebGLSampler;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WebGLObject = @import("interfaces").WebGLObject;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const WebGLSampler = struct {
     pub const Meta = struct {

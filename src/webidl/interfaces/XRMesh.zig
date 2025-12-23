@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRMeshImpl = @import("impls").XRMesh;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
 const XRSpace = @import("interfaces").XRSpace;
@@ -68,10 +71,10 @@ pub const XRMesh = struct {
         Meta.MixinTypes,
         struct {
             meshSpace: *runtime.Instance = undefined,
-            vertices: runtime.FrozenArray(runtime.Float32Array) = undefined,
+            vertices: runtime.JSValue = undefined,
             indices: runtime.Uint32Array = undefined,
-            lastChangedTime: DOMHighResTimeStamp = undefined,
-            semanticLabel: ?runtime.DOMString = null,
+            lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
+            semanticLabel: ?typedefs.DOMString = null,
             cached_meshSpace: ?*runtime.Instance = null,
             _internal: ?*XRMeshImpl.InternalState = null,
         },

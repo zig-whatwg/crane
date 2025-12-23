@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ManagedSourceBufferImpl = @import("impls").ManagedSourceBuffer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SourceBuffer = @import("interfaces").SourceBuffer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -83,7 +86,7 @@ pub const ManagedSourceBuffer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onbufferedchange: EventHandler = undefined,
+            onbufferedchange: typedefs.EventHandler = undefined,
             _internal: ?*ManagedSourceBufferImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUSupportedLimitsImpl = @import("impls").GPUSupportedLimits;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const GPUSupportedLimits = struct {
     pub const Meta = struct {

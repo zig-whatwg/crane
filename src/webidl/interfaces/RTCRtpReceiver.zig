@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCRtpReceiverImpl = @import("impls").RTCRtpReceiver;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCRtpReceiveParameters = @import("dictionaries").RTCRtpReceiveParameters;
 const RTCRtpSynchronizationSource = @import("dictionaries").RTCRtpSynchronizationSource;
@@ -88,8 +91,8 @@ pub const RTCRtpReceiver = struct {
         struct {
             track: *runtime.Instance = undefined,
             transport: ?*runtime.Instance = null,
-            jitterBufferTarget: ?DOMHighResTimeStamp = null,
-            transform: ?RTCRtpTransform = null,
+            jitterBufferTarget: ?typedefs.DOMHighResTimeStamp = null,
+            transform: ?typedefs.RTCRtpTransform = null,
             _internal: ?*RTCRtpReceiverImpl.InternalState = null,
         },
     );

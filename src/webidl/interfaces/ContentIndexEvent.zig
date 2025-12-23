@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ContentIndexEventImpl = @import("impls").ContentIndexEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -70,7 +73,7 @@ pub const ContentIndexEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             _internal: ?*ContentIndexEventImpl.InternalState = null,
         },
     );

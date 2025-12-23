@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextEncoderStreamImpl = @import("impls").TextEncoderStream;
 const mixins = @import("mixins");
-const TextEncoderCommon = @import("interfaces").TextEncoderCommon;
-const GenericTransformStream = @import("interfaces").GenericTransformStream;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const TextEncoderCommon = @import("mixins").TextEncoderCommon;
+const GenericTransformStream = @import("mixins").GenericTransformStream;
 const ReadableStream = @import("interfaces").ReadableStream;
 const WritableStream = @import("interfaces").WritableStream;
 const DOMString = @import("typedefs").DOMString;
@@ -68,7 +71,7 @@ pub const TextEncoderStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: runtime.DOMString = undefined,
+            encoding: typedefs.DOMString = undefined,
             readable: *runtime.Instance = undefined,
             writable: *runtime.Instance = undefined,
             _internal: ?*TextEncoderStreamImpl.InternalState = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGAnimatedPointsImpl = @import("impls").SVGAnimatedPoints;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGPointList = @import("interfaces").SVGPointList;
 
 pub const SVGAnimatedPoints = struct {

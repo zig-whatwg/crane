@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSColorImpl = @import("impls").CSSColor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSKeywordish = @import("typedefs").CSSKeywordish;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSColor = struct {
@@ -76,9 +79,9 @@ pub const CSSColor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            colorSpace: CSSKeywordish = undefined,
-            channels: runtime.ObservableArray(CSSColorPercent) = undefined,
-            alpha: CSSNumberish = undefined,
+            colorSpace: typedefs.CSSKeywordish = undefined,
+            channels: runtime.JSValue = undefined,
+            alpha: typedefs.CSSNumberish = undefined,
             _internal: ?*CSSColorImpl.InternalState = null,
         },
     );

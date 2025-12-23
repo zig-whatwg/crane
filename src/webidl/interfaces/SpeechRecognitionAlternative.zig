@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechRecognitionAlternativeImpl = @import("impls").SpeechRecognitionAlternative;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechRecognitionAlternative = struct {
@@ -60,7 +63,7 @@ pub const SpeechRecognitionAlternative = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transcript: runtime.DOMString = undefined,
+            transcript: typedefs.DOMString = undefined,
             confidence: f32 = undefined,
             _internal: ?*SpeechRecognitionAlternativeImpl.InternalState = null,
         },

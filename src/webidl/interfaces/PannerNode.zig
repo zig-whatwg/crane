@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PannerNodeImpl = @import("impls").PannerNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -115,14 +118,14 @@ pub const PannerNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            panningModel: PanningModelType = undefined,
+            panningModel: enums.PanningModelType = undefined,
             positionX: *runtime.Instance = undefined,
             positionY: *runtime.Instance = undefined,
             positionZ: *runtime.Instance = undefined,
             orientationX: *runtime.Instance = undefined,
             orientationY: *runtime.Instance = undefined,
             orientationZ: *runtime.Instance = undefined,
-            distanceModel: DistanceModelType = undefined,
+            distanceModel: enums.DistanceModelType = undefined,
             refDistance: f64 = undefined,
             maxDistance: f64 = undefined,
             rolloffFactor: f64 = undefined,

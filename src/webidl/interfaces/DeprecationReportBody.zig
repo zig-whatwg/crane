@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DeprecationReportBodyImpl = @import("impls").DeprecationReportBody;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ReportBody = @import("dictionaries").ReportBody;
 const DOMString = @import("typedefs").DOMString;
 
@@ -73,10 +76,10 @@ pub const DeprecationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             anticipatedRemoval: ?runtime.JSValue = null,
-            message: runtime.DOMString = undefined,
-            sourceFile: ?runtime.DOMString = null,
+            message: typedefs.DOMString = undefined,
+            sourceFile: ?typedefs.DOMString = null,
             lineNumber: ?u32 = null,
             columnNumber: ?u32 = null,
             _internal: ?*DeprecationReportBodyImpl.InternalState = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SourceBufferImpl = @import("impls").SourceBuffer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -113,7 +116,7 @@ pub const SourceBuffer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mode: AppendMode = undefined,
+            mode: enums.AppendMode = undefined,
             updating: bool = undefined,
             buffered: *runtime.Instance = undefined,
             timestampOffset: f64 = undefined,
@@ -122,11 +125,11 @@ pub const SourceBuffer = struct {
             textTracks: *runtime.Instance = undefined,
             appendWindowStart: f64 = undefined,
             appendWindowEnd: f64 = undefined,
-            onupdatestart: EventHandler = undefined,
-            onupdate: EventHandler = undefined,
-            onupdateend: EventHandler = undefined,
-            onerror: EventHandler = undefined,
-            onabort: EventHandler = undefined,
+            onupdatestart: typedefs.EventHandler = undefined,
+            onupdate: typedefs.EventHandler = undefined,
+            onupdateend: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onabort: typedefs.EventHandler = undefined,
             _internal: ?*SourceBufferImpl.InternalState = null,
         },
     );

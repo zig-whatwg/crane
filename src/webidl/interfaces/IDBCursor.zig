@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IDBCursorImpl = @import("impls").IDBCursor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const IDBRequest = @import("interfaces").IDBRequest;
 const IDBIndex = @import("interfaces").IDBIndex;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
@@ -85,7 +88,7 @@ pub const IDBCursor = struct {
                 IDBObjectStore: IDBObjectStore,
                 IDBIndex: IDBIndex,
             } = undefined,
-            direction: IDBCursorDirection = undefined,
+            direction: enums.IDBCursorDirection = undefined,
             key: runtime.JSValue = undefined,
             primaryKey: runtime.JSValue = undefined,
             request: *runtime.Instance = undefined,

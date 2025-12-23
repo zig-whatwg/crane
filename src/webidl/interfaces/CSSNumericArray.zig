@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSNumericArrayImpl = @import("impls").CSSNumericArray;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 
 pub const CSSNumericArray = struct {

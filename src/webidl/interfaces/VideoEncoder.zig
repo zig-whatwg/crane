@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VideoEncoderImpl = @import("impls").VideoEncoder;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -100,9 +103,9 @@ pub const VideoEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: CodecState = undefined,
+            state: enums.CodecState = undefined,
             encodeQueueSize: u32 = undefined,
-            ondequeue: EventHandler = undefined,
+            ondequeue: typedefs.EventHandler = undefined,
             _internal: ?*VideoEncoderImpl.InternalState = null,
         },
     );

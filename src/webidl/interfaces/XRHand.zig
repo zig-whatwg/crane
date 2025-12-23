@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRHandImpl = @import("impls").XRHand;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRJointSpace = @import("interfaces").XRJointSpace;
 const XRHandJoint = @import("enums").XRHandJoint;
 

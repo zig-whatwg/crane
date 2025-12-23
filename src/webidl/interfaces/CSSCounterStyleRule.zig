@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSCounterStyleRuleImpl = @import("impls").CSSCounterStyleRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -81,17 +84,17 @@ pub const CSSCounterStyleRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
-            system: CSSOMString = undefined,
-            symbols: CSSOMString = undefined,
-            additiveSymbols: CSSOMString = undefined,
-            negative: CSSOMString = undefined,
-            prefix: CSSOMString = undefined,
-            suffix: CSSOMString = undefined,
-            range: CSSOMString = undefined,
-            pad: CSSOMString = undefined,
-            speakAs: CSSOMString = undefined,
-            fallback: CSSOMString = undefined,
+            name: typedefs.CSSOMString = undefined,
+            system: typedefs.CSSOMString = undefined,
+            symbols: typedefs.CSSOMString = undefined,
+            additiveSymbols: typedefs.CSSOMString = undefined,
+            negative: typedefs.CSSOMString = undefined,
+            prefix: typedefs.CSSOMString = undefined,
+            suffix: typedefs.CSSOMString = undefined,
+            range: typedefs.CSSOMString = undefined,
+            pad: typedefs.CSSOMString = undefined,
+            speakAs: typedefs.CSSOMString = undefined,
+            fallback: typedefs.CSSOMString = undefined,
             _internal: ?*CSSCounterStyleRuleImpl.InternalState = null,
         },
     );

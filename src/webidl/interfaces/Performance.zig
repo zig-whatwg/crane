@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceImpl = @import("impls").Performance;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -117,12 +120,12 @@ pub const Performance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            timeOrigin: DOMHighResTimeStamp = undefined,
+            timeOrigin: typedefs.DOMHighResTimeStamp = undefined,
             eventCounts: *runtime.Instance = undefined,
             interactionCount: u64 = undefined,
             timing: *runtime.Instance = undefined,
             navigation: *runtime.Instance = undefined,
-            onresourcetimingbufferfull: EventHandler = undefined,
+            onresourcetimingbufferfull: typedefs.EventHandler = undefined,
             cached_eventCounts: ?*runtime.Instance = null,
             cached_timing: ?*runtime.Instance = null,
             cached_navigation: ?*runtime.Instance = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DataTransferItemImpl = @import("impls").DataTransferItem;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FileSystemHandle = @import("interfaces").FileSystemHandle;
 const FunctionStringCallback = @import("callbacks").FunctionStringCallback;
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
@@ -71,8 +74,8 @@ pub const DataTransferItem = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: runtime.DOMString = undefined,
-            @"type": runtime.DOMString = undefined,
+            kind: typedefs.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
             _internal: ?*DataTransferItemImpl.InternalState = null,
         },
     );

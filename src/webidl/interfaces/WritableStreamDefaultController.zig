@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WritableStreamDefaultControllerImpl = @import("impls").WritableStreamDefaultController;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AbortSignal = @import("interfaces").AbortSignal;
 
 pub const WritableStreamDefaultController = struct {

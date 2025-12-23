@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ViewportImpl = @import("impls").Viewport;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMRect = @import("interfaces").DOMRect;
 
 pub const Viewport = struct {
@@ -57,7 +60,7 @@ pub const Viewport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            segments: ?runtime.FrozenArray(DOMRect) = null,
+            segments: ?runtime.JSValue = null,
             _internal: ?*ViewportImpl.InternalState = null,
         },
     );

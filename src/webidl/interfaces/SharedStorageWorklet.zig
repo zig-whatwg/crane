@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SharedStorageWorkletImpl = @import("impls").SharedStorageWorklet;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Worklet = @import("interfaces").Worklet;
 const SharedStorageResponse = @import("typedefs").SharedStorageResponse;
 const WorkletOptions = @import("dictionaries").WorkletOptions;
 const SharedStorageUrlWithMetadata = @import("dictionaries").SharedStorageUrlWithMetadata;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const SharedStorageRunOperationMethodOptions = @import("dictionaries").SharedStorageRunOperationMethodOptions;
 

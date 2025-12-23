@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AbstractWorkerImpl = @import("impls").AbstractWorker;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const AbstractWorker = struct {
@@ -52,7 +55,7 @@ pub const AbstractWorker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*AbstractWorkerImpl.InternalState = null,
         },
     );

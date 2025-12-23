@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUPipelineErrorImpl = @import("impls").GPUPipelineError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMException = @import("interfaces").DOMException;
 const GPUPipelineErrorReason = @import("enums").GPUPipelineErrorReason;
 const GPUPipelineErrorInit = @import("dictionaries").GPUPipelineErrorInit;
@@ -66,7 +69,7 @@ pub const GPUPipelineError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: GPUPipelineErrorReason = undefined,
+            reason: enums.GPUPipelineErrorReason = undefined,
             _internal: ?*GPUPipelineErrorImpl.InternalState = null,
         },
     );

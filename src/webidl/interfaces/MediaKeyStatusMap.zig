@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaKeyStatusMapImpl = @import("impls").MediaKeyStatusMap;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MediaKeyStatus = @import("enums").MediaKeyStatus;
 const BufferSource = @import("typedefs").BufferSource;
 

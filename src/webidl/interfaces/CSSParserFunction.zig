@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSParserFunctionImpl = @import("impls").CSSParserFunction;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSParserValue = @import("interfaces").CSSParserValue;
 const DOMString = @import("typedefs").DOMString;
 
@@ -63,8 +66,8 @@ pub const CSSParserFunction = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            args: runtime.FrozenArray(runtime.FrozenArray(CSSParserValue)) = undefined,
+            name: typedefs.DOMString = undefined,
+            args: runtime.JSValue = undefined,
             _internal: ?*CSSParserFunctionImpl.InternalState = null,
         },
     );

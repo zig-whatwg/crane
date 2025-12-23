@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaErrorImpl = @import("impls").MediaError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const MediaError = struct {
@@ -68,7 +71,7 @@ pub const MediaError = struct {
         Meta.MixinTypes,
         struct {
             code: u16 = undefined,
-            message: runtime.DOMString = undefined,
+            message: typedefs.DOMString = undefined,
             _internal: ?*MediaErrorImpl.InternalState = null,
         },
     );

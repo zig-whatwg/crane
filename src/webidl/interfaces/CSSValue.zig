@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSValueImpl = @import("impls").CSSValue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSValue = struct {
@@ -62,7 +65,7 @@ pub const CSSValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cssText: runtime.DOMString = undefined,
+            cssText: typedefs.DOMString = undefined,
             cssValueType: u16 = undefined,
             _internal: ?*CSSValueImpl.InternalState = null,
         },

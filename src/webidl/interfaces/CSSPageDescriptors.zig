@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSPageDescriptorsImpl = @import("impls").CSSPageDescriptors;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
@@ -99,20 +102,20 @@ pub const CSSPageDescriptors = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            margin: CSSOMString = undefined,
-            marginTop: CSSOMString = undefined,
-            marginRight: CSSOMString = undefined,
-            marginBottom: CSSOMString = undefined,
-            marginLeft: CSSOMString = undefined,
-            @"margin-top": CSSOMString = undefined,
-            @"margin-right": CSSOMString = undefined,
-            @"margin-bottom": CSSOMString = undefined,
-            @"margin-left": CSSOMString = undefined,
-            size: CSSOMString = undefined,
-            pageOrientation: CSSOMString = undefined,
-            @"page-orientation": CSSOMString = undefined,
-            marks: CSSOMString = undefined,
-            bleed: CSSOMString = undefined,
+            margin: typedefs.CSSOMString = undefined,
+            marginTop: typedefs.CSSOMString = undefined,
+            marginRight: typedefs.CSSOMString = undefined,
+            marginBottom: typedefs.CSSOMString = undefined,
+            marginLeft: typedefs.CSSOMString = undefined,
+            @"margin-top": typedefs.CSSOMString = undefined,
+            @"margin-right": typedefs.CSSOMString = undefined,
+            @"margin-bottom": typedefs.CSSOMString = undefined,
+            @"margin-left": typedefs.CSSOMString = undefined,
+            size: typedefs.CSSOMString = undefined,
+            pageOrientation: typedefs.CSSOMString = undefined,
+            @"page-orientation": typedefs.CSSOMString = undefined,
+            marks: typedefs.CSSOMString = undefined,
+            bleed: typedefs.CSSOMString = undefined,
             _internal: ?*CSSPageDescriptorsImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HTMLSlotElementImpl = @import("impls").HTMLSlotElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HTMLElement = @import("interfaces").HTMLElement;
 const AssignedNodesOptions = @import("dictionaries").AssignedNodesOptions;
 const DOMStringMap = @import("interfaces").DOMStringMap;
@@ -18,7 +21,7 @@ const Text = @import("interfaces").Text;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -220,7 +223,7 @@ pub const HTMLSlotElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             _internal: ?*HTMLSlotElementImpl.InternalState = null,
         },
     );

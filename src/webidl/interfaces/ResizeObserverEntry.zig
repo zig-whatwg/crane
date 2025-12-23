@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ResizeObserverEntryImpl = @import("impls").ResizeObserverEntry;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const ResizeObserverSize = @import("interfaces").ResizeObserverSize;
@@ -69,9 +72,9 @@ pub const ResizeObserverEntry = struct {
         struct {
             target: *runtime.Instance = undefined,
             contentRect: *runtime.Instance = undefined,
-            borderBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
-            contentBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
-            devicePixelContentBoxSize: runtime.FrozenArray(ResizeObserverSize) = undefined,
+            borderBoxSize: runtime.JSValue = undefined,
+            contentBoxSize: runtime.JSValue = undefined,
+            devicePixelContentBoxSize: runtime.JSValue = undefined,
             _internal: ?*ResizeObserverEntryImpl.InternalState = null,
         },
     );

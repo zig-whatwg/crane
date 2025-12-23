@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const KeyframeEffectImpl = @import("impls").KeyframeEffect;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const Element = @import("interfaces").Element;
 const IterationCompositeOperation = @import("enums").IterationCompositeOperation;
@@ -85,9 +88,9 @@ pub const KeyframeEffect = struct {
         Meta.MixinTypes,
         struct {
             target: ?*runtime.Instance = null,
-            pseudoElement: ?CSSOMString = null,
-            composite: CompositeOperation = undefined,
-            iterationComposite: IterationCompositeOperation = undefined,
+            pseudoElement: ?typedefs.CSSOMString = null,
+            composite: enums.CompositeOperation = undefined,
+            iterationComposite: enums.IterationCompositeOperation = undefined,
             _internal: ?*KeyframeEffectImpl.InternalState = null,
         },
     );

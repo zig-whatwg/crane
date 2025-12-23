@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FragmentResultImpl = @import("impls").FragmentResult;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FragmentResultOptions = @import("dictionaries").FragmentResultOptions;
 
 pub const FragmentResult = struct {

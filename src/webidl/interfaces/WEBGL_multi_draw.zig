@@ -7,8 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WEBGL_multi_drawImpl = @import("impls").WEBGL_multi_draw;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
-const sequence = @import("interfaces").sequence;
 const GLint = @import("typedefs").GLint;
 const GLsizei = @import("typedefs").GLsizei;
 

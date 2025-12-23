@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FontImpl = @import("impls").Font;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const Font = struct {
@@ -59,7 +62,7 @@ pub const Font = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             glyphsRendered: u32 = undefined,
             _internal: ?*FontImpl.InternalState = null,
         },

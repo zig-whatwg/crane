@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BlobImpl = @import("impls").Blob;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ReadableStream = @import("interfaces").ReadableStream;
 const BlobPart = @import("typedefs").BlobPart;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const BlobPropertyBag = @import("dictionaries").BlobPropertyBag;
 const DOMString = @import("typedefs").DOMString;
 
@@ -78,7 +81,7 @@ pub const Blob = struct {
         Meta.MixinTypes,
         struct {
             size: u64 = undefined,
-            @"type": runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
             _internal: ?*BlobImpl.InternalState = null,
         },
     );

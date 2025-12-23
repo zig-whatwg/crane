@@ -7,7 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MLTensorImpl = @import("impls").MLTensor;
 const mixins = @import("mixins");
-const unsignedlong = @import("interfaces").unsignedlong;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MLOperandDataType = @import("enums").MLOperandDataType;
 
 pub const MLTensor = struct {
@@ -72,8 +74,8 @@ pub const MLTensor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataType: MLOperandDataType = undefined,
-            shape: runtime.FrozenArray(unsignedlong) = undefined,
+            dataType: enums.MLOperandDataType = undefined,
+            shape: runtime.JSValue = undefined,
             readable: bool = undefined,
             writable: bool = undefined,
             constant: bool = undefined,

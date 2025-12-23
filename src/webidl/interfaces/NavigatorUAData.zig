@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorUADataImpl = @import("impls").NavigatorUAData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const UADataValues = @import("dictionaries").UADataValues;
 const NavigatorUABrandVersion = @import("dictionaries").NavigatorUABrandVersion;
 const UALowEntropyJSON = @import("dictionaries").UALowEntropyJSON;
@@ -71,9 +74,9 @@ pub const NavigatorUAData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            brands: runtime.FrozenArray(NavigatorUABrandVersion) = undefined,
+            brands: runtime.JSValue = undefined,
             mobile: bool = undefined,
-            platform: runtime.DOMString = undefined,
+            platform: typedefs.DOMString = undefined,
             _internal: ?*NavigatorUADataImpl.InternalState = null,
         },
     );

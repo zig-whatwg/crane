@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ImageTrackListImpl = @import("impls").ImageTrackList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ImageTrack = @import("interfaces").ImageTrack;
 
 pub const ImageTrackList = struct {
@@ -67,7 +70,7 @@ pub const ImageTrackList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ready: runtime.Promise(void) = undefined,
+            ready: runtime.JSValue = undefined,
             length: u32 = undefined,
             selectedIndex: i32 = undefined,
             selectedTrack: ?*runtime.Instance = null,

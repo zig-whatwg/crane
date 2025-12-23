@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCTrackEventImpl = @import("impls").RTCTrackEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
 const MediaStream = @import("interfaces").MediaStream;
@@ -80,9 +83,9 @@ pub const RTCTrackEvent = struct {
         struct {
             receiver: *runtime.Instance = undefined,
             track: *runtime.Instance = undefined,
-            streams: runtime.FrozenArray(MediaStream) = undefined,
+            streams: runtime.JSValue = undefined,
             transceiver: *runtime.Instance = undefined,
-            cached_streams: ?runtime.FrozenArray(MediaStream) = null,
+            cached_streams: ?runtime.JSValue = null,
             _internal: ?*RTCTrackEventImpl.InternalState = null,
         },
     );

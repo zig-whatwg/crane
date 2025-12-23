@@ -32,13 +32,6 @@ const std = @import("std");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const intl_binding = @import("intl_binding.zig");
-const interface_bindings = @import("interface_bindings.zig");
-const interfaces = @import("interfaces");
-const V8Interface = @import("interface.zig").V8Interface;
-pub const V8Namespace = @import("namespace.zig").V8Namespace;
-const zig_callbacks = @import("zig_callbacks.zig");
-const window_properties = @import("window_properties.zig");
-const context_manager = @import("context_manager.zig");
 
 /// Result of V8 initialization
 pub const InitResult = struct {
@@ -167,10 +160,6 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
     }
 
     // Get external references (must match snapshot creation order)
-    const ref_count = ext_refs.getRuntimeCount();
-    if (log_performance) {
-        std.log.info("Snapshot loading: {d} external references registered", .{ref_count});
-    }
     const refs_ptr = ext_refs.getRuntimeExternalReferencesPtr();
 
     // Create isolate from snapshot
@@ -205,14 +194,6 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
 }
 
 /// Try to initialize from a snapshot file
-///
-/// IMPORTANT: The snapshot data is intentionally NOT freed after this function returns.
-/// V8 may keep a reference to the snapshot data for lazy deserialization during
-/// context creation. The snapshot data should be kept alive for the lifetime of
-/// the isolate, or until after the first context is created.
-///
-/// TODO: Track the snapshot data and free it when the isolate is disposed.
-/// For now, this is a small memory leak (~8MB per isolate created from snapshot).
 fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_performance: bool) !?SnapshotResult {
     // Try to open and read the snapshot file
     const file = std.fs.cwd().openFile(path, .{}) catch |err| {
@@ -237,17 +218,12 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_perf
         }
         return null;
     };
-    // NOTE: snapshot_data is intentionally NOT freed here!
-    // V8 keeps a reference to the snapshot data for lazy deserialization.
-    // The data must remain valid until after context creation.
-    // This is a small memory leak (~8MB) that we accept for now.
-    // errdefer allocator.free(snapshot_data);
+    defer allocator.free(snapshot_data);
 
     const bytes_read = file.readAll(snapshot_data) catch |err| {
         if (log_performance) {
             std.log.warn("Failed to read snapshot file: {}", .{err});
         }
-        allocator.free(snapshot_data);
         return null;
     };
 
@@ -255,7 +231,6 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_perf
         if (log_performance) {
             std.log.warn("Incomplete snapshot file read: {d}/{d} bytes", .{ bytes_read, stat.size });
         }
-        allocator.free(snapshot_data);
         return null;
     }
 
@@ -280,6 +255,7 @@ pub fn registerExternalReferences() void {
     ext_refs.registerCallbackRuntime(ffi.v8_GetAsyncIteratorSelfCallback());
 
     // Register Zig callbacks used by streams and promise handlers
+    const zig_callbacks = @import("zig_callbacks.zig");
     ext_refs.registerCallbackRuntime(zig_callbacks.genericZigCallback);
 
     // Register Intl callbacks for V8 snapshot compatibility
@@ -289,89 +265,6 @@ pub fn registerExternalReferences() void {
     // interface_bindings.initializeBindings() is called. For snapshot loading,
     // these callbacks must have been registered in the same order during
     // snapshot creation.
-}
-
-/// Register ALL external references for all WebIDL interfaces
-///
-/// This function MUST be called before creating OR loading a snapshot.
-/// It registers callbacks for ALL interfaces in the same order, which is
-/// critical for snapshot compatibility.
-///
-/// This is the comprehensive version that includes ALL interface callbacks.
-/// Use this for both snapshot creation and loading.
-pub fn registerAllExternalReferences() void {
-    @setEvalBranchQuota(200_000);
-
-    // Clear any previous registrations to ensure consistent ordering
-    ext_refs.clearRuntimeReferences();
-
-    // Register callbacks for all interfaces
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
-    inline for (iface_decls) |decl| {
-        // Skip problematic interfaces
-        if (comptime interface_bindings.shouldSkipInterface(decl.name)) continue;
-
-        const InterfaceType = @field(interfaces, decl.name);
-
-        // Only process types that have Meta (actual interfaces)
-        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
-            // Get the V8Interface binding and register its callbacks
-            const V8Binding = V8Interface(InterfaceType);
-            V8Binding.registerExternalReferences();
-        }
-    }
-
-    // NOTE: Namespace callbacks are NOT registered here because the v8 module
-    // doesn't have access to the namespaces module. Callers should use
-    // registerNamespaceExternalReferences() with the namespaces module to
-    // register namespace callbacks separately.
-
-    // Register C++ callbacks that are created in v8_wrapper.cpp
-    // These are used by FunctionTemplates but are defined in C++, not Zig
-    ext_refs.registerCallbackRuntime(ffi.v8_GetAsyncIteratorNextCallback());
-    ext_refs.registerCallbackRuntime(ffi.v8_GetAsyncIteratorReturnCallback());
-    ext_refs.registerCallbackRuntime(ffi.v8_GetAsyncIteratorSelfCallback());
-
-    // Register Zig callbacks that are used for Promise handlers and dynamic callbacks
-    // These are created by zig_callbacks.zig when streams invoke JS callbacks
-    ext_refs.registerCallbackRuntime(zig_callbacks.genericZigCallback);
-
-    // Register Intl callbacks for V8 snapshot compatibility
-    intl_binding.registerExternalReferences();
-
-    // Register WindowProperties named property callbacks
-    window_properties.registerExternalReferences();
-
-    // Register context manager callbacks (Window indexed property handlers)
-    context_manager.registerExternalReferences();
-}
-
-/// Register namespace external references for snapshot support
-///
-/// This function must be called with a namespaces module to register
-/// all namespace callbacks. Call this after registerAllExternalReferences()
-/// to complete the external reference registration.
-///
-/// Example:
-/// ```zig
-/// const namespaces = @import("namespaces");
-/// snapshot_loader.registerAllExternalReferences();
-/// snapshot_loader.registerNamespaceExternalReferences(namespaces);
-/// ```
-pub fn registerNamespaceExternalReferences(comptime namespaces: type) void {
-    @setEvalBranchQuota(50_000);
-
-    const ns_decls = @typeInfo(namespaces).@"struct".decls;
-    inline for (ns_decls) |decl| {
-        const NamespaceType = @field(namespaces, decl.name);
-
-        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-            // V8Namespace might not have registerExternalReferences, but if it does, call it
-            if (@hasDecl(V8Namespace(NamespaceType), "registerExternalReferences")) {
-                V8Namespace(NamespaceType).registerExternalReferences();
-            }
-        }
-    }
 }
 
 /// Check if a valid snapshot file exists at the given path
@@ -422,45 +315,4 @@ test "snapshot loader - initializeV8 without snapshot" {
 test "snapshot loader - hasValidSnapshot returns false for missing file" {
     const result = hasValidSnapshot(std.testing.allocator, "nonexistent_snapshot.bin");
     try std.testing.expect(!result);
-}
-
-test "snapshot loader - initializeV8 with snapshot file" {
-    // Skip test if no snapshot file exists
-    const snapshot_path = "whatwg_snapshot.bin";
-    if (!hasValidSnapshot(std.testing.allocator, snapshot_path)) {
-        std.log.info("Skipping snapshot test - no snapshot file at {s}", .{snapshot_path});
-        return;
-    }
-
-    // Initialize V8 platform first (required)
-    ffi.v8_Platform_Initialize();
-    defer ffi.v8_Platform_Dispose();
-
-    // Register ALL external references (must match snapshot creation order)
-    registerAllExternalReferences();
-
-    const result = try initializeV8(std.testing.allocator, .{
-        .snapshot_path = snapshot_path,
-        .log_performance = true,
-    });
-
-    // Verify we used the snapshot
-    try std.testing.expect(result.used_snapshot);
-    try std.testing.expect(result.startup_time_ms >= 0);
-
-    // Enter context and verify we can evaluate JS
-    ffi.v8_Context_Enter(result.context);
-    defer ffi.v8_Context_Exit(result.context);
-
-    // Test that interfaces are available (they should be from the snapshot)
-    const script = "typeof URL";
-    const script_result = ffi.v8_Context_Evaluate(result.context, script.ptr, @intCast(script.len), "test.js", 7);
-    try std.testing.expect(script_result != null);
-
-    // Clean up - exit context first, then dispose
-    ffi.v8_Context_Dispose(result.context);
-    ffi.v8_Isolate_Exit(result.isolate);
-    ffi.v8_Isolate_Dispose(result.isolate);
-
-    std.log.info("Snapshot loading test passed! Startup time: {d}ms", .{result.startup_time_ms});
 }

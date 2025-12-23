@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSKeyframesRuleImpl = @import("impls").CSSKeyframesRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
@@ -73,7 +76,7 @@ pub const CSSKeyframesRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
+            name: typedefs.CSSOMString = undefined,
             cssRules: *runtime.Instance = undefined,
             length: u32 = undefined,
             _internal: ?*CSSKeyframesRuleImpl.InternalState = null,

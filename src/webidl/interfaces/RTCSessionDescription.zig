@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCSessionDescriptionImpl = @import("impls").RTCSessionDescription;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCSessionDescriptionInit = @import("dictionaries").RTCSessionDescriptionInit;
 const DOMString = @import("typedefs").DOMString;
 const RTCSdpType = @import("enums").RTCSdpType;
@@ -63,8 +66,8 @@ pub const RTCSessionDescription = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": RTCSdpType = undefined,
-            sdp: runtime.DOMString = undefined,
+            @"type": enums.RTCSdpType = undefined,
+            sdp: typedefs.DOMString = undefined,
             _internal: ?*RTCSessionDescriptionImpl.InternalState = null,
         },
     );

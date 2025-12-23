@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const LaunchQueueImpl = @import("impls").LaunchQueue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const LaunchConsumer = @import("callbacks").LaunchConsumer;
 
 pub const LaunchQueue = struct {

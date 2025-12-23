@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DevicePostureImpl = @import("impls").DevicePosture;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -76,8 +79,8 @@ pub const DevicePosture = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": DevicePostureType = undefined,
-            onchange: EventHandler = undefined,
+            @"type": enums.DevicePostureType = undefined,
+            onchange: typedefs.EventHandler = undefined,
             _internal: ?*DevicePostureImpl.InternalState = null,
         },
     );

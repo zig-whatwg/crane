@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ContentIndexImpl = @import("impls").ContentIndex;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ContentDescription = @import("dictionaries").ContentDescription;
 const DOMString = @import("typedefs").DOMString;
 

@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextImpl = @import("impls").Text;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CharacterData = @import("interfaces").CharacterData;
-const Slottable = @import("interfaces").Slottable;
-const GeometryUtils = @import("interfaces").GeometryUtils;
+const Slottable = @import("mixins").Slottable;
+const GeometryUtils = @import("mixins").GeometryUtils;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
@@ -17,7 +20,7 @@ const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
@@ -125,7 +128,7 @@ pub const Text = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            wholeText: runtime.DOMString = undefined,
+            wholeText: typedefs.DOMString = undefined,
             assignedSlot: ?*runtime.Instance = null,
             _internal: ?*TextImpl.InternalState = null,
         },

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioDataImpl = @import("impls").AudioData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const AudioDataInit = @import("dictionaries").AudioDataInit;
 const AudioDataCopyToOptions = @import("dictionaries").AudioDataCopyToOptions;
@@ -83,7 +86,7 @@ pub const AudioData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            format: ?AudioSampleFormat = null,
+            format: ?enums.AudioSampleFormat = null,
             sampleRate: f32 = undefined,
             numberOfFrames: u32 = undefined,
             numberOfChannels: u32 = undefined,

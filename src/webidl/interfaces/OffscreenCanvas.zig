@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const OffscreenCanvasImpl = @import("impls").OffscreenCanvas;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -93,8 +96,8 @@ pub const OffscreenCanvas = struct {
         struct {
             width: u64 = undefined,
             height: u64 = undefined,
-            oncontextlost: EventHandler = undefined,
-            oncontextrestored: EventHandler = undefined,
+            oncontextlost: typedefs.EventHandler = undefined,
+            oncontextrestored: typedefs.EventHandler = undefined,
             _internal: ?*OffscreenCanvasImpl.InternalState = null,
         },
     );

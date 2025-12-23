@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SourceBufferListImpl = @import("impls").SourceBufferList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -79,8 +82,8 @@ pub const SourceBufferList = struct {
         Meta.MixinTypes,
         struct {
             length: u32 = undefined,
-            onaddsourcebuffer: EventHandler = undefined,
-            onremovesourcebuffer: EventHandler = undefined,
+            onaddsourcebuffer: typedefs.EventHandler = undefined,
+            onremovesourcebuffer: typedefs.EventHandler = undefined,
             _internal: ?*SourceBufferListImpl.InternalState = null,
         },
     );

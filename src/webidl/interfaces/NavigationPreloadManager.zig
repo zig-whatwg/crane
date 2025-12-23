@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigationPreloadManagerImpl = @import("impls").NavigationPreloadManager;
 const mixins = @import("mixins");
-const ByteString = @import("interfaces").ByteString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const ByteString = @import("typedefs").ByteString;
 const NavigationPreloadState = @import("dictionaries").NavigationPreloadState;
 
 pub const NavigationPreloadManager = struct {

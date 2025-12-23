@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IDBRequestImpl = @import("impls").IDBRequest;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -99,9 +102,9 @@ pub const IDBRequest = struct {
                 IDBCursor: IDBCursor,
             } = null,
             transaction: ?*runtime.Instance = null,
-            readyState: IDBRequestReadyState = undefined,
-            onsuccess: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            readyState: enums.IDBRequestReadyState = undefined,
+            onsuccess: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*IDBRequestImpl.InternalState = null,
         },
     );

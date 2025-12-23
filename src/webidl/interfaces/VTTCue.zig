@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VTTCueImpl = @import("impls").VTTCue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TextTrackCue = @import("interfaces").TextTrackCue;
 const VTTRegion = @import("interfaces").VTTRegion;
 const DocumentFragment = @import("interfaces").DocumentFragment;
@@ -99,15 +102,15 @@ pub const VTTCue = struct {
         Meta.MixinTypes,
         struct {
             region: ?*runtime.Instance = null,
-            vertical: DirectionSetting = undefined,
+            vertical: enums.DirectionSetting = undefined,
             snapToLines: bool = undefined,
-            line: LineAndPositionSetting = undefined,
-            lineAlign: LineAlignSetting = undefined,
-            position: LineAndPositionSetting = undefined,
-            positionAlign: PositionAlignSetting = undefined,
+            line: typedefs.LineAndPositionSetting = undefined,
+            lineAlign: enums.LineAlignSetting = undefined,
+            position: typedefs.LineAndPositionSetting = undefined,
+            positionAlign: enums.PositionAlignSetting = undefined,
             size: f64 = undefined,
-            @"align": AlignSetting = undefined,
-            text: runtime.DOMString = undefined,
+            @"align": enums.AlignSetting = undefined,
+            text: typedefs.DOMString = undefined,
             _internal: ?*VTTCueImpl.InternalState = null,
         },
     );

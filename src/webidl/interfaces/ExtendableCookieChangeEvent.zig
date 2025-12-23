@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ExtendableCookieChangeEventImpl = @import("impls").ExtendableCookieChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const DOMString = @import("typedefs").DOMString;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
@@ -73,10 +76,10 @@ pub const ExtendableCookieChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            changed: runtime.FrozenArray(CookieListItem) = undefined,
-            deleted: runtime.FrozenArray(CookieListItem) = undefined,
-            cached_changed: ?runtime.FrozenArray(CookieListItem) = null,
-            cached_deleted: ?runtime.FrozenArray(CookieListItem) = null,
+            changed: runtime.JSValue = undefined,
+            deleted: runtime.JSValue = undefined,
+            cached_changed: ?runtime.JSValue = null,
+            cached_deleted: ?runtime.JSValue = null,
             _internal: ?*ExtendableCookieChangeEventImpl.InternalState = null,
         },
     );

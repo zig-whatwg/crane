@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGPointListImpl = @import("impls").SVGPointList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMPoint = @import("interfaces").DOMPoint;
 
 pub const SVGPointList = struct {

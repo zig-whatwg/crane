@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ChapterInformationImpl = @import("impls").ChapterInformation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 const MediaImage = @import("dictionaries").MediaImage;
 
@@ -62,10 +65,10 @@ pub const ChapterInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            title: runtime.DOMString = undefined,
+            title: typedefs.DOMString = undefined,
             startTime: f64 = undefined,
-            artwork: runtime.FrozenArray(MediaImage) = undefined,
-            cached_artwork: ?runtime.FrozenArray(MediaImage) = null,
+            artwork: runtime.JSValue = undefined,
+            cached_artwork: ?runtime.JSValue = null,
             _internal: ?*ChapterInformationImpl.InternalState = null,
         },
     );

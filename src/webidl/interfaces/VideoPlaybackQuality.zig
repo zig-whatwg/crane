@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VideoPlaybackQualityImpl = @import("impls").VideoPlaybackQuality;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 
 pub const VideoPlaybackQuality = struct {
@@ -63,7 +66,7 @@ pub const VideoPlaybackQuality = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            creationTime: DOMHighResTimeStamp = undefined,
+            creationTime: typedefs.DOMHighResTimeStamp = undefined,
             droppedVideoFrames: u32 = undefined,
             totalVideoFrames: u32 = undefined,
             corruptedVideoFrames: u32 = undefined,

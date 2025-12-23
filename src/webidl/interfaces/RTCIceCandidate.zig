@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCIceCandidateImpl = @import("impls").RTCIceCandidate;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCLocalIceCandidateInit = @import("dictionaries").RTCLocalIceCandidateInit;
 const RTCIceComponent = @import("enums").RTCIceComponent;
 const RTCIceProtocol = @import("enums").RTCIceProtocol;
 const RTCIceTcpCandidateType = @import("enums").RTCIceTcpCandidateType;
 const RTCIceCandidateType = @import("enums").RTCIceCandidateType;
 const RTCIceServerTransportProtocol = @import("enums").RTCIceServerTransportProtocol;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
 
@@ -97,21 +100,21 @@ pub const RTCIceCandidate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            candidate: runtime.DOMString = undefined,
-            sdpMid: ?runtime.DOMString = null,
+            candidate: typedefs.DOMString = undefined,
+            sdpMid: ?typedefs.DOMString = null,
             sdpMLineIndex: ?u16 = null,
-            foundation: ?runtime.DOMString = null,
-            component: ?RTCIceComponent = null,
+            foundation: ?typedefs.DOMString = null,
+            component: ?enums.RTCIceComponent = null,
             priority: ?u32 = null,
-            address: ?runtime.DOMString = null,
-            protocol: ?RTCIceProtocol = null,
+            address: ?typedefs.DOMString = null,
+            protocol: ?enums.RTCIceProtocol = null,
             port: ?u16 = null,
-            @"type": ?RTCIceCandidateType = null,
-            tcpType: ?RTCIceTcpCandidateType = null,
-            relatedAddress: ?runtime.DOMString = null,
+            @"type": ?enums.RTCIceCandidateType = null,
+            tcpType: ?enums.RTCIceTcpCandidateType = null,
+            relatedAddress: ?typedefs.DOMString = null,
             relatedPort: ?u16 = null,
-            usernameFragment: ?runtime.DOMString = null,
-            relayProtocol: ?RTCIceServerTransportProtocol = null,
+            usernameFragment: ?typedefs.DOMString = null,
+            relayProtocol: ?enums.RTCIceServerTransportProtocol = null,
             url: ?runtime.USVString = null,
             _internal: ?*RTCIceCandidateImpl.InternalState = null,
         },

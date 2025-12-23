@@ -7,11 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IDBObjectStoreImpl = @import("impls").IDBObjectStore;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const IDBRequest = @import("interfaces").IDBRequest;
 const IDBGetAllOptions = @import("dictionaries").IDBGetAllOptions;
 const DOMStringList = @import("interfaces").DOMStringList;
 const IDBIndexParameters = @import("dictionaries").IDBIndexParameters;
-const sequence = @import("interfaces").sequence;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
 const IDBIndex = @import("interfaces").IDBIndex;
 const IDBTransaction = @import("interfaces").IDBTransaction;
@@ -106,7 +108,7 @@ pub const IDBObjectStore = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             keyPath: runtime.JSValue = undefined,
             indexNames: *runtime.Instance = undefined,
             transaction: *runtime.Instance = undefined,

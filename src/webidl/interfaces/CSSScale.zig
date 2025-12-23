@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSScaleImpl = @import("impls").CSSScale;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const DOMMatrix = @import("interfaces").DOMMatrix;
@@ -71,9 +74,9 @@ pub const CSSScale = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: CSSNumberish = undefined,
-            y: CSSNumberish = undefined,
-            z: CSSNumberish = undefined,
+            x: typedefs.CSSNumberish = undefined,
+            y: typedefs.CSSNumberish = undefined,
+            z: typedefs.CSSNumberish = undefined,
             _internal: ?*CSSScaleImpl.InternalState = null,
         },
     );

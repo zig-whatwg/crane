@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MimeTypeArrayImpl = @import("impls").MimeTypeArray;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MimeType = @import("interfaces").MimeType;
 const DOMString = @import("typedefs").DOMString;
 

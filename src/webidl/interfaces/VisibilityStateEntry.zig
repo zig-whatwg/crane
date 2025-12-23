@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VisibilityStateEntryImpl = @import("impls").VisibilityStateEntry;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
@@ -69,9 +72,9 @@ pub const VisibilityStateEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            startTime: DOMHighResTimeStamp = undefined,
+            name: typedefs.DOMString = undefined,
+            entryType: typedefs.DOMString = undefined,
+            startTime: typedefs.DOMHighResTimeStamp = undefined,
             duration: u32 = undefined,
             _internal: ?*VisibilityStateEntryImpl.InternalState = null,
         },

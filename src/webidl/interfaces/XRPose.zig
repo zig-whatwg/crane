@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRPoseImpl = @import("impls").XRPose;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 

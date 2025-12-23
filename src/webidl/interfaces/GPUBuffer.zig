@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUBufferImpl = @import("impls").GPUBuffer;
 const mixins = @import("mixins");
-const GPUObjectBase = @import("interfaces").GPUObjectBase;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const GPUObjectBase = @import("mixins").GPUObjectBase;
 const GPUSize64Out = @import("typedefs").GPUSize64Out;
 const GPUBufferMapState = @import("enums").GPUBufferMapState;
 const GPUSize64 = @import("typedefs").GPUSize64;
 const GPUFlagsConstant = @import("typedefs").GPUFlagsConstant;
 const GPUMapModeFlags = @import("typedefs").GPUMapModeFlags;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const GPUBuffer = struct {
     pub const Meta = struct {
@@ -83,9 +86,9 @@ pub const GPUBuffer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: GPUSize64Out = undefined,
-            usage: GPUFlagsConstant = undefined,
-            mapState: GPUBufferMapState = undefined,
+            size: typedefs.GPUSize64Out = undefined,
+            usage: typedefs.GPUFlagsConstant = undefined,
+            mapState: enums.GPUBufferMapState = undefined,
             label: runtime.USVString = undefined,
             _internal: ?*GPUBufferImpl.InternalState = null,
         },

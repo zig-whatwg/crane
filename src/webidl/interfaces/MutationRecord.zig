@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MutationRecordImpl = @import("impls").MutationRecord;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
 const DOMString = @import("typedefs").DOMString;
@@ -75,15 +78,15 @@ pub const MutationRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
             target: *runtime.Instance = undefined,
             addedNodes: *runtime.Instance = undefined,
             removedNodes: *runtime.Instance = undefined,
             previousSibling: ?*runtime.Instance = null,
             nextSibling: ?*runtime.Instance = null,
-            attributeName: ?runtime.DOMString = null,
-            attributeNamespace: ?runtime.DOMString = null,
-            oldValue: ?runtime.DOMString = null,
+            attributeName: ?typedefs.DOMString = null,
+            attributeNamespace: ?typedefs.DOMString = null,
+            oldValue: ?typedefs.DOMString = null,
             cached_target: ?*runtime.Instance = null,
             cached_addedNodes: ?*runtime.Instance = null,
             cached_removedNodes: ?*runtime.Instance = null,

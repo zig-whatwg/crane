@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorDeviceMemoryImpl = @import("impls").NavigatorDeviceMemory;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const NavigatorDeviceMemory = struct {
     pub const Meta = struct {

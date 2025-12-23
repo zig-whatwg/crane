@@ -7,17 +7,20 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PaintRenderingContext2DImpl = @import("impls").PaintRenderingContext2D;
 const mixins = @import("mixins");
-const CanvasState = @import("interfaces").CanvasState;
-const CanvasTransform = @import("interfaces").CanvasTransform;
-const CanvasCompositing = @import("interfaces").CanvasCompositing;
-const CanvasImageSmoothing = @import("interfaces").CanvasImageSmoothing;
-const CanvasFillStrokeStyles = @import("interfaces").CanvasFillStrokeStyles;
-const CanvasShadowStyles = @import("interfaces").CanvasShadowStyles;
-const CanvasRect = @import("interfaces").CanvasRect;
-const CanvasDrawPath = @import("interfaces").CanvasDrawPath;
-const CanvasDrawImage = @import("interfaces").CanvasDrawImage;
-const CanvasPathDrawingStyles = @import("interfaces").CanvasPathDrawingStyles;
-const CanvasPath = @import("interfaces").CanvasPath;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const CanvasState = @import("mixins").CanvasState;
+const CanvasTransform = @import("mixins").CanvasTransform;
+const CanvasCompositing = @import("mixins").CanvasCompositing;
+const CanvasImageSmoothing = @import("mixins").CanvasImageSmoothing;
+const CanvasFillStrokeStyles = @import("mixins").CanvasFillStrokeStyles;
+const CanvasShadowStyles = @import("mixins").CanvasShadowStyles;
+const CanvasRect = @import("mixins").CanvasRect;
+const CanvasDrawPath = @import("mixins").CanvasDrawPath;
+const CanvasDrawImage = @import("mixins").CanvasDrawImage;
+const CanvasPathDrawingStyles = @import("mixins").CanvasPathDrawingStyles;
+const CanvasPath = @import("mixins").CanvasPath;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const CanvasFillRule = @import("enums").CanvasFillRule;
@@ -28,7 +31,6 @@ const CanvasPattern = @import("interfaces").CanvasPattern;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const Path2D = @import("interfaces").Path2D;
 const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
-const sequence = @import("interfaces").sequence;
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
 const DOMString = @import("typedefs").DOMString;
 
@@ -195,9 +197,9 @@ pub const PaintRenderingContext2D = struct {
         Meta.MixinTypes,
         struct {
             globalAlpha: f64 = undefined,
-            globalCompositeOperation: runtime.DOMString = undefined,
+            globalCompositeOperation: typedefs.DOMString = undefined,
             imageSmoothingEnabled: bool = undefined,
-            imageSmoothingQuality: ImageSmoothingQuality = undefined,
+            imageSmoothingQuality: enums.ImageSmoothingQuality = undefined,
             strokeStyle: union(enum) {
                 DOMString: runtime.DOMString,
                 CanvasGradient: CanvasGradient,
@@ -211,10 +213,10 @@ pub const PaintRenderingContext2D = struct {
             shadowOffsetX: f64 = undefined,
             shadowOffsetY: f64 = undefined,
             shadowBlur: f64 = undefined,
-            shadowColor: runtime.DOMString = undefined,
+            shadowColor: typedefs.DOMString = undefined,
             lineWidth: f64 = undefined,
-            lineCap: CanvasLineCap = undefined,
-            lineJoin: CanvasLineJoin = undefined,
+            lineCap: enums.CanvasLineCap = undefined,
+            lineJoin: enums.CanvasLineJoin = undefined,
             miterLimit: f64 = undefined,
             lineDashOffset: f64 = undefined,
             _internal: ?*PaintRenderingContext2DImpl.InternalState = null,

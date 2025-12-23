@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextTrackCueListImpl = @import("impls").TextTrackCueList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TextTrackCue = @import("interfaces").TextTrackCue;
 const DOMString = @import("typedefs").DOMString;
 

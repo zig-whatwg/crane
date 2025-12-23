@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUValidationErrorImpl = @import("impls").GPUValidationError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GPUError = @import("interfaces").GPUError;
 const DOMString = @import("typedefs").DOMString;
 

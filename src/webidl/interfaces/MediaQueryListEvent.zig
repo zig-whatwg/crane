@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaQueryListEventImpl = @import("impls").MediaQueryListEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const CSSOMString = @import("typedefs").CSSOMString;
 const MediaQueryListEventInit = @import("dictionaries").MediaQueryListEventInit;
@@ -71,7 +74,7 @@ pub const MediaQueryListEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            media: CSSOMString = undefined,
+            media: typedefs.CSSOMString = undefined,
             matches: bool = undefined,
             _internal: ?*MediaQueryListEventImpl.InternalState = null,
         },

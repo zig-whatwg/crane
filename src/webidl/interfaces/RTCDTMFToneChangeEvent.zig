@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCDTMFToneChangeEventImpl = @import("impls").RTCDTMFToneChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
@@ -68,7 +71,7 @@ pub const RTCDTMFToneChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tone: runtime.DOMString = undefined,
+            tone: typedefs.DOMString = undefined,
             _internal: ?*RTCDTMFToneChangeEventImpl.InternalState = null,
         },
     );

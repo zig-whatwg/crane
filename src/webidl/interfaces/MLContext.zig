@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MLContextImpl = @import("impls").MLContext;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MLTensor = @import("interfaces").MLTensor;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const MLNamedTensors = @import("typedefs").MLNamedTensors;
@@ -85,7 +88,7 @@ pub const MLContext = struct {
         Meta.MixinTypes,
         struct {
             accelerated: bool = undefined,
-            lost: runtime.Promise(MLContextLostInfo) = undefined,
+            lost: runtime.JSValue = undefined,
             _internal: ?*MLContextImpl.InternalState = null,
         },
     );

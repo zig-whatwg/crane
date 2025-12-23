@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRFrameImpl = @import("impls").XRFrame;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRTransientInputHitTestSource = @import("interfaces").XRTransientInputHitTestSource;
 const XRHitTestSource = @import("interfaces").XRHitTestSource;
 const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
@@ -113,12 +116,12 @@ pub const XRFrame = struct {
         Meta.MixinTypes,
         struct {
             session: *runtime.Instance = undefined,
-            predictedDisplayTime: DOMHighResTimeStamp = undefined,
+            predictedDisplayTime: typedefs.DOMHighResTimeStamp = undefined,
             body: ?*runtime.Instance = null,
             trackedAnchors: *runtime.Instance = undefined,
             detectedPlanes: *runtime.Instance = undefined,
             detectedMeshes: *runtime.Instance = undefined,
-            metaData: XRMetadata = undefined,
+            metaData: dictionaries.XRMetadata = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_body: ?*runtime.Instance = null,
             cached_trackedAnchors: ?*runtime.Instance = null,

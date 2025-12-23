@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FederatedCredentialImpl = @import("impls").FederatedCredential;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Credential = @import("interfaces").Credential;
-const CredentialUserData = @import("interfaces").CredentialUserData;
-const USVString = @import("interfaces").USVString;
+const CredentialUserData = @import("mixins").CredentialUserData;
+const USVString = @import("typedefs").USVString;
 const FederatedCredentialInit = @import("dictionaries").FederatedCredentialInit;
 const DOMString = @import("typedefs").DOMString;
 
@@ -74,7 +77,7 @@ pub const FederatedCredential = struct {
         Meta.MixinTypes,
         struct {
             provider: runtime.USVString = undefined,
-            protocol: ?runtime.DOMString = null,
+            protocol: ?typedefs.DOMString = null,
             name: runtime.USVString = undefined,
             iconURL: runtime.USVString = undefined,
             _internal: ?*FederatedCredentialImpl.InternalState = null,

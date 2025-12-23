@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasDrawImageImpl = @import("impls").CanvasDrawImage;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 
 pub const CanvasDrawImage = struct {

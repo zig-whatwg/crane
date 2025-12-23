@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechSynthesisErrorEventImpl = @import("impls").SpeechSynthesisErrorEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SpeechSynthesisEvent = @import("interfaces").SpeechSynthesisEvent;
 const SpeechSynthesisErrorCode = @import("enums").SpeechSynthesisErrorCode;
 const SpeechSynthesisErrorEventInit = @import("dictionaries").SpeechSynthesisErrorEventInit;
@@ -71,7 +74,7 @@ pub const SpeechSynthesisErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": SpeechSynthesisErrorCode = undefined,
+            @"error": enums.SpeechSynthesisErrorCode = undefined,
             _internal: ?*SpeechSynthesisErrorEventImpl.InternalState = null,
         },
     );

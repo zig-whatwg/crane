@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasSettingsImpl = @import("impls").CanvasSettings;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CanvasRenderingContext2DSettings = @import("dictionaries").CanvasRenderingContext2DSettings;
 
 pub const CanvasSettings = struct {

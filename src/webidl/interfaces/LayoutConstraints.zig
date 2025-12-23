@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const LayoutConstraintsImpl = @import("impls").LayoutConstraints;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BlockFragmentationType = @import("enums").BlockFragmentationType;
 
 pub const LayoutConstraints = struct {
@@ -80,7 +83,7 @@ pub const LayoutConstraints = struct {
             percentageInlineSize: f64 = undefined,
             percentageBlockSize: f64 = undefined,
             blockFragmentationOffset: ?f64 = null,
-            blockFragmentationType: BlockFragmentationType = undefined,
+            blockFragmentationType: enums.BlockFragmentationType = undefined,
             data: runtime.JSValue = undefined,
             _internal: ?*LayoutConstraintsImpl.InternalState = null,
         },

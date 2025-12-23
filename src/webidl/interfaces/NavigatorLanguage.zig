@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorLanguageImpl = @import("impls").NavigatorLanguage;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const NavigatorLanguage = struct {
@@ -54,8 +57,8 @@ pub const NavigatorLanguage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            language: runtime.DOMString = undefined,
-            languages: runtime.FrozenArray(runtime.DOMString) = undefined,
+            language: typedefs.DOMString = undefined,
+            languages: runtime.JSValue = undefined,
             _internal: ?*NavigatorLanguageImpl.InternalState = null,
         },
     );

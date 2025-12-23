@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaMetadataImpl = @import("impls").MediaMetadata;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MediaMetadataInit = @import("dictionaries").MediaMetadataInit;
 const ChapterInformation = @import("interfaces").ChapterInformation;
 const DOMString = @import("typedefs").DOMString;
@@ -67,12 +70,12 @@ pub const MediaMetadata = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            title: runtime.DOMString = undefined,
-            artist: runtime.DOMString = undefined,
-            album: runtime.DOMString = undefined,
-            artwork: runtime.FrozenArray(runtime.JSValue) = undefined,
-            chapterInfo: runtime.FrozenArray(ChapterInformation) = undefined,
-            cached_chapterInfo: ?runtime.FrozenArray(ChapterInformation) = null,
+            title: typedefs.DOMString = undefined,
+            artist: typedefs.DOMString = undefined,
+            album: typedefs.DOMString = undefined,
+            artwork: runtime.JSValue = undefined,
+            chapterInfo: runtime.JSValue = undefined,
+            cached_chapterInfo: ?runtime.JSValue = null,
             _internal: ?*MediaMetadataImpl.InternalState = null,
         },
     );

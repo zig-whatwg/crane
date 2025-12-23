@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ServiceEventHandlersImpl = @import("impls").ServiceEventHandlers;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const ServiceEventHandlers = struct {
@@ -58,9 +61,9 @@ pub const ServiceEventHandlers = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onserviceadded: EventHandler = undefined,
-            onservicechanged: EventHandler = undefined,
-            onserviceremoved: EventHandler = undefined,
+            onserviceadded: typedefs.EventHandler = undefined,
+            onservicechanged: typedefs.EventHandler = undefined,
+            onserviceremoved: typedefs.EventHandler = undefined,
             _internal: ?*ServiceEventHandlersImpl.InternalState = null,
         },
     );

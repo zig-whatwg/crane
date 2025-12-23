@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TransformStreamDefaultControllerImpl = @import("impls").TransformStreamDefaultController;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const TransformStreamDefaultController = struct {
     pub const Meta = struct {

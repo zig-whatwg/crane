@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FontMetricsImpl = @import("impls").FontMetrics;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Font = @import("interfaces").Font;
 const Baseline = @import("interfaces").Baseline;
 
@@ -85,7 +88,7 @@ pub const FontMetrics = struct {
         Meta.MixinTypes,
         struct {
             width: f64 = undefined,
-            advances: runtime.FrozenArray(f64) = undefined,
+            advances: runtime.JSValue = undefined,
             boundingBoxLeft: f64 = undefined,
             boundingBoxRight: f64 = undefined,
             height: f64 = undefined,
@@ -96,8 +99,8 @@ pub const FontMetrics = struct {
             fontBoundingBoxAscent: f64 = undefined,
             fontBoundingBoxDescent: f64 = undefined,
             dominantBaseline: *runtime.Instance = undefined,
-            baselines: runtime.FrozenArray(Baseline) = undefined,
-            fonts: runtime.FrozenArray(Font) = undefined,
+            baselines: runtime.JSValue = undefined,
+            fonts: runtime.JSValue = undefined,
             _internal: ?*FontMetricsImpl.InternalState = null,
         },
     );

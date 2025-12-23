@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PaymentMethodChangeEventImpl = @import("impls").PaymentMethodChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PaymentRequestUpdateEvent = @import("interfaces").PaymentRequestUpdateEvent;
 const PaymentDetailsUpdate = @import("dictionaries").PaymentDetailsUpdate;
 const PaymentRequestUpdateEventInit = @import("dictionaries").PaymentRequestUpdateEventInit;
@@ -74,7 +77,7 @@ pub const PaymentMethodChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            methodName: runtime.DOMString = undefined,
+            methodName: typedefs.DOMString = undefined,
             methodDetails: ?runtime.JSValue = null,
             _internal: ?*PaymentMethodChangeEventImpl.InternalState = null,
         },

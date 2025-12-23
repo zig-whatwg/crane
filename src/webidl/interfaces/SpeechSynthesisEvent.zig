@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechSynthesisEventImpl = @import("impls").SpeechSynthesisEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const SpeechSynthesisEventInit = @import("dictionaries").SpeechSynthesisEventInit;
@@ -81,7 +84,7 @@ pub const SpeechSynthesisEvent = struct {
             charIndex: u32 = undefined,
             charLength: u32 = undefined,
             elapsedTime: f32 = undefined,
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             _internal: ?*SpeechSynthesisEventImpl.InternalState = null,
         },
     );

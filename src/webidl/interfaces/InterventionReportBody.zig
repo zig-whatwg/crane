@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const InterventionReportBodyImpl = @import("impls").InterventionReportBody;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ReportBody = @import("dictionaries").ReportBody;
 const DOMString = @import("typedefs").DOMString;
 
@@ -71,9 +74,9 @@ pub const InterventionReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            message: runtime.DOMString = undefined,
-            sourceFile: ?runtime.DOMString = null,
+            id: typedefs.DOMString = undefined,
+            message: typedefs.DOMString = undefined,
+            sourceFile: ?typedefs.DOMString = null,
             lineNumber: ?u32 = null,
             columnNumber: ?u32 = null,
             _internal: ?*InterventionReportBodyImpl.InternalState = null,

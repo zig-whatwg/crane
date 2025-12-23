@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCIdentityAssertionImpl = @import("impls").RTCIdentityAssertion;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const RTCIdentityAssertion = struct {
@@ -59,8 +62,8 @@ pub const RTCIdentityAssertion = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            idp: runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
+            idp: typedefs.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             _internal: ?*RTCIdentityAssertionImpl.InternalState = null,
         },
     );

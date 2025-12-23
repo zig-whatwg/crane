@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebTransportBidirectionalStreamImpl = @import("impls").WebTransportBidirectionalStream;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WebTransportReceiveStream = @import("interfaces").WebTransportReceiveStream;
 const WebTransportSendStream = @import("interfaces").WebTransportSendStream;
 

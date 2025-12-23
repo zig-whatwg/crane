@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CreateMonitorImpl = @import("impls").CreateMonitor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -71,7 +74,7 @@ pub const CreateMonitor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ondownloadprogress: EventHandler = undefined,
+            ondownloadprogress: typedefs.EventHandler = undefined,
             _internal: ?*CreateMonitorImpl.InternalState = null,
         },
     );

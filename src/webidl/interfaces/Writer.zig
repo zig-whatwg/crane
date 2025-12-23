@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WriterImpl = @import("impls").Writer;
 const mixins = @import("mixins");
-const DestroyableModel = @import("interfaces").DestroyableModel;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const DestroyableModel = @import("mixins").DestroyableModel;
 const DOMString = @import("typedefs").DOMString;
 const WriterCreateOptions = @import("dictionaries").WriterCreateOptions;
 const Availability = @import("enums").Availability;
@@ -99,13 +102,13 @@ pub const Writer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: runtime.DOMString = undefined,
-            tone: WriterTone = undefined,
-            format: WriterFormat = undefined,
-            length: WriterLength = undefined,
-            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
-            expectedContextLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
-            outputLanguage: ?runtime.DOMString = null,
+            sharedContext: typedefs.DOMString = undefined,
+            tone: enums.WriterTone = undefined,
+            format: enums.WriterFormat = undefined,
+            length: enums.WriterLength = undefined,
+            expectedInputLanguages: ?runtime.JSValue = null,
+            expectedContextLanguages: ?runtime.JSValue = null,
+            outputLanguage: ?typedefs.DOMString = null,
             inputQuota: f64 = undefined,
             _internal: ?*WriterImpl.InternalState = null,
         },

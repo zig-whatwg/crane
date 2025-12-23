@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGStyleElementImpl = @import("impls").SVGStyleElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGElement = @import("interfaces").SVGElement;
 const LinkStyle = @import("interfaces").LinkStyle;
 const DOMStringMap = @import("interfaces").DOMStringMap;
@@ -16,7 +19,7 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -220,9 +223,9 @@ pub const SVGStyleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
-            media: runtime.DOMString = undefined,
-            title: runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
+            media: typedefs.DOMString = undefined,
+            title: typedefs.DOMString = undefined,
             disabled: bool = undefined,
             sheet: ?*runtime.Instance = null,
             _internal: ?*SVGStyleElementImpl.InternalState = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBEndpointImpl = @import("impls").USBEndpoint;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const USBEndpointType = @import("enums").USBEndpointType;
 const USBDirection = @import("enums").USBDirection;
 const USBAlternateInterface = @import("interfaces").USBAlternateInterface;
@@ -70,8 +73,8 @@ pub const USBEndpoint = struct {
         Meta.MixinTypes,
         struct {
             endpointNumber: u8 = undefined,
-            direction: USBDirection = undefined,
-            @"type": USBEndpointType = undefined,
+            direction: enums.USBDirection = undefined,
+            @"type": enums.USBEndpointType = undefined,
             packetSize: u32 = undefined,
             _internal: ?*USBEndpointImpl.InternalState = null,
         },

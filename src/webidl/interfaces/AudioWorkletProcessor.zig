@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioWorkletProcessorImpl = @import("impls").AudioWorkletProcessor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MessagePort = @import("interfaces").MessagePort;
 
 pub const AudioWorkletProcessor = struct {

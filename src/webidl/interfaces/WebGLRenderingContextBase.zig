@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebGLRenderingContextBaseImpl = @import("impls").WebGLRenderingContextBase;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WebGLShaderPrecisionFormat = @import("interfaces").WebGLShaderPrecisionFormat;
 const WebGLActiveInfo = @import("interfaces").WebGLActiveInfo;
 const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
@@ -630,11 +633,11 @@ pub const WebGLRenderingContextBase = struct {
                 HTMLCanvasElement: HTMLCanvasElement,
                 OffscreenCanvas: OffscreenCanvas,
             } = undefined,
-            drawingBufferWidth: GLsizei = undefined,
-            drawingBufferHeight: GLsizei = undefined,
-            drawingBufferFormat: GLenum = undefined,
-            drawingBufferColorSpace: PredefinedColorSpace = undefined,
-            unpackColorSpace: PredefinedColorSpace = undefined,
+            drawingBufferWidth: typedefs.GLsizei = undefined,
+            drawingBufferHeight: typedefs.GLsizei = undefined,
+            drawingBufferFormat: typedefs.GLenum = undefined,
+            drawingBufferColorSpace: enums.PredefinedColorSpace = undefined,
+            unpackColorSpace: enums.PredefinedColorSpace = undefined,
             _internal: ?*WebGLRenderingContextBaseImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigationActivationImpl = @import("impls").NavigationActivation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const NavigationHistoryEntry = @import("interfaces").NavigationHistoryEntry;
 const NavigationType = @import("enums").NavigationType;
 
@@ -64,7 +67,7 @@ pub const NavigationActivation = struct {
         struct {
             from: ?*runtime.Instance = null,
             entry: *runtime.Instance = undefined,
-            navigationType: NavigationType = undefined,
+            navigationType: enums.NavigationType = undefined,
             _internal: ?*NavigationActivationImpl.InternalState = null,
         },
     );

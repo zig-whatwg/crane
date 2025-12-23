@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ContactsManagerImpl = @import("impls").ContactsManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ContactProperty = @import("enums").ContactProperty;
 const ContactsSelectOptions = @import("dictionaries").ContactsSelectOptions;
 

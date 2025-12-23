@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BiquadFilterNodeImpl = @import("impls").BiquadFilterNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -94,7 +97,7 @@ pub const BiquadFilterNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": BiquadFilterType = undefined,
+            @"type": enums.BiquadFilterType = undefined,
             frequency: *runtime.Instance = undefined,
             detune: *runtime.Instance = undefined,
             Q: *runtime.Instance = undefined,

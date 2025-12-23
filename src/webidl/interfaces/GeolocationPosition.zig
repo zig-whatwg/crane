@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GeolocationPositionImpl = @import("impls").GeolocationPosition;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
 const GeolocationCoordinates = @import("interfaces").GeolocationCoordinates;
 
@@ -64,7 +67,7 @@ pub const GeolocationPosition = struct {
         Meta.MixinTypes,
         struct {
             coords: *runtime.Instance = undefined,
-            timestamp: EpochTimeStamp = undefined,
+            timestamp: typedefs.EpochTimeStamp = undefined,
             _internal: ?*GeolocationPositionImpl.InternalState = null,
         },
     );

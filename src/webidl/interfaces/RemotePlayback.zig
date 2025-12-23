@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RemotePlaybackImpl = @import("impls").RemotePlayback;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -84,10 +87,10 @@ pub const RemotePlayback = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: RemotePlaybackState = undefined,
-            onconnecting: EventHandler = undefined,
-            onconnect: EventHandler = undefined,
-            ondisconnect: EventHandler = undefined,
+            state: enums.RemotePlaybackState = undefined,
+            onconnecting: typedefs.EventHandler = undefined,
+            onconnect: typedefs.EventHandler = undefined,
+            ondisconnect: typedefs.EventHandler = undefined,
             _internal: ?*RemotePlaybackImpl.InternalState = null,
         },
     );

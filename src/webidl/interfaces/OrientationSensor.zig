@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const OrientationSensorImpl = @import("impls").OrientationSensor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Sensor = @import("interfaces").Sensor;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -77,7 +80,7 @@ pub const OrientationSensor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            quaternion: ?runtime.FrozenArray(f64) = null,
+            quaternion: ?runtime.JSValue = null,
             _internal: ?*OrientationSensorImpl.InternalState = null,
         },
     );

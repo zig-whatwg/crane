@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasCompositingImpl = @import("impls").CanvasCompositing;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const CanvasCompositing = struct {
@@ -55,7 +58,7 @@ pub const CanvasCompositing = struct {
         Meta.MixinTypes,
         struct {
             globalAlpha: f64 = undefined,
-            globalCompositeOperation: runtime.DOMString = undefined,
+            globalCompositeOperation: typedefs.DOMString = undefined,
             _internal: ?*CanvasCompositingImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGElementInstanceImpl = @import("impls").SVGElementInstance;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGUseElement = @import("interfaces").SVGUseElement;
 const SVGElement = @import("interfaces").SVGElement;
 

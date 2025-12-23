@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasFiltersImpl = @import("impls").CanvasFilters;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const CanvasFilters = struct {
@@ -52,7 +55,7 @@ pub const CanvasFilters = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            filter: runtime.DOMString = undefined,
+            filter: typedefs.DOMString = undefined,
             _internal: ?*CanvasFiltersImpl.InternalState = null,
         },
     );

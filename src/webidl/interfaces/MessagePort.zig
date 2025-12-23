@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MessagePortImpl = @import("impls").MessagePort;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const MessageEventTarget = @import("interfaces").MessageEventTarget;
+const MessageEventTarget = @import("mixins").MessageEventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -89,9 +92,9 @@ pub const MessagePort = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onclose: EventHandler = undefined,
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
+            onclose: typedefs.EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*MessagePortImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XMLHttpRequestEventTargetImpl = @import("impls").XMLHttpRequestEventTarget;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -86,13 +89,13 @@ pub const XMLHttpRequestEventTarget = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onloadstart: EventHandler = undefined,
-            onprogress: EventHandler = undefined,
-            onabort: EventHandler = undefined,
-            onerror: EventHandler = undefined,
-            onload: EventHandler = undefined,
-            ontimeout: EventHandler = undefined,
-            onloadend: EventHandler = undefined,
+            onloadstart: typedefs.EventHandler = undefined,
+            onprogress: typedefs.EventHandler = undefined,
+            onabort: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onload: typedefs.EventHandler = undefined,
+            ontimeout: typedefs.EventHandler = undefined,
+            onloadend: typedefs.EventHandler = undefined,
             _internal: ?*XMLHttpRequestEventTargetImpl.InternalState = null,
         },
     );

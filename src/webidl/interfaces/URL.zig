@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const URLImpl = @import("impls").URL;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const URLSearchParams = @import("interfaces").URLSearchParams;
 const Blob = @import("interfaces").Blob;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MediaSource = @import("interfaces").MediaSource;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PermissionsImpl = @import("impls").Permissions;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PermissionStatus = @import("interfaces").PermissionStatus;
 
 pub const Permissions = struct {

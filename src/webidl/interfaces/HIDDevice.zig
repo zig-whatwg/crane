@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HIDDeviceImpl = @import("impls").HIDDevice;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const HIDCollectionInfo = @import("dictionaries").HIDCollectionInfo;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -99,12 +102,12 @@ pub const HIDDevice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oninputreport: EventHandler = undefined,
+            oninputreport: typedefs.EventHandler = undefined,
             opened: bool = undefined,
             vendorId: u16 = undefined,
             productId: u16 = undefined,
-            productName: runtime.DOMString = undefined,
-            collections: runtime.FrozenArray(HIDCollectionInfo) = undefined,
+            productName: typedefs.DOMString = undefined,
+            collections: runtime.JSValue = undefined,
             _internal: ?*HIDDeviceImpl.InternalState = null,
         },
     );

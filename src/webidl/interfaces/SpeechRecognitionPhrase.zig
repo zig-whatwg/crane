@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechRecognitionPhraseImpl = @import("impls").SpeechRecognitionPhrase;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechRecognitionPhrase = struct {
@@ -60,7 +63,7 @@ pub const SpeechRecognitionPhrase = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            phrase: runtime.DOMString = undefined,
+            phrase: typedefs.DOMString = undefined,
             boost: f32 = undefined,
             _internal: ?*SpeechRecognitionPhraseImpl.InternalState = null,
         },

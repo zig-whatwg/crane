@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPURenderPipelineImpl = @import("impls").GPURenderPipeline;
 const mixins = @import("mixins");
-const GPUObjectBase = @import("interfaces").GPUObjectBase;
-const GPUPipelineBase = @import("interfaces").GPUPipelineBase;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const GPUObjectBase = @import("mixins").GPUObjectBase;
+const GPUPipelineBase = @import("mixins").GPUPipelineBase;
 const GPUBindGroupLayout = @import("interfaces").GPUBindGroupLayout;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const GPURenderPipeline = struct {
     pub const Meta = struct {

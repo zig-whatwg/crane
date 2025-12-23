@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TranslatorImpl = @import("impls").Translator;
 const mixins = @import("mixins");
-const DestroyableModel = @import("interfaces").DestroyableModel;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const DestroyableModel = @import("mixins").DestroyableModel;
 const TranslatorCreateOptions = @import("dictionaries").TranslatorCreateOptions;
 const Availability = @import("enums").Availability;
 const ReadableStream = @import("interfaces").ReadableStream;
@@ -86,8 +89,8 @@ pub const Translator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sourceLanguage: runtime.DOMString = undefined,
-            targetLanguage: runtime.DOMString = undefined,
+            sourceLanguage: typedefs.DOMString = undefined,
+            targetLanguage: typedefs.DOMString = undefined,
             inputQuota: f64 = undefined,
             _internal: ?*TranslatorImpl.InternalState = null,
         },

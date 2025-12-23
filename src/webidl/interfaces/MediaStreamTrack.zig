@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaStreamTrackImpl = @import("impls").MediaStreamTrack;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -118,19 +121,19 @@ pub const MediaStreamTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: runtime.DOMString = undefined,
-            id: runtime.DOMString = undefined,
-            label: runtime.DOMString = undefined,
+            kind: typedefs.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
+            label: typedefs.DOMString = undefined,
             enabled: bool = undefined,
             muted: bool = undefined,
-            onmute: EventHandler = undefined,
-            onunmute: EventHandler = undefined,
-            readyState: MediaStreamTrackState = undefined,
-            onended: EventHandler = undefined,
-            contentHint: runtime.DOMString = undefined,
-            oncapturehandlechange: EventHandler = undefined,
+            onmute: typedefs.EventHandler = undefined,
+            onunmute: typedefs.EventHandler = undefined,
+            readyState: enums.MediaStreamTrackState = undefined,
+            onended: typedefs.EventHandler = undefined,
+            contentHint: typedefs.DOMString = undefined,
+            oncapturehandlechange: typedefs.EventHandler = undefined,
             isolated: bool = undefined,
-            onisolationchange: EventHandler = undefined,
+            onisolationchange: typedefs.EventHandler = undefined,
             _internal: ?*MediaStreamTrackImpl.InternalState = null,
         },
     );

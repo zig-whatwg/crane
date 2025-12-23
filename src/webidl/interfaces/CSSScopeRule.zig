@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSScopeRuleImpl = @import("impls").CSSScopeRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -67,8 +70,8 @@ pub const CSSScopeRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            start: ?CSSOMString = null,
-            end: ?CSSOMString = null,
+            start: ?typedefs.CSSOMString = null,
+            end: ?typedefs.CSSOMString = null,
             _internal: ?*CSSScopeRuleImpl.InternalState = null,
         },
     );

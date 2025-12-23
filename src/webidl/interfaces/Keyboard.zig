@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const KeyboardImpl = @import("impls").Keyboard;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const KeyboardLayoutMap = @import("interfaces").KeyboardLayoutMap;
@@ -78,7 +81,7 @@ pub const Keyboard = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onlayoutchange: EventHandler = undefined,
+            onlayoutchange: typedefs.EventHandler = undefined,
             _internal: ?*KeyboardImpl.InternalState = null,
         },
     );

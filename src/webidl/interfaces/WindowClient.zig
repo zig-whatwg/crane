@@ -7,12 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WindowClientImpl = @import("impls").WindowClient;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Client = @import("interfaces").Client;
-const VisibilityState = @import("interfaces").VisibilityState;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const FrameType = @import("enums").FrameType;
 const ClientLifecycleState = @import("enums").ClientLifecycleState;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const ClientType = @import("enums").ClientType;
 
@@ -75,10 +77,10 @@ pub const WindowClient = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            visibilityState: VisibilityState = undefined,
+            visibilityState: runtime.JSValue = undefined,
             focused: bool = undefined,
-            ancestorOrigins: runtime.FrozenArray(runtime.USVString) = undefined,
-            cached_ancestorOrigins: ?runtime.FrozenArray(runtime.USVString) = null,
+            ancestorOrigins: runtime.JSValue = undefined,
+            cached_ancestorOrigins: ?runtime.JSValue = null,
             _internal: ?*WindowClientImpl.InternalState = null,
         },
     );

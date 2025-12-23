@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BatteryManagerImpl = @import("impls").BatteryManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -89,10 +92,10 @@ pub const BatteryManager = struct {
             chargingTime: f64 = undefined,
             dischargingTime: f64 = undefined,
             level: f64 = undefined,
-            onchargingchange: EventHandler = undefined,
-            onchargingtimechange: EventHandler = undefined,
-            ondischargingtimechange: EventHandler = undefined,
-            onlevelchange: EventHandler = undefined,
+            onchargingchange: typedefs.EventHandler = undefined,
+            onchargingtimechange: typedefs.EventHandler = undefined,
+            ondischargingtimechange: typedefs.EventHandler = undefined,
+            onlevelchange: typedefs.EventHandler = undefined,
             _internal: ?*BatteryManagerImpl.InternalState = null,
         },
     );

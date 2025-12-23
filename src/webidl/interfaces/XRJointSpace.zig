@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRJointSpaceImpl = @import("impls").XRJointSpace;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRSpace = @import("interfaces").XRSpace;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -70,7 +73,7 @@ pub const XRJointSpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            jointName: XRHandJoint = undefined,
+            jointName: enums.XRHandJoint = undefined,
             _internal: ?*XRJointSpaceImpl.InternalState = null,
         },
     );

@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const LanguageDetectorImpl = @import("impls").LanguageDetector;
 const mixins = @import("mixins");
-const DestroyableModel = @import("interfaces").DestroyableModel;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const DestroyableModel = @import("mixins").DestroyableModel;
 const LanguageDetectorDetectOptions = @import("dictionaries").LanguageDetectorDetectOptions;
 const Availability = @import("enums").Availability;
 const LanguageDetectorCreateOptions = @import("dictionaries").LanguageDetectorCreateOptions;
@@ -81,7 +84,7 @@ pub const LanguageDetector = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
+            expectedInputLanguages: ?runtime.JSValue = null,
             inputQuota: f64 = undefined,
             _internal: ?*LanguageDetectorImpl.InternalState = null,
         },

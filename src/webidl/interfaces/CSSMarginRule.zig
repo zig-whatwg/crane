@@ -7,8 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSMarginRuleImpl = @import("impls").CSSMarginRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
-const CSSMarginDescriptors = @import("interfaces").CSSMarginDescriptors;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
@@ -70,9 +72,9 @@ pub const CSSMarginRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
-            style: CSSMarginDescriptors = undefined,
-            cached_style: ?CSSMarginDescriptors = null,
+            name: typedefs.CSSOMString = undefined,
+            style: runtime.JSValue = undefined,
+            cached_style: ?runtime.JSValue = null,
             _internal: ?*CSSMarginRuleImpl.InternalState = null,
         },
     );

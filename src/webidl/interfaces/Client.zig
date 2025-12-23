@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ClientImpl = @import("impls").Client;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FrameType = @import("enums").FrameType;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const ClientLifecycleState = @import("enums").ClientLifecycleState;
 const ClientType = @import("enums").ClientType;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Client = struct {
@@ -73,10 +76,10 @@ pub const Client = struct {
         Meta.MixinTypes,
         struct {
             url: runtime.USVString = undefined,
-            frameType: FrameType = undefined,
-            id: runtime.DOMString = undefined,
-            @"type": ClientType = undefined,
-            lifecycleState: ClientLifecycleState = undefined,
+            frameType: enums.FrameType = undefined,
+            id: typedefs.DOMString = undefined,
+            @"type": enums.ClientType = undefined,
+            lifecycleState: enums.ClientLifecycleState = undefined,
             _internal: ?*ClientImpl.InternalState = null,
         },
     );

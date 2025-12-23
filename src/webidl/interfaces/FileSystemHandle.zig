@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FileSystemHandleImpl = @import("impls").FileSystemHandle;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PermissionState = @import("enums").PermissionState;
 const FileSystemHandleKind = @import("enums").FileSystemHandleKind;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const FileSystemHandlePermissionDescriptor = @import("dictionaries").FileSystemHandlePermissionDescriptor;
 
 pub const FileSystemHandle = struct {
@@ -73,7 +76,7 @@ pub const FileSystemHandle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: FileSystemHandleKind = undefined,
+            kind: enums.FileSystemHandleKind = undefined,
             name: runtime.USVString = undefined,
             _internal: ?*FileSystemHandleImpl.InternalState = null,
         },

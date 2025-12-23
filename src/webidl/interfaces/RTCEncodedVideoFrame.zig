@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCEncodedVideoFrameImpl = @import("impls").RTCEncodedVideoFrame;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCEncodedVideoFrameOptions = @import("dictionaries").RTCEncodedVideoFrameOptions;
 const RTCEncodedVideoFrameMetadata = @import("dictionaries").RTCEncodedVideoFrameMetadata;
 const RTCEncodedVideoFrameType = @import("enums").RTCEncodedVideoFrameType;
@@ -67,7 +70,7 @@ pub const RTCEncodedVideoFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": RTCEncodedVideoFrameType = undefined,
+            @"type": enums.RTCEncodedVideoFrameType = undefined,
             data: runtime.ArrayBuffer = undefined,
             _internal: ?*RTCEncodedVideoFrameImpl.InternalState = null,
         },

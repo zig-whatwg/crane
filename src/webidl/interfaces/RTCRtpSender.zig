@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCRtpSenderImpl = @import("impls").RTCRtpSender;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCSetParameterOptions = @import("dictionaries").RTCSetParameterOptions;
 const MediaStream = @import("interfaces").MediaStream;
@@ -91,7 +94,7 @@ pub const RTCRtpSender = struct {
             track: ?*runtime.Instance = null,
             transport: ?*runtime.Instance = null,
             dtmf: ?*runtime.Instance = null,
-            transform: ?RTCRtpTransform = null,
+            transform: ?typedefs.RTCRtpTransform = null,
             _internal: ?*RTCRtpSenderImpl.InternalState = null,
         },
     );

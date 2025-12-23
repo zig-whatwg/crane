@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGTestsImpl = @import("impls").SVGTests;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGStringList = @import("interfaces").SVGStringList;
 
 pub const SVGTests = struct {

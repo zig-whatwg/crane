@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ImageDecoderImpl = @import("impls").ImageDecoder;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ImageDecodeOptions = @import("dictionaries").ImageDecodeOptions;
 const ImageDecoderInit = @import("dictionaries").ImageDecoderInit;
 const ImageTrackList = @import("interfaces").ImageTrackList;
@@ -83,9 +86,9 @@ pub const ImageDecoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
             complete: bool = undefined,
-            completed: runtime.Promise(void) = undefined,
+            completed: runtime.JSValue = undefined,
             tracks: *runtime.Instance = undefined,
             _internal: ?*ImageDecoderImpl.InternalState = null,
         },

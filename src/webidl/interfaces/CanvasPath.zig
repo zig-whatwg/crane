@@ -7,7 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasPathImpl = @import("impls").CanvasPath;
 const mixins = @import("mixins");
-const sequence = @import("interfaces").sequence;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 
 pub const CanvasPath = struct {

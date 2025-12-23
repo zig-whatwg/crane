@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CaptureActionEventImpl = @import("impls").CaptureActionEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const CaptureAction = @import("enums").CaptureAction;
 const EventTarget = @import("interfaces").EventTarget;
@@ -69,7 +72,7 @@ pub const CaptureActionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            action: CaptureAction = undefined,
+            action: enums.CaptureAction = undefined,
             _internal: ?*CaptureActionEventImpl.InternalState = null,
         },
     );

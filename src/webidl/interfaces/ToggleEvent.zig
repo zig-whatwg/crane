@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ToggleEventImpl = @import("impls").ToggleEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const ToggleEventInit = @import("dictionaries").ToggleEventInit;
 const Element = @import("interfaces").Element;
@@ -73,8 +76,8 @@ pub const ToggleEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oldState: runtime.DOMString = undefined,
-            newState: runtime.DOMString = undefined,
+            oldState: typedefs.DOMString = undefined,
+            newState: typedefs.DOMString = undefined,
             source: ?*runtime.Instance = null,
             _internal: ?*ToggleEventImpl.InternalState = null,
         },

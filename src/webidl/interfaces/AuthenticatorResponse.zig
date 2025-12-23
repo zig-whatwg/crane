@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AuthenticatorResponseImpl = @import("impls").AuthenticatorResponse;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const AuthenticatorResponse = struct {
     pub const Meta = struct {
@@ -58,7 +61,7 @@ pub const AuthenticatorResponse = struct {
         Meta.MixinTypes,
         struct {
             clientDataJSON: runtime.ArrayBuffer = undefined,
-            cached_clientDataJSON: ?runtime.ArrayBuffer = null,
+            cached_clientDataJSON: ?runtime.JSValue = null,
             _internal: ?*AuthenticatorResponseImpl.InternalState = null,
         },
     );

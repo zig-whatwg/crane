@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSTransformValueImpl = @import("impls").CSSTransformValue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
 const DOMMatrix = @import("interfaces").DOMMatrix;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSTransformValue = struct {

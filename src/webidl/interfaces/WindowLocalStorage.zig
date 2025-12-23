@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WindowLocalStorageImpl = @import("impls").WindowLocalStorage;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Storage = @import("interfaces").Storage;
 
 pub const WindowLocalStorage = struct {

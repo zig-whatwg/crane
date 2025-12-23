@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUTextureImpl = @import("impls").GPUTexture;
 const mixins = @import("mixins");
-const GPUObjectBase = @import("interfaces").GPUObjectBase;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const GPUObjectBase = @import("mixins").GPUObjectBase;
 const GPUTextureView = @import("interfaces").GPUTextureView;
 const GPUTextureDimension = @import("enums").GPUTextureDimension;
 const GPUSize32Out = @import("typedefs").GPUSize32Out;
 const GPUFlagsConstant = @import("typedefs").GPUFlagsConstant;
 const GPUTextureFormat = @import("enums").GPUTextureFormat;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const GPUTextureViewDescriptor = @import("dictionaries").GPUTextureViewDescriptor;
 const GPUIntegerCoordinateOut = @import("typedefs").GPUIntegerCoordinateOut;
 
@@ -91,14 +94,14 @@ pub const GPUTexture = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: GPUIntegerCoordinateOut = undefined,
-            height: GPUIntegerCoordinateOut = undefined,
-            depthOrArrayLayers: GPUIntegerCoordinateOut = undefined,
-            mipLevelCount: GPUIntegerCoordinateOut = undefined,
-            sampleCount: GPUSize32Out = undefined,
-            dimension: GPUTextureDimension = undefined,
-            format: GPUTextureFormat = undefined,
-            usage: GPUFlagsConstant = undefined,
+            width: typedefs.GPUIntegerCoordinateOut = undefined,
+            height: typedefs.GPUIntegerCoordinateOut = undefined,
+            depthOrArrayLayers: typedefs.GPUIntegerCoordinateOut = undefined,
+            mipLevelCount: typedefs.GPUIntegerCoordinateOut = undefined,
+            sampleCount: typedefs.GPUSize32Out = undefined,
+            dimension: enums.GPUTextureDimension = undefined,
+            format: enums.GPUTextureFormat = undefined,
+            usage: typedefs.GPUFlagsConstant = undefined,
             label: runtime.USVString = undefined,
             _internal: ?*GPUTextureImpl.InternalState = null,
         },

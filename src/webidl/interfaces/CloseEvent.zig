@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CloseEventImpl = @import("impls").CloseEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const DOMString = @import("typedefs").DOMString;
 const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const CloseEventInit = @import("dictionaries").CloseEventInit;
 
 pub const CloseEvent = struct {

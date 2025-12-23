@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IDBIndexImpl = @import("impls").IDBIndex;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const IDBRequest = @import("interfaces").IDBRequest;
 const IDBGetAllOptions = @import("dictionaries").IDBGetAllOptions;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
@@ -88,7 +91,7 @@ pub const IDBIndex = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             objectStore: *runtime.Instance = undefined,
             keyPath: runtime.JSValue = undefined,
             multiEntry: bool = undefined,

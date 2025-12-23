@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCPeerConnectionIceEventImpl = @import("impls").RTCPeerConnectionIceEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const EventInit = @import("dictionaries").EventInit;
 const EventTarget = @import("interfaces").EventTarget;
 const RTCPeerConnectionIceEventInit = @import("dictionaries").RTCPeerConnectionIceEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const RTCIceCandidate = @import("interfaces").RTCIceCandidate;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const RTCPeerConnectionIceEvent = struct {

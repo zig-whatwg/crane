@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MIDIPortImpl = @import("impls").MIDIPort;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -95,14 +98,14 @@ pub const MIDIPort = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            manufacturer: ?runtime.DOMString = null,
-            name: ?runtime.DOMString = null,
-            @"type": MIDIPortType = undefined,
-            version: ?runtime.DOMString = null,
-            state: MIDIPortDeviceState = undefined,
-            connection: MIDIPortConnectionState = undefined,
-            onstatechange: EventHandler = undefined,
+            id: typedefs.DOMString = undefined,
+            manufacturer: ?typedefs.DOMString = null,
+            name: ?typedefs.DOMString = null,
+            @"type": enums.MIDIPortType = undefined,
+            version: ?typedefs.DOMString = null,
+            state: enums.MIDIPortDeviceState = undefined,
+            connection: enums.MIDIPortConnectionState = undefined,
+            onstatechange: typedefs.EventHandler = undefined,
             _internal: ?*MIDIPortImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const StorageManagerImpl = @import("impls").StorageManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const StorageEstimate = @import("dictionaries").StorageEstimate;
 

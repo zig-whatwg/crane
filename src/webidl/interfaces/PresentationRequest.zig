@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PresentationRequestImpl = @import("impls").PresentationRequest;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const PresentationAvailability = @import("interfaces").PresentationAvailability;
@@ -16,7 +19,7 @@ const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const PresentationConnection = @import("interfaces").PresentationConnection;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const EventHandler = @import("typedefs").EventHandler;
 const Observable = @import("interfaces").Observable;
 
@@ -80,7 +83,7 @@ pub const PresentationRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onconnectionavailable: EventHandler = undefined,
+            onconnectionavailable: typedefs.EventHandler = undefined,
             _internal: ?*PresentationRequestImpl.InternalState = null,
         },
     );

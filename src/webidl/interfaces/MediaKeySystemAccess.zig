@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaKeySystemAccessImpl = @import("impls").MediaKeySystemAccess;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MediaKeySystemConfiguration = @import("dictionaries").MediaKeySystemConfiguration;
 const DOMString = @import("typedefs").DOMString;
 const MediaKeys = @import("interfaces").MediaKeys;
@@ -64,7 +67,7 @@ pub const MediaKeySystemAccess = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            keySystem: runtime.DOMString = undefined,
+            keySystem: typedefs.DOMString = undefined,
             _internal: ?*MediaKeySystemAccessImpl.InternalState = null,
         },
     );

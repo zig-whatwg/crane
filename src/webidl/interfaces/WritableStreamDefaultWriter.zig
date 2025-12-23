@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WritableStreamDefaultWriterImpl = @import("impls").WritableStreamDefaultWriter;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WritableStream = @import("interfaces").WritableStream;
 
 pub const WritableStreamDefaultWriter = struct {
@@ -69,9 +72,9 @@ pub const WritableStreamDefaultWriter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            closed: runtime.Promise(void) = undefined,
+            closed: runtime.JSValue = undefined,
             desiredSize: ?f64 = null,
-            ready: runtime.Promise(void) = undefined,
+            ready: runtime.JSValue = undefined,
             _internal: ?*WritableStreamDefaultWriterImpl.InternalState = null,
         },
     );

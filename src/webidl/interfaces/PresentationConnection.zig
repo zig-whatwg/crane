@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PresentationConnectionImpl = @import("impls").PresentationConnection;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const PresentationConnectionState = @import("enums").PresentationConnectionState;
 const Blob = @import("interfaces").Blob;
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const BinaryType = @import("enums").BinaryType;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
@@ -98,12 +101,12 @@ pub const PresentationConnection = struct {
         struct {
             id: runtime.USVString = undefined,
             url: runtime.USVString = undefined,
-            state: PresentationConnectionState = undefined,
-            onconnect: EventHandler = undefined,
-            onclose: EventHandler = undefined,
-            onterminate: EventHandler = undefined,
-            binaryType: BinaryType = undefined,
-            onmessage: EventHandler = undefined,
+            state: enums.PresentationConnectionState = undefined,
+            onconnect: typedefs.EventHandler = undefined,
+            onclose: typedefs.EventHandler = undefined,
+            onterminate: typedefs.EventHandler = undefined,
+            binaryType: enums.BinaryType = undefined,
+            onmessage: typedefs.EventHandler = undefined,
             _internal: ?*PresentationConnectionImpl.InternalState = null,
         },
     );

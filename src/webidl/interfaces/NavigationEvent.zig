@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigationEventImpl = @import("impls").NavigationEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const UIEvent = @import("interfaces").UIEvent;
 const UIEventInit = @import("dictionaries").UIEventInit;
 const NavigationEventInit = @import("dictionaries").NavigationEventInit;
@@ -75,7 +78,7 @@ pub const NavigationEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dir: SpatialNavigationDirection = undefined,
+            dir: enums.SpatialNavigationDirection = undefined,
             relatedTarget: ?*runtime.Instance = null,
             _internal: ?*NavigationEventImpl.InternalState = null,
         },

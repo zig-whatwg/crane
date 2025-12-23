@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceElementTimingImpl = @import("impls").PerformanceElementTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
-const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
+const PaintTimingMixin = @import("mixins").PaintTimingMixin;
 const Element = @import("interfaces").Element;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceElementTiming = struct {
@@ -88,17 +91,17 @@ pub const PerformanceElementTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            renderTime: DOMHighResTimeStamp = undefined,
-            loadTime: DOMHighResTimeStamp = undefined,
+            renderTime: typedefs.DOMHighResTimeStamp = undefined,
+            loadTime: typedefs.DOMHighResTimeStamp = undefined,
             intersectionRect: *runtime.Instance = undefined,
-            identifier: runtime.DOMString = undefined,
+            identifier: typedefs.DOMString = undefined,
             naturalWidth: u32 = undefined,
             naturalHeight: u32 = undefined,
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             element: ?*runtime.Instance = null,
             url: runtime.USVString = undefined,
-            paintTime: DOMHighResTimeStamp = undefined,
-            presentationTime: ?DOMHighResTimeStamp = null,
+            paintTime: typedefs.DOMHighResTimeStamp = undefined,
+            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*PerformanceElementTimingImpl.InternalState = null,
         },
     );

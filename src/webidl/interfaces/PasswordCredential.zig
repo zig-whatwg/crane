@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PasswordCredentialImpl = @import("impls").PasswordCredential;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Credential = @import("interfaces").Credential;
-const CredentialUserData = @import("interfaces").CredentialUserData;
+const CredentialUserData = @import("mixins").CredentialUserData;
 const HTMLFormElement = @import("interfaces").HTMLFormElement;
 const PasswordCredentialData = @import("dictionaries").PasswordCredentialData;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const PasswordCredential = struct {

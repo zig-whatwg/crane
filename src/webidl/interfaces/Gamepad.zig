@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GamepadImpl = @import("impls").Gamepad;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GamepadHapticActuator = @import("interfaces").GamepadHapticActuator;
 const GamepadPose = @import("interfaces").GamepadPose;
 const GamepadButton = @import("interfaces").GamepadButton;
@@ -86,17 +89,17 @@ pub const Gamepad = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             index: i32 = undefined,
             connected: bool = undefined,
-            timestamp: DOMHighResTimeStamp = undefined,
-            mapping: GamepadMappingType = undefined,
-            axes: runtime.FrozenArray(f64) = undefined,
-            buttons: runtime.FrozenArray(GamepadButton) = undefined,
-            touches: runtime.FrozenArray(GamepadTouch) = undefined,
+            timestamp: typedefs.DOMHighResTimeStamp = undefined,
+            mapping: enums.GamepadMappingType = undefined,
+            axes: runtime.JSValue = undefined,
+            buttons: runtime.JSValue = undefined,
+            touches: runtime.JSValue = undefined,
             vibrationActuator: *runtime.Instance = undefined,
-            hand: GamepadHand = undefined,
-            hapticActuators: runtime.FrozenArray(GamepadHapticActuator) = undefined,
+            hand: enums.GamepadHand = undefined,
+            hapticActuators: runtime.JSValue = undefined,
             pose: ?*runtime.Instance = null,
             cached_vibrationActuator: ?*runtime.Instance = null,
             _internal: ?*GamepadImpl.InternalState = null,

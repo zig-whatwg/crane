@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCSctpTransportImpl = @import("impls").RTCSctpTransport;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const RTCSctpTransportState = @import("enums").RTCSctpTransportState;
@@ -81,10 +84,10 @@ pub const RTCSctpTransport = struct {
         Meta.MixinTypes,
         struct {
             transport: *runtime.Instance = undefined,
-            state: RTCSctpTransportState = undefined,
+            state: enums.RTCSctpTransportState = undefined,
             maxMessageSize: f64 = undefined,
             maxChannels: ?u16 = null,
-            onstatechange: EventHandler = undefined,
+            onstatechange: typedefs.EventHandler = undefined,
             _internal: ?*RTCSctpTransportImpl.InternalState = null,
         },
     );

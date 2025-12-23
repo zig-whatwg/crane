@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FileReaderImpl = @import("impls").FileReader;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
@@ -114,12 +117,12 @@ pub const FileReader = struct {
                 ArrayBuffer: runtime.ArrayBuffer,
             } = null,
             @"error": ?*runtime.Instance = null,
-            onloadstart: EventHandler = undefined,
-            onprogress: EventHandler = undefined,
-            onload: EventHandler = undefined,
-            onabort: EventHandler = undefined,
-            onerror: EventHandler = undefined,
-            onloadend: EventHandler = undefined,
+            onloadstart: typedefs.EventHandler = undefined,
+            onprogress: typedefs.EventHandler = undefined,
+            onload: typedefs.EventHandler = undefined,
+            onabort: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onloadend: typedefs.EventHandler = undefined,
             _internal: ?*FileReaderImpl.InternalState = null,
         },
     );

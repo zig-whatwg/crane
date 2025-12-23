@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DataTransferImpl = @import("impls").DataTransfer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const DataTransferItemList = @import("interfaces").DataTransferItemList;
 const DOMString = @import("typedefs").DOMString;
@@ -76,10 +79,10 @@ pub const DataTransfer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dropEffect: runtime.DOMString = undefined,
-            effectAllowed: runtime.DOMString = undefined,
+            dropEffect: typedefs.DOMString = undefined,
+            effectAllowed: typedefs.DOMString = undefined,
             items: *runtime.Instance = undefined,
-            types: runtime.FrozenArray(runtime.DOMString) = undefined,
+            types: runtime.JSValue = undefined,
             files: *runtime.Instance = undefined,
             cached_items: ?*runtime.Instance = null,
             cached_files: ?*runtime.Instance = null,

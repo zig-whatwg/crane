@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebTransportWriterImpl = @import("impls").WebTransportWriter;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
 const WritableStream = @import("interfaces").WritableStream;
 

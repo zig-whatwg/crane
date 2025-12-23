@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HeadersImpl = @import("impls").Headers;
 const mixins = @import("mixins");
-const ByteString = @import("interfaces").ByteString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const ByteString = @import("typedefs").ByteString;
 const HeadersInit = @import("typedefs").HeadersInit;
 
 pub const Headers = struct {

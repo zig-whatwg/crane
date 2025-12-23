@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUQuerySetImpl = @import("impls").GPUQuerySet;
 const mixins = @import("mixins");
-const GPUObjectBase = @import("interfaces").GPUObjectBase;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const GPUObjectBase = @import("mixins").GPUObjectBase;
 const GPUQueryType = @import("enums").GPUQueryType;
 const GPUSize32Out = @import("typedefs").GPUSize32Out;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const GPUQuerySet = struct {
     pub const Meta = struct {
@@ -72,8 +75,8 @@ pub const GPUQuerySet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": GPUQueryType = undefined,
-            count: GPUSize32Out = undefined,
+            @"type": enums.GPUQueryType = undefined,
+            count: typedefs.GPUSize32Out = undefined,
             label: runtime.USVString = undefined,
             _internal: ?*GPUQuerySetImpl.InternalState = null,
         },

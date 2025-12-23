@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ScrollTimelineImpl = @import("impls").ScrollTimeline;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const Element = @import("interfaces").Element;
 const AnimationEffect = @import("interfaces").AnimationEffect;
@@ -68,7 +71,7 @@ pub const ScrollTimeline = struct {
         Meta.MixinTypes,
         struct {
             source: ?*runtime.Instance = null,
-            axis: ScrollAxis = undefined,
+            axis: enums.ScrollAxis = undefined,
             _internal: ?*ScrollTimelineImpl.InternalState = null,
         },
     );

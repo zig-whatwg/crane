@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WakeLockSentinelImpl = @import("impls").WakeLockSentinel;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -81,8 +84,8 @@ pub const WakeLockSentinel = struct {
         Meta.MixinTypes,
         struct {
             released: bool = undefined,
-            @"type": WakeLockType = undefined,
-            onrelease: EventHandler = undefined,
+            @"type": enums.WakeLockType = undefined,
+            onrelease: typedefs.EventHandler = undefined,
             _internal: ?*WakeLockSentinelImpl.InternalState = null,
         },
     );

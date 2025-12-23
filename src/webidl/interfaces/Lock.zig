@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const LockImpl = @import("impls").Lock;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const LockMode = @import("enums").LockMode;
 const DOMString = @import("typedefs").DOMString;
 
@@ -64,8 +67,8 @@ pub const Lock = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            mode: LockMode = undefined,
+            name: typedefs.DOMString = undefined,
+            mode: enums.LockMode = undefined,
             _internal: ?*LockImpl.InternalState = null,
         },
     );

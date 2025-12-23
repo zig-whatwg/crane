@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigatorIDImpl = @import("impls").NavigatorID;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const NavigatorID = struct {
@@ -72,16 +75,16 @@ pub const NavigatorID = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            appCodeName: runtime.DOMString = undefined,
-            appName: runtime.DOMString = undefined,
-            appVersion: runtime.DOMString = undefined,
-            platform: runtime.DOMString = undefined,
-            product: runtime.DOMString = undefined,
-            productSub: runtime.DOMString = undefined,
-            userAgent: runtime.DOMString = undefined,
-            vendor: runtime.DOMString = undefined,
-            vendorSub: runtime.DOMString = undefined,
-            oscpu: runtime.DOMString = undefined,
+            appCodeName: typedefs.DOMString = undefined,
+            appName: typedefs.DOMString = undefined,
+            appVersion: typedefs.DOMString = undefined,
+            platform: typedefs.DOMString = undefined,
+            product: typedefs.DOMString = undefined,
+            productSub: typedefs.DOMString = undefined,
+            userAgent: typedefs.DOMString = undefined,
+            vendor: typedefs.DOMString = undefined,
+            vendorSub: typedefs.DOMString = undefined,
+            oscpu: typedefs.DOMString = undefined,
             _internal: ?*NavigatorIDImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSViewTransitionRuleImpl = @import("impls").CSSViewTransitionRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -63,9 +66,9 @@ pub const CSSViewTransitionRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            navigation: CSSOMString = undefined,
-            types: runtime.FrozenArray(CSSOMString) = undefined,
-            cached_types: ?runtime.FrozenArray(CSSOMString) = null,
+            navigation: typedefs.CSSOMString = undefined,
+            types: runtime.JSValue = undefined,
+            cached_types: ?runtime.JSValue = null,
             _internal: ?*CSSViewTransitionRuleImpl.InternalState = null,
         },
     );

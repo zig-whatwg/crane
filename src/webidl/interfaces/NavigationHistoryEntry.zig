@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigationHistoryEntryImpl = @import("impls").NavigationHistoryEntry;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
@@ -14,7 +17,7 @@ const ObservableEventListenerOptions = @import("dictionaries").ObservableEventLi
 const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const Observable = @import("interfaces").Observable;
 
@@ -84,11 +87,11 @@ pub const NavigationHistoryEntry = struct {
         Meta.MixinTypes,
         struct {
             url: ?runtime.USVString = null,
-            key: runtime.DOMString = undefined,
-            id: runtime.DOMString = undefined,
+            key: typedefs.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             index: i64 = undefined,
             sameDocument: bool = undefined,
-            ondispose: EventHandler = undefined,
+            ondispose: typedefs.EventHandler = undefined,
             _internal: ?*NavigationHistoryEntryImpl.InternalState = null,
         },
     );

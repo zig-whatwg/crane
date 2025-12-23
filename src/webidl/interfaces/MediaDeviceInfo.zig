@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaDeviceInfoImpl = @import("impls").MediaDeviceInfo;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MediaDeviceKind = @import("enums").MediaDeviceKind;
 const DOMString = @import("typedefs").DOMString;
 
@@ -67,10 +70,10 @@ pub const MediaDeviceInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            deviceId: runtime.DOMString = undefined,
-            kind: MediaDeviceKind = undefined,
-            label: runtime.DOMString = undefined,
-            groupId: runtime.DOMString = undefined,
+            deviceId: typedefs.DOMString = undefined,
+            kind: enums.MediaDeviceKind = undefined,
+            label: typedefs.DOMString = undefined,
+            groupId: typedefs.DOMString = undefined,
             _internal: ?*MediaDeviceInfoImpl.InternalState = null,
         },
     );

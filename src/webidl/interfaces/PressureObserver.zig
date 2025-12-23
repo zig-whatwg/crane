@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PressureObserverImpl = @import("impls").PressureObserver;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PressureSource = @import("enums").PressureSource;
 const PressureRecord = @import("interfaces").PressureRecord;
 const PressureObserverOptions = @import("dictionaries").PressureObserverOptions;
@@ -121,14 +124,7 @@ pub const PressureObserver = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_knownSources(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_knownSources) |cached| {
-            return cached;
-        }
-        const value = try PressureObserverImpl.get_knownSources(instance);
-        state.own.cached_knownSources = value;
-        return value;
+        return try PressureObserverImpl.get_knownSources(instance);
     }
 
     pub fn call_unobserve(instance: *runtime.Instance, source: PressureSource) anyerror!void {

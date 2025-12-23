@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DOMExceptionImpl = @import("impls").DOMException;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const DOMException = struct {
@@ -91,8 +94,8 @@ pub const DOMException = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            message: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            message: typedefs.DOMString = undefined,
             code: u16 = undefined,
             _internal: ?*DOMExceptionImpl.InternalState = null,
         },

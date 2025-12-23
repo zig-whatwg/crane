@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechSynthesisVoiceImpl = @import("impls").SpeechSynthesisVoice;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechSynthesisVoice = struct {
@@ -65,9 +68,9 @@ pub const SpeechSynthesisVoice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            voiceURI: runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
-            lang: runtime.DOMString = undefined,
+            voiceURI: typedefs.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            lang: typedefs.DOMString = undefined,
             localService: bool = undefined,
             default: bool = undefined,
             _internal: ?*SpeechSynthesisVoiceImpl.InternalState = null,

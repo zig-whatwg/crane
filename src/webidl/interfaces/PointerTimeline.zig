@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PointerTimelineImpl = @import("impls").PointerTimeline;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AnimationTimeline = @import("interfaces").AnimationTimeline;
 const Element = @import("interfaces").Element;
 const AnimationEffect = @import("interfaces").AnimationEffect;
@@ -68,7 +71,7 @@ pub const PointerTimeline = struct {
         Meta.MixinTypes,
         struct {
             source: ?*runtime.Instance = null,
-            axis: PointerAxis = undefined,
+            axis: enums.PointerAxis = undefined,
             _internal: ?*PointerTimelineImpl.InternalState = null,
         },
     );

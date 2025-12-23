@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AbortSignalImpl = @import("impls").AbortSignal;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -88,7 +91,7 @@ pub const AbortSignal = struct {
         struct {
             aborted: bool = undefined,
             reason: runtime.JSValue = undefined,
-            onabort: EventHandler = undefined,
+            onabort: typedefs.EventHandler = undefined,
             _internal: ?*AbortSignalImpl.InternalState = null,
         },
     );

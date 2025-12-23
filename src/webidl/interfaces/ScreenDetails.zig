@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ScreenDetailsImpl = @import("impls").ScreenDetails;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -78,10 +81,10 @@ pub const ScreenDetails = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            screens: runtime.FrozenArray(ScreenDetailed) = undefined,
+            screens: runtime.JSValue = undefined,
             currentScreen: *runtime.Instance = undefined,
-            onscreenschange: EventHandler = undefined,
-            oncurrentscreenchange: EventHandler = undefined,
+            onscreenschange: typedefs.EventHandler = undefined,
+            oncurrentscreenchange: typedefs.EventHandler = undefined,
             _internal: ?*ScreenDetailsImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRQuadLayerImpl = @import("impls").XRQuadLayer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRCompositionLayer = @import("interfaces").XRCompositionLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -87,7 +90,7 @@ pub const XRQuadLayer = struct {
             transform: *runtime.Instance = undefined,
             width: f32 = undefined,
             height: f32 = undefined,
-            onredraw: EventHandler = undefined,
+            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XRQuadLayerImpl.InternalState = null,
         },
     );

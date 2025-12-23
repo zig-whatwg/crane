@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCIdentityProviderRegistrarImpl = @import("impls").RTCIdentityProviderRegistrar;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCIdentityProvider = @import("dictionaries").RTCIdentityProvider;
 
 pub const RTCIdentityProviderRegistrar = struct {

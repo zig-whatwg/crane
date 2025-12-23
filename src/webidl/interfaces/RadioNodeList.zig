@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RadioNodeListImpl = @import("impls").RadioNodeList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const NodeList = @import("interfaces").NodeList;
 const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
@@ -61,7 +64,7 @@ pub const RadioNodeList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.DOMString = undefined,
+            value: typedefs.DOMString = undefined,
             _internal: ?*RadioNodeListImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const LayoutFragmentImpl = @import("impls").LayoutFragment;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ChildBreakToken = @import("interfaces").ChildBreakToken;
 
 pub const LayoutFragment = struct {

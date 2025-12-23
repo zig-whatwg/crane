@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NotificationEventImpl = @import("impls").NotificationEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const NotificationEventInit = @import("dictionaries").NotificationEventInit;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
@@ -74,7 +77,7 @@ pub const NotificationEvent = struct {
         Meta.MixinTypes,
         struct {
             notification: *runtime.Instance = undefined,
-            action: runtime.DOMString = undefined,
+            action: typedefs.DOMString = undefined,
             _internal: ?*NotificationEventImpl.InternalState = null,
         },
     );

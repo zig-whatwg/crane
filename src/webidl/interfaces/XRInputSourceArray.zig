@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRInputSourceArrayImpl = @import("impls").XRInputSourceArray;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRInputSource = @import("interfaces").XRInputSource;
 
 pub const XRInputSourceArray = struct {

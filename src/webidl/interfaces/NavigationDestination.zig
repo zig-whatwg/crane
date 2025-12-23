@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NavigationDestinationImpl = @import("impls").NavigationDestination;
 const mixins = @import("mixins");
-const USVString = @import("interfaces").USVString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const NavigationDestination = struct {
@@ -69,8 +72,8 @@ pub const NavigationDestination = struct {
         Meta.MixinTypes,
         struct {
             url: runtime.USVString = undefined,
-            key: runtime.DOMString = undefined,
-            id: runtime.DOMString = undefined,
+            key: typedefs.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             index: i64 = undefined,
             sameDocument: bool = undefined,
             _internal: ?*NavigationDestinationImpl.InternalState = null,

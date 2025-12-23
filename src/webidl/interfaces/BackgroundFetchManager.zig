@@ -7,9 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BackgroundFetchManagerImpl = @import("impls").BackgroundFetchManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BackgroundFetchRegistration = @import("interfaces").BackgroundFetchRegistration;
 const RequestInfo = @import("typedefs").RequestInfo;
-const sequence = @import("interfaces").sequence;
 const DOMString = @import("typedefs").DOMString;
 const BackgroundFetchOptions = @import("dictionaries").BackgroundFetchOptions;
 

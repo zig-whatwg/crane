@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRCylinderLayerImpl = @import("impls").XRCylinderLayer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRCompositionLayer = @import("interfaces").XRCompositionLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -90,7 +93,7 @@ pub const XRCylinderLayer = struct {
             radius: f32 = undefined,
             centralAngle: f32 = undefined,
             aspectRatio: f32 = undefined,
-            onredraw: EventHandler = undefined,
+            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XRCylinderLayerImpl.InternalState = null,
         },
     );

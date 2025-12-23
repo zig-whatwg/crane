@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DataCueImpl = @import("impls").DataCue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TextTrackCue = @import("interfaces").TextTrackCue;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -74,7 +77,7 @@ pub const DataCue = struct {
         Meta.MixinTypes,
         struct {
             value: runtime.JSValue = undefined,
-            @"type": runtime.DOMString = undefined,
+            @"type": typedefs.DOMString = undefined,
             _internal: ?*DataCueImpl.InternalState = null,
         },
     );

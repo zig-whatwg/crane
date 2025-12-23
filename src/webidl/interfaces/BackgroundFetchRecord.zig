@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BackgroundFetchRecordImpl = @import("impls").BackgroundFetchRecord;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Request = @import("interfaces").Request;
 const Response = @import("interfaces").Response;
 
@@ -64,7 +67,7 @@ pub const BackgroundFetchRecord = struct {
         Meta.MixinTypes,
         struct {
             request: *runtime.Instance = undefined,
-            responseReady: runtime.Promise(Response) = undefined,
+            responseReady: runtime.JSValue = undefined,
             _internal: ?*BackgroundFetchRecordImpl.InternalState = null,
         },
     );

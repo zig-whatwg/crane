@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IDBTransactionImpl = @import("impls").IDBTransaction;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -100,13 +103,13 @@ pub const IDBTransaction = struct {
         Meta.MixinTypes,
         struct {
             objectStoreNames: *runtime.Instance = undefined,
-            mode: IDBTransactionMode = undefined,
-            durability: IDBTransactionDurability = undefined,
+            mode: enums.IDBTransactionMode = undefined,
+            durability: enums.IDBTransactionDurability = undefined,
             db: *runtime.Instance = undefined,
             @"error": ?*runtime.Instance = null,
-            onabort: EventHandler = undefined,
-            oncomplete: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            onabort: typedefs.EventHandler = undefined,
+            oncomplete: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             cached_db: ?*runtime.Instance = null,
             _internal: ?*IDBTransactionImpl.InternalState = null,
         },

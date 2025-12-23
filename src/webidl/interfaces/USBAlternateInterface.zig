@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBAlternateInterfaceImpl = @import("impls").USBAlternateInterface;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const USBInterface = @import("interfaces").USBInterface;
 const USBEndpoint = @import("interfaces").USBEndpoint;
 const DOMString = @import("typedefs").DOMString;
@@ -77,8 +80,8 @@ pub const USBAlternateInterface = struct {
             interfaceClass: u8 = undefined,
             interfaceSubclass: u8 = undefined,
             interfaceProtocol: u8 = undefined,
-            interfaceName: ?runtime.DOMString = null,
-            endpoints: runtime.FrozenArray(USBEndpoint) = undefined,
+            interfaceName: ?typedefs.DOMString = null,
+            endpoints: runtime.JSValue = undefined,
             _internal: ?*USBAlternateInterfaceImpl.InternalState = null,
         },
     );

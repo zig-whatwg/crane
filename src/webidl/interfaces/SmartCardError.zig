@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SmartCardErrorImpl = @import("impls").SmartCardError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMException = @import("interfaces").DOMException;
 const SmartCardErrorOptions = @import("dictionaries").SmartCardErrorOptions;
 const SmartCardResponseCode = @import("enums").SmartCardResponseCode;
@@ -67,7 +70,7 @@ pub const SmartCardError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            responseCode: SmartCardResponseCode = undefined,
+            responseCode: enums.SmartCardResponseCode = undefined,
             _internal: ?*SmartCardErrorImpl.InternalState = null,
         },
     );

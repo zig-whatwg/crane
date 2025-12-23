@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ResponseImpl = @import("impls").Response;
 const mixins = @import("mixins");
-const Body = @import("interfaces").Body;
-const ByteString = @import("interfaces").ByteString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const Body = @import("mixins").Body;
+const ByteString = @import("typedefs").ByteString;
 const Blob = @import("interfaces").Blob;
 const ResponseType = @import("enums").ResponseType;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const ReadableStream = @import("interfaces").ReadableStream;
 const BodyInit = @import("typedefs").BodyInit;
 const ResponseInit = @import("dictionaries").ResponseInit;
@@ -111,7 +114,7 @@ pub const Response = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": ResponseType = undefined,
+            @"type": enums.ResponseType = undefined,
             url: runtime.USVString = undefined,
             redirected: bool = undefined,
             status: u16 = undefined,

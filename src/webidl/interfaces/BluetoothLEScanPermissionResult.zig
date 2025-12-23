@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothLEScanPermissionResultImpl = @import("impls").BluetoothLEScanPermissionResult;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PermissionStatus = @import("interfaces").PermissionStatus;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -73,7 +76,7 @@ pub const BluetoothLEScanPermissionResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            scans: runtime.FrozenArray(BluetoothLEScan) = undefined,
+            scans: runtime.JSValue = undefined,
             _internal: ?*BluetoothLEScanPermissionResultImpl.InternalState = null,
         },
     );

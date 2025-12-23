@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TaskSignalImpl = @import("impls").TaskSignal;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AbortSignal = @import("interfaces").AbortSignal;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -86,8 +89,8 @@ pub const TaskSignal = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            priority: TaskPriority = undefined,
-            onprioritychange: EventHandler = undefined,
+            priority: enums.TaskPriority = undefined,
+            onprioritychange: typedefs.EventHandler = undefined,
             _internal: ?*TaskSignalImpl.InternalState = null,
         },
     );

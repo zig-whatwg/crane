@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRRayImpl = @import("impls").XRRay;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XRRayDirectionInit = @import("dictionaries").XRRayDirectionInit;
@@ -70,7 +73,7 @@ pub const XRRay = struct {
             matrix: runtime.Float32Array = undefined,
             cached_origin: ?*runtime.Instance = null,
             cached_direction: ?*runtime.Instance = null,
-            cached_matrix: ?runtime.Float32Array = null,
+            cached_matrix: ?runtime.JSValue = null,
             _internal: ?*XRRayImpl.InternalState = null,
         },
     );

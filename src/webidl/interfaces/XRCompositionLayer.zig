@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRCompositionLayerImpl = @import("impls").XRCompositionLayer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRLayer = @import("interfaces").XRLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -85,12 +88,12 @@ pub const XRCompositionLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            layout: XRLayerLayout = undefined,
+            layout: enums.XRLayerLayout = undefined,
             blendTextureSourceAlpha: bool = undefined,
             forceMonoPresentation: bool = undefined,
             opacity: f32 = undefined,
             mipLevels: u32 = undefined,
-            quality: XRLayerQuality = undefined,
+            quality: enums.XRLayerQuality = undefined,
             needsRedraw: bool = undefined,
             _internal: ?*XRCompositionLayerImpl.InternalState = null,
         },

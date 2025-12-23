@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSAnimationImpl = @import("impls").CSSAnimation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Animation = @import("interfaces").Animation;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -88,7 +91,7 @@ pub const CSSAnimation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            animationName: CSSOMString = undefined,
+            animationName: typedefs.CSSOMString = undefined,
             _internal: ?*CSSAnimationImpl.InternalState = null,
         },
     );

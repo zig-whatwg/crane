@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGTransformListImpl = @import("impls").SVGTransformList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const SVGTransform = @import("interfaces").SVGTransform;
 

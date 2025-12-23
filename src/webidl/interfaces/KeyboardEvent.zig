@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const KeyboardEventImpl = @import("impls").KeyboardEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const UIEvent = @import("interfaces").UIEvent;
 const Window = @import("interfaces").Window;
 const UIEventInit = @import("dictionaries").UIEventInit;
@@ -104,8 +107,8 @@ pub const KeyboardEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: runtime.DOMString = undefined,
-            code: runtime.DOMString = undefined,
+            key: typedefs.DOMString = undefined,
+            code: typedefs.DOMString = undefined,
             location: u32 = undefined,
             ctrlKey: bool = undefined,
             shiftKey: bool = undefined,

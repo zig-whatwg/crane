@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HistoryImpl = @import("impls").History;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ScrollRestoration = @import("enums").ScrollRestoration;
 const DOMString = @import("typedefs").DOMString;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const History = struct {
     pub const Meta = struct {
@@ -74,7 +77,7 @@ pub const History = struct {
         Meta.MixinTypes,
         struct {
             length: u32 = undefined,
-            scrollRestoration: ScrollRestoration = undefined,
+            scrollRestoration: enums.ScrollRestoration = undefined,
             state: runtime.JSValue = undefined,
             _internal: ?*HistoryImpl.InternalState = null,
         },

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TaskPriorityChangeEventImpl = @import("impls").TaskPriorityChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const TaskPriorityChangeEventInit = @import("dictionaries").TaskPriorityChangeEventInit;
 const TaskPriority = @import("enums").TaskPriority;
@@ -72,7 +75,7 @@ pub const TaskPriorityChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            previousPriority: TaskPriority = undefined,
+            previousPriority: enums.TaskPriority = undefined,
             _internal: ?*TaskPriorityChangeEventImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HandwritingRecognizerImpl = @import("impls").HandwritingRecognizer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HandwritingDrawing = @import("interfaces").HandwritingDrawing;
 const HandwritingHints = @import("dictionaries").HandwritingHints;
 

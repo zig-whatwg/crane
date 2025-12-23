@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothLEScanFilterImpl = @import("impls").BluetoothLEScanFilter;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BluetoothManufacturerDataFilter = @import("interfaces").BluetoothManufacturerDataFilter;
 const BluetoothLEScanFilterInit = @import("dictionaries").BluetoothLEScanFilterInit;
 const UUID = @import("typedefs").UUID;
@@ -70,9 +73,9 @@ pub const BluetoothLEScanFilter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: ?runtime.DOMString = null,
-            namePrefix: ?runtime.DOMString = null,
-            services: runtime.FrozenArray(UUID) = undefined,
+            name: ?typedefs.DOMString = null,
+            namePrefix: ?typedefs.DOMString = null,
+            services: runtime.JSValue = undefined,
             manufacturerData: *runtime.Instance = undefined,
             serviceData: *runtime.Instance = undefined,
             _internal: ?*BluetoothLEScanFilterImpl.InternalState = null,

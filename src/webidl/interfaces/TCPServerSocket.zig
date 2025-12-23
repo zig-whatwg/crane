@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TCPServerSocketImpl = @import("impls").TCPServerSocket;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TCPServerSocketOptions = @import("dictionaries").TCPServerSocketOptions;
 const DOMString = @import("typedefs").DOMString;
 const TCPServerSocketOpenInfo = @import("dictionaries").TCPServerSocketOpenInfo;
@@ -68,8 +71,8 @@ pub const TCPServerSocket = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            opened: runtime.Promise(TCPServerSocketOpenInfo) = undefined,
-            closed: runtime.Promise(void) = undefined,
+            opened: runtime.JSValue = undefined,
+            closed: runtime.JSValue = undefined,
             _internal: ?*TCPServerSocketImpl.InternalState = null,
         },
     );

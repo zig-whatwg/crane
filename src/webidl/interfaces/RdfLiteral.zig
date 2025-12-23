@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RdfLiteralImpl = @import("impls").RdfLiteral;
 const mixins = @import("mixins");
-const USVString = @import("interfaces").USVString;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const USVString = @import("typedefs").USVString;
 
 pub const RdfLiteral = struct {
     pub const Meta = struct {

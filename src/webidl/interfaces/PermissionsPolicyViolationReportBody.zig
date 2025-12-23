@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PermissionsPolicyViolationReportBodyImpl = @import("impls").PermissionsPolicyViolationReportBody;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ReportBody = @import("dictionaries").ReportBody;
 const DOMString = @import("typedefs").DOMString;
 
@@ -72,13 +75,13 @@ pub const PermissionsPolicyViolationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            featureId: runtime.DOMString = undefined,
-            sourceFile: ?runtime.DOMString = null,
+            featureId: typedefs.DOMString = undefined,
+            sourceFile: ?typedefs.DOMString = null,
             lineNumber: ?i32 = null,
             columnNumber: ?i32 = null,
-            disposition: runtime.DOMString = undefined,
-            allowAttribute: ?runtime.DOMString = null,
-            srcAttribute: ?runtime.DOMString = null,
+            disposition: typedefs.DOMString = undefined,
+            allowAttribute: ?typedefs.DOMString = null,
+            srcAttribute: ?typedefs.DOMString = null,
             _internal: ?*PermissionsPolicyViolationReportBodyImpl.InternalState = null,
         },
     );

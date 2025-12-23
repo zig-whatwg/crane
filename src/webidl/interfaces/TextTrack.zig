@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TextTrackImpl = @import("impls").TextTrack;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -100,15 +103,15 @@ pub const TextTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: TextTrackKind = undefined,
-            label: runtime.DOMString = undefined,
-            language: runtime.DOMString = undefined,
-            id: runtime.DOMString = undefined,
-            inBandMetadataTrackDispatchType: runtime.DOMString = undefined,
-            mode: TextTrackMode = undefined,
+            kind: enums.TextTrackKind = undefined,
+            label: typedefs.DOMString = undefined,
+            language: typedefs.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
+            inBandMetadataTrackDispatchType: typedefs.DOMString = undefined,
+            mode: enums.TextTrackMode = undefined,
             cues: ?*runtime.Instance = null,
             activeCues: ?*runtime.Instance = null,
-            oncuechange: EventHandler = undefined,
+            oncuechange: typedefs.EventHandler = undefined,
             sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*TextTrackImpl.InternalState = null,
         },

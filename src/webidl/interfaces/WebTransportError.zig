@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebTransportErrorImpl = @import("impls").WebTransportError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMException = @import("interfaces").DOMException;
 const WebTransportErrorOptions = @import("dictionaries").WebTransportErrorOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -68,7 +71,7 @@ pub const WebTransportError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: WebTransportErrorSource = undefined,
+            source: enums.WebTransportErrorSource = undefined,
             streamErrorCode: ?u32 = null,
             _internal: ?*WebTransportErrorImpl.InternalState = null,
         },

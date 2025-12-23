@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const UDPSocketImpl = @import("impls").UDPSocket;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const UDPSocketOptions = @import("dictionaries").UDPSocketOptions;
 const UDPSocketOpenInfo = @import("dictionaries").UDPSocketOpenInfo;
 
@@ -67,8 +70,8 @@ pub const UDPSocket = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            opened: runtime.Promise(UDPSocketOpenInfo) = undefined,
-            closed: runtime.Promise(void) = undefined,
+            opened: runtime.JSValue = undefined,
+            closed: runtime.JSValue = undefined,
             _internal: ?*UDPSocketImpl.InternalState = null,
         },
     );

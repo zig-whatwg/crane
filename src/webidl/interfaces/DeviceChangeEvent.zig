@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DeviceChangeEventImpl = @import("impls").DeviceChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const MediaDeviceInfo = @import("interfaces").MediaDeviceInfo;
 const EventTarget = @import("interfaces").EventTarget;
@@ -71,10 +74,10 @@ pub const DeviceChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            devices: runtime.FrozenArray(MediaDeviceInfo) = undefined,
-            userInsertedDevices: runtime.FrozenArray(MediaDeviceInfo) = undefined,
-            cached_devices: ?runtime.FrozenArray(MediaDeviceInfo) = null,
-            cached_userInsertedDevices: ?runtime.FrozenArray(MediaDeviceInfo) = null,
+            devices: runtime.JSValue = undefined,
+            userInsertedDevices: runtime.JSValue = undefined,
+            cached_devices: ?runtime.JSValue = null,
+            cached_userInsertedDevices: ?runtime.JSValue = null,
             _internal: ?*DeviceChangeEventImpl.InternalState = null,
         },
     );

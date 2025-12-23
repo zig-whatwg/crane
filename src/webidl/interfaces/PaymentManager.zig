@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PaymentManagerImpl = @import("impls").PaymentManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PaymentDelegation = @import("enums").PaymentDelegation;
 const DOMString = @import("typedefs").DOMString;
 
@@ -63,7 +66,7 @@ pub const PaymentManager = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userHint: runtime.DOMString = undefined,
+            userHint: typedefs.DOMString = undefined,
             _internal: ?*PaymentManagerImpl.InternalState = null,
         },
     );

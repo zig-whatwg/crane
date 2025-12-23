@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUCompilationInfoImpl = @import("impls").GPUCompilationInfo;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GPUCompilationMessage = @import("interfaces").GPUCompilationMessage;
 
 pub const GPUCompilationInfo = struct {
@@ -62,7 +65,7 @@ pub const GPUCompilationInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            messages: runtime.FrozenArray(GPUCompilationMessage) = undefined,
+            messages: runtime.JSValue = undefined,
             _internal: ?*GPUCompilationInfoImpl.InternalState = null,
         },
     );

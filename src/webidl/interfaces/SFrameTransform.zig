@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SFrameTransformImpl = @import("impls").SFrameTransform;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const SFrameKeyManagement = @import("interfaces").SFrameKeyManagement;
+const SFrameKeyManagement = @import("mixins").SFrameKeyManagement;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CryptoKey = @import("interfaces").CryptoKey;
@@ -78,7 +81,7 @@ pub const SFrameTransform = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SFrameTransformImpl.InternalState = null,
         },
     );

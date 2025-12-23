@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FileSystemDirectoryEntryImpl = @import("impls").FileSystemDirectoryEntry;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
 const ErrorCallback = @import("callbacks").ErrorCallback;
 const FileSystem = @import("interfaces").FileSystem;
 const FileSystemEntryCallback = @import("callbacks").FileSystemEntryCallback;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const FileSystemFlags = @import("dictionaries").FileSystemFlags;
 const FileSystemDirectoryReader = @import("interfaces").FileSystemDirectoryReader;
 

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TaskAttributionTimingImpl = @import("impls").TaskAttributionTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
@@ -76,14 +79,14 @@ pub const TaskAttributionTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startTime: DOMHighResTimeStamp = undefined,
-            duration: DOMHighResTimeStamp = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            containerType: runtime.DOMString = undefined,
-            containerSrc: runtime.DOMString = undefined,
-            containerId: runtime.DOMString = undefined,
-            containerName: runtime.DOMString = undefined,
+            startTime: typedefs.DOMHighResTimeStamp = undefined,
+            duration: typedefs.DOMHighResTimeStamp = undefined,
+            name: typedefs.DOMString = undefined,
+            entryType: typedefs.DOMString = undefined,
+            containerType: typedefs.DOMString = undefined,
+            containerSrc: typedefs.DOMString = undefined,
+            containerId: typedefs.DOMString = undefined,
+            containerName: typedefs.DOMString = undefined,
             _internal: ?*TaskAttributionTimingImpl.InternalState = null,
         },
     );

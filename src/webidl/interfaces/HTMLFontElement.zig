@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HTMLFontElementImpl = @import("impls").HTMLFontElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -16,7 +19,7 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -217,9 +220,9 @@ pub const HTMLFontElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            color: runtime.DOMString = undefined,
-            face: runtime.DOMString = undefined,
-            size: runtime.DOMString = undefined,
+            color: typedefs.DOMString = undefined,
+            face: typedefs.DOMString = undefined,
+            size: typedefs.DOMString = undefined,
             _internal: ?*HTMLFontElementImpl.InternalState = null,
         },
     );

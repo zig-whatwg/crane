@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WorkletAnimationImpl = @import("impls").WorkletAnimation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Animation = @import("interfaces").Animation;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -20,7 +23,6 @@ const Event = @import("interfaces").Event;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const AnimationEffect = @import("interfaces").AnimationEffect;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const sequence = @import("interfaces").sequence;
 const AnimationReplaceState = @import("enums").AnimationReplaceState;
 const EventListener = @import("interfaces").EventListener;
 const CSSNumberish = @import("typedefs").CSSNumberish;
@@ -88,7 +90,7 @@ pub const WorkletAnimation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            animatorName: runtime.DOMString = undefined,
+            animatorName: typedefs.DOMString = undefined,
             _internal: ?*WorkletAnimationImpl.InternalState = null,
         },
     );

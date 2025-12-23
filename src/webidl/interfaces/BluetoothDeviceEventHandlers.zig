@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothDeviceEventHandlersImpl = @import("impls").BluetoothDeviceEventHandlers;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const BluetoothDeviceEventHandlers = struct {
@@ -56,8 +59,8 @@ pub const BluetoothDeviceEventHandlers = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onadvertisementreceived: EventHandler = undefined,
-            ongattserverdisconnected: EventHandler = undefined,
+            onadvertisementreceived: typedefs.EventHandler = undefined,
+            ongattserverdisconnected: typedefs.EventHandler = undefined,
             _internal: ?*BluetoothDeviceEventHandlersImpl.InternalState = null,
         },
     );

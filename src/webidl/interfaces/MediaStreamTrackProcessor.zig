@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaStreamTrackProcessorImpl = @import("impls").MediaStreamTrackProcessor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MediaStreamTrackProcessorInit = @import("dictionaries").MediaStreamTrackProcessorInit;
 const ReadableStream = @import("interfaces").ReadableStream;
 

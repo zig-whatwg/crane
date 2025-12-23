@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PaymentRequestImpl = @import("impls").PaymentRequest;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
@@ -103,13 +106,13 @@ pub const PaymentRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             shippingAddress: ?*runtime.Instance = null,
-            shippingOption: ?runtime.DOMString = null,
-            shippingType: ?PaymentShippingType = null,
-            onshippingaddresschange: EventHandler = undefined,
-            onshippingoptionchange: EventHandler = undefined,
-            onpaymentmethodchange: EventHandler = undefined,
+            shippingOption: ?typedefs.DOMString = null,
+            shippingType: ?enums.PaymentShippingType = null,
+            onshippingaddresschange: typedefs.EventHandler = undefined,
+            onshippingoptionchange: typedefs.EventHandler = undefined,
+            onpaymentmethodchange: typedefs.EventHandler = undefined,
             _internal: ?*PaymentRequestImpl.InternalState = null,
         },
     );

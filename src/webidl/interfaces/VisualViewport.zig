@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VisualViewportImpl = @import("impls").VisualViewport;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -95,9 +98,9 @@ pub const VisualViewport = struct {
             width: f64 = undefined,
             height: f64 = undefined,
             scale: f64 = undefined,
-            onresize: EventHandler = undefined,
-            onscroll: EventHandler = undefined,
-            onscrollend: EventHandler = undefined,
+            onresize: typedefs.EventHandler = undefined,
+            onscroll: typedefs.EventHandler = undefined,
+            onscrollend: typedefs.EventHandler = undefined,
             _internal: ?*VisualViewportImpl.InternalState = null,
         },
     );

@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NodeImpl = @import("impls").Node;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const Document = @import("interfaces").Document;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const NodeList = @import("interfaces").NodeList;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
 const Element = @import("interfaces").Element;
@@ -153,7 +156,7 @@ pub const Node = struct {
         Meta.MixinTypes,
         struct {
             nodeType: u16 = undefined,
-            nodeName: runtime.DOMString = undefined,
+            nodeName: typedefs.DOMString = undefined,
             baseURI: runtime.USVString = undefined,
             isConnected: bool = undefined,
             ownerDocument: ?*runtime.Instance = null,
@@ -164,8 +167,8 @@ pub const Node = struct {
             lastChild: ?*runtime.Instance = null,
             previousSibling: ?*runtime.Instance = null,
             nextSibling: ?*runtime.Instance = null,
-            nodeValue: ?runtime.DOMString = null,
-            textContent: ?runtime.DOMString = null,
+            nodeValue: ?typedefs.DOMString = null,
+            textContent: ?typedefs.DOMString = null,
             cached_childNodes: ?*runtime.Instance = null,
             _internal: ?*NodeImpl.InternalState = null,
         },

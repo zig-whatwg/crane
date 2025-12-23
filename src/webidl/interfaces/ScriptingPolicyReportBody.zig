@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ScriptingPolicyReportBodyImpl = @import("impls").ScriptingPolicyReportBody;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ReportBody = @import("dictionaries").ReportBody;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ScriptingPolicyReportBody = struct {
@@ -73,7 +76,7 @@ pub const ScriptingPolicyReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            violationType: runtime.DOMString = undefined,
+            violationType: typedefs.DOMString = undefined,
             violationURL: ?runtime.USVString = null,
             violationSample: ?runtime.USVString = null,
             lineno: u32 = undefined,

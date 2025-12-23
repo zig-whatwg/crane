@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ScreenOrientationImpl = @import("impls").ScreenOrientation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const OrientationType = @import("enums").OrientationType;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -80,9 +83,9 @@ pub const ScreenOrientation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": OrientationType = undefined,
+            @"type": enums.OrientationType = undefined,
             angle: u16 = undefined,
-            onchange: EventHandler = undefined,
+            onchange: typedefs.EventHandler = undefined,
             _internal: ?*ScreenOrientationImpl.InternalState = null,
         },
     );

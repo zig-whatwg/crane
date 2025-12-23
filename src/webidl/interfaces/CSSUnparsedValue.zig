@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSUnparsedValueImpl = @import("impls").CSSUnparsedValue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSUnparsedSegment = @import("typedefs").CSSUnparsedSegment;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSUnparsedValue = struct {

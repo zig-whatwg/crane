@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRLightProbeImpl = @import("impls").XRLightProbe;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -75,7 +78,7 @@ pub const XRLightProbe = struct {
         Meta.MixinTypes,
         struct {
             probeSpace: *runtime.Instance = undefined,
-            onreflectionchange: EventHandler = undefined,
+            onreflectionchange: typedefs.EventHandler = undefined,
             _internal: ?*XRLightProbeImpl.InternalState = null,
         },
     );

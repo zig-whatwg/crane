@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WEBGL_blend_equation_advanced_coherentImpl = @import("impls").WEBGL_blend_equation_advanced_coherent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
 
 pub const WEBGL_blend_equation_advanced_coherent = struct {

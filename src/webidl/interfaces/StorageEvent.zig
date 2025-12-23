@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const StorageEventImpl = @import("impls").StorageEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const Storage = @import("interfaces").Storage;
 const EventTarget = @import("interfaces").EventTarget;
 const StorageEventInit = @import("dictionaries").StorageEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const StorageEvent = struct {
@@ -80,9 +83,9 @@ pub const StorageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: ?runtime.DOMString = null,
-            oldValue: ?runtime.DOMString = null,
-            newValue: ?runtime.DOMString = null,
+            key: ?typedefs.DOMString = null,
+            oldValue: ?typedefs.DOMString = null,
+            newValue: ?typedefs.DOMString = null,
             url: runtime.USVString = undefined,
             storageArea: ?*runtime.Instance = null,
             _internal: ?*StorageEventImpl.InternalState = null,

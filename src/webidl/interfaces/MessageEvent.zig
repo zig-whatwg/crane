@@ -7,13 +7,16 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MessageEventImpl = @import("impls").MessageEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const MessageEventInit = @import("dictionaries").MessageEventInit;
 const EventTarget = @import("interfaces").EventTarget;
 const MessageEventSource = @import("typedefs").MessageEventSource;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MessagePort = @import("interfaces").MessagePort;
 
@@ -87,9 +90,9 @@ pub const MessageEvent = struct {
         struct {
             data: runtime.JSValue = undefined,
             origin: runtime.USVString = undefined,
-            lastEventId: runtime.DOMString = undefined,
-            source: ?MessageEventSource = null,
-            ports: runtime.FrozenArray(MessagePort) = undefined,
+            lastEventId: typedefs.DOMString = undefined,
+            source: ?typedefs.MessageEventSource = null,
+            ports: runtime.JSValue = undefined,
             _internal: ?*MessageEventImpl.InternalState = null,
         },
     );

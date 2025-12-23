@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const OverconstrainedErrorImpl = @import("impls").OverconstrainedError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMException = @import("interfaces").DOMException;
 const DOMString = @import("typedefs").DOMString;
 
@@ -59,7 +62,7 @@ pub const OverconstrainedError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            constraint: runtime.DOMString = undefined,
+            constraint: typedefs.DOMString = undefined,
             _internal: ?*OverconstrainedErrorImpl.InternalState = null,
         },
     );

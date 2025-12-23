@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const LayoutShiftImpl = @import("impls").LayoutShift;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const LayoutShiftAttribution = @import("interfaces").LayoutShiftAttribution;
@@ -71,8 +74,8 @@ pub const LayoutShift = struct {
         struct {
             value: f64 = undefined,
             hadRecentInput: bool = undefined,
-            lastInputTime: DOMHighResTimeStamp = undefined,
-            sources: runtime.FrozenArray(LayoutShiftAttribution) = undefined,
+            lastInputTime: typedefs.DOMHighResTimeStamp = undefined,
+            sources: runtime.JSValue = undefined,
             _internal: ?*LayoutShiftImpl.InternalState = null,
         },
     );

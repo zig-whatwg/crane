@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRBodySpaceImpl = @import("impls").XRBodySpace;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRSpace = @import("interfaces").XRSpace;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -70,7 +73,7 @@ pub const XRBodySpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            jointName: XRBodyJoint = undefined,
+            jointName: enums.XRBodyJoint = undefined,
             _internal: ?*XRBodySpaceImpl.InternalState = null,
         },
     );

@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRViewImpl = @import("impls").XRView;
 const mixins = @import("mixins");
-const XRViewGeometry = @import("interfaces").XRViewGeometry;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const XRViewGeometry = @import("mixins").XRViewGeometry;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XREye = @import("enums").XREye;
 const XRCamera = @import("interfaces").XRCamera;
@@ -77,7 +80,7 @@ pub const XRView = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            eye: XREye = undefined,
+            eye: enums.XREye = undefined,
             index: u32 = undefined,
             recommendedViewportScale: ?f64 = null,
             camera: ?*runtime.Instance = null,

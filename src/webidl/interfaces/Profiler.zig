@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ProfilerImpl = @import("impls").Profiler;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const ProfilerTrace = @import("dictionaries").ProfilerTrace;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -76,7 +79,7 @@ pub const Profiler = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sampleInterval: DOMHighResTimeStamp = undefined,
+            sampleInterval: typedefs.DOMHighResTimeStamp = undefined,
             stopped: bool = undefined,
             _internal: ?*ProfilerImpl.InternalState = null,
         },

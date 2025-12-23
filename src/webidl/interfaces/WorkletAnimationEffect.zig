@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WorkletAnimationEffectImpl = @import("impls").WorkletAnimationEffect;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ComputedEffectTiming = @import("dictionaries").ComputedEffectTiming;
 const EffectTiming = @import("dictionaries").EffectTiming;
 

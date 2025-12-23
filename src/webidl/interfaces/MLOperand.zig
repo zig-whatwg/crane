@@ -7,7 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MLOperandImpl = @import("impls").MLOperand;
 const mixins = @import("mixins");
-const unsignedlong = @import("interfaces").unsignedlong;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MLOperandDataType = @import("enums").MLOperandDataType;
 
 pub const MLOperand = struct {
@@ -64,8 +66,8 @@ pub const MLOperand = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataType: MLOperandDataType = undefined,
-            shape: runtime.FrozenArray(unsignedlong) = undefined,
+            dataType: enums.MLOperandDataType = undefined,
+            shape: runtime.JSValue = undefined,
             _internal: ?*MLOperandImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSParserDeclarationImpl = @import("impls").CSSParserDeclaration;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSParserRule = @import("interfaces").CSSParserRule;
 const CSSParserValue = @import("interfaces").CSSParserValue;
 const DOMString = @import("typedefs").DOMString;
@@ -64,8 +67,8 @@ pub const CSSParserDeclaration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            body: runtime.FrozenArray(CSSParserValue) = undefined,
+            name: typedefs.DOMString = undefined,
+            body: runtime.JSValue = undefined,
             _internal: ?*CSSParserDeclarationImpl.InternalState = null,
         },
     );

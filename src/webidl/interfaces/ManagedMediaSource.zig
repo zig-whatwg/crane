@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ManagedMediaSourceImpl = @import("impls").ManagedMediaSource;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MediaSource = @import("interfaces").MediaSource;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -89,8 +92,8 @@ pub const ManagedMediaSource = struct {
         Meta.MixinTypes,
         struct {
             streaming: bool = undefined,
-            onstartstreaming: EventHandler = undefined,
-            onendstreaming: EventHandler = undefined,
+            onstartstreaming: typedefs.EventHandler = undefined,
+            onendstreaming: typedefs.EventHandler = undefined,
             _internal: ?*ManagedMediaSourceImpl.InternalState = null,
         },
     );

@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IdentityCredentialErrorImpl = @import("impls").IdentityCredentialError;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMException = @import("interfaces").DOMException;
 const IdentityCredentialErrorInit = @import("dictionaries").IdentityCredentialErrorInit;
 const DOMString = @import("typedefs").DOMString;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const IdentityCredentialError = struct {
     pub const Meta = struct {
@@ -64,7 +67,7 @@ pub const IdentityCredentialError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": runtime.DOMString = undefined,
+            @"error": typedefs.DOMString = undefined,
             url: runtime.USVString = undefined,
             _internal: ?*IdentityCredentialErrorImpl.InternalState = null,
         },

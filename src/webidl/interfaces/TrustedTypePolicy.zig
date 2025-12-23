@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TrustedTypePolicyImpl = @import("impls").TrustedTypePolicy;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const TrustedScript = @import("interfaces").TrustedScript;
 const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
@@ -69,7 +72,7 @@ pub const TrustedTypePolicy = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             _internal: ?*TrustedTypePolicyImpl.InternalState = null,
         },
     );

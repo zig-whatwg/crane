@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const OscillatorNodeImpl = @import("impls").OscillatorNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioScheduledSourceNode = @import("interfaces").AudioScheduledSourceNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -95,7 +98,7 @@ pub const OscillatorNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": OscillatorType = undefined,
+            @"type": enums.OscillatorType = undefined,
             frequency: *runtime.Instance = undefined,
             detune: *runtime.Instance = undefined,
             _internal: ?*OscillatorNodeImpl.InternalState = null,

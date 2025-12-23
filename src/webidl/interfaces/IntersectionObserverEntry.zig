@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IntersectionObserverEntryImpl = @import("impls").IntersectionObserverEntry;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const IntersectionObserverEntryInit = @import("dictionaries").IntersectionObserverEntryInit;
@@ -74,7 +77,7 @@ pub const IntersectionObserverEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            time: DOMHighResTimeStamp = undefined,
+            time: typedefs.DOMHighResTimeStamp = undefined,
             rootBounds: ?*runtime.Instance = null,
             boundingClientRect: *runtime.Instance = undefined,
             intersectionRect: *runtime.Instance = undefined,

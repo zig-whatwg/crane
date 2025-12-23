@@ -7,16 +7,19 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SharedWorkerGlobalScopeImpl = @import("impls").SharedWorkerGlobalScope;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WorkerGlobalScope = @import("interfaces").WorkerGlobalScope;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const ByteString = @import("interfaces").ByteString;
+const ByteString = @import("typedefs").ByteString;
 const FontFaceSet = @import("interfaces").FontFaceSet;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const WorkerNavigator = @import("interfaces").WorkerNavigator;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 const TimerHandler = @import("typedefs").TimerHandler;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Scheduler = @import("interfaces").Scheduler;
 const Crypto = @import("interfaces").Crypto;
 const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
@@ -110,8 +113,8 @@ pub const SharedWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            onconnect: EventHandler = undefined,
+            name: typedefs.DOMString = undefined,
+            onconnect: typedefs.EventHandler = undefined,
             _internal: ?*SharedWorkerGlobalScopeImpl.InternalState = null,
         },
     );

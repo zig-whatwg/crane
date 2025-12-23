@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SubscriberImpl = @import("impls").Subscriber;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AbortSignal = @import("interfaces").AbortSignal;
 const VoidFunction = @import("callbacks").VoidFunction;
 

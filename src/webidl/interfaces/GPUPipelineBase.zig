@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUPipelineBaseImpl = @import("impls").GPUPipelineBase;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GPUBindGroupLayout = @import("interfaces").GPUBindGroupLayout;
 
 pub const GPUPipelineBase = struct {

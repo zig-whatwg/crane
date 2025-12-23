@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SchedulerImpl = @import("impls").Scheduler;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SchedulerPostTaskCallback = @import("callbacks").SchedulerPostTaskCallback;
 const SchedulerPostTaskOptions = @import("dictionaries").SchedulerPostTaskOptions;
 

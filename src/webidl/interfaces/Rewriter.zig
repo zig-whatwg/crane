@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RewriterImpl = @import("impls").Rewriter;
 const mixins = @import("mixins");
-const DestroyableModel = @import("interfaces").DestroyableModel;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const DestroyableModel = @import("mixins").DestroyableModel;
 const Availability = @import("enums").Availability;
 const RewriterTone = @import("enums").RewriterTone;
 const ReadableStream = @import("interfaces").ReadableStream;
@@ -99,13 +102,13 @@ pub const Rewriter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: runtime.DOMString = undefined,
-            tone: RewriterTone = undefined,
-            format: RewriterFormat = undefined,
-            length: RewriterLength = undefined,
-            expectedInputLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
-            expectedContextLanguages: ?runtime.FrozenArray(runtime.DOMString) = null,
-            outputLanguage: ?runtime.DOMString = null,
+            sharedContext: typedefs.DOMString = undefined,
+            tone: enums.RewriterTone = undefined,
+            format: enums.RewriterFormat = undefined,
+            length: enums.RewriterLength = undefined,
+            expectedInputLanguages: ?runtime.JSValue = null,
+            expectedContextLanguages: ?runtime.JSValue = null,
+            outputLanguage: ?typedefs.DOMString = null,
             inputQuota: f64 = undefined,
             _internal: ?*RewriterImpl.InternalState = null,
         },

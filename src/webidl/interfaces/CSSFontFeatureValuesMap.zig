@@ -7,7 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSFontFeatureValuesMapImpl = @import("impls").CSSFontFeatureValuesMap;
 const mixins = @import("mixins");
-const sequence = @import("interfaces").sequence;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
 
 pub const CSSFontFeatureValuesMap = struct {

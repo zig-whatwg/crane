@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const RTCRtpTransceiverImpl = @import("impls").RTCRtpTransceiver;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const RTCRtpCodec = @import("dictionaries").RTCRtpCodec;
 const RTCRtpSender = @import("interfaces").RTCRtpSender;
 const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
@@ -73,11 +76,11 @@ pub const RTCRtpTransceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mid: ?runtime.DOMString = null,
+            mid: ?typedefs.DOMString = null,
             sender: *runtime.Instance = undefined,
             receiver: *runtime.Instance = undefined,
-            direction: RTCRtpTransceiverDirection = undefined,
-            currentDirection: ?RTCRtpTransceiverDirection = null,
+            direction: enums.RTCRtpTransceiverDirection = undefined,
+            currentDirection: ?enums.RTCRtpTransceiverDirection = null,
             cached_sender: ?*runtime.Instance = null,
             cached_receiver: ?*runtime.Instance = null,
             _internal: ?*RTCRtpTransceiverImpl.InternalState = null,

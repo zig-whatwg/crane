@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const StorageBucketImpl = @import("impls").StorageBucket;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const CacheStorage = @import("interfaces").CacheStorage;
 const IDBFactory = @import("interfaces").IDBFactory;
@@ -82,7 +85,7 @@ pub const StorageBucket = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             indexedDB: *runtime.Instance = undefined,
             caches: *runtime.Instance = undefined,
             cached_indexedDB: ?*runtime.Instance = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PeriodicWaveImpl = @import("impls").PeriodicWave;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const PeriodicWaveOptions = @import("dictionaries").PeriodicWaveOptions;
 

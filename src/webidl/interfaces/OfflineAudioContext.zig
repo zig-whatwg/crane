@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const OfflineAudioContextImpl = @import("impls").OfflineAudioContext;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -124,7 +127,7 @@ pub const OfflineAudioContext = struct {
         Meta.MixinTypes,
         struct {
             length: u32 = undefined,
-            oncomplete: EventHandler = undefined,
+            oncomplete: typedefs.EventHandler = undefined,
             _internal: ?*OfflineAudioContextImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BlobEventImpl = @import("impls").BlobEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const BlobEventInit = @import("dictionaries").BlobEventInit;
 const Blob = @import("interfaces").Blob;
@@ -72,7 +75,7 @@ pub const BlobEvent = struct {
         Meta.MixinTypes,
         struct {
             data: *runtime.Instance = undefined,
-            timecode: DOMHighResTimeStamp = undefined,
+            timecode: typedefs.DOMHighResTimeStamp = undefined,
             cached_data: ?*runtime.Instance = null,
             _internal: ?*BlobEventImpl.InternalState = null,
         },

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CaretPositionImpl = @import("impls").CaretPosition;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMRect = @import("interfaces").DOMRect;
 const Node = @import("interfaces").Node;
 

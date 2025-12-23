@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FileImpl = @import("impls").File;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Blob = @import("interfaces").Blob;
 const FilePropertyBag = @import("dictionaries").FilePropertyBag;
 const BlobPart = @import("typedefs").BlobPart;
 const ReadableStream = @import("interfaces").ReadableStream;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const BlobPropertyBag = @import("dictionaries").BlobPropertyBag;
 
@@ -77,7 +80,7 @@ pub const File = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
             lastModified: i64 = undefined,
             webkitRelativePath: runtime.USVString = undefined,
             _internal: ?*FileImpl.InternalState = null,

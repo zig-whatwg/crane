@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSConditionRuleImpl = @import("impls").CSSConditionRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -65,7 +68,7 @@ pub const CSSConditionRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            conditionText: CSSOMString = undefined,
+            conditionText: typedefs.CSSOMString = undefined,
             _internal: ?*CSSConditionRuleImpl.InternalState = null,
         },
     );

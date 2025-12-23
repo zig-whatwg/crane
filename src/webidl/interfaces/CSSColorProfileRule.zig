@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSColorProfileRuleImpl = @import("impls").CSSColorProfileRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -67,10 +70,10 @@ pub const CSSColorProfileRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: CSSOMString = undefined,
-            src: CSSOMString = undefined,
-            renderingIntent: CSSOMString = undefined,
-            components: CSSOMString = undefined,
+            name: typedefs.CSSOMString = undefined,
+            src: typedefs.CSSOMString = undefined,
+            renderingIntent: typedefs.CSSOMString = undefined,
+            components: typedefs.CSSOMString = undefined,
             _internal: ?*CSSColorProfileRuleImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PreferenceObjectImpl = @import("impls").PreferenceObject;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -81,10 +84,10 @@ pub const PreferenceObject = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            override: ?runtime.DOMString = null,
-            value: runtime.DOMString = undefined,
-            validValues: runtime.FrozenArray(runtime.DOMString) = undefined,
-            onchange: EventHandler = undefined,
+            override: ?typedefs.DOMString = null,
+            value: typedefs.DOMString = undefined,
+            validValues: runtime.JSValue = undefined,
+            onchange: typedefs.EventHandler = undefined,
             _internal: ?*PreferenceObjectImpl.InternalState = null,
         },
     );

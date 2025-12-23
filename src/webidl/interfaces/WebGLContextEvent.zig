@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebGLContextEventImpl = @import("impls").WebGLContextEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const WebGLContextEventInit = @import("dictionaries").WebGLContextEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -71,7 +74,7 @@ pub const WebGLContextEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            statusMessage: runtime.DOMString = undefined,
+            statusMessage: typedefs.DOMString = undefined,
             _internal: ?*WebGLContextEventImpl.InternalState = null,
         },
     );

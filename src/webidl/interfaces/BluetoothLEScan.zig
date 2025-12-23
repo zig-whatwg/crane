@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothLEScanImpl = @import("impls").BluetoothLEScan;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BluetoothLEScanFilter = @import("interfaces").BluetoothLEScanFilter;
 
 pub const BluetoothLEScan = struct {
@@ -66,7 +69,7 @@ pub const BluetoothLEScan = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            filters: runtime.FrozenArray(BluetoothLEScanFilter) = undefined,
+            filters: runtime.JSValue = undefined,
             keepRepeatedDevices: bool = undefined,
             acceptAllAdvertisements: bool = undefined,
             active: bool = undefined,

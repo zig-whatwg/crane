@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGScriptElementImpl = @import("impls").SVGScriptElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGElement = @import("interfaces").SVGElement;
-const SVGURIReference = @import("interfaces").SVGURIReference;
+const SVGURIReference = @import("mixins").SVGURIReference;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -16,7 +19,7 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -214,8 +217,8 @@ pub const SVGScriptElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": runtime.DOMString = undefined,
-            crossOrigin: ?runtime.DOMString = null,
+            @"type": typedefs.DOMString = undefined,
+            crossOrigin: ?typedefs.DOMString = null,
             href: *runtime.Instance = undefined,
             cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGScriptElementImpl.InternalState = null,

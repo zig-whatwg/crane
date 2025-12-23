@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CounterImpl = @import("impls").Counter;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const Counter = struct {
@@ -56,9 +59,9 @@ pub const Counter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            identifier: runtime.DOMString = undefined,
-            listStyle: runtime.DOMString = undefined,
-            separator: runtime.DOMString = undefined,
+            identifier: typedefs.DOMString = undefined,
+            listStyle: typedefs.DOMString = undefined,
+            separator: typedefs.DOMString = undefined,
             _internal: ?*CounterImpl.InternalState = null,
         },
     );

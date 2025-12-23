@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSPerspectiveImpl = @import("impls").CSSPerspective;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
 const CSSPerspectiveValue = @import("typedefs").CSSPerspectiveValue;
 const DOMMatrix = @import("interfaces").DOMMatrix;
@@ -67,7 +70,7 @@ pub const CSSPerspective = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: CSSPerspectiveValue = undefined,
+            length: typedefs.CSSPerspectiveValue = undefined,
             _internal: ?*CSSPerspectiveImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VideoFrameImpl = @import("impls").VideoFrame;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const VideoFrameMetadata = @import("dictionaries").VideoFrameMetadata;
 const VideoFrameInit = @import("dictionaries").VideoFrameInit;
@@ -102,7 +105,7 @@ pub const VideoFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            format: ?VideoPixelFormat = null,
+            format: ?enums.VideoPixelFormat = null,
             codedWidth: u32 = undefined,
             codedHeight: u32 = undefined,
             codedRect: ?*runtime.Instance = null,

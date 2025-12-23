@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PressureRecordImpl = @import("impls").PressureRecord;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PressureSource = @import("enums").PressureSource;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const PressureState = @import("enums").PressureState;
@@ -70,9 +73,9 @@ pub const PressureRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: PressureSource = undefined,
-            state: PressureState = undefined,
-            time: DOMHighResTimeStamp = undefined,
+            source: enums.PressureSource = undefined,
+            state: enums.PressureState = undefined,
+            time: typedefs.DOMHighResTimeStamp = undefined,
             _internal: ?*PressureRecordImpl.InternalState = null,
         },
     );

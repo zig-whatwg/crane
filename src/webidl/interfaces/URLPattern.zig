@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const URLPatternImpl = @import("impls").URLPattern;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const URLPatternOptions = @import("dictionaries").URLPatternOptions;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const URLPatternResult = @import("dictionaries").URLPatternResult;
 const URLPatternInput = @import("typedefs").URLPatternInput;
 

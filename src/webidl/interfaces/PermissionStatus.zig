@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PermissionStatusImpl = @import("impls").PermissionStatus;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const PermissionState = @import("enums").PermissionState;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
@@ -78,9 +81,9 @@ pub const PermissionStatus = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: PermissionState = undefined,
-            name: runtime.DOMString = undefined,
-            onchange: EventHandler = undefined,
+            state: enums.PermissionState = undefined,
+            name: typedefs.DOMString = undefined,
+            onchange: typedefs.EventHandler = undefined,
             _internal: ?*PermissionStatusImpl.InternalState = null,
         },
     );

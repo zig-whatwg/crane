@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRViewerPoseImpl = @import("impls").XRViewerPose;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRPose = @import("interfaces").XRPose;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XRView = @import("interfaces").XRView;
@@ -62,8 +65,8 @@ pub const XRViewerPose = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            views: runtime.FrozenArray(XRView) = undefined,
-            cached_views: ?runtime.FrozenArray(XRView) = null,
+            views: runtime.JSValue = undefined,
+            cached_views: ?runtime.JSValue = null,
             _internal: ?*XRViewerPoseImpl.InternalState = null,
         },
     );

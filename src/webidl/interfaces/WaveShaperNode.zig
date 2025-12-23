@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WaveShaperNodeImpl = @import("impls").WaveShaperNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -87,7 +90,7 @@ pub const WaveShaperNode = struct {
         Meta.MixinTypes,
         struct {
             curve: ?runtime.Float32Array = null,
-            oversample: OverSampleType = undefined,
+            oversample: enums.OverSampleType = undefined,
             _internal: ?*WaveShaperNodeImpl.InternalState = null,
         },
     );

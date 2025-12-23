@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothImpl = @import("impls").Bluetooth;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const BluetoothDeviceEventHandlers = @import("interfaces").BluetoothDeviceEventHandlers;
-const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
-const ServiceEventHandlers = @import("interfaces").ServiceEventHandlers;
+const BluetoothDeviceEventHandlers = @import("mixins").BluetoothDeviceEventHandlers;
+const CharacteristicEventHandlers = @import("mixins").CharacteristicEventHandlers;
+const ServiceEventHandlers = @import("mixins").ServiceEventHandlers;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const BluetoothDevice = @import("interfaces").BluetoothDevice;
@@ -104,14 +107,14 @@ pub const Bluetooth = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onavailabilitychanged: EventHandler = undefined,
+            onavailabilitychanged: typedefs.EventHandler = undefined,
             referringDevice: ?*runtime.Instance = null,
-            onadvertisementreceived: EventHandler = undefined,
-            ongattserverdisconnected: EventHandler = undefined,
-            oncharacteristicvaluechanged: EventHandler = undefined,
-            onserviceadded: EventHandler = undefined,
-            onservicechanged: EventHandler = undefined,
-            onserviceremoved: EventHandler = undefined,
+            onadvertisementreceived: typedefs.EventHandler = undefined,
+            ongattserverdisconnected: typedefs.EventHandler = undefined,
+            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
+            onserviceadded: typedefs.EventHandler = undefined,
+            onservicechanged: typedefs.EventHandler = undefined,
+            onserviceremoved: typedefs.EventHandler = undefined,
             cached_referringDevice: ?*runtime.Instance = null,
             _internal: ?*BluetoothImpl.InternalState = null,
         },

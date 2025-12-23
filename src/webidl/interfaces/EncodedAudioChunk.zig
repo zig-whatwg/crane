@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const EncodedAudioChunkImpl = @import("impls").EncodedAudioChunk;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const EncodedAudioChunkType = @import("enums").EncodedAudioChunkType;
 const EncodedAudioChunkInit = @import("dictionaries").EncodedAudioChunkInit;
@@ -71,7 +74,7 @@ pub const EncodedAudioChunk = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": EncodedAudioChunkType = undefined,
+            @"type": enums.EncodedAudioChunkType = undefined,
             timestamp: i64 = undefined,
             duration: ?u64 = null,
             byteLength: u32 = undefined,

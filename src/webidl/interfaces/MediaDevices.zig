@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaDevicesImpl = @import("impls").MediaDevices;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const MediaDeviceInfo = @import("interfaces").MediaDeviceInfo;
@@ -96,8 +99,8 @@ pub const MediaDevices = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ondevicechange: EventHandler = undefined,
-            oncaptureaction: EventHandler = undefined,
+            ondevicechange: typedefs.EventHandler = undefined,
+            oncaptureaction: typedefs.EventHandler = undefined,
             _internal: ?*MediaDevicesImpl.InternalState = null,
         },
     );

@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceLongAnimationFrameTimingImpl = @import("impls").PerformanceLongAnimationFrameTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
-const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
+const PaintTimingMixin = @import("mixins").PaintTimingMixin;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const PerformanceScriptTiming = @import("interfaces").PerformanceScriptTiming;
 const DOMString = @import("typedefs").DOMString;
@@ -86,18 +89,18 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startTime: DOMHighResTimeStamp = undefined,
-            duration: DOMHighResTimeStamp = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            renderStart: DOMHighResTimeStamp = undefined,
-            styleAndLayoutStart: DOMHighResTimeStamp = undefined,
-            blockingDuration: DOMHighResTimeStamp = undefined,
-            firstUIEventTimestamp: DOMHighResTimeStamp = undefined,
-            scripts: runtime.FrozenArray(PerformanceScriptTiming) = undefined,
-            paintTime: DOMHighResTimeStamp = undefined,
-            presentationTime: ?DOMHighResTimeStamp = null,
-            cached_scripts: ?runtime.FrozenArray(PerformanceScriptTiming) = null,
+            startTime: typedefs.DOMHighResTimeStamp = undefined,
+            duration: typedefs.DOMHighResTimeStamp = undefined,
+            name: typedefs.DOMString = undefined,
+            entryType: typedefs.DOMString = undefined,
+            renderStart: typedefs.DOMHighResTimeStamp = undefined,
+            styleAndLayoutStart: typedefs.DOMHighResTimeStamp = undefined,
+            blockingDuration: typedefs.DOMHighResTimeStamp = undefined,
+            firstUIEventTimestamp: typedefs.DOMHighResTimeStamp = undefined,
+            scripts: runtime.JSValue = undefined,
+            paintTime: typedefs.DOMHighResTimeStamp = undefined,
+            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
+            cached_scripts: ?runtime.JSValue = null,
             _internal: ?*PerformanceLongAnimationFrameTimingImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const InterestGroupScriptRunnerGlobalScopeImpl = @import("impls").InterestGroupScriptRunnerGlobalScope;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ProtectedAudienceUtilities = @import("interfaces").ProtectedAudienceUtilities;
 const PrivateAggregation = @import("interfaces").PrivateAggregation;
 

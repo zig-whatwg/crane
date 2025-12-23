@@ -7,18 +7,21 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DedicatedWorkerGlobalScopeImpl = @import("impls").DedicatedWorkerGlobalScope;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const WorkerGlobalScope = @import("interfaces").WorkerGlobalScope;
-const AnimationFrameProvider = @import("interfaces").AnimationFrameProvider;
-const MessageEventTarget = @import("interfaces").MessageEventTarget;
+const AnimationFrameProvider = @import("mixins").AnimationFrameProvider;
+const MessageEventTarget = @import("mixins").MessageEventTarget;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const ByteString = @import("interfaces").ByteString;
+const ByteString = @import("typedefs").ByteString;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const FontFaceSet = @import("interfaces").FontFaceSet;
 const WorkerNavigator = @import("interfaces").WorkerNavigator;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 const TimerHandler = @import("typedefs").TimerHandler;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Scheduler = @import("interfaces").Scheduler;
 const Crypto = @import("interfaces").Crypto;
 const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
@@ -126,10 +129,10 @@ pub const DedicatedWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            onrtctransform: EventHandler = undefined,
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
+            name: typedefs.DOMString = undefined,
+            onrtctransform: typedefs.EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*DedicatedWorkerGlobalScopeImpl.InternalState = null,
         },
     );

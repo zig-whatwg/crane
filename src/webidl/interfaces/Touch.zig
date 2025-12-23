@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TouchImpl = @import("impls").Touch;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const TouchInit = @import("dictionaries").TouchInit;
 const EventTarget = @import("interfaces").EventTarget;
 const TouchType = @import("enums").TouchType;
@@ -101,7 +104,7 @@ pub const Touch = struct {
             force: f32 = undefined,
             altitudeAngle: f32 = undefined,
             azimuthAngle: f32 = undefined,
-            touchType: TouchType = undefined,
+            touchType: enums.TouchType = undefined,
             _internal: ?*TouchImpl.InternalState = null,
         },
     );

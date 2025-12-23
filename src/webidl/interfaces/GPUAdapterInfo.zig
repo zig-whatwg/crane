@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUAdapterInfoImpl = @import("impls").GPUAdapterInfo;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const GPUAdapterInfo = struct {
@@ -73,10 +76,10 @@ pub const GPUAdapterInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            vendor: runtime.DOMString = undefined,
-            architecture: runtime.DOMString = undefined,
-            device: runtime.DOMString = undefined,
-            description: runtime.DOMString = undefined,
+            vendor: typedefs.DOMString = undefined,
+            architecture: typedefs.DOMString = undefined,
+            device: typedefs.DOMString = undefined,
+            description: typedefs.DOMString = undefined,
             subgroupMinSize: u32 = undefined,
             subgroupMaxSize: u32 = undefined,
             isFallbackAdapter: bool = undefined,

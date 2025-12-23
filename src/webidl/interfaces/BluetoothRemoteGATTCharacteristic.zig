@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothRemoteGATTCharacteristicImpl = @import("impls").BluetoothRemoteGATTCharacteristic;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const CharacteristicEventHandlers = @import("interfaces").CharacteristicEventHandlers;
+const CharacteristicEventHandlers = @import("mixins").CharacteristicEventHandlers;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const UUID = @import("typedefs").UUID;
@@ -105,10 +108,10 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         Meta.MixinTypes,
         struct {
             service: *runtime.Instance = undefined,
-            uuid: UUID = undefined,
+            uuid: typedefs.UUID = undefined,
             properties: *runtime.Instance = undefined,
             value: ?runtime.DataView = null,
-            oncharacteristicvaluechanged: EventHandler = undefined,
+            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
             cached_service: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTCharacteristicImpl.InternalState = null,
         },

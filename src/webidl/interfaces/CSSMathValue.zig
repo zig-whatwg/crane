@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSMathValueImpl = @import("impls").CSSMathValue;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const CSSUnitValue = @import("interfaces").CSSUnitValue;
 const CSSMathOperator = @import("enums").CSSMathOperator;
@@ -14,7 +17,7 @@ const CSSMathSum = @import("interfaces").CSSMathSum;
 const CSSNumericType = @import("dictionaries").CSSNumericType;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSMathValue = struct {
@@ -84,7 +87,7 @@ pub const CSSMathValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            operator: CSSMathOperator = undefined,
+            operator: enums.CSSMathOperator = undefined,
             _internal: ?*CSSMathValueImpl.InternalState = null,
         },
     );

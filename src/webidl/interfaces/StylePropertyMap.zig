@@ -7,9 +7,12 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const StylePropertyMapImpl = @import("impls").StylePropertyMap;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 
 pub const StylePropertyMap = struct {
     pub const Meta = struct {

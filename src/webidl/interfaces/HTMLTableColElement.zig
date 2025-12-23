@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HTMLTableColElementImpl = @import("impls").HTMLTableColElement;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HTMLElement = @import("interfaces").HTMLElement;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -16,7 +19,7 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -224,11 +227,11 @@ pub const HTMLTableColElement = struct {
         Meta.MixinTypes,
         struct {
             span: u32 = undefined,
-            @"align": runtime.DOMString = undefined,
-            ch: runtime.DOMString = undefined,
-            chOff: runtime.DOMString = undefined,
-            vAlign: runtime.DOMString = undefined,
-            width: runtime.DOMString = undefined,
+            @"align": typedefs.DOMString = undefined,
+            ch: typedefs.DOMString = undefined,
+            chOff: typedefs.DOMString = undefined,
+            vAlign: typedefs.DOMString = undefined,
+            width: typedefs.DOMString = undefined,
             _internal: ?*HTMLTableColElementImpl.InternalState = null,
         },
     );

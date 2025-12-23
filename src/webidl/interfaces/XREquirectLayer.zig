@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XREquirectLayerImpl = @import("impls").XREquirectLayer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRCompositionLayer = @import("interfaces").XRCompositionLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -93,7 +96,7 @@ pub const XREquirectLayer = struct {
             centralHorizontalAngle: f32 = undefined,
             upperVerticalAngle: f32 = undefined,
             lowerVerticalAngle: f32 = undefined,
-            onredraw: EventHandler = undefined,
+            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XREquirectLayerImpl.InternalState = null,
         },
     );

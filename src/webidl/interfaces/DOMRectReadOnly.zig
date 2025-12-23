@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DOMRectReadOnlyImpl = @import("impls").DOMRectReadOnly;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMRectInit = @import("dictionaries").DOMRectInit;
 
 pub const DOMRectReadOnly = struct {

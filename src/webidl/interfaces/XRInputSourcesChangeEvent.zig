@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRInputSourcesChangeEventImpl = @import("impls").XRInputSourcesChangeEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const XRInputSource = @import("interfaces").XRInputSource;
 const EventTarget = @import("interfaces").EventTarget;
@@ -76,11 +79,11 @@ pub const XRInputSourcesChangeEvent = struct {
         Meta.MixinTypes,
         struct {
             session: *runtime.Instance = undefined,
-            added: runtime.FrozenArray(XRInputSource) = undefined,
-            removed: runtime.FrozenArray(XRInputSource) = undefined,
+            added: runtime.JSValue = undefined,
+            removed: runtime.JSValue = undefined,
             cached_session: ?*runtime.Instance = null,
-            cached_added: ?runtime.FrozenArray(XRInputSource) = null,
-            cached_removed: ?runtime.FrozenArray(XRInputSource) = null,
+            cached_added: ?runtime.JSValue = null,
+            cached_removed: ?runtime.JSValue = null,
             _internal: ?*XRInputSourcesChangeEventImpl.InternalState = null,
         },
     );

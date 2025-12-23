@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ErrorEventImpl = @import("impls").ErrorEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const ErrorEventInit = @import("dictionaries").ErrorEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ErrorEvent = struct {
@@ -77,7 +80,7 @@ pub const ErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: runtime.DOMString = undefined,
+            message: typedefs.DOMString = undefined,
             filename: runtime.USVString = undefined,
             lineno: u32 = undefined,
             colno: u32 = undefined,

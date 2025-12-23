@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SFrameTransformErrorEventImpl = @import("impls").SFrameTransformErrorEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const SFrameTransformErrorEventInit = @import("dictionaries").SFrameTransformErrorEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -77,8 +80,8 @@ pub const SFrameTransformErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            errorType: SFrameTransformErrorEventType = undefined,
-            keyID: ?CryptoKeyID = null,
+            errorType: enums.SFrameTransformErrorEventType = undefined,
+            keyID: ?typedefs.CryptoKeyID = null,
             frame: runtime.JSValue = undefined,
             _internal: ?*SFrameTransformErrorEventImpl.InternalState = null,
         },

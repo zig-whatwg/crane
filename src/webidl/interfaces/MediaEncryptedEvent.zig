@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaEncryptedEventImpl = @import("impls").MediaEncryptedEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const MediaEncryptedEventInit = @import("dictionaries").MediaEncryptedEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -70,7 +73,7 @@ pub const MediaEncryptedEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            initDataType: runtime.DOMString = undefined,
+            initDataType: typedefs.DOMString = undefined,
             initData: ?runtime.ArrayBuffer = null,
             _internal: ?*MediaEncryptedEventImpl.InternalState = null,
         },

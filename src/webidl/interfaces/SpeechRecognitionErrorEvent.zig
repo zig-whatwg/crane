@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechRecognitionErrorEventImpl = @import("impls").SpeechRecognitionErrorEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const EventTarget = @import("interfaces").EventTarget;
 const SpeechRecognitionErrorEventInit = @import("dictionaries").SpeechRecognitionErrorEventInit;
@@ -72,8 +75,8 @@ pub const SpeechRecognitionErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": SpeechRecognitionErrorCode = undefined,
-            message: runtime.DOMString = undefined,
+            @"error": enums.SpeechRecognitionErrorCode = undefined,
+            message: typedefs.DOMString = undefined,
             _internal: ?*SpeechRecognitionErrorEventImpl.InternalState = null,
         },
     );

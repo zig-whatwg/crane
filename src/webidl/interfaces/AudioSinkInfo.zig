@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioSinkInfoImpl = @import("impls").AudioSinkInfo;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioSinkType = @import("enums").AudioSinkType;
 
 pub const AudioSinkInfo = struct {
@@ -57,7 +60,7 @@ pub const AudioSinkInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": AudioSinkType = undefined,
+            @"type": enums.AudioSinkType = undefined,
             _internal: ?*AudioSinkInfoImpl.InternalState = null,
         },
     );

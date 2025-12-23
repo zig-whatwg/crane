@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSLayerStatementRuleImpl = @import("impls").CSSLayerStatementRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -61,7 +64,7 @@ pub const CSSLayerStatementRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            nameList: runtime.FrozenArray(CSSOMString) = undefined,
+            nameList: runtime.JSValue = undefined,
             _internal: ?*CSSLayerStatementRuleImpl.InternalState = null,
         },
     );

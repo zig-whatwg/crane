@@ -7,11 +7,14 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ServiceWorkerContainerImpl = @import("impls").ServiceWorkerContainer;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const ServiceWorker = @import("interfaces").ServiceWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
 const ServiceWorkerRegistration = @import("interfaces").ServiceWorkerRegistration;
 const Event = @import("interfaces").Event;
@@ -96,10 +99,10 @@ pub const ServiceWorkerContainer = struct {
         Meta.MixinTypes,
         struct {
             controller: ?*runtime.Instance = null,
-            ready: runtime.Promise(ServiceWorkerRegistration) = undefined,
-            oncontrollerchange: EventHandler = undefined,
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
+            ready: runtime.JSValue = undefined,
+            oncontrollerchange: typedefs.EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*ServiceWorkerContainerImpl.InternalState = null,
         },
     );

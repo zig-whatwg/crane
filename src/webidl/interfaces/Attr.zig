@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AttrImpl = @import("impls").Attr;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Document = @import("interfaces").Document;
 const NodeList = @import("interfaces").NodeList;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
 const Element = @import("interfaces").Element;
@@ -101,11 +104,11 @@ pub const Attr = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            namespaceURI: ?runtime.DOMString = null,
-            prefix: ?runtime.DOMString = null,
-            localName: runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
-            value: runtime.DOMString = undefined,
+            namespaceURI: ?typedefs.DOMString = null,
+            prefix: ?typedefs.DOMString = null,
+            localName: typedefs.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            value: typedefs.DOMString = undefined,
             ownerElement: ?*runtime.Instance = null,
             specified: bool = undefined,
             _internal: ?*AttrImpl.InternalState = null,

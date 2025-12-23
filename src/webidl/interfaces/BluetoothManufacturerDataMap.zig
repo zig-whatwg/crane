@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothManufacturerDataMapImpl = @import("impls").BluetoothManufacturerDataMap;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 
 pub const BluetoothManufacturerDataMap = struct {
     pub const Meta = struct {

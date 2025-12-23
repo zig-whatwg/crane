@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformanceScriptTimingImpl = @import("impls").PerformanceScriptTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const Window = @import("interfaces").Window;
 const ScriptWindowAttribution = @import("enums").ScriptWindowAttribution;
@@ -91,20 +94,20 @@ pub const PerformanceScriptTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startTime: DOMHighResTimeStamp = undefined,
-            duration: DOMHighResTimeStamp = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            invokerType: ScriptInvokerType = undefined,
-            invoker: runtime.DOMString = undefined,
-            executionStart: DOMHighResTimeStamp = undefined,
-            sourceURL: runtime.DOMString = undefined,
-            sourceFunctionName: runtime.DOMString = undefined,
+            startTime: typedefs.DOMHighResTimeStamp = undefined,
+            duration: typedefs.DOMHighResTimeStamp = undefined,
+            name: typedefs.DOMString = undefined,
+            entryType: typedefs.DOMString = undefined,
+            invokerType: enums.ScriptInvokerType = undefined,
+            invoker: typedefs.DOMString = undefined,
+            executionStart: typedefs.DOMHighResTimeStamp = undefined,
+            sourceURL: typedefs.DOMString = undefined,
+            sourceFunctionName: typedefs.DOMString = undefined,
             sourceCharPosition: i64 = undefined,
-            pauseDuration: DOMHighResTimeStamp = undefined,
-            forcedStyleAndLayoutDuration: DOMHighResTimeStamp = undefined,
+            pauseDuration: typedefs.DOMHighResTimeStamp = undefined,
+            forcedStyleAndLayoutDuration: typedefs.DOMHighResTimeStamp = undefined,
             window: ?*runtime.Instance = null,
-            windowAttribution: ScriptWindowAttribution = undefined,
+            windowAttribution: enums.ScriptWindowAttribution = undefined,
             _internal: ?*PerformanceScriptTimingImpl.InternalState = null,
         },
     );

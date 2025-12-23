@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PluginImpl = @import("impls").Plugin;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const MimeType = @import("interfaces").MimeType;
 const DOMString = @import("typedefs").DOMString;
 
@@ -69,9 +72,9 @@ pub const Plugin = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            description: runtime.DOMString = undefined,
-            filename: runtime.DOMString = undefined,
+            name: typedefs.DOMString = undefined,
+            description: typedefs.DOMString = undefined,
+            filename: typedefs.DOMString = undefined,
             length: u32 = undefined,
             _internal: ?*PluginImpl.InternalState = null,
         },

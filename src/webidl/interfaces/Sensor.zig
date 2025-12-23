@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SensorImpl = @import("impls").Sensor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -91,10 +94,10 @@ pub const Sensor = struct {
         struct {
             activated: bool = undefined,
             hasReading: bool = undefined,
-            timestamp: ?DOMHighResTimeStamp = null,
-            onreading: EventHandler = undefined,
-            onactivate: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            timestamp: ?typedefs.DOMHighResTimeStamp = null,
+            onreading: typedefs.EventHandler = undefined,
+            onactivate: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SensorImpl.InternalState = null,
         },
     );

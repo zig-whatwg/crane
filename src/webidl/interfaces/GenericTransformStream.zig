@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GenericTransformStreamImpl = @import("impls").GenericTransformStream;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ReadableStream = @import("interfaces").ReadableStream;
 const WritableStream = @import("interfaces").WritableStream;
 

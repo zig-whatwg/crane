@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioWorkletNodeImpl = @import("impls").AudioWorkletNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
@@ -93,7 +96,7 @@ pub const AudioWorkletNode = struct {
         struct {
             parameters: *runtime.Instance = undefined,
             port: *runtime.Instance = undefined,
-            onprocessorerror: EventHandler = undefined,
+            onprocessorerror: typedefs.EventHandler = undefined,
             _internal: ?*AudioWorkletNodeImpl.InternalState = null,
         },
     );

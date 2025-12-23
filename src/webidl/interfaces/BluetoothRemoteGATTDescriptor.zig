@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const BluetoothRemoteGATTDescriptorImpl = @import("impls").BluetoothRemoteGATTDescriptor;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BluetoothRemoteGATTCharacteristic = @import("interfaces").BluetoothRemoteGATTCharacteristic;
 const UUID = @import("typedefs").UUID;
 const BufferSource = @import("typedefs").BufferSource;
@@ -69,7 +72,7 @@ pub const BluetoothRemoteGATTDescriptor = struct {
         Meta.MixinTypes,
         struct {
             characteristic: *runtime.Instance = undefined,
-            uuid: UUID = undefined,
+            uuid: typedefs.UUID = undefined,
             value: ?runtime.DataView = null,
             cached_characteristic: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTDescriptorImpl.InternalState = null,

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const IDBOpenDBRequestImpl = @import("impls").IDBOpenDBRequest;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const IDBRequest = @import("interfaces").IDBRequest;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -81,8 +84,8 @@ pub const IDBOpenDBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onblocked: EventHandler = undefined,
-            onupgradeneeded: EventHandler = undefined,
+            onblocked: typedefs.EventHandler = undefined,
+            onupgradeneeded: typedefs.EventHandler = undefined,
             _internal: ?*IDBOpenDBRequestImpl.InternalState = null,
         },
     );

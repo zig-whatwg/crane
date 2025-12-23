@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const InputEventImpl = @import("impls").InputEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const UIEvent = @import("interfaces").UIEvent;
 const Window = @import("interfaces").Window;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const UIEventInit = @import("dictionaries").UIEventInit;
 const InputEventInit = @import("dictionaries").InputEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -85,7 +88,7 @@ pub const InputEvent = struct {
         struct {
             data: ?runtime.USVString = null,
             isComposing: bool = undefined,
-            inputType: runtime.DOMString = undefined,
+            inputType: typedefs.DOMString = undefined,
             dataTransfer: ?*runtime.Instance = null,
             _internal: ?*InputEventImpl.InternalState = null,
         },

@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ReadableStreamDefaultReaderImpl = @import("impls").ReadableStreamDefaultReader;
 const mixins = @import("mixins");
-const ReadableStreamGenericReader = @import("interfaces").ReadableStreamGenericReader;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const ReadableStreamGenericReader = @import("mixins").ReadableStreamGenericReader;
 const ReadableStream = @import("interfaces").ReadableStream;
 const ReadableStreamReadResult = @import("dictionaries").ReadableStreamReadResult;
 
@@ -67,7 +70,7 @@ pub const ReadableStreamDefaultReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            closed: runtime.Promise(void) = undefined,
+            closed: runtime.JSValue = undefined,
             _internal: ?*ReadableStreamDefaultReaderImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MessageEventTargetImpl = @import("impls").MessageEventTarget;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const MessageEventTarget = struct {
@@ -54,8 +57,8 @@ pub const MessageEventTarget = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*MessageEventTargetImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const FontFaceSourceImpl = @import("impls").FontFaceSource;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const FontFaceSet = @import("interfaces").FontFaceSet;
 
 pub const FontFaceSource = struct {

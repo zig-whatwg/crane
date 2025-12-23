@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const NotRestoredReasonsImpl = @import("impls").NotRestoredReasons;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const NotRestoredReasonDetails = @import("interfaces").NotRestoredReasonDetails;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const NotRestoredReasons = struct {
@@ -72,11 +75,11 @@ pub const NotRestoredReasons = struct {
         Meta.MixinTypes,
         struct {
             src: ?runtime.USVString = null,
-            id: ?runtime.DOMString = null,
-            name: ?runtime.DOMString = null,
+            id: ?typedefs.DOMString = null,
+            name: ?typedefs.DOMString = null,
             url: ?runtime.USVString = null,
-            reasons: ?runtime.FrozenArray(NotRestoredReasonDetails) = null,
-            children: ?runtime.FrozenArray(NotRestoredReasons) = null,
+            reasons: ?runtime.JSValue = null,
+            children: ?runtime.JSValue = null,
             _internal: ?*NotRestoredReasonsImpl.InternalState = null,
         },
     );

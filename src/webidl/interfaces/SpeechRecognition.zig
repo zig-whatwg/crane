@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechRecognitionImpl = @import("impls").SpeechRecognition;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -125,23 +128,23 @@ pub const SpeechRecognition = struct {
         Meta.MixinTypes,
         struct {
             grammars: *runtime.Instance = undefined,
-            lang: runtime.DOMString = undefined,
+            lang: typedefs.DOMString = undefined,
             continuous: bool = undefined,
             interimResults: bool = undefined,
             maxAlternatives: u32 = undefined,
             processLocally: bool = undefined,
-            phrases: runtime.ObservableArray(SpeechRecognitionPhrase) = undefined,
-            onaudiostart: EventHandler = undefined,
-            onsoundstart: EventHandler = undefined,
-            onspeechstart: EventHandler = undefined,
-            onspeechend: EventHandler = undefined,
-            onsoundend: EventHandler = undefined,
-            onaudioend: EventHandler = undefined,
-            onresult: EventHandler = undefined,
-            onnomatch: EventHandler = undefined,
-            onerror: EventHandler = undefined,
-            onstart: EventHandler = undefined,
-            onend: EventHandler = undefined,
+            phrases: runtime.JSValue = undefined,
+            onaudiostart: typedefs.EventHandler = undefined,
+            onsoundstart: typedefs.EventHandler = undefined,
+            onspeechstart: typedefs.EventHandler = undefined,
+            onspeechend: typedefs.EventHandler = undefined,
+            onsoundend: typedefs.EventHandler = undefined,
+            onaudioend: typedefs.EventHandler = undefined,
+            onresult: typedefs.EventHandler = undefined,
+            onnomatch: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
+            onstart: typedefs.EventHandler = undefined,
+            onend: typedefs.EventHandler = undefined,
             _internal: ?*SpeechRecognitionImpl.InternalState = null,
         },
     );

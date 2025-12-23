@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PresentationConnectionListImpl = @import("impls").PresentationConnectionList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -74,8 +77,8 @@ pub const PresentationConnectionList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            connections: runtime.FrozenArray(PresentationConnection) = undefined,
-            onconnectionavailable: EventHandler = undefined,
+            connections: runtime.JSValue = undefined,
+            onconnectionavailable: typedefs.EventHandler = undefined,
             _internal: ?*PresentationConnectionListImpl.InternalState = null,
         },
     );

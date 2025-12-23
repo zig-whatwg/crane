@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ReadableStreamBYOBRequestImpl = @import("impls").ReadableStreamBYOBRequest;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
 
 pub const ReadableStreamBYOBRequest = struct {
@@ -61,7 +64,7 @@ pub const ReadableStreamBYOBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            view: ?ArrayBufferView = null,
+            view: ?typedefs.ArrayBufferView = null,
             _internal: ?*ReadableStreamBYOBRequestImpl.InternalState = null,
         },
     );

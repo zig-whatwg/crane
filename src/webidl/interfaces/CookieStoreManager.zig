@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CookieStoreManagerImpl = @import("impls").CookieStoreManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CookieStoreGetOptions = @import("dictionaries").CookieStoreGetOptions;
 
 pub const CookieStoreManager = struct {

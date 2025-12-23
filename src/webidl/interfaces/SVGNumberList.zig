@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGNumberListImpl = @import("impls").SVGNumberList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGNumber = @import("interfaces").SVGNumber;
 
 pub const SVGNumberList = struct {

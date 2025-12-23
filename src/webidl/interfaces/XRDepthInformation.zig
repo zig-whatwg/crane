@@ -7,7 +7,10 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRDepthInformationImpl = @import("impls").XRDepthInformation;
 const mixins = @import("mixins");
-const XRViewGeometry = @import("interfaces").XRViewGeometry;
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
+const XRViewGeometry = @import("mixins").XRViewGeometry;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 
 pub const XRDepthInformation = struct {

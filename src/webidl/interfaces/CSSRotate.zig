@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSRotateImpl = @import("impls").CSSRotate;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
 const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
@@ -74,9 +77,9 @@ pub const CSSRotate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: CSSNumberish = undefined,
-            y: CSSNumberish = undefined,
-            z: CSSNumberish = undefined,
+            x: typedefs.CSSNumberish = undefined,
+            y: typedefs.CSSNumberish = undefined,
+            z: typedefs.CSSNumberish = undefined,
             angle: *runtime.Instance = undefined,
             _internal: ?*CSSRotateImpl.InternalState = null,
         },

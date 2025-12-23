@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SVGAnimatedLengthImpl = @import("impls").SVGAnimatedLength;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const SVGLength = @import("interfaces").SVGLength;
 
 pub const SVGAnimatedLength = struct {

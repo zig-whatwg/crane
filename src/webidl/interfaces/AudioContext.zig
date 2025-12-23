@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioContextImpl = @import("impls").AudioContext;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
 const MediaStreamAudioDestinationNode = @import("interfaces").MediaStreamAudioDestinationNode;
@@ -157,8 +160,8 @@ pub const AudioContext = struct {
                 DOMString: runtime.DOMString,
                 AudioSinkInfo: AudioSinkInfo,
             } = undefined,
-            onsinkchange: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            onsinkchange: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*AudioContextImpl.InternalState = null,
         },
     );

@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasImageSmoothingImpl = @import("impls").CanvasImageSmoothing;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
 
 pub const CanvasImageSmoothing = struct {
@@ -55,7 +58,7 @@ pub const CanvasImageSmoothing = struct {
         Meta.MixinTypes,
         struct {
             imageSmoothingEnabled: bool = undefined,
-            imageSmoothingQuality: ImageSmoothingQuality = undefined,
+            imageSmoothingQuality: enums.ImageSmoothingQuality = undefined,
             _internal: ?*CanvasImageSmoothingImpl.InternalState = null,
         },
     );

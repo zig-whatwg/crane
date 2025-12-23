@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PerformancePaintTimingImpl = @import("impls").PerformancePaintTiming;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PerformanceEntry = @import("interfaces").PerformanceEntry;
-const PaintTimingMixin = @import("interfaces").PaintTimingMixin;
+const PaintTimingMixin = @import("mixins").PaintTimingMixin;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
 
@@ -67,8 +70,8 @@ pub const PerformancePaintTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            paintTime: DOMHighResTimeStamp = undefined,
-            presentationTime: ?DOMHighResTimeStamp = null,
+            paintTime: typedefs.DOMHighResTimeStamp = undefined,
+            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*PerformancePaintTimingImpl.InternalState = null,
         },
     );

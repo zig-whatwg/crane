@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBIsochronousInTransferResultImpl = @import("impls").USBIsochronousInTransferResult;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const USBIsochronousInTransferPacket = @import("interfaces").USBIsochronousInTransferPacket;
 
 pub const USBIsochronousInTransferResult = struct {
@@ -64,7 +67,7 @@ pub const USBIsochronousInTransferResult = struct {
         Meta.MixinTypes,
         struct {
             data: ?runtime.DataView = null,
-            packets: runtime.FrozenArray(USBIsochronousInTransferPacket) = undefined,
+            packets: runtime.JSValue = undefined,
             _internal: ?*USBIsochronousInTransferResultImpl.InternalState = null,
         },
     );

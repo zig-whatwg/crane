@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const USBConfigurationImpl = @import("impls").USBConfiguration;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const USBInterface = @import("interfaces").USBInterface;
 const USBDevice = @import("interfaces").USBDevice;
 const DOMString = @import("typedefs").DOMString;
@@ -68,8 +71,8 @@ pub const USBConfiguration = struct {
         Meta.MixinTypes,
         struct {
             configurationValue: u8 = undefined,
-            configurationName: ?runtime.DOMString = null,
-            interfaces: runtime.FrozenArray(USBInterface) = undefined,
+            configurationName: ?typedefs.DOMString = null,
+            interfaces: runtime.JSValue = undefined,
             _internal: ?*USBConfigurationImpl.InternalState = null,
         },
     );

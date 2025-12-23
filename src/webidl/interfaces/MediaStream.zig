@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const MediaStreamImpl = @import("impls").MediaStream;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Observable = @import("interfaces").Observable;
@@ -91,10 +94,10 @@ pub const MediaStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
+            id: typedefs.DOMString = undefined,
             active: bool = undefined,
-            onaddtrack: EventHandler = undefined,
-            onremovetrack: EventHandler = undefined,
+            onaddtrack: typedefs.EventHandler = undefined,
+            onremovetrack: typedefs.EventHandler = undefined,
             _internal: ?*MediaStreamImpl.InternalState = null,
         },
     );

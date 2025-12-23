@@ -7,8 +7,11 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const OTPCredentialImpl = @import("impls").OTPCredential;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Credential = @import("interfaces").Credential;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
 pub const OTPCredential = struct {
@@ -63,7 +66,7 @@ pub const OTPCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            code: runtime.DOMString = undefined,
+            code: typedefs.DOMString = undefined,
             _internal: ?*OTPCredentialImpl.InternalState = null,
         },
     );

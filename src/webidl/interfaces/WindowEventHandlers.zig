@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WindowEventHandlersImpl = @import("impls").WindowEventHandlers;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const OnBeforeUnloadEventHandler = @import("typedefs").OnBeforeUnloadEventHandler;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -93,27 +96,27 @@ pub const WindowEventHandlers = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onafterprint: EventHandler = undefined,
-            onbeforeprint: EventHandler = undefined,
-            onbeforeunload: OnBeforeUnloadEventHandler = undefined,
-            onhashchange: EventHandler = undefined,
-            onlanguagechange: EventHandler = undefined,
-            onmessage: EventHandler = undefined,
-            onmessageerror: EventHandler = undefined,
-            onoffline: EventHandler = undefined,
-            ononline: EventHandler = undefined,
-            onpagehide: EventHandler = undefined,
-            onpagereveal: EventHandler = undefined,
-            onpageshow: EventHandler = undefined,
-            onpageswap: EventHandler = undefined,
-            onpopstate: EventHandler = undefined,
-            onrejectionhandled: EventHandler = undefined,
-            onstorage: EventHandler = undefined,
-            onunhandledrejection: EventHandler = undefined,
-            onunload: EventHandler = undefined,
-            ongamepadconnected: EventHandler = undefined,
-            ongamepaddisconnected: EventHandler = undefined,
-            onportalactivate: EventHandler = undefined,
+            onafterprint: typedefs.EventHandler = undefined,
+            onbeforeprint: typedefs.EventHandler = undefined,
+            onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
+            onhashchange: typedefs.EventHandler = undefined,
+            onlanguagechange: typedefs.EventHandler = undefined,
+            onmessage: typedefs.EventHandler = undefined,
+            onmessageerror: typedefs.EventHandler = undefined,
+            onoffline: typedefs.EventHandler = undefined,
+            ononline: typedefs.EventHandler = undefined,
+            onpagehide: typedefs.EventHandler = undefined,
+            onpagereveal: typedefs.EventHandler = undefined,
+            onpageshow: typedefs.EventHandler = undefined,
+            onpageswap: typedefs.EventHandler = undefined,
+            onpopstate: typedefs.EventHandler = undefined,
+            onrejectionhandled: typedefs.EventHandler = undefined,
+            onstorage: typedefs.EventHandler = undefined,
+            onunhandledrejection: typedefs.EventHandler = undefined,
+            onunload: typedefs.EventHandler = undefined,
+            ongamepadconnected: typedefs.EventHandler = undefined,
+            ongamepaddisconnected: typedefs.EventHandler = undefined,
+            onportalactivate: typedefs.EventHandler = undefined,
             _internal: ?*WindowEventHandlersImpl.InternalState = null,
         },
     );

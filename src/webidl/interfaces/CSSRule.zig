@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSRuleImpl = @import("impls").CSSRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
@@ -83,7 +86,7 @@ pub const CSSRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cssText: CSSOMString = undefined,
+            cssText: typedefs.CSSOMString = undefined,
             parentRule: ?*runtime.Instance = null,
             parentStyleSheet: ?*runtime.Instance = null,
             @"type": u16 = undefined,

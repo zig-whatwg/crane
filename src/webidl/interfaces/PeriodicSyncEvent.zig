@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PeriodicSyncEventImpl = @import("impls").PeriodicSyncEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
 const EventTarget = @import("interfaces").EventTarget;
@@ -70,7 +73,7 @@ pub const PeriodicSyncEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tag: runtime.DOMString = undefined,
+            tag: typedefs.DOMString = undefined,
             _internal: ?*PeriodicSyncEventImpl.InternalState = null,
         },
     );

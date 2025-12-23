@@ -7,14 +7,17 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CharacterDataImpl = @import("impls").CharacterData;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
-const NonDocumentTypeChildNode = @import("interfaces").NonDocumentTypeChildNode;
-const ChildNode = @import("interfaces").ChildNode;
+const NonDocumentTypeChildNode = @import("mixins").NonDocumentTypeChildNode;
+const ChildNode = @import("mixins").ChildNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Document = @import("interfaces").Document;
 const NodeList = @import("interfaces").NodeList;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
 const Element = @import("interfaces").Element;
@@ -126,7 +129,7 @@ pub const CharacterData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.DOMString = undefined,
+            data: typedefs.DOMString = undefined,
             length: u32 = undefined,
             previousElementSibling: ?*runtime.Instance = null,
             nextElementSibling: ?*runtime.Instance = null,

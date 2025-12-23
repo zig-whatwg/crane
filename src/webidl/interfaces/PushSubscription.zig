@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PushSubscriptionImpl = @import("impls").PushSubscription;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
 const PushSubscriptionOptions = @import("interfaces").PushSubscriptionOptions;
 const PushSubscriptionJSON = @import("dictionaries").PushSubscriptionJSON;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const PushEncryptionKeyName = @import("enums").PushEncryptionKeyName;
 
 pub const PushSubscription = struct {
@@ -76,7 +79,7 @@ pub const PushSubscription = struct {
         Meta.MixinTypes,
         struct {
             endpoint: runtime.USVString = undefined,
-            expirationTime: ?EpochTimeStamp = null,
+            expirationTime: ?typedefs.EpochTimeStamp = null,
             options: *runtime.Instance = undefined,
             cached_options: ?*runtime.Instance = null,
             _internal: ?*PushSubscriptionImpl.InternalState = null,

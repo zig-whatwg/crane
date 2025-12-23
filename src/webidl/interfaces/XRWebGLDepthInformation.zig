@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRWebGLDepthInformationImpl = @import("impls").XRWebGLDepthInformation;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRDepthInformation = @import("interfaces").XRDepthInformation;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XRTextureType = @import("enums").XRTextureType;
@@ -66,7 +69,7 @@ pub const XRWebGLDepthInformation = struct {
         Meta.MixinTypes,
         struct {
             texture: *runtime.Instance = undefined,
-            textureType: XRTextureType = undefined,
+            textureType: enums.XRTextureType = undefined,
             imageIndex: ?u32 = null,
             cached_texture: ?*runtime.Instance = null,
             _internal: ?*XRWebGLDepthInformationImpl.InternalState = null,

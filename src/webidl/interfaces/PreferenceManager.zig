@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const PreferenceManagerImpl = @import("impls").PreferenceManager;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const PreferenceObject = @import("interfaces").PreferenceObject;
 
 pub const PreferenceManager = struct {

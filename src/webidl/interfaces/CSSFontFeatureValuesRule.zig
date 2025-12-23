@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSFontFeatureValuesRuleImpl = @import("impls").CSSFontFeatureValuesRule;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSFontFeatureValuesMap = @import("interfaces").CSSFontFeatureValuesMap;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
@@ -76,7 +79,7 @@ pub const CSSFontFeatureValuesRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            fontFamily: CSSOMString = undefined,
+            fontFamily: typedefs.CSSOMString = undefined,
             annotation: *runtime.Instance = undefined,
             ornaments: *runtime.Instance = undefined,
             stylistic: *runtime.Instance = undefined,

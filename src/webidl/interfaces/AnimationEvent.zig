@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AnimationEventImpl = @import("impls").AnimationEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const Event = @import("interfaces").Event;
 const AnimationEventInit = @import("dictionaries").AnimationEventInit;
 const CSSOMString = @import("typedefs").CSSOMString;
@@ -73,9 +76,9 @@ pub const AnimationEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            animationName: CSSOMString = undefined,
+            animationName: typedefs.CSSOMString = undefined,
             elapsedTime: f64 = undefined,
-            pseudoElement: CSSOMString = undefined,
+            pseudoElement: typedefs.CSSOMString = undefined,
             _internal: ?*AnimationEventImpl.InternalState = null,
         },
     );

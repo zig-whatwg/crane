@@ -7,10 +7,13 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CSSOKLabImpl = @import("impls").CSSOKLab;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CSSColorValue = @import("interfaces").CSSColorValue;
 const CSSColorPercent = @import("typedefs").CSSColorPercent;
 const CSSStyleValue = @import("interfaces").CSSStyleValue;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const CSSColorNumber = @import("typedefs").CSSColorNumber;
 const DOMString = @import("typedefs").DOMString;
 
@@ -77,10 +80,10 @@ pub const CSSOKLab = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            l: CSSColorPercent = undefined,
-            a: CSSColorNumber = undefined,
-            b: CSSColorNumber = undefined,
-            alpha: CSSColorPercent = undefined,
+            l: typedefs.CSSColorPercent = undefined,
+            a: typedefs.CSSColorNumber = undefined,
+            b: typedefs.CSSColorNumber = undefined,
+            alpha: typedefs.CSSColorPercent = undefined,
             _internal: ?*CSSOKLabImpl.InternalState = null,
         },
     );

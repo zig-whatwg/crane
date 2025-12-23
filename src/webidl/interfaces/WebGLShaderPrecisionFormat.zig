@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const WebGLShaderPrecisionFormatImpl = @import("impls").WebGLShaderPrecisionFormat;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GLint = @import("typedefs").GLint;
 
 pub const WebGLShaderPrecisionFormat = struct {
@@ -64,9 +67,9 @@ pub const WebGLShaderPrecisionFormat = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rangeMin: GLint = undefined,
-            rangeMax: GLint = undefined,
-            precision: GLint = undefined,
+            rangeMin: typedefs.GLint = undefined,
+            rangeMax: typedefs.GLint = undefined,
+            precision: typedefs.GLint = undefined,
             _internal: ?*WebGLShaderPrecisionFormatImpl.InternalState = null,
         },
     );

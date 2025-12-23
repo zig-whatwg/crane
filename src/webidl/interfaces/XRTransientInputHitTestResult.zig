@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const XRTransientInputHitTestResultImpl = @import("impls").XRTransientInputHitTestResult;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const XRInputSource = @import("interfaces").XRInputSource;
 const XRHitTestResult = @import("interfaces").XRHitTestResult;
 
@@ -62,7 +65,7 @@ pub const XRTransientInputHitTestResult = struct {
         Meta.MixinTypes,
         struct {
             inputSource: *runtime.Instance = undefined,
-            results: runtime.FrozenArray(XRHitTestResult) = undefined,
+            results: runtime.JSValue = undefined,
             cached_inputSource: ?*runtime.Instance = null,
             _internal: ?*XRTransientInputHitTestResultImpl.InternalState = null,
         },

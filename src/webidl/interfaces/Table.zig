@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const TableImpl = @import("impls").Table;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AddressValue = @import("typedefs").AddressValue;
 const TableDescriptor = @import("dictionaries").TableDescriptor;
 
@@ -65,7 +68,7 @@ pub const Table = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: AddressValue = undefined,
+            length: typedefs.AddressValue = undefined,
             _internal: ?*TableImpl.InternalState = null,
         },
     );

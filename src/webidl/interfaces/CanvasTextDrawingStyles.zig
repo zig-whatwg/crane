@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const CanvasTextDrawingStylesImpl = @import("impls").CanvasTextDrawingStyles;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const CanvasTextBaseline = @import("enums").CanvasTextBaseline;
 const CanvasTextAlign = @import("enums").CanvasTextAlign;
 const CanvasFontVariantCaps = @import("enums").CanvasFontVariantCaps;
@@ -79,17 +82,17 @@ pub const CanvasTextDrawingStyles = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lang: runtime.DOMString = undefined,
-            font: runtime.DOMString = undefined,
-            textAlign: CanvasTextAlign = undefined,
-            textBaseline: CanvasTextBaseline = undefined,
-            direction: CanvasDirection = undefined,
-            letterSpacing: runtime.DOMString = undefined,
-            fontKerning: CanvasFontKerning = undefined,
-            fontStretch: CanvasFontStretch = undefined,
-            fontVariantCaps: CanvasFontVariantCaps = undefined,
-            textRendering: CanvasTextRendering = undefined,
-            wordSpacing: runtime.DOMString = undefined,
+            lang: typedefs.DOMString = undefined,
+            font: typedefs.DOMString = undefined,
+            textAlign: enums.CanvasTextAlign = undefined,
+            textBaseline: enums.CanvasTextBaseline = undefined,
+            direction: enums.CanvasDirection = undefined,
+            letterSpacing: typedefs.DOMString = undefined,
+            fontKerning: enums.CanvasFontKerning = undefined,
+            fontStretch: enums.CanvasFontStretch = undefined,
+            fontVariantCaps: enums.CanvasFontVariantCaps = undefined,
+            textRendering: enums.CanvasTextRendering = undefined,
+            wordSpacing: typedefs.DOMString = undefined,
             _internal: ?*CanvasTextDrawingStylesImpl.InternalState = null,
         },
     );

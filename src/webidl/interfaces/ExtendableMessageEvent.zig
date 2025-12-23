@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ExtendableMessageEventImpl = @import("impls").ExtendableMessageEvent;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const ServiceWorker = @import("interfaces").ServiceWorker;
 const Client = @import("interfaces").Client;
@@ -15,7 +18,7 @@ const EventTarget = @import("interfaces").EventTarget;
 const ExtendableMessageEventInit = @import("dictionaries").ExtendableMessageEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MessagePort = @import("interfaces").MessagePort;
 
@@ -84,18 +87,14 @@ pub const ExtendableMessageEvent = struct {
         struct {
             data: runtime.JSValue = undefined,
             origin: runtime.USVString = undefined,
-            lastEventId: runtime.DOMString = undefined,
+            lastEventId: typedefs.DOMString = undefined,
             source: ?union(enum) {
                 Client: Client,
                 ServiceWorker: ServiceWorker,
                 MessagePort: MessagePort,
             } = null,
-            ports: runtime.FrozenArray(MessagePort) = undefined,
-            cached_source: ?union(enum) {
-                Client: Client,
-                ServiceWorker: ServiceWorker,
-                MessagePort: MessagePort,
-            } = null,
+            ports: runtime.JSValue = undefined,
+            cached_source: ?runtime.JSValue = null,
             _internal: ?*ExtendableMessageEventImpl.InternalState = null,
         },
     );

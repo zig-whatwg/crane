@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const DOMTokenListImpl = @import("impls").DOMTokenList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
 
 pub const DOMTokenList = struct {
@@ -85,7 +88,7 @@ pub const DOMTokenList = struct {
         Meta.MixinTypes,
         struct {
             length: u32 = undefined,
-            value: runtime.DOMString = undefined,
+            value: typedefs.DOMString = undefined,
             _internal: ?*DOMTokenListImpl.InternalState = null,
         },
     );

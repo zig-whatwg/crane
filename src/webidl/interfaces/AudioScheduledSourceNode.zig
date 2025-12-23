@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AudioScheduledSourceNodeImpl = @import("impls").AudioScheduledSourceNode;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -87,7 +90,7 @@ pub const AudioScheduledSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onended: EventHandler = undefined,
+            onended: typedefs.EventHandler = undefined,
             _internal: ?*AudioScheduledSourceNodeImpl.InternalState = null,
         },
     );

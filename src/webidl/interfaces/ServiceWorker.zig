@@ -7,12 +7,15 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ServiceWorkerImpl = @import("impls").ServiceWorker;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
-const AbstractWorker = @import("interfaces").AbstractWorker;
+const AbstractWorker = @import("mixins").AbstractWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
-const USVString = @import("interfaces").USVString;
+const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
@@ -89,9 +92,9 @@ pub const ServiceWorker = struct {
         Meta.MixinTypes,
         struct {
             scriptURL: runtime.USVString = undefined,
-            state: ServiceWorkerState = undefined,
-            onstatechange: EventHandler = undefined,
-            onerror: EventHandler = undefined,
+            state: enums.ServiceWorkerState = undefined,
+            onstatechange: typedefs.EventHandler = undefined,
+            onerror: typedefs.EventHandler = undefined,
             _internal: ?*ServiceWorkerImpl.InternalState = null,
         },
     );

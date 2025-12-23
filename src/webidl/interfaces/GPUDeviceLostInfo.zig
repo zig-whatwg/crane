@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const GPUDeviceLostInfoImpl = @import("impls").GPUDeviceLostInfo;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const GPUDeviceLostReason = @import("enums").GPUDeviceLostReason;
 const DOMString = @import("typedefs").DOMString;
 
@@ -64,8 +67,8 @@ pub const GPUDeviceLostInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: GPUDeviceLostReason = undefined,
-            message: runtime.DOMString = undefined,
+            reason: enums.GPUDeviceLostReason = undefined,
+            message: typedefs.DOMString = undefined,
             _internal: ?*GPUDeviceLostInfoImpl.InternalState = null,
         },
     );

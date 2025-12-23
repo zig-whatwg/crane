@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const AnimationNodeListImpl = @import("impls").AnimationNodeList;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const AnimationEffect = @import("interfaces").AnimationEffect;
 
 pub const AnimationNodeList = struct {

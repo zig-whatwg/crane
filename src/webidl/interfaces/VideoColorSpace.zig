@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const VideoColorSpaceImpl = @import("impls").VideoColorSpace;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const VideoTransferCharacteristics = @import("enums").VideoTransferCharacteristics;
 const VideoColorSpaceInit = @import("dictionaries").VideoColorSpaceInit;
 const VideoMatrixCoefficients = @import("enums").VideoMatrixCoefficients;
@@ -71,9 +74,9 @@ pub const VideoColorSpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            primaries: ?VideoColorPrimaries = null,
-            transfer: ?VideoTransferCharacteristics = null,
-            matrix: ?VideoMatrixCoefficients = null,
+            primaries: ?enums.VideoColorPrimaries = null,
+            transfer: ?enums.VideoTransferCharacteristics = null,
+            matrix: ?enums.VideoMatrixCoefficients = null,
             fullRange: ?bool = null,
             _internal: ?*VideoColorSpaceImpl.InternalState = null,
         },

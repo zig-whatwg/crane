@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const HandwritingStrokeImpl = @import("impls").HandwritingStroke;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const HandwritingPoint = @import("dictionaries").HandwritingPoint;
 
 pub const HandwritingStroke = struct {

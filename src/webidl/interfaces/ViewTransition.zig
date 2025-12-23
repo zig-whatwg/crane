@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const ViewTransitionImpl = @import("impls").ViewTransition;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const ViewTransitionTypeSet = @import("interfaces").ViewTransitionTypeSet;
 const Element = @import("interfaces").Element;
 
@@ -70,9 +73,9 @@ pub const ViewTransition = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            updateCallbackDone: runtime.Promise(void) = undefined,
-            ready: runtime.Promise(void) = undefined,
-            finished: runtime.Promise(void) = undefined,
+            updateCallbackDone: runtime.JSValue = undefined,
+            ready: runtime.JSValue = undefined,
+            finished: runtime.JSValue = undefined,
             types: *runtime.Instance = undefined,
             transitionRoot: *runtime.Instance = undefined,
             _internal: ?*ViewTransitionImpl.InternalState = null,

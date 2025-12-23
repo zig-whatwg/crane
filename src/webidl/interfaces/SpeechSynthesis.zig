@@ -7,6 +7,9 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const SpeechSynthesisImpl = @import("impls").SpeechSynthesis;
 const mixins = @import("mixins");
+const typedefs = @import("typedefs");
+const enums = @import("enums");
+const dictionaries = @import("dictionaries");
 const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -91,7 +94,7 @@ pub const SpeechSynthesis = struct {
             pending: bool = undefined,
             speaking: bool = undefined,
             paused: bool = undefined,
-            onvoiceschanged: EventHandler = undefined,
+            onvoiceschanged: typedefs.EventHandler = undefined,
             _internal: ?*SpeechSynthesisImpl.InternalState = null,
         },
     );
