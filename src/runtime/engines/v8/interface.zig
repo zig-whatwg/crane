@@ -448,14 +448,35 @@ pub fn V8Interface(comptime Interface: type) type {
             context: *v8.Context,
             global_name: []const u8,
         ) void {
+            const global = v8.v8_Context_Global(context);
+            registerGlobalFast(isolate, context, global.?, global_name);
+        }
+
+        /// Register interface as a global constructor in V8 (fast path)
+        ///
+        /// Same as registerGlobal but accepts a pre-cached global object.
+        /// Used by registerAllInterfaces() to avoid 1231 calls to v8_Context_Global().
+        ///
+        /// OPTIMIZATION: Skips the (always-failing) attempts to delete "arguments"
+        /// and "caller" properties. These are non-configurable V8 accessor properties
+        /// that cannot be deleted - trying wastes 4 FFI calls per interface.
+        ///
+        /// NOTE: This does NOT call template_registry.register() because it's already
+        /// called by GlobalTemplateRegistry.precreateAllTemplates() during isolate init.
+        /// Skipping the redundant registration saves ~1231 hashmap operations.
+        pub fn registerGlobalFast(
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+            global: *v8.Object,
+            global_name: []const u8,
+        ) void {
             @setEvalBranchQuota(10000); // Raise branch limit for multiple inline loops
             const template = createTemplate(isolate);
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
-            const global = v8.v8_Context_Global(context);
 
-            // Register template in global registry for instance wrapping
-            // This enables methods like createElement to return properly typed V8 objects
-            template_registry.register(interface_name, template, isolate);
+            // NOTE: Template is already registered in template_registry by
+            // GlobalTemplateRegistry.precreateAllTemplates() during isolate init.
+            // Skipping redundant registration here.
 
             const key_str = v8.v8_String_NewFromUtf8(
                 isolate,
@@ -468,7 +489,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // - enumerable: false (not in for...in loops or Object.keys)
             // - configurable: true
             _ = v8.v8_Object_DefineProperty(
-                global.?,
+                global,
                 context,
                 @ptrCast(key_str),
                 @ptrCast(constructor),
@@ -477,40 +498,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 true, // configurable = true
             );
 
-            // ========================================================================
-            // V8 LIMITATION: Constructor Property Enumeration Order
-            // ========================================================================
+            // NOTE: V8 LIMITATION - Constructor Property Enumeration Order
             //
             // Per WebIDL spec, interface constructors should not have legacy "arguments"
             // and "caller" properties. However, V8's FunctionTemplate creates functions
-            // with these as non-configurable accessor properties that cannot be deleted.
+            // with these as non-configurable accessor properties that CANNOT be deleted.
+            //
+            // We previously tried to delete them here, but this always fails and wastes
+            // ~5000 FFI calls during interface registration. Removed for performance.
             //
             // IMPACT: Two WPT tests fail due to this V8 API limitation:
             //   - webidl/ecmascript-binding/builtin-function-properties.any.js
-            //     "Constructor property enumeration order" - gets "arguments" not "prototype"
             //   - webidl/ecmascript-binding/legacy-factory-function-builtin-properties.window.js
-            //     "Legacy factory function property enumeration order"
-            //
-            // EXPECTED: Reflect.ownKeys(Constructor).slice(0,3) = ["length", "name", "prototype"]
-            // ACTUAL:   Includes "arguments" and "caller" before "prototype"
-            //
-            // WORKAROUNDS CONSIDERED AND REJECTED:
-            //   1. v8::Function::New() with manual prototype setup - loses FunctionTemplate benefits
-            //   2. Create constructor via JS eval - loses type safety and internal fields
-            //   3. Object.defineProperties post-processing - can't remove non-configurable props
-            //
-            // DECISION: Accept as V8 limitation. These 2 tests are known expected failures.
-            // The functional behavior is correct; only the enumeration order is wrong.
-            //
-            // We still attempt deletion (which will fail) to document intent:
-            const arguments_key = v8.v8_String_NewFromUtf8(isolate, "arguments", 9);
-            if (arguments_key) |args_key| {
-                _ = v8.v8_Object_Delete(@ptrCast(constructor.?), context, @ptrCast(args_key));
-            }
-            const caller_key = v8.v8_String_NewFromUtf8(isolate, "caller", 6);
-            if (caller_key) |call_key| {
-                _ = v8.v8_Object_Delete(@ptrCast(constructor.?), context, @ptrCast(call_key));
-            }
 
             // CRITICAL: Skip ALL prototype setup for callback interfaces!
             // Per WebIDL §3.12, callback interfaces do NOT have a .prototype property.
@@ -2186,6 +2185,109 @@ pub fn V8Interface(comptime Interface: type) type {
             return true;
         }
 
+        /// Check if a type is a webidl.Opt wrapper (has wasPassed method and value field)
+        fn isOptionalWrapper(comptime T: type) bool {
+            if (@typeInfo(T) != .@"struct") return false;
+            // Check for the wasPassed method and value field that webidl.Optional has
+            return @hasDecl(T, "wasPassed") and @hasField(T, "value") and @hasField(T, "was_passed");
+        }
+
+        /// Get the inner value type from an Optional wrapper
+        fn getOptionalValueType(comptime T: type) ?type {
+            if (@typeInfo(T) != .@"struct") return null;
+            if (!@hasField(T, "value")) return null;
+            const fields = std.meta.fields(T);
+            inline for (fields) |field| {
+                if (comptime std.mem.eql(u8, field.name, "value")) {
+                    return field.type;
+                }
+            }
+            return null;
+        }
+
+        /// Check if a converted argument type needs to be freed after use.
+        /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
+        /// JSValue types may contain owned strings that need cleanup.
+        /// CallbackWrapper types need cleanup for transient callbacks (those not stored by the callee).
+        fn needsArgCleanup(comptime T: type) bool {
+            // Raw string slice - allocated by fromV8Value
+            if (T == []const u8) return true;
+            // DOMString - allocated by fromV8String
+            if (T == runtime.DOMString) return true;
+            // JSValue may contain owned strings
+            if (T == runtime.JSValue) return true;
+            // CallbackWrapper - transient callbacks need cleanup after method call
+            // Note: If a method stores the callback (e.g., addEventListener), it must
+            // clone/reference it before returning, as we free it here.
+            if (T == *runtime.CallbackWrapper) return true;
+            // Zig optional variants
+            if (@typeInfo(T) == .optional) {
+                const Child = @typeInfo(T).optional.child;
+                if (Child == []const u8) return true;
+                if (Child == runtime.DOMString) return true;
+                if (Child == runtime.JSValue) return true;
+                if (Child == *runtime.CallbackWrapper) return true;
+                // Recurse for nested optionals or other wrapper types
+                if (needsArgCleanup(Child)) return true;
+            }
+            // webidl.Opt wrapper types - check if inner type needs cleanup
+            if (isOptionalWrapper(T)) {
+                if (getOptionalValueType(T)) |vt| {
+                    return needsArgCleanup(vt);
+                }
+            }
+            return false;
+        }
+
+        /// Static empty slice used by fromV8Value for empty strings - must not be freed
+        const static_empty_u8: []const u8 = &[_]u8{};
+
+        /// Free a converted argument if it was allocated.
+        /// Empty strings return a static slice that must NOT be freed.
+        fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+            if (comptime !needsArgCleanup(T)) return;
+
+            if (T == []const u8) {
+                // Only free if it's not the static empty slice and has content
+                if (arg.len > 0 and arg.ptr != static_empty_u8.ptr) {
+                    allocator.free(arg);
+                }
+            } else if (T == runtime.DOMString) {
+                // DOMString is a tagged union - only free if owned
+                switch (arg) {
+                    .owned => |s| if (s.len > 0) allocator.free(s),
+                    .empty, .interned => {}, // Static, don't free
+                }
+            } else if (T == runtime.JSValue) {
+                // JSValue may contain an owned string that needs cleanup
+                switch (arg) {
+                    .string => |str| {
+                        if (str.owned and str.data.len > 0) {
+                            allocator.free(str.data);
+                        }
+                    },
+                    else => {}, // Other variants don't need cleanup here
+                }
+            } else if (T == *runtime.CallbackWrapper) {
+                // Transient callback - free after method call completes
+                // If the method needs to store the callback, it must clone/reference it
+                arg.deinit();
+            } else if (@typeInfo(T) == .optional) {
+                // Handle all optional types by recursively freeing the inner value
+                if (arg) |val| {
+                    const Child = @typeInfo(T).optional.child;
+                    freeConvertedArg(Child, allocator, val);
+                }
+            } else if (comptime isOptionalWrapper(T)) {
+                // webidl.Opt wrapper - free inner value if it was passed
+                if (arg.was_passed) {
+                    if (comptime getOptionalValueType(T)) |vt| {
+                        freeConvertedArg(vt, allocator, arg.value);
+                    }
+                }
+            }
+        }
+
         /// Convert multiple JS arguments into a slice for variadic parameters
         fn collectVariadicArgs(
             comptime ElemType: type,
@@ -2266,6 +2368,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param1Type, allocator, arg1);
                     break :blk try method_fn(instance, arg1);
                 } else if (webidl_param_count == 2) {
                     const Param1Type = params[1].type.?;
@@ -2285,6 +2388,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param1Type, allocator, arg1);
 
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
@@ -2299,6 +2403,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param2Type, allocator, arg2);
                     break :blk try method_fn(instance, arg1, arg2);
                 } else if (webidl_param_count == 3) {
                     const Param1Type = params[1].type.?;
@@ -2318,6 +2423,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param1Type, allocator, arg1);
 
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
@@ -2332,6 +2438,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param2Type, allocator, arg2);
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
@@ -2346,6 +2453,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param3Type, allocator, arg3);
                     break :blk try method_fn(instance, arg1, arg2, arg3);
                 } else if (webidl_param_count == 4) {
                     const Param1Type = params[1].type.?;
@@ -2366,6 +2474,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param1Type, allocator, arg1);
 
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
@@ -2380,6 +2489,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param2Type, allocator, arg2);
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
@@ -2393,6 +2503,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param3Type, allocator, arg3);
 
                     const arg4 = if (js_arg_count >= 4) arg_blk: {
                         const v8_arg4 = info.get(3);
@@ -2406,6 +2517,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
+                    defer freeConvertedArg(Param4Type, allocator, arg4);
                     break :blk try method_fn(instance, arg1, arg2, arg3, arg4);
                 } else {
                     // Fallback for methods with more params - use placeholder behavior
@@ -2922,6 +3034,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param1Type, allocator, arg1);
 
                 return try Interface.call_constructor(ctx, arg1);
             } else if (webidl_param_count == 2) {
@@ -2943,6 +3056,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param1Type, allocator, arg1);
 
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
@@ -2958,6 +3072,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param2Type, allocator, arg2);
 
                 return try Interface.call_constructor(ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
@@ -2979,6 +3094,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param1Type, allocator, arg1);
 
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
@@ -2993,6 +3109,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param2Type, allocator, arg2);
 
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
@@ -3007,6 +3124,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param3Type, allocator, arg3);
 
                 return try Interface.call_constructor(ctx, arg1, arg2, arg3);
             } else if (webidl_param_count == 4) {
@@ -3029,6 +3147,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param1Type, allocator, arg1);
 
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
@@ -3043,6 +3162,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param2Type, allocator, arg2);
 
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
@@ -3057,6 +3177,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param3Type, allocator, arg3);
 
                 // Handle fourth parameter - may be optional
                 const arg4 = if (js_arg_count >= 4) blk: {
@@ -3071,6 +3192,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
+                defer freeConvertedArg(Param4Type, allocator, arg4);
 
                 return try Interface.call_constructor(ctx, arg1, arg2, arg3, arg4);
             } else {
