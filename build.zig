@@ -3236,4 +3236,205 @@ pub fn build(b: *std.Build) void {
 
     const intl_bench_step = b.step("intl-bench", "Run Intl performance benchmarks");
     intl_bench_step.dependOn(&run_intl_bench.step);
+
+    // ========================================================================
+    // SETUP: Download external data files
+    // ========================================================================
+    // Downloads all required data files that are not committed to the repository.
+    // This includes:
+    // - CLDR v46.0.0 JSON data (~745MB) for internationalization
+    // - Unicode data files (UnicodeData.txt, IdnaMappingTable.txt, etc.)
+    // - Public Suffix List (PSL) for domain parsing
+    // - IDNA test data for URL conformance tests
+    // - Encoding index files for legacy encoding support
+    //
+    // Run: zig build setup
+
+    const setup_step = b.step("setup", "Download external data files (CLDR, Unicode, PSL, etc.)");
+
+    const setup_data = b.addSystemCommand(&.{
+        "bash", "-c",
+        \\set -e
+        \\
+        \\DATA_DIR="data"
+        \\mkdir -p "$DATA_DIR"
+        \\
+        \\echo "==> Setting up external data files..."
+        \\echo ""
+        \\
+        \\# ========================================
+        \\# CLDR v46.0.0 JSON data (~745MB)
+        \\# ========================================
+        \\CLDR_VERSION="46.0.0"
+        \\CLDR_DIR="$DATA_DIR/cldr"
+        \\
+        \\if [ ! -d "$CLDR_DIR/cldr-core" ]; then
+        \\    echo "==> Downloading CLDR v$CLDR_VERSION JSON data..."
+        \\    mkdir -p "$CLDR_DIR"
+        \\    cd "$CLDR_DIR"
+        \\    
+        \\    # Core packages
+        \\    PACKAGES=(
+        \\        "cldr-core"
+        \\        "cldr-dates-full"
+        \\        "cldr-numbers-full"
+        \\        "cldr-localenames-full"
+        \\        "cldr-misc-full"
+        \\        "cldr-units-full"
+        \\        "cldr-cal-buddhist-full"
+        \\        "cldr-cal-chinese-full"
+        \\        "cldr-cal-coptic-full"
+        \\        "cldr-cal-dangi-full"
+        \\        "cldr-cal-ethiopic-full"
+        \\        "cldr-cal-hebrew-full"
+        \\        "cldr-cal-indian-full"
+        \\        "cldr-cal-islamic-full"
+        \\        "cldr-cal-japanese-full"
+        \\        "cldr-cal-persian-full"
+        \\        "cldr-cal-roc-full"
+        \\        "cldr-segments-full"
+        \\        "cldr-annotations-full"
+        \\        "cldr-annotations-derived-full"
+        \\        "cldr-bcp47"
+        \\        "cldr-rbnf"
+        \\    )
+        \\    
+        \\    for pkg in "${PACKAGES[@]}"; do
+        \\        if [ ! -d "$pkg" ]; then
+        \\            echo "    Downloading $pkg..."
+        \\            curl -sL "https://github.com/unicode-org/cldr-json/releases/download/$CLDR_VERSION/$pkg.zip" -o "$pkg.zip"
+        \\            unzip -q "$pkg.zip"
+        \\            rm "$pkg.zip"
+        \\        fi
+        \\    done
+        \\    
+        \\    cd - > /dev/null
+        \\    echo "    CLDR data downloaded successfully"
+        \\else
+        \\    echo "==> CLDR data already present"
+        \\fi
+        \\
+        \\# ========================================
+        \\# Unicode data files (~4MB)
+        \\# ========================================
+        \\UNICODE_DIR="$DATA_DIR/unicode"
+        \\UNICODE_VERSION="16.0.0"
+        \\
+        \\if [ ! -f "$UNICODE_DIR/UnicodeData.txt" ]; then
+        \\    echo "==> Downloading Unicode $UNICODE_VERSION data files..."
+        \\    mkdir -p "$UNICODE_DIR"
+        \\    
+        \\    # Core Unicode files
+        \\    curl -sL "https://www.unicode.org/Public/$UNICODE_VERSION/ucd/UnicodeData.txt" -o "$UNICODE_DIR/UnicodeData.txt"
+        \\    curl -sL "https://www.unicode.org/Public/idna/$UNICODE_VERSION/IdnaMappingTable.txt" -o "$UNICODE_DIR/IdnaMappingTable.txt"
+        \\    curl -sL "https://www.unicode.org/Public/$UNICODE_VERSION/ucd/extracted/DerivedBidiClass.txt" -o "$UNICODE_DIR/DerivedBidiClass.txt"
+        \\    curl -sL "https://www.unicode.org/Public/$UNICODE_VERSION/ucd/DerivedCoreProperties.txt" -o "$UNICODE_DIR/DerivedCoreProperties.txt"
+        \\    curl -sL "https://www.unicode.org/Public/$UNICODE_VERSION/ucd/DerivedNormalizationProps.txt" -o "$UNICODE_DIR/DerivedNormalizationProps.txt"
+        \\    
+        \\    echo "    Unicode data downloaded successfully"
+        \\else
+        \\    echo "==> Unicode data already present"
+        \\fi
+        \\
+        \\# ========================================
+        \\# Public Suffix List (~320KB)
+        \\# ========================================
+        \\PSL_DIR="$DATA_DIR/psl"
+        \\
+        \\if [ ! -f "$PSL_DIR/public_suffix_list.dat" ]; then
+        \\    echo "==> Downloading Public Suffix List..."
+        \\    mkdir -p "$PSL_DIR"
+        \\    
+        \\    curl -sL "https://publicsuffix.org/list/public_suffix_list.dat" -o "$PSL_DIR/public_suffix_list.dat"
+        \\    
+        \\    echo "    PSL downloaded successfully"
+        \\else
+        \\    echo "==> PSL already present"
+        \\fi
+        \\
+        \\# ========================================
+        \\# IDNA Test Data (~760KB)
+        \\# ========================================
+        \\IDNA_DIR="$DATA_DIR/idna"
+        \\
+        \\if [ ! -f "$IDNA_DIR/IdnaTestV2.txt" ]; then
+        \\    echo "==> Downloading IDNA test data..."
+        \\    mkdir -p "$IDNA_DIR"
+        \\    
+        \\    curl -sL "https://www.unicode.org/Public/idna/$UNICODE_VERSION/IdnaTestV2.txt" -o "$IDNA_DIR/IdnaTestV2.txt"
+        \\    
+        \\    echo "    IDNA test data downloaded successfully"
+        \\else
+        \\    echo "==> IDNA test data already present"
+        \\fi
+        \\
+        \\# ========================================
+        \\# Encoding index files
+        \\# ========================================
+        \\ENCODING_DIR="$DATA_DIR/encoding/indexes"
+        \\
+        \\if [ ! -f "$ENCODING_DIR/index-ibm866.txt" ]; then
+        \\    echo "==> Downloading Encoding index files..."
+        \\    mkdir -p "$ENCODING_DIR"
+        \\    
+        \\    # Legacy encoding indexes from encoding.spec.whatwg.org
+        \\    ENCODINGS=(
+        \\        "ibm866"
+        \\        "iso-8859-2"
+        \\        "iso-8859-3"
+        \\        "iso-8859-4"
+        \\        "iso-8859-5"
+        \\        "iso-8859-6"
+        \\        "iso-8859-7"
+        \\        "iso-8859-8"
+        \\        "iso-8859-10"
+        \\        "iso-8859-13"
+        \\        "iso-8859-14"
+        \\        "iso-8859-15"
+        \\        "iso-8859-16"
+        \\        "koi8-r"
+        \\        "koi8-u"
+        \\        "macintosh"
+        \\        "windows-874"
+        \\        "windows-1250"
+        \\        "windows-1251"
+        \\        "windows-1252"
+        \\        "windows-1253"
+        \\        "windows-1254"
+        \\        "windows-1255"
+        \\        "windows-1256"
+        \\        "windows-1257"
+        \\        "windows-1258"
+        \\        "x-mac-cyrillic"
+        \\        "gb18030"
+        \\        "big5"
+        \\        "euc-jp"
+        \\        "iso-2022-jp"
+        \\        "shift_jis"
+        \\        "euc-kr"
+        \\    )
+        \\    
+        \\    for enc in "${ENCODINGS[@]}"; do
+        \\        echo "    Downloading index-$enc.txt..."
+        \\        curl -sL "https://encoding.spec.whatwg.org/index-$enc.txt" -o "$ENCODING_DIR/index-$enc.txt" || echo "      (not found, skipping)"
+        \\    done
+        \\    
+        \\    echo "    Encoding indexes downloaded successfully"
+        \\else
+        \\    echo "==> Encoding indexes already present"
+        \\fi
+        \\
+        \\echo ""
+        \\echo "==> Setup complete!"
+        \\echo ""
+        \\echo "Data files are in: $DATA_DIR/"
+        \\echo "  - cldr/     CLDR v$CLDR_VERSION JSON (~745MB)"
+        \\echo "  - unicode/  Unicode $UNICODE_VERSION data (~4MB)"
+        \\echo "  - psl/      Public Suffix List (~320KB)"
+        \\echo "  - idna/     IDNA test data (~760KB)"
+        \\echo "  - encoding/ Encoding indexes"
+        \\
+    });
+
+    setup_step.dependOn(&setup_data.step);
 }
