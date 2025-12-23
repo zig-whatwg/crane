@@ -8,7 +8,7 @@
 //! ```zig
 //! const loader = @import("snapshot_loader.zig");
 //!
-//! // Try to initialize from snapshot (or fall back to manual registration)
+//! // Try to initialize from snapshot (or fall back to fresh isolate)
 //! const result = try loader.initializeV8(allocator, .{
 //!     .snapshot_path = "whatwg_snapshot.bin",
 //! });
@@ -20,7 +20,19 @@
 //! ## Snapshot File Format
 //!
 //! The snapshot file is a raw V8 StartupData blob created by the snapshot generator.
-//! It contains serialized heap state including all registered WebIDL interfaces.
+//! It contains serialized heap state with V8 builtins AND all WebIDL interfaces
+//! pre-registered on the global object. This enables fast startup (~2ms vs ~40ms)
+//! by avoiding per-context interface registration.
+//!
+//! ## Context Restoration
+//!
+//! Contexts are restored using Context::FromSnapshot(isolate, 0), which retrieves
+//! the indexed context that was added via AddContext() during snapshot creation.
+//! This is the proper V8 API for context restoration (not Context::New()).
+//!
+//! IMPORTANT: The snapshot context already has all 1,099 WebIDL interfaces
+//! registered on the global object. Calling initializeBindings() on a snapshot
+//! context would be redundant and wasteful.
 //!
 //! ## External References
 //!
@@ -32,6 +44,12 @@ const std = @import("std");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const intl_binding = @import("intl_binding.zig");
+
+/// Tracked snapshot data for cleanup
+/// V8 requires snapshot data to remain valid for the isolate's lifetime,
+/// so we track it here and free it when the runtime is deinitialized.
+var tracked_snapshot_data: ?[]u8 = null;
+var tracked_snapshot_allocator: ?std.mem.Allocator = null;
 
 /// Standard V8 flags for deterministic snapshot creation and loading.
 /// These MUST be set BEFORE v8_Platform_Initialize() is called.
@@ -257,19 +275,21 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
     ffi.v8_Isolate_Enter(isolate);
     errdefer ffi.v8_Isolate_Exit(isolate);
 
-    // Create a context on the snapshot isolate using Context::New().
-    // This restores from the default snapshot context (set via SetDefaultContext()).
+    // Create a context from the snapshot using Context::FromSnapshot(isolate, 0).
+    // This retrieves the indexed context that was added via AddContext() during
+    // snapshot creation. This is the proper way to restore context state from snapshot.
     //
-    // Note: We do NOT use Context::FromSnapshot() with indexed contexts because
-    // V8 13.1 has rehashability assertion issues with that approach.
-    // Instead, we use Context::New() which works with the default context.
+    // IMPORTANT: The snapshot generator MUST add a context at index 0 using
+    // v8_SnapshotCreator_CreateAndAddContext() for this to work.
     //
     // This gives us:
     // - Fast isolate startup (~2ms vs ~40ms) from snapshot's pre-compiled builtins
-    // - Context from the default snapshot (currently empty, will contain WebIDL interfaces later)
-    const context = ffi.v8_Context_New(isolate) orelse {
+    // - Context from the snapshot (currently V8 builtins, will contain WebIDL interfaces later)
+    const context = ffi.v8_Context_NewFromSnapshot(isolate) orelse {
         if (log_performance) {
-            std.log.warn("Failed to create context on snapshot isolate, falling back", .{});
+            std.log.warn("Failed to create context from snapshot (Context::FromSnapshot failed)", .{});
+            std.log.warn("  This usually means no indexed context was added during snapshot creation", .{});
+            std.log.warn("  Ensure snapshot generator uses v8_SnapshotCreator_CreateAndAddContext()", .{});
         }
         ffi.v8_Isolate_Exit(isolate);
         return null;
@@ -306,11 +326,12 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_perf
         }
         return null;
     };
-    // NOTE: snapshot_data is intentionally NOT freed here!
-    // V8 keeps a reference to the snapshot data for lazy deserialization.
-    // The data must remain valid for the entire lifetime of the isolate.
-    // This is a small memory "leak" (~350KB) that we accept.
-    // TODO: Track this allocation and free it when the isolate is disposed.
+    // Track the snapshot data for cleanup when the runtime is deinitialized.
+    // V8 keeps a reference to the snapshot data for lazy deserialization,
+    // so the data must remain valid for the entire lifetime of the isolate.
+    // We free it in cleanupSnapshotData() which is called during runtime shutdown.
+    tracked_snapshot_data = snapshot_data;
+    tracked_snapshot_allocator = allocator;
 
     const bytes_read = file.readAll(snapshot_data) catch |err| {
         if (log_performance) {
@@ -410,6 +431,20 @@ pub fn hasValidSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
     if (bytes_read != stat.size) return false;
 
     return ffi.v8_Snapshot_IsValid(data.ptr, @intCast(data.len));
+}
+
+/// Clean up snapshot data that was allocated during initialization.
+/// This should be called during runtime shutdown, AFTER the V8 isolate is disposed.
+/// V8 requires the snapshot data to remain valid for the isolate's entire lifetime,
+/// so this must only be called after all V8 resources have been cleaned up.
+pub fn cleanupSnapshotData() void {
+    if (tracked_snapshot_data) |data| {
+        if (tracked_snapshot_allocator) |allocator| {
+            allocator.free(data);
+        }
+        tracked_snapshot_data = null;
+        tracked_snapshot_allocator = null;
+    }
 }
 
 // ============================================================================

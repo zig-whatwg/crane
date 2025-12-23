@@ -7,9 +7,13 @@
 //!
 //! 1. Creates a SnapshotCreator with external references (required for callbacks)
 //! 2. Gets the isolate from SnapshotCreator
-//! 3. Creates contexts with ALL WebIDL interfaces registered
-//! 4. Creates the snapshot blob
-//! 5. Writes the blob to a file (whatwg_snapshot.bin)
+//! 3. Creates a global ObjectTemplate with proper configuration:
+//!    - 2 internal fields (for Window impl pointer + destructor type)
+//!    - Immutable prototype (per WebIDL spec §3.8)
+//!    - Indexed property handlers (for frames[index] access)
+//! 4. Creates contexts with ALL WebIDL interfaces registered
+//! 5. Creates the snapshot blob
+//! 6. Writes the blob to a file (whatwg_snapshot.bin)
 //!
 //! ## What's In The Snapshot
 //!
@@ -17,6 +21,7 @@
 //! - ALL WebIDL interfaces (EventTarget, Node, Element, Document, etc.)
 //! - Constructor inheritance chains (Element.__proto__ = Node, etc.)
 //! - Pre-compiled bytecode for faster startup
+//! - Global template with proper internal fields for Window binding
 //!
 //! ## External References
 //!
@@ -40,6 +45,7 @@
 
 const std = @import("std");
 const v8 = @import("v8");
+const context_manager = v8.context_manager;
 
 // Import interface bindings for registration
 const interface_bindings = v8.interface_bindings;
@@ -124,9 +130,35 @@ pub fn main() !void {
     // We create contexts manually so we can register ALL WebIDL interfaces.
     log(allocator, "Step 5: Creating contexts with WebIDL interfaces...\\n", .{});
 
-    // Step 5a: Create default context with interfaces
-    log(allocator, "  5a: Creating default context...\\n", .{});
-    const default_context = v8.ffi.v8_Context_New(isolate) orelse {
+    // Step 5a: Create global ObjectTemplate with proper configuration
+    // This matches what context_manager.zig expects at runtime:
+    // - 2 internal fields (for Window impl pointer + type info)
+    // - Immutable prototype (per WebIDL spec §3.8)
+    // - Indexed property handlers (for frames[index] access)
+    log(allocator, "  5a: Creating global template with internal fields and handlers...\\n", .{});
+    const global_template = v8.ffi.v8_ObjectTemplate_New(isolate);
+
+    // Set 2 internal fields for Window binding (instance pointer + type info)
+    v8.ffi.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+
+    // Set immutable prototype per WebIDL spec §3.8 for global objects
+    v8.ffi.v8_ObjectTemplate_SetImmutableProto(global_template);
+
+    // Set indexed property handlers for frames[index] access (WindowProxy behavior)
+    // These callbacks are registered in external_references via context_manager.registerExternalReferences()
+    v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+        global_template,
+        context_manager.windowIndexedPropertyGetter,
+        null, // setter - not needed for read-only frames access
+        context_manager.windowIndexedPropertyQuery,
+        context_manager.windowIndexedPropertyEnumerator,
+        null, // descriptor - not needed
+    );
+    log(allocator, "  Global template configured: 2 internal fields, immutable proto, indexed handlers\\n", .{});
+
+    // Step 5b: Create default context with global template
+    log(allocator, "  5b: Creating default context with global template...\\n", .{});
+    const default_context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse {
         log(allocator, "  ERROR: Failed to create default context\\n", .{});
         v8.ffi.v8_Isolate_Exit(isolate);
         v8.ffi.v8_SnapshotCreator_Dispose(creator);
@@ -134,12 +166,12 @@ pub fn main() !void {
     };
 
     // Enter context and register all interfaces
-    log(allocator, "  5b: Entering default context and registering interfaces...\\n", .{});
+    log(allocator, "  5c: Entering default context and registering interfaces...\\n", .{});
     v8.ffi.v8_Context_Enter(default_context);
 
     // Register ALL WebIDL interfaces in this context
     interface_bindings.initializeBindings(isolate, default_context);
-    log(allocator, "  5c: WebIDL interfaces registered in default context\\n", .{});
+    log(allocator, "  5d: WebIDL interfaces registered in default context\\n", .{});
 
     // Exit context before adding to snapshot
     v8.ffi.v8_Context_Exit(default_context);
@@ -148,10 +180,10 @@ pub fn main() !void {
     v8.ffi.v8_SnapshotCreator_SetDefaultContext(creator, default_context);
     log(allocator, "  Default context with interfaces set\\n", .{});
 
-    // Step 5d: Create indexed context (at index 0) with interfaces
+    // Step 5e: Create indexed context (at index 0) with the same global template
     // This is the context that will be restored via Context::FromSnapshot(isolate, 0)
-    log(allocator, "  5d: Creating indexed context...\\n", .{});
-    const indexed_context = v8.ffi.v8_Context_New(isolate) orelse {
+    log(allocator, "  5e: Creating indexed context with global template...\\n", .{});
+    const indexed_context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse {
         log(allocator, "  ERROR: Failed to create indexed context\\n", .{});
         v8.ffi.v8_Isolate_Exit(isolate);
         v8.ffi.v8_SnapshotCreator_Dispose(creator);
@@ -159,12 +191,12 @@ pub fn main() !void {
     };
 
     // Enter context and register all interfaces
-    log(allocator, "  5e: Entering indexed context and registering interfaces...\\n", .{});
+    log(allocator, "  5f: Entering indexed context and registering interfaces...\\n", .{});
     v8.ffi.v8_Context_Enter(indexed_context);
 
     // Register ALL WebIDL interfaces in this context too
     interface_bindings.initializeBindings(isolate, indexed_context);
-    log(allocator, "  5f: WebIDL interfaces registered in indexed context\\n", .{});
+    log(allocator, "  5g: WebIDL interfaces registered in indexed context\\n", .{});
 
     // Exit context before adding to snapshot
     v8.ffi.v8_Context_Exit(indexed_context);

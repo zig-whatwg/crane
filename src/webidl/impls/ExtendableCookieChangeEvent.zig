@@ -18,9 +18,6 @@ const cookiestore = @import("cookiestore");
 const ExtendableCookieChangeEvent = interfaces.ExtendableCookieChangeEvent;
 const CookieListItem = cookiestore.CookieListItem;
 
-// Use typed extraction for dictionary arrays
-const extractOptionalDictionarySlice = webidl.extractOptionalDictionarySlice;
-
 pub const State = ExtendableCookieChangeEvent.State;
 
 pub const ImplError = error{
@@ -120,21 +117,22 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Get the ExtendableEvent state (parent) to initialize base event properties
     const state = instance.getState(State);
 
-    // Initialize ExtendableEvent -> Event base properties
-    // ExtendableEvent.State.parent is Event.State
-    state.parent.parent.own.type = try @"type".clone(ctx.allocator);
-    state.parent.parent.own.bubbles = false;
-    state.parent.parent.own.cancelable = false;
-    state.parent.parent.own.composed = false;
-    state.parent.parent.own.target = null;
-    state.parent.parent.own.srcElement = null;
-    state.parent.parent.own.currentTarget = null;
-    state.parent.parent.own.eventPhase = 0; // NONE
-    state.parent.parent.own.cancelBubble = false;
-    state.parent.parent.own.returnValue = true;
-    state.parent.parent.own.defaultPrevented = false;
-    state.parent.parent.own.isTrusted = false;
-    state.parent.parent.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    // Initialize Event base properties (grandparent)
+    // Access path: state.base (ExtendableEvent) -> .base (Event) -> .own (Event's fields)
+    const event_state = &state.base.base.own;
+    event_state.type = try @"type".clone(ctx.allocator);
+    event_state.bubbles = false;
+    event_state.cancelable = false;
+    event_state.composed = false;
+    event_state.target = null;
+    event_state.srcElement = null;
+    event_state.currentTarget = null;
+    event_state.eventPhase = 0; // NONE
+    event_state.cancelBubble = false;
+    event_state.returnValue = true;
+    event_state.defaultPrevented = false;
+    event_state.isTrusted = false;
+    event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
 
     // Process eventInitDict if provided
     if (eventInitDict.was_passed) {
@@ -142,17 +140,18 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
         // Apply ExtendableEventInit -> EventInit base properties
         if (init_dict.base.base.bubbles) |bubbles| {
-            state.parent.parent.own.bubbles = bubbles;
+            event_state.bubbles = bubbles;
         }
         if (init_dict.base.base.cancelable) |cancelable| {
-            state.parent.parent.own.cancelable = cancelable;
+            event_state.cancelable = cancelable;
         }
         if (init_dict.base.base.composed) |composed| {
-            state.parent.parent.own.composed = composed;
+            event_state.composed = composed;
         }
 
-        // Process changed cookies using typed extraction
-        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.changed)) |changed_list| {
+        // Process changed cookies
+        // init_dict.changed is ?[]const dictionaries.CookieListItem (CookieList typedef)
+        if (init_dict.changed) |changed_list| {
             for (changed_list) |dict_item| {
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
@@ -163,8 +162,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             }
         }
 
-        // Process deleted cookies using typed extraction
-        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.deleted)) |deleted_list| {
+        // Process deleted cookies
+        if (init_dict.deleted) |deleted_list| {
             for (deleted_list) |dict_item| {
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
@@ -183,14 +182,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-changed
 pub fn get_changed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    return @ptrCast(&internal.changed);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&internal.changed));
 }
 
 /// Getter for deleted
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-deleted
 pub fn get_deleted(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    return @ptrCast(&internal.deleted);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&internal.deleted));
 }
 
 // ============================================================================
@@ -210,12 +209,14 @@ pub fn createFromChanges(
     const internal = getInternalState(instance) orelse return error.NotImplemented;
     const state = instance.getState(State);
 
-    // Set event type
-    state.parent.parent.own.type = try allocator.dupe(u8, "cookiechange");
-    state.parent.parent.own.bubbles = false;
-    state.parent.parent.own.cancelable = false;
-    state.parent.parent.own.isTrusted = true;
-    state.parent.parent.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    // Set event type - use DOMString.initDupe for owned string
+    // Access path: state.base (ExtendableEvent) -> .base (Event) -> .own (Event's fields)
+    const event_state = &state.base.base.own;
+    event_state.type = try runtime.DOMString.initDupe(allocator, "cookiechange");
+    event_state.bubbles = false;
+    event_state.cancelable = false;
+    event_state.isTrusted = true;
+    event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
 
     // Separate changed and deleted
     for (changed) |change| {

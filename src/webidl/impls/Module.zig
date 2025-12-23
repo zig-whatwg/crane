@@ -75,3 +75,28 @@ pub fn call_customSections(instance: *runtime.Instance, moduleObject: *runtime.I
     _ = sectionName;
     return error.NotImplemented;
 }
+
+/// Static operation: exports
+/// Returns an array of ModuleExportDescriptor objects describing the exports of the given module.
+pub fn call_static_exports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = moduleObject;
+    return error.NotImplemented;
+}
+
+/// Static operation: imports
+/// Returns an array of ModuleImportDescriptor objects describing the imports of the given module.
+pub fn call_static_imports(instance: *runtime.Instance, moduleObject: *runtime.Instance) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = moduleObject;
+    return error.NotImplemented;
+}
+
+/// Static operation: customSections
+/// Returns an array of ArrayBuffer objects containing the contents of all custom sections with the given name.
+pub fn call_static_customSections(instance: *runtime.Instance, moduleObject: *runtime.Instance, sectionName: runtime.DOMString) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = moduleObject;
+    _ = sectionName;
+    return error.NotImplemented;
+}

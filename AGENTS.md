@@ -945,6 +945,54 @@ If you can make tests pass by injecting scripts directly, but they fail when run
 
 **NO EXCEPTIONS. Fix the browser, don't work around it.**
 
+### 18. **NEVER Disable Snapshots as a Workaround** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   🛑🛑🛑 SNAPSHOTS ARE CRITICAL INFRASTRUCTURE 🛑🛑🛑                        ║
+║                                                                              ║
+║   If snapshots are broken, FIX THE SNAPSHOT ISSUE - do NOT disable them.    ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+**V8 snapshots provide:**
+- Fast startup (~2ms vs ~40ms without snapshots)
+- Pre-registered WebIDL interfaces
+- Production-quality initialization path
+
+**When snapshots are broken:**
+1. ✅ **FIX THE SNAPSHOT LOADING CODE** - The bug is in our code, not V8
+2. ✅ **Debug the snapshot generator** - Check `tools/snapshot_generator.zig`
+3. ✅ **Debug the snapshot loader** - Check `src/runtime/engines/v8/snapshot_loader.zig`
+4. ✅ **Check external references** - Must match between creation and loading
+5. ❌ **NEVER set `snapshot_path: ""`** to disable snapshots
+6. ❌ **NEVER skip snapshot loading** "temporarily" to test other features
+7. ❌ **NEVER bypass the snapshot code path** in any way
+
+**Why This Rule Exists:**
+
+This rule was added because the agent REPEATEDLY tried to "temporarily disable" snapshots to work around the `rehashability` assertion failure. This is wrong because:
+
+1. **It hides the real bug** - The snapshot issue must be fixed, not avoided
+2. **It breaks production behavior** - WPT tests must exercise the production code path
+3. **It creates false positives** - Tests might pass without snapshots but fail with them
+4. **It wastes time** - The "temporary" workaround becomes permanent tech debt
+
+**If You Feel Tempted to Disable Snapshots:**
+
+1. STOP
+2. The snapshot issue IS the priority
+3. Fix `whatwg-6ge6s` or create a new issue if needed
+4. Debug the actual problem in v8_wrapper.cpp or snapshot_generator.zig
+5. Never take the "quick" path of disabling snapshots
+
+**Historical Violations:**
+- 2025-12-21: Agent tried to add `snapshot_path: ""` to wpt_browser.zig to bypass broken snapshot loading. Reverted immediately.
+
+**NO EXCEPTIONS. NO "JUST FOR TESTING." NO "TEMPORARY." FIX THE SNAPSHOT BUG.**
+
 ---
 
 ## Critical Project Context

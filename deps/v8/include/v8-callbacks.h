@@ -129,9 +129,7 @@ struct JitCodeEvent {
 enum JitCodeEventOptions {
   kJitCodeEventDefault = 0,
   // Generate callbacks for already existent code.
-  kJitCodeEventEnumExisting = 1,
-
-  kLastJitCodeEventOption = kJitCodeEventEnumExisting
+  kJitCodeEventEnumExisting = 1
 };
 
 /**
@@ -189,9 +187,6 @@ enum GCCallbackFlags {
 using GCCallback = void (*)(GCType type, GCCallbackFlags flags);
 
 using InterruptCallback = void (*)(Isolate* isolate, void* data);
-
-using PrintCurrentStackTraceFilterCallback =
-    bool (*)(Isolate* isolate, Local<String> script_name);
 
 /**
  * This callback is invoked when the heap size is close to the heap limit and
@@ -328,6 +323,10 @@ using WasmImportedStringsEnabledCallback = bool (*)(Local<Context> context);
 using SharedArrayBufferConstructorEnabledCallback =
     bool (*)(Local<Context> context);
 
+// --- Callback for checking if the compile hints magic comments are enabled ---
+using JavaScriptCompileHintsMagicEnabledCallback =
+    bool (*)(Local<Context> context);
+
 // --- Callback for checking if WebAssembly JSPI is enabled ---
 using WasmJSPIEnabledCallback = bool (*)(Local<Context> context);
 
@@ -392,7 +391,7 @@ using HostImportModuleDynamicallyCallback = MaybeLocal<Promise> (*)(
  * JavaScript. The embedder must resolve this promise according to the phase
  * requested:
  * - For ModuleImportPhase::kSource, the promise must be resolved with a
- *   compiled ModuleSource object, or rejected with a SyntaxError if the
+ *   compiled ModuleSource object, or rejected with a ReferenceError if the
  *   module does not support source representation.
  * - For ModuleImportPhase::kEvaluation, the promise must be resolved with a
  *   ModuleNamespace object of a module that has been compiled, instantiated,
@@ -447,14 +446,6 @@ using HostCreateShadowRealmContextCallback =
     MaybeLocal<Context> (*)(Local<Context> initiator_context);
 
 /**
- * IsJSApiWrapperNativeErrorCallback is called on an JSApiWrapper object to
- * determine if Error.isError should return true or false. For instance, in an
- * HTML embedder, DOMExceptions return true when passed to Error.isError.
- */
-using IsJSApiWrapperNativeErrorCallback = bool (*)(Isolate* isolate,
-                                                   Local<Object> obj);
-
-/**
  * PrepareStackTraceCallback is called when the stack property of an error is
  * first accessed. The return value will be used as the stack value. If this
  * callback is registed, the |Error.prepareStackTrace| API will be disabled.
@@ -494,26 +485,14 @@ using PrepareStackTraceCallback = MaybeLocal<Value> (*)(Local<Context> context,
  * with a list of regular expressions that should match the document URL
  * in order to enable ETW tracing:
  *   {
- *     "version": "2.0",
+ *     "version": "1.0",
  *     "filtered_urls": [
  *         "https:\/\/.*\.chromium\.org\/.*", "https://v8.dev/";, "..."
- *     ],
- *     "trace_interpreter_frames": true
+ *     ]
  *  }
  */
-
 using FilterETWSessionByURLCallback =
     bool (*)(Local<Context> context, const std::string& etw_filter_payload);
-
-struct FilterETWSessionByURLResult {
-  // If true, enable ETW tracing for the current isolate.
-  bool enable_etw_tracing;
-
-  // If true, also enables ETW tracing for interpreter stack frames.
-  bool trace_interpreter_frames;
-};
-using FilterETWSessionByURL2Callback = FilterETWSessionByURLResult (*)(
-    Local<Context> context, const std::string& etw_filter_payload);
 #endif  // V8_OS_WIN
 
 }  // namespace v8

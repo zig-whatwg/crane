@@ -564,8 +564,7 @@ domain Debugger
       experimental optional array of LocationRange skipList
 
   # Fired when breakpoint is resolved to an actual script and location.
-  # Deprecated in favor of `resolvedBreakpoints` in the `scriptParsed` event.
-  deprecated event breakpointResolved
+  event breakpointResolved
     parameters
       # Breakpoint unique identifier.
       BreakpointId breakpointId
@@ -623,13 +622,6 @@ domain Debugger
       # URL of the external symbol source.
       optional string externalURL
 
-  type ResolvedBreakpoint extends object
-    properties
-      # Breakpoint unique identifier.
-      BreakpointId breakpointId
-      # Actual breakpoint location.
-      Location location
-
   # Fired when virtual machine fails to parse the script.
   event scriptFailedToParse
     parameters
@@ -649,8 +641,6 @@ domain Debugger
       Runtime.ExecutionContextId executionContextId
       # Content hash of the script, SHA-256.
       string hash
-      # For Wasm modules, the content of the `build_id` custom section. For JavaScript the `debugId` magic comment.
-      string buildId
       # Embedder-specific auxiliary data likely matching {isDefault: boolean, type: 'default'|'isolated'|'worker', frameId: string}
       optional object executionContextAuxData
       # URL of source map associated with script (if any).
@@ -690,8 +680,6 @@ domain Debugger
       Runtime.ExecutionContextId executionContextId
       # Content hash of the script, SHA-256.
       string hash
-      # For Wasm modules, the content of the `build_id` custom section. For JavaScript the `debugId` magic comment.
-      string buildId
       # Embedder-specific auxiliary data likely matching {isDefault: boolean, type: 'default'|'isolated'|'worker', frameId: string}
       optional object executionContextAuxData
       # True, if this script is generated as a result of the live edit operation.
@@ -714,10 +702,6 @@ domain Debugger
       experimental optional array of Debugger.DebugSymbols debugSymbols
       # The name the embedder supplied for this script.
       experimental optional string embedderName
-      # The list of set breakpoints in this script if calls to `setBreakpointByUrl`
-      # matches this script's URL or hash. Clients that use this list can ignore the
-      # `breakpointResolved` event. They are equivalent.
-      experimental optional array of ResolvedBreakpoint resolvedBreakpoints
 
 experimental domain HeapProfiler
   depends on Runtime
@@ -1572,14 +1556,10 @@ domain Runtime
   # It is the total usage of the corresponding isolate not scoped to a particular Runtime.
   experimental command getHeapUsage
     returns
-      # Used JavaScript heap size in bytes.
+      # Used heap size in bytes.
       number usedSize
-      # Allocated JavaScript heap size in bytes.
+      # Allocated heap size in bytes.
       number totalSize
-      # Used size in bytes in the embedder's garbage-collected heap.
-      number embedderHeapUsedSize
-      # Size in bytes of backing storage for array buffers and external strings.
-      number backingStorageSize
 
   # Returns properties of a given object. Object group of the result is inherited from the target
   # object.

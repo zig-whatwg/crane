@@ -109,6 +109,7 @@ typedef void (*ZigWeakCallbackFn)(void* data, size_t length_in_bytes);
 struct WeakCallbackData {
     ZigWeakCallbackFn callback;
     void* user_data;
+    Global<Value>* handle;  // Store handle pointer so we can reset it
 };
 
 /// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
@@ -116,9 +117,18 @@ template<typename T>
 static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) {
     WeakCallbackData* data = info.GetParameter();
     
-    if (data && data->callback) {
+    if (data) {
+        // CRITICAL: V8 requires that weak callbacks MUST reset the handle
+        // before returning. Failure to do so causes "Handle not reset in first callback"
+        // crashes during GC.
+        if (data->handle) {
+            data->handle->Reset();
+        }
+        
         // Call the Zig finalizer with user data
-        data->callback(data->user_data, 0);
+        if (data->callback) {
+            data->callback(data->user_data, 0);
+        }
         
         // Clean up the wrapper data
         delete data;
@@ -720,7 +730,10 @@ void v8_Snapshot_DisableMode() {
     g_snapshot_handles.clear();
 }
 
-/// Clear all tracked Global handles - MUST be called before CreateBlob
+/// Clear all tracked Global handles - MUST be called BEFORE exiting context/isolate
+///
+/// V8 requires no outstanding Global handles when creating a snapshot.
+/// This MUST be called while still in the context/isolate, not after exiting.
 void v8_Snapshot_ClearGlobalHandles() {
     for (auto& entry : g_snapshot_handles) {
         entry.reset_fn(entry.handle);
@@ -731,6 +744,23 @@ void v8_Snapshot_ClearGlobalHandles() {
 // ============================================================================
 // Platform Management
 // ============================================================================
+
+/// Set V8 command-line flags from a string
+///
+/// This must be called BEFORE V8::Initialize(). Use this to configure V8
+/// behavior like hash seeding, snapshot options, etc.
+///
+/// Example flags:
+/// - "--hash-seed=0" - Use deterministic hash seed (may help with snapshots)
+/// - "--no-lazy" - Disable lazy compilation
+///
+/// @param flags - Null-terminated string of V8 command-line flags
+void v8_SetFlagsFromString(const char* flags) {
+    if (flags) {
+        fprintf(stderr, "[v8_SetFlagsFromString] Setting V8 flags: %s\n", flags);
+        V8::SetFlagsFromString(flags);
+    }
+}
 
 void v8_Platform_Initialize() {
     if (!v8_initialized) {
@@ -2584,7 +2614,7 @@ void v8_FunctionTemplate_SetCallHandler(
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
-    Local<Value> callback_data = data ? External::New(isolate, data) : Local<Value>();
+    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data)) : Local<Value>();
     local_tpl->SetCallHandler(callback, callback_data);
 }
 
@@ -3004,6 +3034,25 @@ void v8_ObjectTemplate_SetWithAttributes(
     local_tpl->Set(key, val, static_cast<PropertyAttribute>(attributes));
 }
 
+// ObjectTemplate - set FunctionTemplate property with attributes
+// Used by GlobalTemplateRegistry to attach interface constructors to the global template
+// FunctionTemplate is a subclass of Template, not Value, so we need a separate function
+void v8_ObjectTemplate_SetFunctionTemplate(
+    Global<ObjectTemplate>* tpl,
+    Global<String>* name,
+    Global<FunctionTemplate>* func_tpl,
+    int attributes
+) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    Local<String> key = name->Get(isolate);
+    Local<FunctionTemplate> local_func_tpl = func_tpl->Get(isolate);
+    // Use ObjectTemplate::Set(Local<Name>, Local<Data>, PropertyAttribute)
+    // FunctionTemplate is a Template, which inherits from Data
+    local_tpl->Set(key, local_func_tpl, static_cast<PropertyAttribute>(attributes));
+}
+
 // ObjectTemplate - set internal field count
 void v8_ObjectTemplate_SetInternalFieldCount(Global<ObjectTemplate>* tpl, int count) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -3049,7 +3098,7 @@ void v8_ObjectTemplate_SetCallAsFunctionHandler(
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
-    Local<Value> callback_data = data ? External::New(isolate, data) : Local<Value>();
+    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data)) : Local<Value>();
     local_tpl->SetCallAsFunctionHandler(callback, callback_data);
 }
 
@@ -3634,8 +3683,8 @@ bool v8_Object_SetAccessorProperty(
     // Create accessor property descriptor
     // PropertyDescriptor(Local<Value> get, Local<Value> set) creates an accessor descriptor
     PropertyDescriptor desc(
-        getter ? getter_func : Local<Value>(),
-        setter ? setter_func : Local<Value>()
+        getter ? Local<Value>(getter_func) : Local<Value>(),
+        setter ? Local<Value>(setter_func) : Local<Value>()
     );
     desc.set_enumerable(true);  // WebIDL default
     desc.set_configurable(true); // WebIDL default
@@ -4928,8 +4977,9 @@ void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback
     // Cast to Global<Value>* (all Global types are compatible for SetWeak)
     Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
     
-    // Create wrapper data that holds both the callback and user data
-    WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data};
+    // Create wrapper data that holds callback, user data, AND the handle pointer
+    // The handle pointer is needed so the weak callback can reset it (V8 requirement)
+    WeakCallbackData* wrapper = new WeakCallbackData{callback, user_data, global};
     
     // Make the Global handle weak with our wrapper callback
     global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
@@ -5366,6 +5416,111 @@ Isolate* v8_SnapshotCreator_GetIsolate(void* creator) {
     return sc->GetIsolate();
 }
 
+// =============================================================================
+// Snapshot Internal Field Serialization/Deserialization
+// =============================================================================
+// These callbacks handle serialization of internal fields during snapshot
+// creation and restoration. Without these, V8 cannot properly serialize
+// objects with internal fields, leading to rehashability errors.
+
+/// Serialize internal fields during snapshot creation
+///
+/// This callback is invoked by V8 for each object with internal fields.
+/// For our minimal snapshots (no WebIDL objects in snapshot), we return
+/// empty data to indicate no serialization needed.
+StartupData SerializeInternalFields(Local<Object> holder, int index, void* data) {
+    // For minimal snapshots without embedded objects, return empty
+    // This tells V8 there's nothing to serialize for this field
+    return {nullptr, 0};
+}
+
+/// Deserialize internal fields during snapshot loading
+///
+/// This callback is invoked by V8 when restoring objects with internal fields.
+/// For our minimal snapshots, we just set the field to nullptr.
+void DeserializeInternalFields(Local<Object> holder, int index,
+                               StartupData payload, void* data) {
+    // For minimal snapshots, set internal field to nullptr
+    // WebIDL objects are registered at runtime, not from snapshot
+    if (payload.raw_size == 0) {
+        holder->SetAlignedPointerInInternalField(index, nullptr);
+    }
+}
+
+/// Create a context and set it as default for snapshot
+///
+/// This function creates a new context using Local handles (not Global) and
+/// immediately sets it as the default context for the snapshot. Using Local
+/// handles avoids the "global handle not serialized" error during CreateBlob.
+///
+/// @param creator - SnapshotCreator handle
+/// @return true on success, false on failure
+bool v8_SnapshotCreator_CreateAndSetDefaultContext(void* creator) {
+    if (!creator) {
+        fprintf(stderr, "[v8_SnapshotCreator_CreateAndSetDefaultContext] ERROR: creator is null\n");
+        return false;
+    }
+    
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    Isolate* isolate = sc->GetIsolate();
+    
+    HandleScope handle_scope(isolate);
+    
+    // Create context using Local handle only (no Global)
+    Local<Context> context = Context::New(isolate);
+    if (context.IsEmpty()) {
+        fprintf(stderr, "[v8_SnapshotCreator_CreateAndSetDefaultContext] ERROR: Context::New failed\n");
+        return false;
+    }
+    
+    // Enter and exit context (V8 requirement)
+    context->Enter();
+    context->Exit();
+    
+    fprintf(stderr, "[v8_SnapshotCreator_CreateAndSetDefaultContext] Setting default context\n");
+    sc->SetDefaultContext(context, SerializeInternalFields);
+    fprintf(stderr, "[v8_SnapshotCreator_CreateAndSetDefaultContext] Default context set successfully\n");
+    
+    return true;
+}
+
+/// Create a context and add it to snapshot at index
+///
+/// This function creates a new context using Local handles (not Global) and
+/// immediately adds it to the snapshot's context array. Using Local handles
+/// avoids the "global handle not serialized" error during CreateBlob.
+///
+/// @param creator - SnapshotCreator handle
+/// @return The index at which the context was added, or SIZE_MAX on failure
+size_t v8_SnapshotCreator_CreateAndAddContext(void* creator) {
+    if (!creator) {
+        fprintf(stderr, "[v8_SnapshotCreator_CreateAndAddContext] ERROR: creator is null\n");
+        return SIZE_MAX;
+    }
+    
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    Isolate* isolate = sc->GetIsolate();
+    
+    HandleScope handle_scope(isolate);
+    
+    // Create context using Local handle only (no Global)
+    Local<Context> context = Context::New(isolate);
+    if (context.IsEmpty()) {
+        fprintf(stderr, "[v8_SnapshotCreator_CreateAndAddContext] ERROR: Context::New failed\n");
+        return SIZE_MAX;
+    }
+    
+    // Enter and exit context (V8 requirement)
+    context->Enter();
+    context->Exit();
+    
+    fprintf(stderr, "[v8_SnapshotCreator_CreateAndAddContext] Adding context to snapshot\n");
+    size_t index = sc->AddContext(context);
+    fprintf(stderr, "[v8_SnapshotCreator_CreateAndAddContext] Context added at index %zu\n", index);
+    
+    return index;
+}
+
 /// Set the default context for the snapshot
 ///
 /// The snapshot will contain this context's state. When loading the snapshot,
@@ -5396,6 +5551,37 @@ void v8_SnapshotCreator_SetDefaultContext(void* creator, Global<Context>* contex
     fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Setting default context\n");
     sc->SetDefaultContext(ctx);
     fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Default context set successfully\n");
+}
+
+/// Add context to snapshot at specific index
+///
+/// This adds a context that can be retrieved via Context::FromSnapshot(isolate, index)
+/// after deserialization. The first call returns index 0, second returns 1, etc.
+///
+/// @param creator - SnapshotCreator handle
+/// @param context - Global handle to the context to snapshot
+/// @return The index at which the context was added (0-based)
+size_t v8_SnapshotCreator_AddContext(void* creator, Global<Context>* context) {
+    if (!creator || !context) {
+        fprintf(stderr, "[v8_SnapshotCreator_AddContext] ERROR: creator or context is null\n");
+        return SIZE_MAX;
+    }
+    
+    SnapshotCreator* sc = static_cast<SnapshotCreator*>(creator);
+    Isolate* isolate = sc->GetIsolate();
+    
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    
+    if (ctx.IsEmpty()) {
+        fprintf(stderr, "[v8_SnapshotCreator_AddContext] ERROR: context is empty\n");
+        return SIZE_MAX;
+    }
+    
+    fprintf(stderr, "[v8_SnapshotCreator_AddContext] Adding context to snapshot\n");
+    size_t index = sc->AddContext(ctx);
+    fprintf(stderr, "[v8_SnapshotCreator_AddContext] Context added at index %zu\n", index);
+    return index;
 }
 
 /// Create the snapshot blob
@@ -5503,15 +5689,25 @@ Isolate* v8_Isolate_NewFromSnapshot(
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] No external references provided\n");
     }
     
-    // Create StartupData from the provided blob
-    // IMPORTANT: This must remain valid until Isolate::New completes
-    StartupData startup_data;
-    startup_data.data = snapshot_data;
-    startup_data.raw_size = snapshot_size;
+    // CRITICAL: Heap-allocate StartupData and snapshot copy.
+    // V8 stores only a POINTER to StartupData, so it must live for the
+    // entire lifetime of the isolate. Stack allocation would cause the
+    // pointer to become dangling when this function returns.
+    
+    // Copy snapshot data to heap (we don't own the input buffer)
+    char* data_copy = new char[snapshot_size];
+    memcpy(data_copy, snapshot_data, snapshot_size);
+    
+    // Heap-allocate StartupData struct
+    StartupData* startup_data = new StartupData();
+    startup_data->data = data_copy;
+    startup_data->raw_size = snapshot_size;
     
     // Validate the snapshot
-    if (!startup_data.IsValid()) {
+    if (!startup_data->IsValid()) {
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Snapshot data is not valid\n");
+        delete[] data_copy;
+        delete startup_data;
         return nullptr;
     }
     fprintf(stderr, "[v8_Isolate_NewFromSnapshot] Snapshot validation passed\n");
@@ -5519,14 +5715,26 @@ Isolate* v8_Isolate_NewFromSnapshot(
     // Create isolate params with snapshot and external references
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
-    create_params.snapshot_blob = &startup_data;
+    create_params.snapshot_blob = startup_data;  // Heap-allocated, lives forever
     create_params.external_references = external_references;
     
     Isolate* isolate = Isolate::New(create_params);
     if (!isolate) {
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Isolate::New returned nullptr\n");
+        delete[] data_copy;
+        delete startup_data;
         return nullptr;
     }
+    
+    // Store pointers in isolate's embedder data slots for cleanup later
+    // NOTE: Slots 0-1 are reserved for Zig-side usage:
+    //   Slot 0: IsolateAllocator (see isolate_allocator.zig)
+    //   Slot 1: IsolateTemplates (see isolate_templates.zig)
+    // We use higher slots for C++ snapshot data:
+    //   Slot 2: StartupData struct pointer
+    //   Slot 3: Snapshot data buffer pointer
+    isolate->SetData(2, startup_data);
+    isolate->SetData(3, data_copy);
     
     fprintf(stderr, "[v8_Isolate_NewFromSnapshot] SUCCESS: Isolate created at %p\n", (void*)isolate);
     return isolate;
@@ -5546,24 +5754,130 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
         return nullptr;
     }
     
-    fprintf(stderr, "[v8_Context_NewFromSnapshot] Creating context...\n");
+    fprintf(stderr, "[v8_Context_NewFromSnapshot] Creating context from snapshot index 0...\n");
     
+    // Enter the isolate before creating context
+    Isolate::Scope isolate_scope(isolate);
     HandleScope handle_scope(isolate);
     
-    // When loading a snapshot with a DEFAULT context (set via SetDefaultContext),
-    // V8's Context::New() should automatically use the snapshotted default context.
-    // Context::FromSnapshot with index 0 is for additional contexts added via AddContext.
-    //
-    // Let's try Context::New() first, which should give us the default context
-    // from the snapshot if one exists.
-    Local<Context> context = Context::New(isolate);
+    // Add TryCatch to capture any exception
+    TryCatch try_catch(isolate);
     
-    if (context.IsEmpty()) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: Context::New returned empty context\n");
+    // Use Context::FromSnapshot(isolate, 0) to retrieve the context that was
+    // added via AddContext() during snapshot creation. This preserves the
+    // global proxy (unlike the default context from SetDefaultContext).
+    // The DeserializeInternalFieldsCallback handles any internal field restoration.
+    MaybeLocal<Context> maybe_context = Context::FromSnapshot(
+        isolate, 0,
+        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
+    
+    if (try_catch.HasCaught()) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshot] Exception caught during FromSnapshot\n");
+        Local<Message> message = try_catch.Message();
+        if (!message.IsEmpty()) {
+            String::Utf8Value msg_str(isolate, message->Get());
+            fprintf(stderr, "[v8_Context_NewFromSnapshot] Exception: %s\n", *msg_str);
+        }
+    }
+    
+    Local<Context> context;
+    if (!maybe_context.ToLocal(&context)) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: Context::FromSnapshot(0) failed\n");
+        fprintf(stderr, "[v8_Context_NewFromSnapshot] This usually means:\n");
+        fprintf(stderr, "  1. External references mismatch between snapshot creation and loading\n");
+        fprintf(stderr, "  2. No context was added at index 0 during snapshot creation\n");
+        fprintf(stderr, "  3. Snapshot data is corrupted or from incompatible V8 version\n");
         return nullptr;
     }
     
-    fprintf(stderr, "[v8_Context_NewFromSnapshot] SUCCESS: Context created\n");
+    fprintf(stderr, "[v8_Context_NewFromSnapshot] SUCCESS: Context restored from snapshot index 0\n");
+    
+    // Debug: Check internal field count of the global object
+    {
+        Context::Scope context_scope(context);
+        Local<Object> global = context->Global();
+        int internal_field_count = global->InternalFieldCount();
+        fprintf(stderr, "[v8_Context_NewFromSnapshot] Global object internal field count: %d\n", internal_field_count);
+        if (internal_field_count == 0) {
+            fprintf(stderr, "[v8_Context_NewFromSnapshot] WARNING: Global object has 0 internal fields!\n");
+            fprintf(stderr, "  This means the snapshot's global template didn't have SetInternalFieldCount(2).\n");
+            fprintf(stderr, "  The snapshot generator needs to create contexts with a proper global template.\n");
+        }
+    }
+    
+    return trackHandle(new Global<Context>(isolate, context));
+}
+
+/// Create a NEW context for an isolate that was created from a snapshot
+///
+/// Unlike v8_Context_NewFromSnapshot which restores a specific context from the
+/// snapshot by index, this creates a completely new context. The new context will
+/// have all the V8 builtins from the snapshot's default context as a template.
+///
+/// Use this when you need a fresh context but want to benefit from the snapshot's
+/// pre-initialized V8 builtins.
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @return New context (fresh, not from snapshot state)
+Global<Context>* v8_Context_NewFromSnapshotDefault(Isolate* isolate) {
+    if (!isolate) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] ERROR: isolate is null\n");
+        return nullptr;
+    }
+    
+    fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] Creating new context for snapshot isolate...\n");
+    
+    // The isolate should already be entered by the caller
+    HandleScope handle_scope(isolate);
+    
+    // Add TryCatch to capture any exception
+    TryCatch try_catch(isolate);
+    
+    // CRITICAL: When an isolate is created from a snapshot, Context::New() without
+    // a global_template will try to deserialize from the snapshot, which fails with
+    // "index < num_contexts" if no contexts were added via AddContext().
+    //
+    // To force V8 to create a FRESH context (not from snapshot), we provide an
+    // empty global_template. This tells V8 to bootstrap a new context from scratch
+    // while still benefiting from the snapshot's isolate-level optimizations
+    // (pre-compiled builtins, heap state, etc.).
+    //
+    // Per V8 docs: "If a global template is provided, it will be used to create
+    // the global object for the context from scratch."
+    
+    // Create an empty ObjectTemplate for the global object
+    Local<ObjectTemplate> global_template = ObjectTemplate::New(isolate);
+    
+    fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] Using empty global_template to force fresh context...\n");
+    
+    // Create context with the empty template and deserializer callback.
+    // The DeserializeInternalFields callback is needed for snapshot isolates
+    // to properly handle context creation.
+    Local<Context> context = Context::New(
+        isolate,
+        nullptr,  // no extensions
+        global_template,  // PROVIDE TEMPLATE to skip snapshot context
+        MaybeLocal<Value>(),  // no global object
+        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr),
+        nullptr  // no microtask queue
+    );
+    
+    if (try_catch.HasCaught()) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] Exception caught during Context::New\n");
+        Local<Message> message = try_catch.Message();
+        if (!message.IsEmpty()) {
+            String::Utf8Value msg_str(isolate, message->Get());
+            fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] Exception: %s\n", *msg_str);
+        }
+        return nullptr;
+    }
+    
+    if (context.IsEmpty()) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] ERROR: Context::New returned empty context\n");
+        return nullptr;
+    }
+    
+    fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] SUCCESS: New context created\n");
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -5584,6 +5898,30 @@ bool v8_Snapshot_IsValid(const char* snapshot_data, int snapshot_size) {
     startup_data.raw_size = snapshot_size;
     
     return startup_data.IsValid();
+}
+
+/// Check if a snapshot blob can be rehashed during deserialization
+///
+/// If CanBeRehashed() returns false, the snapshot can only be loaded by an
+/// isolate with the same hash seed that was used during snapshot creation.
+/// This typically causes "rehashability" errors during context restoration.
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @return true if rehashable, false if not
+bool v8_Snapshot_CanBeRehashed(const char* snapshot_data, int snapshot_size) {
+    if (!snapshot_data || snapshot_size <= 0) {
+        return false;
+    }
+    
+    StartupData startup_data;
+    startup_data.data = snapshot_data;
+    startup_data.raw_size = snapshot_size;
+    
+    bool result = startup_data.CanBeRehashed();
+    fprintf(stderr, "[v8_Snapshot_CanBeRehashed] Snapshot rehashability: %s\n", 
+            result ? "true" : "false");
+    return result;
 }
 
 // ============================================================================

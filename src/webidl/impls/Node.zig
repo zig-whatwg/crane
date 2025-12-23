@@ -226,21 +226,74 @@ pub fn deinit(instance: *runtime.Instance) void {
     // and we need to collect children first since deinit modifies the tree.
     if (Registry.get(instance)) |internal| {
         if (internal.node_base) |node_base| {
-            // Iterate through children and deinit each one.
-            // We iterate by following next_sibling links starting from first_child.
-            var child = node_base.first_child;
-            while (child) |child_base| {
-                // Get the next sibling BEFORE deinit (deinit may clear sibling pointers)
-                const next = child_base.next_sibling;
+            // SAFETY: Collect child instances into a temporary array BEFORE iterating.
+            // This protects against the case where a child's NodeBase was freed by
+            // another path (e.g., GC callback during script execution) before this
+            // tree walk happens. By collecting instances first, we avoid following
+            // potentially dangling next_sibling pointers.
+            //
+            // We use child_nodes list (stored in parent's NodeBase) rather than
+            // sibling pointers because the list is guaranteed valid as long as
+            // the parent's NodeBase is valid.
+            const child_count = node_base.child_nodes.size();
+            if (child_count > 0) {
+                // Collect all child instances first
+                var child_instances: [256]*runtime.Instance = undefined;
+                var collected: usize = 0;
 
-                // Get the runtime.Instance for this child via bridge
-                if (instance_bridge.getInstance(child_base)) |child_opaque| {
-                    const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-                    // Deinit the child node based on its type.
-                    deinitNodeByType(child_instance);
+                // Use bounded array for small trees, fall back to allocator for large trees
+                if (child_count <= 256) {
+                    for (node_base.child_nodes.items()) |child_base| {
+                        if (instance_bridge.getInstance(child_base)) |child_opaque| {
+                            child_instances[collected] = @ptrCast(@alignCast(child_opaque));
+                            collected += 1;
+                        }
+                    }
+
+                    // Now deinit each collected child
+                    for (child_instances[0..collected]) |child_instance| {
+                        deinitNodeByType(child_instance);
+                    }
+                } else {
+                    // Large tree: allocate dynamic array
+                    const alloc_children = internal.allocator.alloc(*runtime.Instance, child_count) catch {
+                        // On allocation failure, fall back to iterating directly
+                        // This is less safe but better than doing nothing
+                        var child = node_base.first_child;
+                        while (child) |child_base| {
+                            const next = child_base.next_sibling;
+                            if (instance_bridge.getInstance(child_base)) |child_opaque| {
+                                const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
+                                deinitNodeByType(child_instance);
+                            }
+                            child = next;
+                        }
+                        // Continue to cleanup below
+                        node_base.child_nodes.deinit();
+                        node_base.registered_observers.deinit();
+                        instance_bridge.unregister(instance);
+                        internal.allocator.destroy(node_base);
+                        internal.node_base = null;
+                        internal.deinit();
+                        Registry.remove(instance);
+                        runtime.instance_lifecycle.markCleanupComplete(instance);
+                        EventTargetImpl.deinit(instance);
+                        return;
+                    };
+                    defer internal.allocator.free(alloc_children);
+
+                    for (node_base.child_nodes.items()) |child_base| {
+                        if (instance_bridge.getInstance(child_base)) |child_opaque| {
+                            alloc_children[collected] = @ptrCast(@alignCast(child_opaque));
+                            collected += 1;
+                        }
+                    }
+
+                    // Now deinit each collected child
+                    for (alloc_children[0..collected]) |child_instance| {
+                        deinitNodeByType(child_instance);
+                    }
                 }
-
-                child = next;
             }
 
             // Clean up NodeBase resources
@@ -279,6 +332,18 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
 pub fn deinitNodeByType(instance: *runtime.Instance) void {
+    // IMPORTANT: Mark cleanup started BEFORE dispatching to type-specific deinit.
+    // Type-specific deinit (e.g., HTMLIFrameElement.deinit) frees resources BEFORE
+    // chaining to Node.deinit. If we don't mark cleanup started here, the wrapper
+    // cache won't know the instance is being cleaned up and might double-free.
+    //
+    // Also mark in wrapper cache to prevent double-free during cache cleanup.
+    const context_manager = @import("v8").context_manager;
+    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
+        return; // Already being cleaned up, skip
+    }
+    context_manager.markInstanceCleanedUp(instance);
+
     const internal = Registry.get(instance) orelse {
         // No internal state found, try generic EventTarget cleanup
         EventTargetImpl.deinit(instance);

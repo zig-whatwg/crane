@@ -1,40 +1,95 @@
-//! WebIDL Mixin Implementations
-//!
-//! This module provides shared implementations for WebIDL interface mixins.
-//! These mixins define common functionality that can be included by multiple
-//! interfaces (Document, Element, DocumentFragment, etc.)
-//!
-//! Available mixins:
-//! - ParentNode: querySelector, querySelectorAll, children, firstElementChild,
-//!               lastElementChild, childElementCount, prepend, append, replaceChildren
-//! - NonElementParentNode: getElementById
-//! - ChildNode: before, after, replaceWith, remove
-//! - NonDocumentTypeChildNode: previousElementSibling, nextElementSibling
-//! - Slottable: assignedSlot
-//! - DocumentOrShadowRoot: activeElement, styleSheets, fullscreenElement, etc.
-//! - XPathEvaluatorBase: createExpression, evaluate
-//!
-//! Mixin → Interface Mapping (from DOM spec):
-//! | Mixin                    | Used By                                    |
-//! |--------------------------|--------------------------------------------|
-//! | ParentNode               | Document, Element, DocumentFragment        |
-//! | NonElementParentNode     | Document, DocumentFragment                 |
-//! | ChildNode                | DocumentType, Element, CharacterData       |
-//! | NonDocumentTypeChildNode | Element, CharacterData                     |
-//! | Slottable                | Element, Text                              |
-//! | DocumentOrShadowRoot     | Document, ShadowRoot                       |
-//! | XPathEvaluatorBase       | Document, XPathEvaluator                   |
+//! Auto-generated root file for all WebIDL mixins
 
-const std = @import("std");
-
-pub const ParentNode = @import("ParentNode.zig");
-pub const NonElementParentNode = @import("NonElementParentNode.zig");
+pub const ARIAMixin = @import("ARIAMixin.zig");
+pub const AbstractWorker = @import("AbstractWorker.zig");
+pub const Animatable = @import("Animatable.zig");
+pub const AnimationFrameProvider = @import("AnimationFrameProvider.zig");
+pub const BluetoothDeviceEventHandlers = @import("BluetoothDeviceEventHandlers.zig");
+pub const Body = @import("Body.zig");
+pub const CanvasCompositing = @import("CanvasCompositing.zig");
+pub const CanvasDrawImage = @import("CanvasDrawImage.zig");
+pub const CanvasDrawPath = @import("CanvasDrawPath.zig");
+pub const CanvasFillStrokeStyles = @import("CanvasFillStrokeStyles.zig");
+pub const CanvasFilters = @import("CanvasFilters.zig");
+pub const CanvasImageData = @import("CanvasImageData.zig");
+pub const CanvasImageSmoothing = @import("CanvasImageSmoothing.zig");
+pub const CanvasPath = @import("CanvasPath.zig");
+pub const CanvasPathDrawingStyles = @import("CanvasPathDrawingStyles.zig");
+pub const CanvasRect = @import("CanvasRect.zig");
+pub const CanvasSettings = @import("CanvasSettings.zig");
+pub const CanvasShadowStyles = @import("CanvasShadowStyles.zig");
+pub const CanvasState = @import("CanvasState.zig");
+pub const CanvasText = @import("CanvasText.zig");
+pub const CanvasTextDrawingStyles = @import("CanvasTextDrawingStyles.zig");
+pub const CanvasTransform = @import("CanvasTransform.zig");
+pub const CanvasUserInterface = @import("CanvasUserInterface.zig");
+pub const CharacteristicEventHandlers = @import("CharacteristicEventHandlers.zig");
 pub const ChildNode = @import("ChildNode.zig");
-pub const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig");
-pub const Slottable = @import("Slottable.zig");
+pub const CredentialUserData = @import("CredentialUserData.zig");
+pub const DestroyableModel = @import("DestroyableModel.zig");
 pub const DocumentOrShadowRoot = @import("DocumentOrShadowRoot.zig");
+pub const ElementContentEditable = @import("ElementContentEditable.zig");
+pub const FontFaceSource = @import("FontFaceSource.zig");
+pub const GPUBindingCommandsMixin = @import("GPUBindingCommandsMixin.zig");
+pub const GPUCommandsMixin = @import("GPUCommandsMixin.zig");
+pub const GPUDebugCommandsMixin = @import("GPUDebugCommandsMixin.zig");
+pub const GPUObjectBase = @import("GPUObjectBase.zig");
+pub const GPUPipelineBase = @import("GPUPipelineBase.zig");
+pub const GPURenderCommandsMixin = @import("GPURenderCommandsMixin.zig");
+pub const GenericTransformStream = @import("GenericTransformStream.zig");
+pub const GeometryUtils = @import("GeometryUtils.zig");
+pub const GetSVGDocument = @import("GetSVGDocument.zig");
+pub const GlobalEventHandlers = @import("GlobalEventHandlers.zig");
+pub const GlobalPrivacyControl = @import("GlobalPrivacyControl.zig");
+pub const HTMLAttributionSrcElementUtils = @import("HTMLAttributionSrcElementUtils.zig");
+pub const HTMLHyperlinkElementUtils = @import("HTMLHyperlinkElementUtils.zig");
+pub const HTMLOrSVGElement = @import("HTMLOrSVGElement.zig");
+pub const HTMLSharedStorageWritableElementUtils = @import("HTMLSharedStorageWritableElementUtils.zig");
+pub const MessageEventTarget = @import("MessageEventTarget.zig");
+pub const NavigatorAutomationInformation = @import("NavigatorAutomationInformation.zig");
+pub const NavigatorBadge = @import("NavigatorBadge.zig");
+pub const NavigatorConcurrentHardware = @import("NavigatorConcurrentHardware.zig");
+pub const NavigatorContentUtils = @import("NavigatorContentUtils.zig");
+pub const NavigatorCookies = @import("NavigatorCookies.zig");
+pub const NavigatorDeviceMemory = @import("NavigatorDeviceMemory.zig");
+pub const NavigatorGPU = @import("NavigatorGPU.zig");
+pub const NavigatorID = @import("NavigatorID.zig");
+pub const NavigatorLanguage = @import("NavigatorLanguage.zig");
+pub const NavigatorLocks = @import("NavigatorLocks.zig");
+pub const NavigatorML = @import("NavigatorML.zig");
+pub const NavigatorNetworkInformation = @import("NavigatorNetworkInformation.zig");
+pub const NavigatorOnLine = @import("NavigatorOnLine.zig");
+pub const NavigatorPlugins = @import("NavigatorPlugins.zig");
+pub const NavigatorStorage = @import("NavigatorStorage.zig");
+pub const NavigatorStorageBuckets = @import("NavigatorStorageBuckets.zig");
+pub const NavigatorUA = @import("NavigatorUA.zig");
+pub const NetworkInformationSaveData = @import("NetworkInformationSaveData.zig");
+pub const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig");
+pub const NonElementParentNode = @import("NonElementParentNode.zig");
+pub const PaintTimingMixin = @import("PaintTimingMixin.zig");
+pub const ParentNode = @import("ParentNode.zig");
+pub const PopoverTargetAttributes = @import("PopoverTargetAttributes.zig");
+pub const PushManagerAttribute = @import("PushManagerAttribute.zig");
+pub const ReadableStreamGenericReader = @import("ReadableStreamGenericReader.zig");
+pub const Region = @import("Region.zig");
+pub const SFrameKeyManagement = @import("SFrameKeyManagement.zig");
+pub const SVGAnimatedPoints = @import("SVGAnimatedPoints.zig");
+pub const SVGElementInstance = @import("SVGElementInstance.zig");
+pub const SVGFitToViewBox = @import("SVGFitToViewBox.zig");
+pub const SVGPathData = @import("SVGPathData.zig");
+pub const SVGTests = @import("SVGTests.zig");
+pub const SVGURIReference = @import("SVGURIReference.zig");
+pub const ServiceEventHandlers = @import("ServiceEventHandlers.zig");
+pub const Slottable = @import("Slottable.zig");
+pub const TextDecoderCommon = @import("TextDecoderCommon.zig");
+pub const TextEncoderCommon = @import("TextEncoderCommon.zig");
+pub const WebGL2RenderingContextBase = @import("WebGL2RenderingContextBase.zig");
+pub const WebGL2RenderingContextOverloads = @import("WebGL2RenderingContextOverloads.zig");
+pub const WebGLRenderingContextBase = @import("WebGLRenderingContextBase.zig");
+pub const WebGLRenderingContextOverloads = @import("WebGLRenderingContextOverloads.zig");
+pub const WindowEventHandlers = @import("WindowEventHandlers.zig");
+pub const WindowLocalStorage = @import("WindowLocalStorage.zig");
+pub const WindowOrWorkerGlobalScope = @import("WindowOrWorkerGlobalScope.zig");
+pub const WindowSessionStorage = @import("WindowSessionStorage.zig");
 pub const XPathEvaluatorBase = @import("XPathEvaluatorBase.zig");
-
-test {
-    std.testing.refAllDecls(@This());
-}
+pub const XRViewGeometry = @import("XRViewGeometry.zig");

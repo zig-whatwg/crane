@@ -159,11 +159,13 @@ test "WindowProxy - getLength reflects child count" {
 
     try std.testing.expectEqual(@as(u32, 0), proxy.getLength());
 
-    // Add children
-    _ = try BrowsingContext.initChild(allocator, parent);
+    // Add children - save references for cleanup
+    const child1 = try BrowsingContext.initChild(allocator, parent);
+    defer child1.deinit();
     try std.testing.expectEqual(@as(u32, 1), proxy.getLength());
 
-    _ = try BrowsingContext.initChild(allocator, parent);
+    const child2 = try BrowsingContext.initChild(allocator, parent);
+    defer child2.deinit();
     try std.testing.expectEqual(@as(u32, 2), proxy.getLength());
 }
 

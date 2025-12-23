@@ -26,6 +26,8 @@
 //! - `--log-mach-verbose` - Same as --log-mach
 //! - `-v` or `--verbose` - Same as --log-mach
 //! - `--parallel=N` - Number of parallel test runners
+//! - `--limit=N` - Run only the first N test files (useful for quick iteration)
+//! - `--pattern=GLOB` - Only run tests matching glob pattern (e.g., "*constructor*")
 
 const std = @import("std");
 const config = @import("config.zig");
@@ -76,6 +78,10 @@ pub const Options = struct {
     wpt_root: []const u8 = "tests/wpt",
     /// Specific test files to run (overrides directory filters)
     specific_files: std.ArrayList([]const u8),
+    /// Maximum number of test files to run (0 = no limit)
+    limit: usize = 0,
+    /// Glob pattern to filter test names (e.g., "*constructor*")
+    pattern: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -255,6 +261,11 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             options.parallel = std.fmt.parseInt(u32, value, 10) catch 0;
         } else if (std.mem.startsWith(u8, arg, "--wpt-root=")) {
             options.wpt_root = arg["--wpt-root=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--limit=")) {
+            const value = arg["--limit=".len..];
+            options.limit = std.fmt.parseInt(usize, value, 10) catch 0;
+        } else if (std.mem.startsWith(u8, arg, "--pattern=")) {
+            options.pattern = arg["--pattern=".len..];
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
@@ -347,7 +358,21 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
         const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
         defer allocator.free(full_path);
 
-        try scanDirectory(allocator, &result, options.wpt_root, full_path, clean_dir);
+        try scanDirectory(allocator, &result, options.wpt_root, full_path, clean_dir, options.pattern);
+
+        // Check if we've hit the limit
+        if (options.limit > 0 and result.test_files.items.len >= options.limit) {
+            break;
+        }
+    }
+
+    // Apply limit after scanning (in case pattern filtered some out)
+    if (options.limit > 0 and result.test_files.items.len > options.limit) {
+        // Free excess test files
+        for (result.test_files.items[options.limit..]) |*tf| {
+            tf.deinit(allocator);
+        }
+        result.test_files.shrinkRetainingCapacity(options.limit);
     }
 
     return result;
@@ -360,6 +385,7 @@ fn scanDirectory(
     wpt_root: []const u8,
     full_path: []const u8,
     relative_path: []const u8,
+    pattern: ?[]const u8,
 ) !void {
     var dir = std.fs.cwd().openDir(full_path, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) {
@@ -388,7 +414,7 @@ fn scanDirectory(
             }
 
             // Recurse into subdirectory
-            try scanDirectory(allocator, result, wpt_root, full_entry_path, entry_path);
+            try scanDirectory(allocator, result, wpt_root, full_entry_path, entry_path, pattern);
         } else if (entry.kind == .file) {
             // Check if this is a test file
             const file_type = config.FileType.fromPath(entry.name);
@@ -400,10 +426,55 @@ fn scanDirectory(
                 continue;
             }
 
+            // Check if matches pattern filter (if specified)
+            if (pattern) |p| {
+                if (!globMatch(entry_path, p) and !globMatch(entry.name, p)) {
+                    try result.addSkipped(entry_path, "pattern mismatch");
+                    continue;
+                }
+            }
+
             // Add to results
             try result.addTestFile(entry_path, file_type);
         }
     }
+}
+
+/// Simple glob matching supporting * wildcards
+/// Matches patterns like "*constructor*", "url-*", etc.
+fn globMatch(str: []const u8, pattern: []const u8) bool {
+    var s_idx: usize = 0;
+    var p_idx: usize = 0;
+    var star_idx: ?usize = null;
+    var match_idx: usize = 0;
+
+    while (s_idx < str.len) {
+        if (p_idx < pattern.len and (pattern[p_idx] == '?' or pattern[p_idx] == str[s_idx])) {
+            // Characters match or pattern has ?
+            s_idx += 1;
+            p_idx += 1;
+        } else if (p_idx < pattern.len and pattern[p_idx] == '*') {
+            // Star matches zero or more characters
+            star_idx = p_idx;
+            match_idx = s_idx;
+            p_idx += 1;
+        } else if (star_idx) |si| {
+            // Mismatch, but we have a star to backtrack to
+            p_idx = si + 1;
+            match_idx += 1;
+            s_idx = match_idx;
+        } else {
+            // No match
+            return false;
+        }
+    }
+
+    // Check remaining pattern characters (must all be *)
+    while (p_idx < pattern.len and pattern[p_idx] == '*') {
+        p_idx += 1;
+    }
+
+    return p_idx == pattern.len;
 }
 
 /// Progress tracker for test execution

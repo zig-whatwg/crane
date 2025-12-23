@@ -85,7 +85,6 @@ path. Add it with -I<path> to the command line
 //  V8_OS_DARWIN        - Darwin (macOS, iOS)
 //  V8_OS_MACOS         - macOS
 //  V8_OS_IOS           - iOS
-//  V8_OS_TVOS          - tvOS (also sets V8_OS_IOS)
 //  V8_OS_NETBSD        - NetBSD
 //  V8_OS_OPENBSD       - OpenBSD
 //  V8_OS_POSIX         - POSIX compatible (mostly everything except Windows)
@@ -109,9 +108,6 @@ path. Add it with -I<path> to the command line
 # if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
 #  define V8_OS_IOS 1
 #  define V8_OS_STRING "ios"
-#  if defined(TARGET_OS_TV) && TARGET_OS_TV
-#   define V8_OS_TVOS 1
-#  endif
 # else
 #  define V8_OS_MACOS 1
 #  define V8_OS_STRING "macos"
@@ -191,7 +187,6 @@ path. Add it with -I<path> to the command line
 //  V8_TARGET_OS_ANDROID
 //  V8_TARGET_OS_FUCHSIA
 //  V8_TARGET_OS_IOS
-//  V8_TARGET_OS_TVOS (also sets V8_TARGET_OS_IOS)
 //  V8_TARGET_OS_LINUX
 //  V8_TARGET_OS_MACOS
 //  V8_TARGET_OS_WIN
@@ -205,7 +200,6 @@ path. Add it with -I<path> to the command line
 # if !defined(V8_TARGET_OS_ANDROID) \
   && !defined(V8_TARGET_OS_FUCHSIA) \
   && !defined(V8_TARGET_OS_IOS) \
-  && !defined(V8_TARGET_OS_TVOS) \
   && !defined(V8_TARGET_OS_LINUX) \
   && !defined(V8_TARGET_OS_MACOS) \
   && !defined(V8_TARGET_OS_WIN) \
@@ -218,7 +212,6 @@ path. Add it with -I<path> to the command line
 # if defined(V8_TARGET_OS_ANDROID) \
   || defined(V8_TARGET_OS_FUCHSIA) \
   || defined(V8_TARGET_OS_IOS) \
-  || defined(V8_TARGET_OS_TVOS) \
   || defined(V8_TARGET_OS_LINUX) \
   || defined(V8_TARGET_OS_MACOS) \
   || defined(V8_TARGET_OS_WIN) \
@@ -237,10 +230,6 @@ path. Add it with -I<path> to the command line
 
 #ifdef V8_OS_IOS
 # define V8_TARGET_OS_IOS
-#endif
-
-#ifdef V8_OS_TVOS
-# define V8_TARGET_OS_TVOS
 #endif
 
 #ifdef V8_OS_LINUX
@@ -382,7 +371,6 @@ path. Add it with -I<path> to the command line
 # define V8_HAS_ATTRIBUTE_UNUSED (__has_attribute(unused))
 # define V8_HAS_ATTRIBUTE_USED (__has_attribute(used))
 # define V8_HAS_ATTRIBUTE_RETAIN (__has_attribute(retain))
-# define V8_HAS_ATTRIBUTE_OPTNONE (__has_attribute(optnone))
 // Support for the "preserve_most" attribute is limited:
 // - 32-bit platforms do not implement it,
 // - component builds fail because _dl_runtime_resolve clobbers registers,
@@ -509,16 +497,6 @@ path. Add it with -I<path> to the command line
 # define V8_INLINE __forceinline
 #else
 # define V8_INLINE inline
-#endif
-
-// A macro to force better inlining of calls in a statement. Don't bother for
-// debug builds.
-// Use like:
-//   V8_INLINE_STATEMENT foo = bar(); // Will force inlining the bar() call.
-#if !defined(DEBUG) && defined(__clang__) && V8_HAS_ATTRIBUTE_ALWAYS_INLINE
-# define V8_INLINE_STATEMENT [[clang::always_inline]]
-#else
-# define V8_INLINE_STATEMENT
 #endif
 
 #if V8_HAS_BUILTIN_ASSUME
@@ -805,12 +783,15 @@ V8 shared library set USING_V8_SHARED.
 #else  // V8_OS_WIN
 
 // Setup for Linux shared library export.
-#if (V8_HAS_ATTRIBUTE_VISIBILITY && \
-     (defined(BUILDING_V8_SHARED) || USING_V8_SHARED))
-# define V8_EXPORT __attribute__((visibility("default")))
+#if V8_HAS_ATTRIBUTE_VISIBILITY
+# ifdef BUILDING_V8_SHARED
+#  define V8_EXPORT __attribute__ ((visibility("default")))
+# else
+#  define V8_EXPORT
+# endif
 #else
 # define V8_EXPORT
-# endif  // V8_HAS_ATTRIBUTE_VISIBILITY && ...
+#endif
 
 #endif  // V8_OS_WIN
 
@@ -917,6 +898,8 @@ V8 shared library set USING_V8_SHARED.
 #define V8_TARGET_ARCH_32_BIT 1
 #elif V8_TARGET_ARCH_ARM64
 #define V8_TARGET_ARCH_64_BIT 1
+#elif V8_TARGET_ARCH_MIPS
+#define V8_TARGET_ARCH_32_BIT 1
 #elif V8_TARGET_ARCH_MIPS64
 #define V8_TARGET_ARCH_64_BIT 1
 #elif V8_TARGET_ARCH_LOONG64
@@ -954,10 +937,8 @@ V8 shared library set USING_V8_SHARED.
 #if (V8_TARGET_ARCH_MIPS64 && !(V8_HOST_ARCH_X64 || V8_HOST_ARCH_MIPS64))
 #error Target architecture mips64 is only supported on mips64 and x64 host
 #endif
-#if (V8_TARGET_ARCH_RISCV64 && \
-     !(V8_HOST_ARCH_X64 || V8_HOST_ARCH_ARM64 || V8_HOST_ARCH_RISCV64))
-#error Target architecture riscv64 is only supported on riscv64, x64, and \
-arm64 host
+#if (V8_TARGET_ARCH_RISCV64 && !(V8_HOST_ARCH_X64 || V8_HOST_ARCH_RISCV64))
+#error Target architecture riscv64 is only supported on riscv64 and x64 host
 #endif
 #if (V8_TARGET_ARCH_RISCV32 && !(V8_HOST_ARCH_IA32 || V8_HOST_ARCH_RISCV32))
 #error Target architecture riscv32 is only supported on riscv32 and ia32 host

@@ -108,10 +108,10 @@ struct GCInfoTrait final {
 template <typename T, typename ParentMostGarbageCollectedType>
 struct GCInfoFolding final {
   static constexpr bool kHasVirtualDestructorAtBase =
-      std::has_virtual_destructor_v<ParentMostGarbageCollectedType>;
+      std::has_virtual_destructor<ParentMostGarbageCollectedType>::value;
   static constexpr bool kBothTypesAreTriviallyDestructible =
-      std::is_trivially_destructible_v<ParentMostGarbageCollectedType> &&
-      std::is_trivially_destructible_v<T>;
+      std::is_trivially_destructible<ParentMostGarbageCollectedType>::value &&
+      std::is_trivially_destructible<T>::value;
   static constexpr bool kHasCustomFinalizerDispatchAtBase =
       internal::HasFinalizeGarbageCollectedObject<
           ParentMostGarbageCollectedType>::value;

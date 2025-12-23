@@ -6,6 +6,7 @@
 #define V8_LIBPLATFORM_V8_TRACING_H_
 
 #include <atomic>
+#include <fstream>
 #include <memory>
 #include <unordered_set>
 #include <vector>

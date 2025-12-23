@@ -417,6 +417,7 @@ pub fn build(b: *std.Build) void {
             "permissions",
             "html",
             "intl",
+            "benchmarks",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -427,7 +428,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html, intl\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html, intl, benchmarks\n", .{});
             std.process.exit(1);
         }
     }
@@ -684,6 +685,11 @@ pub fn build(b: *std.Build) void {
     mixins_mod.addImport("interfaces", interfaces_mod);
     mixins_mod.addImport("impls", impls_mod);
     mixins_mod.addImport("selector", selector_mod);
+    mixins_mod.addImport("typedefs", typedefs_mod);
+    mixins_mod.addImport("enums", enums_mod);
+    mixins_mod.addImport("dictionaries", dictionaries_mod);
+    mixins_mod.addImport("callbacks", callbacks_mod);
+    mixins_mod.addImport("webidl", webidl_mod);
 
     // Add mixins to impls (so impls can use shared mixin code)
     impls_mod.addImport("mixins", mixins_mod);
@@ -1986,6 +1992,58 @@ pub fn build(b: *std.Build) void {
         };
     }
 
+    // Benchmark tests (requires V8 + browser)
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "benchmarks")) {
+        const benchmark_imports = [_]std.Build.Module.Import{
+            .{ .name = "browser", .module = browser_mod },
+            .{ .name = "v8", .module = v8_mod },
+            .{ .name = "runtime", .module = runtime_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/benchmarks", target, &benchmark_imports, true) catch |err| {
+            std.debug.print("Warning: Failed to add benchmark test files: {}\n", .{err});
+        };
+    }
+
+    // ========================================================================
+    // BROWSER TEST - Standalone browser initialization test
+    // ========================================================================
+
+    const test_browser_step = b.step("test-browser", "Run browser initialization tests");
+    const browser_test = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/browser_document_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "browser", .module = browser_mod },
+                .{ .name = "v8", .module = v8_mod },
+            },
+        }),
+    });
+
+    // Link V8 and libuv for browser tests
+    browser_test.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+    browser_test.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+    browser_test.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+    browser_test.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+    browser_test.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    browser_test.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    browser_test.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    browser_test.linkSystemLibrary("uv");
+    browser_test.linkLibCpp();
+
+    const run_browser_test = b.addRunArtifact(browser_test);
+    test_browser_step.dependOn(&run_browser_test.step);
+
     // ========================================================================
     // EXECUTABLE (optional CLI tool)
     // ========================================================================
@@ -2500,6 +2558,76 @@ pub fn build(b: *std.Build) void {
     interfaces_tool_step.dependOn(&run_interfaces_tool.step);
 
     // ========================================================================
+    // SNAPSHOT GENERATOR (must be defined before REPL and WPT runner)
+    // ========================================================================
+
+    // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
+    const snapshot_gen_exe = b.addExecutable(.{
+        .name = "snapshot_generator",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/snapshot_generator.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "v8", .module = v8_mod },
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "namespaces", .module = namespaces_mod },
+            },
+        }),
+    });
+
+    // Add V8 C++ wrapper
+    snapshot_gen_exe.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+
+    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
+    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+
+    // Link V8 libraries (custom-built static libraries)
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+
+    // Link libuv for timer support
+    snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    snapshot_gen_exe.linkSystemLibrary("uv");
+
+    // Link C++ standard library
+    snapshot_gen_exe.linkLibCpp();
+
+    // Add run step for Snapshot Generator (manual use)
+    const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
+    if (b.args) |args| run_snapshot_gen.addArgs(args);
+
+    const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
+    snapshot_gen_step.dependOn(&run_snapshot_gen.step);
+
+    // ========================================================================
+    // SNAPSHOT GENERATION (auto-generate snapshot for fast browser startup)
+    // ========================================================================
+
+    // Create snapshot file at a known location
+    const snapshot_output_path = "zig-out/bin/whatwg_snapshot.bin";
+
+    // Run snapshot generator to create the snapshot file
+    const gen_snapshot = b.addRunArtifact(snapshot_gen_exe);
+    gen_snapshot.addArg(snapshot_output_path);
+
+    // Create a build step for manual snapshot generation
+    const snapshot_step = b.step("snapshot", "Generate V8 heap snapshot with WebIDL interfaces");
+    snapshot_step.dependOn(&gen_snapshot.step);
+
+    // ========================================================================
     // REPL TOOL
     // ========================================================================
 
@@ -2566,6 +2694,10 @@ pub fn build(b: *std.Build) void {
     // Link C++ standard library
     repl_exe.linkLibCpp();
 
+    // Make REPL depend on snapshot generation
+    // This ensures the snapshot is always up-to-date with the current V8 build
+    repl_exe.step.dependOn(&gen_snapshot.step);
+
     b.installArtifact(repl_exe);
 
     // Add run step for REPL
@@ -2577,27 +2709,23 @@ pub fn build(b: *std.Build) void {
     repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
-    // SNAPSHOT GENERATOR
+    // MINIMAL SNAPSHOT TEST (for isolating snapshot failures)
     // ========================================================================
 
-    // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
-    const snapshot_gen_exe = b.addExecutable(.{
-        .name = "snapshot_generator",
+    const minimal_snapshot_test_exe = b.addExecutable(.{
+        .name = "minimal_snapshot_test",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/snapshot_generator.zig"),
+            .root_source_file = b.path("tools/minimal_snapshot_test.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
-                .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "namespaces", .module = namespaces_mod },
             },
         }),
     });
 
     // Add V8 C++ wrapper
-    snapshot_gen_exe.addCSourceFile(.{
+    minimal_snapshot_test_exe.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2608,33 +2736,29 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+    // Add V8 include paths
+    minimal_snapshot_test_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
 
-    // Link V8 libraries (custom-built static libraries)
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    // Link V8 libraries
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    snapshot_gen_exe.linkSystemLibrary("uv");
+    minimal_snapshot_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    minimal_snapshot_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    minimal_snapshot_test_exe.linkSystemLibrary("uv");
 
     // Link C++ standard library
-    snapshot_gen_exe.linkLibCpp();
+    minimal_snapshot_test_exe.linkLibCpp();
 
-    // Note: Not installing by default - run explicitly via snapshot-generator step
-    // b.installArtifact(snapshot_gen_exe);
+    // Install the binary
+    b.installArtifact(minimal_snapshot_test_exe);
 
-    // Add run step for Snapshot Generator
-    const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
-    // Don't depend on install step since we're not installing by default
-    // run_snapshot_gen.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_snapshot_gen.addArgs(args);
-
-    const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
-    snapshot_gen_step.dependOn(&run_snapshot_gen.step);
+    // Add run step
+    const run_minimal_snapshot_test = b.addRunArtifact(minimal_snapshot_test_exe);
+    const minimal_snapshot_test_step = b.step("minimal-snapshot-test", "Run minimal V8 snapshot test to isolate failures");
+    minimal_snapshot_test_step.dependOn(&run_minimal_snapshot_test.step);
 
     // ========================================================================
     // WPT (Web Platform Tests) RUNNER
@@ -2704,6 +2828,10 @@ pub fn build(b: *std.Build) void {
 
     // Link C++ standard library
     wpt_runner_exe.linkLibCpp();
+
+    // Make WPT runner depend on snapshot generation
+    // This ensures the snapshot is always up-to-date with the current V8 build
+    wpt_runner_exe.step.dependOn(&gen_snapshot.step);
 
     b.installArtifact(wpt_runner_exe);
 

@@ -144,8 +144,8 @@ pub const IR = struct {
         if (!iface_gop.found_existing) {
             // First time seeing this interface - add it (partial or not)
             iface_gop.value_ptr.* = try Interface.fromTypes(self.allocator, iface, shared_key, source_index);
-            // Register interface type - distinguish callback interfaces
-            const type_kind: TypeKind = if (iface.callback) .callback_interface else .interface;
+            // Register interface type - distinguish callback interfaces and mixins
+            const type_kind: TypeKind = if (iface.callback) .callback_interface else if (iface.mixin) .mixin else .interface;
             try self.type_registry.register(shared_key, type_kind);
         } else if (iface.partial) {
             // Partial interface - merge with existing (which might also be partial-only so far)

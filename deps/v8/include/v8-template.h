@@ -188,8 +188,7 @@ using NamedPropertyGetterCallback = Intercepted (*)(
 // Use `info.GetReturnValue().Set()` to set the return value of the
 // intercepted get request. If the property does not exist the callback should
 // not set the result and must not produce side effects.
-using GenericNamedPropertyGetterCallback V8_DEPRECATE_SOON(
-    "Use NamedPropertyGetterCallback instead") =
+using GenericNamedPropertyGetterCallback =
     void (*)(Local<Name> property, const PropertyCallbackInfo<Value>& info);
 
 /**
@@ -222,8 +221,7 @@ using NamedPropertySetterCallback =
 // `info.GetReturnValue().Set(value)`. If the setter did not intercept the
 // request, i.e., if the request should be handled as if no interceptor is
 // present, do not not call `Set()` and do not produce side effects.
-using GenericNamedPropertySetterCallback V8_DEPRECATE_SOON(
-    "Use NamedPropertySetterCallback instead") =
+using GenericNamedPropertySetterCallback =
     void (*)(Local<Name> property, Local<Value> value,
              const PropertyCallbackInfo<Value>& info);
 
@@ -261,8 +259,7 @@ using NamedPropertyQueryCallback = Intercepted (*)(
 // value is an integer encoding a `v8::PropertyAttribute`. If the property does
 // not exist the callback should not set the result and must not produce side
 // effects.
-using GenericNamedPropertyQueryCallback V8_DEPRECATE_SOON(
-    "Use NamedPropertyQueryCallback instead") =
+using GenericNamedPropertyQueryCallback =
     void (*)(Local<Name> property, const PropertyCallbackInfo<Integer>& info);
 
 /**
@@ -299,8 +296,7 @@ using NamedPropertyDeleterCallback = Intercepted (*)(
 // `info.GetReturnValue().Set(value)` with a boolean `value`. The `value` is
 // used as the return value of `delete`. If the deleter does not intercept the
 // request then it should not set the result and must not produce side effects.
-using GenericNamedPropertyDeleterCallback V8_DEPRECATE_SOON(
-    "Use NamedPropertyDeleterCallback instead") =
+using GenericNamedPropertyDeleterCallback =
     void (*)(Local<Name> property, const PropertyCallbackInfo<Boolean>& info);
 
 /**
@@ -313,9 +309,7 @@ using NamedPropertyEnumeratorCallback =
     void (*)(const PropertyCallbackInfo<Array>& info);
 // This variant will be deprecated soon.
 // This is just a renaming of the typedef.
-using GenericNamedPropertyEnumeratorCallback V8_DEPRECATE_SOON(
-    "Use NamedPropertyEnumeratorCallback instead") =
-    NamedPropertyEnumeratorCallback;
+using GenericNamedPropertyEnumeratorCallback = NamedPropertyEnumeratorCallback;
 
 /**
  * Interceptor for defineProperty requests on an object.
@@ -347,8 +341,7 @@ using NamedPropertyDefinerCallback =
 // `info.GetReturnValue().Set(value)`. If the definer did not intercept the
 // request, i.e., if the request should be handled as if no interceptor is
 // present, do not not call `Set()` and do not produce side effects.
-using GenericNamedPropertyDefinerCallback V8_DEPRECATE_SOON(
-    "Use NamedPropertyDefinerCallback instead") =
+using GenericNamedPropertyDefinerCallback =
     void (*)(Local<Name> property, const PropertyDescriptor& desc,
              const PropertyCallbackInfo<Value>& info);
 
@@ -384,8 +377,7 @@ using NamedPropertyDescriptorCallback = Intercepted (*)(
 // intercepted request. The return value must be an object that
 // can be converted to a PropertyDescriptor, e.g., a `v8::Value` returned from
 // `v8::Object::getOwnPropertyDescriptor`.
-using GenericNamedPropertyDescriptorCallback V8_DEPRECATE_SOON(
-    "Use NamedPropertyDescriptorCallback instead") =
+using GenericNamedPropertyDescriptorCallback =
     void (*)(Local<Name> property, const PropertyCallbackInfo<Value>& info);
 
 // TODO(ishell): Rename IndexedPropertyXxxCallbackV2 back to
@@ -398,8 +390,7 @@ using GenericNamedPropertyDescriptorCallback V8_DEPRECATE_SOON(
 using IndexedPropertyGetterCallbackV2 =
     Intercepted (*)(uint32_t index, const PropertyCallbackInfo<Value>& info);
 // This variant will be deprecated soon.
-using IndexedPropertyGetterCallback V8_DEPRECATE_SOON(
-    "Use IndexedPropertyGetterCallbackV2 instead") =
+using IndexedPropertyGetterCallback =
     void (*)(uint32_t index, const PropertyCallbackInfo<Value>& info);
 
 /**
@@ -408,8 +399,7 @@ using IndexedPropertyGetterCallback V8_DEPRECATE_SOON(
 using IndexedPropertySetterCallbackV2 = Intercepted (*)(
     uint32_t index, Local<Value> value, const PropertyCallbackInfo<void>& info);
 // This variant will be deprecated soon.
-using IndexedPropertySetterCallback V8_DEPRECATE_SOON(
-    "Use IndexedPropertySetterCallbackV2 instead") =
+using IndexedPropertySetterCallback =
     void (*)(uint32_t index, Local<Value> value,
              const PropertyCallbackInfo<Value>& info);
 
@@ -419,8 +409,7 @@ using IndexedPropertySetterCallback V8_DEPRECATE_SOON(
 using IndexedPropertyQueryCallbackV2 =
     Intercepted (*)(uint32_t index, const PropertyCallbackInfo<Integer>& info);
 // This variant will be deprecated soon.
-using IndexedPropertyQueryCallback V8_DEPRECATE_SOON(
-    "Use IndexedPropertyQueryCallbackV2 instead") =
+using IndexedPropertyQueryCallback =
     void (*)(uint32_t index, const PropertyCallbackInfo<Integer>& info);
 
 /**
@@ -429,8 +418,7 @@ using IndexedPropertyQueryCallback V8_DEPRECATE_SOON(
 using IndexedPropertyDeleterCallbackV2 =
     Intercepted (*)(uint32_t index, const PropertyCallbackInfo<Boolean>& info);
 // This variant will be deprecated soon.
-using IndexedPropertyDeleterCallback V8_DEPRECATE_SOON(
-    "Use IndexedPropertyDeleterCallbackV2 instead") =
+using IndexedPropertyDeleterCallback =
     void (*)(uint32_t index, const PropertyCallbackInfo<Boolean>& info);
 
 /**
@@ -449,8 +437,7 @@ using IndexedPropertyDefinerCallbackV2 =
     Intercepted (*)(uint32_t index, const PropertyDescriptor& desc,
                     const PropertyCallbackInfo<void>& info);
 // This variant will be deprecated soon.
-using IndexedPropertyDefinerCallback V8_DEPRECATE_SOON(
-    "Use IndexedPropertyDefinerCallbackV2 instead") =
+using IndexedPropertyDefinerCallback =
     void (*)(uint32_t index, const PropertyDescriptor& desc,
              const PropertyCallbackInfo<Value>& info);
 
@@ -460,8 +447,7 @@ using IndexedPropertyDefinerCallback V8_DEPRECATE_SOON(
 using IndexedPropertyDescriptorCallbackV2 =
     Intercepted (*)(uint32_t index, const PropertyCallbackInfo<Value>& info);
 // This variant will be deprecated soon.
-using IndexedPropertyDescriptorCallback V8_DEPRECATE_SOON(
-    "Use IndexedPropertyDescriptorCallbackV2 instead") =
+using IndexedPropertyDescriptorCallback =
     void (*)(uint32_t index, const PropertyCallbackInfo<Value>& info);
 
 /**
@@ -714,14 +700,6 @@ class V8_EXPORT FunctionTemplate : public Template {
    * This is an experimental feature and may still change significantly.
    */
   bool IsLeafTemplateForApiObject(v8::Local<v8::Value> value) const;
-
-  /**
-   * Seal the object and mark it for promotion to read only space during
-   * context snapshot creation.
-   *
-   * This is an experimental feature and may still change significantly.
-   */
-  void SealAndPrepareForPromotionToReadOnly();
 
   V8_INLINE static FunctionTemplate* Cast(Data* data);
 
@@ -1050,14 +1028,6 @@ class V8_EXPORT ObjectTemplate : public Template {
    */
   void SetCodeLike();
   bool IsCodeLike() const;
-
-  /**
-   * Seal the object and mark it for promotion to read only space during
-   * context snapshot creation.
-   *
-   * This is an experimental feature and may still change significantly.
-   */
-  void SealAndPrepareForPromotionToReadOnly();
 
   V8_INLINE static ObjectTemplate* Cast(Data* data);
 

@@ -18,7 +18,6 @@
 namespace v8 {
 
 class Context;
-class Location;
 class UnboundScript;
 
 /**
@@ -88,12 +87,6 @@ class V8_EXPORT Function : public Object {
    * kLineOffsetNotFound if no information available.
    */
   int GetScriptColumnNumber() const;
-
-  /**
-   * Returns zero based line and column number of function body, else returns
-   * {-1, -1}.
-   */
-  Location GetScriptLocation() const;
 
   /**
    * Returns zero based start position (character offset) of function body and

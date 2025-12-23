@@ -8,12 +8,12 @@
 #include <type_traits>
 
 #include "cppgc/custom-space.h"
+#include "cppgc/ephemeron-pair.h"
 #include "cppgc/garbage-collected.h"
 #include "cppgc/internal/logging.h"
 #include "cppgc/internal/member-storage.h"
 #include "cppgc/internal/pointer-policies.h"
 #include "cppgc/liveness-broker.h"
-#include "cppgc/macros.h"
 #include "cppgc/member.h"
 #include "cppgc/sentinel-pointer.h"
 #include "cppgc/source-location.h"
@@ -35,25 +35,6 @@ class VisitorFactory;
 }  // namespace internal
 
 using WeakCallback = void (*)(const LivenessBroker&, const void*);
-
-/**
- * An ephemeron pair is used to conditionally retain an object.
- * The `value` will be kept alive only if the `key` is alive.
- */
-template <typename K, typename V>
-struct EphemeronPair {
-  CPPGC_DISALLOW_NEW();
-
-  EphemeronPair(K* k, V* v) : key(k), value(v) {}
-  WeakMember<K> key;
-  Member<V> value;
-
-  void ClearValueIfKeyIsDead(const LivenessBroker& broker) {
-    if (!broker.IsHeapObjectAlive(key)) value = nullptr;
-  }
-
-  void Trace(Visitor* visitor) const;
-};
 
 /**
  * Visitor passed to trace methods. All managed pointers must have called the
@@ -91,7 +72,7 @@ class V8_EXPORT Visitor {
    */
   template <typename T>
   void Trace(const Member<T>& member) {
-    const T* value = member.GetAtomic();
+    const T* value = member.GetRawAtomic();
     CPPGC_DCHECK(value != kSentinelPointer);
     TraceImpl(value);
   }
@@ -109,7 +90,7 @@ class V8_EXPORT Visitor {
     static_assert(!internal::IsAllocatedOnCompactableSpace<T>::value,
                   "Weak references to compactable objects are not allowed");
 
-    const T* value = weak_member.GetAtomic();
+    const T* value = weak_member.GetRawAtomic();
 
     // Bailout assumes that WeakMember emits write barrier.
     if (!value) {
@@ -129,7 +110,7 @@ class V8_EXPORT Visitor {
    */
   template <typename T>
   void Trace(const subtle::UncompressedMember<T>& member) {
-    const T* value = member.GetAtomic();
+    const T* value = member.GetRawAtomic();
     CPPGC_DCHECK(value != kSentinelPointer);
     TraceImpl(value);
   }
@@ -232,12 +213,12 @@ class V8_EXPORT Visitor {
   template <typename KeyType, typename ValueType>
   void TraceEphemeron(const WeakMember<KeyType>& weak_member_key,
                       const Member<ValueType>* member_value) {
-    const KeyType* key = weak_member_key.GetAtomic();
+    const KeyType* key = weak_member_key.GetRawAtomic();
     if (!key) return;
 
     // `value` must always be non-null.
     CPPGC_DCHECK(member_value);
-    const ValueType* value = member_value->GetAtomic();
+    const ValueType* value = member_value->GetRawAtomic();
     if (!value) return;
 
     // KeyType and ValueType may refer to GarbageCollectedMixin.
@@ -267,7 +248,7 @@ class V8_EXPORT Visitor {
                       const ValueType* value) {
     static_assert(!IsGarbageCollectedOrMixinTypeV<ValueType>,
                   "garbage-collected types must use WeakMember and Member");
-    const KeyType* key = weak_member_key.GetAtomic();
+    const KeyType* key = weak_member_key.GetRawAtomic();
     if (!key) return;
 
     // `value` must always be non-null.
@@ -293,7 +274,7 @@ class V8_EXPORT Visitor {
    */
   template <typename T>
   void TraceStrongly(const WeakMember<T>& weak_member) {
-    const T* value = weak_member.GetAtomic();
+    const T* value = weak_member.GetRawAtomic();
     CPPGC_DCHECK(value != kSentinelPointer);
     TraceImpl(value);
   }
@@ -368,11 +349,6 @@ class V8_EXPORT Visitor {
     // By default tracing is not deferred.
     return false;
   }
-
-  /**
-   * Checks whether the visitor is running concurrently to the mutator or not.
-   */
-  virtual bool IsConcurrent() const { return false; }
 
  protected:
   virtual void Visit(const void* self, TraceDescriptor) {}
@@ -459,11 +435,6 @@ class V8_EXPORT Visitor {
   friend class internal::ConservativeTracingVisitor;
   friend class internal::VisitorBase;
 };
-
-template <typename K, typename V>
-void EphemeronPair<K, V>::Trace(Visitor* visitor) const {
-  visitor->TraceEphemeron(key, value);
-}
 
 namespace internal {
 

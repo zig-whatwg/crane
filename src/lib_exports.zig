@@ -219,11 +219,14 @@ pub export fn whatwg_browser_evaluate(
 // C ABI Exports - Runtime Initialization
 // ============================================================================
 
-/// Initialize the V8 platform (call once at program start).
+/// Initialize the V8 platform with proper flags for snapshot support (call once at program start).
 ///
+/// This sets the required V8 flags (--hash-seed=0, --predictable, --no-random-gc)
+/// BEFORE platform initialization, which is critical for snapshot loading to work.
 /// This must be called before creating any browser instances.
 pub export fn whatwg_runtime_init() callconv(.c) void {
-    v8.ffi.v8_Platform_Initialize();
+    // Use the snapshot_loader's initialization to ensure flags are set correctly
+    v8.snapshot_loader.initializePlatformForSnapshots();
 }
 
 /// Shutdown the V8 platform (call once at program end).

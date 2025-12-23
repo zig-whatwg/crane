@@ -18,7 +18,6 @@ namespace internal {
 
 class CrossThreadPersistentRegion;
 class FatalOutOfMemoryHandler;
-class HeapBase;
 class RootVisitor;
 
 // PersistentNode represents a variant of two states:
@@ -134,14 +133,10 @@ class V8_EXPORT PersistentRegionBase {
 };
 
 // Variant of PersistentRegionBase that checks whether the allocation and
-// freeing happens only on the thread that created the heap.
+// freeing happens only on the thread that created the region.
 class V8_EXPORT PersistentRegion final : public PersistentRegionBase {
  public:
-  V8_INLINE PersistentRegion(const HeapBase& heap,
-                             const FatalOutOfMemoryHandler& oom_handler)
-      : PersistentRegionBase(oom_handler), heap_(heap) {
-    CPPGC_DCHECK(IsCreationThread());
-  }
+  explicit PersistentRegion(const FatalOutOfMemoryHandler&);
   // Clears Persistent fields to avoid stale pointers after heap teardown.
   ~PersistentRegion() = default;
 
@@ -166,7 +161,7 @@ class V8_EXPORT PersistentRegion final : public PersistentRegionBase {
  private:
   bool IsCreationThread();
 
-  const HeapBase& heap_;
+  int creation_thread_id_;
 };
 
 // CrossThreadPersistent uses PersistentRegionBase but protects it using this

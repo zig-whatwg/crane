@@ -44,12 +44,14 @@ test "Window - length property reflects child frame count" {
     // No children initially
     try testing.expectEqual(@as(u32, 0), proxy.getLength());
 
-    // Add child (iframe)
-    _ = try BrowsingContext.initChild(allocator, parent);
+    // Add child (iframe) - save reference for cleanup
+    const child1 = try BrowsingContext.initChild(allocator, parent);
+    defer child1.deinit();
     try testing.expectEqual(@as(u32, 1), proxy.getLength());
 
-    // Add another child
-    _ = try BrowsingContext.initChild(allocator, parent);
+    // Add another child - save reference for cleanup
+    const child2 = try BrowsingContext.initChild(allocator, parent);
+    defer child2.deinit();
     try testing.expectEqual(@as(u32, 2), proxy.getLength());
 }
 
@@ -62,8 +64,9 @@ test "Window - top returns topmost browsing context" {
     // For top-level context, top === self
     try testing.expect(top.getTop() == top);
 
-    // Create child context
+    // Create child context - save reference for cleanup
     const child = try BrowsingContext.initChild(allocator, top);
+    defer child.deinit();
 
     // Child's top should be the parent
     try testing.expect(child.getTop() == top);
@@ -90,6 +93,7 @@ test "BrowsingContext - child context has correct hierarchy" {
     defer parent.deinit();
 
     const child = try BrowsingContext.initChild(allocator, parent);
+    defer child.deinit();
 
     try testing.expect(!child.isTopLevel());
     try testing.expect(child.isChild());
@@ -103,7 +107,9 @@ test "BrowsingContext - nested child chain has correct top" {
     defer top.deinit();
 
     const child = try BrowsingContext.initChild(allocator, top);
+    defer child.deinit();
     const grandchild = try BrowsingContext.initChild(allocator, child);
+    defer grandchild.deinit();
 
     // Both child and grandchild should have top as their top
     try testing.expect(child.getTop() == top);
@@ -118,10 +124,12 @@ test "BrowsingContext - getChildCount tracks children" {
 
     try testing.expectEqual(@as(u32, 0), parent.getChildCount());
 
-    _ = try BrowsingContext.initChild(allocator, parent);
+    const child1 = try BrowsingContext.initChild(allocator, parent);
+    defer child1.deinit();
     try testing.expectEqual(@as(u32, 1), parent.getChildCount());
 
-    _ = try BrowsingContext.initChild(allocator, parent);
+    const child2 = try BrowsingContext.initChild(allocator, parent);
+    defer child2.deinit();
     try testing.expectEqual(@as(u32, 2), parent.getChildCount());
 }
 
@@ -132,7 +140,9 @@ test "BrowsingContext - getChildByIndex returns correct child" {
     defer parent.deinit();
 
     const child1 = try BrowsingContext.initChild(allocator, parent);
+    defer child1.deinit();
     const child2 = try BrowsingContext.initChild(allocator, parent);
+    defer child2.deinit();
 
     try testing.expect(parent.getChildByIndex(0) == child1);
     try testing.expect(parent.getChildByIndex(1) == child2);
@@ -270,6 +280,7 @@ test "BrowsingContext - findByTargetName searches children" {
     defer parent.deinit();
 
     const child = try BrowsingContext.initChild(allocator, parent);
+    defer child.deinit();
     try child.setTargetName("child-frame");
 
     // Parent should find child by name

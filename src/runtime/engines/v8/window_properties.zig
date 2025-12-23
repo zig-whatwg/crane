@@ -360,6 +360,23 @@ fn namedPropertyDescriptor(
     return .kNo;
 }
 
+/// Register WindowProperties callbacks as external references for V8 snapshots
+///
+/// This MUST be called before creating or loading a V8 snapshot.
+/// Named property callbacks must be registered so V8 can resolve them at load time.
+pub fn registerExternalReferences() void {
+    const ext_refs = @import("external_references.zig");
+
+    // Register named property handler callbacks
+    ext_refs.registerPointer(@intFromPtr(&namedPropertyGetter));
+    ext_refs.registerPointer(@intFromPtr(&namedPropertySetter));
+    ext_refs.registerPointer(@intFromPtr(&namedPropertyQuery));
+    ext_refs.registerPointer(@intFromPtr(&namedPropertyDeleter));
+    ext_refs.registerPointer(@intFromPtr(&namedPropertyEnumerator));
+    ext_refs.registerPointer(@intFromPtr(&namedPropertyDefiner));
+    ext_refs.registerPointer(@intFromPtr(&namedPropertyDescriptor));
+}
+
 const testing = std.testing;
 test "WindowProperties module compiles" {
     testing.refAllDecls(@This());

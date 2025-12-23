@@ -262,13 +262,13 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Getter for previousElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
 pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.previousElementSibling(instance);
+    return NonDocumentTypeChildNode.get_previousElementSibling(instance);
 }
 
 /// Getter for nextElementSibling (from NonDocumentTypeChildNode mixin)
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
 pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.nextElementSibling(instance);
+    return NonDocumentTypeChildNode.get_nextElementSibling(instance);
 }
 
 // =============================================================================
@@ -360,7 +360,7 @@ pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, da
 /// https://dom.spec.whatwg.org/#dom-childnode-remove
 pub fn call_remove(instance: *runtime.Instance) anyerror!void {
     // Delegate to ChildNode mixin
-    ChildNode.remove(instance) catch |err| {
+    ChildNode.call_remove(instance) catch |err| {
         return switch (err) {
             error.HierarchyRequestError => error.HierarchyRequestError,
             else => error.NotImplemented,

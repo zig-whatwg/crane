@@ -17,9 +17,6 @@ const cookiestore = @import("cookiestore");
 const CookieChangeEvent = interfaces.CookieChangeEvent;
 const CookieListItem = cookiestore.CookieListItem;
 
-// Use typed extraction for dictionary arrays
-const extractOptionalDictionarySlice = webidl.extractOptionalDictionarySlice;
-
 pub const State = CookieChangeEvent.State;
 
 pub const ImplError = error{
@@ -125,9 +122,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (eventInitDict.was_passed) {
         const init_dict = eventInitDict.value;
 
-        // Process changed cookies using typed extraction
-        // The changed field is *const anyopaque which is a pointer to CookieList (sequence<CookieListItem>)
-        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.changed)) |changed_list| {
+        // Process changed cookies
+        // init_dict.changed is ?[]const dictionaries.CookieListItem (CookieList typedef)
+        if (init_dict.changed) |changed_list| {
             for (changed_list) |dict_item| {
                 // Convert dictionary CookieListItem to our internal CookieListItem
                 const item = CookieListItem{
@@ -139,8 +136,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             }
         }
 
-        // Process deleted cookies using typed extraction
-        if (try extractOptionalDictionarySlice(dictionaries.CookieListItem, init_dict.deleted)) |deleted_list| {
+        // Process deleted cookies
+        if (init_dict.deleted) |deleted_list| {
             for (deleted_list) |dict_item| {
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
@@ -162,9 +159,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 pub fn get_changed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
-    // Return pointer to the internal changed list
+    // Return pointer to the internal changed list as an opaque handle
     // The V8 bindings will convert this to a FrozenArray
-    return @ptrCast(&internal.changed);
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&internal.changed));
 }
 
 /// Getter for deleted
@@ -174,8 +171,8 @@ pub fn get_changed(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn get_deleted(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
 
-    // Return pointer to the internal deleted list
-    return @ptrCast(&internal.deleted);
+    // Return pointer to the internal deleted list as an opaque handle
+    return runtime.JSValue.fromAnyopaque(@ptrCast(&internal.deleted));
 }
 
 // ============================================================================

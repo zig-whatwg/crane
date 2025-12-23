@@ -159,6 +159,10 @@ pub const WorkerV8Context = struct {
         errdefer allocator.free(url_copy);
 
         // Initialize V8 platform if not already done
+        // NOTE: The main browser context should have already called
+        // snapshot_loader.initializePlatformForSnapshots() which sets the
+        // required V8 flags before platform init. If this is the first
+        // V8 initialization, it won't support snapshot loading properly.
         v8.ffi.v8_Platform_Initialize();
 
         // Create V8 Isolate for this worker

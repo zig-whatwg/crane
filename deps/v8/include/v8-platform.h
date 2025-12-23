@@ -500,57 +500,10 @@ class PageAllocator {
   };
 
   /**
-   * Optional hints for AllocatePages().
-   */
-  class AllocationHint final {
-   public:
-    AllocationHint() = default;
-
-    V8_WARN_UNUSED_RESULT constexpr AllocationHint WithAddress(
-        void* address) const {
-      return AllocationHint(address, may_grow_);
-    }
-
-    V8_WARN_UNUSED_RESULT constexpr AllocationHint WithMayGrow() const {
-      return AllocationHint(address_, true);
-    }
-
-    bool MayGrow() const { return may_grow_; }
-    void* Address() const { return address_; }
-
-   private:
-    constexpr AllocationHint(void* address, bool may_grow)
-        : address_(address), may_grow_(may_grow) {}
-
-    void* address_ = nullptr;
-    bool may_grow_ = false;
-  };
-
-  /**
    * Allocates memory in range with the given alignment and permission.
    */
   virtual void* AllocatePages(void* address, size_t length, size_t alignment,
                               Permission permissions) = 0;
-
-  /**
-   * Allocates memory in range with the given alignment and permission. In
-   * addition to AllocatePages it allows to pass in allocation hints. The
-   * underlying implementation may not make use of hints.
-   */
-  virtual void* AllocatePages(size_t length, size_t alignment,
-                              Permission permissions, AllocationHint hint) {
-    return AllocatePages(hint.Address(), length, alignment, permissions);
-  }
-
-  /**
-   * Resizes the previously allocated memory at the given address. Returns true
-   * if the allocation could be resized. Returns false if this operation is
-   * either not supported or the object could not be resized in-place.
-   */
-  virtual bool ResizeAllocationAt(void* address, size_t old_length,
-                                  size_t new_length, Permission permissions) {
-    return false;
-  }
 
   /**
    * Frees memory in a range that was allocated by a call to AllocatePages.
@@ -702,6 +655,14 @@ class ThreadIsolatedAllocator {
    * Return the pkey used to implement the thread isolation if Type == kPkey.
    */
   virtual int Pkey() const { return -1; }
+
+  /**
+   * Per-thread permissions can be reset on signal handler entry. Even reading
+   * ThreadIsolated memory will segfault in that case.
+   * Call this function on signal handler entry to ensure that read permissions
+   * are restored.
+   */
+  static void SetDefaultPermissionsForSignalHandler();
 };
 
 // Opaque type representing a handle to a shared memory region.
@@ -1102,7 +1063,7 @@ class Platform {
    * Allows the embedder to manage memory page allocations.
    * Returning nullptr will cause V8 to use the default page allocator.
    */
-  virtual PageAllocator* GetPageAllocator() { return nullptr; }
+  virtual PageAllocator* GetPageAllocator() = 0;
 
   /**
    * Allows the embedder to provide an allocator that uses per-thread memory
@@ -1155,7 +1116,6 @@ class Platform {
    * Embedders should override PostTaskOnWorkerThreadImpl() instead of
    * CallOnWorkerThread().
    */
-  V8_DEPRECATE_SOON("Use PostTaskOnWorkerThread instead.")
   void CallOnWorkerThread(
       std::unique_ptr<Task> task,
       const SourceLocation& location = SourceLocation::Current()) {
@@ -1169,7 +1129,6 @@ class Platform {
    * Embedders should override PostTaskOnWorkerThreadImpl() instead of
    * CallBlockingTaskOnWorkerThread().
    */
-  V8_DEPRECATE_SOON("Use PostTaskOnWorkerThread instead.")
   void CallBlockingTaskOnWorkerThread(
       std::unique_ptr<Task> task,
       const SourceLocation& location = SourceLocation::Current()) {
@@ -1184,7 +1143,6 @@ class Platform {
    * Embedders should override PostTaskOnWorkerThreadImpl() instead of
    * CallLowPriorityTaskOnWorkerThread().
    */
-  V8_DEPRECATE_SOON("Use PostTaskOnWorkerThread instead.")
   void CallLowPriorityTaskOnWorkerThread(
       std::unique_ptr<Task> task,
       const SourceLocation& location = SourceLocation::Current()) {
@@ -1200,38 +1158,12 @@ class Platform {
    * Embedders should override PostDelayedTaskOnWorkerThreadImpl() instead of
    * CallDelayedOnWorkerThread().
    */
-  V8_DEPRECATE_SOON("Use PostDelayedTaskOnWorkerThread instead.")
   void CallDelayedOnWorkerThread(
       std::unique_ptr<Task> task, double delay_in_seconds,
       const SourceLocation& location = SourceLocation::Current()) {
     PostDelayedTaskOnWorkerThreadImpl(TaskPriority::kUserVisible,
                                       std::move(task), delay_in_seconds,
                                       location);
-  }
-
-  /**
-   * Schedules a task to be invoked on a worker thread.
-   * Embedders should override PostTaskOnWorkerThreadImpl() instead of
-   * PostTaskOnWorkerThread().
-   */
-  void PostTaskOnWorkerThread(
-      TaskPriority priority, std::unique_ptr<Task> task,
-      const SourceLocation& location = SourceLocation::Current()) {
-    PostTaskOnWorkerThreadImpl(priority, std::move(task), location);
-  }
-
-  /**
-   * Schedules a task to be invoked on a worker thread after |delay_in_seconds|
-   * expires.
-   * Embedders should override PostDelayedTaskOnWorkerThreadImpl() instead of
-   * PostDelayedTaskOnWorkerThread().
-   */
-  void PostDelayedTaskOnWorkerThread(
-      TaskPriority priority, std::unique_ptr<Task> task,
-      double delay_in_seconds,
-      const SourceLocation& location = SourceLocation::Current()) {
-    PostDelayedTaskOnWorkerThreadImpl(priority, std::move(task),
-                                      delay_in_seconds, location);
   }
 
   /**

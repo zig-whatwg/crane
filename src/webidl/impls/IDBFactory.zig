@@ -89,11 +89,20 @@ pub fn init(
 /// 2. Freeing the Instance handle back to the SlabAllocator
 /// Calling Instance.deinit from here would cause infinite recursion.
 pub fn deinit(instance: *runtime.Instance) void {
+    // Use lifecycle tracking to prevent double-deinit
+    // This can happen if wrapper_cache.deinit iterates over entries
+    // and calls onObjectFreed for an instance that was already deinited elsewhere.
+    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
+        return; // Already being cleaned up, skip
+    }
+
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }
+
+    runtime.instance_lifecycle.markCleanupComplete(instance);
     // NOTE: Do NOT call runtime.Instance.deinit(instance) here!
     // The GC integration layer handles slab freeing after this returns.
 }

@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef INCLUDE_V8_H_
-#define INCLUDE_V8_H_
-
 /** \mainpage V8 API Reference Guide
  *
  * V8 is Google's open source JavaScript engine.
@@ -14,6 +11,9 @@
  *
  * For other documentation see https://v8.dev/.
  */
+
+#ifndef INCLUDE_V8_H_
+#define INCLUDE_V8_H_
 
 #include <stddef.h>
 #include <stdint.h>

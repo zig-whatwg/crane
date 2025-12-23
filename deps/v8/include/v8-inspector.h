@@ -139,7 +139,6 @@ struct V8_EXPORT V8StackFrame {
   StringView functionName;
   int lineNumber;
   int columnNumber;
-  int scriptId;
 };
 
 class V8_EXPORT V8StackTrace {
@@ -303,9 +302,7 @@ class V8_EXPORT V8InspectorClient {
                               v8::Local<v8::String> label) {}
   virtual void consoleTimeStamp(v8::Isolate* isolate,
                                 v8::Local<v8::String> label) {}
-  virtual void consoleTimeStampWithArgs(
-      v8::Isolate* isolate, v8::Local<v8::String> label,
-      const v8::LocalVector<v8::Value>& args) {}
+
   virtual void consoleClear(int contextGroupId) {}
   virtual double currentTimeMS() { return 0; }
   typedef void (*TimerCallback)(void*);
@@ -364,7 +361,6 @@ class V8_EXPORT V8Inspector {
   virtual void resetContextGroup(int contextGroupId) = 0;
   virtual v8::MaybeLocal<v8::Context> contextById(int contextId) = 0;
   virtual V8DebuggerId uniqueDebuggerId(int contextId) = 0;
-  virtual uint64_t isolateId() = 0;
 
   // Various instrumentation.
   virtual void idleStarted() = 0;
@@ -408,20 +404,12 @@ class V8_EXPORT V8Inspector {
   enum ClientTrustLevel { kUntrusted, kFullyTrusted };
   enum SessionPauseState { kWaitingForDebugger, kNotWaitingForDebugger };
   // TODO(chromium:1352175): remove default value once downstream change lands.
-  // Deprecated: Use `connectShared` instead.
   virtual std::unique_ptr<V8InspectorSession> connect(
       int contextGroupId, Channel*, StringView state,
       ClientTrustLevel client_trust_level,
-      SessionPauseState = kNotWaitingForDebugger) = 0;
-
-  // Same as `connect` but returns a std::shared_ptr instead.
-  // Embedders should not deconstruct V8 sessions while the nested run loop
-  // (V8InspectorClient::runMessageLoopOnPause) is running. To partially ensure
-  // this, we defer session deconstruction until no "dispatchProtocolMessages"
-  // remains on the stack.
-  virtual std::shared_ptr<V8InspectorSession> connectShared(
-      int contextGroupId, Channel* channel, StringView state,
-      ClientTrustLevel clientTrustLevel, SessionPauseState pauseState) = 0;
+      SessionPauseState = kNotWaitingForDebugger) {
+    return nullptr;
+  }
 
   // API methods.
   virtual std::unique_ptr<V8StackTrace> createStackTrace(

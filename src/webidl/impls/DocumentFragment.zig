@@ -132,31 +132,25 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Getter for children (from ParentNode mixin)
 /// Returns a live HTMLCollection of element children
 pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return ParentNode.children(internal.allocator, instance, instance.ctx) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
+    return ParentNode.get_children(instance);
 }
 
 /// Getter for firstElementChild (from ParentNode mixin)
 /// Returns the first child that is an element, or null if none.
 pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return ParentNode.firstElementChild(instance);
+    return ParentNode.get_firstElementChild(instance);
 }
 
 /// Getter for lastElementChild (from ParentNode mixin)
 /// Returns the last child that is an element, or null if none.
 pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return ParentNode.lastElementChild(instance);
+    return ParentNode.get_lastElementChild(instance);
 }
 
 /// Getter for childElementCount (from ParentNode mixin)
 /// Returns the number of child elements
 pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
-    return ParentNode.childElementCount(instance);
+    return ParentNode.get_childElementCount(instance);
 }
 
 // =============================================================================
@@ -256,36 +250,16 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 /// Returns the first element matching the selector, or null if not found.
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
 pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Delegate to ParentNode mixin
-    const result = ParentNode.querySelector(internal.allocator, instance, selectors_str) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
-
-    return result;
+    // Delegate to ParentNode mixin - pass DOMString directly
+    return ParentNode.call_querySelector(instance, selectors);
 }
 
 /// Operation: querySelectorAll (from ParentNode mixin)
 /// Returns all elements matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
 pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Delegate to ParentNode mixin
-    return ParentNode.querySelectorAll(internal.allocator, instance, selectors_str, instance.ctx) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
+    // Delegate to ParentNode mixin - pass DOMString directly
+    return ParentNode.call_querySelectorAll(instance, selectors);
 }
 
 // =============================================================================
@@ -296,10 +270,8 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOM
 /// Returns the element with the given ID, or null if not found.
 /// Spec: https://dom.spec.whatwg.org/#dom-nonelementparentnode-getelementbyid
 pub fn call_getElementById(instance: *runtime.Instance, elementId: runtime.DOMString) anyerror!?*runtime.Instance {
-    const element_id = elementId.asSlice();
-
-    // Delegate to NonElementParentNode mixin
-    return NonElementParentNode.getElementById(instance, element_id);
+    // Delegate to NonElementParentNode mixin - pass DOMString directly
+    return NonElementParentNode.call_getElementById(instance, elementId);
 }
 
 /// Clean up ALL remaining internal states.

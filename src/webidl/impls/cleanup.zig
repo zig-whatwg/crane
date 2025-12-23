@@ -21,6 +21,7 @@ const CommentImpl = @import("Comment.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 const DocumentTypeImpl = @import("DocumentType.zig");
 const DocumentFragmentImpl = @import("DocumentFragment.zig");
+const EventTargetImpl = @import("EventTarget.zig");
 
 /// Clean up ALL remaining internal states in DOM-related registries.
 /// This should be called during final context cleanup, BEFORE the ArenaAllocator
@@ -30,6 +31,10 @@ const DocumentFragmentImpl = @import("DocumentFragment.zig");
 /// but never explicitly deinited. Without this cleanup, their internal state
 /// (strings, attributes, etc.) would leak.
 pub fn cleanupAllDomRegistries() void {
+    // Clean up EventTarget first - this cleans up event listener callbacks
+    // which need V8 to still be alive to dispose global handles
+    EventTargetImpl.cleanupAllRemainingInternal();
+
     // Clean up specific element types first (most derived to least)
     HTMLScriptElementImpl.cleanupAllRemainingInternal();
     HTMLElementImpl.cleanupAllRemainingInternal();

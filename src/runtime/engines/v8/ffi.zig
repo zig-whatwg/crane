@@ -360,6 +360,9 @@ pub extern fn v8_ObjectTemplate_New(isolate: *Isolate) *ObjectTemplate;
 pub extern fn v8_ObjectTemplate_NewInstance(self: *ObjectTemplate, context: *Context) ?*Object;
 pub extern fn v8_ObjectTemplate_SetInternalFieldCount(self: *ObjectTemplate, count: c_int) void;
 
+// Function::NewInstance - Create object via constructor (sets up prototype chain properly)
+pub extern fn v8_Function_NewInstance(function: *Function, context: *Context, argc: c_int, argv: ?[*]*Value) ?*Object;
+
 /// Mark the object template's prototype as immutable.
 /// This makes Object.setPrototypeOf(obj, newProto) throw TypeError
 /// when newProto !== Object.getPrototypeOf(obj).
@@ -395,6 +398,16 @@ pub extern fn v8_ObjectTemplate_SetWithAttributes(
     self: *ObjectTemplate,
     name: *String,
     value: *Value,
+    attributes: c_int,
+) void;
+
+/// Set a FunctionTemplate property on the ObjectTemplate with attributes.
+/// Used by GlobalTemplateRegistry to attach interface constructors to the global template.
+/// This is the correct way to attach FunctionTemplates (vs SetWithAttributes which expects Values).
+pub extern fn v8_ObjectTemplate_SetFunctionTemplate(
+    self: *ObjectTemplate,
+    name: *String,
+    func_tpl: *FunctionTemplate,
     attributes: c_int,
 ) void;
 
@@ -624,6 +637,12 @@ pub extern fn v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
 // Platform initialization
 pub extern fn v8_Platform_Initialize() void;
 pub extern fn v8_Platform_Dispose() void;
+
+/// Set V8 command-line flags from a string
+///
+/// Must be called BEFORE v8_Platform_Initialize() for flags to take effect.
+/// Example: "--hash-seed=0" for deterministic hashing (helps with snapshots)
+pub extern fn v8_SetFlagsFromString(flags: [*:0]const u8) void;
 
 // Isolate management
 pub extern fn v8_Isolate_New() ?*Isolate;
@@ -1981,6 +2000,36 @@ pub extern fn v8_SnapshotCreator_GetIsolate(creator: *SnapshotCreator) ?*Isolate
 /// @param context - Global handle to the context to snapshot
 pub extern fn v8_SnapshotCreator_SetDefaultContext(creator: *SnapshotCreator, context: *Context) void;
 
+/// Create a context and set it as default for snapshot
+///
+/// This function creates a new context using Local handles (not Global) and
+/// immediately sets it as the default context for the snapshot. Using Local
+/// handles avoids the "global handle not serialized" error during CreateBlob.
+///
+/// @param creator - SnapshotCreator handle
+/// @return true on success, false on failure
+pub extern fn v8_SnapshotCreator_CreateAndSetDefaultContext(creator: *SnapshotCreator) bool;
+
+/// Create a context and add it to snapshot at index
+///
+/// This function creates a new context using Local handles (not Global) and
+/// immediately adds it to the snapshot's context array. Using Local handles
+/// avoids the "global handle not serialized" error during CreateBlob.
+///
+/// @param creator - SnapshotCreator handle
+/// @return The index at which the context was added, or maxInt on failure
+pub extern fn v8_SnapshotCreator_CreateAndAddContext(creator: *SnapshotCreator) usize;
+
+/// Add context to snapshot at specific index
+///
+/// This adds a context that can be retrieved via Context::FromSnapshot(isolate, index)
+/// after deserialization. The first call returns index 0, second returns 1, etc.
+///
+/// @param creator - SnapshotCreator handle
+/// @param context - Global handle to the context to snapshot
+/// @return The index at which the context was added (0-based), or maxInt on error
+pub extern fn v8_SnapshotCreator_AddContext(creator: *SnapshotCreator, context: *Context) usize;
+
 /// FunctionCodeHandling for snapshot creation
 pub const FunctionCodeHandling = enum(c_int) {
     /// Clear compiled function code (smaller snapshot, slower first execution)
@@ -2067,6 +2116,16 @@ pub extern fn v8_Isolate_NewFromSnapshot(
 /// @return New context with snapshot state
 pub extern fn v8_Context_NewFromSnapshot(isolate: *Isolate) ?*Context;
 
+/// Create a NEW context for an isolate that was created from a snapshot
+///
+/// Unlike v8_Context_NewFromSnapshot which restores a specific context from the
+/// snapshot by index, this creates a completely new context. The new context will
+/// have all the V8 builtins from the snapshot's default context as a template.
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @return New context (fresh, not from snapshot state)
+pub extern fn v8_Context_NewFromSnapshotDefault(isolate: *Isolate) ?*Context;
+
 /// Check if a snapshot blob is valid
 ///
 /// Validates that the snapshot data can be used with the current V8 version.
@@ -2075,6 +2134,19 @@ pub extern fn v8_Context_NewFromSnapshot(isolate: *Isolate) ?*Context;
 /// @param snapshot_size - Size of snapshot blob in bytes
 /// @return true if valid, false if invalid or corrupted
 pub extern fn v8_Snapshot_IsValid(
+    snapshot_data: [*]const u8,
+    snapshot_size: c_int,
+) bool;
+
+/// Check if a snapshot blob can be rehashed during deserialization
+///
+/// If CanBeRehashed() returns false, the snapshot can only be loaded by an
+/// isolate with the same hash seed that was used during snapshot creation.
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @return true if rehashable, false if not
+pub extern fn v8_Snapshot_CanBeRehashed(
     snapshot_data: [*]const u8,
     snapshot_size: c_int,
 ) bool;

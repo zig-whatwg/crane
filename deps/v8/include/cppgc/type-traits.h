@@ -9,7 +9,6 @@
 // against Oilpan types without including any other parts.
 #include <cstddef>
 #include <type_traits>
-#include <utility>
 
 namespace cppgc {
 

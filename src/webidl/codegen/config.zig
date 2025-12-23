@@ -22,6 +22,7 @@ pub const CodegenConfig = struct {
     cached_callbacks_path: ?[]const u8 = null,
     cached_namespaces_path: ?[]const u8 = null,
     cached_impls_path: ?[]const u8 = null,
+    cached_mixins_path: ?[]const u8 = null,
 
     /// Create default configuration (generates nothing)
     pub fn default(allocator: std.mem.Allocator) CodegenConfig {
@@ -39,6 +40,7 @@ pub const CodegenConfig = struct {
         if (self.cached_callbacks_path) |path| self.allocator.free(path);
         if (self.cached_namespaces_path) |path| self.allocator.free(path);
         if (self.cached_impls_path) |path| self.allocator.free(path);
+        if (self.cached_mixins_path) |path| self.allocator.free(path);
     }
 
     /// Get the interfaces path from dest_root
@@ -124,6 +126,18 @@ pub const CodegenConfig = struct {
         if (self.dest_root) |root| {
             const path = try std.fs.path.join(self.allocator, &.{ root, "namespaces" });
             self.cached_namespaces_path = path;
+            return path;
+        }
+        return null;
+    }
+
+    /// Get the mixins path from dest_root
+    /// Caches the result to avoid repeated allocations
+    pub fn getMixinsPath(self: *CodegenConfig) !?[]const u8 {
+        if (self.cached_mixins_path) |path| return path;
+        if (self.dest_root) |root| {
+            const path = try std.fs.path.join(self.allocator, &.{ root, "mixins" });
+            self.cached_mixins_path = path;
             return path;
         }
         return null;

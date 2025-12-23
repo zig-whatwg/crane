@@ -42,7 +42,7 @@ class ReturnValue {
  public:
   template <class S>
   V8_INLINE ReturnValue(const ReturnValue<S>& that) : value_(that.value_) {
-    static_assert(std::is_base_of_v<T, S>, "type check");
+    static_assert(std::is_base_of<T, S>::value, "type check");
   }
   // Handle-based setters.
   template <typename S>
@@ -66,12 +66,12 @@ class ReturnValue {
   V8_INLINE void Set(uint16_t i);
   V8_INLINE void Set(uint32_t i);
   V8_INLINE void Set(uint64_t i);
-  // Fast JS primitive setters.
+  // Fast JS primitive setters
   V8_INLINE void SetNull();
   V8_INLINE void SetUndefined();
   V8_INLINE void SetFalse();
   V8_INLINE void SetEmptyString();
-  // Convenience getter for the Isolate.
+  // Convenience getter for Isolate
   V8_INLINE Isolate* GetIsolate() const;
 
   // Pointer setter: Uncompilable to prevent inadvertent misuse.
@@ -126,6 +126,23 @@ class FunctionCallbackInfo {
   V8_INLINE Local<Value> operator[](int i) const;
   /** Returns the receiver. This corresponds to the "this" value. */
   V8_INLINE Local<Object> This() const;
+  /**
+   * If the callback was created without a Signature, this is the same
+   * value as This(). If there is a signature, and the signature didn't match
+   * This() but one of its hidden prototypes, this will be the respective
+   * hidden prototype.
+   *
+   * Note that this is not the prototype of This() on which the accessor
+   * referencing this callback was found (which in V8 internally is often
+   * referred to as holder [sic]).
+   */
+  V8_DEPRECATED(
+      "V8 will stop providing access to hidden prototype (i.e. "
+      "JSGlobalObject). Use This() instead. \n"
+      "DO NOT try to workaround this by accessing JSGlobalObject via "
+      "v8::Object::GetPrototype() - it'll be deprecated soon too. \n"
+      "See http://crbug.com/333672197. ")
+  V8_INLINE Local<Object> Holder() const;
   /** For construct calls, this returns the "new.target" value. */
   V8_INLINE Local<Value> NewTarget() const;
   /** Indicates whether this is a regular call or a construct call. */
@@ -137,16 +154,18 @@ class FunctionCallbackInfo {
   /** The ReturnValue for the call. */
   V8_INLINE ReturnValue<T> GetReturnValue() const;
 
+  // This is a temporary replacement for Holder() added just for the purpose
+  // of testing the deprecated Holder() machinery until it's removed for real.
+  // DO NOT use it.
+  V8_INLINE Local<Object> HolderSoonToBeDeprecated() const;
+
  private:
   friend class internal::FunctionCallbackArguments;
   friend class internal::CustomArguments<FunctionCallbackInfo>;
   friend class debug::ConsoleCallArguments;
   friend void internal::PrintFunctionCallbackInfo(void*);
 
-  // TODO(ishell, http://crbug.com/326505377): in case of non-constructor
-  // call, don't pass kNewTarget and kUnused. Add IsConstructCall flag to
-  // kIsolate field.
-  static constexpr int kUnusedIndex = 0;
+  static constexpr int kHolderIndex = 0;
   static constexpr int kIsolateIndex = 1;
   static constexpr int kContextIndex = 2;
   static constexpr int kReturnValueIndex = 3;
@@ -250,7 +269,7 @@ class PropertyCallbackInfo {
    *
    * \note For security reasons, do not pass the object back into the runtime.
    */
-  V8_DEPRECATED(
+  V8_DEPRECATE_SOON(
       "V8 will stop providing access to hidden prototype (i.e. "
       "JSGlobalObject). Use HolderV2() instead. \n"
       "DO NOT try to workaround this by accessing JSGlobalObject via "
@@ -335,7 +354,7 @@ void ReturnValue<T>::SetInternal(internal::Address value) {
 template <typename T>
 template <typename S>
 void ReturnValue<T>::Set(const Global<S>& handle) {
-  static_assert(std::is_base_of_v<T, S>, "type check");
+  static_assert(std::is_base_of<T, S>::value, "type check");
   if (V8_UNLIKELY(handle.IsEmpty())) {
     SetDefaultValue();
   } else {
@@ -346,7 +365,7 @@ void ReturnValue<T>::Set(const Global<S>& handle) {
 template <typename T>
 template <typename S>
 void ReturnValue<T>::SetNonEmpty(const Global<S>& handle) {
-  static_assert(std::is_base_of_v<T, S>, "type check");
+  static_assert(std::is_base_of<T, S>::value, "type check");
 #ifdef V8_ENABLE_CHECKS
   internal::VerifyHandleIsNonEmpty(handle.IsEmpty());
 #endif  // V8_ENABLE_CHECKS
@@ -356,7 +375,7 @@ void ReturnValue<T>::SetNonEmpty(const Global<S>& handle) {
 template <typename T>
 template <typename S>
 void ReturnValue<T>::Set(const BasicTracedReference<S>& handle) {
-  static_assert(std::is_base_of_v<T, S>, "type check");
+  static_assert(std::is_base_of<T, S>::value, "type check");
   if (V8_UNLIKELY(handle.IsEmpty())) {
     SetDefaultValue();
   } else {
@@ -367,7 +386,7 @@ void ReturnValue<T>::Set(const BasicTracedReference<S>& handle) {
 template <typename T>
 template <typename S>
 void ReturnValue<T>::SetNonEmpty(const BasicTracedReference<S>& handle) {
-  static_assert(std::is_base_of_v<T, S>, "type check");
+  static_assert(std::is_base_of<T, S>::value, "type check");
 #ifdef V8_ENABLE_CHECKS
   internal::VerifyHandleIsNonEmpty(handle.IsEmpty());
 #endif  // V8_ENABLE_CHECKS
@@ -380,16 +399,16 @@ void ReturnValue<T>::Set(const Local<S> handle) {
   // "V8_DEPRECATE_SOON" this method if |T| is |void|.
 #ifdef V8_IMMINENT_DEPRECATION_WARNINGS
   static constexpr bool is_allowed_void = false;
-  static_assert(!std::is_void_v<T>,
+  static_assert(!std::is_void<T>::value,
                 "ReturnValue<void>::Set(const Local<S>) is deprecated. "
                 "Do nothing to indicate that the operation succeeded or use "
                 "SetFalse() to indicate that the operation failed (don't "
                 "forget to handle info.ShouldThrowOnError()). "
                 "See http://crbug.com/348660658 for details.");
 #else
-  static constexpr bool is_allowed_void = std::is_void_v<T>;
+  static constexpr bool is_allowed_void = std::is_void<T>::value;
 #endif  // V8_IMMINENT_DEPRECATION_WARNINGS
-  static_assert(is_allowed_void || std::is_base_of_v<T, S>, "type check");
+  static_assert(is_allowed_void || std::is_base_of<T, S>::value, "type check");
   if (V8_UNLIKELY(handle.IsEmpty())) {
     SetDefaultValue();
   } else if constexpr (is_allowed_void) {
@@ -407,16 +426,16 @@ void ReturnValue<T>::SetNonEmpty(const Local<S> handle) {
   // "V8_DEPRECATE_SOON" this method if |T| is |void|.
 #ifdef V8_IMMINENT_DEPRECATION_WARNINGS
   static constexpr bool is_allowed_void = false;
-  static_assert(!std::is_void_v<T>,
+  static_assert(!std::is_void<T>::value,
                 "ReturnValue<void>::SetNonEmpty(const Local<S>) is deprecated. "
                 "Do nothing to indicate that the operation succeeded or use "
                 "SetFalse() to indicate that the operation failed (don't "
                 "forget to handle info.ShouldThrowOnError()). "
                 "See http://crbug.com/348660658 for details.");
 #else
-  static constexpr bool is_allowed_void = std::is_void_v<T>;
+  static constexpr bool is_allowed_void = std::is_void<T>::value;
 #endif  // V8_IMMINENT_DEPRECATION_WARNINGS
-  static_assert(is_allowed_void || std::is_base_of_v<T, S>, "type check");
+  static_assert(is_allowed_void || std::is_base_of<T, S>::value, "type check");
 #ifdef V8_ENABLE_CHECKS
   internal::VerifyHandleIsNonEmpty(handle.IsEmpty());
 #endif  // V8_ENABLE_CHECKS
@@ -431,13 +450,13 @@ void ReturnValue<T>::SetNonEmpty(const Local<S> handle) {
 
 template <typename T>
 void ReturnValue<T>::Set(double i) {
-  static_assert(std::is_base_of_v<T, Number>, "type check");
+  static_assert(std::is_base_of<T, Number>::value, "type check");
   SetNonEmpty(Number::New(GetIsolate(), i));
 }
 
 template <typename T>
 void ReturnValue<T>::Set(int16_t i) {
-  static_assert(std::is_base_of_v<T, Integer>, "type check");
+  static_assert(std::is_base_of<T, Integer>::value, "type check");
   using I = internal::Internals;
   static_assert(I::IsValidSmi(std::numeric_limits<int16_t>::min()));
   static_assert(I::IsValidSmi(std::numeric_limits<int16_t>::max()));
@@ -446,7 +465,7 @@ void ReturnValue<T>::Set(int16_t i) {
 
 template <typename T>
 void ReturnValue<T>::Set(int32_t i) {
-  static_assert(std::is_base_of_v<T, Integer>, "type check");
+  static_assert(std::is_base_of<T, Integer>::value, "type check");
   if (const auto result = internal::Internals::TryIntegralToSmi(i)) {
     SetInternal(*result);
     return;
@@ -456,7 +475,7 @@ void ReturnValue<T>::Set(int32_t i) {
 
 template <typename T>
 void ReturnValue<T>::Set(int64_t i) {
-  static_assert(std::is_base_of_v<T, Integer>, "type check");
+  static_assert(std::is_base_of<T, Integer>::value, "type check");
   if (const auto result = internal::Internals::TryIntegralToSmi(i)) {
     SetInternal(*result);
     return;
@@ -466,7 +485,7 @@ void ReturnValue<T>::Set(int64_t i) {
 
 template <typename T>
 void ReturnValue<T>::Set(uint16_t i) {
-  static_assert(std::is_base_of_v<T, Integer>, "type check");
+  static_assert(std::is_base_of<T, Integer>::value, "type check");
   using I = internal::Internals;
   static_assert(I::IsValidSmi(std::numeric_limits<uint16_t>::min()));
   static_assert(I::IsValidSmi(std::numeric_limits<uint16_t>::max()));
@@ -475,7 +494,7 @@ void ReturnValue<T>::Set(uint16_t i) {
 
 template <typename T>
 void ReturnValue<T>::Set(uint32_t i) {
-  static_assert(std::is_base_of_v<T, Integer>, "type check");
+  static_assert(std::is_base_of<T, Integer>::value, "type check");
   if (const auto result = internal::Internals::TryIntegralToSmi(i)) {
     SetInternal(*result);
     return;
@@ -485,7 +504,7 @@ void ReturnValue<T>::Set(uint32_t i) {
 
 template <typename T>
 void ReturnValue<T>::Set(uint64_t i) {
-  static_assert(std::is_base_of_v<T, Integer>, "type check");
+  static_assert(std::is_base_of<T, Integer>::value, "type check");
   if (const auto result = internal::Internals::TryIntegralToSmi(i)) {
     SetInternal(*result);
     return;
@@ -495,7 +514,7 @@ void ReturnValue<T>::Set(uint64_t i) {
 
 template <typename T>
 void ReturnValue<T>::Set(bool value) {
-  static_assert(std::is_void_v<T> || std::is_base_of_v<T, Boolean>,
+  static_assert(std::is_void<T>::value || std::is_base_of<T, Boolean>::value,
                 "type check");
   using I = internal::Internals;
 #if V8_STATIC_ROOTS_BOOL
@@ -535,7 +554,7 @@ void ReturnValue<T>::SetDefaultValue() {
 
 template <typename T>
 void ReturnValue<T>::SetNull() {
-  static_assert(std::is_base_of_v<T, Primitive>, "type check");
+  static_assert(std::is_base_of<T, Primitive>::value, "type check");
   using I = internal::Internals;
 #if V8_STATIC_ROOTS_BOOL
 #ifdef V8_ENABLE_CHECKS
@@ -550,7 +569,7 @@ void ReturnValue<T>::SetNull() {
 
 template <typename T>
 void ReturnValue<T>::SetUndefined() {
-  static_assert(std::is_base_of_v<T, Primitive>, "type check");
+  static_assert(std::is_base_of<T, Primitive>::value, "type check");
   using I = internal::Internals;
 #if V8_STATIC_ROOTS_BOOL
 #ifdef V8_ENABLE_CHECKS
@@ -565,7 +584,7 @@ void ReturnValue<T>::SetUndefined() {
 
 template <typename T>
 void ReturnValue<T>::SetFalse() {
-  static_assert(std::is_void_v<T> || std::is_base_of_v<T, Boolean>,
+  static_assert(std::is_void<T>::value || std::is_base_of<T, Boolean>::value,
                 "type check");
   using I = internal::Internals;
 #if V8_STATIC_ROOTS_BOOL
@@ -581,7 +600,7 @@ void ReturnValue<T>::SetFalse() {
 
 template <typename T>
 void ReturnValue<T>::SetEmptyString() {
-  static_assert(std::is_base_of_v<T, String>, "type check");
+  static_assert(std::is_base_of<T, String>::value, "type check");
   using I = internal::Internals;
 #if V8_STATIC_ROOTS_BOOL
 #ifdef V8_ENABLE_CHECKS
@@ -628,6 +647,16 @@ template <typename T>
 Local<Object> FunctionCallbackInfo<T>::This() const {
   // values_ points to the first argument (not the receiver).
   return Local<Object>::FromSlot(values_ + kThisValuesIndex);
+}
+
+template <typename T>
+Local<Object> FunctionCallbackInfo<T>::HolderSoonToBeDeprecated() const {
+  return Local<Object>::FromSlot(&implicit_args_[kHolderIndex]);
+}
+
+template <typename T>
+Local<Object> FunctionCallbackInfo<T>::Holder() const {
+  return HolderSoonToBeDeprecated();
 }
 
 template <typename T>

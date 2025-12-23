@@ -73,11 +73,8 @@ pub const WptBrowser = struct {
         errdefer allocator.destroy(self);
 
         // Create the underlying browser (manages V8 isolate)
-        // Disable snapshots for now - they cause crashes
-        // TODO: Fix snapshot loading (whatwg-XXXX)
         const browser_instance = try Browser.init(allocator, .{
             .log_performance = true,
-            .snapshot_path = "", // Empty string disables snapshot loading
         });
         errdefer browser_instance.deinit();
 
@@ -259,12 +256,15 @@ pub const WptBrowser = struct {
         const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr));
         const self = loader_ctx.wpt_browser;
 
+        std.debug.print("scriptLoaderCallback: url='{s}'\n", .{url});
+
         // Skip testharness.js and testharnessreport.js - they're already loaded
         // via loadTestHarness() before HTML parsing starts. Loading them again
         // would reinitialize the Tests object and lose our completion callback.
         if (std.mem.eql(u8, url, "/resources/testharness.js") or
             std.mem.eql(u8, url, "/resources/testharnessreport.js"))
         {
+            std.debug.print("scriptLoaderCallback: SKIPPING {s} (already loaded)\n", .{url});
             // Return empty script to prevent double-loading
             return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
         }
@@ -309,16 +309,41 @@ pub const WptBrowser = struct {
 
     /// Load testharness.js and testharnessreport.js into the context
     fn loadTestHarness(self: *WptBrowser, ctx: *Context) !void {
+        std.debug.print("loadTestHarness: Loading testharness.js...\n", .{});
+        std.debug.print("loadTestHarness: Browser.Context v8_context={*}\n", .{ctx.v8_context});
+
+        // DEBUG: Check if 'self' is defined before loading testharness.js
+        const self_check =
+            \\(function() {
+            \\  console.log('self type: ' + typeof self);
+            \\  console.log('self === window: ' + (self === window));
+            \\  console.log('self === globalThis: ' + (self === globalThis));
+            \\  if (typeof self === 'number') {
+            \\    console.log('ERROR: self is a number! value=' + self);
+            \\  }
+            \\  return typeof self;
+            \\})();
+        ;
+        _ = ctx.evaluateScript(self_check) catch |err| {
+            std.debug.print("loadTestHarness: self check error: {}\n", .{err});
+        };
+
         // Load testharness.js
         if (self.testharness_js) |js| {
+            std.debug.print("loadTestHarness: testharness.js content length: {d}\n", .{js.len});
             _ = try ctx.evaluateScript(js);
+            std.debug.print("loadTestHarness: testharness.js executed successfully\n", .{});
         } else {
+            std.debug.print("loadTestHarness: testharness.js content is null!\n", .{});
             return error.TestHarnessNotFound;
         }
 
         // Load testharnessreport.js
         if (self.testharnessreport_js) |js| {
+            std.debug.print("loadTestHarness: testharnessreport.js content length: {d}\n", .{js.len});
             _ = try ctx.evaluateScript(js);
+        } else {
+            std.debug.print("loadTestHarness: testharnessreport.js content is null\n", .{});
         }
 
         // Verify testharness.js loaded correctly by checking for globals
@@ -330,11 +355,17 @@ pub const WptBrowser = struct {
             \\    'test=' + typeof test + ', async_test=' + typeof async_test +
             \\    ', promise_test=' + typeof promise_test + ', setup=' + typeof setup);
             \\}
+            \\'GLOBALS_VERIFIED';
         ;
-        _ = ctx.evaluateScript(verify_script) catch |err| {
+        const verify_result = ctx.evaluateScript(verify_script) catch |err| {
             std.debug.print("ERROR: testharness.js verification failed: {}\n", .{err});
             return error.TestHarnessLoadFailed;
         };
+        if (verify_result != null) {
+            std.debug.print("loadTestHarness: Globals verified successfully!\n", .{});
+        } else {
+            std.debug.print("loadTestHarness: Verify script returned null\n", .{});
+        }
 
         // Set up completion callback to capture results
         const setup_script =

@@ -211,6 +211,26 @@ fn ensureRegistry() *std.AutoHashMap(usize, *InternalState) {
     return &internal_state_registry.?;
 }
 
+/// Clean up all remaining internal states WITH V8 resource cleanup.
+/// This should be called during browser/context cleanup, BEFORE V8 is disposed,
+/// to properly dispose V8 global handles in CallbackWrappers.
+///
+/// This is called from cleanup.cleanupAllDomRegistries() which runs before
+/// runtime.deinitializeRuntime(), ensuring V8 is still alive.
+pub fn cleanupAllRemainingInternal() void {
+    if (internal_state_registry) |*registry| {
+        // Clean up all internal states with V8 resource cleanup enabled
+        var iter = registry.valueIterator();
+        while (iter.next()) |internal_ptr| {
+            internal_ptr.*.deinitEx(true); // V8 is still alive, clean up global handles
+        }
+        registry.deinit();
+        internal_state_registry = null;
+    }
+    // Reset flag so hook can be re-registered if runtime is re-initialized
+    cleanup_hook_registered = false;
+}
+
 /// Clean up all remaining internal states and the registry itself
 /// This should be called during runtime shutdown to prevent memory leaks
 /// Note: This is called AFTER V8 isolate is disposed, so we must skip V8 resource cleanup

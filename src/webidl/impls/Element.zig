@@ -1384,48 +1384,42 @@ pub fn get_regionOverset(instance: *runtime.Instance) anyerror!typedefs.CSSOMStr
 /// ParentNode mixin - Returns an HTMLCollection of child elements
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
 pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return ParentNode.children(internal.allocator, instance, instance.ctx) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
+    return ParentNode.get_children(instance);
 }
 
 /// Getter for firstElementChild
 /// ParentNode mixin - Returns the first child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
 pub fn get_firstElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return ParentNode.firstElementChild(instance);
+    return ParentNode.get_firstElementChild(instance);
 }
 
 /// Getter for lastElementChild
 /// ParentNode mixin - Returns the last child that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
 pub fn get_lastElementChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return ParentNode.lastElementChild(instance);
+    return ParentNode.get_lastElementChild(instance);
 }
 
 /// Getter for childElementCount
 /// ParentNode mixin - Returns the number of child elements
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
 pub fn get_childElementCount(instance: *runtime.Instance) anyerror!u32 {
-    return ParentNode.childElementCount(instance);
+    return ParentNode.get_childElementCount(instance);
 }
 
 /// Getter for previousElementSibling
 /// NonDocumentTypeChildNode mixin - Returns the previous sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
 pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.previousElementSibling(instance);
+    return NonDocumentTypeChildNode.get_previousElementSibling(instance);
 }
 
 /// Getter for nextElementSibling
 /// NonDocumentTypeChildNode mixin - Returns the next sibling that is an element
 /// Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
 pub fn get_nextElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return NonDocumentTypeChildNode.nextElementSibling(instance);
+    return NonDocumentTypeChildNode.get_nextElementSibling(instance);
 }
 
 /// Getter for assignedSlot
@@ -2426,17 +2420,9 @@ pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 /// DOM §4.10.4 - Returns true if element matches the given selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-matches
 pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Use ParentNode's selector matching infrastructure
-    return ParentNode.matches(internal.allocator, instance, selectors_str) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
+    // matches() is an Element method (not ParentNode mixin method)
+    // Use ParentNode impl's helper function for selector matching
+    return ParentNodeImpl.matches(instance, selectors);
 }
 
 /// Operation: releasePointerCapture
@@ -2887,38 +2873,17 @@ pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: run
 /// ParentNode mixin - Returns the first element matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
 pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Delegate to ParentNode mixin
-    const result = ParentNode.querySelector(internal.allocator, instance, selectors_str) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
-
-    return result;
+    // Delegate to ParentNode mixin - pass DOMString directly
+    return ParentNode.call_querySelector(instance, selectors);
 }
 
 /// Operation: closest
 /// DOM §4.10.4 - Returns closest ancestor (or self) matching selector
 /// Spec: https://dom.spec.whatwg.org/#dom-element-closest
 pub fn call_closest(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Find closest matching ancestor (including self)
-    const result = ParentNode.closest(internal.allocator, instance, selectors_str) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
-
-    return result;
+    // closest() is an Element method (not ParentNode mixin method)
+    // Use ParentNode impl's helper function for selector matching
+    return ParentNodeImpl.closest(instance, selectors);
 }
 
 /// Operation: getSpatialNavigationContainer
@@ -2936,7 +2901,7 @@ pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!
 /// ChildNode mixin - Removes this element from its parent
 /// Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
 pub fn call_remove(instance: *runtime.Instance) anyerror!void {
-    ChildNode.remove(instance) catch |err| {
+    ChildNode.call_remove(instance) catch |err| {
         return switch (err) {
             error.HierarchyRequestError => error.InvalidStateError,
             else => error.NotImplemented,
@@ -3670,17 +3635,8 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
 /// ParentNode mixin - Returns all elements matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
 pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Delegate to ParentNode mixin
-    return ParentNode.querySelectorAll(internal.allocator, instance, selectors_str, instance.ctx) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.SyntaxError,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
+    // Delegate to ParentNode mixin - pass DOMString directly
+    return ParentNode.call_querySelectorAll(instance, selectors);
 }
 
 /// Operation: setPointerCapture

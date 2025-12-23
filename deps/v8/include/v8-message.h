@@ -9,7 +9,6 @@
 
 #include <iosfwd>
 
-#include "v8-callbacks.h"     // NOLINT(build/include_directory)
 #include "v8-local-handle.h"  // NOLINT(build/include_directory)
 #include "v8-maybe.h"         // NOLINT(build/include_directory)
 #include "v8-primitive.h"     // NOLINT(build/include_directory)
@@ -111,9 +110,6 @@ class V8_EXPORT Message {
   /**
    * Return the isolate to which the Message belongs.
    */
-  V8_DEPRECATE_SOON(
-      "Use Isolate::GetCurrent() instead, which is guaranteed to return the "
-      "same isolate since https://crrev.com/c/6458560.")
   Isolate* GetIsolate() const;
 
   V8_WARN_UNUSED_RESULT MaybeLocal<String> GetSource(
@@ -189,14 +185,7 @@ class V8_EXPORT Message {
   bool IsSharedCrossOrigin() const;
   bool IsOpaque() const;
 
-  /**
-   * If provided, the callback can be used to selectively include
-   * or redact frames based on their script names. (true to include a frame)
-   */
-  static void PrintCurrentStackTrace(
-      Isolate* isolate, std::ostream& out,
-      PrintCurrentStackTraceFilterCallback should_include_frame_callback =
-          nullptr);
+  static void PrintCurrentStackTrace(Isolate* isolate, std::ostream& out);
 
   static const int kNoLineNumberInfo = 0;
   static const int kNoColumnInfo = 0;

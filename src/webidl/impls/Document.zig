@@ -3249,13 +3249,13 @@ pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-prepend
 /// Inserts nodes before the first child
 /// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
-/// The ParentNode mixin has the implementation at ParentNode.prepend()
+/// The ParentNode mixin has the implementation at ParentNode.call_prepend()
 pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     // When variadic support is added:
     // const node_slice = convertVariadicNodes(nodes);
-    // ParentNode.prepend(allocator, instance, node_slice, ctx);
+    // ParentNode.call_prepend(allocator, instance, node_slice, ctx);
     return error.NotImplemented;
 }
 
@@ -3821,13 +3821,13 @@ pub fn call_createEvent(instance: *runtime.Instance, interface: runtime.DOMStrin
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
 /// Replaces all children with nodes
 /// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
-/// The ParentNode mixin has the implementation at ParentNode.replaceChildren()
+/// The ParentNode mixin has the implementation at ParentNode.call_replaceChildren()
 pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     // When variadic support is added:
     // const node_slice = convertVariadicNodes(nodes);
-    // ParentNode.replaceChildren(allocator, instance, node_slice, ctx);
+    // ParentNode.call_replaceChildren(allocator, instance, node_slice, ctx);
     return error.NotImplemented;
 }
 
@@ -4019,19 +4019,8 @@ pub fn call_evaluate(instance: *runtime.Instance, expression: runtime.DOMString,
 /// ParentNode mixin - Returns the first element matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
 pub fn call_querySelector(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Delegate to ParentNode mixin
-    const result = ParentNode.querySelector(internal.allocator, instance, selectors_str) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.InvalidStateError, // Map SyntaxError to our error set
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
-
-    return result;
+    // Delegate to ParentNode mixin - pass DOMString directly
+    return ParentNode.call_querySelector(instance, selectors);
 }
 
 /// Operation: hasStorageAccess
@@ -4641,24 +4630,21 @@ pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-append
 /// Inserts nodes after the last child
 /// TODO: Implement variadic parameter conversion from anyopaque to []NodeOrString
-/// The ParentNode mixin has the implementation at ParentNode.append()
+/// The ParentNode mixin has the implementation at ParentNode.call_append()
 pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     _ = instance;
     _ = nodes;
     // When variadic support is added:
     // const node_slice = convertVariadicNodes(nodes);
-    // ParentNode.append(allocator, instance, node_slice, ctx);
+    // ParentNode.call_append(allocator, instance, node_slice, ctx);
     return error.NotImplemented;
 }
 
 /// Operation: moveBefore
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
 /// Moves node to before child, preserving state
-/// NOTE: Signature should be `child: ?*runtime.Instance` per spec - codegen needs fixing
 pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-    // Delegate to ParentNode mixin
-    // TODO: When codegen is fixed, change child parameter to optional
-    ParentNode.moveBefore(instance, node, child) catch |err| {
+    ParentNode.call_moveBefore(instance, node, child) catch |err| {
         return switch (err) {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
@@ -4906,17 +4892,8 @@ pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
 /// ParentNode mixin - Returns all elements matching the selector
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
 pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const selectors_str = selectors.asSlice();
-
-    // Delegate to ParentNode mixin
-    return ParentNode.querySelectorAll(internal.allocator, instance, selectors_str, instance.ctx) catch |err| {
-        return switch (err) {
-            error.SyntaxError => error.InvalidStateError, // Map SyntaxError to our error set
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.NotImplemented,
-        };
-    };
+    // Delegate to ParentNode mixin - pass DOMString directly
+    return ParentNode.call_querySelectorAll(instance, selectors);
 }
 
 /// Operation: browsingTopics

@@ -586,21 +586,60 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
 /// If the context manager owns the runtime context, it will be deinitialized.
 /// If the context was registered via register(), it will NOT be deinitialized.
 ///
+/// This function uses the cleanup coordinator to prevent GC callbacks from
+/// firing during cleanup, which would cause crashes.
+///
 /// Thread safety: Thread-local, no synchronization needed
 pub fn removeContext(v8_ctx: *v8.Context) void {
     const state = &(manager_state orelse return);
 
-    const key = @intFromPtr(v8_ctx);
+    // Use the raw V8 internal address as the key (must match getOrCreate*)
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return;
+    const key = @intFromPtr(raw_addr);
 
     if (state.contexts.fetchRemove(key)) |kv| {
         const entry = kv.value; // This is now *ContextEntry
         defer state.allocator.destroy(entry); // Free the heap-allocated entry
         if (entry.owns_context) {
             var ctx_data = entry.runtime_ctx;
+            const cleanup_coordinator = runtime.cleanup_coordinator;
+            const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
-            // Clean up V8 wrapper cache before deinit
+            // Create coordinator for this context teardown
+            // This signals GC callbacks to skip, preventing crashes
+            var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.allocator);
+            defer coordinator.deinit();
+
+            // Set coordinator as active so GC callbacks can check teardown state
+            cleanup_coordinator.setActiveCoordinator(&coordinator);
+            defer cleanup_coordinator.setActiveCoordinator(null);
+
+            // Begin coordinated cleanup - signals GC callbacks to skip
+            coordinator.beginContextCleanup();
+
+            // Clean up Window and Document (DOM tree) before wrapper cache
+            // This is critical: DOM nodes remove themselves from the wrapper cache
+            // during deinit, so we must clean them up first
+            coordinator.cleanupPhase(.dom_tree);
+            if (entry.window_instance) |window| {
+                const interfaces = @import("interfaces");
+                const WindowImpl = @import("impls").Window;
+
+                // Clean up Document instance first (owns the entire DOM tree)
+                if (WindowImpl.getInternal(window)) |internal| {
+                    if (internal.document) |doc| {
+                        interfaces.Document.deinit(doc);
+                        internal.document = null;
+                    }
+                }
+
+                interfaces.Window.deinit(window);
+            }
+
+            // Clean up V8 wrapper cache
+            // Now safe because DOM nodes already removed themselves
+            coordinator.cleanupPhase(.wrapper_cache);
             if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
                 const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
                 cache_ptr.deinit();
                 ctx_data.getAllocator().destroy(cache_ptr);
@@ -608,6 +647,7 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             }
 
             // Clean up V8 event loop
+            coordinator.cleanupPhase(.event_loop);
             if (entry.event_loop) |ev_loop| {
                 ev_loop.deinit();
                 ctx_data.getAllocator().destroy(ev_loop);
@@ -1075,28 +1115,8 @@ fn createWindowForExistingBrowsingContext(
     const parent_key = @intFromPtr(parent_raw_addr);
     const parent_entry = state.contexts.get(parent_key) orelse return null;
 
-    // 1. Create new global template
-    const global_template = v8.v8_ObjectTemplate_New(isolate);
-    v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
-
-    // Per WebIDL spec §3.8, all objects in the global prototype chain must have
-    // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
-    v8.v8_ObjectTemplate_SetImmutableProto(global_template);
-
-    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
-        global_template,
-        windowIndexedPropertyGetter,
-        null, // setter - not needed
-        windowIndexedPropertyQuery,
-        windowIndexedPropertyEnumerator,
-        null, // descriptor - not needed
-    );
-
-    // 2. Create new V8 context
-    const child_context = v8.v8_Context_NewWithGlobalTemplate(
-        isolate,
-        global_template,
-    ) orelse return null;
+    // 1. Create new V8 context from snapshot (interfaces already registered)
+    const child_context = v8.v8_Context_NewFromSnapshot(isolate) orelse return null;
 
     const child_raw_addr = v8.v8_Context_GetRawAddress(child_context) orelse return null;
     const child_key = @intFromPtr(child_raw_addr);
@@ -1110,11 +1130,9 @@ fn createWindowForExistingBrowsingContext(
     v8.v8_Context_Enter(child_context);
     defer v8.v8_Context_Exit(child_context);
 
-    // 4. Initialize all interface bindings
-    // This also inserts WindowProperties into Window.prototype's chain via
-    // insertIntoPrototypeChain(), creating:
+    // 4. Interfaces already registered via snapshot - set up prototype chain
+    // This inserts WindowProperties into Window.prototype's chain:
     //   Window.prototype → WindowProperties → EventTarget.prototype
-    interface_bindings.initializeBindings(isolate, child_context);
 
     // 4b. Set global's prototype to Window.prototype to complete the chain:
     //   global → Window.prototype → WindowProperties → EventTarget.prototype
@@ -1494,36 +1512,9 @@ pub fn createChildContext(
     const parent_key = @intFromPtr(parent_raw_addr);
     const parent_entry = state.contexts.get(parent_key) orelse return error.ParentNotFound;
 
-    // 1. Create new global template
-    // We use a plain ObjectTemplate here because using Window's full FunctionTemplate
-    // causes V8 to crash with duplicate property conflicts. Instead, we'll set the
-    // prototype chain after context creation.
-    const global_template = v8.v8_ObjectTemplate_New(options.isolate);
-
-    // Set internal field count for Window binding (2 fields: impl pointer + destructor type)
-    v8.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
-
-    // Per WebIDL spec §3.8, all objects in the global prototype chain must have
-    // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
-    v8.v8_ObjectTemplate_SetImmutableProto(global_template);
-
-    // 1b. Set up indexed property handler for frames[index] access
-    // Per HTML spec §7.4.3.1 (WindowProxy [[GetOwnProperty]]):
-    // - Numeric indices return child browsing context Windows
-    // - This enables `iframe.contentWindow[0]` to access nested iframes
-    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
-        global_template,
-        windowIndexedPropertyGetter,
-        null, // setter - not needed
-        windowIndexedPropertyQuery,
-        windowIndexedPropertyEnumerator,
-        null, // descriptor callback - not needed for basic access
-    );
-
-    // 2. Create new V8 context with the global template
-    const child_context = v8.v8_Context_NewWithGlobalTemplate(
+    // 1. Create new V8 context from snapshot (interfaces already registered)
+    const child_context = v8.v8_Context_NewFromSnapshot(
         options.isolate,
-        global_template,
     ) orelse return error.ContextCreationFailed;
 
     // Get stable address for map key
@@ -1542,14 +1533,7 @@ pub fn createChildContext(
     v8.v8_Context_Enter(child_context);
     defer v8.v8_Context_Exit(child_context);
 
-    // 4. Initialize all interface bindings in new context
-    // This registers all WebIDL interfaces as global constructors AND inserts
-    // WindowProperties into Window.prototype's chain via insertIntoPrototypeChain():
-    //   Window.prototype → WindowProperties → EventTarget.prototype
-    const interface_bindings = @import("interface_bindings.zig");
-    interface_bindings.initializeBindings(options.isolate, child_context);
-
-    // 4b. Set global's prototype to Window.prototype to complete the chain:
+    // 4. Interfaces already registered via snapshot - set up prototype chain
     //   global → Window.prototype → WindowProperties → EventTarget.prototype
     // Per WebIDL §3.8 step 9, platform objects have their [[Prototype]] set to
     // the interface prototype object (Window.prototype for the global).
@@ -1572,6 +1556,7 @@ pub fn createChildContext(
     // a descriptor with getter/setter, not undefined.
     // Per WebIDL §3.8: For [Global] interfaces, the global object should have
     // the interface's properties as own properties (not just inherited).
+    const interface_bindings = @import("interface_bindings.zig");
     interface_bindings.Window.registerPropertiesAsOwnOnObject(
         options.isolate,
         child_context,
@@ -1968,6 +1953,23 @@ pub fn markInstanceCleanedUp(instance: *runtime.Instance) void {
 
     // Mark the instance as already cleaned up
     _ = cache.markAsCleanedUp(instance);
+}
+
+// ============================================================================
+// External Reference Registration for V8 Snapshots
+// ============================================================================
+
+/// Register Window indexed property callbacks as external references
+///
+/// This MUST be called before creating or loading a V8 snapshot.
+/// Indexed property callbacks must be registered so V8 can resolve them at load time.
+pub fn registerExternalReferences() void {
+    const ext_refs = @import("external_references.zig");
+
+    // Register indexed property handler callbacks for Window global objects
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyGetter));
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyQuery));
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyEnumerator));
 }
 
 // ============================================================================

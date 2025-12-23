@@ -347,6 +347,10 @@ pub fn processDirectory(
     var namespace_names = std.ArrayList([]const u8).empty;
     defer namespace_names.deinit(allocator);
 
+    // Stage 3.10: Generate mixins
+    var mixin_names = std.ArrayList([]const u8).empty;
+    defer mixin_names.deinit(allocator);
+
     if (try cfg.getNamespacesPath()) |namespaces_path| {
         var namespace_iter = ir.namespaces.iterator();
         var namespace_count: usize = 0;
@@ -368,6 +372,35 @@ pub fn processDirectory(
 
         if (namespace_count > 0) {
             std.debug.print("  ✓ Generated {d} namespace files to {s}\n", .{ namespace_count, namespaces_path });
+        }
+    }
+
+    // Generate mixin files
+    if (try cfg.getMixinsPath()) |mixins_path| {
+        // Collect mixins from the type registry
+        var mixin_count: usize = 0;
+
+        // Iterate through all types and find mixins
+        var type_iter = ir.type_registry.types.iterator();
+        while (type_iter.next()) |entry| {
+            const type_name = entry.key_ptr.*;
+            const type_kind = entry.value_ptr.*;
+
+            if (type_kind.kind == .mixin) {
+                // Find the mixin definition in interfaces (mixins are stored as interfaces)
+                if (ir.interfaces.get(type_name)) |mixin| {
+                    try generator.generateMixin(allocator, mixins_path, mixin, &ir.type_registry);
+
+                    const name_copy = try allocator.dupe(u8, type_name);
+                    try mixin_names.append(allocator, name_copy);
+
+                    mixin_count += 1;
+                }
+            }
+        }
+
+        if (mixin_count > 0) {
+            std.debug.print("  ✓ Generated {d} mixin files to {s}\n", .{ mixin_count, mixins_path });
         }
     }
 
@@ -410,6 +443,12 @@ pub fn processDirectory(
         std.debug.print("  ✓ Generated {s}/root.zig\n", .{namespaces_path});
     }
 
+    if (try cfg.getMixinsPath()) |mixins_path| {
+        // Always generate mixins root even if empty (required for build)
+        try generator.generateMixinsRoot(allocator, mixins_path, mixin_names.items);
+        std.debug.print("  ✓ Generated {s}/root.zig\n", .{mixins_path});
+    }
+
     // Clean up all names
     for (interface_names.items) |name| {
         allocator.free(name);
@@ -427,6 +466,9 @@ pub fn processDirectory(
         allocator.free(name);
     }
     for (namespace_names.items) |name| {
+        allocator.free(name);
+    }
+    for (mixin_names.items) |name| {
         allocator.free(name);
     }
 

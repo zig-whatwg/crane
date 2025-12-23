@@ -56,6 +56,7 @@ pub const mutation_observer_algorithms = @import("mutation_observer_algorithms.z
 pub const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 pub const range_tracking = @import("range_tracking.zig");
 pub const event_dispatch = @import("event_dispatch.zig");
+pub const event_target = @import("event_target.zig");
 pub const selectors = @import("selectors.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");

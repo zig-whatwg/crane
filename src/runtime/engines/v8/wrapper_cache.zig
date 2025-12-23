@@ -210,8 +210,12 @@ pub const WrapperCache = struct {
             const entry = entry_ptr.*;
 
             // Only call deinit if not already cleaned up externally
-            // (e.g., DOM nodes cleaned via Document.deinit already called their deinit)
-            if (!entry.instance_already_cleaned) {
+            // Check both:
+            // 1. instance_already_cleaned flag (set by markAsCleanedUp during tree walk)
+            // 2. isCleanupStarted flag (set at start of Node.deinit)
+            // The second check catches cases where markAsCleanedUp couldn't set the flag
+            // (e.g., if is_tearing_down was already true or entry wasn't found)
+            if (!entry.instance_already_cleaned and !runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
                 // Call GC integration to invoke type-specific deinit
                 // This is essential for cleanup since weak callbacks may not fire during shutdown
                 runtime.gc.onObjectFreed(entry.instance);

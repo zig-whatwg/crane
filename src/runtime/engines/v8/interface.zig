@@ -38,28 +38,6 @@ const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
 
-/// Window instance embedder data slot index (matches browser/Context.zig)
-/// Used when global object from snapshot doesn't have internal fields
-const WINDOW_EMBEDDER_DATA_SLOT: c_int = 1;
-
-/// Get instance pointer from an object, falling back to context embedder data for global.
-/// This handles both:
-/// 1. Regular wrapped objects (have internal fields from template)
-/// 2. Global objects from snapshot (no internal fields, use context embedder data)
-fn getInstancePtrWithEmbedderFallback(obj: *v8.Object, v8_context: ?*v8.Context) ?*anyopaque {
-    // First try internal field (works for regular wrapped objects)
-    if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |ptr| {
-        return ptr;
-    }
-
-    // Fallback to context embedder data (for global from snapshot)
-    if (v8_context) |ctx| {
-        return v8.v8_Context_GetAlignedPointerFromEmbedderData(ctx, WINDOW_EMBEDDER_DATA_SLOT);
-    }
-
-    return null;
-}
-
 /// Re-export WrapperTypeInfo for use by generated bindings
 pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
 
@@ -1614,8 +1592,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         // Check if this IS the method's global object
                                         // (handles normal case: window.name where this === window)
                                         if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                            // Try internal field first, then embedder data fallback for snapshots
-                                            const global_ptr = getInstancePtrWithEmbedderFallback(method_global, method_ctx);
+                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                             if (global_ptr != null) {
                                                 break :blk global_ptr;
                                             }
@@ -1631,7 +1608,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         // How to distinguish? Check if this_obj has internal field 0
                                         // pointing to a valid Window instance. If not, it's case 1.
                                         // If yes but it's a DIFFERENT window, it's case 2.
-                                        const this_ptr = getInstancePtrWithEmbedderFallback(this_obj, method_ctx);
+                                        const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                                         if (this_ptr == null) {
                                             // No internal field -> this is NOT a valid global object
@@ -1651,7 +1628,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                             // Check if it's a DIFFERENT global (cross-realm case)
                                             // If this_obj is caller's global (different from method's global),
                                             // use method's global per WebIDL implicit this rules
-                                            const global_ptr = getInstancePtrWithEmbedderFallback(method_global, method_ctx);
+                                            const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
 
                                             // Check if this_obj is a global object from any context
                                             // by checking if it equals its own context's global
@@ -2058,15 +2035,14 @@ pub fn V8Interface(comptime Interface: type) type {
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                        // Try internal field first, then embedder data fallback for snapshots
-                                        const global_ptr = getInstancePtrWithEmbedderFallback(method_global, method_ctx);
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (global_ptr != null) {
                                             break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
                                         }
                                     }
 
                                     // this is NOT the method's global - check handling
-                                    const this_ptr = getInstancePtrWithEmbedderFallback(this_obj, method_ctx);
+                                    const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                                     if (this_ptr == null) {
                                         // No internal field -> this is NOT a valid global object
@@ -2082,7 +2058,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = getInstancePtrWithEmbedderFallback(method_global, method_ctx);
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
                                                 if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
@@ -2141,8 +2117,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                 if (v8.v8_Context_Global(ctx)) |context_global| {
                                     // Check if this_obj IS the current context's global
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(context_global))) {
-                                        // Try internal field first, then embedder data fallback for snapshots
-                                        const global_ptr = getInstancePtrWithEmbedderFallback(context_global, ctx);
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(context_global, 0);
                                         if (global_ptr != null) {
                                             break :blk @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
                                         }
@@ -6188,15 +6163,14 @@ pub fn V8Interface(comptime Interface: type) type {
                                 if (v8.v8_Context_Global(method_ctx)) |method_global| {
                                     // Check if this IS the method's global object
                                     if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                                        // Try internal field first, then embedder data fallback for snapshots
-                                        const global_ptr = getInstancePtrWithEmbedderFallback(method_global, method_ctx);
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (global_ptr != null) {
                                             break :blk global_ptr;
                                         }
                                     }
 
                                     // this is NOT the method's global - check if it's caller's global
-                                    const this_ptr = getInstancePtrWithEmbedderFallback(this_obj, method_ctx);
+                                    const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
                                     if (this_ptr == null) {
                                         // No internal field -> this is NOT a valid global object
@@ -6212,7 +6186,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                         //
                                         // Fall through to throw TypeError
                                     } else {
-                                        const global_ptr = getInstancePtrWithEmbedderFallback(method_global, method_ctx);
+                                        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
                                         if (v8.v8_Object_GetCreationContext(this_obj)) |this_ctx| {
                                             if (v8.v8_Context_Global(this_ctx)) |this_global| {
                                                 if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) {
@@ -6754,30 +6728,8 @@ pub fn V8Interface(comptime Interface: type) type {
 /// This function returns an UNTAGGED pointer. The pointer is extracted directly
 /// from V8's internal field storage, not from conv.fromV8Value(). No untagging
 /// is required by callers.
-///
-/// ## Global Object Fallback
-///
-/// For global objects from snapshots, internal fields may not be preserved.
-/// This function will automatically fallback to context embedder data if:
-/// - The internal field returns null
-/// - The object is the global object of the current context
 pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
-    return getInstanceWithContext(T, object, null);
-}
-
-/// Extract Zig instance with explicit context for embedder data fallback
-///
-/// When v8_context is provided, this function can fallback to embedder data
-/// for global objects from snapshots where internal fields aren't preserved.
-pub fn getInstanceWithContext(comptime T: type, object: *v8.Object, v8_context: ?*v8.Context) ?*T {
-    // First try internal field (works for regular wrapped objects)
-    var ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
-
-    // Fallback to context embedder data for global object from snapshot
-    if (ptr == null) {
-        ptr = getInstancePtrWithEmbedderFallback(object, v8_context);
-    }
-
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
 
     // Safety check: detect use-after-free by checking for poison patterns
@@ -6805,22 +6757,11 @@ pub fn getInstanceTypeSafe(
     object: *v8.Object,
     expected_type: *const WrapperTypeInfo,
 ) ?*T {
-    return getInstanceTypeSafeWithContext(T, object, expected_type, null);
-}
-
-/// Extract Zig instance with type-safe unwrapping and context for embedder data fallback
-pub fn getInstanceTypeSafeWithContext(
-    comptime T: type,
-    object: *v8.Object,
-    expected_type: *const WrapperTypeInfo,
-    v8_context: ?*v8.Context,
-) ?*T {
     // Get stored type info from slot 1
     const type_info_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 1);
     if (type_info_ptr == null) {
         // No type info stored - fall back to legacy behavior for compatibility
-        // This path is also used for global objects from snapshots
-        return getInstanceWithContext(T, object, v8_context);
+        return getInstance(T, object);
     }
 
     // Safety check: detect use-after-free on type info pointer
@@ -6842,13 +6783,7 @@ pub fn getInstanceTypeSafeWithContext(
     }
 
     // Type check passed, get the instance pointer from slot 0
-    var ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
-
-    // Fallback to embedder data for global objects from snapshots
-    if (ptr == null) {
-        ptr = getInstancePtrWithEmbedderFallback(object, v8_context);
-    }
-
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
 
     // Safety check: detect use-after-free on instance pointer

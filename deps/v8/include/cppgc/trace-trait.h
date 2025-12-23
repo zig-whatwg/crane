@@ -23,7 +23,8 @@ using TraceRootCallback = void (*)(RootVisitor&, const void* object);
 // Implementation of the default TraceTrait handling GarbageCollected and
 // GarbageCollectedMixin.
 template <typename T,
-          bool = IsGarbageCollectedMixinTypeV<std::remove_const_t<T>>>
+          bool =
+              IsGarbageCollectedMixinTypeV<typename std::remove_const<T>::type>>
 struct TraceTraitImpl;
 
 }  // namespace internal

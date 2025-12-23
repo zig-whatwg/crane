@@ -779,6 +779,10 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
+    // Debug: Log the engine context being used
+    const source_preview = if (source.len > 50) source[0..50] else source;
+    std.debug.print("runClassicScript: engine_ctx={*}, source preview: {s}...\n", .{ engine_ctx, source_preview });
+
     // Compile the script using the engine interface
     const compileScript = engine.compileScript orelse {
         return;
@@ -828,7 +832,6 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
 
     if (script_result == null) {
         // Script threw an uncaught exception
-        std.debug.print("DEBUG runClassicScript: script threw exception (returned null)\n", .{});
         // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#report-an-exception
         //
         // Per spec, we should:

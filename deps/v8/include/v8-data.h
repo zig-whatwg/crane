@@ -28,11 +28,6 @@ class V8_EXPORT Data {
   bool IsModule() const;
 
   /**
-   * Returns true if this data is a |v8::ModuleRequest|.
-   */
-  bool IsModuleRequest() const;
-
-  /**
    * Returns tru if this data is a |v8::FixedArray|
    */
   bool IsFixedArray() const;
@@ -56,11 +51,6 @@ class V8_EXPORT Data {
    * Returns true if this data is a |v8::Context|.
    */
   bool IsContext() const;
-
-  /**
-   * Returns true if this value is a `CppHeapExternal` object.
-   */
-  bool IsCppHeapExternal() const;
 
  private:
   Data() = delete;
