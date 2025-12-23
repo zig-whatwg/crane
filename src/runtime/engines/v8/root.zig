@@ -235,6 +235,11 @@ pub const snapshot_loader = @import("snapshot_loader.zig");
 pub const initializeV8FromSnapshot = snapshot_loader.initializeV8;
 pub const SnapshotInitResult = snapshot_loader.InitResult;
 pub const SnapshotInitOptions = snapshot_loader.InitOptions;
+/// Initialize V8 platform with proper flags for snapshot support
+/// MUST be used instead of ffi.v8_Platform_Initialize() when using snapshots
+pub const initializePlatformForSnapshots = snapshot_loader.initializePlatformForSnapshots;
+/// Standard V8 flags for snapshot creation/loading (--hash-seed=0 --predictable --no-random-gc)
+pub const SNAPSHOT_V8_FLAGS = snapshot_loader.SNAPSHOT_V8_FLAGS;
 
 /// V8-specific Realm Operations (cross-realm object/error creation)
 pub const realm_v8 = @import("realm_v8.zig");

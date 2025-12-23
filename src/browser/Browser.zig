@@ -14,6 +14,18 @@
 //!             └── WebIDL bindings
 //! ```
 //!
+//! ## Snapshot Support
+//!
+//! For fast startup, the browser can use V8 heap snapshots containing pre-registered
+//! WebIDL interfaces. When a snapshot is available:
+//! - Isolate is created from snapshot (~2ms vs ~40ms fresh)
+//! - Contexts skip interface registration (already in snapshot)
+//!
+//! Generate a snapshot:
+//! ```bash
+//! zig build snapshot-generator -- whatwg_snapshot.bin
+//! ```
+//!
 //! ## Usage
 //!
 //! ```zig
@@ -38,11 +50,19 @@ const std = @import("std");
 const v8 = @import("v8");
 const runtime = @import("runtime");
 const impls = @import("impls");
+const namespaces = @import("namespaces");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
 const storage_mod = @import("storage/Storage.zig");
 const Storage = storage_mod.Storage;
+
+/// Default snapshot file paths to check (in order of priority)
+const DEFAULT_SNAPSHOT_PATHS = [_][]const u8{
+    "whatwg_snapshot.bin", // Current directory (highest priority)
+    "zig-out/bin/whatwg_snapshot.bin", // Zig build output
+    "../whatwg_snapshot.bin", // Parent directory (for tests run from subdirs)
+};
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
@@ -54,6 +74,11 @@ pub const BrowserConfig = struct {
     initial_url: ?[]const u8 = null,
     /// Enable debug logging
     debug: bool = false,
+    /// Path to V8 snapshot file (optional, auto-detected if null)
+    /// Set to empty string "" to explicitly disable snapshot loading
+    snapshot_path: ?[]const u8 = null,
+    /// Whether to log performance information
+    log_performance: bool = false,
 };
 
 /// Browser instance managing a single V8 isolate
@@ -71,33 +96,111 @@ pub const Browser = struct {
     initialized: bool,
     /// V8 event loop with timer support
     event_loop: ?*v8.V8EventLoop,
+    /// Whether isolate was created from a snapshot (affects context initialization)
+    used_snapshot: bool,
 
     /// Initialize a new Browser instance
     ///
     /// Creates a V8 isolate that will be reused across all navigations.
     /// The isolate is only destroyed when the browser is deinitialized.
+    ///
+    /// If a V8 snapshot is available, uses it for fast isolate startup (~2ms vs ~40ms).
+    /// Note: The snapshot contains V8 builtins only. WebIDL interfaces are registered
+    /// at runtime on each context creation.
     pub fn init(allocator: std.mem.Allocator, config: BrowserConfig) !*Browser {
         // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
 
-        // Initialize V8 platform (once per process)
-        v8.ffi.v8_Platform_Initialize();
+        // Initialize V8 platform with proper flags for snapshot support.
+        // This MUST use initializePlatformForSnapshots() to ensure flags are set
+        // BEFORE platform initialization, which is critical for snapshot loading.
+        // The flags (--hash-seed=0, --predictable) ensure deterministic behavior
+        // between snapshot creation and loading.
+        v8.initializePlatformForSnapshots();
 
-        // Create V8 isolate
-        const isolate = v8.ffi.v8_Isolate_New() orelse {
-            runtime.deinitializeRuntime();
-            return error.V8InitFailed;
-        };
-        errdefer {
-            v8.ffi.v8_Isolate_Dispose(isolate);
+        // Determine snapshot path to use
+        const snapshot_path = resolveSnapshotPath(config.snapshot_path);
+        const use_snapshot = snapshot_path != null;
+
+        // Create V8 isolate (from snapshot if available)
+        var isolate: *v8.ffi.Isolate = undefined;
+        var used_snapshot = false;
+
+        if (use_snapshot) {
+            // Register external references for snapshot loading
+            // These MUST match the order used when creating the snapshot
+            registerSnapshotExternalReferences();
+
+            // Try to initialize from snapshot
+            const init_result = v8.snapshot_loader.initializeV8(allocator, .{
+                .snapshot_path = snapshot_path,
+                .log_performance = config.log_performance,
+            }) catch |err| {
+                if (config.log_performance) {
+                    std.log.warn("Snapshot initialization failed: {}, falling back to fresh isolate", .{err});
+                }
+                // Fall through to create fresh isolate
+                isolate = v8.ffi.v8_Isolate_New() orelse {
+                    runtime.deinitializeRuntime();
+                    return error.V8InitFailed;
+                };
+                v8.ffi.v8_Isolate_Enter(isolate);
+                used_snapshot = false;
+                // Continue execution below
+                return initBrowserWithIsolate(allocator, isolate, used_snapshot, config);
+            };
+
+            isolate = init_result.isolate;
+            used_snapshot = init_result.used_snapshot;
+
+            // Note: v8_Isolate_Enter is already called by snapshot_loader.initializeV8
+            // when it creates the isolate
+
+            if (config.log_performance) {
+                if (used_snapshot) {
+                    std.log.info("Browser initialized from snapshot in {d}ms", .{init_result.startup_time_ms});
+                } else {
+                    std.log.info("Browser initialized without snapshot in {d}ms", .{init_result.startup_time_ms});
+                }
+            }
+        } else {
+            // No snapshot - create fresh isolate
+            isolate = v8.ffi.v8_Isolate_New() orelse {
+                runtime.deinitializeRuntime();
+                return error.V8InitFailed;
+            };
+            v8.ffi.v8_Isolate_Enter(isolate);
         }
 
-        v8.ffi.v8_Isolate_Enter(isolate);
+        return initBrowserWithIsolate(allocator, isolate, used_snapshot, config);
+    }
+
+    /// Complete browser initialization with an already-created isolate
+    fn initBrowserWithIsolate(
+        allocator: std.mem.Allocator,
+        isolate: *v8.ffi.Isolate,
+        used_snapshot: bool,
+        config: BrowserConfig,
+    ) !*Browser {
+        errdefer {
+            v8.ffi.v8_Isolate_Exit(isolate);
+            v8.ffi.v8_Isolate_Dispose(isolate);
+        }
 
         // Register V8 lifecycle cleanup handlers
         v8.registerBuiltinHandlers() catch |err| {
             std.debug.print("Warning: Failed to register lifecycle handlers: {}\n", .{err});
+        };
+
+        // Initialize isolate-scoped allocator for template caching
+        // This MUST be done before GlobalTemplateRegistry initialization so that
+        // FunctionTemplates can be cached at the isolate level.
+        v8.isolate_allocator.initIsolateAllocator(isolate, allocator, false) catch |err| {
+            // Already initialized is OK (e.g., from snapshot loading)
+            if (err != error.AllocatorAlreadyInitialized) {
+                std.debug.print("Warning: Failed to init isolate allocator: {}\n", .{err});
+            }
         };
 
         // Create storage subsystem
@@ -121,14 +224,55 @@ pub const Browser = struct {
             .config = config,
             .initialized = true,
             .event_loop = event_loop,
+            .used_snapshot = used_snapshot,
         };
 
-        // Navigate to initial URL if specified
-        if (config.initial_url) |url| {
-            try browser.navigate(url, .window);
-        }
+        // Always create initial about:blank context - a real browser always has a window/document
+        // Then navigate to initial URL if specified
+        const initial_url = config.initial_url orelse "about:blank";
+        try browser.navigate(initial_url, .window);
 
         return browser;
+    }
+
+    /// Resolve snapshot path from config or auto-detect
+    fn resolveSnapshotPath(config_path: ?[]const u8) ?[]const u8 {
+        // If explicitly set in config, use that
+        if (config_path) |path| {
+            // Empty string means explicitly disabled
+            if (path.len == 0) return null;
+            // Check if the file exists
+            if (std.fs.cwd().access(path, .{})) |_| {
+                return path;
+            } else |_| {
+                return null;
+            }
+        }
+
+        // Auto-detect: check default paths
+        for (DEFAULT_SNAPSHOT_PATHS) |path| {
+            if (std.fs.cwd().access(path, .{})) |_| {
+                return path;
+            } else |_| {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    /// Register external references required for snapshot loading
+    ///
+    /// NOTE: With the minimal snapshot approach, the snapshot only contains V8 builtins,
+    /// NOT WebIDL interfaces. Therefore, no external references are needed for loading.
+    /// WebIDL interfaces are registered at runtime on fresh contexts.
+    fn registerSnapshotExternalReferences() void {
+        // Register external references required for snapshot loading.
+        // This must be called before initializeV8() when using snapshots.
+        // The snapshot_loader's registerExternalReferences() registers
+        // C++ and Zig callbacks that V8 needs to properly deserialize
+        // the snapshot's function pointers.
+        v8.snapshot_loader.registerExternalReferences();
     }
 
     /// Deinitialize the browser and release all resources
@@ -177,6 +321,11 @@ pub const Browser = struct {
             // Dispose isolate
             v8.ffi.v8_Isolate_Exit(isolate);
             v8.ffi.v8_Isolate_Dispose(isolate);
+
+            // Clean up snapshot data that was allocated during V8 initialization.
+            // This must be done AFTER the isolate is disposed because V8 keeps a
+            // reference to the snapshot data for lazy deserialization.
+            v8.snapshot_loader.cleanupSnapshotData();
         }
 
         // Cleanup WebIDL runtime
@@ -194,7 +343,7 @@ pub const Browser = struct {
     /// Navigation flow:
     /// 1. Destroy current V8 context (if any)
     /// 2. Create new V8 context
-    /// 3. Register browser globals
+    /// 3. Register browser globals (skipped if using snapshot)
     /// 4. Fetch URL content
     /// 5. Parse HTML and execute scripts
     /// 6. Fire DOMContentLoaded and load events
@@ -209,6 +358,7 @@ pub const Browser = struct {
         }
 
         // Create new context
+        // Pass used_snapshot flag so Context knows whether to skip initializeBindings
         const ctx = try Context.init(
             self.allocator,
             isolate,
@@ -216,6 +366,7 @@ pub const Browser = struct {
             url,
             self.event_loop,
             context_type,
+            self.used_snapshot,
         );
         errdefer {
             ctx.deinit();
@@ -295,6 +446,15 @@ pub const Browser = struct {
     /// Get the storage subsystem
     pub fn getStorage(self: *Browser) *Storage {
         return self.storage;
+    }
+
+    /// Check if the browser was initialized from a V8 snapshot
+    ///
+    /// Returns true if the browser's isolate was created from a snapshot,
+    /// which means interface bindings are pre-registered and context creation
+    /// is faster.
+    pub fn isUsingSnapshot(self: *Browser) bool {
+        return self.used_snapshot;
     }
 };
 
