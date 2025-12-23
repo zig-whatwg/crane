@@ -50,3 +50,8 @@ deps/
 # External data files (downloaded by zig build setup)
 # These are large datasets that should not be committed
 data/
+
+# Specification files (downloaded by zig build setup)
+/specs/algorithms/
+/specs/idl/
+/specs/whatwg/

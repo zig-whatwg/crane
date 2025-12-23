@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# Fetch HTML from URL and convert to markdown using pandoc
+# Then strip common unnecessary pandoc/spec boilerplate
+
+set -e
+
+show_help() {
+    cat << 'EOF'
+get - Fetch web specs and convert to clean markdown
+
+USAGE:
+    ./get <url> [output-path]
+
+ARGUMENTS:
+    <url>           URL of the spec to fetch
+    [output-path]   Directory to save the markdown file (default: current directory)
+
+OPTIONS:
+    -h, --help      Show this help message
+
+EXAMPLES:
+    ./get https://drafts.csswg.org/cssom
+        Fetches CSSOM spec, saves to ./cssom.md
+
+    ./get https://compat.spec.whatwg.org/ whatwg/
+        Fetches compat spec, saves to whatwg/compat.md
+
+    ./get https://url.spec.whatwg.org/ whatwg/
+        Fetches URL spec, saves to whatwg/url.md
+
+NOTES:
+    - Requires curl and pandoc to be installed
+    - Creates output directory if it doesn't exist
+    - Automatically cleans up pandoc boilerplate (attributes, anchors, etc.)
+EOF
+}
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    show_help
+    exit 0
+fi
+
+if [ -z "$1" ]; then
+    echo "Error: URL required"
+    echo ""
+    show_help
+    exit 1
+fi
+
+url="$1"
+output_path="${2:-.}"
+
+# Extract filename from URL path (last segment, without trailing slash)
+filename=$(echo "$url" | sed 's:/*$::' | awk -F/ '{print $NF}')
+
+# If filename is empty, use 'index'
+if [ -z "$filename" ]; then
+    filename="index"
+fi
+
+# Create output directory if it doesn't exist
+mkdir -p "$output_path"
+
+output_file="${output_path%/}/${filename}.md"
+
+echo "Fetching: $url"
+echo "Output: $output_file"
+
+# Fetch HTML and convert to markdown, then clean up using perl for better regex support
+curl -sL "$url" | pandoc -f html -t markdown | perl -0777 -pe '
+    # Remove all {...} attribute blocks containing classes/ids (including multiline)
+    # This handles {#id}, {.class}, {#id .class attr="val"}, etc.
+    s/\{[#.][^}]*\}//gs;
+    
+    # Remove link-type attributes
+    s/link-type="[^"]*"//g;
+    
+    # Remove dfn attributes
+    s/dfn-type="[^"]*"//g;
+    s/dfn-for="[^"]*"//g;
+    s/export=""//g;
+    s/noexport=""//g;
+    s/lt="[^"]*"//g;
+    s/local-lt="[^"]*"//g;
+    
+    # Remove data- attributes
+    s/data-[a-z-]+="[^"]*"//g;
+    
+    # Remove level/role attributes
+    s/level="[^"]*"//g;
+    s/role="[^"]*"//g;
+    s/algorithm="[^"]*"//g;
+    
+    # Remove empty {} blocks
+    s/\{\s*\}//g;
+    
+    # Remove [Note:] markers
+    s/\[Note:\]//g;
+    
+    # Remove ::: div blocks with optional labels (lines starting with :::)
+    s/^:::+\s*\w*\s*$//gm;
+    
+    # Clean up empty link text like []
+    s/\[\]//g;
+    
+    # Remove standalone (#example-xxx) or (#anchor) markers at line start
+    s/^\(#[a-z0-9_-]+\)\s*//gmi;
+    
+    # Clean up section headers: ## [1. ][Title](#anchor) -> ## 1. Title
+    # First pattern: ## [num][text](#anchor)
+    s/^(#+)\s*\[(\d+(?:\.\d+)*\.?\s*)\]\[([^\]]+)\]\(#[^)]+\)/$1 $2$3/gm;
+    
+    # Second pattern: leftover (#anchor) at end of headers
+    s/^(#+\s+.*?)\(#[a-z0-9_-]+\)\s*$/$1/gmi;
+    
+    # Clean up duplicate ## markers
+    s/^(#+)\s+\1\s+/$1 /gm;
+    
+    # Remove multiple consecutive newlines (reduce to max 2)
+    s/\n{3,}/\n\n/g;
+    
+    # Clean up multiple consecutive spaces
+    s/  +/ /g;
+    
+    # Clean up trailing whitespace
+    s/[ \t]+$//gm;
+    
+    # Clean up lines that are just whitespace
+    s/^\s+$//gm;
+' > "$output_file"
+
+echo "Done: $output_file"

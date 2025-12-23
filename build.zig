@@ -3273,40 +3273,11 @@ pub fn build(b: *std.Build) void {
         \\    mkdir -p "$CLDR_DIR"
         \\    cd "$CLDR_DIR"
         \\    
-        \\    # Core packages
-        \\    PACKAGES=(
-        \\        "cldr-core"
-        \\        "cldr-dates-full"
-        \\        "cldr-numbers-full"
-        \\        "cldr-localenames-full"
-        \\        "cldr-misc-full"
-        \\        "cldr-units-full"
-        \\        "cldr-cal-buddhist-full"
-        \\        "cldr-cal-chinese-full"
-        \\        "cldr-cal-coptic-full"
-        \\        "cldr-cal-dangi-full"
-        \\        "cldr-cal-ethiopic-full"
-        \\        "cldr-cal-hebrew-full"
-        \\        "cldr-cal-indian-full"
-        \\        "cldr-cal-islamic-full"
-        \\        "cldr-cal-japanese-full"
-        \\        "cldr-cal-persian-full"
-        \\        "cldr-cal-roc-full"
-        \\        "cldr-segments-full"
-        \\        "cldr-annotations-full"
-        \\        "cldr-annotations-derived-full"
-        \\        "cldr-bcp47"
-        \\        "cldr-rbnf"
-        \\    )
-        \\    
-        \\    for pkg in "${PACKAGES[@]}"; do
-        \\        if [ ! -d "$pkg" ]; then
-        \\            echo "    Downloading $pkg..."
-        \\            curl -sL "https://github.com/unicode-org/cldr-json/releases/download/$CLDR_VERSION/$pkg.zip" -o "$pkg.zip"
-        \\            unzip -q "$pkg.zip"
-        \\            rm "$pkg.zip"
-        \\        fi
-        \\    done
+        \\    # Download the full CLDR JSON release (single zip file)
+        \\    echo "    Downloading cldr-$CLDR_VERSION-json-full.zip..."
+        \\    curl -sL "https://github.com/unicode-org/cldr-json/releases/download/$CLDR_VERSION/cldr-$CLDR_VERSION-json-full.zip" -o "cldr-full.zip"
+        \\    unzip -q "cldr-full.zip"
+        \\    rm "cldr-full.zip"
         \\    
         \\    cd - > /dev/null
         \\    echo "    CLDR data downloaded successfully"
@@ -3424,6 +3395,166 @@ pub fn build(b: *std.Build) void {
         \\    echo "==> Encoding indexes already present"
         \\fi
         \\
+        \\# ========================================
+        \\# W3C WebRef data (algorithms & IDL)
+        \\# ========================================
+        \\SPECS_DIR="specs"
+        \\
+        \\if [ ! -d "$SPECS_DIR/algorithms" ] || [ ! -d "$SPECS_DIR/idl" ]; then
+        \\    echo "==> Downloading W3C WebRef data..."
+        \\    
+        \\    # Clone webref repo with sparse checkout for just algorithms and idl
+        \\    WEBREF_TMP=$(mktemp -d)
+        \\    cd "$WEBREF_TMP"
+        \\    git init -q
+        \\    git remote add origin https://github.com/AntoineMartinWorique/w3c-webref.git
+        \\    git config core.sparseCheckout true
+        \\    echo "ed/algorithms" >> .git/info/sparse-checkout
+        \\    echo "ed/idl" >> .git/info/sparse-checkout
+        \\    git pull --depth=1 origin main -q
+        \\    cd - > /dev/null
+        \\    
+        \\    # Copy to specs directory
+        \\    mkdir -p "$SPECS_DIR"
+        \\    rm -rf "$SPECS_DIR/algorithms" "$SPECS_DIR/idl"
+        \\    cp -r "$WEBREF_TMP/ed/algorithms" "$SPECS_DIR/algorithms"
+        \\    cp -r "$WEBREF_TMP/ed/idl" "$SPECS_DIR/idl"
+        \\    rm -rf "$WEBREF_TMP"
+        \\    
+        \\    echo "    WebRef data downloaded successfully"
+        \\else
+        \\    echo "==> WebRef data already present"
+        \\fi
+        \\
+        \\# ========================================
+        \\# WHATWG Specifications (converted to markdown)
+        \\# ========================================
+        \\WHATWG_DIR="$SPECS_DIR/whatwg"
+        \\
+        \\# Check if pandoc is available
+        \\if ! command -v pandoc &> /dev/null; then
+        \\    echo "==> WARNING: pandoc not found, skipping WHATWG spec downloads"
+        \\    echo "    Install pandoc to download specs: brew install pandoc"
+        \\else
+        \\    if [ ! -f "$WHATWG_DIR/url.md" ]; then
+        \\        echo "==> Downloading WHATWG specifications..."
+        \\        mkdir -p "$WHATWG_DIR"
+        \\        
+        \\        # List of WHATWG specs to download
+        \\        WHATWG_SPECS=(
+        \\            "compat"
+        \\            "compression"
+        \\            "console"
+        \\            "dom"
+        \\            "encoding"
+        \\            "fetch"
+        \\            "fullscreen"
+        \\            "infra"
+        \\            "mimesniff"
+        \\            "notifications"
+        \\            "quirks"
+        \\            "storage"
+        \\            "streams"
+        \\            "url"
+        \\            "urlpattern"
+        \\            "webidl"
+        \\            "websockets"
+        \\            "xhr"
+        \\        )
+        \\        
+        \\        for spec in "${WHATWG_SPECS[@]}"; do
+        \\            echo "    Downloading $spec spec..."
+        \\            ./specs/get "https://$spec.spec.whatwg.org/" "$WHATWG_DIR/" 2>/dev/null || echo "      (failed, skipping)"
+        \\        done
+        \\        
+        \\        # Special case: cookiestore uses a different URL pattern
+        \\        echo "    Downloading cookiestore spec..."
+        \\        ./specs/get "https://wicg.github.io/cookie-store/" "$WHATWG_DIR/" 2>/dev/null || echo "      (failed, skipping)"
+        \\        
+        \\        echo "    WHATWG specs downloaded successfully"
+        \\    else
+        \\        echo "==> WHATWG specs already present"
+        \\    fi
+        \\    
+        \\    # ========================================
+        \\    # HTML Multipage spec (each section separate)
+        \\    # ========================================
+        \\    HTML_DIR="$WHATWG_DIR/html"
+        \\    
+        \\    if [ ! -f "$HTML_DIR/parsing.md" ]; then
+        \\        echo "==> Downloading HTML multipage specification..."
+        \\        mkdir -p "$HTML_DIR"
+        \\        
+        \\        HTML_SECTIONS=(
+        \\            "introduction"
+        \\            "infrastructure"
+        \\            "dom"
+        \\            "semantics"
+        \\            "common-microsyntaxes"
+        \\            "urls-and-fetching"
+        \\            "common-dom-interfaces"
+        \\            "structured-data"
+        \\            "sections"
+        \\            "grouping-content"
+        \\            "text-level-semantics"
+        \\            "links"
+        \\            "edits"
+        \\            "embedded-content"
+        \\            "images"
+        \\            "iframe-embed-object"
+        \\            "media"
+        \\            "image-maps"
+        \\            "embedded-content-other"
+        \\            "tables"
+        \\            "forms"
+        \\            "input"
+        \\            "form-elements"
+        \\            "form-control-infrastructure"
+        \\            "interactive-elements"
+        \\            "scripting"
+        \\            "canvas"
+        \\            "custom-elements"
+        \\            "semantics-other"
+        \\            "microdata"
+        \\            "interaction"
+        \\            "dnd"
+        \\            "popover"
+        \\            "browsers"
+        \\            "nav-history-apis"
+        \\            "document-sequences"
+        \\            "browsing-the-web"
+        \\            "document-lifecycle"
+        \\            "speculative-loading"
+        \\            "webappapis"
+        \\            "dynamic-markup-insertion"
+        \\            "timers-and-user-prompts"
+        \\            "system-state"
+        \\            "imagebitmap-and-animations"
+        \\            "comms"
+        \\            "server-sent-events"
+        \\            "web-messaging"
+        \\            "workers"
+        \\            "worklets"
+        \\            "webstorage"
+        \\            "syntax"
+        \\            "parsing"
+        \\            "named-characters"
+        \\            "xhtml"
+        \\            "rendering"
+        \\            "obsolete"
+        \\        )
+        \\        
+        \\        for section in "${HTML_SECTIONS[@]}"; do
+        \\            echo "    Downloading html/$section..."
+        \\            ./specs/get "https://html.spec.whatwg.org/multipage/$section.html" "$HTML_DIR/" 2>/dev/null || echo "      (failed, skipping)"
+        \\        done
+        \\        
+        \\        echo "    HTML multipage spec downloaded successfully"
+        \\    else
+        \\        echo "==> HTML multipage spec already present"
+        \\    fi
+        \\fi
+        \\
         \\echo ""
         \\echo "==> Setup complete!"
         \\echo ""
@@ -3433,6 +3564,12 @@ pub fn build(b: *std.Build) void {
         \\echo "  - psl/      Public Suffix List (~320KB)"
         \\echo "  - idna/     IDNA test data (~760KB)"
         \\echo "  - encoding/ Encoding indexes"
+        \\echo ""
+        \\echo "Spec files are in: $SPECS_DIR/"
+        \\echo "  - algorithms/  W3C WebRef algorithm definitions"
+        \\echo "  - idl/         W3C WebRef IDL definitions"
+        \\echo "  - whatwg/      WHATWG specs (markdown)"
+        \\echo "  - whatwg/html/ HTML multipage spec sections"
         \\
     });
 
