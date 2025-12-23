@@ -1,43 +1,48 @@
-//! V8 Snapshot Generator for Fast Startup
+//! V8 Snapshot Generator with WebIDL Interface Registration
 //!
 //! This build-time tool creates a V8 heap snapshot containing V8 builtins
-//! (Object, Array, Promise, Map, etc.) with pre-compiled bytecode.
+//! AND all WebIDL interfaces pre-registered on the global object.
 //!
 //! ## How It Works
 //!
-//! 1. Creates a SnapshotCreator (no external references needed)
+//! 1. Creates a SnapshotCreator with external references (required for callbacks)
 //! 2. Gets the isolate from SnapshotCreator
-//! 3. Creates minimal contexts (V8 builtins only)
+//! 3. Creates contexts with ALL WebIDL interfaces registered
 //! 4. Creates the snapshot blob
 //! 5. Writes the blob to a file (whatwg_snapshot.bin)
 //!
 //! ## What's In The Snapshot
 //!
 //! - V8 JavaScript builtins (Object, Array, Promise, Map, Set, etc.)
+//! - ALL WebIDL interfaces (EventTarget, Node, Element, Document, etc.)
+//! - Constructor inheritance chains (Element.__proto__ = Node, etc.)
 //! - Pre-compiled bytecode for faster startup
 //!
-//! ## What's NOT In The Snapshot
+//! ## External References
 //!
-//! - WebIDL interfaces (registered at runtime via initializeBindings())
-//! - External references (not needed for builtins-only snapshot)
+//! External references are C++ callback function pointers that V8 needs to
+//! resolve when loading the snapshot. The SAME external references array
+//! (in the SAME order) MUST be provided at both snapshot creation and loading.
 //!
 //! ## Usage
 //!
 //! Build and run:
 //! ```bash
-//! zig build snapshot-generator
-//! ./zig-out/bin/snapshot_generator [output_path]
+//! zig build snapshot
 //! ```
 //!
 //! The output file is loaded at runtime:
 //! ```zig
-//! const isolate = v8.v8_Isolate_NewFromSnapshot(data, size, null);
-//! const context = v8.v8_Context_New(isolate);  // Fresh context
-//! interface_bindings.initializeBindings(isolate, context);  // Register WebIDL
+//! const isolate = v8.v8_Isolate_NewFromSnapshot(data, size, ext_refs);
+//! const context = v8.v8_Context_NewFromSnapshot(isolate);  // Interfaces already registered!
+//! // No need to call initializeBindings() - interfaces are in snapshot!
 //! ```
 
 const std = @import("std");
 const v8 = @import("v8");
+
+// Import interface bindings for registration
+const interface_bindings = v8.interface_bindings;
 
 /// Default output file for the snapshot blob
 const DEFAULT_OUTPUT_PATH = "whatwg_snapshot.bin";
@@ -105,35 +110,94 @@ pub fn main() !void {
     };
     log(allocator, "  Isolate obtained\n\n", .{});
 
-    // Step 4: Enter isolate
-    log(allocator, "Step 4: Entering isolate...\n", .{});
+    // Step 4: Enter isolate and enable snapshot mode
+    log(allocator, "Step 4: Entering isolate...\\n", .{});
     v8.ffi.v8_Isolate_Enter(isolate);
-    log(allocator, "  Isolate entered\n\n", .{});
 
-    // Step 5: Create and set up snapshot contexts
+    // Enable snapshot mode - this tracks all Global handles created
+    // so they can be cleared before CreateBlob (which requires no Global handles)
+    v8.ffi.v8_Snapshot_EnableMode();
+    log(allocator, "  Isolate entered, snapshot mode enabled\\n\\n", .{});
+
+    // Step 5: Create and set up snapshot contexts WITH WebIDL interfaces
     // V8's SnapshotCreator requires SetDefaultContext() to be called.
-    // We ONLY set the default context - no indexed contexts.
-    log(allocator, "Step 5: Creating default context for snapshot...\\n", .{});
+    // We create contexts manually so we can register ALL WebIDL interfaces.
+    log(allocator, "Step 5: Creating contexts with WebIDL interfaces...\\n", .{});
 
-    // Set the default context (required by CreateBlob)
-    if (!v8.ffi.v8_SnapshotCreator_CreateAndSetDefaultContext(creator)) {
-        log(allocator, "  ERROR: Failed to create and set default context\\n", .{});
+    // Step 5a: Create default context with interfaces
+    log(allocator, "  5a: Creating default context...\\n", .{});
+    const default_context = v8.ffi.v8_Context_New(isolate) orelse {
+        log(allocator, "  ERROR: Failed to create default context\\n", .{});
+        v8.ffi.v8_Isolate_Exit(isolate);
+        v8.ffi.v8_SnapshotCreator_Dispose(creator);
+        return error.ContextFailed;
+    };
+
+    // Enter context and register all interfaces
+    log(allocator, "  5b: Entering default context and registering interfaces...\\n", .{});
+    v8.ffi.v8_Context_Enter(default_context);
+
+    // Register ALL WebIDL interfaces in this context
+    interface_bindings.initializeBindings(isolate, default_context);
+    log(allocator, "  5c: WebIDL interfaces registered in default context\\n", .{});
+
+    // Exit context before adding to snapshot
+    v8.ffi.v8_Context_Exit(default_context);
+
+    // Set as default context for snapshot
+    v8.ffi.v8_SnapshotCreator_SetDefaultContext(creator, default_context);
+    log(allocator, "  Default context with interfaces set\\n", .{});
+
+    // Step 5d: Create indexed context (at index 0) with interfaces
+    // This is the context that will be restored via Context::FromSnapshot(isolate, 0)
+    log(allocator, "  5d: Creating indexed context...\\n", .{});
+    const indexed_context = v8.ffi.v8_Context_New(isolate) orelse {
+        log(allocator, "  ERROR: Failed to create indexed context\\n", .{});
+        v8.ffi.v8_Isolate_Exit(isolate);
+        v8.ffi.v8_SnapshotCreator_Dispose(creator);
+        return error.ContextFailed;
+    };
+
+    // Enter context and register all interfaces
+    log(allocator, "  5e: Entering indexed context and registering interfaces...\\n", .{});
+    v8.ffi.v8_Context_Enter(indexed_context);
+
+    // Register ALL WebIDL interfaces in this context too
+    interface_bindings.initializeBindings(isolate, indexed_context);
+    log(allocator, "  5f: WebIDL interfaces registered in indexed context\\n", .{});
+
+    // Exit context before adding to snapshot
+    v8.ffi.v8_Context_Exit(indexed_context);
+
+    // Add indexed context at index 0 - this is what Context::FromSnapshot(isolate, 0) retrieves
+    const context_index = v8.ffi.v8_SnapshotCreator_AddContext(creator, indexed_context);
+    if (context_index == std.math.maxInt(usize)) {
+        log(allocator, "  ERROR: Failed to add indexed context\\n", .{});
         v8.ffi.v8_Isolate_Exit(isolate);
         v8.ffi.v8_SnapshotCreator_Dispose(creator);
         return error.ContextFailed;
     }
-    log(allocator, "  Default context set (no indexed contexts)\\n\\n", .{});
+    log(allocator, "  Indexed context with interfaces added at index {d}\\n\\n", .{context_index});
 
     // Step 6: Create the snapshot blob
-    log(allocator, "Step 6: Creating snapshot blob...\n", .{});
+    log(allocator, "Step 6: Creating snapshot blob...\\n", .{});
 
-    // NOTE: We do NOT clear Global handles here anymore.
-    // The context handles must remain valid until CreateBlob serializes them.
-    // V8's SetDefaultContext and AddContext store references to the contexts,
-    // and invalidating those handles before CreateBlob causes rehashability errors.
+    // Clear all Global handles created during interface registration.
+    // V8's SnapshotCreator::CreateBlob() requires that there be no outstanding
+    // Global handles when called. Our wrapper tracks all Global handles created
+    // since v8_Snapshot_EnableMode() was called.
+    //
+    // NOTE: This does NOT affect the contexts - SetDefaultContext and AddContext
+    // have already captured the context state internally. The Global handles we're
+    // clearing are the intermediate ones created during interface registration.
+    log(allocator, "  Clearing Global handles created during registration...\\n", .{});
+    v8.ffi.v8_Snapshot_ClearGlobalHandles();
 
     // Exit isolate before creating blob (required by V8)
     v8.ffi.v8_Isolate_Exit(isolate);
+
+    // Disable snapshot mode
+    v8.ffi.v8_Snapshot_DisableMode();
 
     var out_data: ?[*]const u8 = null;
     var out_size: c_int = 0;
@@ -183,11 +247,11 @@ pub fn main() !void {
         blob_size,
         @as(f64, @floatFromInt(blob_size)) / 1024.0,
     });
-    log(allocator, "\nThis snapshot contains V8 builtins for fast isolate startup.\n", .{});
-    log(allocator, "WebIDL interfaces are registered at runtime via initializeBindings().\n", .{});
-    log(allocator, "\nTo use this snapshot at runtime:\n", .{});
-    log(allocator, "  1. Load the blob from file\n", .{});
-    log(allocator, "  2. Create isolate with v8_Isolate_NewFromSnapshot(data, size, NULL)\n", .{});
-    log(allocator, "  3. Create fresh context with v8_Context_New(isolate)\n", .{});
-    log(allocator, "  4. Register WebIDL interfaces with initializeBindings()\n", .{});
+    log(allocator, "\\nThis snapshot contains V8 builtins AND WebIDL interfaces!\\n", .{});
+    log(allocator, "All interfaces are pre-registered - no runtime registration needed.\\n", .{});
+    log(allocator, "\\nTo use this snapshot at runtime:\\n", .{});
+    log(allocator, "  1. Load the blob from file\\n", .{});
+    log(allocator, "  2. Create isolate with v8_Isolate_NewFromSnapshot(data, size, ext_refs)\\n", .{});
+    log(allocator, "  3. Restore context with v8_Context_NewFromSnapshot(isolate)\\n", .{});
+    log(allocator, "  4. Interfaces are already available - no initializeBindings() needed!\\n", .{});
 }
