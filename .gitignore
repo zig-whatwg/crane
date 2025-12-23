@@ -44,6 +44,9 @@ wpt.fyi/
 jsengines/depot_tools/
 jsengines/v8/
 
+# V8 headers and libraries (downloaded by zig build setup)
+deps/
+
 # External data files (downloaded by zig build setup)
 # These are large datasets that should not be committed
 data/
