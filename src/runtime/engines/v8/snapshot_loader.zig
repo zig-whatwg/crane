@@ -70,11 +70,9 @@ pub const SNAPSHOT_V8_FLAGS = "--hash-seed=0 --predictable";
 /// will cause snapshot loading to fail with "rehashability" assertion errors.
 pub fn initializePlatformForSnapshots() void {
     // CRITICAL: Flags MUST be set BEFORE platform initialization
-    std.log.info("[V8 snapshot_loader] Setting V8 flags BEFORE platform init: {s}", .{SNAPSHOT_V8_FLAGS});
     ffi.v8_SetFlagsFromString(SNAPSHOT_V8_FLAGS);
 
     // Now initialize the platform
-    std.log.info("[V8 snapshot_loader] Initializing V8 platform", .{});
     ffi.v8_Platform_Initialize();
 }
 
@@ -131,9 +129,6 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
     if (options.embedded_snapshot) |snapshot_data| {
         if (try initFromSnapshotData(snapshot_data, options.log_performance)) |result| {
             const elapsed = std.time.milliTimestamp() - start_time;
-            if (options.log_performance) {
-                std.log.info("V8 initialized from embedded snapshot in {d}ms", .{elapsed});
-            }
             return .{
                 .isolate = result.isolate,
                 .context = result.context,
@@ -147,9 +142,6 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
     if (options.snapshot_path) |path| {
         if (try initFromSnapshotFile(allocator, path, options.log_performance)) |result| {
             const elapsed = std.time.milliTimestamp() - start_time;
-            if (options.log_performance) {
-                std.log.info("V8 initialized from snapshot file in {d}ms", .{elapsed});
-            }
             return .{
                 .isolate = result.isolate,
                 .context = result.context,
@@ -160,9 +152,6 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
     }
 
     // Fall back to fresh initialization (no interfaces registered)
-    if (options.log_performance) {
-        std.log.info("No snapshot available, creating fresh V8 isolate", .{});
-    }
 
     const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     errdefer ffi.v8_Isolate_Dispose(isolate);
@@ -176,9 +165,6 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
     };
 
     const elapsed = std.time.milliTimestamp() - start_time;
-    if (options.log_performance) {
-        std.log.info("V8 initialized without snapshot in {d}ms", .{elapsed});
-    }
 
     return .{
         .isolate = isolate,
@@ -220,15 +206,7 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
 
     // Step 3: Check if the snapshot can be rehashed (required for cross-isolate loading)
     const can_rehash = ffi.v8_Snapshot_CanBeRehashed(data.ptr, @intCast(data.len));
-    if (log_performance) {
-        if (can_rehash) {
-            std.log.info("Snapshot validation passed: valid and rehashable", .{});
-        } else {
-            std.log.warn("Snapshot validation warning: not rehashable", .{});
-            std.log.warn("  This snapshot can only be loaded by an isolate with the same hash seed", .{});
-            std.log.warn("  Ensure --hash-seed=0 was set BEFORE v8_Platform_Initialize()", .{});
-        }
-    }
+    _ = can_rehash; // Validation check only
 
     // Register and use external references - REQUIRED for V8 snapshot context restoration.
     // External references must be registered in the SAME ORDER as during snapshot creation.
@@ -244,11 +222,7 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
     const external_refs = @import("external_references.zig");
     external_refs.registerAllExternalReferences();
     const stats = external_refs.getExternalReferenceStats();
-    if (log_performance) {
-        std.log.info("Registered {d} external references for snapshot loading", .{stats.count});
-        // Hash is for debugging - different binaries have different hashes but same order
-        std.log.info("Reference hash: 0x{x:0>16} (order verification - may differ from snapshot generator)", .{stats.hash});
-    }
+    _ = stats; // Used for debugging only
     const refs_ptr: ?[*]const isize = external_refs.getRuntimeExternalReferencesPtr();
 
     // NOTE: V8 flags (--hash-seed=0, --predictable, --no-random-gc) MUST be set
@@ -302,28 +276,20 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
 }
 
 /// Try to initialize from a snapshot file
-fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_performance: bool) !?SnapshotResult {
+fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool) !?SnapshotResult {
+
     // Try to open and read the snapshot file
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
-        if (log_performance) {
-            std.log.info("Snapshot file '{s}' not found: {}", .{ path, err });
-        }
+    const file = std.fs.cwd().openFile(path, .{}) catch {
         return null;
     };
     defer file.close();
 
     // Get file size and read data
-    const stat = file.stat() catch |err| {
-        if (log_performance) {
-            std.log.warn("Failed to stat snapshot file: {}", .{err});
-        }
+    const stat = file.stat() catch {
         return null;
     };
 
-    const snapshot_data = allocator.alloc(u8, stat.size) catch |err| {
-        if (log_performance) {
-            std.log.warn("Failed to allocate memory for snapshot: {}", .{err});
-        }
+    const snapshot_data = allocator.alloc(u8, stat.size) catch {
         return null;
     };
     // Track the snapshot data for cleanup when the runtime is deinitialized.
@@ -333,25 +299,15 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, log_perf
     tracked_snapshot_data = snapshot_data;
     tracked_snapshot_allocator = allocator;
 
-    const bytes_read = file.readAll(snapshot_data) catch |err| {
-        if (log_performance) {
-            std.log.warn("Failed to read snapshot file: {}", .{err});
-        }
+    const bytes_read = file.readAll(snapshot_data) catch {
         return null;
     };
 
     if (bytes_read != stat.size) {
-        if (log_performance) {
-            std.log.warn("Incomplete snapshot file read: {d}/{d} bytes", .{ bytes_read, stat.size });
-        }
         return null;
     }
 
-    if (log_performance) {
-        std.log.info("Loaded snapshot from '{s}' ({d} bytes)", .{ path, stat.size });
-    }
-
-    return initFromSnapshotData(snapshot_data, log_performance);
+    return initFromSnapshotData(snapshot_data, false);
 }
 
 /// Register all external references for snapshot loading

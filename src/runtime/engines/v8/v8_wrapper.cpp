@@ -757,7 +757,6 @@ void v8_Snapshot_ClearGlobalHandles() {
 /// @param flags - Null-terminated string of V8 command-line flags
 void v8_SetFlagsFromString(const char* flags) {
     if (flags) {
-        fprintf(stderr, "[v8_SetFlagsFromString] Setting V8 flags: %s\n", flags);
         V8::SetFlagsFromString(flags);
     }
 }
@@ -5477,10 +5476,7 @@ bool v8_SnapshotCreator_CreateAndSetDefaultContext(void* creator) {
     context->Enter();
     context->Exit();
     
-    fprintf(stderr, "[v8_SnapshotCreator_CreateAndSetDefaultContext] Setting default context\n");
-    sc->SetDefaultContext(context, SerializeInternalFields);
-    fprintf(stderr, "[v8_SnapshotCreator_CreateAndSetDefaultContext] Default context set successfully\n");
-    
+creator->SetDefaultContext(context);
     return true;
 }
 
@@ -5514,10 +5510,7 @@ size_t v8_SnapshotCreator_CreateAndAddContext(void* creator) {
     context->Enter();
     context->Exit();
     
-    fprintf(stderr, "[v8_SnapshotCreator_CreateAndAddContext] Adding context to snapshot\n");
-    size_t index = sc->AddContext(context);
-    fprintf(stderr, "[v8_SnapshotCreator_CreateAndAddContext] Context added at index %zu\n", index);
-    
+size_t index = creator->AddContext(context);
     return index;
 }
 
@@ -5678,15 +5671,10 @@ Isolate* v8_Isolate_NewFromSnapshot(
         return nullptr;
     }
     
-    fprintf(stderr, "[v8_Isolate_NewFromSnapshot] Creating isolate from snapshot (%d bytes)...\n", snapshot_size);
-    
-    // Count external references
+    // Count external references (silently)
+    int ref_count = 0;
     if (external_references) {
-        int ref_count = 0;
         while (external_references[ref_count] != 0) ref_count++;
-        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] External references: %d\n", ref_count);
-    } else {
-        fprintf(stderr, "[v8_Isolate_NewFromSnapshot] No external references provided\n");
     }
     
     // CRITICAL: Heap-allocate StartupData and snapshot copy.
@@ -5710,7 +5698,6 @@ Isolate* v8_Isolate_NewFromSnapshot(
         delete startup_data;
         return nullptr;
     }
-    fprintf(stderr, "[v8_Isolate_NewFromSnapshot] Snapshot validation passed\n");
     
     // Create isolate params with snapshot and external references
     Isolate::CreateParams create_params;
@@ -5736,7 +5723,6 @@ Isolate* v8_Isolate_NewFromSnapshot(
     isolate->SetData(2, startup_data);
     isolate->SetData(3, data_copy);
     
-    fprintf(stderr, "[v8_Isolate_NewFromSnapshot] SUCCESS: Isolate created at %p\n", (void*)isolate);
     return isolate;
 }
 
@@ -5753,8 +5739,6 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
         fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: isolate is null\n");
         return nullptr;
     }
-    
-    fprintf(stderr, "[v8_Context_NewFromSnapshot] Creating context from snapshot index 0...\n");
     
     // Enter the isolate before creating context
     Isolate::Scope isolate_scope(isolate);
@@ -5787,22 +5771,14 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
         fprintf(stderr, "  1. External references mismatch between snapshot creation and loading\n");
         fprintf(stderr, "  2. No context was added at index 0 during snapshot creation\n");
         fprintf(stderr, "  3. Snapshot data is corrupted or from incompatible V8 version\n");
-        return nullptr;
+return nullptr;
     }
     
-    fprintf(stderr, "[v8_Context_NewFromSnapshot] SUCCESS: Context restored from snapshot index 0\n");
+    Local<Context> context = maybe_context.ToLocalChecked();
     
-    // Debug: Check internal field count of the global object
-    {
-        Context::Scope context_scope(context);
-        Local<Object> global = context->Global();
-        int internal_field_count = global->InternalFieldCount();
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] Global object internal field count: %d\n", internal_field_count);
-        if (internal_field_count == 0) {
-            fprintf(stderr, "[v8_Context_NewFromSnapshot] WARNING: Global object has 0 internal fields!\n");
-            fprintf(stderr, "  This means the snapshot's global template didn't have SetInternalFieldCount(2).\n");
-            fprintf(stderr, "  The snapshot generator needs to create contexts with a proper global template.\n");
-        }
+    // Check global object internal fields
+Local<Object> global = context->Global();
+    int internal_field_count = global->InternalFieldCount();
     }
     
     return trackHandle(new Global<Context>(isolate, context));
