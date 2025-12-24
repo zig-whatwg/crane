@@ -3567,6 +3567,10 @@ pub fn build(b: *std.Build) void {
         \\    fi
         \\    export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
         \\    
+        \\    # Bootstrap depot_tools (required before first use)
+        \\    echo "    Bootstrapping depot_tools..."
+        \\    gclient --version > /dev/null 2>&1 || true
+        \\    
         \\    # Clone V8 to /tmp and checkout 13.1.x
         \\    V8_BUILD_DIR="/tmp/v8-build"
         \\    if [ ! -d "$V8_BUILD_DIR/v8" ]; then
