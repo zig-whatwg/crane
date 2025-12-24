@@ -54,6 +54,9 @@ output_path="${2:-.}"
 # Extract filename from URL path (last segment, without trailing slash)
 filename=$(echo "$url" | sed 's:/*$::' | awk -F/ '{print $NF}')
 
+# Strip .html extension if present
+filename="${filename%.html}"
+
 # If filename is empty or looks like a domain, extract from domain
 if [ -z "$filename" ] || echo "$filename" | grep -q '\.'; then
     # Extract domain from URL (remove protocol, path, port)

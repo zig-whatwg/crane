@@ -3474,7 +3474,9 @@ pub fn build(b: *std.Build) void {
         \\    # ========================================
         \\    HTML_DIR="$WHATWG_DIR/html"
         \\    
-        \\    if [ ! -f "$HTML_DIR/parsing.md" ]; then
+        \\    # Skip if html directory has multiple markdown files (not just html.md)
+        \\    HTML_FILE_COUNT=$(find "$HTML_DIR" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+        \\    if [ "$HTML_FILE_COUNT" -lt 2 ]; then
         \\        echo "==> Downloading HTML multipage specification..."
         \\        mkdir -p "$HTML_DIR"
         \\        
