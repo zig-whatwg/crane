@@ -3553,9 +3553,10 @@ pub fn build(b: *std.Build) void {
         \\# ========================================
         \\# V8 JavaScript Engine (13.1.x branch)
         \\# ========================================
-        \\V8_DEST="jsengines/v8"
+        \\PROJECT_ROOT="$(pwd)"
+        \\V8_DEST="$PROJECT_ROOT/jsengines/v8"
         \\V8_LIB="$V8_DEST/out/static/obj/libv8_monolith.a"
-        \\DEPOT_TOOLS_DIR="jsengines/depot_tools"
+        \\DEPOT_TOOLS_DIR="$PROJECT_ROOT/jsengines/depot_tools"
         \\
         \\if [ ! -f "$V8_LIB" ]; then
         \\    echo "==> Building V8 13.1.x (this takes 30-60 minutes on first run)..."
@@ -3565,7 +3566,7 @@ pub fn build(b: *std.Build) void {
         \\        echo "    Installing depot_tools..."
         \\        git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS_DIR"
         \\    fi
-        \\    export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
+        \\    export PATH="$DEPOT_TOOLS_DIR:$PATH"
         \\    
         \\    # Bootstrap depot_tools (required before first use)
         \\    echo "    Bootstrapping depot_tools..."
