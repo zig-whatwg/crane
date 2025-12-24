@@ -58,9 +58,12 @@ const storage_mod = @import("storage/Storage.zig");
 const Storage = storage_mod.Storage;
 
 /// Default snapshot file paths to check (in order of priority)
+/// IMPORTANT: zig-out/bin/ is checked FIRST because it contains the freshly
+/// generated snapshot from `zig build`. The root whatwg_snapshot.bin is a
+/// committed fallback that may be stale after codegen changes.
 const DEFAULT_SNAPSHOT_PATHS = [_][]const u8{
-    "whatwg_snapshot.bin", // Current directory (highest priority)
-    "zig-out/bin/whatwg_snapshot.bin", // Zig build output
+    "zig-out/bin/whatwg_snapshot.bin", // Zig build output (highest priority - always fresh)
+    "whatwg_snapshot.bin", // Current directory (committed fallback)
     "../whatwg_snapshot.bin", // Parent directory (for tests run from subdirs)
 };
 
