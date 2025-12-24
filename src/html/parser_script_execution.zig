@@ -41,6 +41,12 @@ const script_execution = @import("script_execution.zig");
 const impls = @import("impls");
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const DocumentImpl = impls.Document;
+const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
+const WindowImpl = impls.Window;
+
+// V8 context manager for getting Window from V8 context
+const v8 = @import("v8");
+const context_manager = v8.context_manager;
 
 // DOM internals for document_element setting
 const dom = @import("dom");
@@ -184,12 +190,10 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
         HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
         HTMLScriptElementImpl.setFromExternalFile(script_element, true);
 
-
         // Try to load the external script
         if (ctx.loadExternalScript(src_url)) |external_content| {
             // Free the loaded content when we're done (cacheSourceText duplicates it)
             defer ctx.allocator.free(external_content);
-
 
             // Successfully loaded - execute the external script content
             if (external_content.len == 0) {
@@ -473,21 +477,64 @@ pub const DomTreeAdapter = struct {
     /// Called when a child is appended to a parent during parsing.
     /// Updates the DOM tree structure.
     /// When appending <html> to document, also sets document.documentElement.
+    /// When appending <iframe> elements, triggers their insertion steps.
     pub fn onChildAppended(self: *DomTreeAdapter, parent: *TreeNode, child: *TreeNode) !void {
         const parent_dom = self.node_map.get(parent) orelse return;
         const child_dom = self.node_map.get(child) orelse return;
 
         _ = interfaces.Node.call_appendChild(parent_dom, child_dom) catch {};
 
-        // CRITICAL: If appending <html> to document, set documentElement
-        // Per DOM spec, documentElement is the first Element child of the Document
-        if (parent.node_type == .document and child.node_type == .element) {
+        // Handle element-specific insertion steps
+        if (child.node_type == .element) {
             if (child.local_name) |name| {
-                if (std.mem.eql(u8, name, "html") and child.namespace == .html) {
+                // CRITICAL: If appending <html> to document, set documentElement
+                // Per DOM spec, documentElement is the first Element child of the Document
+                if (parent.node_type == .document and
+                    std.mem.eql(u8, name, "html") and child.namespace == .html)
+                {
                     document_internals.setDocumentElement(self.document, child_dom);
+                }
+
+                // CRITICAL: If appending <iframe>, trigger the iframe's insertion steps
+                // Per HTML Standard §4.8.5, when an iframe is inserted into a document,
+                // a nested browsing context must be created and navigation triggered.
+                if (std.mem.eql(u8, name, "iframe") and child.namespace == .html) {
+                    self.handleIframeInsertion(child_dom);
                 }
             }
         }
+    }
+
+    /// Handle iframe-specific insertion steps.
+    /// Per HTML Standard §4.8.5, when an iframe is inserted into a document:
+    /// 1. Create a nested browsing context as a child of the parent
+    /// 2. Navigate to the initial content (srcdoc > src > about:blank)
+    fn handleIframeInsertion(self: *DomTreeAdapter, iframe_element: *runtime.Instance) void {
+        // Get the iframe's internal state to access the integration
+        const internal = HTMLIFrameElementImpl.getInternal(iframe_element) orelse return;
+
+        // Get the parent document's browsing context via the V8 context manager.
+        // The runtime.Context holds an engine_ctx (V8 context) which we can use
+        // to look up the associated Window and its browsing context.
+        const engine_ctx = self.ctx.engine_ctx orelse return;
+        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+        // Get the Window associated with this V8 context
+        const window = context_manager.getWindowForContext(v8_ctx) orelse return;
+        const window_internal = WindowImpl.getInternal(window) orelse return;
+        const parent_bc = window_internal.browsing_context;
+
+        // Create the origin for the iframe (inherits from container document)
+        // For srcdoc and same-origin src, the origin is inherited
+        const container_origin = parent_bc.getOrigin();
+
+        // Trigger the iframe's insertion steps via integration
+        // This creates the browsing context and navigates to initial content
+        internal.integration.onInsertedIntoDocument(parent_bc, container_origin) catch {
+            // Insertion failed - iframe will not have a browsing context
+            // This is recoverable - accessing contentWindow will return null
+            return;
+        };
     }
 
     /// Called when a node's text content changes during parsing.
