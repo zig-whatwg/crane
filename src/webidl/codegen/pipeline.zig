@@ -94,9 +94,9 @@ pub fn processDirectory(
 
     std.debug.print("  ✓ Parsed {d} IDL files from source directory\n", .{file_count});
 
-    // Also parse supplementary IDL files from supplementary/ directory (for missing types)
+    // Also parse supplementary IDL files from specs/supplementary/ directory (for missing types)
     blk: {
-        const supplementary_dir = "supplementary";
+        const supplementary_dir = "specs/supplementary";
         var supplementary_count: usize = 0;
 
         var supp_dir = std.fs.cwd().openDir(supplementary_dir, .{ .iterate = true }) catch |err| {
