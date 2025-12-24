@@ -639,7 +639,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 ///
 /// This enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
-pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
     const children = internal.browsing_context.children.items;
 
@@ -3608,4 +3608,11 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     }
 
     return names.toOwnedSlice(allocator);
+}
+
+
+pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
 }

@@ -14,7 +14,6 @@ const XRTransientInputHitTestSource = @import("interfaces").XRTransientInputHitT
 const XRHitTestSource = @import("interfaces").XRHitTestSource;
 const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
 const XRView = @import("interfaces").XRView;
-const XRMetadata = @import("dictionaries").XRMetadata;
 const XRTransientInputHitTestResult = @import("interfaces").XRTransientInputHitTestResult;
 const XRSession = @import("interfaces").XRSession;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
@@ -58,7 +57,6 @@ pub const XRFrame = struct {
             .{ "trackedAnchors", "get_trackedAnchors", null },
             .{ "detectedPlanes", "get_detectedPlanes", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
-            .{ "metaData", "get_metaData", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -101,7 +99,6 @@ pub const XRFrame = struct {
             .{ "trackedAnchors", "get_trackedAnchors", null },
             .{ "detectedPlanes", "get_detectedPlanes", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
-            .{ "metaData", "get_metaData", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -121,7 +118,6 @@ pub const XRFrame = struct {
             trackedAnchors: *runtime.Instance = undefined,
             detectedPlanes: *runtime.Instance = undefined,
             detectedMeshes: *runtime.Instance = undefined,
-            metaData: dictionaries.XRMetadata = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_body: ?*runtime.Instance = null,
             cached_trackedAnchors: ?*runtime.Instance = null,
@@ -134,7 +130,6 @@ pub const XRFrame = struct {
         .get_body = &get_body,
         .get_detectedMeshes = &get_detectedMeshes,
         .get_detectedPlanes = &get_detectedPlanes,
-        .get_metaData = &get_metaData,
         .get_predictedDisplayTime = &get_predictedDisplayTime,
         .get_session = &get_session,
         .get_trackedAnchors = &get_trackedAnchors,
@@ -221,10 +216,6 @@ pub const XRFrame = struct {
 
     pub fn get_detectedMeshes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRFrameImpl.get_detectedMeshes(instance);
-    }
-
-    pub fn get_metaData(instance: *runtime.Instance) anyerror!XRMetadata {
-        return try XRFrameImpl.get_metaData(instance);
     }
 
     pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {

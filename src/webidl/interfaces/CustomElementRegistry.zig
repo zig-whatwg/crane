@@ -144,7 +144,12 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_define(instance, name, constructor, options);
     }
 
+    /// Extended attributes: [CEReactions]
     pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+        
         
         return try CustomElementRegistryImpl.call_initialize(instance, root);
     }

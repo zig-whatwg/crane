@@ -122,3 +122,9 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceN
     _ = instance;
     return error.NotImplemented;
 }
+
+
+pub fn get_confidence(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}

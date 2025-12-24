@@ -3405,13 +3405,13 @@ pub fn build(b: *std.Build) void {
         \\    
         \\    # Download tarball (no auth required for public repos)
         \\    WEBREF_TMP=$(mktemp -d)
-        \\    curl -sL "https://github.com/w3c/webref/archive/refs/heads/main.tar.gz" | tar -xz -C "$WEBREF_TMP"
+        \\    curl -sL "https://github.com/w3c/webref/archive/refs/tags/@webref/raw-idl@3.70.1.tar.gz" | tar -xz -C "$WEBREF_TMP"
         \\    
-        \\    # Copy to specs directory (tarball extracts to webref-main/)
+        \\    # Copy to specs directory (tarball extracts to webref-raw-idl-3.70.1/)
         \\    mkdir -p "$SPECS_DIR"
         \\    rm -rf "$SPECS_DIR/algorithms" "$SPECS_DIR/idl"
-        \\    cp -r "$WEBREF_TMP/webref-main/ed/algorithms" "$SPECS_DIR/algorithms"
-        \\    cp -r "$WEBREF_TMP/webref-main/ed/idl" "$SPECS_DIR/idl"
+        \\    cp -r "$WEBREF_TMP"/webref-*/ed/algorithms "$SPECS_DIR/algorithms"
+        \\    cp -r "$WEBREF_TMP"/webref-*/ed/idl "$SPECS_DIR/idl"
         \\    rm -rf "$WEBREF_TMP"
         \\    
         \\    echo "    WebRef data downloaded successfully"

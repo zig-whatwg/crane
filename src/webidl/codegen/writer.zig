@@ -3464,11 +3464,8 @@ fn writeEscapedInterfaceParamName(writer: anytype, name: []const u8, idl_type: t
     if (isInterfaceReservedName(name)) {
         try writer.print("{s}_data", .{name});
     } else if (parameterShadowsType(name, idl_type)) {
-        // Convert to snake_case and append _param suffix
-        // For now, simple approach: lowercase first char + _param
-        var buf: [256]u8 = undefined;
-        const lower_name = std.ascii.lowerString(&buf, name);
-        try writer.print("{s}_param", .{lower_name});
+        // Just append _param suffix, preserve original case
+        try writer.print("{s}_param", .{name});
     } else if (isKeyword(name)) {
         try writer.print("@\"{s}\"", .{name});
     } else {
