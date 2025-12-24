@@ -223,6 +223,50 @@ pub fn registerAllInterfaces(
     }
 }
 
+/// Register ALL WebIDL interface templates WITHOUT attaching to global
+///
+/// This is used when loading from a V8 snapshot. The snapshot already contains
+/// all interface constructors on the global object, but the Zig-side template
+/// registry is empty. This function populates the registry so that
+/// wrapInstanceAsV8Object() can wrap instances with the correct prototype.
+///
+/// Unlike registerAllInterfaces(), this:
+/// - Creates templates and registers them in template_registry
+/// - Does NOT attach constructors to the global object (already there from snapshot)
+/// - Does NOT set up constructor inheritance (already in snapshot)
+pub fn registerAllTemplatesOnly(
+    isolate: *v8.Isolate,
+) void {
+    @setEvalBranchQuota(200_000);
+    const template_registry = @import("template_registry.zig");
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        // Skip problematic interfaces using centralized skip list
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        // Only bind types that have Meta (actual interfaces)
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            // Skip mixin interfaces - they don't need templates
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            // Create template and register it (without attaching to global)
+            const Binding = V8Interface(InterfaceType);
+            const template = Binding.createTemplate(isolate);
+            template_registry.register(decl.name, template, isolate);
+        }
+    }
+}
+
 /// Initialize ALL V8 interface bindings
 ///
 /// This is the **main entry point** for V8 interface binding setup.

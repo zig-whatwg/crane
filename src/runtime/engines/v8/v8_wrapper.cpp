@@ -5476,7 +5476,7 @@ bool v8_SnapshotCreator_CreateAndSetDefaultContext(void* creator) {
     context->Enter();
     context->Exit();
     
-creator->SetDefaultContext(context);
+    sc->SetDefaultContext(context);
     return true;
 }
 
@@ -5510,7 +5510,7 @@ size_t v8_SnapshotCreator_CreateAndAddContext(void* creator) {
     context->Enter();
     context->Exit();
     
-size_t index = creator->AddContext(context);
+    size_t index = sc->AddContext(context);
     return index;
 }
 
@@ -5774,12 +5774,10 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
 return nullptr;
     }
     
-    Local<Context> context = maybe_context.ToLocalChecked();
-    
     // Check global object internal fields
-Local<Object> global = context->Global();
+    Local<Object> global = context->Global();
     int internal_field_count = global->InternalFieldCount();
-    }
+    (void)internal_field_count; // Suppress unused variable warning
     
     return trackHandle(new Global<Context>(isolate, context));
 }
