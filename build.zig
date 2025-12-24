@@ -256,10 +256,10 @@ fn addTestFilesFromDir(
             });
 
             // Add custom-built V8 static libraries
-            test_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
-            test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-            test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-            test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+            test_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
+            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
+            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
 
             // Add libuv
             test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2032,10 +2032,10 @@ pub fn build(b: *std.Build) void {
             "-DV8_ENABLE_SANDBOX",
         },
     });
-    browser_test.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
-    browser_test.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-    browser_test.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-    browser_test.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    browser_test.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
+    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
+    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
     browser_test.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
     browser_test.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
     browser_test.linkSystemLibrary("uv");
@@ -2167,12 +2167,12 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    full_static_lib.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+    full_static_lib.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    full_static_lib.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-    full_static_lib.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-    full_static_lib.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     full_static_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2203,7 +2203,7 @@ pub fn build(b: *std.Build) void {
     // First run will fetch V8 (~1.1GB) and build it (~30-60 min).
     // Subsequent builds use cached artifacts.
 
-    const v8_dir = "jsengines/v8/v8";
+    const v8_dir = "jsengines/v8";
 
     // Step 1: Fetch V8 source if not present (also installs depot_tools if needed)
     const fetch_v8 = b.addSystemCommand(&.{
@@ -2237,7 +2237,7 @@ pub fn build(b: *std.Build) void {
         "bash", "-c",
         \\set -e
         \\DEPOT_TOOLS_DIR="jsengines/depot_tools"
-        \\V8_DIR="jsengines/v8/v8"
+        \\V8_DIR="jsengines/v8"
         \\V8_LIB="$V8_DIR/out/static/obj/libv8_monolith.a"
         \\
         \\export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
@@ -2590,12 +2590,12 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2679,12 +2679,12 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    repl_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+    repl_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    repl_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-    repl_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-    repl_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     repl_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2737,12 +2737,12 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths
-    minimal_snapshot_test_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+    minimal_snapshot_test_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     minimal_snapshot_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2814,12 +2814,12 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "deps/v8/include" });
+    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_monolith.a" });
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libplatform_fat.a" });
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "deps/v8/libv8_libbase_fat.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -3548,6 +3548,103 @@ pub fn build(b: *std.Build) void {
         \\    fi
         \\fi
         \\
+        \\# ========================================
+        \\# V8 JavaScript Engine (13.1.x branch)
+        \\# ========================================
+        \\V8_DEST="jsengines/v8"
+        \\V8_LIB="$V8_DEST/out/static/obj/libv8_monolith.a"
+        \\DEPOT_TOOLS_DIR="jsengines/depot_tools"
+        \\
+        \\if [ ! -f "$V8_LIB" ]; then
+        \\    echo "==> Building V8 13.1.x (this takes 30-60 minutes on first run)..."
+        \\    
+        \\    # Install depot_tools if not present
+        \\    if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
+        \\        echo "    Installing depot_tools..."
+        \\        git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS_DIR"
+        \\    fi
+        \\    export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
+        \\    
+        \\    # Clone V8 to /tmp and checkout 13.1.x
+        \\    V8_BUILD_DIR="/tmp/v8-build"
+        \\    if [ ! -d "$V8_BUILD_DIR/v8" ]; then
+        \\        echo "    Cloning V8 repository..."
+        \\        rm -rf "$V8_BUILD_DIR"
+        \\        mkdir -p "$V8_BUILD_DIR"
+        \\        cd "$V8_BUILD_DIR"
+        \\        fetch v8
+        \\        cd v8
+        \\        git checkout branch-heads/13.1
+        \\        gclient sync
+        \\        cd - > /dev/null
+        \\    fi
+        \\    
+        \\    # Build V8 static library
+        \\    echo "    Building V8 static library..."
+        \\    cd "$V8_BUILD_DIR/v8"
+        \\    
+        \\    # Detect architecture
+        \\    ARCH=$(uname -m)
+        \\    if [ "$ARCH" = "arm64" ]; then
+        \\        V8_TARGET_CPU="arm64"
+        \\    else
+        \\        V8_TARGET_CPU="x64"
+        \\    fi
+        \\    
+        \\    # Generate build configuration
+        \\    mkdir -p out/static
+        \\    cat > out/static/args.gn << 'ARGS'
+        \\is_component_build = false
+        \\v8_monolithic = true
+        \\v8_use_external_startup_data = false
+        \\is_debug = false
+        \\symbol_level = 0
+        \\v8_enable_sandbox = true
+        \\v8_enable_pointer_compression = true
+        \\v8_enable_gdbjit = false
+        \\v8_enable_disassembler = false
+        \\v8_enable_object_print = false
+        \\v8_enable_verify_heap = false
+        \\v8_enable_trace_maps = false
+        \\v8_enable_test_features = false
+        \\v8_enable_v8_checks = false
+        \\v8_enable_i18n_support = false
+        \\clang_use_chrome_plugins = false
+        \\treat_warnings_as_errors = false
+        \\use_custom_libcxx = false
+        \\ARGS
+        \\    echo "target_cpu = \"$V8_TARGET_CPU\"" >> out/static/args.gn
+        \\    
+        \\    gn gen out/static
+        \\    ninja -C out/static v8_monolith v8_libplatform v8_libbase
+        \\    
+        \\    # Convert thin archives to fat archives (Zig can't parse thin archives)
+        \\    LLVM_AR="$(pwd)/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
+        \\    cd out/static
+        \\    echo "    Converting thin archives to fat archives..."
+        \\    $LLVM_AR -t obj/libv8_libplatform.a > /tmp/platform_objs.txt
+        \\    $LLVM_AR rcs obj/libv8_libplatform_fat.a $(cat /tmp/platform_objs.txt)
+        \\    $LLVM_AR -t obj/libv8_libbase.a > /tmp/base_objs.txt
+        \\    $LLVM_AR rcs obj/libv8_libbase_fat.a $(cat /tmp/base_objs.txt)
+        \\    cd ../..
+        \\    
+        \\    cd - > /dev/null
+        \\    
+        \\    # Copy to jsengines/v8
+        \\    echo "    Copying V8 to $V8_DEST..."
+        \\    mkdir -p "$V8_DEST"
+        \\    rm -rf "$V8_DEST/include" "$V8_DEST/out"
+        \\    cp -r "$V8_BUILD_DIR/v8/include" "$V8_DEST/include"
+        \\    mkdir -p "$V8_DEST/out/static/obj"
+        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_monolith.a" "$V8_DEST/out/static/obj/"
+        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_libplatform_fat.a" "$V8_DEST/out/static/obj/"
+        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_libbase_fat.a" "$V8_DEST/out/static/obj/"
+        \\    
+        \\    echo "    V8 13.1.x built successfully"
+        \\else
+        \\    echo "==> V8 already present"
+        \\fi
+        \\
         \\echo ""
         \\echo "==> Setup complete!"
         \\echo ""
@@ -3563,6 +3660,10 @@ pub fn build(b: *std.Build) void {
         \\echo "  - idl/         W3C WebRef IDL definitions"
         \\echo "  - whatwg/      WHATWG specs (markdown)"
         \\echo "  - whatwg/html/ HTML multipage spec sections"
+        \\echo ""
+        \\echo "V8 engine is in: jsengines/v8/"
+        \\echo "  - include/     V8 headers"
+        \\echo "  - out/static/  Built static libraries"
         \\
     });
 

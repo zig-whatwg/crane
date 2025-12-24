@@ -54,9 +54,18 @@ output_path="${2:-.}"
 # Extract filename from URL path (last segment, without trailing slash)
 filename=$(echo "$url" | sed 's:/*$::' | awk -F/ '{print $NF}')
 
-# If filename is empty, use 'index'
-if [ -z "$filename" ]; then
-    filename="index"
+# If filename is empty or looks like a domain, extract from domain
+if [ -z "$filename" ] || echo "$filename" | grep -q '\.'; then
+    # Extract domain from URL (remove protocol, path, port)
+    domain=$(echo "$url" | sed -E 's|^https?://||' | sed -E 's|[:/].*||')
+    # Get the first subdomain (leftmost part before first dot)
+    first_subdomain=$(echo "$domain" | cut -d. -f1)
+    # Use first subdomain if it's not 'www'
+    if [ "$first_subdomain" != "www" ] && [ -n "$first_subdomain" ]; then
+        filename="$first_subdomain"
+    elif [ -z "$filename" ]; then
+        filename="index"
+    fi
 fi
 
 # Create output directory if it doesn't exist
