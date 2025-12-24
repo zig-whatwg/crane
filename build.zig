@@ -257,9 +257,9 @@ fn addTestFilesFromDir(
 
             // Add custom-built V8 static libraries
             test_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
-            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
-            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
+            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
             // Add libuv
             test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2033,9 +2033,9 @@ pub fn build(b: *std.Build) void {
         },
     });
     browser_test.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
-    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
-    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
+    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
     browser_test.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
     browser_test.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
     browser_test.linkSystemLibrary("uv");
@@ -2170,9 +2170,9 @@ pub fn build(b: *std.Build) void {
     full_static_lib.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
-    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
-    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     full_static_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2593,9 +2593,9 @@ pub fn build(b: *std.Build) void {
     snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2682,9 +2682,9 @@ pub fn build(b: *std.Build) void {
     repl_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
-    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
-    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     repl_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2740,9 +2740,9 @@ pub fn build(b: *std.Build) void {
     minimal_snapshot_test_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     minimal_snapshot_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
@@ -2817,9 +2817,9 @@ pub fn build(b: *std.Build) void {
     wpt_runner_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_monolith.a" });
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libplatform_fat.a" });
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/libv8_libbase_fat.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
     wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
