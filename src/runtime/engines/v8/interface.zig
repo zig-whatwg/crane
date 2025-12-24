@@ -474,9 +474,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const template = createTemplate(isolate);
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
 
-            // NOTE: Template is already registered in template_registry by
-            // GlobalTemplateRegistry.precreateAllTemplates() during isolate init.
-            // Skipping redundant registration here.
+            // Register template in template_registry for wrapInstanceAsV8Object()
+            template_registry.register(global_name, template, isolate);
 
             const key_str = v8.v8_String_NewFromUtf8(
                 isolate,

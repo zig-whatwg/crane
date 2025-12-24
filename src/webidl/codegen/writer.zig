@@ -216,14 +216,30 @@ pub fn writeImports(
                     };
                 }
             }
-            // Type not in registry - skip it to avoid importing non-existent types
+            // Type not in registry - return null only if registry was provided
+            // If no registry, we can't determine the module
+            return null;
+        }
+    }.call;
+
+    // Helper to get import module with fallback for tests (when registry is null)
+    // Base types and mixins default to "interfaces" when no registry is provided
+    const getImportModuleWithFallback = struct {
+        fn call(type_name: []const u8, reg: ?*const @import("ir.zig").TypeRegistry, default_module: []const u8) ?[]const u8 {
+            if (getImportModule(type_name, reg)) |module| {
+                return module;
+            }
+            // If no registry provided, use the default module
+            if (reg == null) {
+                return default_module;
+            }
             return null;
         }
     }.call;
 
     // Import base type if present
     if (base_type) |base| {
-        if (getImportModule(base, type_registry)) |module| {
+        if (getImportModuleWithFallback(base, type_registry, "interfaces")) |module| {
             try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ base, module, base });
             try imported.put(base, {});
         }
@@ -232,7 +248,7 @@ pub fn writeImports(
     // Import mixin types
     for (mixins) |mixin| {
         if (!imported.contains(mixin)) {
-            if (getImportModule(mixin, type_registry)) |module| {
+            if (getImportModuleWithFallback(mixin, type_registry, "interfaces")) |module| {
                 try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
                 try imported.put(mixin, {});
             }
@@ -280,7 +296,7 @@ pub fn writeImports(
             }
 
             // Try to get the import module - skip if type is not registered
-            if (getImportModule(ref, type_registry)) |module| {
+            if (getImportModuleWithFallback(ref, type_registry, "interfaces")) |module| {
                 try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ ref, module, ref });
                 try imported.put(ref, {});
             }
