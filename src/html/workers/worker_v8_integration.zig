@@ -96,6 +96,9 @@ pub const WorkerIsolateData = struct {
     /// Allocator for per-isolate allocations
     allocator: Allocator,
 
+    /// Whether the initial script has been executed
+    script_executed: bool = false,
+
     const Self = @This();
 
     /// Create a new V8 isolate and context for a worker
@@ -139,7 +142,90 @@ pub const WorkerIsolateData = struct {
             .allocator = allocator,
         };
 
+        // Set up worker global scope (console, self, GLOBAL, etc.)
+        try data.setupWorkerGlobals();
+
         return data;
+    }
+
+    /// Set up worker global scope with essential APIs
+    fn setupWorkerGlobals(self: *Self) !void {
+        // Set up GLOBAL object for WPT tests (testharness.js detection)
+        const global_script =
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+        ;
+        try self.executeScript(global_script);
+
+        // Set up DedicatedWorkerGlobalScope constructor
+        const worker_scope_script =
+            \\(function() {
+            \\  function DedicatedWorkerGlobalScope() {}
+            \\  globalThis.DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
+            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, Object.getPrototypeOf(globalThis));
+            \\  Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+            \\  function WorkerGlobalScope() {}
+            \\  globalThis.WorkerGlobalScope = WorkerGlobalScope;
+            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, WorkerGlobalScope.prototype);
+            \\})();
+        ;
+        try self.executeScript(worker_scope_script);
+
+        // Set up console object (no-op implementation)
+        const console_script =
+            \\(function() {
+            \\  function consoleNoop() {}
+            \\  globalThis.console = {
+            \\    log: consoleNoop, warn: consoleNoop, error: consoleNoop,
+            \\    info: consoleNoop, debug: consoleNoop, trace: consoleNoop,
+            \\    dir: consoleNoop, table: consoleNoop, assert: consoleNoop,
+            \\    clear: consoleNoop, count: consoleNoop, countReset: consoleNoop,
+            \\    group: consoleNoop, groupCollapsed: consoleNoop, groupEnd: consoleNoop,
+            \\    time: consoleNoop, timeLog: consoleNoop, timeEnd: consoleNoop,
+            \\  };
+            \\})();
+        ;
+        try self.executeScript(console_script);
+
+        // Set up postMessage (stub for now - messages go to outbox)
+        const postmessage_script =
+            \\globalThis.postMessage = function(message) {
+            \\  // TODO: Wire up to thread-safe outbox queue
+            \\  console.log('[Worker] postMessage called:', message);
+            \\};
+        ;
+        try self.executeScript(postmessage_script);
+
+        // Set up onmessage handler property
+        const onmessage_script =
+            \\globalThis.onmessage = null;
+        ;
+        try self.executeScript(onmessage_script);
+
+        // Set up close() stub
+        const close_script =
+            \\globalThis.close = function() {
+            \\  // TODO: Wire up to terminate worker thread
+            \\  console.log('[Worker] close() called');
+            \\};
+        ;
+        try self.executeScript(close_script);
+
+        // Set up MessageEvent constructor for dispatching messages
+        const messageevent_script =
+            \\globalThis.MessageEvent = function(type, init) {
+            \\  this.type = type;
+            \\  this.data = init ? init.data : undefined;
+            \\  this.origin = init ? init.origin : '';
+            \\  this.lastEventId = init ? init.lastEventId : '';
+            \\  this.source = init ? init.source : null;
+            \\  this.ports = init ? init.ports : [];
+            \\};
+        ;
+        try self.executeScript(messageevent_script);
     }
 
     /// Clean up V8 isolate and context
@@ -180,25 +266,17 @@ pub const WorkerIsolateData = struct {
     }
 
     /// Dispatch a message to the worker's onmessage handler
-    pub fn dispatchMessage(self: *Self, msg: *worker_threading.ThreadSafeMessageQueue.SerializedMessage) !void {
-        // For now, dispatch the message by executing JavaScript that:
-        // 1. Deserializes the message data
-        // 2. Creates a MessageEvent
-        // 3. Dispatches it to onmessage
-        //
-        // TODO: Proper implementation would use V8 APIs directly to:
-        // - Deserialize using structured clone
-        // - Create MessageEvent object
-        // - Call onmessage handler
-
-        // Extract data based on serialized type
-        const data_js = switch (msg.data.type) {
+    /// The first message is treated as the initial script to execute.
+    /// Subsequent messages are dispatched as MessageEvents to onmessage.
+    pub fn dispatchMessage(self: *Self, msg: *const worker_threading.ThreadSafeMessageQueue.SerializedMessage) anyerror!void {
+        // Extract the string data from the message
+        const data_str = switch (msg.data.type) {
             .primitive => blk: {
                 switch (msg.data.data.primitive) {
+                    .string => |s| break :blk s,
                     .undefined => break :blk "undefined",
                     .null => break :blk "null",
                     .boolean => |b| break :blk if (b) "true" else "false",
-                    .string => |s| break :blk s,
                     else => {
                         std.log.warn("Unsupported primitive type in message", .{});
                         return;
@@ -211,8 +289,16 @@ pub const WorkerIsolateData = struct {
             },
         };
 
-        // Create JavaScript to dispatch the message
-        // This creates a MessageEvent and calls onmessage if it exists
+        // First message is the worker script to execute
+        if (!self.script_executed) {
+            self.script_executed = true;
+            std.log.info("Executing worker script ({d} bytes)", .{data_str.len});
+            try self.executeScript(data_str);
+            return;
+        }
+
+        // Subsequent messages are dispatched to onmessage handler
+        // Create JavaScript to dispatch the message as a MessageEvent
         var dispatch_script_buf: [4096]u8 = undefined;
         const dispatch_script = std.fmt.bufPrint(&dispatch_script_buf,
             \\(function() {{
@@ -222,7 +308,7 @@ pub const WorkerIsolateData = struct {
             \\    onmessage(event);
             \\  }}
             \\}})();
-        , .{data_js}) catch {
+        , .{data_str}) catch {
             return error.V8StringCreationFailed;
         };
 
