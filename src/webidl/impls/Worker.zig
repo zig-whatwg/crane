@@ -750,19 +750,21 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
     dispatchMessageEvent(instance, msg);
 }
 
-/// Dispatch a MessageEvent to the Worker's message handlers
+/// Dispatch a MessageEvent to the Worker's message handlers using EventTarget.dispatchEvent
 ///
-/// This creates a MessageEvent with the deserialized data and invokes:
-/// 1. All registered "message" event listeners (via addEventListener)
-/// 2. The onmessage EventHandler if set
+/// This creates a MessageEvent with the deserialized data and dispatches it through
+/// the DOM EventTarget system:
+/// 1. Create MessageEvent with proper data attribute
+/// 2. Set isTrusted to true (event is fired by the browser)
+/// 3. Dispatch via EventTarget.dispatchEvent (invokes addEventListener + onmessage)
 ///
 /// ## V8 Callback Invocation
 ///
 /// Event listeners are stored as CallbackWrapper instances that hold Global handles
-/// to JavaScript functions. We invoke them via CallbackWrapper.call1().
+/// to JavaScript functions. The event dispatch algorithm invokes them via the
+/// EventTarget infrastructure.
 ///
-/// The EventHandler (onmessage) is a tagged pointer to a V8 GlobalHandle that we
-/// invoke directly via v8_Function_Call.
+/// The legacy EventHandler (onmessage) is invoked after all event listeners.
 ///
 /// ## JSON Message Handling
 ///
@@ -771,6 +773,10 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
 /// 1. Extracts the JSON string from the SerializedValue
 /// 2. Parses it using V8's JSON.parse in the main context
 /// 3. Creates MessageEvent with the parsed value as data
+///
+/// ## Spec Reference
+/// HTML § 10.2.3: "Fire an event named message at the Worker object, using
+/// MessageEvent, with the data attribute initialized to the message."
 fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // Get internal state with GlobalHandle and isolate
     const internal = getInternal(instance) orelse return;
@@ -858,6 +864,14 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         // deserialized is a V8 handle from message channel deserialization
         event_state.own.data = runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(deserialized)));
 
+        // Set isTrusted to true since this event is fired by the browser
+        {
+            var ev_state = message_event.getState(MessageEvent.State);
+            ev_state.base.own.isTrusted = true;
+            ev_state.base.own.target = instance;
+            ev_state.base.own.currentTarget = instance;
+        }
+
         // Wrap and dispatch
         const v8_event = template_registry.wrapInstanceAsV8Object(
             message_event,
@@ -869,8 +883,13 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
             return;
         };
 
-        // Dispatch to all listeners and onmessage handler
-        invokeMessageListeners(instance, isolate, v8_context, v8_event, internal);
+        // Dispatch via EventTarget.dispatchEvent - this invokes addEventListener listeners
+        _ = EventTarget.call_dispatchEvent(instance, message_event) catch |err| {
+            std.log.warn("Failed to dispatch MessageEvent: {s}", .{@errorName(err)});
+        };
+
+        // Also invoke the legacy onmessage handler if set via IDL attribute
+        invokeLegacyOnmessageHandler(instance, isolate, v8_context, v8_event, internal);
         return;
     }
 
@@ -904,8 +923,14 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // The Global handle will be collected when the isolate is disposed.
     // TODO: Properly track and dispose this Global handle when MessageEvent is destroyed.
 
-    var event_state = message_event.getState(MessageEvent.State);
-    event_state.own.data = runtime.JSValue.fromHandle(@ptrCast(global_data));
+    {
+        var event_state = message_event.getState(MessageEvent.State);
+        event_state.own.data = runtime.JSValue.fromHandle(@ptrCast(global_data));
+        // Set isTrusted to true since this event is fired by the browser
+        event_state.base.own.isTrusted = true;
+        event_state.base.own.target = instance;
+        event_state.base.own.currentTarget = instance;
+    }
 
     // Wrap the MessageEvent instance as a V8 Object
     const v8_event = template_registry.wrapInstanceAsV8Object(
@@ -918,70 +943,48 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         return;
     };
 
-    // Dispatch to all listeners and onmessage handler
-    invokeMessageListeners(instance, isolate, v8_context, v8_event, internal);
+    // Dispatch via EventTarget.dispatchEvent - this invokes addEventListener listeners
+    // through the DOM event dispatch algorithm
+    _ = EventTarget.call_dispatchEvent(instance, message_event) catch |err| {
+        std.log.warn("Failed to dispatch MessageEvent: {s}", .{@errorName(err)});
+    };
+
+    // After dispatchEvent, also invoke the legacy onmessage handler if set via IDL attribute
+    // The EventTarget.dispatchEvent handles listeners registered via addEventListener,
+    // but we need to separately handle the legacy onXXX IDL attribute handler that
+    // is stored as a GlobalHandle in internal state.
+    invokeLegacyOnmessageHandler(instance, isolate, v8_context, v8_event, internal);
 }
 
-/// Invoke all registered "message" event listeners and the onmessage handler
+/// Invoke the legacy onmessage IDL attribute handler
 ///
-/// Per DOM spec, event listeners registered via addEventListener are invoked first,
-/// then the legacy event handler (onmessage) is invoked.
-fn invokeMessageListeners(
+/// Per HTML spec, the onXXX IDL event handlers are separate from addEventListener.
+/// The onmessage property stores a GlobalHandle to a JavaScript function.
+/// This function is called after EventTarget.dispatchEvent has handled all
+/// addEventListener-registered listeners.
+///
+/// Note: EventTarget.dispatchEvent already handles listeners registered via
+/// addEventListener, so this function only handles the legacy IDL attribute.
+fn invokeLegacyOnmessageHandler(
     instance: *runtime.Instance,
     isolate: *v8_engine.ffi.Isolate,
     v8_context: *v8_engine.ffi.Context,
     v8_event: *v8_engine.ffi.Object,
     internal: *InternalState,
 ) void {
-    // EventTargetImpl is imported at module level
-    const CallbackWrapper = v8_engine.CallbackWrapper;
+    _ = instance; // For future use with EventTarget internal state
 
-    // Step 1: Invoke registered "message" event listeners (from addEventListener)
-    if (EventTargetImpl.getInternalState(instance)) |et_internal| {
-        const listeners = et_internal.getEventListenerList();
-        for (listeners) |listener| {
-            // Check if listener is for "message" events and not removed
-            if (std.mem.eql(u8, listener.type.asSlice(), "message") and !listener.removed) {
-                // listener.callback is actually a *CallbackWrapper
-                if (listener.callback) |callback_instance| {
-                    const callback_wrapper: *CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-
-                    // NOTE: We can't use callback_wrapper.call1() here because v8_event is
-                    // already a Global<Object>*, and call1's v8_Value_ToGlobal() assumes
-                    // the argument is a Local handle. Instead, we directly invoke the V8
-                    // function using v8_Function_Call which expects Global handles.
-                    //
-                    // callback_function_global.ptr is already a Global<Function>*
-                    if (callback_wrapper.callback_function_global) |func_global| {
-                        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
-
-                        // Both func_global.ptr and v8_event are Global handles,
-                        // which is exactly what v8_Function_Call expects
-                        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-                        _ = v8_engine.ffi.v8_Function_Call(
-                            @ptrCast(func_global.ptr),
-                            v8_context,
-                            @ptrCast(undefined_recv),
-                            1,
-                            &args,
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    // Step 2: Invoke the onmessage handler if set
+    // Invoke the onmessage handler if set
     if (internal.onmessage_handle) |onmessage_global| {
         // Retrieve Local handle from Global handle
         const local_value = onmessage_global.get(isolate) orelse {
-            std.log.warn("Worker.invokeMessageListeners: Failed to get Local from GlobalHandle", .{});
+            std.log.warn("Worker.invokeLegacyOnmessageHandler: Failed to get Local from GlobalHandle", .{});
             return;
         };
 
         // Verify it's a function
         if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
-            std.log.warn("Worker.invokeMessageListeners: onmessage is not a function", .{});
+            std.log.warn("Worker.invokeLegacyOnmessageHandler: onmessage is not a function", .{});
             return;
         }
         const function: *v8_engine.ffi.Function = @ptrCast(local_value);
@@ -1062,5 +1065,134 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             // Post the serialized message (postMessageTyped will handle cleanup)
             try worker.postMessageTyped(&js_value, null);
         }
+    }
+}
+
+// ============================================================================
+// Error Event Dispatch
+// ============================================================================
+
+/// Dispatch an ErrorEvent to the Worker's error handlers
+///
+/// This creates an ErrorEvent and dispatches it through the DOM EventTarget system.
+/// Per HTML spec, if the error is not handled (event not canceled), it propagates
+/// to the parent context.
+///
+/// ## Spec Reference
+/// HTML § 10.2.3: "If the script has muted errors, then set message to 'Script error.',
+/// and mute error"
+/// HTML § 10.2.5: "If the error is not handled, fire an event named error at the
+/// Worker object."
+pub fn dispatchErrorEvent(
+    instance: *runtime.Instance,
+    message_text: []const u8,
+    filename: []const u8,
+    lineno: u32,
+    colno: u32,
+    error_value: ?*const anyopaque,
+) void {
+    // Get internal state
+    const internal = getInternal(instance) orelse return;
+    const ctx = internal.ctx orelse return;
+
+    // Get V8 context
+    const isolate = internal.isolate orelse return;
+    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
+
+    // Ensure we're in the correct isolate
+    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
+    const need_enter_isolate = (current_isolate == null) or (current_isolate != isolate);
+    if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Enter(isolate);
+    }
+    defer if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Exit(isolate);
+    };
+
+    // Create HandleScope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Enter context if needed
+    const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
+    const need_enter_context = (current_context == null) or (current_context != v8_context);
+    if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Enter(v8_context);
+    }
+    defer if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Exit(v8_context);
+    };
+
+    // Import ErrorEvent interface and its impl
+    const ErrorEvent = interfaces.ErrorEvent;
+    const ErrorEventImpl = @import("ErrorEvent.zig");
+
+    // Create ErrorEvent
+    const error_event = ErrorEventImpl.createErrorEvent(
+        ctx.allocator,
+        ctx,
+        message_text,
+        filename,
+        lineno,
+        colno,
+        error_value,
+        true, // cancelable
+    ) catch |err| {
+        std.log.warn("Failed to create ErrorEvent: {s}", .{@errorName(err)});
+        return;
+    };
+
+    // Set isTrusted since this event is fired by the browser
+    {
+        var ev_state = error_event.getState(ErrorEvent.State);
+        ev_state.base.own.isTrusted = true;
+        ev_state.base.own.target = instance;
+        ev_state.base.own.currentTarget = instance;
+    }
+
+    // Dispatch via EventTarget.dispatchEvent
+    const not_canceled = EventTarget.call_dispatchEvent(instance, error_event) catch |err| {
+        std.log.warn("Failed to dispatch ErrorEvent: {s}", .{@errorName(err)});
+        return;
+    };
+
+    // Also invoke the legacy onerror handler if set via IDL attribute
+    if (internal.onerror_handle) |onerror_global| {
+        // Wrap the ErrorEvent as a V8 Object
+        const v8_event = template_registry.wrapInstanceAsV8Object(
+            error_event,
+            "ErrorEvent",
+            isolate,
+            v8_context,
+        ) catch |err| {
+            std.log.warn("Failed to wrap ErrorEvent as V8 object: {s}", .{@errorName(err)});
+            return;
+        };
+
+        // Retrieve Local handle from Global handle
+        const local_value = onerror_global.get(isolate) orelse {
+            std.log.warn("Worker.dispatchErrorEvent: Failed to get Local from GlobalHandle", .{});
+            return;
+        };
+
+        // Verify it's a function
+        if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+            std.log.warn("Worker.dispatchErrorEvent: onerror is not a function", .{});
+            return;
+        }
+        const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+
+        // Call the V8 function with the ErrorEvent as argument
+        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+        _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+    }
+
+    // Per spec: If the error event is not canceled, it should propagate to the parent
+    // For now, we log it - in a full implementation, this would bubble to Window.onerror
+    if (not_canceled) {
+        std.log.warn("Unhandled worker error: {s} at {s}:{d}:{d}", .{
+            message_text, filename, lineno, colno,
+        });
     }
 }

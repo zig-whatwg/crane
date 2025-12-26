@@ -150,6 +150,13 @@ pub const WorkerIsolateData = struct {
 
     /// Set up worker global scope with essential APIs
     fn setupWorkerGlobals(self: *Self) !void {
+        // CRITICAL: Set up 'self' as alias for globalThis FIRST
+        // This must come before any script that references 'self'
+        const self_script =
+            \\self = globalThis;
+        ;
+        try self.executeScript(self_script);
+
         // Set up GLOBAL object for WPT tests (testharness.js detection)
         const global_script =
             \\self.GLOBAL = {
@@ -226,6 +233,17 @@ pub const WorkerIsolateData = struct {
             \\};
         ;
         try self.executeScript(messageevent_script);
+
+        // Set up importScripts stub
+        // For threaded workers, this is a stub - proper implementation would
+        // need to synchronously fetch and execute external scripts
+        const importscripts_script =
+            \\globalThis.importScripts = function(...urls) {
+            \\  // TODO: Implement proper script fetching
+            \\  console.log('[Worker] importScripts called with:', urls);
+            \\};
+        ;
+        try self.executeScript(importscripts_script);
     }
 
     /// Clean up V8 isolate and context

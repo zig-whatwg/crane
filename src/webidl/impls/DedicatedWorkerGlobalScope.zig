@@ -13,7 +13,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
+const EventTarget = interfaces.EventTarget;
+const MessageEvent = interfaces.MessageEvent;
 
 // Import workers infrastructure
 const html_core = @import("html_core");
@@ -22,6 +25,13 @@ const DedicatedWorker = workers.DedicatedWorker;
 
 // Import structured clone for message passing
 const structured_clone = html_core.structured_clone;
+
+// Import V8 engine for callback invocation
+const v8_engine = @import("v8");
+const template_registry = v8_engine.template_registry;
+
+// Import EventTarget impl for internal state access
+const EventTargetImpl = @import("EventTarget.zig");
 
 pub const State = DedicatedWorkerGlobalScope.State;
 
@@ -212,22 +222,23 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 /// Dispatch a MessageEvent to this DedicatedWorkerGlobalScope
 ///
 /// This is called by the dedicated worker's inside port handler when a message
-/// arrives from the main thread.
+/// arrives from the main thread. Uses the DOM event dispatch algorithm via
+/// EventTarget.dispatchEvent.
 ///
 /// Spec: HTML Standard § 10.2.3
 /// "Queue a global task on the messaging task source... fire an event named
 /// message at the DedicatedWorkerGlobalScope object."
 pub fn dispatchMessageEvent(instance: *runtime.Instance, serialized_data: *structured_clone.SerializedValue, origin: ?[]const u8) anyerror!void {
     const state = instance.getState(State);
-    const MessageEvent = interfaces.MessageEvent;
+    const allocator = if (state.own._internal) |internal| internal.allocator else return error.NotInitialized;
 
     // Deserialize the message data
     const deserialized = structured_clone.structuredDeserialize(
-        state.own._internal.?.allocator,
+        allocator,
         serialized_data,
     ) catch {
         // If deserialization fails, we should fire 'messageerror' instead
-        // For now, just return error
+        // TODO: Implement messageerror event dispatch
         return error.DeserializationFailed;
     };
 
@@ -245,27 +256,77 @@ pub fn dispatchMessageEvent(instance: *runtime.Instance, serialized_data: *struc
         .ports = null,
     };
 
-    // Create MessageEvent
-    var event = try MessageEvent.call_constructor(
-        state.own._internal.?.allocator,
+    // Create MessageEvent via interface
+    const event = try MessageEvent.call_constructor(
         instance.ctx,
         runtime.DOMString.initInterned("message"),
-        .{ .was_passed = true, .value = init_dict },
+        webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
     );
-    defer runtime.Instance.deinit(event);
 
-    // Get the onmessage handler and invoke it
-    // TODO: Invoke the EventHandler callback with the event
-    // This requires the runtime to support callback invocation
-    // For now, the event is created but not dispatched to JavaScript
-    //
-    // In a full implementation:
-    // 1. Get the EventHandler from state.own.onmessage
-    // 2. Create a V8 callback invocation
-    // 3. Call the handler with the MessageEvent
-    //
-    // Mark event as used to avoid compiler warning
-    event.ctx = event.ctx;
+    // Set isTrusted and target/currentTarget
+    {
+        var ev_state = event.getState(MessageEvent.State);
+        ev_state.base.own.isTrusted = true;
+        ev_state.base.own.target = instance;
+        ev_state.base.own.currentTarget = instance;
+    }
+
+    // Dispatch via EventTarget.dispatchEvent
+    // This invokes all addEventListener-registered listeners
+    _ = EventTarget.call_dispatchEvent(instance, event) catch |err| {
+        std.log.warn("Failed to dispatch MessageEvent to worker scope: {s}", .{@errorName(err)});
+    };
+
+    // Also invoke the legacy onmessage handler if set via IDL attribute
+    invokeLegacyOnmessageHandler(instance, event);
+}
+
+/// Invoke the legacy onmessage IDL attribute handler
+///
+/// Per HTML spec, the onXXX IDL event handlers are separate from addEventListener.
+/// The onmessage property is stored in state.own.onmessage as an EventHandler
+/// (which is a tagged pointer to a GlobalHandle).
+fn invokeLegacyOnmessageHandler(instance: *runtime.Instance, event: *runtime.Instance) void {
+    const state = instance.getState(State);
+
+    // Get the onmessage handler
+    const handler = state.own.onmessage orelse return;
+
+    // Get V8 context from the event's runtime context
+    const engine_ctx = event.ctx.engine_ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // Create HandleScope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Untag the pointer to get the GlobalHandle
+    const untagged = v8_engine.pointer_tag.untagPointer(handler);
+    if (untagged.tag != .global_handle and untagged.tag != .untagged) {
+        return; // Not a V8 callback
+    }
+
+    const global_handle = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+    const local_value = global_handle.get(v8_isolate) orelse return;
+
+    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+        return;
+    }
+    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+
+    // Wrap the event as a V8 object
+    const v8_event = template_registry.wrapInstanceAsV8Object(
+        event,
+        "MessageEvent",
+        v8_isolate,
+        v8_context,
+    ) catch return;
+
+    // Call the handler
+    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate);
+    var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+    _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
 }
 
 /// Wire up the message handler on the dedicated worker's inside port
