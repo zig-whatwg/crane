@@ -102,21 +102,43 @@ fn asyncFetchCompletionCallback(result: AsyncResult, user_data: ?*anyopaque) voi
             ctx.engine.resolvePromise(ctx.engine_ctx, ctx.promise_handle, js_response) catch {};
         },
         .failure => |net_error| {
-            std.debug.print("[Fetch] Async FAILURE: {s}\n", .{@errorName(net_error)});
+            // Log the network error with category for debugging
+            const category = switch (net_error) {
+                error.Aborted => "ABORTED",
+                error.ConnectionRefused, error.ConnectionReset, error.ConnectionTimeout => "CONNECTION",
+                error.DnsResolutionFailed, error.HostUnreachable, error.NetworkUnreachable => "NETWORK",
+                error.InvalidUrl => "URL_FORMAT",
+                error.RequestTimeout => "TIMEOUT",
+                error.SslCertificateError, error.SslHandshakeFailed => "TLS",
+                error.TooManyRedirects => "REDIRECT",
+                error.ProtocolError => "PROTOCOL/CONFIG",
+                error.OutOfMemory => "MEMORY",
+                error.Unknown => "UNKNOWN",
+            };
+            std.debug.print("[Fetch] Async FAILURE: {s} (category: {s})\n", .{ @errorName(net_error), category });
 
-            // Map network error to fetch error
+            // Map network error to fetch error per WHATWG Fetch spec
+            // Spec: https://fetch.spec.whatwg.org/#concept-network-error
             const fetch_error: anyerror = switch (net_error) {
+                // AbortError: fetch was aborted by user/signal
                 error.Aborted => error.AbortError,
+                // NetworkError: general network failures (connection, DNS, TLS)
                 error.ConnectionRefused, error.ConnectionReset, error.ConnectionTimeout => error.NetworkError,
                 error.DnsResolutionFailed, error.HostUnreachable, error.NetworkUnreachable => error.NetworkError,
-                error.InvalidUrl => error.TypeError,
                 error.RequestTimeout => error.NetworkError,
                 error.SslCertificateError, error.SslHandshakeFailed => error.NetworkError,
                 error.TooManyRedirects => error.NetworkError,
+                // TypeError: malformed URL (spec says reject with TypeError for bad URLs)
+                error.InvalidUrl => error.TypeError,
+                // ProtocolError: could be config issue (bad params) or protocol mismatch
+                // Map to NetworkError since it's a network-level issue
                 error.ProtocolError => error.NetworkError,
+                // OutOfMemory: propagate as-is
                 error.OutOfMemory => error.OutOfMemory,
+                // Unknown: catch-all for unexpected errors
                 error.Unknown => error.NetworkError,
             };
+            std.debug.print("[Fetch] Rejecting with: {s}\n", .{@errorName(fetch_error)});
             ctx.engine.rejectPromise(ctx.engine_ctx, ctx.promise_handle, fetch_error) catch {};
         },
     }
