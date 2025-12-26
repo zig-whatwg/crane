@@ -70,6 +70,9 @@ const RequestContext = struct {
     aborted: std.atomic.Value(bool),
     /// Back-reference to manager for cleanup
     manager: *AsyncCurlManager,
+    /// Null-terminated URL string that must remain valid for the duration of the request.
+    /// Curl's CURLOPT_URL requires the string to stay valid until the request completes.
+    url_z: ?[:0]u8,
 
     fn init(
         allocator: Allocator,
@@ -90,12 +93,17 @@ const RequestContext = struct {
             .cancelled = false,
             .aborted = std.atomic.Value(bool).init(false),
             .manager = manager,
+            .url_z = null,
         };
     }
 
     fn deinit(self: *RequestContext) void {
         self.response_body.deinit(self.allocator);
         self.raw_headers.deinit(self.allocator);
+        // Free the URL string that was kept alive for the request duration
+        if (self.url_z) |url| {
+            self.allocator.free(url);
+        }
     }
 };
 
@@ -357,9 +365,12 @@ pub const AsyncCurlManager = struct {
     fn configureRequest(self: *Self, handle: *curl.CURL, request: *const NetworkRequest, ctx: *RequestContext) !void {
         _ = self;
 
-        // URL (must be null-terminated)
+        // URL (must be null-terminated and remain valid for the entire request duration)
+        // Store in context so it's freed in deinit() after the request completes.
+        // Per curl documentation: "The string pointed to in the CURLOPT_URL argument
+        // must remain VALID until the transfer finishes."
         const url_z = try ctx.allocator.dupeZ(u8, request.url);
-        defer ctx.allocator.free(url_z);
+        ctx.url_z = url_z;
 
         // Debug logging (always enabled - use -Ddebug=true -Ddebug-scope=fetch to filter)
         std.debug.print("[AsyncCurl] configureRequest URL: {s}\n", .{request.url});
