@@ -28,6 +28,8 @@
 //! - `--parallel=N` - Number of parallel test runners
 //! - `--limit=N` - Run only the first N test files (useful for quick iteration)
 //! - `--pattern=GLOB` - Only run tests matching glob pattern (e.g., "*constructor*")
+//! - `--timeout-multiplier=N` - Multiply all timeouts by N (e.g., 2.0 for slow CI)
+//! - `--exclude=PATTERN` - Exclude tests matching glob pattern (can be used multiple times)
 
 const std = @import("std");
 const config = @import("config.zig");
@@ -83,11 +85,16 @@ pub const Options = struct {
     limit: usize = 0,
     /// Glob pattern to filter test names (e.g., "*constructor*")
     pattern: ?[]const u8 = null,
+    /// Timeout multiplier (1.0 = normal, 2.0 = double, etc.)
+    timeout_multiplier: f32 = 1.0,
+    /// Exclusion patterns (applied after includes)
+    excludes: std.ArrayList([]const u8),
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
             .filters = .{},
             .specific_files = .{},
+            .excludes = .{},
             .allocator = allocator,
         };
     }
@@ -101,6 +108,27 @@ pub const Options = struct {
             self.allocator.free(f);
         }
         self.specific_files.deinit(self.allocator);
+        for (self.excludes.items) |e| {
+            self.allocator.free(e);
+        }
+        self.excludes.deinit(self.allocator);
+    }
+
+    /// Get adjusted timeout in milliseconds based on timeout_multiplier
+    pub fn getAdjustedTimeout(self: Options, base_timeout: config.Timeout) u64 {
+        const base_ms: f64 = @floatFromInt(base_timeout.toMillis());
+        const adjusted: u64 = @intFromFloat(base_ms * self.timeout_multiplier);
+        return if (adjusted > 0) adjusted else 1; // Minimum 1ms
+    }
+
+    /// Check if a path matches any exclusion pattern
+    pub fn isExcluded(self: Options, test_path: []const u8) bool {
+        for (self.excludes.items) |exclude_pattern| {
+            if (globMatch(test_path, exclude_pattern) or globMatch(std.fs.path.basename(test_path), exclude_pattern)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// Check if a test path matches the filters
@@ -267,6 +295,12 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             options.limit = std.fmt.parseInt(usize, value, 10) catch 0;
         } else if (std.mem.startsWith(u8, arg, "--pattern=")) {
             options.pattern = arg["--pattern=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--timeout-multiplier=")) {
+            const value = arg["--timeout-multiplier=".len..];
+            options.timeout_multiplier = std.fmt.parseFloat(f32, value) catch 1.0;
+        } else if (std.mem.startsWith(u8, arg, "--exclude=")) {
+            const pattern = arg["--exclude=".len..];
+            try options.excludes.append(allocator, try allocator.dupe(u8, pattern));
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
@@ -359,7 +393,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
         const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
         defer allocator.free(full_path);
 
-        try scanDirectory(allocator, &result, options.wpt_root, full_path, clean_dir, options.pattern);
+        try scanDirectory(allocator, &result, options.wpt_root, full_path, clean_dir, options.pattern, options);
 
         // Check if we've hit the limit
         if (options.limit > 0 and result.test_files.items.len >= options.limit) {
@@ -387,6 +421,7 @@ fn scanDirectory(
     full_path: []const u8,
     relative_path: []const u8,
     pattern: ?[]const u8,
+    options: Options,
 ) !void {
     var dir = std.fs.cwd().openDir(full_path, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) {
@@ -415,15 +450,21 @@ fn scanDirectory(
             }
 
             // Recurse into subdirectory
-            try scanDirectory(allocator, result, wpt_root, full_entry_path, entry_path, pattern);
+            try scanDirectory(allocator, result, wpt_root, full_entry_path, entry_path, pattern, options);
         } else if (entry.kind == .file) {
             // Check if this is a test file
             const file_type = config.FileType.fromPath(entry.name);
             if (file_type == .unknown) continue;
 
-            // Check if excluded
+            // Check if excluded by config patterns
             if (config.isExcluded(entry_path)) {
                 try result.addSkipped(entry_path, "excluded by pattern");
+                continue;
+            }
+
+            // Check if excluded by CLI --exclude patterns
+            if (options.isExcluded(entry_path)) {
+                try result.addSkipped(entry_path, "excluded by --exclude");
                 continue;
             }
 
@@ -947,15 +988,18 @@ pub fn executeTests(
             else
                 null;
 
+            // Calculate adjusted timeout based on multiplier
+            const timeout_ms = options.getAdjustedTimeout(parsed.metadata.timeout);
+
             // Execute test in this context
             const test_result = executeTestFileInContext(
                 allocator,
                 test_file,
                 browser,
                 global_context,
-                &parsed,
                 context_name,
                 server,
+                timeout_ms,
             ) catch |err| {
                 // Create error result with stack trace and context
                 var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
@@ -1021,14 +1065,15 @@ pub fn executeTests(
 /// This function is called once per context (e.g., window, worker) for each test file.
 /// File content and parsed metadata are passed in to avoid re-loading/re-parsing.
 /// context_name is the string to include in results (null for single-context tests).
+/// timeout_ms is the adjusted timeout in milliseconds (after applying timeout_multiplier).
 fn executeTestFileInContext(
     allocator: std.mem.Allocator,
     test_file: TestFile,
     browser: *browser_adapter.BrowserAdapter,
     context: test_parser.GlobalType,
-    parsed: *test_parser.ParsedTest,
     context_name: ?[]const u8,
     server: *wpt_server.WptServer,
+    timeout_ms: u64,
 ) !test_harness.TestResult {
     // For HTML files, fetch from HTTP server and let the browser handle it properly
     // This enables proper resource loading via wpt serve (URL rewrites, headers, etc.)
@@ -1039,7 +1084,7 @@ fn executeTestFileInContext(
 
         // Fetch and run from HTTP URL
         // The wpt serve handles proper resource serving (testharness.js, etc.)
-        var result = try browser.runTestFromUrl(test_url, test_file.path, parsed.metadata.timeout, .window);
+        var result = try browser.runTestFromUrl(test_url, test_file.path, timeout_ms, .window);
 
         // HTML tests are single-context, so context_name should be null
         // But if it's provided (shouldn't happen), we need to set it
@@ -1059,7 +1104,7 @@ fn executeTestFileInContext(
     defer allocator.free(test_url);
 
     // Fetch and run from HTTP URL
-    var result = try browser.runTestFromUrl(test_url, test_file.path, parsed.metadata.timeout, context);
+    var result = try browser.runTestFromUrl(test_url, test_file.path, timeout_ms, context);
 
     // Set the context name for multi-context tests
     if (context_name) |ctx| {
@@ -1213,6 +1258,43 @@ test "parseArgs with specific file" {
     try testing.expectEqual(@as(usize, 0), options.filters.items.len);
     try testing.expectEqual(@as(usize, 1), options.specific_files.items.len);
     try testing.expectEqualStrings("url/url-constructor.any.js", options.specific_files.items[0]);
+}
+
+test "parseArgs with timeout-multiplier" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--timeout-multiplier=2.5", "url/" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(f32, 2.5), options.timeout_multiplier);
+    try testing.expectEqual(@as(usize, 1), options.filters.items.len);
+
+    // Test getAdjustedTimeout
+    const normal_timeout = options.getAdjustedTimeout(.normal); // 10000ms * 2.5 = 25000ms
+    try testing.expectEqual(@as(u64, 25000), normal_timeout);
+
+    const long_timeout = options.getAdjustedTimeout(.long); // 60000ms * 2.5 = 150000ms
+    try testing.expectEqual(@as(u64, 150000), long_timeout);
+}
+
+test "parseArgs with exclude patterns" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--exclude=*-manual*", "--exclude=*/slow/*", "url/" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(usize, 2), options.excludes.items.len);
+    try testing.expectEqualStrings("*-manual*", options.excludes.items[0]);
+    try testing.expectEqualStrings("*/slow/*", options.excludes.items[1]);
+
+    // Test isExcluded
+    try testing.expect(options.isExcluded("url/test-manual.html"));
+    try testing.expect(options.isExcluded("url/slow/test.html"));
+    try testing.expect(!options.isExcluded("url/test.any.js"));
 }
 
 test "isTestFile" {

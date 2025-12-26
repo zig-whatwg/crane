@@ -201,12 +201,11 @@ pub const BrowserAdapter = struct {
         self: *BrowserAdapter,
         test_path: []const u8,
         html_content: []const u8,
-        timeout: config.Timeout,
+        timeout_ms: u64,
         context_type: test_parser.GlobalType,
         base_url: []const u8,
     ) !test_harness.TestResult {
         const ctx_type = mapContextType(context_type);
-        const timeout_ms = timeout.toMillis();
 
         const result = self.wpt_browser.runHTMLTest(
             test_path,
@@ -246,7 +245,7 @@ pub const BrowserAdapter = struct {
         self: *BrowserAdapter,
         test_url: []const u8,
         test_path: []const u8,
-        timeout: config.Timeout,
+        timeout_ms: u64,
         context_type: test_parser.GlobalType,
     ) !test_harness.TestResult {
         _ = context_type; // URL already encodes the context (e.g., .any.worker.html)
@@ -288,6 +287,6 @@ pub const BrowserAdapter = struct {
         // Always parse HTML in window context - the URL determines the actual test context
         // (e.g., .any.worker.html will spawn a Worker internally)
         // Pass the full URL as base_url so relative script URLs can be resolved
-        return self.runHTMLTestWithBaseUrl(test_path, fetch_result.body, timeout, .window, test_url);
+        return self.runHTMLTestWithBaseUrl(test_path, fetch_result.body, timeout_ms, .window, test_url);
     }
 };

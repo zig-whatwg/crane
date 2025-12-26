@@ -176,6 +176,7 @@ const WorkerContext = struct {
     progress: *ProgressCounters,
     wpt_root: []const u8,
     server: *wpt_server.WptServer,
+    timeout_multiplier: f32,
 };
 
 /// Worker thread function
@@ -190,7 +191,7 @@ fn workerFn(ctx: *WorkerContext) void {
     // Process work items until queue is empty
     while (ctx.work_queue.getNext()) |item| {
         // Execute the test
-        const result = executeWorkItem(ctx.allocator, browser, item, ctx.server) catch |err| {
+        const result = executeWorkItem(ctx.allocator, browser, item, ctx.server, ctx.timeout_multiplier) catch |err| {
             // Create error result
             var error_result = test_harness.TestResult.init(ctx.allocator, item.test_file.path) catch continue;
             error_result.status = .@"error";
@@ -233,13 +234,19 @@ fn executeWorkItem(
     browser: *browser_adapter.BrowserAdapter,
     item: *WorkItem,
     server: *wpt_server.WptServer,
+    timeout_multiplier: f32,
 ) !test_harness.TestResult {
     // Build test URL
     const test_url = try server.buildTestUrl(allocator, item.test_file.path, item.context);
     defer allocator.free(test_url);
 
+    // Calculate adjusted timeout
+    const base_ms: f64 = @floatFromInt(item.metadata.timeout.toMillis());
+    const adjusted_ms: u64 = @intFromFloat(base_ms * timeout_multiplier);
+    const timeout_ms = if (adjusted_ms > 0) adjusted_ms else 1; // Minimum 1ms
+
     // Run test from URL
-    var result = try browser.runTestFromUrl(test_url, item.test_file.path, item.metadata.timeout, item.context);
+    var result = try browser.runTestFromUrl(test_url, item.test_file.path, timeout_ms, item.context);
 
     // Set context name for multi-context tests
     if (item.context_name) |ctx_name| {
@@ -282,6 +289,7 @@ pub fn executeTestsParallel(
             .progress = &progress,
             .wpt_root = options.wpt_root,
             .server = server,
+            .timeout_multiplier = options.timeout_multiplier,
         };
     }
 
