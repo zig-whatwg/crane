@@ -68,6 +68,12 @@ const WindowImpl = @import("Window.zig");
 const v8_engine = @import("v8");
 const template_registry = v8_engine.template_registry;
 
+// Import threading infrastructure for worker execution
+const WorkerThreadRunner = workers.WorkerThreadRunner;
+const ThreadedWorkerManager = workers.ThreadedWorkerManager;
+const WorkerV8Integration = workers.WorkerV8Integration;
+const WorkerThreadState = workers.WorkerThreadState;
+
 pub const State = Worker.State;
 
 pub const ImplError = error{
@@ -133,13 +139,24 @@ pub const InternalState = struct {
     /// Document origin for worker script URL resolution (stored for deferred creation)
     document_origin: ?[]const u8 = null,
 
+    /// Thread runner for threaded worker execution (used instead of same-thread V8 context)
+    thread_runner: ?*WorkerThreadRunner = null,
+
+    /// Whether to use threaded execution (true = spawn OS thread, false = same-thread)
+    use_threading: bool = true,
+
     pub fn deinit(self: *InternalState) void {
         // Dispose V8 Global handles to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
         v8_engine.disposeOptionalGlobalHandle(&self.onerror_handle);
         v8_engine.disposeOptionalGlobalHandle(&self.onmessageerror_handle);
 
-        // Clean up V8 context first (it uses the dedicated_worker's WorkerContext)
+        // Clean up thread runner first (it owns the worker thread)
+        if (self.thread_runner) |runner| {
+            runner.deinit();
+        }
+
+        // Clean up V8 context (for same-thread mode)
         if (self.v8_context) |v8_ctx| {
             v8_ctx.deinit();
         }
@@ -495,36 +512,113 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 
 /// Timer callback for executing the worker script (deferred from constructor)
 ///
-/// CRITICAL: Worker script execution is deferred to this callback to avoid
-/// HandleScope corruption. Entering/exiting the worker isolate during the
-/// constructor disrupts the main isolate's HandleScope state.
+/// CRITICAL: Worker script execution MUST happen on a SEPARATE THREAD to avoid
+/// HandleScope corruption. V8 isolates cannot be safely switched on the same thread
+/// during active JavaScript execution.
 ///
-/// This callback runs after:
-/// 1. The constructor returns and V8 has wrapped the instance
-/// 2. JavaScript continues (fetch_tests_from_worker sets up handlers)
-/// 3. The event loop runs this scheduled task
+/// This callback spawns a worker thread using WorkerThreadRunner, which:
+/// 1. Creates V8 isolate ON THE WORKER THREAD (not main thread)
+/// 2. Executes the worker script on the worker thread
+/// 3. Uses thread-safe message queues for postMessage
 fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
     const internal = getInternal(instance) orelse return;
+
+    // Check if we should use threading (default: true)
+    if (internal.use_threading) {
+        // Use the threading infrastructure - creates V8 isolate on worker thread
+        spawnWorkerThread(internal) catch |err| {
+            std.log.warn("Worker: Failed to spawn worker thread: {}, falling back to sync", .{err});
+            // Fall back to synchronous execution if threading fails
+            executeSyncFallback(internal, instance);
+        };
+    } else {
+        // Synchronous fallback (still has HandleScope issues, but useful for testing)
+        executeSyncFallback(internal, instance);
+    }
+}
+
+/// Spawn worker on a separate thread using WorkerThreadRunner
+///
+/// This is the correct approach - V8 isolate creation happens ON THE WORKER THREAD,
+/// completely avoiding HandleScope corruption on the main thread.
+fn spawnWorkerThread(internal: *InternalState) !void {
+    const script_url = internal.pending_script_url orelse internal.script_url;
+    const script = internal.pending_script orelse return error.NoScript;
+
+    // Create thread state with worker configuration
+    const thread_state = try WorkerThreadState.init(
+        internal.allocator,
+        script_url,
+        .{
+            .worker_type = internal.worker_type,
+            .name = internal.name,
+        },
+    );
+
+    // Create the thread runner
+    var runner = try WorkerThreadRunner.init(internal.allocator, thread_state);
+
+    // Set up V8 callbacks - these run ON THE WORKER THREAD
+    runner.setCallbacks(
+        WorkerV8Integration.createIsolateCallback(),
+        WorkerV8Integration.disposeIsolateCallback(),
+        WorkerV8Integration.executeScriptCallback(),
+        WorkerV8Integration.dispatchMessageCallback(),
+        null, // No callback context needed
+    );
+
+    // Store the runner for later cleanup and message passing
+    internal.thread_runner = runner;
+
+    // Spawn the worker thread - V8 isolate is created ON THE WORKER THREAD
+    try runner.spawn();
+
+    // Send the script to the worker thread for execution
+    // The worker thread will execute it after creating its V8 context
+    const js_value = structured_clone.JSValue{ .string = script };
+    const serialized = try structured_clone.structuredSerialize(
+        internal.allocator,
+        &js_value,
+    );
+
+    // Create a SerializedMessage on the heap for cross-thread transfer
+    const msg = internal.allocator.create(workers.ThreadSafeMessageQueue.SerializedMessage) catch return;
+    msg.* = .{
+        .data = serialized.*,
+        .transfers = null,
+        .allocator = internal.allocator,
+    };
+    thread_state.inbox.enqueue(msg) catch {
+        msg.deinit();
+        return;
+    };
+
+    // Free the pending script now that we've sent it
+    if (internal.pending_script) |s| {
+        internal.allocator.free(s);
+        internal.pending_script = null;
+    }
+    if (internal.pending_script_url) |url| {
+        internal.allocator.free(url);
+        internal.pending_script_url = null;
+    }
+}
+
+/// Synchronous fallback - still has HandleScope issues but useful for testing
+fn executeSyncFallback(internal: *InternalState, instance: *runtime.Instance) void {
     const dedicated_worker = internal.dedicated_worker orelse return;
 
-    // STEP 1: Start the worker context if not yet started
-    // This is deferred from the constructor to avoid corrupting the main thread's
-    // HandleScope state. We're now in a timer callback with clean V8 state.
-    //
-    // Architecture:
-    // - DedicatedWorker.startWithContext() creates a WorkerContext (event loop, state)
-    // - WorkerV8Context.init() creates the V8 isolate and context
-    // - setEngineContext() wires the V8 context into the WorkerContext
+    // Start the worker context if not yet started
     if (!dedicated_worker.hasContext()) {
-        // Step 1a: Create the WorkerContext (event loop infrastructure)
         dedicated_worker.startWithContext() catch |err| {
             std.log.warn("Worker: Failed to start worker context: {}", .{err});
             return;
         };
     }
 
-    // Step 1b: Create V8 context if not yet created
+    // Create V8 context if not yet created
+    // WARNING: This corrupts HandleScope state on the main thread!
     if (internal.v8_context == null) {
         const script_url = internal.pending_script_url orelse internal.script_url;
 
@@ -538,33 +632,28 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
         };
         internal.v8_context = v8_context;
 
-        // Step 1c: Wire up the V8 context to the WorkerContext
+        // Wire up the V8 context to the WorkerContext
         if (dedicated_worker.agent.worker_context) |wctx| {
             wctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
         }
 
-        // Step 1d: Set up DedicatedWorkerGlobalScope with proper globals
-        // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
+        // Set up DedicatedWorkerGlobalScope
         v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
             std.log.warn("Worker: Failed to set up worker global scope: {}", .{err});
             return;
         };
 
-        // Free the pending script URL now that we've used it
+        // Free the pending script URL
         if (internal.pending_script_url) |url| {
             internal.allocator.free(url);
             internal.pending_script_url = null;
         }
     }
 
-    // STEP 2: Execute worker script
-    //
-    // CRITICAL: After this call, V8's HandleScope state is corrupted because
-    // executeWorkerScriptSync enters/exits the worker isolate. We MUST NOT
-    // do any V8 operations here.
+    // Execute worker script
     const has_messages = executeWorkerScriptSync(internal);
 
-    // If there are messages to dispatch, schedule another timer callback.
+    // Schedule message dispatch if needed
     if (has_messages) {
         if (internal.ctx) |ctx| {
             if (ctx.timer) |timer| {

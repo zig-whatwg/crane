@@ -108,7 +108,7 @@ pub const ThreadSafeMessageQueue = struct {
 
     pub fn init(allocator: Allocator) Self {
         return .{
-            .queue = std.ArrayList(*SerializedMessage).init(allocator),
+            .queue = .{},
             .mutex = .{},
             .condition = .{},
             .closed = false,
@@ -124,7 +124,7 @@ pub const ThreadSafeMessageQueue = struct {
         for (self.queue.items) |msg| {
             msg.deinit();
         }
-        self.queue.deinit();
+        self.queue.deinit(self.allocator);
     }
 
     /// Enqueue a message (thread-safe)
@@ -138,7 +138,7 @@ pub const ThreadSafeMessageQueue = struct {
             return WorkerError.WorkerClosing;
         }
 
-        try self.queue.append(message);
+        try self.queue.append(self.allocator, message);
 
         // Signal any waiting readers
         self.condition.signal();
@@ -344,6 +344,10 @@ pub const WorkerThreadRunner = struct {
     /// Signature: fn(*anyopaque, []const u8, []const u8) anyerror!void
     execute_script_fn: ?ExecuteScriptFn,
 
+    /// Callback to dispatch a message to the worker's onmessage handler
+    /// Signature: fn(*anyopaque, *SerializedMessage) anyerror!void
+    dispatch_message_fn: ?DispatchMessageFn,
+
     /// Callback context for V8 operations
     callback_context: ?*anyopaque,
 
@@ -353,6 +357,7 @@ pub const WorkerThreadRunner = struct {
     pub const CreateIsolateFn = *const fn (*WorkerThreadState, Allocator) anyerror!*anyopaque;
     pub const DisposeIsolateFn = *const fn (*anyopaque) void;
     pub const ExecuteScriptFn = *const fn (*anyopaque, []const u8, []const u8) anyerror!void;
+    pub const DispatchMessageFn = *const fn (*anyopaque, *ThreadSafeMessageQueue.SerializedMessage) anyerror!void;
 
     pub fn init(
         allocator: Allocator,
@@ -365,6 +370,7 @@ pub const WorkerThreadRunner = struct {
             .create_isolate_fn = null,
             .dispose_isolate_fn = null,
             .execute_script_fn = null,
+            .dispatch_message_fn = null,
             .callback_context = null,
         };
         return runner;
@@ -380,11 +386,13 @@ pub const WorkerThreadRunner = struct {
         create_isolate: CreateIsolateFn,
         dispose_isolate: DisposeIsolateFn,
         execute_script: ExecuteScriptFn,
+        dispatch_message: ?DispatchMessageFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
         self.dispose_isolate_fn = dispose_isolate;
         self.execute_script_fn = execute_script;
+        self.dispatch_message_fn = dispatch_message;
         self.callback_context = context;
     }
 
@@ -470,19 +478,21 @@ pub const WorkerThreadRunner = struct {
 
             // Small sleep to avoid busy-waiting
             // In a production system, this would use proper event notification
-            std.time.sleep(1_000_000); // 1ms
+            std.Thread.sleep(1_000_000); // 1ms
         }
     }
 
     /// Handle an incoming message from the main thread
     fn handleIncomingMessage(self: *Self, isolate: ?*anyopaque, msg: *ThreadSafeMessageQueue.SerializedMessage) void {
-        _ = self;
-        _ = isolate;
-        _ = msg;
-        // TODO: Dispatch message event to WorkerGlobalScope
-        // 1. Deserialize the message
-        // 2. Create MessageEvent
-        // 3. Dispatch to 'onmessage' handler
+        // Dispatch message to worker's onmessage handler via V8 callback
+        if (self.dispatch_message_fn) |dispatch_fn| {
+            if (isolate) |iso| {
+                dispatch_fn(iso, msg) catch |err| {
+                    // Log error but continue processing other messages
+                    std.log.err("Failed to dispatch message to worker: {}", .{err});
+                };
+            }
+        }
     }
 
     /// Set error message (thread-safe via mutex)
@@ -512,6 +522,7 @@ pub const ThreadedWorkerManager = struct {
     create_isolate_fn: ?WorkerThreadRunner.CreateIsolateFn,
     dispose_isolate_fn: ?WorkerThreadRunner.DisposeIsolateFn,
     execute_script_fn: ?WorkerThreadRunner.ExecuteScriptFn,
+    dispatch_message_fn: ?WorkerThreadRunner.DispatchMessageFn,
     callback_context: ?*anyopaque,
 
     const Self = @This();
@@ -524,6 +535,7 @@ pub const ThreadedWorkerManager = struct {
             .create_isolate_fn = null,
             .dispose_isolate_fn = null,
             .execute_script_fn = null,
+            .dispatch_message_fn = null,
             .callback_context = null,
         };
     }
@@ -548,11 +560,13 @@ pub const ThreadedWorkerManager = struct {
         create_isolate: WorkerThreadRunner.CreateIsolateFn,
         dispose_isolate: WorkerThreadRunner.DisposeIsolateFn,
         execute_script: WorkerThreadRunner.ExecuteScriptFn,
+        dispatch_message: ?WorkerThreadRunner.DispatchMessageFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
         self.dispose_isolate_fn = dispose_isolate;
         self.execute_script_fn = execute_script;
+        self.dispatch_message_fn = dispatch_message;
         self.callback_context = context;
     }
 
@@ -586,6 +600,7 @@ pub const ThreadedWorkerManager = struct {
                 create,
                 self.dispose_isolate_fn.?,
                 self.execute_script_fn.?,
+                self.dispatch_message_fn,
                 self.callback_context,
             );
         }

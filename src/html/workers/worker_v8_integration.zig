@@ -178,6 +178,57 @@ pub const WorkerIsolateData = struct {
             return error.V8ExecutionFailed;
         };
     }
+
+    /// Dispatch a message to the worker's onmessage handler
+    pub fn dispatchMessage(self: *Self, msg: *worker_threading.ThreadSafeMessageQueue.SerializedMessage) !void {
+        // For now, dispatch the message by executing JavaScript that:
+        // 1. Deserializes the message data
+        // 2. Creates a MessageEvent
+        // 3. Dispatches it to onmessage
+        //
+        // TODO: Proper implementation would use V8 APIs directly to:
+        // - Deserialize using structured clone
+        // - Create MessageEvent object
+        // - Call onmessage handler
+
+        // Extract data based on serialized type
+        const data_js = switch (msg.data.type) {
+            .primitive => blk: {
+                switch (msg.data.data.primitive) {
+                    .undefined => break :blk "undefined",
+                    .null => break :blk "null",
+                    .boolean => |b| break :blk if (b) "true" else "false",
+                    .string => |s| break :blk s,
+                    else => {
+                        std.log.warn("Unsupported primitive type in message", .{});
+                        return;
+                    },
+                }
+            },
+            else => {
+                std.log.warn("Unsupported message type: {}", .{msg.data.type});
+                return;
+            },
+        };
+
+        // Create JavaScript to dispatch the message
+        // This creates a MessageEvent and calls onmessage if it exists
+        var dispatch_script_buf: [4096]u8 = undefined;
+        const dispatch_script = std.fmt.bufPrint(&dispatch_script_buf,
+            \\(function() {{
+            \\  if (typeof onmessage === 'function') {{
+            \\    var data = {s};
+            \\    var event = new MessageEvent('message', {{ data: data }});
+            \\    onmessage(event);
+            \\  }}
+            \\}})();
+        , .{data_js}) catch {
+            return error.V8StringCreationFailed;
+        };
+
+        // Execute the dispatch script
+        try self.executeScript(dispatch_script);
+    }
 };
 
 /// Worker V8 Integration Manager
@@ -231,22 +282,33 @@ pub const WorkerV8Integration = struct {
         try isolate_data.executeScript(source);
     }
 
-    /// Get function pointer for createIsolate callback
-    pub fn createIsolateCallback(self: *const Self) worker_threading.WorkerThreadRunner.CreateIsolateFn {
-        _ = self;
+    /// Callback to dispatch a message to the worker's onmessage handler
+    pub fn dispatchMessage(
+        isolate_data_ptr: *anyopaque,
+        msg: *worker_threading.ThreadSafeMessageQueue.SerializedMessage,
+    ) anyerror!void {
+        const isolate_data: *WorkerIsolateData = @ptrCast(@alignCast(isolate_data_ptr));
+        try isolate_data.dispatchMessage(msg);
+    }
+
+    /// Get function pointer for createIsolate callback (static - no instance needed)
+    pub fn createIsolateCallback() worker_threading.WorkerThreadRunner.CreateIsolateFn {
         return &createIsolate;
     }
 
-    /// Get function pointer for disposeIsolate callback
-    pub fn disposeIsolateCallback(self: *const Self) worker_threading.WorkerThreadRunner.DisposeIsolateFn {
-        _ = self;
+    /// Get function pointer for disposeIsolate callback (static - no instance needed)
+    pub fn disposeIsolateCallback() worker_threading.WorkerThreadRunner.DisposeIsolateFn {
         return &disposeIsolate;
     }
 
-    /// Get function pointer for executeScript callback
-    pub fn executeScriptCallback(self: *const Self) worker_threading.WorkerThreadRunner.ExecuteScriptFn {
-        _ = self;
+    /// Get function pointer for executeScript callback (static - no instance needed)
+    pub fn executeScriptCallback() worker_threading.WorkerThreadRunner.ExecuteScriptFn {
         return &executeScript;
+    }
+
+    /// Get function pointer for dispatchMessage callback (static - no instance needed)
+    pub fn dispatchMessageCallback() worker_threading.WorkerThreadRunner.DispatchMessageFn {
+        return &dispatchMessage;
     }
 
     /// Get context (self pointer for callback context)
@@ -257,9 +319,10 @@ pub const WorkerV8Integration = struct {
     /// Wire up V8 callbacks to a worker manager
     pub fn wireToManager(self: *Self, manager: *ThreadedWorkerManager) void {
         manager.setV8Callbacks(
-            self.createIsolateCallback(),
-            self.disposeIsolateCallback(),
-            self.executeScriptCallback(),
+            createIsolateCallback(),
+            disposeIsolateCallback(),
+            executeScriptCallback(),
+            dispatchMessageCallback(),
             self.getContext(),
         );
     }
