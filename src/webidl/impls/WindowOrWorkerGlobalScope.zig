@@ -347,6 +347,14 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
     const allocator = instance.allocator;
 
+    // Create headers list for network request
+    // These will be converted from HeadersInit and passed to NetworkRequest
+    var headers_list: std.ArrayList(NetworkRequest.Header) = .{};
+    defer headers_list.deinit(allocator);
+
+    // Track the method string (default to GET)
+    var request_method: []const u8 = "GET";
+
     // Get the engine interface and context
     const engine = instance.ctx.engine orelse {
         return error.InvalidStateError;
@@ -388,6 +396,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         // Method
         if (init_opts.method) |method| {
             request_init.method = method;
+            request_method = method;
         }
 
         // Headers - convert from HeadersInit to internal format
@@ -396,13 +405,23 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             switch (headers_init) {
                 .sequence_byte_string_sequence => |seq| {
                     // Each inner sequence should have 2 elements: [name, value]
-                    // TODO: Convert to internal headers format
-                    _ = seq;
+                    for (seq) |header_pair| {
+                        if (header_pair.len >= 2) {
+                            try headers_list.append(allocator, .{
+                                .name = header_pair[0],
+                                .value = header_pair[1],
+                            });
+                        }
+                    }
                 },
                 .byte_string_byte_string_record => |record| {
-                    // Key-value pairs
-                    // TODO: Convert to internal headers format
-                    _ = record;
+                    // Record is a slice of key-value structs
+                    for (record) |entry| {
+                        try headers_list.append(allocator, .{
+                            .name = entry.key,
+                            .value = entry.value,
+                        });
+                    }
                 },
             }
         }
@@ -480,20 +499,14 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         };
 
         // Build NetworkRequest for async manager
-        var net_request = NetworkRequest{
+        // Note: headers_list.items is a slice that survives until headers_list.deinit()
+        // which happens after addRequest returns, so the headers are safely copied by curl
+        const net_request = NetworkRequest{
             .url = url_str,
-            .method = .GET,
+            .method = request_method,
+            .headers = headers_list.items,
+            .body = request_init.body,
         };
-
-        // Set method from request_init
-        if (request_init.method) |method_str| {
-            net_request.method = network.HttpMethod.fromString(method_str) catch .GET;
-        }
-
-        // Set body from request_init
-        if (request_init.body) |body| {
-            net_request.body = body;
-        }
 
         // Add the async request - returns immediately
         _ = async_curl.addRequest(&net_request, asyncFetchCompletionCallback, completion_ctx) catch |err| {
