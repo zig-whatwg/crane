@@ -65,6 +65,20 @@ fn wptLogFn(
     std.log.defaultLog(level, scope, format, args);
 }
 
+/// Output format options
+pub const OutputFormat = enum {
+    json, // wptreport.json (default)
+    xunit, // xunit.xml (JUnit-compatible)
+    both, // Generate both formats
+
+    pub fn fromString(str: []const u8) ?OutputFormat {
+        if (std.mem.eql(u8, str, "json")) return .json;
+        if (std.mem.eql(u8, str, "xunit")) return .xunit;
+        if (std.mem.eql(u8, str, "both")) return .both;
+        return null;
+    }
+};
+
 /// Command-line options
 pub const Options = struct {
     /// Directory filters (empty = all in-scope categories)
@@ -89,6 +103,8 @@ pub const Options = struct {
     timeout_multiplier: f32 = 1.0,
     /// Exclusion patterns (applied after includes)
     excludes: std.ArrayList([]const u8),
+    /// Output format (json, xunit, both)
+    output_format: OutputFormat = .json,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -301,6 +317,13 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
         } else if (std.mem.startsWith(u8, arg, "--exclude=")) {
             const pattern = arg["--exclude=".len..];
             try options.excludes.append(allocator, try allocator.dupe(u8, pattern));
+        } else if (std.mem.startsWith(u8, arg, "--output-format=")) {
+            const value = arg["--output-format=".len..];
+            if (OutputFormat.fromString(value)) |format| {
+                options.output_format = format;
+            } else {
+                print("Warning: Unknown output format '{s}', using default 'json'\n", .{value});
+            }
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
@@ -1216,10 +1239,20 @@ pub fn main() !void {
     // Finish and write report
     report.finish();
 
-    const output_path = try std.fs.path.join(allocator, &.{ options.output_dir, "wptreport.json" });
-    defer allocator.free(output_path);
+    // Write JSON output (default or if both)
+    if (options.output_format == .json or options.output_format == .both) {
+        const json_path = try std.fs.path.join(allocator, &.{ options.output_dir, "wptreport.json" });
+        defer allocator.free(json_path);
+        try report.writeToFile(json_path);
+    }
 
-    try report.writeToFile(output_path);
+    // Write xUnit XML output (if xunit or both)
+    if (options.output_format == .xunit or options.output_format == .both) {
+        const xunit_path = try std.fs.path.join(allocator, &.{ options.output_dir, "wptreport.xml" });
+        defer allocator.free(xunit_path);
+        var xunit_writer = result_reporter.XunitWriter.init(allocator);
+        try xunit_writer.writeFromReport(&report, xunit_path);
+    }
 }
 
 test "parseArgs basic" {
@@ -1295,6 +1328,50 @@ test "parseArgs with exclude patterns" {
     try testing.expect(options.isExcluded("url/test-manual.html"));
     try testing.expect(options.isExcluded("url/slow/test.html"));
     try testing.expect(!options.isExcluded("url/test.any.js"));
+}
+
+test "parseArgs with output-format" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test json format
+    {
+        const args = [_][]const u8{ "--output-format=json", "url/" };
+        var options = try parseArgs(allocator, &args);
+        defer options.deinit();
+        try testing.expectEqual(OutputFormat.json, options.output_format);
+    }
+
+    // Test xunit format
+    {
+        const args = [_][]const u8{ "--output-format=xunit", "url/" };
+        var options = try parseArgs(allocator, &args);
+        defer options.deinit();
+        try testing.expectEqual(OutputFormat.xunit, options.output_format);
+    }
+
+    // Test both format
+    {
+        const args = [_][]const u8{ "--output-format=both", "url/" };
+        var options = try parseArgs(allocator, &args);
+        defer options.deinit();
+        try testing.expectEqual(OutputFormat.both, options.output_format);
+    }
+
+    // Test default format (json)
+    {
+        const args = [_][]const u8{"url/"};
+        var options = try parseArgs(allocator, &args);
+        defer options.deinit();
+        try testing.expectEqual(OutputFormat.json, options.output_format);
+    }
+}
+
+test "OutputFormat.fromString" {
+    try std.testing.expectEqual(OutputFormat.json, OutputFormat.fromString("json").?);
+    try std.testing.expectEqual(OutputFormat.xunit, OutputFormat.fromString("xunit").?);
+    try std.testing.expectEqual(OutputFormat.both, OutputFormat.fromString("both").?);
+    try std.testing.expectEqual(@as(?OutputFormat, null), OutputFormat.fromString("invalid"));
 }
 
 test "isTestFile" {

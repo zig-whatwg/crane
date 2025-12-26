@@ -1011,6 +1011,130 @@ test "ExpectedResults.isExpectedFailDirectory" {
     try std.testing.expect(!ExpectedResults.isExpectedFailDirectory("url/url-constructor.any.js"));
 }
 
+// =============================================================================
+// xUnit XML Output Tests
+// =============================================================================
+
+test "XunitWriter basic" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    // Create a mock test result
+    var harness_result = try test_harness.TestResult.init(allocator, "url/test.any.js");
+    defer harness_result.deinit(allocator);
+
+    harness_result.status = .ok;
+    harness_result.duration_ms = 100;
+
+    const subtest = test_harness.SubtestResult{
+        .name = try allocator.dupe(u8, "basic test"),
+        .status = .pass,
+        .duration_ms = 50,
+    };
+    try harness_result.addSubtest(subtest);
+
+    try report.addResult(harness_result);
+    report.finish();
+
+    // Write to xUnit XML
+    var xunit_writer = XunitWriter.init(allocator);
+    var xml_buf: std.ArrayList(u8) = .{};
+    defer xml_buf.deinit(allocator);
+
+    try xunit_writer.writeXmlToArrayList(&xml_buf, &report);
+
+    // Verify basic XML structure
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>") != null);
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "<testsuites name=\"WPT\"") != null);
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "<testsuite name=\"url\"") != null);
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "test.any.js") != null);
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "</testsuites>") != null);
+}
+
+test "XunitWriter with failures" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    // Create a mock test result with failure
+    var harness_result = try test_harness.TestResult.init(allocator, "encoding/failure.any.js");
+    defer harness_result.deinit(allocator);
+
+    harness_result.status = .ok;
+    harness_result.duration_ms = 200;
+
+    const subtest = test_harness.SubtestResult{
+        .name = try allocator.dupe(u8, "failing test"),
+        .status = .fail,
+        .message = try allocator.dupe(u8, "Expected true but got false"),
+        .duration_ms = 100,
+    };
+    try harness_result.addSubtest(subtest);
+
+    try report.addResult(harness_result);
+    report.finish();
+
+    // Write to xUnit XML
+    var xunit_writer = XunitWriter.init(allocator);
+    var xml_buf: std.ArrayList(u8) = .{};
+    defer xml_buf.deinit(allocator);
+
+    try xunit_writer.writeXmlToArrayList(&xml_buf, &report);
+
+    // Verify failure is included
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "<failure") != null);
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "FAIL: failing test") != null);
+}
+
+test "XunitWriter with error" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    // Create a mock test result with error status
+    var harness_result = try test_harness.TestResult.init(allocator, "dom/error.html");
+    defer harness_result.deinit(allocator);
+
+    harness_result.status = .@"error";
+    harness_result.message = try allocator.dupe(u8, "Failed to load test file");
+    harness_result.duration_ms = 50;
+
+    try report.addResult(harness_result);
+    report.finish();
+
+    // Write to xUnit XML
+    var xunit_writer = XunitWriter.init(allocator);
+    var xml_buf: std.ArrayList(u8) = .{};
+    defer xml_buf.deinit(allocator);
+
+    try xunit_writer.writeXmlToArrayList(&xml_buf, &report);
+
+    // Verify error is included
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "<error") != null);
+    try testing.expect(std.mem.indexOf(u8, xml_buf.items, "Failed to load test file") != null);
+}
+
+test "writeXmlString escapes special characters" {
+    const allocator = std.testing.allocator;
+
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(allocator);
+
+    var writer = buf.writer(allocator);
+
+    // Test escaping
+    try writeXmlString(&writer, "test <>&\"' chars");
+
+    try std.testing.expectEqualStrings("test &lt;&gt;&amp;&quot;&apos; chars", buf.items);
+}
+
 test "SubtestResultJson.isExpectedFailure" {
     const allocator = std.testing.allocator;
 
@@ -1041,6 +1165,272 @@ test "SubtestResultJson.isExpectedFailure" {
     defer sub3.deinit(allocator);
     try std.testing.expect(sub3.isExpectedFailure());
 }
+
+// =============================================================================
+// xUnit XML Output Support
+// =============================================================================
+
+/// Escape a string for XML output (escape &, <, >, ", ')
+fn writeXmlString(writer: anytype, str: []const u8) !void {
+    for (str) |c| {
+        switch (c) {
+            '&' => try writer.writeAll("&amp;"),
+            '<' => try writer.writeAll("&lt;"),
+            '>' => try writer.writeAll("&gt;"),
+            '"' => try writer.writeAll("&quot;"),
+            '\'' => try writer.writeAll("&apos;"),
+            // Control characters (except tab, newline, carriage return)
+            0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F => {
+                // Skip invalid XML characters
+            },
+            else => try writer.writeByte(c),
+        }
+    }
+}
+
+/// xUnit XML Writer for CI integration
+/// Generates JUnit-compatible XML format that can be consumed by:
+/// - GitHub Actions
+/// - Jenkins
+/// - CircleCI
+/// - Azure DevOps
+pub const XunitWriter = struct {
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) XunitWriter {
+        return XunitWriter{
+            .allocator = allocator,
+        };
+    }
+
+    /// Write xUnit XML report from WptReport
+    pub fn writeFromReport(self: *XunitWriter, report: *const WptReport, path: []const u8) !void {
+        // Ensure output directory exists
+        const dir_path = std.fs.path.dirname(path);
+        if (dir_path) |dir| {
+            std.fs.cwd().makePath(dir) catch |err| {
+                if (err != error.PathAlreadyExists) return err;
+            };
+        }
+
+        // Build XML string first
+        var xml_buf: std.ArrayList(u8) = .{};
+        defer xml_buf.deinit(self.allocator);
+
+        try self.writeXmlToArrayList(&xml_buf, report);
+
+        const file = try std.fs.cwd().createFile(path, .{});
+        defer file.close();
+
+        _ = try file.writeAll(xml_buf.items);
+    }
+
+    fn writeXmlToArrayList(self: *XunitWriter, buf: *std.ArrayList(u8), report: *const WptReport) !void {
+        var writer = buf.writer(self.allocator);
+        try self.writeXmlInner(&writer, report);
+    }
+
+    fn writeXmlInner(self: *XunitWriter, writer: anytype, report: *const WptReport) !void {
+        // Group results by category (first path component)
+        var categories = std.StringHashMap(std.ArrayList(TestResultJson)).init(self.allocator);
+        defer {
+            var iter = categories.valueIterator();
+            while (iter.next()) |list| {
+                list.deinit(self.allocator);
+            }
+            categories.deinit();
+        }
+
+        for (report.results.items) |result| {
+            const category = self.extractCategory(result.test_path);
+            const entry = try categories.getOrPut(category);
+            if (!entry.found_existing) {
+                entry.value_ptr.* = .{};
+            }
+            try entry.value_ptr.append(self.allocator, result);
+        }
+
+        // Calculate totals
+        var total_tests: usize = 0;
+        var total_failures: usize = 0;
+        var total_errors: usize = 0;
+        var total_skipped: usize = 0;
+        var total_time_ms: u64 = 0;
+
+        for (report.results.items) |result| {
+            total_tests += 1;
+            total_time_ms += result.duration;
+
+            if (std.mem.eql(u8, result.status, "ERROR")) {
+                total_errors += 1;
+            } else if (std.mem.eql(u8, result.status, "TIMEOUT")) {
+                total_errors += 1;
+            } else if (std.mem.eql(u8, result.status, "SKIP")) {
+                total_skipped += 1;
+            } else {
+                // Count failed subtests
+                for (result.subtests.items) |sub| {
+                    if (std.mem.eql(u8, sub.status, "FAIL") and !sub.isExpectedFailure()) {
+                        total_failures += 1;
+                        break; // Count test as failed if any subtest fails
+                    }
+                }
+            }
+        }
+
+        const total_time_sec = @as(f64, @floatFromInt(total_time_ms)) / 1000.0;
+
+        // Write XML header
+        try writer.writeAll("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        try writer.print("<testsuites name=\"WPT\" tests=\"{d}\" failures=\"{d}\" errors=\"{d}\" skipped=\"{d}\" time=\"{d:.3}\">\n", .{
+            total_tests,
+            total_failures,
+            total_errors,
+            total_skipped,
+            total_time_sec,
+        });
+
+        // Write each category as a testsuite
+        var cat_iter = categories.iterator();
+        while (cat_iter.next()) |entry| {
+            const category = entry.key_ptr.*;
+            const results = entry.value_ptr.items;
+
+            // Calculate suite totals
+            var suite_tests: usize = 0;
+            var suite_failures: usize = 0;
+            var suite_errors: usize = 0;
+            var suite_skipped: usize = 0;
+            var suite_time_ms: u64 = 0;
+
+            for (results) |result| {
+                suite_tests += 1;
+                suite_time_ms += result.duration;
+
+                if (std.mem.eql(u8, result.status, "ERROR")) {
+                    suite_errors += 1;
+                } else if (std.mem.eql(u8, result.status, "TIMEOUT")) {
+                    suite_errors += 1;
+                } else if (std.mem.eql(u8, result.status, "SKIP")) {
+                    suite_skipped += 1;
+                } else {
+                    for (result.subtests.items) |sub| {
+                        if (std.mem.eql(u8, sub.status, "FAIL") and !sub.isExpectedFailure()) {
+                            suite_failures += 1;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const suite_time_sec = @as(f64, @floatFromInt(suite_time_ms)) / 1000.0;
+
+            try writer.print("  <testsuite name=\"{s}\" tests=\"{d}\" failures=\"{d}\" errors=\"{d}\" skipped=\"{d}\" time=\"{d:.3}\">\n", .{
+                category,
+                suite_tests,
+                suite_failures,
+                suite_errors,
+                suite_skipped,
+                suite_time_sec,
+            });
+
+            // Write each test as a testcase
+            for (results) |result| {
+                const test_name = self.extractTestName(result.test_path);
+                const time_sec = @as(f64, @floatFromInt(result.duration)) / 1000.0;
+
+                try writer.writeAll("    <testcase name=\"");
+                try writeXmlString(writer, test_name);
+                try writer.writeAll("\" classname=\"");
+                try writeXmlString(writer, category);
+                try writer.print("\" time=\"{d:.3}\"", .{time_sec});
+
+                // Check for error/timeout/skip status
+                if (std.mem.eql(u8, result.status, "ERROR")) {
+                    try writer.writeAll(">\n");
+                    try writer.writeAll("      <error message=\"");
+                    if (result.message) |msg| {
+                        try writeXmlString(writer, msg);
+                    } else {
+                        try writer.writeAll("Test error");
+                    }
+                    try writer.writeAll("\">");
+                    if (result.message) |msg| {
+                        try writeXmlString(writer, msg);
+                    }
+                    try writer.writeAll("</error>\n");
+                    try writer.writeAll("    </testcase>\n");
+                } else if (std.mem.eql(u8, result.status, "TIMEOUT")) {
+                    try writer.writeAll(">\n");
+                    try writer.writeAll("      <error message=\"Timeout\">");
+                    if (result.message) |msg| {
+                        try writeXmlString(writer, msg);
+                    } else {
+                        try writer.writeAll("Test timed out");
+                    }
+                    try writer.writeAll("</error>\n");
+                    try writer.writeAll("    </testcase>\n");
+                } else if (std.mem.eql(u8, result.status, "SKIP")) {
+                    try writer.writeAll(">\n");
+                    try writer.writeAll("      <skipped");
+                    if (result.message) |msg| {
+                        try writer.writeAll(" message=\"");
+                        try writeXmlString(writer, msg);
+                        try writer.writeAll("\"");
+                    }
+                    try writer.writeAll("/>\n");
+                    try writer.writeAll("    </testcase>\n");
+                } else {
+                    // Check subtests for failures
+                    var has_failures = false;
+                    var failure_messages: std.ArrayList(u8) = .{};
+                    defer failure_messages.deinit(self.allocator);
+
+                    for (result.subtests.items) |sub| {
+                        if (std.mem.eql(u8, sub.status, "FAIL") and !sub.isExpectedFailure()) {
+                            has_failures = true;
+                            // Build failure message
+                            var msg_writer = failure_messages.writer(self.allocator);
+                            try msg_writer.print("FAIL: {s}\n", .{sub.name});
+                            if (sub.message) |msg| {
+                                try msg_writer.print("  {s}\n", .{msg});
+                            }
+                        }
+                    }
+
+                    if (has_failures) {
+                        try writer.writeAll(">\n");
+                        try writer.writeAll("      <failure message=\"Subtest failures\">");
+                        try writeXmlString(writer, failure_messages.items);
+                        try writer.writeAll("</failure>\n");
+                        try writer.writeAll("    </testcase>\n");
+                    } else {
+                        try writer.writeAll("/>\n");
+                    }
+                }
+            }
+
+            try writer.writeAll("  </testsuite>\n");
+        }
+
+        try writer.writeAll("</testsuites>\n");
+    }
+
+    /// Extract category from test path (first path component)
+    fn extractCategory(self: *XunitWriter, test_path: []const u8) []const u8 {
+        _ = self;
+        if (std.mem.indexOf(u8, test_path, "/")) |sep_pos| {
+            return test_path[0..sep_pos];
+        }
+        return "default";
+    }
+
+    /// Extract test name from path (filename without leading directories)
+    fn extractTestName(self: *XunitWriter, test_path: []const u8) []const u8 {
+        _ = self;
+        return std.fs.path.basename(test_path);
+    }
+};
 
 test "WptReport addResultWithExpected" {
     const testing = std.testing;
