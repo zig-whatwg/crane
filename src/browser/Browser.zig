@@ -51,6 +51,8 @@ const v8 = @import("v8");
 const runtime = @import("runtime");
 const impls = @import("impls");
 const namespaces = @import("namespaces");
+const fetch = @import("fetch");
+const network = fetch.network;
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -101,6 +103,8 @@ pub const Browser = struct {
     event_loop: ?*v8.V8EventLoop,
     /// Whether isolate was created from a snapshot (affects context initialization)
     used_snapshot: bool,
+    /// Async HTTP manager for non-blocking fetch()
+    async_curl_manager: ?*network.AsyncCurlManager,
 
     /// Initialize a new Browser instance
     ///
@@ -214,6 +218,21 @@ pub const Browser = struct {
         errdefer allocator.destroy(event_loop);
         event_loop.* = try v8.V8EventLoop.init(isolate, allocator);
 
+        // Create async curl manager for non-blocking fetch()
+        // Initialize curl globally first (safe to call multiple times)
+        try network.globalInit();
+        const async_curl = try network.AsyncCurlManager.init(allocator);
+        errdefer async_curl.deinit();
+
+        // Register curl manager with event loop so it gets polled
+        // Note: AsyncCurlManager.Pollable and V8EventLoop.Pollable are structurally identical
+        // but different types, so we cast the compatible struct
+        const curl_pollable = async_curl.pollable();
+        event_loop.setExternalPollable(.{
+            .ptr = curl_pollable.ptr,
+            .poll_fn = curl_pollable.poll_fn,
+        });
+
         // Allocate browser struct
         const browser = try allocator.create(Browser);
         errdefer allocator.destroy(browser);
@@ -227,6 +246,7 @@ pub const Browser = struct {
             .initialized = true,
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
+            .async_curl_manager = async_curl,
         };
 
         // Always create initial about:blank context - a real browser always has a window/document
@@ -300,6 +320,13 @@ pub const Browser = struct {
             self.allocator.destroy(event_loop);
         }
 
+        // Cleanup async curl manager
+        if (self.async_curl_manager) |curl_mgr| {
+            curl_mgr.deinit();
+            // Note: deinit deallocates self, no need for allocator.destroy
+        }
+        network.globalCleanup();
+
         // Use the isolate lifecycle manager for centralized cleanup
         // This ensures all V8-dependent modules are cleaned up in the correct order
         // See src/runtime/engines/v8/isolate_lifecycle.zig for the full list
@@ -361,6 +388,7 @@ pub const Browser = struct {
 
         // Create new context
         // Pass used_snapshot flag so Context knows whether to skip initializeBindings
+        // Pass network_manager for async fetch()
         const ctx = try Context.init(
             self.allocator,
             isolate,
@@ -369,6 +397,7 @@ pub const Browser = struct {
             self.event_loop,
             context_type,
             self.used_snapshot,
+            @ptrCast(self.async_curl_manager),
         );
         errdefer {
             ctx.deinit();

@@ -69,12 +69,15 @@ pub const HarnessStatus = enum(u8) {
     @"error" = 1,
     /// Test file timed out
     timeout = 2,
+    /// Test was skipped (e.g., reftest, not implemented)
+    skip = 3,
 
     pub fn fromInt(value: u8) HarnessStatus {
         return switch (value) {
             0 => .ok,
             1 => .@"error",
             2 => .timeout,
+            3 => .skip,
             else => .@"error",
         };
     }
@@ -84,6 +87,7 @@ pub const HarnessStatus = enum(u8) {
             .ok => "OK",
             .@"error" => "ERROR",
             .timeout => "TIMEOUT",
+            .skip => "SKIP",
         };
     }
 };

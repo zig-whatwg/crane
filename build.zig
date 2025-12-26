@@ -621,6 +621,9 @@ pub fn build(b: *std.Build) void {
     // V8 module needs impls for ReadableStream start callback invocation
     v8_mod.addImport("impls", impls_mod);
 
+    // V8 module needs namespaces for console, CSS, WebAssembly registration
+    v8_mod.addImport("namespaces", namespaces_mod);
+
     // Dictionaries module needs typedefs, enums and callbacks for RequestInit and other dictionaries
     dictionaries_mod.addImport("typedefs", typedefs_mod);
     dictionaries_mod.addImport("enums", enums_mod);
@@ -1531,6 +1534,8 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("namespaces", namespaces_mod);
     browser_mod.addImport("fetch", fetch_mod);
     browser_mod.addImport("impls", impls_mod);
+    browser_mod.addImport("webidl", webidl_mod);
+    browser_mod.addImport("dictionaries", dictionaries_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
     const intl_mod = b.addModule("intl", .{

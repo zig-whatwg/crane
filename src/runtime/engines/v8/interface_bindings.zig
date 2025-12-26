@@ -311,7 +311,21 @@ pub fn initializeBindings(
     // e.g., HTMLDocument is an alias for Document per HTML spec
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: WindowProperties insertion is deferred.
+    // Step 7: SKIP namespace registration during snapshot creation!
+    //
+    // Namespaces (console, CSS, WebAssembly, etc.) contain function callbacks
+    // with memory addresses specific to the snapshot creator binary.
+    // These callbacks cannot be invoked at runtime because they point to
+    // different addresses in the runtime binary.
+    //
+    // Instead, namespaces are registered at runtime via registerNamespacesGeneric()
+    // in browser/Context.zig, which uses the runtime binary's callback addresses.
+    //
+    // NOTE: We still need to register namespace external references so V8 knows
+    // about them during snapshot creation for interface method callbacks that
+    // might reference namespace types.
+
+    // Step 8: WindowProperties insertion is deferred.
     // WindowProperties must be inserted AFTER the Window instance is created and bound
     // to the global's internal field. This is done in context_manager.zig after Window.init().
     // See createChildContext() for the call to window_properties.insertIntoPrototypeChain().
@@ -367,7 +381,10 @@ pub fn initializeBindingsWithGlobalTemplate(
     // e.g., HTMLDocument is an alias for Document per HTML spec
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: WindowProperties insertion is deferred (same as initializeBindings)
+    // Step 7: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
+    // (See comment in initializeBindings for explanation)
+
+    // Step 8: WindowProperties insertion is deferred (same as initializeBindings)
 }
 
 /// Register legacy interface aliases
@@ -464,6 +481,7 @@ pub fn registerNamespacesGeneric(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
+    std.debug.print("[registerNamespacesGeneric] RUNTIME: Registering namespaces...\n", .{});
     @setEvalBranchQuota(50_000_000);
     const ns_decls = @typeInfo(namespaces_mod).@"struct".decls;
     const iface_decls = @typeInfo(interfaces).@"struct".decls;

@@ -46,6 +46,16 @@ pub const ServerConfig = struct {
     https_port: u16 = 8443,
     /// HTTPS port 2 (default: 8444)
     https_port2: u16 = 8444,
+
+    /// Local network HTTP port for Local Network Access tests (default: 8002)
+    http_local_port: u16 = 8002,
+    /// Public network HTTP port for Local Network Access tests (default: 8003)
+    http_public_port: u16 = 8003,
+    /// Local network HTTPS port for Local Network Access tests (default: 8445)
+    https_local_port: u16 = 8445,
+    /// Public network HTTPS port for Local Network Access tests (default: 8446)
+    https_public_port: u16 = 8446,
+
     /// Host to bind to (default: 127.0.0.1)
     host: []const u8 = "127.0.0.1",
     /// WPT root directory
@@ -567,15 +577,8 @@ pub const HttpServer = struct {
 
         // Check for testharnessreport.js
         if (std.mem.eql(u8, resource_name, "testharnessreport.js")) {
-            // First try WPT resources
-            const wpt_path = try std.fs.path.join(self.allocator, &.{ self.config.wpt_root, "resources", "testharnessreport.js" });
-            defer self.allocator.free(wpt_path);
-
-            if (try self.serveFile(wpt_path, "application/javascript;charset=utf-8", response)) {
-                return true;
-            }
-
-            // Fallback to runner resources
+            // First try runner resources (custom testharnessreport.js with completion callbacks)
+            // This is the proper way to hook into test completion - via testharnessreport.js
             if (self.config.resources_dir) |res_dir| {
                 const runner_path = try std.fs.path.join(self.allocator, &.{ res_dir, "testharnessreport.js" });
                 defer self.allocator.free(runner_path);
@@ -583,6 +586,14 @@ pub const HttpServer = struct {
                 if (try self.serveFile(runner_path, "application/javascript;charset=utf-8", response)) {
                     return true;
                 }
+            }
+
+            // Fallback to WPT resources
+            const wpt_path = try std.fs.path.join(self.allocator, &.{ self.config.wpt_root, "resources", "testharnessreport.js" });
+            defer self.allocator.free(wpt_path);
+
+            if (try self.serveFile(wpt_path, "application/javascript;charset=utf-8", response)) {
+                return true;
             }
 
             // Generate minimal testharnessreport.js if not found
@@ -785,6 +796,38 @@ pub const HttpServer = struct {
                 8443 => "8443",
                 443 => "443",
                 else => "8443",
+            };
+        }
+
+        // {{ports[http-local][0]}} - local network HTTP port
+        if (std.mem.eql(u8, var_name, "ports[http-local][0]")) {
+            return switch (self.config.http_local_port) {
+                8002 => "8002",
+                else => "8002",
+            };
+        }
+
+        // {{ports[http-public][0]}} - public network HTTP port
+        if (std.mem.eql(u8, var_name, "ports[http-public][0]")) {
+            return switch (self.config.http_public_port) {
+                8003 => "8003",
+                else => "8003",
+            };
+        }
+
+        // {{ports[https-local][0]}} - local network HTTPS port
+        if (std.mem.eql(u8, var_name, "ports[https-local][0]")) {
+            return switch (self.config.https_local_port) {
+                8445 => "8445",
+                else => "8445",
+            };
+        }
+
+        // {{ports[https-public][0]}} - public network HTTPS port
+        if (std.mem.eql(u8, var_name, "ports[https-public][0]")) {
+            return switch (self.config.https_public_port) {
+                8446 => "8446",
+                else => "8446",
             };
         }
 
@@ -1010,4 +1053,41 @@ test "HttpServer - getSubstitutionValue" {
     try std.testing.expectEqualStrings("8443", server.getSubstitutionValue("ports[https][0]"));
     try std.testing.expectEqualStrings("www2.localhost", server.getSubstitutionValue("domains[www2]"));
     try std.testing.expectEqualStrings("", server.getSubstitutionValue("unknown_var"));
+
+    // Alternate ports for Local Network Access
+    try std.testing.expectEqualStrings("8002", server.getSubstitutionValue("ports[http-local][0]"));
+    try std.testing.expectEqualStrings("8003", server.getSubstitutionValue("ports[http-public][0]"));
+    try std.testing.expectEqualStrings("8445", server.getSubstitutionValue("ports[https-local][0]"));
+    try std.testing.expectEqualStrings("8446", server.getSubstitutionValue("ports[https-public][0]"));
+}
+
+test "HttpServer - non-local-ports substitution (WPT integration)" {
+    // This test verifies the template substitution for the WPT test:
+    // infrastructure/assumptions/non-local-ports.sub.window.js
+    const allocator = std.testing.allocator;
+
+    var server = try HttpServer.init(allocator, .{
+        .port = 8000,
+        .host = "localhost",
+    });
+    defer server.deinit();
+
+    // Simulate the JavaScript content from non-local-ports.sub.window.js
+    const input =
+        \\const alternatePorts = {
+        \\  httpLocal:  "{{ports[http-local][0]}}",
+        \\  httpsLocal: "{{ports[https-local][0]}}",
+        \\  httpPublic:   "{{ports[http-public][0]}}",
+        \\  httpsPublic:  "{{ports[https-public][0]}}",
+        \\};
+    ;
+
+    const result = try server.performSubstitutions(input);
+    defer allocator.free(result);
+
+    // Verify all ports are correctly substituted
+    try std.testing.expect(std.mem.indexOf(u8, result, "httpLocal:  \"8002\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "httpsLocal: \"8445\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "httpPublic:   \"8003\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "httpsPublic:  \"8446\"") != null);
 }

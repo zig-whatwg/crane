@@ -313,6 +313,8 @@ pub const Context = struct {
     event_loop: ?*v8.V8EventLoop,
     /// Whether to skip interface binding registration (when using snapshot)
     skip_bindings: bool,
+    /// Network manager for async fetch (owned by Browser)
+    network_manager: ?*anyopaque,
 
     // Singleton instances for cleanup
     window_instance: ?*runtime.Instance = null,
@@ -338,6 +340,7 @@ pub const Context = struct {
         event_loop: ?*v8.V8EventLoop,
         context_type: ContextType,
         skip_bindings: bool,
+        network_manager: ?*anyopaque,
     ) !*Context {
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
@@ -355,6 +358,7 @@ pub const Context = struct {
             .initialized = false,
             .event_loop = event_loop,
             .skip_bindings = skip_bindings,
+            .network_manager = network_manager,
         };
 
         try ctx.createV8Context();
@@ -407,6 +411,11 @@ pub const Context = struct {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
             return error.ContextRegistrationFailed;
         };
+
+        // Set network manager on runtime context for async fetch()
+        if (self.network_manager) |nm| {
+            runtime_ctx.setNetworkManager(nm);
+        }
 
         // SNAPSHOT MODE: Skip initializeBindings() - interfaces are already in the snapshot!
         // However, we still need to populate the Zig-side template registry so that
@@ -462,11 +471,25 @@ pub const Context = struct {
             cache.set(window_instance, global, self.isolate) catch {};
         }
 
+        // CRITICAL: Register Window with context manager so getWindowForContext() works.
+        // This is required for iframe browsing context creation in handleIframeInsertion().
+        context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
+            std.debug.print("Warning: Failed to register Window with context manager: {}\n", .{err});
+        };
+
         // Register Window properties (document, navigator, etc.) as own properties on the global object.
         // This is required because the global's prototype is immutable (set via SetImmutableProto),
         // so we can't inherit properties from Window.prototype through the prototype chain.
         // This matches how child contexts (iframes) register Window properties.
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Register methods as own properties on the global object.
+        // This includes Window's own methods AND inherited EventTarget methods
+        // (addEventListener, removeEventListener, dispatchEvent).
+        // The global's immutable prototype means we can't rely on prototype chain lookup,
+        // so we must register these methods directly on the global object.
+        v8.interface_bindings.Window.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+        v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
 
         // Set up global aliases FIRST (creates __internal object and accessor properties)
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
@@ -486,6 +509,11 @@ pub const Context = struct {
                 setTimerInterface(timer, self.allocator);
             }
         }
+
+        // Set up child context globals callback so iframes get setTimeout/setInterval
+        // This callback is invoked by context_manager.createChildContext() when
+        // creating V8 contexts for iframes.
+        context_manager.setChildContextGlobalsCallback(registerTimerGlobalsOnContext);
 
         self.initialized = true;
     }
@@ -524,6 +552,11 @@ pub const Context = struct {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
             return error.ContextRegistrationFailed;
         };
+
+        // Set network manager on runtime context for async fetch()
+        if (self.network_manager) |nm| {
+            runtime_ctx.setNetworkManager(nm);
+        }
 
         // SLOW PATH: Register all WebIDL interfaces manually
         // This is required for fresh contexts without snapshot
@@ -576,6 +609,12 @@ pub const Context = struct {
             cache.set(window_instance, global, self.isolate) catch {};
         }
 
+        // CRITICAL: Register Window with context manager so getWindowForContext() works.
+        // This is required for iframe browsing context creation in handleIframeInsertion().
+        context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
+            std.debug.print("Warning: Failed to register Window with context manager: {}\n", .{err});
+        };
+
         // Register Window properties as own properties on the global object
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
 
@@ -593,6 +632,9 @@ pub const Context = struct {
                 setTimerInterface(timer, self.allocator);
             }
         }
+
+        // Set up child context globals callback so iframes get setTimeout/setInterval
+        context_manager.setChildContextGlobalsCallback(registerTimerGlobalsOnContext);
 
         self.initialized = true;
     }
@@ -883,136 +925,18 @@ pub const Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
 
-        // addEventListener
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, addEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "addEventListener", 16) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
+        // NOTE: addEventListener, removeEventListener, and dispatchEvent are now provided
+        // by the WebIDL EventTarget interface (registered via initializeBindingsWithGlobalTemplate).
+        // Previously, NOOP stubs were registered here that overwrote the proper bindings,
+        // breaking all event handling. The EventTarget implementation in src/webidl/impls/EventTarget.zig
+        // provides the actual functionality.
 
-        // removeEventListener
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, removeEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "removeEventListener", 19) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // dispatchEvent
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, dispatchEventCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "dispatchEvent", 13) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register console object with proper WebIDL namespace semantics
-        // Per WebIDL spec §3.8.1 "Namespace objects":
-        // - The prototype chain is: console -> empty object -> Object.prototype
-        // - The namespace has Symbol.toStringTag = "console" (non-writable, non-enumerable, configurable)
-        // - All console methods are own properties
-        {
-            const console_script =
-                \\(function() {
-                \\  function consoleNoop() {}
-                \\  
-                \\  // Helper to convert label to string per WHATWG Console Standard
-                \\  function convertLabel(label) {
-                \\    if (label === undefined) {
-                \\      return "default";
-                \\    }
-                \\    if (label !== null && typeof label === "object") {
-                \\      return label.toString();
-                \\    }
-                \\    return String(label);
-                \\  }
-                \\  
-                \\  // Internal state for count and time operations
-                \\  var countMap = {};
-                \\  var timerMap = {};
-                \\  
-                \\  // Create the empty prototype object
-                \\  var consoleProto = Object.create(Object.prototype);
-                \\  Object.freeze(consoleProto);
-                \\  
-                \\  // Create console object with the proper prototype chain
-                \\  globalThis.console = Object.create(consoleProto);
-                \\  
-                \\  // Define all console methods as own properties
-                \\  var methods = {
-                \\    log: consoleNoop,
-                \\    warn: consoleNoop,
-                \\    error: consoleNoop,
-                \\    info: consoleNoop,
-                \\    debug: consoleNoop,
-                \\    trace: consoleNoop,
-                \\    dir: consoleNoop,
-                \\    dirxml: consoleNoop,
-                \\    table: consoleNoop,
-                \\    assert: consoleNoop,
-                \\    clear: consoleNoop,
-                \\    group: consoleNoop,
-                \\    groupCollapsed: consoleNoop,
-                \\    groupEnd: consoleNoop,
-                \\  };
-                \\  
-                \\  function createLabelMethod(fn, length) {
-                \\    Object.defineProperty(fn, 'length', { value: length, configurable: true });
-                \\    return fn;
-                \\  }
-                \\  
-                \\  methods.count = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    countMap[key] = (countMap[key] || 0) + 1;
-                \\  }, 0);
-                \\  
-                \\  methods.countReset = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    delete countMap[key];
-                \\  }, 0);
-                \\  
-                \\  methods.time = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    if (!(key in timerMap)) {
-                \\      timerMap[key] = Date.now();
-                \\    }
-                \\  }, 0);
-                \\  
-                \\  methods.timeLog = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\  }, 0);
-                \\  
-                \\  methods.timeEnd = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    delete timerMap[key];
-                \\  }, 0);
-                \\  
-                \\  for (var name in methods) {
-                \\    Object.defineProperty(globalThis.console, name, {
-                \\      value: methods[name],
-                \\      writable: true,
-                \\      enumerable: true,
-                \\      configurable: true
-                \\    });
-                \\  }
-                \\  
-                \\  // Add Symbol.toStringTag per WebIDL namespace semantics
-                \\  Object.defineProperty(globalThis.console, Symbol.toStringTag, {
-                \\    value: "console",
-                \\    writable: false,
-                \\    enumerable: false,
-                \\    configurable: true
-                \\  });
-                \\})();
-            ;
-            _ = self.evaluateScript(console_script) catch |err| {
-                std.debug.print("Warning: Failed to register console: {}\n", .{err});
-            };
-        }
+        // NOTE: console is now registered via registerNamespacesGeneric() in createV8Context()
+        // before this function is called. The namespace system provides the actual console
+        // implementation with Zig callbacks. The old JavaScript noop console has been removed.
+        //
+        // Previously, this code created a JavaScript-based noop console that OVERWROTE the
+        // properly registered console namespace, breaking console.log callbacks.
 
         // Register btoa/atob for base64 encoding/decoding
         {
@@ -1061,24 +985,8 @@ pub const Context = struct {
             };
         }
 
-        // Register getComputedStyle as a global function
-        // Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, getComputedStyleCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "getComputedStyle", 16) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register fetch() as a global function
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, fetchCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch", 5) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
+        // NOTE: getComputedStyle and fetch are registered via Window.registerMethodsAsOwnOnObject()
+        // which properly delegates to the WebIDL implementations. Do NOT register stubs here.
     }
 
     /// Set up global aliases via JavaScript
@@ -1169,8 +1077,7 @@ pub const Context = struct {
     /// 4. Fire DOMContentLoaded event
     /// 5. Fire load event
     pub fn loadPage(self: *Context) !void {
-        const isolate = self.isolate;
-        const v8_ctx = self.v8_context orelse return error.NotInitialized;
+        _ = self.v8_context orelse return error.NotInitialized;
 
         // Step 1: Fetch URL content
         var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
@@ -1202,11 +1109,15 @@ pub const Context = struct {
         // the WebIDL Document interface.
         try self.executeInlineScripts(result.body);
 
-        // Step 4: Fire DOMContentLoaded
-        navigation.fireDOMContentLoaded(isolate, v8_ctx);
+        // Step 4: Fire DOMContentLoaded on document
+        if (self.document_instance) |doc| {
+            navigation.fireDOMContentLoaded(self.allocator, doc);
+        }
 
-        // Step 5: Fire load event
-        navigation.fireLoad(isolate, v8_ctx);
+        // Step 5: Fire load event on window
+        if (self.window_instance) |win| {
+            navigation.fireLoad(self.allocator, win);
+        }
     }
 
     /// Execute inline scripts from HTML content
@@ -1343,7 +1254,6 @@ pub const Context = struct {
     /// // result === "Hello"
     /// ```
     pub fn loadHTML(self: *Context, html_content: []const u8, options: LoadHTMLOptions) !void {
-        const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
         std.debug.print("loadHTML: Browser.Context v8_context={*}\n", .{v8_ctx});
@@ -1417,11 +1327,13 @@ pub const Context = struct {
 
         // Fire DOMContentLoaded event
         // Per HTML Standard §13.2.7 "The end" step 4
-        navigation.fireDOMContentLoaded(isolate, v8_ctx);
+        navigation.fireDOMContentLoaded(self.allocator, document);
 
         // Fire load event
         // Per HTML Standard §13.2.7 "The end" step 9
-        navigation.fireLoad(isolate, v8_ctx);
+        if (self.window_instance) |win| {
+            navigation.fireLoad(self.allocator, win);
+        }
     }
 
     /// Initialize browsing contexts for all iframes in a document.
@@ -1459,10 +1371,12 @@ pub const Context = struct {
         self.allocator.free(self.url);
         self.url = try self.allocator.dupe(u8, url);
 
-        // Note: Location object URL is set during context initialization
-        // and via JavaScript. Direct impl access would require Location.setHref
-        // which isn't currently exposed. For now, the URL is tracked in Context.url.
-        _ = self.location_instance;
+        // Update Location object with the new URL
+        // This is required for location.pathname, location.href, etc. to work correctly
+        if (self.location_instance) |loc| {
+            const LocationImpl = impls.Location;
+            try LocationImpl.setURLFromString(loc, url);
+        }
     }
 
     /// Evaluate JavaScript in this context
@@ -1635,6 +1549,11 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Schedule the timer using TimerInterface with typed callback trampoline
     const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+
+    // Debug: log 0ms timers as they may be important for testharness.js completion
+    if (delay_u64 == 0) {
+        std.debug.print("[setTimeout] 0ms timer scheduled (testharness completion?)\n", .{});
+    }
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
@@ -1797,103 +1716,65 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     info.setReturnValue(@ptrCast(result));
 }
 
-fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (v8.ffi.v8_Undefined(isolate)) |undef| {
-        info.setReturnValue(undef);
+// NOTE: addEventListenerCallback, removeEventListenerCallback, and dispatchEventCallback
+// have been removed. These were NOOP stubs that overwrote the proper WebIDL EventTarget
+// bindings. The EventTarget implementation in src/webidl/impls/EventTarget.zig now
+// provides the actual functionality via the standard WebIDL interface system.
+
+// NOTE: getComputedStyleCallback, getPropertyValueCallback, and fetchCallback stubs
+// have been removed. These functions are now provided by the proper WebIDL implementations
+// via Window.registerMethodsAsOwnOnObject() which delegates to the Window interface.
+
+// ============================================================================
+// Child Context Globals Registration
+// ============================================================================
+
+/// Register browser-level globals on a child context (iframe).
+/// This is called by context_manager.createChildContext via the
+/// setChildContextGlobalsCallback hook.
+///
+/// Registers: setTimeout, clearTimeout, setInterval, clearInterval
+///
+/// Note: This uses the same callbacks as registerCommonGlobals but
+/// can be called standalone for child contexts created by context_manager.
+pub fn registerTimerGlobalsOnContext(
+    isolate: *v8.ffi.Isolate,
+    v8_ctx: *v8.ffi.Context,
+    global_obj: *v8.ffi.Object,
+) void {
+    // setTimeout
+    {
+        const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return;
+        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
+        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setTimeout", 10) orelse return;
+        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
     }
-}
 
-fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (v8.ffi.v8_Undefined(isolate)) |undef| {
-        info.setReturnValue(undef);
+    // clearTimeout
+    {
+        const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return;
+        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
+        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearTimeout", 12) orelse return;
+        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
     }
-}
 
-fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-        info.setReturnValue(result);
+    // setInterval
+    {
+        const template = v8.ffi.v8_FunctionTemplate_New(isolate, setIntervalCallback, null) orelse return;
+        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
+        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setInterval", 11) orelse return;
+        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
     }
-}
 
-/// getComputedStyle callback - returns CSSStyleDeclaration-like object
-/// Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
-fn getComputedStyleCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        if (v8.ffi.v8_Null(isolate)) |null_val| {
-            info.setReturnValue(null_val);
-        }
-        return;
-    };
-
-    // Create an empty CSSStyleDeclaration-like object
-    // In a full implementation, this would compute styles from the element
-    const style_obj = v8.ffi.v8_Object_New(isolate) orelse {
-        if (v8.ffi.v8_Null(isolate)) |null_val| {
-            info.setReturnValue(null_val);
-        }
-        return;
-    };
-
-    // Add getPropertyValue method
-    const get_prop_template = v8.ffi.v8_FunctionTemplate_New(isolate, getPropertyValueCallback, null) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    const get_prop_func = v8.ffi.v8_FunctionTemplate_GetFunction(get_prop_template, v8_ctx) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    const get_prop_key = v8.ffi.v8_String_NewFromUtf8(isolate, "getPropertyValue", 16) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(get_prop_key), @ptrCast(get_prop_func));
-
-    // Add length property (0 for stub)
-    const length_key = v8.ffi.v8_String_NewFromUtf8(isolate, "length", 6) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    const length_val = v8.ffi.v8_Integer_New(isolate, 0);
-    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(length_key), @ptrCast(length_val));
-
-    info.setReturnValue(@ptrCast(style_obj));
-}
-
-/// getPropertyValue helper for CSSStyleDeclaration
-fn getPropertyValueCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    // Return empty string for any property (stub implementation)
-    const empty_str = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
-    info.setReturnValue(@ptrCast(empty_str));
-}
-
-/// fetch callback - stub implementation that throws TypeError
-/// Full implementation requires HTTP client integration
-fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Throw TypeError indicating fetch is not implemented
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch is not yet implemented", 28) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
-    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
-    v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+    // clearInterval (uses same callback as clearTimeout)
+    {
+        const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return;
+        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
+        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearInterval", 13) orelse return;
+        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+    }
 }

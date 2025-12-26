@@ -290,6 +290,223 @@ fn callbackEquals(a: ?*runtime.Instance, b: ?*runtime.Instance) bool {
     return a.? == b.?;
 }
 
+/// Parsed AddEventListenerOptions
+/// DOM §2.7 - AddEventListenerOptions dictionary
+const ParsedAddEventListenerOptions = struct {
+    /// capture (boolean, initially false)
+    capture: bool = false,
+    /// passive (null or boolean, initially null - means use default)
+    passive: ?bool = null,
+    /// once (boolean, initially false)
+    once: bool = false,
+    /// signal (null or AbortSignal)
+    signal: ?*runtime.Instance = null,
+};
+
+/// Parsed EventListenerOptions (for removeEventListener)
+/// DOM §2.7 - EventListenerOptions dictionary
+const ParsedEventListenerOptions = struct {
+    /// capture (boolean, initially false)
+    capture: bool = false,
+};
+
+/// DOM §2.7 - flatten options (AddEventListenerOptions variant)
+/// To flatten options with eventTarget, run these steps:
+/// 1. If options is a boolean, return options.
+/// 2. Return options["capture"].
+///
+/// Extended to also extract passive, once, and signal for AddEventListenerOptions.
+fn flattenAddEventListenerOptions(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) ParsedAddEventListenerOptions {
+    // Default values per spec
+    var result = ParsedAddEventListenerOptions{};
+
+    // If options was not passed, return defaults
+    if (!options.was_passed) {
+        return result;
+    }
+
+    const opts_value = options.value;
+
+    // Check if it's a boolean (per spec: "If options is a boolean, return options")
+    switch (opts_value) {
+        .boolean => |b| {
+            result.capture = b;
+            return result;
+        },
+        .handle => |h| {
+            // It's a V8 handle - need to check if it's an object and extract properties
+            return extractAddEventListenerOptionsFromHandle(instance, h.ptr, result);
+        },
+        else => {
+            // Other types (undefined, null, string, number, instance) - return defaults
+            return result;
+        },
+    }
+}
+
+/// Extract AddEventListenerOptions from a V8 object handle
+fn extractAddEventListenerOptionsFromHandle(instance: *runtime.Instance, handle_ptr: *anyopaque, defaults: ParsedAddEventListenerOptions) ParsedAddEventListenerOptions {
+    const v8_engine = @import("v8");
+    const ffi = v8_engine.ffi;
+
+    var result = defaults;
+
+    // Get V8 context
+    const engine_ctx = instance.ctx.engine_ctx orelse return result;
+    const v8_context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = ffi.v8_Isolate_GetCurrent() orelse return result;
+
+    // Cast handle to Value pointer
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(handle_ptr));
+
+    // First check if this is actually a boolean (V8 boolean primitive passed as handle)
+    if (ffi.v8_Value_IsBoolean(v8_value)) {
+        result.capture = ffi.v8_Value_BooleanValue(v8_value, v8_isolate);
+        return result;
+    }
+
+    // Check if it's an object
+    if (!ffi.v8_Value_IsObject(v8_value)) {
+        return result;
+    }
+
+    // Cast to Object
+    const v8_obj: *ffi.Object = @ptrCast(v8_value);
+
+    // Extract 'capture' property
+    if (getObjectBooleanProperty(v8_obj, v8_context, v8_isolate, "capture")) |cap| {
+        result.capture = cap;
+    }
+
+    // Extract 'passive' property
+    if (getObjectBooleanPropertyOptional(v8_obj, v8_context, v8_isolate, "passive")) |passive_opt| {
+        result.passive = passive_opt;
+    }
+
+    // Extract 'once' property
+    if (getObjectBooleanProperty(v8_obj, v8_context, v8_isolate, "once")) |once_val| {
+        result.once = once_val;
+    }
+
+    // Extract 'signal' property (AbortSignal)
+    // TODO: Implement AbortSignal extraction when AbortSignal is fully implemented
+    // For now, signal remains null
+
+    return result;
+}
+
+/// Get a boolean property from a V8 object, returns null if property doesn't exist or is not boolean
+fn getObjectBooleanProperty(obj: *@import("v8").ffi.Object, context: *@import("v8").ffi.Context, isolate: *@import("v8").ffi.Isolate, key: []const u8) ?bool {
+    const ffi = @import("v8").ffi;
+
+    // Create the key string
+    const key_str = ffi.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return null;
+    defer ffi.v8_String_Dispose(key_str);
+
+    // Get the property
+    const prop_value = ffi.v8_Object_Get(obj, context, @ptrCast(key_str)) orelse return null;
+
+    // Check if it's undefined or null (property not set)
+    if (ffi.v8_Value_IsNullOrUndefined(prop_value)) {
+        return null;
+    }
+
+    // Convert to boolean (ToBoolean per ECMAScript)
+    return ffi.v8_Value_BooleanValue(prop_value, isolate);
+}
+
+/// Get a boolean property that may be explicitly undefined (for passive which has 3-state: true, false, null)
+/// Returns null if property is not present, otherwise returns the boolean value
+fn getObjectBooleanPropertyOptional(obj: *@import("v8").ffi.Object, context: *@import("v8").ffi.Context, isolate: *@import("v8").ffi.Isolate, key: []const u8) ??bool {
+    const ffi = @import("v8").ffi;
+
+    // Create the key string
+    const key_str = ffi.v8_String_NewFromUtf8(isolate, key.ptr, @intCast(key.len)) orelse return null;
+    defer ffi.v8_String_Dispose(key_str);
+
+    // Get the property
+    const prop_value = ffi.v8_Object_Get(obj, context, @ptrCast(key_str)) orelse return null;
+
+    // Check if it's undefined (property not set) - return outer null
+    if (ffi.v8_Value_IsUndefined(prop_value)) {
+        return null;
+    }
+
+    // Check if explicitly null - return inner null (meaning "use default passive value")
+    if (ffi.v8_Value_IsNull(prop_value)) {
+        return @as(?bool, null);
+    }
+
+    // Convert to boolean (ToBoolean per ECMAScript)
+    return ffi.v8_Value_BooleanValue(prop_value, isolate);
+}
+
+/// DOM §2.7 - flatten options (EventListenerOptions variant for removeEventListener)
+fn flattenEventListenerOptions(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) ParsedEventListenerOptions {
+    // Default values per spec
+    var result = ParsedEventListenerOptions{};
+
+    // If options was not passed, return defaults
+    if (!options.was_passed) {
+        return result;
+    }
+
+    const opts_value = options.value;
+
+    // Check if it's a boolean (per spec: "If options is a boolean, return options")
+    switch (opts_value) {
+        .boolean => |b| {
+            result.capture = b;
+            return result;
+        },
+        .handle => |h| {
+            // It's a V8 handle - need to check if it's an object and extract properties
+            return extractEventListenerOptionsFromHandle(instance, h.ptr, result);
+        },
+        else => {
+            // Other types (undefined, null, string, number, instance) - return defaults
+            return result;
+        },
+    }
+}
+
+/// Extract EventListenerOptions from a V8 object handle
+fn extractEventListenerOptionsFromHandle(instance: *runtime.Instance, handle_ptr: *anyopaque, defaults: ParsedEventListenerOptions) ParsedEventListenerOptions {
+    const v8_engine = @import("v8");
+    const ffi = v8_engine.ffi;
+
+    var result = defaults;
+
+    // Get V8 context
+    const engine_ctx = instance.ctx.engine_ctx orelse return result;
+    const v8_context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = ffi.v8_Isolate_GetCurrent() orelse return result;
+
+    // Cast handle to Value pointer
+    const v8_value: *ffi.Value = @ptrCast(@alignCast(handle_ptr));
+
+    // First check if this is actually a boolean (V8 boolean primitive passed as handle)
+    if (ffi.v8_Value_IsBoolean(v8_value)) {
+        result.capture = ffi.v8_Value_BooleanValue(v8_value, v8_isolate);
+        return result;
+    }
+
+    // Check if it's an object
+    if (!ffi.v8_Value_IsObject(v8_value)) {
+        return result;
+    }
+
+    // Cast to Object
+    const v8_obj: *ffi.Object = @ptrCast(v8_value);
+
+    // Extract 'capture' property
+    if (getObjectBooleanProperty(v8_obj, v8_context, v8_isolate, "capture")) |cap| {
+        result.capture = cap;
+    }
+
+    return result;
+}
+
 /// DOM §2.7 - add an event listener
 /// To add an event listener, given an EventTarget object eventTarget and
 /// an event listener listener, run these steps:
@@ -393,13 +610,11 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
         internal = new_internal;
     }
 
-    // Flatten options - for now treat as AddEventListenerOptions
-    // TODO: Properly interpret options union (boolean or AddEventListenerOptions)
-    _ = options;
-    const capture = false; // Default
-    const passive: ?bool = null;
-    const once = false;
-    const signal: ?*runtime.Instance = null;
+    // DOM §2.7 - Flatten options (AddEventListenerOptions)
+    // The third parameter can be:
+    // - boolean: use as capture flag
+    // - AddEventListenerOptions dictionary: extract capture, passive, once, signal
+    const parsed_options = flattenAddEventListenerOptions(instance, options);
 
     // Convert callback wrapper to Instance pointer if present
     // The callback comes as ??*runtime.CallbackWrapper but we store ?*runtime.Instance
@@ -417,14 +632,14 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     // and we need to own it to safely free it in deinit()
     const owned_type = runtime.DOMString.initDupe(internal.?.allocator, @"type".asSlice()) catch return error.OutOfMemory;
 
-    // Create listener record with owned type string
+    // Create listener record with owned type string and parsed options
     const listener = EventListenerRecord{
         .type = owned_type,
         .callback = callback_instance,
-        .capture = capture,
-        .passive = passive,
-        .once = once,
-        .signal = signal,
+        .capture = parsed_options.capture,
+        .passive = parsed_options.passive,
+        .once = parsed_options.once,
+        .signal = parsed_options.signal,
     };
 
     addAnEventListener(internal.?, instance, listener) catch |err| {
@@ -440,9 +655,11 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
     const internal = getInternalFromRegistry(instance) orelse return;
 
-    // Flatten options
-    _ = options;
-    const capture = false; // Default
+    // DOM §2.7 - Flatten options (EventListenerOptions)
+    // The third parameter can be:
+    // - boolean: use as capture flag
+    // - EventListenerOptions dictionary: extract capture
+    const parsed_options = flattenEventListenerOptions(instance, options);
 
     // Convert callback wrapper to Instance pointer if present
     const callback_instance: ?*runtime.Instance = if (callback) |cb_opt| blk: {
@@ -456,7 +673,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
     const listener = EventListenerRecord{
         .type = @"type",
         .callback = callback_instance,
-        .capture = capture,
+        .capture = parsed_options.capture,
     };
 
     removeAnEventListener(internal, listener);
@@ -481,69 +698,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
     EventImpl.setIsTrusted(event, false);
 
     // Step 3: Return the result of dispatching event to this
-    // TODO: Implement full dispatch algorithm from event_dispatch.zig
-    // For now, return true (event not canceled)
-
-    // Get internal state if available
-    const internal = getInternalFromRegistry(instance);
-    if (internal) |int| {
-        // Set event's target
-        EventImpl.setTarget(event, instance);
-
-        // Get listeners for this event type (use interface per Golden Rule #13)
-        const @"type" = interfaces.Event.get_type(event) catch return true;
-        const listeners = int.getEventListenerList();
-
-        // Invoke matching listeners (from addEventListener)
-        for (listeners) |listener| {
-            if (std.mem.eql(u8, listener.type.asSlice(), @"type".asSlice()) and
-                !listener.removed)
-            {
-                // Actually invoke the callback
-                if (listener.callback) |callback_instance| {
-                    // Cast callback Instance to CallbackWrapper
-                    // (the callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper)
-                    const v8_engine = @import("v8");
-                    const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-
-                    // Get the V8 context from the instance context
-                    if (instance.ctx.engine_ctx) |engine_ctx| {
-                        const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-
-                        // Get the current V8 isolate
-                        const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse continue;
-
-                        // Wrap the event as a V8 object
-                        const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
-                            event,
-                            "Event",
-                            v8_isolate,
-                            v8_context,
-                        ) catch {
-                            // If we can't wrap the event, skip this listener
-                            continue;
-                        };
-
-                        // Invoke the callback with the event as an argument
-                        _ = callback_wrapper.call1(v8_context, @ptrCast(event_v8_obj));
-                    }
-                }
-
-                // If listener.once is true, remove it
-                if (listener.once) {
-                    removeAnEventListener(int, listener);
-                }
-            }
-        }
-    }
-
-    // Also invoke IDL event handler attributes (onload, onclick, etc.)
-    // These are stored in HTMLElement's event_handlers map and need to be invoked separately
-    // Per HTML spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes
-    invokeIdlEventHandler(instance, event);
-
-    // Return !canceled
-    return !EventImpl.getCanceledFlag(event);
+    // Use the full DOM event dispatch algorithm
+    const event_dispatch = @import("dom").event_dispatch;
+    return event_dispatch.dispatch(event, instance, false, null);
 }
 
 /// Invoke IDL event handler attribute (e.g., onload, onclick) for the given event
@@ -664,4 +821,56 @@ pub fn getEventListenersForType(instance: *runtime.Instance, @"type": []const u8
     // In a real implementation, we'd return a filtered view
     _ = @"type";
     return list.toSlice();
+}
+
+/// Invoke an event listener callback with the given event
+/// This is called from event_dispatch.zig during the dispatch algorithm.
+///
+/// Per DOM spec:
+/// - Call callback.handleEvent(event) for object callbacks
+/// - Call callback(event) for function callbacks
+/// - Return true if callback was invoked successfully
+pub fn invokeEventListenerCallback(
+    callback: ?*runtime.Instance,
+    event: *runtime.Instance,
+    legacy_flag: ?*bool,
+) bool {
+    const callback_ptr = callback orelse return false;
+
+    // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
+    // (created during addEventListener when the JS callback was converted)
+    const v8_engine = @import("v8");
+    const template_registry = v8_engine.template_registry;
+    const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_ptr));
+
+    // Get V8 context from the event's runtime context
+    const engine_ctx = event.ctx.engine_ctx orelse return false;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return false;
+
+    // Wrap the event as a V8 object so we can pass it to the callback
+    const event_v8_obj = template_registry.wrapInstanceAsV8Object(
+        event,
+        "Event", // Base type - V8 will use the actual event's prototype
+        v8_isolate,
+        v8_context,
+    ) catch {
+        // Failed to wrap event - cannot invoke callback
+        if (legacy_flag) |flag| {
+            flag.* = true;
+        }
+        return false;
+    };
+
+    // Invoke the callback with the event as argument
+    const result = callback_wrapper.call1(v8_context, @ptrCast(event_v8_obj));
+
+    // If result is null, the callback threw an exception
+    if (result == null) {
+        if (legacy_flag) |flag| {
+            flag.* = true;
+        }
+    }
+
+    return true;
 }

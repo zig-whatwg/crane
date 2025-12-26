@@ -87,6 +87,7 @@ fn printConsoleValues(ctx: runtime.Context, data: []const runtime.JSValue) void 
 ///
 /// WHATWG Console Standard: Logger("log", data)
 pub fn call_log(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
+    std.debug.print("[console.log CALLED] data.len={d}\n", .{data.len});
     printConsoleValues(ctx, data);
 }
 

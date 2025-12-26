@@ -106,6 +106,11 @@ pub fn registerPointer(ptr: usize) void {
         std.debug.panic("Too many external references - increase MAX_EXTERNAL_REFS", .{});
     }
 
+    // Debug: log first few and some key positions
+    if (runtime_ref_count < 5 or runtime_ref_count == 11000 or runtime_ref_count == 11400) {
+        std.debug.print("[ext_refs] Position {d}: ptr=0x{x}\n", .{ runtime_ref_count, ptr });
+    }
+
     runtime_refs[runtime_ref_count] = ptr_value;
     runtime_ref_count += 1;
 }
@@ -226,7 +231,12 @@ pub fn registerAllInterfaceCallbacks() void {
 /// 5. Namespace callbacks
 /// 6. Window properties callbacks
 /// 7. Context manager callbacks
+var registration_call_count: usize = 0;
+
 pub fn registerAllExternalReferences() void {
+    registration_call_count += 1;
+    std.debug.print("[registerAllExternalReferences] CALL #{d}\n", .{registration_call_count});
+
     // Clear any previous registrations to ensure clean state
     clearRuntimeReferences();
 
@@ -235,28 +245,35 @@ pub fn registerAllExternalReferences() void {
     registerCallbackRuntime(v8.v8_GetAsyncIteratorNextCallback());
     registerCallbackRuntime(v8.v8_GetAsyncIteratorReturnCallback());
     registerCallbackRuntime(v8.v8_GetAsyncIteratorSelfCallback());
+    std.debug.print("[registerAllExternalReferences] After C++ callbacks: count={d}\n", .{runtime_ref_count});
 
     // Register Zig callbacks used by streams and promise handlers
     const zig_callbacks = @import("zig_callbacks.zig");
     registerCallbackRuntime(zig_callbacks.genericZigCallback);
+    std.debug.print("[registerAllExternalReferences] After Zig callbacks: count={d}\n", .{runtime_ref_count});
 
     // Register Intl callbacks
     const intl_binding = @import("intl_binding.zig");
     intl_binding.registerExternalReferences();
+    std.debug.print("[registerAllExternalReferences] After Intl: count={d}\n", .{runtime_ref_count});
 
     // Register window properties callbacks
     const window_properties = @import("window_properties.zig");
     window_properties.registerExternalReferences();
+    std.debug.print("[registerAllExternalReferences] After window_properties: count={d}\n", .{runtime_ref_count});
 
     // Register context manager callbacks
     const context_manager = @import("context_manager.zig");
     context_manager.registerExternalReferences();
+    std.debug.print("[registerAllExternalReferences] After context_manager: count={d}\n", .{runtime_ref_count});
 
     // Register all interface callbacks in deterministic order
     registerAllInterfaceCallbacks();
+    std.debug.print("[registerAllExternalReferences] After interfaces: count={d}\n", .{runtime_ref_count});
 
     // Register namespace callbacks
     registerAllNamespaceCallbacks();
+    std.debug.print("[registerAllExternalReferences] After namespaces: count={d}\n", .{runtime_ref_count});
 }
 
 /// Register callbacks for all namespaces
@@ -264,17 +281,14 @@ fn registerAllNamespaceCallbacks() void {
     @setEvalBranchQuota(10_000_000);
     const V8Namespace = @import("namespace.zig").V8Namespace;
 
-    // Import namespaces module if available
-    // Note: This is done conditionally since namespaces may not always be available
-    if (@hasDecl(@import("root"), "namespaces")) {
-        const namespaces = @import("root").namespaces;
-        const ns_decls = @typeInfo(namespaces).@"struct".decls;
+    // Import namespaces module directly (added as build dependency to v8_mod)
+    const namespaces = @import("namespaces");
+    const ns_decls = @typeInfo(namespaces).@"struct".decls;
 
-        inline for (ns_decls) |decl| {
-            const NamespaceType = @field(namespaces, decl.name);
-            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-                V8Namespace(NamespaceType).registerExternalReferences();
-            }
+    inline for (ns_decls) |decl| {
+        const NamespaceType = @field(namespaces, decl.name);
+        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+            V8Namespace(NamespaceType).registerExternalReferences();
         }
     }
 }

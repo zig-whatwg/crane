@@ -230,9 +230,10 @@ pub const BrowserAdapter = struct {
     ///
     /// This method:
     /// 1. Fetches the test HTML from the WPT server via HTTP
-    /// 2. Creates a fresh V8 context (always window context for HTML parsing)
-    /// 3. Parses and executes the fetched HTML
-    /// 4. Waits for test completion
+    /// 2. Detects if it's a reftest (visual comparison test) and skips if so
+    /// 3. Creates a fresh V8 context (always window context for HTML parsing)
+    /// 4. Parses and executes the fetched HTML
+    /// 5. Waits for test completion
     ///
     /// For .any.js tests, the WPT server generates HTML wrappers:
     /// - test.any.html - runs test directly in window
@@ -264,6 +265,23 @@ pub const BrowserAdapter = struct {
             var result = try test_harness.TestResult.init(self.allocator, test_path);
             result.status = .@"error";
             result.message = try std.fmt.allocPrint(self.allocator, "HTTP {d} fetching {s}", .{ fetch_result.status_code, test_url });
+            return result;
+        }
+
+        // Detect reftest reference files (*-ref.html, *-notref.html) - these are not tests
+        if (test_parser.isReftestReference(test_path)) {
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .skip;
+            result.message = try self.allocator.dupe(u8, "Reftest reference file - not a test");
+            return result;
+        }
+
+        // Detect reftests (visual comparison tests) - they don't use testharness.js
+        // and would timeout waiting for completion callback
+        if (test_parser.isReftest(fetch_result.body)) {
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = .skip;
+            result.message = try self.allocator.dupe(u8, "Reftest (visual comparison) - not implemented");
             return result;
         }
 

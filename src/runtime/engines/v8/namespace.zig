@@ -118,6 +118,24 @@ pub fn V8Namespace(comptime Namespace: type) type {
         /// All methods in this namespace
         const all_methods = methods;
 
+        /// Cached callbacks generated at comptime - ensures the SAME callback
+        /// is used in both registerExternalReferences() and registerMethod().
+        /// This is critical for V8 snapshot support - the external references
+        /// must contain the exact same function pointers that are used when
+        /// creating FunctionTemplates.
+        const cached_callbacks = blk: {
+            var callbacks: [methods.len]v8.FunctionCallback = undefined;
+            for (methods, 0..) |method, i| {
+                callbacks[i] = generateCallback(method);
+            }
+            break :blk callbacks;
+        };
+
+        /// Get the cached callback for a method by index
+        fn getCachedCallback(comptime method_index: usize) v8.FunctionCallback {
+            return cached_callbacks[method_index];
+        }
+
         /// Register all namespace callbacks as external references
         ///
         /// This MUST be called before creating a V8 snapshot. V8 snapshots
@@ -135,9 +153,13 @@ pub fn V8Namespace(comptime Namespace: type) type {
         pub fn registerExternalReferences() void {
             const ext_refs = @import("external_references.zig");
 
-            // Register callback for each method in the namespace
-            inline for (all_methods) |method| {
-                const callback = generateCallback(method);
+            // Register the CACHED callbacks - same pointers used in registerMethod
+            inline for (0..all_methods.len) |i| {
+                const callback = getCachedCallback(i);
+                const current_count = ext_refs.getRuntimeCount();
+                if (std.mem.eql(u8, all_methods[i].name, "log")) {
+                    std.debug.print("[V8Namespace.registerExternalReferences] console.log at index {d}, callback 0x{x}\n", .{ current_count, @intFromPtr(callback) });
+                }
                 ext_refs.registerCallbackRuntime(callback);
             }
         }
@@ -157,28 +179,73 @@ pub fn V8Namespace(comptime Namespace: type) type {
             context: *v8.Context,
             name: []const u8,
         ) void {
-            const ns_object = createObject(isolate, context);
-            const global = v8.v8_Context_Global(context) orelse return;
+            const ns_object = createObject(isolate, context) orelse {
+                std.debug.print("[V8Namespace.registerGlobal] createObject returned null for {s}\n", .{name});
+                return;
+            };
+            const global = v8.v8_Context_Global(context) orelse {
+                std.debug.print("[V8Namespace.registerGlobal] Failed to get global for {s}\n", .{name});
+                return;
+            };
 
             const key_str = v8.v8_String_NewFromUtf8(
                 isolate,
                 name.ptr,
                 @intCast(name.len),
-            ) orelse return;
+            ) orelse {
+                std.debug.print("[V8Namespace.registerGlobal] Failed to create key string for {s}\n", .{name});
+                return;
+            };
+
+            // Check BEFORE registration and delete any existing property
+            if (std.mem.eql(u8, name, "console")) {
+                const check_key = v8.v8_String_NewFromUtf8(isolate, "console", 7);
+                if (check_key) |ck| {
+                    const before_val = v8.v8_Object_Get(global, context, @ptrCast(ck));
+                    if (before_val) |bv| {
+                        const is_undefined = v8.v8_Value_IsUndefined(@ptrCast(bv));
+                        const is_null = v8.v8_Value_IsNull(@ptrCast(bv));
+                        const is_object = v8.v8_Value_IsObject(@ptrCast(bv));
+                        std.debug.print("[V8Namespace.registerGlobal] console BEFORE: {*} (undefined={}, null={}, object={})\n", .{ bv, is_undefined, is_null, is_object });
+
+                        if (is_object) {
+                            // Try to delete the existing console property
+                            const deleted = v8.v8_Object_Delete(global, context, @ptrCast(ck));
+                            std.debug.print("[V8Namespace.registerGlobal] Attempted delete, success: {}\n", .{deleted});
+                        }
+                    } else {
+                        std.debug.print("[V8Namespace.registerGlobal] console NOT on global before registration\n", .{});
+                    }
+                }
+            }
 
             // Per WebIDL spec, namespaces on global object must be:
             // - writable: true
             // - enumerable: false (not in for...in loops or Object.keys)
             // - configurable: true
-            _ = v8.v8_Object_DefineProperty(
+            //
+            // NOTE: We use v8_Object_Set instead of v8_Object_DefineProperty because
+            // the snapshot may have a non-configurable console property that prevents
+            // DefineOwnProperty from overwriting it.
+            const success = v8.v8_Object_Set(
                 global,
                 context,
                 @ptrCast(key_str),
                 @ptrCast(ns_object),
-                true, // writable = true
-                false, // enumerable = false (per WebIDL spec)
-                true, // configurable = true
             );
+
+            if (std.mem.eql(u8, name, "console")) {
+                std.debug.print("[V8Namespace.registerGlobal] console object={*} registered on context={*}, success: {}\n", .{ ns_object, context, success });
+
+                // Check AFTER registration
+                const check_key = v8.v8_String_NewFromUtf8(isolate, "console", 7);
+                if (check_key) |ck| {
+                    const after_val = v8.v8_Object_Get(global, context, @ptrCast(ck));
+                    if (after_val) |av| {
+                        std.debug.print("[V8Namespace.registerGlobal] console on global AFTER registration: {*}\n", .{av});
+                    }
+                }
+            }
         }
 
         /// Create a new namespace object with all methods
@@ -188,46 +255,71 @@ pub fn V8Namespace(comptime Namespace: type) type {
             isolate: *v8.Isolate,
             context: *v8.Context,
         ) ?*v8.Object {
-            _ = context;
+            // Use context-aware object creation to ensure proper realm association
+            const object = v8.v8_Object_NewInContext(context) orelse return null;
 
-            const object = v8.v8_Object_New(isolate) orelse return null;
-
-            // Register all methods at compile time
-            inline for (all_methods) |method| {
-                registerMethod(isolate, object, method);
+            // Register all methods using CACHED callbacks
+            inline for (0..all_methods.len) |i| {
+                registerMethodByIndex(isolate, context, object, i);
             }
 
             return object;
         }
 
-        /// Register a single method on the namespace object
-        fn registerMethod(
+        /// Register a single method on the namespace object using cached callback
+        fn registerMethodByIndex(
             isolate: *v8.Isolate,
+            context: *v8.Context,
             object: *v8.Object,
-            comptime method: MethodInfo,
+            comptime method_index: usize,
         ) void {
-            // Create V8 function template for this method
-            const callback = comptime generateCallback(method);
-            const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, null) orelse return;
-            const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            const method = all_methods[method_index];
+            // Use CACHED callback - same pointer as registered in external references
+            const callback = getCachedCallback(method_index);
+            if (std.mem.eql(u8, method.name, "log")) {
+                std.debug.print("[V8Namespace.registerMethodByIndex] Registering console.log cached callback at 0x{x}\n", .{@intFromPtr(callback)});
+            }
+            const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, null) orelse {
+                std.debug.print("[V8Namespace.registerMethodByIndex] Failed to create FunctionTemplate for {s}\n", .{method.name});
+                return;
+            };
             const fn_obj = v8.v8_FunctionTemplate_GetFunction(
                 fn_template,
                 context,
-            ) orelse return;
+            ) orelse {
+                std.debug.print("[V8Namespace.registerMethodByIndex] Failed to get Function from template for {s}\n", .{method.name});
+                return;
+            };
+            if (std.mem.eql(u8, method.name, "log")) {
+                std.debug.print("[V8Namespace.registerMethodByIndex] console.log fn_obj = {*}\n", .{fn_obj});
+            }
 
             // Add function to object
             const name_str = v8.v8_String_NewFromUtf8(
                 isolate,
                 method.name.ptr,
                 @intCast(method.name.len),
-            ) orelse return;
+            ) orelse {
+                std.debug.print("[V8Namespace.registerMethodByIndex] Failed to create name string for {s}\n", .{method.name});
+                return;
+            };
 
-            _ = v8.v8_Object_Set(
+            // Use DefineProperty instead of Set - this matches how interfaces work
+            const success = v8.v8_Object_DefineProperty(
                 object,
                 context,
                 @ptrCast(name_str),
                 @ptrCast(fn_obj),
+                true, // writable
+                true, // enumerable
+                true, // configurable
             );
+
+            if (!success) {
+                std.debug.print("[V8Namespace.registerMethodByIndex] Failed to define method {s} on object\n", .{method.name});
+            } else if (std.mem.eql(u8, method.name, "log")) {
+                std.debug.print("[V8Namespace.registerMethodByIndex] console.log method DEFINED successfully on object\n", .{});
+            }
         }
 
         /// Generate V8 callback wrapper for a namespace method
@@ -247,6 +339,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
 
             const Wrapper = struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    std.debug.print("[V8Namespace] callback invoked for method: {s}\n", .{method.name});
                     const isolate = info.getIsolate();
                     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                         conv.throwTypeError(isolate, "Failed to get current context");

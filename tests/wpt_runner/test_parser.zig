@@ -508,6 +508,37 @@ fn parseHtmlLinkTags(_: std.mem.Allocator, content: []const u8, metadata: *TestM
     }
 }
 
+/// Check if HTML content is a reftest (visual comparison test)
+/// Reftests have <link rel="match"> or <link rel="mismatch"> elements
+/// and don't use testharness.js
+pub fn isReftest(content: []const u8) bool {
+    var pos: usize = 0;
+    while (std.mem.indexOfPos(u8, content, pos, "<link")) |link_start| {
+        const tag_end = std.mem.indexOfPos(u8, content, link_start, ">") orelse break;
+        const tag = content[link_start .. tag_end + 1];
+
+        const rel = extractAttribute(tag, "rel");
+        if (rel) |r| {
+            // Check for rel="match" or rel="mismatch" (case-insensitive comparison)
+            if (std.ascii.eqlIgnoreCase(r, "match") or std.ascii.eqlIgnoreCase(r, "mismatch")) {
+                return true;
+            }
+        }
+
+        pos = tag_end + 1;
+    }
+    return false;
+}
+
+/// Check if a file path is a reftest reference file
+/// Reference files are named *-ref.html or *-notref.html and are not actual tests
+pub fn isReftestReference(path: []const u8) bool {
+    return std.mem.endsWith(u8, path, "-ref.html") or
+        std.mem.endsWith(u8, path, "-notref.html") or
+        std.mem.endsWith(u8, path, "-ref.htm") or
+        std.mem.endsWith(u8, path, "-notref.htm");
+}
+
 /// Parse script tags from HTML content (both external and inline)
 fn parseHtmlScriptTags(_: std.mem.Allocator, content: []const u8, metadata: *TestMetadata) !void {
     var pos: usize = 0;
@@ -540,7 +571,7 @@ fn parseHtmlScriptTags(_: std.mem.Allocator, content: []const u8, metadata: *Tes
 }
 
 /// Extract an attribute value from an HTML tag
-/// Handles both single and double quotes
+/// Handles double quotes, single quotes, and unquoted values
 fn extractAttribute(tag: []const u8, attr_name: []const u8) ?[]const u8 {
     // Try with double quotes: attr="value"
     var buf: [128]u8 = undefined;
@@ -560,6 +591,27 @@ fn extractAttribute(tag: []const u8, attr_name: []const u8) ?[]const u8 {
         const value_start = start + pattern_sq.len;
         if (std.mem.indexOfPos(u8, tag, value_start, "'")) |value_end| {
             return tag[value_start..value_end];
+        }
+    }
+
+    // Try unquoted: attr=value (value ends at space or >)
+    const pattern_uq = std.fmt.bufPrint(&buf, "{s}=", .{attr_name}) catch return null;
+
+    if (std.mem.indexOf(u8, tag, pattern_uq)) |start| {
+        const value_start = start + pattern_uq.len;
+        // Make sure next char is not a quote (would have been caught above)
+        if (value_start < tag.len and tag[value_start] != '"' and tag[value_start] != '\'') {
+            // Find end of value: space, >, or end of string
+            var value_end = value_start;
+            while (value_end < tag.len) : (value_end += 1) {
+                const c = tag[value_end];
+                if (c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == '>') {
+                    break;
+                }
+            }
+            if (value_end > value_start) {
+                return tag[value_start..value_end];
+            }
         }
     }
 
@@ -1096,6 +1148,11 @@ test "extractAttribute" {
     // Single quotes
     try std.testing.expectEqualStrings("value", extractAttribute("name='value'", "name").?);
 
+    // Unquoted values (HTML5 allows this for simple values without spaces)
+    try std.testing.expectEqualStrings("match", extractAttribute("<link rel=match href=ref.html>", "rel").?);
+    try std.testing.expectEqualStrings("ref.html", extractAttribute("<link rel=match href=ref.html>", "href").?);
+    try std.testing.expectEqualStrings("mismatch", extractAttribute("<link rel=mismatch>", "rel").?);
+
     // Not found
     try std.testing.expectEqual(@as(?[]const u8, null), extractAttribute("<script>", "src"));
 }
@@ -1351,4 +1408,93 @@ test "multi-context: effective test count with variants and globals" {
 
     // 2 contexts * 3 variants = 6 effective tests
     try std.testing.expectEqual(@as(usize, 6), parsed.metadata.getEffectiveTestCount());
+}
+
+// =============================================================================
+// Reftest Detection Tests
+// =============================================================================
+
+test "isReftest - detects link rel=match" {
+    const content =
+        \\<!doctype html>
+        \\<title>Test</title>
+        \\<link rel="match" href="ref.html">
+        \\<p>Test content</p>
+    ;
+    try std.testing.expect(isReftest(content));
+}
+
+test "isReftest - detects link rel=mismatch" {
+    const content =
+        \\<!doctype html>
+        \\<title>Ahem checker</title>
+        \\<link rel="mismatch" href="ahem-notref.html">
+        \\<style>table { font: 15px/1 Ahem; }</style>
+    ;
+    try std.testing.expect(isReftest(content));
+}
+
+test "isReftest - case insensitive" {
+    // Test with uppercase MATCH
+    const content_upper =
+        \\<!doctype html>
+        \\<link rel="MATCH" href="ref.html">
+    ;
+    try std.testing.expect(isReftest(content_upper));
+
+    // Test with mixed case
+    const content_mixed =
+        \\<!doctype html>
+        \\<link rel="Match" href="ref.html">
+    ;
+    try std.testing.expect(isReftest(content_mixed));
+}
+
+test "isReftest - false for testharness tests" {
+    const content =
+        \\<!DOCTYPE html>
+        \\<html>
+        \\<head>
+        \\<title>URL Test</title>
+        \\<link rel="help" href="https://url.spec.whatwg.org/">
+        \\<script src="/resources/testharness.js"></script>
+        \\<script src="/resources/testharnessreport.js"></script>
+        \\</head>
+        \\<body>
+        \\<script>
+        \\test(() => { assert_true(true); });
+        \\</script>
+        \\</body>
+        \\</html>
+    ;
+    try std.testing.expect(!isReftest(content));
+}
+
+test "isReftest - false for empty content" {
+    try std.testing.expect(!isReftest(""));
+}
+
+test "isReftest - false for non-HTML content" {
+    try std.testing.expect(!isReftest("test(() => { assert_true(true); });"));
+}
+
+test "isReftest - unquoted attributes" {
+    // WPT's blank.html uses unquoted rel=match
+    const content =
+        \\<title>Blank Document</title>
+        \\<link rel=match href="about:blank">
+    ;
+    try std.testing.expect(isReftest(content));
+}
+
+test "isReftestReference - detects reference files" {
+    try std.testing.expect(isReftestReference("ahem-ref.html"));
+    try std.testing.expect(isReftestReference("ahem-notref.html"));
+    try std.testing.expect(isReftestReference("path/to/test-ref.html"));
+    try std.testing.expect(isReftestReference("path/to/test-notref.htm"));
+
+    // Non-reference files
+    try std.testing.expect(!isReftestReference("test.html"));
+    try std.testing.expect(!isReftestReference("reftest.html"));
+    try std.testing.expect(!isReftestReference("test-reference.html"));
 }

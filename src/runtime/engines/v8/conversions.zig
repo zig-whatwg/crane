@@ -941,7 +941,6 @@ pub fn fromV8Value(
                 return @unionInit(T, fields[idx].name, converted);
             }
         } else if (v8.v8_Value_IsString(value)) {
-            std.debug.print("[fromV8Value union] Value is STRING, string_idx={?}\n", .{string_idx});
             if (string_idx) |idx| {
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
@@ -977,13 +976,10 @@ pub fn fromV8Value(
                     return @unionInit(T, fields[idx].name, converted);
                 } else |_| {
                     // Instance conversion failed - this might be a native JS object like URL.
-                    std.debug.print("[fromV8Value] Instance conversion FAILED, trying string fallback\n", .{});
                     // If we have a string variant, try to convert the object to string via toString()
                     if (string_idx) |str_idx| {
-                        std.debug.print("[fromV8Value] Has string_idx={d}, calling v8_Value_ToString\n", .{str_idx});
                         // Call toString() on the object to get a string representation
                         if (v8.v8_Value_ToString(value, context)) |str_value| {
-                            std.debug.print("[fromV8Value] v8_Value_ToString succeeded, converting to string type\n", .{});
                             const StringFieldType = fields[str_idx].type;
                             if (fromV8Value(StringFieldType, allocator, isolate, context, @ptrCast(str_value))) |str_converted| {
                                 return @unionInit(T, fields[str_idx].name, str_converted);
@@ -1097,20 +1093,15 @@ pub fn fromV8Value(
         // were created by our WebIDL bindings. Native JS objects (like URL, Date, etc.)
         // should NOT be converted to *runtime.Instance.
         if (interface_mod.getWrapperTypeInfo(object)) |wrapper_info| {
-            std.debug.print("[Instance conv] Got WrapperTypeInfo, this_tag={d}\n", .{wrapper_info.this_tag});
             // We have type info - use type-safe unwrapping
             // For generic *runtime.Instance, we accept any valid wrapped object
             // by checking that it has a valid type tag (any tag is fine)
             if (wrapper_info.this_tag > 0) {
                 // Valid type info, get instance from slot 0
                 return interface_mod.getInstance(runtime.Instance, object) orelse {
-                    std.debug.print("[Instance conv] getInstance returned null\n", .{});
                     return ConversionError.TypeError;
                 };
             }
-            std.debug.print("[Instance conv] this_tag is 0, rejecting\n", .{});
-        } else {
-            std.debug.print("[Instance conv] No WrapperTypeInfo, rejecting as native JS object\n", .{});
         }
 
         // No valid WrapperTypeInfo - this is a native JS object (URL, Date, etc.),

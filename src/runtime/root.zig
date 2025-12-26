@@ -199,6 +199,11 @@ pub const TimerInterface = timer.TimerInterface;
 pub const TimerVTable = timer.TimerVTable;
 pub const TimerError = timer.TimerError;
 
+// Network pollable interface - Host-agnostic async HTTP support
+// Used by call_fetch to make non-blocking HTTP requests
+pub const network_pollable = @import("network_pollable.zig");
+pub const NetworkPollable = network_pollable.NetworkPollable;
+
 // Typed callback wrappers for type-safe callback handling
 // Replaces *anyopaque user data with typed alternatives
 pub const typed_callback = @import("typed_callback.zig");

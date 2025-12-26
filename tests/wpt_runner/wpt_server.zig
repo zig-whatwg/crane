@@ -61,10 +61,18 @@ pub const WptServer = struct {
     ///
     /// First checks if a server is already running (via lockfile).
     /// If not, spawns a new server and writes the lockfile.
+    /// Always verifies all required ports are ready.
     pub fn start(self: *WptServer) !void {
         // Check for existing server
         if (try self.checkExistingServer()) {
-            return; // Server already running
+            // Verify all required ports are ready (existing server may not have alternate ports)
+            self.waitForReady() catch {
+                // Existing server doesn't have all ports - kill it and start fresh
+                std.debug.print("WPT Server: Existing server missing required ports, restarting...\n", .{});
+                self.stop();
+                try self.spawnServer();
+            };
+            return;
         }
 
         // Spawn new server
@@ -158,28 +166,61 @@ pub const WptServer = struct {
         std.fs.cwd().deleteFile(lockfile_path) catch {};
     }
 
-    /// Wait for server to become ready
+    /// Required ports for WPT alternate ports infrastructure
+    /// See: https://github.com/web-platform-tests/rfcs/blob/master/rfcs/address_space_overrides.md
+    const required_ports = [_]u16{
+        8000, // http primary
+        8001, // http secondary
+        8002, // http-local (Local Network Access)
+        8003, // http-public (Local Network Access)
+        8443, // https primary
+        8444, // https secondary
+        8445, // https-local (Local Network Access)
+        8446, // https-public (Local Network Access)
+    };
+
+    /// Wait for server to become ready on all required ports
     fn waitForReady(self: *WptServer) !void {
-        const max_attempts = 100; // 10 seconds total
+        // First wait for primary port
+        try self.waitForPort(self.port);
+
+        // Then verify all required ports are open
+        for (required_ports) |port| {
+            self.waitForPort(port) catch |err| {
+                std.debug.print("WPT Server: Port {d} failed to open: {}\n", .{ port, err });
+                return err;
+            };
+        }
+    }
+
+    /// Wait for a specific port to become ready
+    fn waitForPort(self: *WptServer, port: u16) !void {
+        _ = self;
+        const max_attempts = 100; // 10 seconds total per port
         const delay_ns: u64 = 100 * std.time.ns_per_ms;
 
         var attempt: usize = 0;
         while (attempt < max_attempts) : (attempt += 1) {
-            if (self.isServerReady()) {
+            if (isPortReady(port)) {
                 return;
             }
             std.Thread.sleep(delay_ns);
         }
 
-        return error.ServerStartTimeout;
+        return error.PortNotReady;
     }
 
-    /// Check if server is ready by attempting TCP connect
-    fn isServerReady(self: *WptServer) bool {
-        const address = std.net.Address.parseIp4("127.0.0.1", self.port) catch return false;
+    /// Check if a specific port is ready by attempting TCP connect
+    fn isPortReady(port: u16) bool {
+        const address = std.net.Address.parseIp4("127.0.0.1", port) catch return false;
         const stream = std.net.tcpConnectToAddress(address) catch return false;
         stream.close();
         return true;
+    }
+
+    /// Check if server is ready by attempting TCP connect to primary port
+    fn isServerReady(self: *WptServer) bool {
+        return isPortReady(self.port);
     }
 
     /// Stop the WPT server

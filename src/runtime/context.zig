@@ -67,6 +67,10 @@ const storage = @import("storage");
 const StorageBackend = storage.StorageBackend;
 const BackendType = storage.BackendType;
 
+// Import network pollable for async HTTP
+const network_pollable_mod = @import("network_pollable.zig");
+const NetworkPollable = network_pollable_mod.NetworkPollable;
+
 /// Storage configuration for IndexedDB and Storage Standard
 ///
 /// Configures the storage backend selection and parameters.
@@ -188,6 +192,15 @@ pub const ContextData = struct {
     /// Storage configuration
     storage_config: StorageConfig,
 
+    /// Network pollable for async HTTP requests (fetch API)
+    /// Optional - only needed for non-blocking fetch() operations
+    network_pollable: ?NetworkPollable,
+
+    /// Network manager pointer (AsyncCurlManager or similar)
+    /// This is the concrete manager that call_fetch can use directly
+    /// Stored separately from network_pollable because impl needs direct access
+    _network_manager: ?*anyopaque,
+
     /// Internal: Engine-created event loop storage (if created during init)
     /// This is owned by the context and must be cleaned up via engine interface
     _engine_event_loop_storage: ?*anyopaque,
@@ -244,6 +257,11 @@ pub const ContextData = struct {
         /// Default is memory backend with no quota (for testing)
         storage_config: ?StorageConfig = null,
 
+        /// Network pollable for async HTTP requests
+        /// Optional - only needed for non-blocking fetch() operations
+        /// If not provided, fetch() will use synchronous path (blocking)
+        network_pollable: ?NetworkPollable = null,
+
         /// Realm information for this context
         /// Defaults to unknown (for testing)
         realm_info: ?RealmInfo = null,
@@ -291,6 +309,8 @@ pub const ContextData = struct {
             .timer = options.timer,
             .storage_backend = options.storage_backend,
             .storage_config = options.storage_config orelse StorageConfig.forTesting(),
+            .network_pollable = options.network_pollable,
+            ._network_manager = null, // Set via setNetworkManager()
             ._engine_event_loop_storage = engine_event_loop_storage,
             ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
             .realm_info = options.realm_info orelse RealmInfo.forTesting(),
@@ -441,6 +461,45 @@ pub const ContextData = struct {
     /// Set the storage configuration
     pub fn setStorageConfig(self: *Self, config: StorageConfig) void {
         self.storage_config = config;
+    }
+
+    // ========================================================================
+    // Network Pollable Methods (for async fetch)
+    // ========================================================================
+
+    /// Check if this context has network pollable support
+    pub fn hasNetworkPollable(self: *const Self) bool {
+        return self.network_pollable != null;
+    }
+
+    /// Get the network pollable (returns error if not available)
+    pub fn getNetworkPollable(self: *const Self) error{NoNetworkPollable}!NetworkPollable {
+        return self.network_pollable orelse error.NoNetworkPollable;
+    }
+
+    /// Get optional network pollable
+    pub fn getOptionalNetworkPollable(self: *const Self) ?NetworkPollable {
+        return self.network_pollable;
+    }
+
+    /// Set the network pollable (called by Browser during setup)
+    ///
+    /// This allows setting network pollable after context creation,
+    /// useful when the AsyncCurlManager is created separately.
+    pub fn setNetworkPollable(self: *Self, pollable: NetworkPollable) void {
+        self.network_pollable = pollable;
+    }
+
+    /// Get network manager pointer (for call_fetch to use directly)
+    /// Returns opaque pointer that must be cast to the correct type
+    pub fn getNetworkManager(self: *const Self) ?*anyopaque {
+        return self._network_manager;
+    }
+
+    /// Set network manager pointer (called by Browser during setup)
+    /// Pass the AsyncCurlManager pointer that call_fetch will use
+    pub fn setNetworkManager(self: *Self, manager: *anyopaque) void {
+        self._network_manager = manager;
     }
 
     // ========================================================================

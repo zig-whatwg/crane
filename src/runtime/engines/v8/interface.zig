@@ -1990,6 +1990,13 @@ pub fn V8Interface(comptime Interface: type) type {
         fn MethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // DEBUG: Trace method callback invocation
+                    if (comptime std.mem.eql(u8, zig_name, "call_addEventListener") or
+                        std.mem.eql(u8, zig_name, "call_dispatchEvent"))
+                    {
+                        std.debug.print("[MethodCallback] {s}.{s} callback invoked\n", .{ interface_name, zig_name });
+                    }
+
                     const isolate = info.getIsolate();
 
                     // Get V8 context - for arguments parsing, we use the current context

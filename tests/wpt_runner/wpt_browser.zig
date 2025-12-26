@@ -200,43 +200,22 @@ pub const WptBrowser = struct {
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
 
-        // Load testharness.js BEFORE parsing HTML
-        // This ensures testharness globals are available when scripts in HTML execute
-        try self.loadTestHarness(ctx);
-
-        // DEBUG: Verify globals still exist before HTML parsing
-        const pre_parse_check =
-            \\(function() {
-            \\  if (typeof setup !== 'function') {
-            \\    throw new Error('GLOBALS LOST before HTML parse! setup=' + typeof setup);
-            \\  }
-            \\  return 'globals OK before parse';
-            \\})();
-        ;
-        _ = ctx.evaluateScript(pre_parse_check) catch |err| {
-            std.debug.print("ERROR: Globals lost before HTML parsing: {}\n", .{err});
-        };
-
-        // Create script loader that loads from WPT root
-        const loader_ctx = ScriptLoaderContext{
-            .wpt_browser = self,
-            .test_path = test_path,
-        };
-
-        // Load HTML with script execution
+        // Let the browser handle ALL script loading naturally via HTTP
+        // No pre-loading, no script interception - this is how a real browser works
         ctx.loadHTML(html_content, .{
             .base_url = base_url,
             .scripting_enabled = true,
-            .script_loader = .{
-                .context = @ptrCast(@constCast(&loader_ctx)),
-                .loadScript = scriptLoaderCallback,
-            },
+            // No script_loader - browser fetches scripts via HTTP
         }) catch |err| {
             var result = try test_harness.TestResult.init(self.allocator, test_path);
             result.status = .@"error";
             result.message = try std.fmt.allocPrint(self.allocator, "HTML parse error: {}", .{err});
             return result;
         };
+
+        // Set up completion callback AFTER HTML parsing
+        // testharness.js should now be loaded and its globals available
+        try self.setupCompletionCallback(ctx);
 
         // Run event loop until test completes or timeout
         const result = try self.waitForCompletion(ctx, timeout_ms, test_path);
@@ -245,137 +224,34 @@ pub const WptBrowser = struct {
         return result;
     }
 
-    /// Script loader context for HTML parsing
-    const ScriptLoaderContext = struct {
-        wpt_browser: *WptBrowser,
-        test_path: []const u8,
-    };
-
-    /// Callback for loading external scripts during HTML parsing
-    fn scriptLoaderCallback(ctx_ptr: *anyopaque, url: []const u8) ?[]const u8 {
-        const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr));
-        const self = loader_ctx.wpt_browser;
-
-        std.debug.print("scriptLoaderCallback: url='{s}'\n", .{url});
-
-        // Skip testharness.js and testharnessreport.js - they're already loaded
-        // via loadTestHarness() before HTML parsing starts. Loading them again
-        // would reinitialize the Tests object and lose our completion callback.
-        if (std.mem.eql(u8, url, "/resources/testharness.js") or
-            std.mem.eql(u8, url, "/resources/testharnessreport.js"))
-        {
-            std.debug.print("scriptLoaderCallback: SKIPPING {s} (already loaded)\n", .{url});
-            // Return empty script to prevent double-loading
-            return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
-        }
-
-        // Apply WPT URL rewrites (matching wpt serve behavior)
-        const rewritten_url = applyWptRewrites(url);
-
-        // Resolve URL relative to test path or WPT root
-        if (std.mem.startsWith(u8, rewritten_url, "/")) {
-            // Absolute path from WPT root
-            const relative = rewritten_url[1..]; // Remove leading /
-            return self.loadWptScript(relative) catch null;
-        } else if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
-            // External URL - not supported in WPT runner
-            return null;
-        } else {
-            // Relative to test file
-            const test_dir = std.fs.path.dirname(loader_ctx.test_path) orelse "";
-            const full_path = std.fs.path.join(self.allocator, &.{ self.wpt_root, test_dir, url }) catch return null;
-            defer self.allocator.free(full_path);
-
-            // Use cwd-relative open since wpt_root may not be absolute
-            const file = std.fs.cwd().openFile(full_path, .{}) catch return null;
-            defer file.close();
-
-            const stat = file.stat() catch return null;
-            const content = self.allocator.alloc(u8, stat.size) catch return null;
-
-            const bytes_read = file.readAll(content) catch {
-                self.allocator.free(content);
-                return null;
-            };
-
-            if (bytes_read != stat.size) {
-                self.allocator.free(content);
-                return null;
-            }
-
-            return content;
-        }
-    }
-
-    /// Load testharness.js and testharnessreport.js into the context
-    fn loadTestHarness(self: *WptBrowser, ctx: *Context) !void {
-        std.debug.print("loadTestHarness: Loading testharness.js...\n", .{});
-        std.debug.print("loadTestHarness: Browser.Context v8_context={*}\n", .{ctx.v8_context});
-
-        // DEBUG: Check if 'self' is defined before loading testharness.js
-        const self_check =
-            \\(function() {
-            \\  console.log('self type: ' + typeof self);
-            \\  console.log('self === window: ' + (self === window));
-            \\  console.log('self === globalThis: ' + (self === globalThis));
-            \\  if (typeof self === 'number') {
-            \\    console.log('ERROR: self is a number! value=' + self);
-            \\  }
-            \\  return typeof self;
-            \\})();
-        ;
-        _ = ctx.evaluateScript(self_check) catch |err| {
-            std.debug.print("loadTestHarness: self check error: {}\n", .{err});
-        };
-
-        // Load testharness.js
-        if (self.testharness_js) |js| {
-            std.debug.print("loadTestHarness: testharness.js content length: {d}\n", .{js.len});
-            _ = try ctx.evaluateScript(js);
-            std.debug.print("loadTestHarness: testharness.js executed successfully\n", .{});
-        } else {
-            std.debug.print("loadTestHarness: testharness.js content is null!\n", .{});
-            return error.TestHarnessNotFound;
-        }
-
-        // Load testharnessreport.js
-        if (self.testharnessreport_js) |js| {
-            std.debug.print("loadTestHarness: testharnessreport.js content length: {d}\n", .{js.len});
-            _ = try ctx.evaluateScript(js);
-        } else {
-            std.debug.print("loadTestHarness: testharnessreport.js content is null\n", .{});
-        }
-
-        // Verify testharness.js loaded correctly by checking for globals
-        // This catches cases where testharness.js execution fails silently
-        const verify_script =
-            \\if (typeof test !== 'function' || typeof async_test !== 'function' ||
-            \\    typeof promise_test !== 'function' || typeof setup !== 'function') {
-            \\  throw new Error('testharness.js failed to load: globals not defined. ' +
-            \\    'test=' + typeof test + ', async_test=' + typeof async_test +
-            \\    ', promise_test=' + typeof promise_test + ', setup=' + typeof setup);
-            \\}
-            \\'GLOBALS_VERIFIED';
-        ;
-        const verify_result = ctx.evaluateScript(verify_script) catch |err| {
-            std.debug.print("ERROR: testharness.js verification failed: {}\n", .{err});
-            return error.TestHarnessLoadFailed;
-        };
-        if (verify_result != null) {
-            std.debug.print("loadTestHarness: Globals verified successfully!\n", .{});
-        } else {
-            std.debug.print("loadTestHarness: Verify script returned null\n", .{});
-        }
+    /// Set up completion callback AFTER HTML parsing
+    /// testharness.js should have been loaded by the HTML parser via HTTP
+    fn setupCompletionCallback(self: *WptBrowser, ctx: *Context) !void {
+        _ = self;
 
         // Set up completion callback to capture results
+        // This runs after testharness.js has been loaded by the HTML parser
         const setup_script =
             \\(function() {
+            \\  // Check if testharness.js was loaded
+            \\  if (typeof add_completion_callback !== 'function') {
+            \\    console.log('[WPT] testharness.js not loaded - skipping completion callback setup');
+            \\    window.__wpt_complete = true;  // Mark as complete to avoid timeout
+            \\    window.__wpt_results = { status: 2, message: 'testharness.js not loaded', tests: [] };
+            \\    return;
+            \\  }
+            \\  
+            \\  console.log('[WPT] Setting up completion callback...');
+            \\  
             \\  // Store test results for collection
             \\  window.__wpt_results = null;
             \\  window.__wpt_complete = false;
             \\  
             \\  // Register completion callback
             \\  add_completion_callback(function(tests, harness_status) {
+            \\    console.log('[WPT] Completion callback invoked!');
+            \\    console.log('[WPT] tests count: ' + tests.length);
+            \\    console.log('[WPT] harness_status.status: ' + harness_status.status);
             \\    window.__wpt_results = {
             \\      status: harness_status.status,
             \\      message: harness_status.message || null,
@@ -388,7 +264,10 @@ pub const WptBrowser = struct {
             \\      })
             \\    };
             \\    window.__wpt_complete = true;
+            \\    console.log('[WPT] __wpt_complete set to true');
             \\  });
+            \\  
+            \\  console.log('[WPT] Completion callback registered');
             \\})();
         ;
         _ = try ctx.evaluateScript(setup_script);

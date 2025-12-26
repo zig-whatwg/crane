@@ -102,6 +102,19 @@ const EventLoop = event_loop_mod.EventLoop;
 const Microtask = event_loop_mod.Microtask;
 const Task = event_loop_mod.Task;
 
+/// Generic interface for any pollable resource (network, file I/O, etc.)
+/// This abstraction allows the event loop to poll external managers without
+/// creating circular dependencies (e.g., event_loop -> fetch -> streams -> event_loop).
+pub const Pollable = struct {
+    ptr: *anyopaque,
+    poll_fn: *const fn (ptr: *anyopaque) bool,
+
+    /// Poll the resource for work. Returns true if any work was done.
+    pub fn poll(self: Pollable) bool {
+        return self.poll_fn(self.ptr);
+    }
+};
+
 /// V8 Event Loop Implementation
 ///
 /// Wraps V8's native microtask queue and libuv timer loop to provide
@@ -141,6 +154,10 @@ pub const V8EventLoop = struct {
     /// Used for exponential backoff to prevent CPU spinning
     empty_poll_count: u32,
 
+    /// Optional external pollable resources (e.g., AsyncCurlManager for HTTP)
+    /// When set, runOnce() will poll these for completed work
+    external_pollable: ?Pollable,
+
     const Self = @This();
 
     /// Backoff configuration
@@ -174,6 +191,7 @@ pub const V8EventLoop = struct {
             .timer_manager = timer_mgr,
             .frozen = false,
             .empty_poll_count = 0,
+            .external_pollable = null,
         };
     }
 
@@ -190,7 +208,31 @@ pub const V8EventLoop = struct {
             .timer_manager = null,
             .frozen = false,
             .empty_poll_count = 0,
+            .external_pollable = null,
         };
+    }
+
+    /// Set an external pollable resource (e.g., AsyncCurlManager for HTTP)
+    ///
+    /// When set, runOnce() will poll this resource for completed work.
+    /// The event loop does NOT own the resource - caller is responsible
+    /// for its lifetime and cleanup.
+    ///
+    /// Example usage with AsyncCurlManager:
+    /// ```zig
+    /// const curl_mgr = try AsyncCurlManager.init(allocator);
+    /// event_loop.setExternalPollable(.{
+    ///     .ptr = curl_mgr,
+    ///     .poll_fn = @ptrCast(&AsyncCurlManager.poll),
+    /// });
+    /// ```
+    pub fn setExternalPollable(self: *Self, pollable: ?Pollable) void {
+        self.external_pollable = pollable;
+    }
+
+    /// Get the external pollable resource
+    pub fn getExternalPollable(self: *Self) ?Pollable {
+        return self.external_pollable;
     }
 
     /// Free all resources
@@ -393,7 +435,16 @@ pub const V8EventLoop = struct {
             }
         }
 
-        // Step 2: Run all pending microtasks (including any queued by timer callbacks)
+        // Step 1b: Poll external resources (e.g., async HTTP)
+        // This processes fetch() responses that have arrived
+        if (self.external_pollable) |pollable| {
+            const external_work = pollable.poll();
+            if (external_work) {
+                did_work = true;
+            }
+        }
+
+        // Step 2: Run all pending microtasks (including any queued by timer/http callbacks)
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
         // V8 doesn't tell us if microtasks ran, but we assume they might have

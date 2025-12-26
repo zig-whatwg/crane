@@ -322,6 +322,10 @@ pub fn registerExternalReferences() void {
     // Use the centralized external reference registration
     // This ensures the same order at snapshot creation and loading time
     ext_refs.registerAllExternalReferences();
+
+    const count = ext_refs.getExternalReferenceCount();
+    const hash = ext_refs.computeExternalReferenceHash();
+    std.debug.print("[snapshot_loader] RUNTIME: Registered {d} external references, hash: 0x{x}\n", .{ count, hash });
 }
 
 /// Snapshot validation result with detailed diagnostics

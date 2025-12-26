@@ -89,6 +89,30 @@ pub const ContextEntry = struct {
 /// Thread-local context manager state
 threadlocal var manager_state: ?ManagerState = null;
 
+/// Callback type for registering globals on child contexts (iframes)
+/// This is called by createChildContext after the context is created
+/// to allow the browser layer to register setTimeout, setInterval, etc.
+pub const ChildContextGlobalsCallback = *const fn (
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    global: *v8.Object,
+) void;
+
+/// Thread-local callback for registering globals on child contexts
+/// Set by browser layer via setChildContextGlobalsCallback()
+threadlocal var child_context_globals_callback: ?ChildContextGlobalsCallback = null;
+
+/// Set the callback for registering globals on child contexts
+/// This should be called by the browser layer during initialization
+pub fn setChildContextGlobalsCallback(callback: ChildContextGlobalsCallback) void {
+    child_context_globals_callback = callback;
+}
+
+/// Clear the child context globals callback
+pub fn clearChildContextGlobalsCallback() void {
+    child_context_globals_callback = null;
+}
+
 /// Manager state (thread-local)
 const ManagerState = struct {
     /// Allocator for internal structures
@@ -1154,6 +1178,12 @@ fn createWindowForExistingBrowsingContext(
     // 4c. Register Window properties as own properties on the global
     interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, child_context, global);
 
+    // 4d. Register browser-level globals (setTimeout, setInterval, etc.)
+    // These are essential for web platform functionality and are set by the browser layer.
+    if (child_context_globals_callback) |callback| {
+        callback(isolate, child_context, global);
+    }
+
     // 5. Create realm
     const realm = runtime.Realm.init(allocator, .{
         .v8_context = @ptrCast(child_context),
@@ -1575,6 +1605,15 @@ pub fn createChildContext(
         global,
     );
 
+    // 4e. Register browser-level globals (setTimeout, setInterval, etc.)
+    // These are not WebIDL interfaces but are essential for web platform functionality.
+    // The browser layer sets a callback via setChildContextGlobalsCallback() that
+    // registers these globals. This separation ensures the runtime layer doesn't
+    // depend on the browser layer.
+    if (child_context_globals_callback) |callback| {
+        callback(options.isolate, child_context, global);
+    }
+
     // 5. Create realm for new context
     // Note: global_object is set to null initially and will be updated below
     // after the Window instance is created
@@ -1926,6 +1965,29 @@ pub fn setRealmForContext(v8_ctx: *v8.Context, realm: *runtime.Realm) !void {
             old_realm.deinit();
         }
         entry.realm = realm;
+    } else {
+        return error.ContextNotFound;
+    }
+}
+
+/// Associate a Window instance with an existing context
+///
+/// This is used when Browser.Context creates its own Window instance
+/// and needs to register it with the context manager so that
+/// getWindowForContext() can find it later.
+///
+/// This is critical for iframe browsing context creation, where
+/// handleIframeInsertion needs to look up the parent Window.
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn setWindowForContext(v8_ctx: *v8.Context, window: *runtime.Instance) !void {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
+    const key = @intFromPtr(raw_addr);
+
+    if (state.contexts.get(key)) |entry| {
+        entry.window_instance = window;
     } else {
         return error.ContextNotFound;
     }

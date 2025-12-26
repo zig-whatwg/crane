@@ -487,6 +487,7 @@ pub const ProgressTracker = struct {
     errors: usize = 0,
     timeouts: usize = 0,
     notrun: usize = 0,
+    skipped: usize = 0,
     start_time: i64,
     verbose: bool,
     /// Failures by category for summary
@@ -530,6 +531,7 @@ pub const ProgressTracker = struct {
                 }
             },
             .timeout => self.timeouts += 1,
+            .skip => self.skipped += 1,
         }
 
         // Count ALL subtests including notrun/precondition_failed
@@ -671,6 +673,9 @@ pub const ProgressTracker = struct {
         print("  Completed: {d}\n", .{self.completed});
         print("  Errors:    {d}\n", .{self.errors});
         print("  Timeouts:  {d}\n", .{self.timeouts});
+        if (self.skipped > 0) {
+            print("  Skipped:   {d} (reftests/not implemented)\n", .{self.skipped});
+        }
         print("\n", .{});
         print("Subtests:   {d} / {d}\n", .{ self.passed, total_subtests });
         if (total_subtests > 0) {

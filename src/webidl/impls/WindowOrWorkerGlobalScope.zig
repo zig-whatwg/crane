@@ -118,7 +118,6 @@ fn asyncFetchCompletionCallback(result: AsyncResult, user_data: ?*anyopaque) voi
 
     switch (result) {
         .success => |response| {
-            std.debug.print("[Fetch] Async SUCCESS - status: {d}\n", .{response.status});
             // Create a WebIDL Response instance wrapping the NetworkResponse
             const response_instance = ResponseImpl.initWithNetworkResponse(
                 ctx.allocator,
@@ -148,21 +147,6 @@ fn asyncFetchCompletionCallback(result: AsyncResult, user_data: ?*anyopaque) voi
             ctx.engine.resolvePromise(ctx.engine_ctx, ctx.promise_handle, js_response) catch {};
         },
         .failure => |net_error| {
-            // Log the network error with category for debugging
-            const category = switch (net_error) {
-                error.Aborted => "ABORTED",
-                error.ConnectionRefused, error.ConnectionReset, error.ConnectionTimeout => "CONNECTION",
-                error.DnsResolutionFailed, error.HostUnreachable, error.NetworkUnreachable => "NETWORK",
-                error.InvalidUrl => "URL_FORMAT",
-                error.RequestTimeout => "TIMEOUT",
-                error.SslCertificateError, error.SslHandshakeFailed => "TLS",
-                error.TooManyRedirects => "REDIRECT",
-                error.ProtocolError => "PROTOCOL/CONFIG",
-                error.OutOfMemory => "MEMORY",
-                error.Unknown => "UNKNOWN",
-            };
-            std.debug.print("[Fetch] Async FAILURE: {s} (category: {s})\n", .{ @errorName(net_error), category });
-
             // Map network error to fetch error per WHATWG Fetch spec
             // Spec: https://fetch.spec.whatwg.org/#concept-network-error
             const fetch_error: anyerror = switch (net_error) {
@@ -184,7 +168,6 @@ fn asyncFetchCompletionCallback(result: AsyncResult, user_data: ?*anyopaque) voi
                 // Unknown: catch-all for unexpected errors
                 error.Unknown => error.NetworkError,
             };
-            std.debug.print("[Fetch] Rejecting with: {s}\n", .{@errorName(fetch_error)});
             ctx.engine.rejectPromise(ctx.engine_ctx, ctx.promise_handle, fetch_error) catch {};
         },
     }
@@ -416,10 +399,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
     // Extract URL from input (RequestInfo is USVString or Request)
     const url_str: []const u8 = switch (input) {
-        .usvstring => |s| blk: {
-            std.debug.print("[Fetch] Input URL from string: {s}\n", .{s});
-            break :blk s;
-        },
+        .usvstring => |s| s,
         .request => |req_instance| blk: {
             // Check if this is actually a Request instance by trying to get its URL.
             // If the object is a URL or other stringifiable object incorrectly classified
@@ -427,17 +407,14 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             //
             // First, try to get URL from Request instance
             if (interfaces.Request.get_url(req_instance)) |req_url| {
-                std.debug.print("[Fetch] Input URL from Request: {s}\n", .{req_url});
                 break :blk req_url;
             } else |_| {
                 // Not a valid Request - try to get URL from URL interface
                 // The URL interface has a get_href method that returns the full URL string
                 if (interfaces.URL.get_href(req_instance)) |url_href| {
-                    std.debug.print("[Fetch] Input URL from URL object: {s}\n", .{url_href});
                     break :blk url_href;
                 } else |_| {
                     // Neither Request nor URL - this is an error
-                    std.debug.print("[Fetch] Object is neither Request nor URL\n", .{});
                     engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
                     return getPromiseAndCleanup(engine, promise_handle, allocator);
                 }
@@ -660,7 +637,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
     if (is_cross_origin) {
         if (document_origin) |origin| {
-            std.debug.print("[FETCH] Cross-origin request detected. Adding Origin header: {s}\n", .{origin});
             try headers_list.append(allocator, .{
                 .name = "Origin",
                 .value = origin,
@@ -669,7 +645,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             // If we can't determine the document origin, use the request URL's origin as a fallback
             // This handles cases where the context doesn't have an api_base_url set
             if (extractOrigin(url_str)) |req_origin| {
-                std.debug.print("[FETCH] Cross-origin request, using request origin as fallback: {s}\n", .{req_origin});
                 try headers_list.append(allocator, .{
                     .name = "Origin",
                     .value = req_origin,
@@ -681,7 +656,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // Try async path first (if network manager is available)
     if (instance.ctx.getNetworkManager()) |nm_ptr| {
         const async_curl: *AsyncCurlManager = @ptrCast(@alignCast(nm_ptr));
-        std.debug.print("[FETCH] Using ASYNC path for URL: {s}\n", .{url_str});
 
         // Create completion context for the async callback
         const completion_ctx = allocator.create(FetchCompletionContext) catch {
@@ -723,7 +697,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
     // FALLBACK: Synchronous path (no network manager)
     // This is used in tests or when Browser didn't set up async curl manager
-    std.debug.print("[FETCH] Using SYNC fallback for URL: {s}\n", .{url_str});
     const result = global_fetch.globalFetch(allocator, .{ .url = url_str }, request_init);
 
     switch (result) {

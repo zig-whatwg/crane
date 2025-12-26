@@ -292,12 +292,8 @@ pub const AsyncCurlManager = struct {
                         ctx.deinit();
                         self.allocator.destroy(ctx);
                     } else if (msg.data.result != curl.CURLE_OK) {
-                        // Request failed - log curl error details
-                        const curl_err_msg = curl_error.getErrorMessage(msg.data.result);
-                        std.debug.print("[AsyncCurl] Request FAILED - curl code: {d}, message: {s}\n", .{ msg.data.result, curl_err_msg });
-
+                        // Request failed - map curl error to network error
                         const net_error = curl_error.mapCurlError(msg.data.result);
-                        std.debug.print("[AsyncCurl] Mapped to NetworkError: {s}\n", .{@errorName(net_error)});
 
                         ctx.callback(.{ .failure = net_error }, ctx.user_data);
                         curl.easy_cleanup(easy_handle);
@@ -385,11 +381,6 @@ pub const AsyncCurlManager = struct {
         // must remain VALID until the transfer finishes."
         const url_z = try ctx.allocator.dupeZ(u8, request.url);
         ctx.url_z = url_z;
-
-        // Debug logging (always enabled - use -Ddebug=true -Ddebug-scope=fetch to filter)
-        std.debug.print("[AsyncCurl] configureRequest URL: {s}\n", .{request.url});
-        std.debug.print("[AsyncCurl] configureRequest method: {s}\n", .{request.method});
-        std.debug.print("[AsyncCurl] Setting CURLOPT_URL: {s}\n", .{url_z});
 
         _ = curl.easy_setopt(handle, curl.CURLOPT_URL, url_z.ptr);
 
