@@ -28,6 +28,7 @@ const Allocator = std.mem.Allocator;
 const curl = @import("curl_ffi.zig");
 const curl_error = @import("curl_error.zig");
 const backend = @import("backend.zig");
+const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
 const NetworkRequest = backend.NetworkRequest;
 const NetworkResponse = backend.NetworkResponse;
 const NetworkError = backend.NetworkError;
@@ -121,12 +122,21 @@ pub const AsyncCurlManager = struct {
     requests: std.AutoHashMap(usize, *RequestContext),
     /// Whether this manager has been initialized
     initialized: bool,
+    /// Shared cookie manager (null = cookies disabled)
+    cookie_manager: ?*CurlCookieManager,
 
     const Self = @This();
 
-    /// Initialize a new async curl manager.
+    /// Initialize a new async curl manager without cookie support.
     /// Requires curl globalInit() to have been called.
     pub fn init(allocator: Allocator) !*Self {
+        return initWithCookies(allocator, null);
+    }
+
+    /// Initialize a new async curl manager with optional cookie support.
+    /// If cookie_manager is provided, cookies will be sent/received for all requests.
+    /// Requires curl globalInit() to have been called.
+    pub fn initWithCookies(allocator: Allocator, cookie_manager: ?*CurlCookieManager) !*Self {
         const multi = curl.multi_init() orelse return error.OutOfMemory;
         errdefer _ = curl.multi_cleanup(multi);
 
@@ -139,6 +149,7 @@ pub const AsyncCurlManager = struct {
             .next_handle = 1,
             .requests = std.AutoHashMap(usize, *RequestContext).init(allocator),
             .initialized = true,
+            .cookie_manager = cookie_manager,
         };
 
         return self;
@@ -363,7 +374,10 @@ pub const AsyncCurlManager = struct {
     // =========================================================================
 
     fn configureRequest(self: *Self, handle: *curl.CURL, request: *const NetworkRequest, ctx: *RequestContext) !void {
-        _ = self;
+        // Attach cookie manager if available (enables cookie sending/receiving)
+        if (self.cookie_manager) |cm| {
+            cm.attachToHandle(handle);
+        }
 
         // URL (must be null-terminated and remain valid for the entire request duration)
         // Store in context so it's freed in deinit() after the request completes.
