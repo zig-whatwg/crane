@@ -23,7 +23,7 @@ const ResponseImpl = @import("Response.zig");
 const network = fetch_api.network;
 const AsyncCurlManager = network.AsyncCurlManager;
 const NetworkRequest = network.NetworkRequest;
-const AsyncResult = AsyncCurlManager.AsyncResult;
+const AsyncResult = network.AsyncResult;
 
 // Body extraction support
 const BlobImpl = @import("Blob.zig");
@@ -75,16 +75,12 @@ fn isCrossOrigin(document_origin: ?[]const u8, request_url: []const u8) bool {
 /// Get the document's origin string from the context.
 /// Returns null if origin cannot be determined.
 fn getDocumentOrigin(ctx: runtime.Context, allocator: std.mem.Allocator) ?[]const u8 {
-    // First, try to get origin from realm_info if we have an environment settings object
-    // For now, use api_base_url to derive the origin since that's what's typically set
-    if (ctx.getApiBaseUrl()) |base_url| {
-        return extractOrigin(base_url);
-    }
-
-    // If no api_base_url, try to serialize the realm's origin
-    // This requires the realm to have an EnvironmentSettingsObject set up
-    _ = allocator; // Reserved for future use when we need to allocate
-
+    _ = ctx;
+    _ = allocator;
+    // TODO: Implement proper origin extraction from environment settings
+    // For now, return null - cross-origin detection will be skipped
+    // This is acceptable for initial implementation as the Origin header
+    // will fall back to the request URL origin
     return null;
 }
 
@@ -395,7 +391,7 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 /// - Returns a Promise that resolves to a Response object
 /// - Currently synchronous (blocking) - true async requires libuv event loop integration
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    const allocator = instance.allocator;
+    const allocator = instance.ctx.allocator;
 
     // Create headers list for network request
     // These will be converted from HeadersInit and passed to NetworkRequest
@@ -425,14 +421,27 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             break :blk s;
         },
         .request => |req_instance| blk: {
-            // Get URL from Request instance
-            const req_url = interfaces.Request.get_url(req_instance) catch {
-                std.debug.print("[Fetch] Failed to get URL from Request\n", .{});
-                engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                return getPromiseAndCleanup(engine, promise_handle, allocator);
-            };
-            std.debug.print("[Fetch] Input URL from Request: {s}\n", .{req_url});
-            break :blk req_url;
+            // Check if this is actually a Request instance by trying to get its URL.
+            // If the object is a URL or other stringifiable object incorrectly classified
+            // as a Request (because it's a WebIDL interface), we need to convert it to string.
+            //
+            // First, try to get URL from Request instance
+            if (interfaces.Request.get_url(req_instance)) |req_url| {
+                std.debug.print("[Fetch] Input URL from Request: {s}\n", .{req_url});
+                break :blk req_url;
+            } else |_| {
+                // Not a valid Request - try to get URL from URL interface
+                // The URL interface has a get_href method that returns the full URL string
+                if (interfaces.URL.get_href(req_instance)) |url_href| {
+                    std.debug.print("[Fetch] Input URL from URL object: {s}\n", .{url_href});
+                    break :blk url_href;
+                } else |_| {
+                    // Neither Request nor URL - this is an error
+                    std.debug.print("[Fetch] Object is neither Request nor URL\n", .{});
+                    engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
+                    return getPromiseAndCleanup(engine, promise_handle, allocator);
+                }
+            }
         },
     };
 

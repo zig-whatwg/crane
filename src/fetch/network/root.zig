@@ -48,6 +48,7 @@ pub const curl_cookies = @import("curl_cookies.zig");
 pub const cookie_store = @import("cookie_store.zig");
 pub const connection_pool = @import("connection_pool.zig");
 pub const streaming_source = @import("streaming_source.zig");
+pub const async_curl_manager = @import("async_curl_manager.zig");
 
 // Re-export main types
 pub const NetworkBackend = backend.NetworkBackend;
@@ -81,6 +82,10 @@ pub const DEFAULT_CHUNK_SIZE = streaming_source.DEFAULT_CHUNK_SIZE;
 pub const CurlCookieManager = curl_cookies.CurlCookieManager;
 pub const Cookie = curl_cookies.Cookie;
 pub const CookieError = curl_cookies.CookieError;
+
+// Re-export async HTTP manager
+pub const AsyncCurlManager = async_curl_manager.AsyncCurlManager;
+pub const AsyncResult = async_curl_manager.AsyncResult;
 
 // Re-export CookieStore API
 pub const CookieStore = cookie_store.CookieStore;

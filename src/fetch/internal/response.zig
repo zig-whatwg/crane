@@ -119,6 +119,46 @@ pub const InternalResponse = struct {
         return response;
     }
 
+    /// Create an InternalResponse from a NetworkResponse.
+    /// Takes ownership of network_response data (caller should not deinit it).
+    pub fn initFromNetworkResponse(allocator: Allocator, network_response: anytype) !*Self {
+        const response = try allocator.create(Self);
+        errdefer allocator.destroy(response);
+
+        var header_list_obj = HeaderList.init(allocator);
+        errdefer header_list_obj.deinit();
+
+        // Copy headers from NetworkResponse
+        for (network_response.headers) |header| {
+            try header_list_obj.append(header.name, header.value);
+        }
+
+        // Create body from response bytes
+        var body: ?*Body = null;
+        if (network_response.body) |body_bytes| {
+            body = try Body.fromBytes(allocator, body_bytes);
+        }
+
+        response.* = .{
+            .allocator = allocator,
+            .url_list = .{},
+            .status = network_response.status,
+            .status_message = "", // HTTP/2+ doesn't have status messages
+            .header_list = header_list_obj,
+            .body = body,
+            .cors_exposed_header_name_list = .{},
+            .body_info = ResponseBodyInfo.init(),
+        };
+
+        // Add final URL to URL list if available
+        if (network_response.final_url) |final_url| {
+            const url_copy = try allocator.dupe(u8, final_url);
+            try response.url_list.append(allocator, url_copy);
+        }
+
+        return response;
+    }
+
     /// Deinitialize the response.
     pub fn deinit(self: *Self) void {
         // Free URL list

@@ -941,6 +941,7 @@ pub fn fromV8Value(
                 return @unionInit(T, fields[idx].name, converted);
             }
         } else if (v8.v8_Value_IsString(value)) {
+            std.debug.print("[fromV8Value union] Value is STRING, string_idx={?}\n", .{string_idx});
             if (string_idx) |idx| {
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
@@ -959,15 +960,39 @@ pub fn fromV8Value(
                 return @unionInit(T, fields[idx].name, converted);
             }
         } else if (v8.v8_Value_IsObject(value)) {
-            // Try *runtime.Instance first (for unions like NodeOrString)
-            // These are wrapped platform objects (DOM nodes, etc.)
+            // For objects, we need to distinguish between:
+            // 1. Wrapped platform objects (DOM nodes, etc.) - have internal fields
+            // 2. Plain JS objects (dictionaries, String objects, etc.) - no internal fields
+            //
+            // The problem: v8_Object_InternalFieldCount_Raw segfaults on plain objects.
+            // Solution: Try instance conversion, but if it returns an instance with null
+            // internal pointer, treat it as a plain object.
             if (instance_idx) |idx| {
                 const FieldType = fields[idx].type;
-                // Try to extract instance from V8 object
-                if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
+                // Try to extract as instance - but first check if we have a string alternative
+                // because strings should take priority over treating them as objects
+                if (string_idx != null and v8.v8_Value_IsString(value)) {
+                    // This is a string, skip instance extraction and let string handling below deal with it
+                } else if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
                     return @unionInit(T, fields[idx].name, converted);
                 } else |_| {
-                    // Not a valid instance - fall through to dict_idx
+                    // Instance conversion failed - this might be a native JS object like URL.
+                    std.debug.print("[fromV8Value] Instance conversion FAILED, trying string fallback\n", .{});
+                    // If we have a string variant, try to convert the object to string via toString()
+                    if (string_idx) |str_idx| {
+                        std.debug.print("[fromV8Value] Has string_idx={d}, calling v8_Value_ToString\n", .{str_idx});
+                        // Call toString() on the object to get a string representation
+                        if (v8.v8_Value_ToString(value, context)) |str_value| {
+                            std.debug.print("[fromV8Value] v8_Value_ToString succeeded, converting to string type\n", .{});
+                            const StringFieldType = fields[str_idx].type;
+                            if (fromV8Value(StringFieldType, allocator, isolate, context, @ptrCast(str_value))) |str_converted| {
+                                return @unionInit(T, fields[str_idx].name, str_converted);
+                            } else |_| {
+                                // String conversion also failed, fall through
+                            }
+                        }
+                    }
+                    // Fall through to dict_idx
                 }
             }
             if (dict_idx) |idx| {
@@ -1068,26 +1093,29 @@ pub fn fromV8Value(
 
         const object = @as(*v8.Object, @ptrCast(value));
 
-        // First try to get stored WrapperTypeInfo for validation
+        // Only accept objects that have valid WrapperTypeInfo - this means they
+        // were created by our WebIDL bindings. Native JS objects (like URL, Date, etc.)
+        // should NOT be converted to *runtime.Instance.
         if (interface_mod.getWrapperTypeInfo(object)) |wrapper_info| {
+            std.debug.print("[Instance conv] Got WrapperTypeInfo, this_tag={d}\n", .{wrapper_info.this_tag});
             // We have type info - use type-safe unwrapping
             // For generic *runtime.Instance, we accept any valid wrapped object
             // by checking that it has a valid type tag (any tag is fine)
             if (wrapper_info.this_tag > 0) {
                 // Valid type info, get instance from slot 0
                 return interface_mod.getInstance(runtime.Instance, object) orelse {
+                    std.debug.print("[Instance conv] getInstance returned null\n", .{});
                     return ConversionError.TypeError;
                 };
             }
+            std.debug.print("[Instance conv] this_tag is 0, rejecting\n", .{});
+        } else {
+            std.debug.print("[Instance conv] No WrapperTypeInfo, rejecting as native JS object\n", .{});
         }
 
-        // Fall back to legacy extraction (no type info stored)
-        // Get the instance pointer from internal field 0
-        const internal_field = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse {
-            return ConversionError.TypeError;
-        };
-
-        return @ptrCast(@alignCast(internal_field));
+        // No valid WrapperTypeInfo - this is a native JS object (URL, Date, etc.),
+        // not a WebIDL-wrapped platform object. Do NOT try to extract instance.
+        return ConversionError.TypeError;
     }
 
     // Handle function pointers (callbacks)
