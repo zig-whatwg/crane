@@ -44,6 +44,7 @@ const WorkerOptions = workers.WorkerOptions;
 const WorkerType = workers.WorkerType;
 const RequestCredentials = workers.RequestCredentials;
 const QueuedMessage = workers.message_channel.QueuedMessage;
+const JSValue = workers.message_channel.JSValue;
 const WorkerContext = workers.WorkerContext;
 
 // Import html module for WorkerV8Context (has interface access, unlike html_core)
@@ -59,6 +60,9 @@ const InternalMessagePort = message_port_internal.MessagePort;
 
 // Import platform for TimerBackend (used to create DedicatedWorker)
 const platform = @import("platform");
+
+// Import Window implementation to access document for origin resolution
+const WindowImpl = @import("Window.zig");
 
 // Import V8 engine for callback invocation
 const v8_engine = @import("v8");
@@ -123,6 +127,12 @@ pub const InternalState = struct {
     /// This is set during constructor and executed via timer callback
     pending_script: ?[]const u8 = null,
 
+    /// Pending script URL for deferred V8 context creation
+    pending_script_url: ?[]const u8 = null,
+
+    /// Document origin for worker script URL resolution (stored for deferred creation)
+    document_origin: ?[]const u8 = null,
+
     pub fn deinit(self: *InternalState) void {
         // Dispose V8 Global handles to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
@@ -143,6 +153,14 @@ pub const InternalState = struct {
         // Free pending script if not yet executed
         if (self.pending_script) |script| {
             self.allocator.free(script);
+        }
+        // Free pending script URL if not yet used
+        if (self.pending_script_url) |url| {
+            self.allocator.free(url);
+        }
+        // Free document origin if stored
+        if (self.document_origin) |origin| {
+            self.allocator.free(origin);
         }
     }
 };
@@ -280,65 +298,49 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // Messages are queued until start() is called
         dedicated_worker.startMessageQueue();
 
+        // Get the document origin for resolving relative worker script URLs
+        // The origin is needed to resolve URLs like "/path/to/worker.js"
+        const document_origin: ?[]const u8 = blk: {
+            // Get the Window instance from the V8 context via context_manager
+            const v8_ctx = @as(*v8_engine.ffi.Context, @ptrCast(ctx.engine_ctx));
+            if (v8_engine.context_manager.getWindowForContext(v8_ctx)) |window_instance| {
+                // Get the document from the Window
+                if (WindowImpl.get_document(window_instance)) |doc_instance| {
+                    if (interfaces.Document.get_URL(doc_instance)) |doc_url| {
+                        std.log.info("[Worker] Got document URL: {s}", .{doc_url});
+                        break :blk doc_url;
+                    } else |err| {
+                        std.log.warn("[Worker] Failed to get document URL: {}", .{err});
+                    }
+                } else |err| {
+                    std.log.warn("[Worker] Failed to get document from Window: {}", .{err});
+                }
+            } else {
+                std.log.warn("[Worker] Failed to get Window from context", .{});
+            }
+            break :blk null;
+        };
+
         // Fetch the worker script FIRST to get the resolved URL
         // Per HTML Standard § 10.2.5 "Run a worker": resolve URL before creating context
         // For WPT tests, scripts are fetched from the WPT server or resolved as data: URLs
         const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
             .worker_type = worker_type,
-            .origin = null,
+            .origin = document_origin,
         }) catch |err| {
             // Log error but don't fail construction - worker enters error state
             // Per spec, errors during script fetch should fire an error event
             std.log.warn("Failed to fetch worker script: {}", .{err});
             return instance;
         };
-        // Don't defer deinit yet - we need to use final_url for V8Context
+        // CRITICAL: DO NOT create V8 isolate/context during constructor!
+        // WorkerV8Context.init() enters the worker's isolate, which corrupts
+        // the main isolate's HandleScope state during constructor execution.
+        //
+        // Instead, store the fetched script info and defer ALL V8 operations
+        // to the setTimeout callback.
 
-        // Create V8 context for worker execution using the RESOLVED URL
-        // This creates a separate V8 isolate for the worker with its own context
-        // Using fetched_script.final_url ensures importScripts can resolve relative paths
-        const v8_context = WorkerV8Context.init(
-            ctx.allocator,
-            fetched_script.final_url, // Use resolved URL, not original relative URL
-            worker_type,
-        ) catch |err| {
-            std.log.warn("Failed to create WorkerV8Context: {}", .{err});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        };
-        internal_state.v8_context = v8_context;
-
-        // IMPORTANT: Create the WorkerContext FIRST before wiring up engine context
-        // This calls agent.startWithContext() which creates the worker_context
-        dedicated_worker.startWithContext() catch |err| {
-            std.log.warn("Failed to start worker context: {}", .{err});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        };
-
-        // Now wire up the V8 context to the WorkerAgent's WorkerContext
-        // This connects the engine callbacks (compileAndRunScript, etc.) to V8 FFI
-        if (dedicated_worker.agent.worker_context) |worker_ctx| {
-            worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
-        } else {
-            std.log.warn("WorkerContext not created after startWithContext", .{});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        }
-
-        // Set up DedicatedWorkerGlobalScope with proper globals
-        // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
-        v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
-            std.log.warn("Failed to set up worker global scope: {}", .{err});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        };
-
-        // Start the worker's message queue so messages can be dispatched
-        dedicated_worker.startWorkerMessageQueue();
-
-        // Store the fetched script source in internal state for deferred execution
-        // We need to copy the source because fetched_script will be freed
+        // Store the fetched script source and URL in internal state for deferred execution
         const script_source_copy = ctx.allocator.dupe(u8, fetched_script.source) catch |err| {
             std.log.warn("Failed to copy worker script source: {}", .{err});
             @constCast(&fetched_script).deinit();
@@ -346,8 +348,22 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         };
         internal_state.pending_script = script_source_copy;
 
-        // Clean up fetched script metadata (source is copied)
+        // Store the final URL for V8 context creation (resolved relative paths)
+        const final_url_copy = ctx.allocator.dupe(u8, fetched_script.final_url) catch |err| {
+            std.log.warn("Failed to copy worker script URL: {}", .{err});
+            ctx.allocator.free(script_source_copy);
+            internal_state.pending_script = null;
+            @constCast(&fetched_script).deinit();
+            return instance;
+        };
+        internal_state.pending_script_url = final_url_copy;
+
+        // Clean up fetched script metadata (source and URL are copied)
         @constCast(&fetched_script).deinit();
+
+        // Start the worker's message queue so messages can be dispatched
+        // This is pure Zig, no V8 isolate switching
+        dedicated_worker.startMessageQueue();
 
         // CRITICAL: DO NOT execute worker script inside the constructor!
         // Entering/exiting the worker isolate during constructor execution
@@ -490,28 +506,65 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
     const internal = getInternal(instance) orelse return;
+    const dedicated_worker = internal.dedicated_worker orelse return;
 
-    // Execute worker script.
+    // STEP 1: Start the worker context if not yet started
+    // This is deferred from the constructor to avoid corrupting the main thread's
+    // HandleScope state. We're now in a timer callback with clean V8 state.
+    //
+    // Architecture:
+    // - DedicatedWorker.startWithContext() creates a WorkerContext (event loop, state)
+    // - WorkerV8Context.init() creates the V8 isolate and context
+    // - setEngineContext() wires the V8 context into the WorkerContext
+    if (!dedicated_worker.hasContext()) {
+        // Step 1a: Create the WorkerContext (event loop infrastructure)
+        dedicated_worker.startWithContext() catch |err| {
+            std.log.warn("Worker: Failed to start worker context: {}", .{err});
+            return;
+        };
+    }
+
+    // Step 1b: Create V8 context if not yet created
+    if (internal.v8_context == null) {
+        const script_url = internal.pending_script_url orelse internal.script_url;
+
+        const v8_context = WorkerV8Context.init(
+            internal.allocator,
+            script_url,
+            internal.worker_type,
+        ) catch |err| {
+            std.log.warn("Worker: Failed to create V8 context: {}", .{err});
+            return;
+        };
+        internal.v8_context = v8_context;
+
+        // Step 1c: Wire up the V8 context to the WorkerContext
+        if (dedicated_worker.agent.worker_context) |wctx| {
+            wctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
+        }
+
+        // Step 1d: Set up DedicatedWorkerGlobalScope with proper globals
+        // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
+        v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
+            std.log.warn("Worker: Failed to set up worker global scope: {}", .{err});
+            return;
+        };
+
+        // Free the pending script URL now that we've used it
+        if (internal.pending_script_url) |url| {
+            internal.allocator.free(url);
+            internal.pending_script_url = null;
+        }
+    }
+
+    // STEP 2: Execute worker script
     //
     // CRITICAL: After this call, V8's HandleScope state is corrupted because
     // executeWorkerScriptSync enters/exits the worker isolate. We MUST NOT
     // do any V8 operations here.
-    //
-    // Timeline:
-    // 1. new Worker(...) - constructor returns, fetch_tests_from_worker sets up onmessage handler
-    // 2. setTimeout(0, executeWorkerScriptCallback) fires (we're here)
-    // 3. Worker script runs, posts messages (buffered in pending_messages)
-    // 4. Messages flushed to port queue (pure Zig, no V8)
-    // 5. Return to event loop - HandleScope state will be restored
-    // 6. Next event loop iteration: dispatch messages with clean HandleScope
     const has_messages = executeWorkerScriptSync(internal);
 
     // If there are messages to dispatch, schedule another timer callback.
-    // This ensures the event loop has a chance to restore HandleScope state
-    // before we try to dispatch messages.
-    //
-    // The timer callback runs in a clean V8 state (the event loop's runOnce
-    // handles HandleScope properly).
     if (has_messages) {
         if (internal.ctx) |ctx| {
             if (ctx.timer) |timer| {
@@ -553,6 +606,12 @@ fn dispatchWorkerMessagesCallback(user_data: ?*anyopaque) void {
 fn executeWorkerScriptSync(internal: *InternalState) bool {
     const dedicated_worker = internal.dedicated_worker orelse return false;
     const script = internal.pending_script orelse return false;
+
+    // Verify worker context is ready
+    if (!dedicated_worker.hasContext()) {
+        std.log.warn("Worker: No context available for script execution", .{});
+        return false;
+    }
 
     // Execute the script in worker context
     // The worker's executeScript() enters/exits its own isolate and creates its own HandleScope.
@@ -870,18 +929,49 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 /// The message is serialized using the structured clone algorithm and
 /// sent to the worker's message queue.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    _ = transfer; // TODO: Handle transferable objects
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.terminated) {
             return; // Worker is terminated, ignore message
         }
         if (internal.dedicated_worker) |worker| {
-            // Post message to the dedicated worker
-            // The dedicated worker will handle serialization and dispatch
-            // Convert JSValue to anyopaque for the internal API
-            const message_ptr = message.toAnyopaque() orelse return error.TypeError;
-            const transfer_ptr = transfer.toAnyopaque() orelse return error.TypeError;
-            try worker.postMessage(message_ptr, transfer_ptr);
+            // Serialize the V8 value to JSON string, then create JSValue for structured clone
+            const v8_ctx: *v8_engine.ffi.Context = @ptrCast(instance.ctx.engine_ctx orelse return error.InvalidContext);
+            const v8_value: *v8_engine.ffi.Value = @ptrCast(message.toAnyopaque() orelse return error.TypeError);
+
+            // First call to get required buffer size
+            var size_buf: [1]u8 = undefined;
+            const required_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_ctx, v8_value, &size_buf, 0);
+            if (required_size < 0) {
+                // Serialization failed - post undefined
+                const js_value = JSValue{ .undefined = {} };
+                try worker.postMessageTyped(&js_value, null);
+                return;
+            }
+            if (required_size == 0) {
+                // Empty result - post undefined
+                const js_value = JSValue{ .undefined = {} };
+                try worker.postMessageTyped(&js_value, null);
+                return;
+            }
+
+            // Allocate buffer and serialize
+            const buf = instance.ctx.allocator.alloc(u8, @intCast(required_size)) catch return error.OutOfMemory;
+            defer instance.ctx.allocator.free(buf);
+
+            const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_ctx, v8_value, buf.ptr, required_size);
+            if (written < 0) {
+                return error.SerializationFailed;
+            }
+
+            // Create JSValue with the JSON string (will be parsed on receive side)
+            const json_slice = buf[0..@intCast(written)];
+            const json_copy = instance.ctx.allocator.dupe(u8, json_slice) catch return error.OutOfMemory;
+            const js_value = JSValue{ .string = json_copy };
+
+            // Post the serialized message (postMessageTyped will handle cleanup)
+            try worker.postMessageTyped(&js_value, null);
         }
     }
 }

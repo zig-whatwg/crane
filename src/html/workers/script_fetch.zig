@@ -184,12 +184,17 @@ pub fn fetchWorkerScript(
 
     // Step 4: Handle relative URLs - resolve against base URL or origin
     // This handles: "/path", "./relative", "../parent", "bare-name.js"
+    std.log.info("[fetchWorkerScript] Resolving URL: '{s}' against origin: '{s}'", .{ url, options.origin orelse "(null)" });
     const resolved_url = resolveRelativeUrl(allocator, url, options.origin) catch {
+        std.log.warn("[fetchWorkerScript] resolveRelativeUrl failed with OutOfMemory", .{});
         return WorkerScriptError.OutOfMemory;
     };
     if (resolved_url) |full_url| {
+        std.log.info("[fetchWorkerScript] Resolved to: '{s}'", .{full_url});
         defer allocator.free(full_url);
         return fetchHttpWorkerScript(allocator, full_url, options);
+    } else {
+        std.log.warn("[fetchWorkerScript] resolveRelativeUrl returned null for url='{s}' origin='{s}'", .{ url, options.origin orelse "(null)" });
     }
 
     // Step 5: Check for import scripts mode (stricter)

@@ -1299,6 +1299,10 @@ pub fn main() !void {
     const storage = @import("storage");
     storage.deinitGlobalStorageShed(allocator);
 
+    // Clean up timer backend singleton
+    const timer_backend = @import("platform").timer_backend;
+    timer_backend.deinitDefault();
+
     // Finish and write report
     report.finish();
 

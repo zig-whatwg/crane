@@ -354,6 +354,11 @@ pub const WorkerV8Context = struct {
             v8.ffi.v8_Isolate_Exit(self.isolate);
         }
 
+        // CRITICAL: Create HandleScope for V8 handle allocation
+        // All V8 API calls that create Local handles must be within a HandleScope
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
         const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
             return error.NoGlobalObject;
         };

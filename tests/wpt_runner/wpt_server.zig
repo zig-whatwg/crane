@@ -101,9 +101,8 @@ pub const WptServer = struct {
         var missing_hosts: usize = 0;
 
         for (required_hosts) |host| {
-            // Try DNS resolution by attempting TCP connect
-            // This validates the host resolves and is reachable
-            const address = std.net.Address.resolveIp(host, 8000) catch {
+            // Check /etc/hosts directly since std.net.Address.resolveIp only parses IP strings
+            if (!hostExistsInHostsFile(host)) {
                 if (missing_hosts == 0) {
                     std.debug.print("\n", .{});
                     std.debug.print("ERROR: Required WPT hostnames not configured.\n", .{});
@@ -112,9 +111,7 @@ pub const WptServer = struct {
                 }
                 std.debug.print("  Missing: {s}\n", .{host});
                 missing_hosts += 1;
-                continue;
-            };
-            _ = address;
+            }
         }
 
         if (missing_hosts > 0) {
@@ -129,6 +126,36 @@ pub const WptServer = struct {
             std.debug.print("\n", .{});
             return error.HostNotConfigured;
         }
+    }
+
+    /// Check if a hostname exists in /etc/hosts
+    fn hostExistsInHostsFile(hostname: []const u8) bool {
+        const file = std.fs.openFileAbsolute("/etc/hosts", .{}) catch return false;
+        defer file.close();
+
+        var buf: [4096]u8 = undefined;
+        const bytes_read = file.readAll(&buf) catch return false;
+        const content = buf[0..bytes_read];
+
+        // Parse each line looking for the hostname
+        var lines = std.mem.splitScalar(u8, content, '\n');
+        while (lines.next()) |line| {
+            // Skip comments and empty lines
+            const trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
+            if (trimmed.len == 0 or trimmed[0] == '#') continue;
+
+            // Split by whitespace to get IP and hostnames
+            var parts = std.mem.tokenizeAny(u8, trimmed, " \t");
+            _ = parts.next(); // Skip IP address
+
+            // Check remaining parts for hostname match
+            while (parts.next()) |host| {
+                if (std.mem.eql(u8, host, hostname)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /// Check if an existing server is running via lockfile

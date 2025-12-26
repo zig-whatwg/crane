@@ -1072,12 +1072,11 @@ pub const Context = struct {
     ///
     /// Navigation flow per HTML Standard:
     /// 1. Fetch URL content
-    /// 2. Parse HTML into DOM tree
-    /// 3. Execute inline scripts (in document order)
-    /// 4. Fire DOMContentLoaded event
-    /// 5. Fire load event
+    /// 2. Detect response content type
+    /// 3. Delegate to appropriate handler (HTML, JSON, plain text, etc.)
+    /// 4. Fire DOMContentLoaded and load events
     pub fn loadPage(self: *Context) !void {
-        _ = self.v8_context orelse return error.NotInitialized;
+        const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
         // Step 1: Fetch URL content
         var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
@@ -1092,72 +1091,104 @@ pub const Context = struct {
         };
         defer result.deinit();
 
-        // Step 2: Check if HTML content
-        const is_html = std.mem.indexOf(u8, result.content_type, "text/html") != null or
-            std.mem.indexOf(u8, result.content_type, "application/xhtml") != null;
-
-        if (!is_html) {
-            // For non-HTML content, just set document.body.innerText
-            // This is a simplified approach for now
-            std.debug.print("Non-HTML content type: {s}\n", .{result.content_type});
+        // Step 2: Detect content type and delegate to appropriate handler
+        if (isHtmlContentType(result.content_type)) {
+            try self.handleHtmlResponse(result.body, v8_ctx);
+        } else if (isJsonContentType(result.content_type)) {
+            try self.handleJsonResponse(result.body);
+        } else if (isTextContentType(result.content_type)) {
+            try self.handleTextResponse(result.body);
+        } else {
+            // Unknown content type - treat as binary/download
+            std.debug.print("Unhandled content type: {s}\n", .{result.content_type});
             return;
         }
+    }
 
-        // Step 3: Parse HTML (for script extraction)
-        // Note: We're using a simplified approach here - just extracting scripts
-        // and executing them. Full DOM tree construction would integrate with
-        // the WebIDL Document interface.
-        try self.executeInlineScripts(result.body);
+    /// Check if content type is HTML
+    fn isHtmlContentType(content_type: []const u8) bool {
+        return std.mem.indexOf(u8, content_type, "text/html") != null or
+            std.mem.indexOf(u8, content_type, "application/xhtml") != null;
+    }
 
-        // Step 4: Fire DOMContentLoaded on document
+    /// Check if content type is JSON
+    fn isJsonContentType(content_type: []const u8) bool {
+        return std.mem.indexOf(u8, content_type, "application/json") != null or
+            std.mem.indexOf(u8, content_type, "text/json") != null;
+    }
+
+    /// Check if content type is plain text
+    fn isTextContentType(content_type: []const u8) bool {
+        return std.mem.indexOf(u8, content_type, "text/plain") != null or
+            std.mem.indexOf(u8, content_type, "text/css") != null or
+            std.mem.indexOf(u8, content_type, "text/javascript") != null or
+            std.mem.indexOf(u8, content_type, "application/javascript") != null;
+    }
+
+    /// Handle HTML response - parse with full HTML parser including script execution
+    fn handleHtmlResponse(self: *Context, html_content: []const u8, v8_ctx: *v8.ffi.Context) !void {
+        // Get runtime context for HTMLParser
+        const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
+            std.debug.print("Failed to get runtime context: {}\n", .{err});
+            return error.NotInitialized;
+        };
+
+        // Get existing document instance
+        const document = self.document_instance orelse {
+            std.debug.print("ERROR: document_instance is null - context must be initialized first\n", .{});
+            return error.NotInitialized;
+        };
+
+        // Update document URL to the actual page URL
+        if (impls.Document.getInternal(document)) |doc_internal| {
+            // Free old URL if it exists
+            if (doc_internal.url.len > 0) {
+                self.allocator.free(doc_internal.url);
+            }
+            doc_internal.url = self.allocator.dupe(u8, self.url) catch "";
+        }
+
+        // Parse HTML with full scripting support
+        const HTMLParser = impls.HTMLParser;
+        _ = HTMLParser.parseHTMLWithScripting(
+            self.allocator,
+            runtime_ctx,
+            html_content,
+            .{
+                .scripting_enabled = true,
+                .base_url = self.url,
+                .script_loader = null, // Use default HTTP fetching
+                .existing_document = document,
+            },
+        ) catch |err| {
+            std.debug.print("HTML parse error: {}\n", .{err});
+            return error.ParseError;
+        };
+
+        // Fire DOMContentLoaded on document
         if (self.document_instance) |doc| {
             navigation.fireDOMContentLoaded(self.allocator, doc);
         }
 
-        // Step 5: Fire load event on window
+        // Fire load event on window
         if (self.window_instance) |win| {
             navigation.fireLoad(self.allocator, win);
         }
     }
 
-    /// Execute inline scripts from HTML content
-    fn executeInlineScripts(self: *Context, html: []const u8) !void {
-        const isolate = self.isolate;
-        const v8_ctx = self.v8_context orelse return error.NotInitialized;
+    /// Handle JSON response - set document body with formatted JSON
+    fn handleJsonResponse(self: *Context, json_content: []const u8) !void {
+        // For JSON, we could parse and display, or set as document content
+        // For now, just log it - full implementation would create a JSON viewer
+        _ = self;
+        std.debug.print("JSON response ({d} bytes)\n", .{json_content.len});
+    }
 
-        // Simple script extractor - find <script>...</script> blocks
-        var pos: usize = 0;
-        while (pos < html.len) {
-            // Find <script
-            const script_start = std.mem.indexOfPos(u8, html, pos, "<script") orelse break;
-
-            // Find > (end of opening tag)
-            const tag_end = std.mem.indexOfPos(u8, html, script_start, ">") orelse break;
-
-            // Check if it's a src script (external) - skip those for now
-            const tag_attrs = html[script_start..tag_end];
-            if (std.mem.indexOf(u8, tag_attrs, " src=") != null or
-                std.mem.indexOf(u8, tag_attrs, " src =") != null)
-            {
-                // External script - skip for now
-                // TODO: Fetch and execute external scripts
-                pos = tag_end + 1;
-                continue;
-            }
-
-            // Find </script>
-            const script_end = std.mem.indexOfPos(u8, html, tag_end, "</script>") orelse break;
-
-            // Extract script content
-            const script_content = html[tag_end + 1 .. script_end];
-
-            if (script_content.len > 0) {
-                // Execute the script
-                _ = self.evaluateScriptSafe(script_content, isolate, v8_ctx);
-            }
-
-            pos = script_end + 9; // Move past </script>
-        }
+    /// Handle plain text response - set document body with text content
+    fn handleTextResponse(self: *Context, text_content: []const u8) !void {
+        // For text, display in a <pre> element or similar
+        _ = self;
+        std.debug.print("Text response ({d} bytes)\n", .{text_content.len});
     }
 
     /// Evaluate script with error handling (doesn't propagate errors)

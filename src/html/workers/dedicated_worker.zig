@@ -381,33 +381,24 @@ pub const DedicatedWorker = struct {
     ///
     /// Note: This overload accepts opaque pointers for compatibility with WebIDL.
     /// The `message` parameter should be a V8 value handle that will be serialized.
-    /// For now, this creates a minimal serialized value; full V8 integration pending.
-    pub fn postMessage(self: *DedicatedWorker, message: *const anyopaque, transfer: *const anyopaque) !void {
-        _ = transfer;
-        _ = message;
+    pub fn postMessage(self: *DedicatedWorker, message: ?*anyopaque, transfer: ?*anyopaque) !void {
+        _ = transfer; // TODO: Handle transferables
 
         // Spec step 1: If closing flag is true, return
         if (self.agent.isClosing() or self.agent.isTerminated()) {
             return;
         }
 
-        // TODO: Full V8 integration - convert message to JSValue and serialize
-        // For now, create a minimal serialized undefined value (using correct structured clone format)
-        const serialized = try self.allocator.create(SerializedValue);
-        errdefer self.allocator.destroy(serialized);
+        // Note: This method receives a raw V8 value pointer. The caller (Worker.call_postMessage)
+        // is responsible for serializing it to JSValue before calling postMessageTyped.
+        // This method is kept for API compatibility but should not be called directly
+        // with raw V8 values - use postMessageTyped instead.
+        _ = message;
+        _ = transfer;
 
-        serialized.* = .{
-            .type = .primitive,
-            .allocator = self.allocator,
-            .data = .{ .primitive = .{ .undefined = {} } },
-        };
-
-        // Post to the outside port → arrives at entangled inside port (worker side)
-        self.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-            serialized.deinit();
-            self.allocator.destroy(serialized);
-            return err;
-        };
+        // For now, post undefined - callers should use postMessageTyped with proper JSValue
+        const js_value = JSValue{ .undefined = {} };
+        try self.postMessageTyped(&js_value, null);
     }
 
     /// Post a message to the worker with typed JSValue.
