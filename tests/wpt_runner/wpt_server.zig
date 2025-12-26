@@ -21,6 +21,18 @@ const test_parser = @import("test_parser.zig");
 /// Lockfile name stored in WPT root
 const LOCKFILE_NAME = ".wpt_serve.lock";
 
+/// Required WPT hostnames for proper test execution
+/// These must be configured in /etc/hosts to resolve to 127.0.0.1
+/// See: https://web-platform-tests.org/running-tests/from-local-system.html#system-setup
+pub const required_hosts = [_][]const u8{
+    "web-platform.test",
+    "www.web-platform.test",
+    "www1.web-platform.test",
+    "www2.web-platform.test",
+    "xn--n3h.web-platform.test", // IDN hostname
+    "xn--lve-6lad.web-platform.test", // IDN hostname
+};
+
 /// WPT Server manager
 pub const WptServer = struct {
     allocator: Allocator,
@@ -59,10 +71,13 @@ pub const WptServer = struct {
 
     /// Start the WPT server
     ///
-    /// First checks if a server is already running (via lockfile).
+    /// First validates host configuration, then checks if a server is already running (via lockfile).
     /// If not, spawns a new server and writes the lockfile.
     /// Always verifies all required ports are ready.
     pub fn start(self: *WptServer) !void {
+        // Validate host configuration before starting
+        try self.validateHostConfiguration();
+
         // Check for existing server
         if (try self.checkExistingServer()) {
             // Verify all required ports are ready (existing server may not have alternate ports)
@@ -77,6 +92,43 @@ pub const WptServer = struct {
 
         // Spawn new server
         try self.spawnServer();
+    }
+
+    /// Validate that required WPT hostnames are configured in /etc/hosts
+    /// WPT tests require specific hostnames to be resolvable to 127.0.0.1
+    fn validateHostConfiguration(self: *WptServer) !void {
+        _ = self;
+        var missing_hosts: usize = 0;
+
+        for (required_hosts) |host| {
+            // Try DNS resolution by attempting TCP connect
+            // This validates the host resolves and is reachable
+            const address = std.net.Address.resolveIp(host, 8000) catch {
+                if (missing_hosts == 0) {
+                    std.debug.print("\n", .{});
+                    std.debug.print("ERROR: Required WPT hostnames not configured.\n", .{});
+                    std.debug.print("The following hosts must resolve to 127.0.0.1:\n", .{});
+                    std.debug.print("\n", .{});
+                }
+                std.debug.print("  Missing: {s}\n", .{host});
+                missing_hosts += 1;
+                continue;
+            };
+            _ = address;
+        }
+
+        if (missing_hosts > 0) {
+            std.debug.print("\n", .{});
+            std.debug.print("To fix, add these lines to /etc/hosts:\n", .{});
+            std.debug.print("\n", .{});
+            for (required_hosts) |host| {
+                std.debug.print("  127.0.0.1   {s}\n", .{host});
+            }
+            std.debug.print("\n", .{});
+            std.debug.print("See: https://web-platform-tests.org/running-tests/from-local-system.html#system-setup\n", .{});
+            std.debug.print("\n", .{});
+            return error.HostNotConfigured;
+        }
     }
 
     /// Check if an existing server is running via lockfile
@@ -246,10 +298,56 @@ pub const WptServer = struct {
         self.we_spawned = false;
     }
 
-    /// Get the base URL for the server
+    /// Get the base URL for the server (HTTP)
+    /// Uses web-platform.test hostname as required by WPT specification
+    /// See: https://web-platform-tests.org/running-tests/from-local-system.html#system-setup
     pub fn getBaseUrl(self: *WptServer) []const u8 {
         _ = self;
-        return "http://localhost:8000";
+        return "http://web-platform.test:8000";
+    }
+
+    /// Get the base URL for HTTPS connections
+    /// Uses port 8443 (primary HTTPS port)
+    /// WPT server uses self-signed certificates - SSL verification should be disabled
+    pub fn getHttpsBaseUrl(self: *WptServer) []const u8 {
+        _ = self;
+        return "https://web-platform.test:8443";
+    }
+
+    /// Build test URL with scheme based on test path
+    /// Tests with .https. in the path or ending in .https.html use HTTPS
+    pub fn buildTestUrlWithScheme(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
+        // Determine if test requires HTTPS
+        const use_https = std.mem.indexOf(u8, test_path, ".https.") != null or
+            std.mem.endsWith(u8, test_path, ".https.html") or
+            std.mem.endsWith(u8, test_path, ".https.htm");
+
+        const base_url = if (use_https) self.getHttpsBaseUrl() else self.getBaseUrl();
+
+        var url_path = test_path;
+        var suffix: []const u8 = "";
+
+        if (std.mem.endsWith(u8, test_path, ".any.js")) {
+            url_path = test_path[0 .. test_path.len - 7];
+            suffix = switch (context) {
+                .worker => ".any.worker.html",
+                .sharedworker => ".any.sharedworker.html",
+                .serviceworker => ".any.serviceworker.html",
+                else => ".any.html",
+            };
+        } else if (std.mem.endsWith(u8, test_path, ".window.js")) {
+            url_path = test_path[0 .. test_path.len - 10];
+            suffix = ".window.html";
+        } else if (std.mem.endsWith(u8, test_path, ".worker.js")) {
+            url_path = test_path[0 .. test_path.len - 10];
+            suffix = ".worker.html";
+        }
+
+        return try std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
+            base_url,
+            url_path,
+            suffix,
+        });
     }
 
     /// Build a test URL from a test path and context type
@@ -297,27 +395,37 @@ test "WptServer.buildTestUrl" {
     {
         const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/url/url-constructor.any.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.html", url);
     }
 
     // Worker context generates .any.worker.html
     {
         const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/url/url-constructor.any.worker.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker.html", url);
     }
 
     // Window context for another .any.js test
     {
         const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/encoding/api-basics.any.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/encoding/api-basics.any.html", url);
     }
 
     // HTML files ignore context (always use raw path)
     {
         const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/dom/nodes/Element-matches.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/dom/nodes/Element-matches.html", url);
     }
+}
+
+test "WptServer.getBaseUrl returns web-platform.test" {
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    const base_url = server.getBaseUrl();
+    try std.testing.expectEqualStrings("http://web-platform.test:8000", base_url);
 }

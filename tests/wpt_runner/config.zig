@@ -3,6 +3,20 @@
 //! Defines test categories, exclusion patterns, and runtime settings for
 //! the WPT test runner.
 //!
+//! ## SSL/TLS Configuration
+//!
+//! WPT tests use self-signed certificates for HTTPS testing on ports 8443-8446.
+//! The async_curl_manager disables SSL certificate verification by default to
+//! allow these tests to run:
+//!
+//! ```zig
+//! // In src/fetch/network/async_curl_manager.zig
+//! _ = curl.easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 0);
+//! _ = curl.easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, 0);
+//! ```
+//!
+//! Tests with .https. in their path automatically use the HTTPS port.
+//!
 //! ## In-Scope Categories
 //!
 //! These are the WHATWG/W3C spec categories we implement and test:

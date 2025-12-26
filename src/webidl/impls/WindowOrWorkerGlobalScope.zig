@@ -398,6 +398,8 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     };
 
     // Extract URL from input (RequestInfo is USVString or Request)
+    // Track if URL was allocated (from get_href) so we can free it later
+    var url_allocated: bool = false;
     const url_str: []const u8 = switch (input) {
         .usvstring => |s| s,
         .request => |req_instance| blk: {
@@ -412,6 +414,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 // Not a valid Request - try to get URL from URL interface
                 // The URL interface has a get_href method that returns the full URL string
                 if (interfaces.URL.get_href(req_instance)) |url_href| {
+                    url_allocated = true; // get_href allocates a new string
                     break :blk url_href;
                 } else |_| {
                     // Neither Request nor URL - this is an error
@@ -421,6 +424,8 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             }
         },
     };
+    // Ensure allocated URL is freed on all exit paths
+    defer if (url_allocated) allocator.free(url_str);
 
     // Build RequestInit options for the internal fetch
     var request_init = fetch_api.webidl.request.RequestInit{};

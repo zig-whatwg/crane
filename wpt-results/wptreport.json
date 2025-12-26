@@ -7,20 +7,123 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1766759864888,
-  "time_end": 1766759865311,
+  "time_start": 1766760887648,
+  "time_end": 1766760888320,
   "results": [
+    {
+      "test": "infrastructure/assumptions/ahem-notref.html",
+      "status": "SKIP",
+      "message": "Reftest reference file - not a test",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/non-secure-context.any.js [window]",
+      "status": "OK",
+      "message": null,
+      "duration": 12,
+      "subtests": [
+        {"name": "Lack of .https file name flag implies non-secure context", "status": "FAIL", "message": "assert_false: expected false got true"},
+        {"name": "Lack of .https file name flag implies HTTP scheme", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/document-fonts-ready.html",
+      "status": "OK",
+      "message": null,
+      "duration": 11,
+      "subtests": [
+        {"name": "document.fonts.ready resolves after layout depending on loaded fonts", "status": "FAIL", "message": "assert_equals: one font is pending expected (number) 1 but got (undefined) undefined"}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/medium-font-size.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/blank.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/canvas-background.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/ahem.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/min-font-size.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/cookie.html",
+      "status": "OK",
+      "message": null,
+      "duration": 11,
+      "subtests": [
+        {"name": "cookies work in default browse settings", "status": "PASS", "message": null}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/initial-color.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
     {
       "test": "infrastructure/assumptions/non-local-ports.sub.window.js",
       "status": "OK",
       "message": null,
-      "duration": 109,
+      "duration": 96,
       "subtests": [
         {"name": "Fetch from https-local port works.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: NetworkError\""},
         {"name": "Fetch from http-local port works.", "status": "PASS", "message": null},
         {"name": "Fetch from https-public port works.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"Error: NetworkError\""},
         {"name": "Fetch from http-public port works.", "status": "PASS", "message": null},
         {"name": "Fetch from http-public to local http fails.", "status": "FAIL", "message": "promise_test: Unhandled rejection with value: object \"TypeError: TypeError\""}
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/html-elements.html",
+      "status": "OK",
+      "message": null,
+      "duration": 12,
+      "subtests": [
+        {"name": "(pre-req for comparison tests) all CSS short-hand supported", "status": "FAIL", "message": "assert_true: expected true got false"},
+        {"name": "(pre-req for comparison tests) initial CSS value supported", "status": "FAIL", "message": "assert_in_array: value undefined not in array [\"rgba(0, 0, 0, 0)\", \"transparent\"]"},
+        {"name": "Compare CSS div definitions (only valid if pre-reqs pass)", "status": "PASS", "message": null},
+        {"name": "Compare CSS span definitions (only valid if pre-reqs pass)", "status": "PASS", "message": null},
+        {"name": "p is display: block", "status": "FAIL", "message": "TypeError"},
+        {"name": "ul > li is display: list-item", "status": "FAIL", "message": "TypeError"},
+        {"name": "ol > li is display: list-item", "status": "FAIL", "message": "TypeError"},
+        {"name": "table is display: table", "status": "FAIL", "message": "TypeError"},
+        {"name": "tbody is display: table-row-group", "status": "FAIL", "message": "TypeError"},
+        {"name": "tr is display: table-row", "status": "FAIL", "message": "TypeError"},
+        {"name": "td is display: table-cell", "status": "FAIL", "message": "TypeError"}
       ]
     }
   ]

@@ -120,7 +120,7 @@ pub const InternalResponse = struct {
     }
 
     /// Create an InternalResponse from a NetworkResponse.
-    /// Takes ownership of network_response data (caller should not deinit it).
+    /// COPIES data from network_response - caller MUST free the NetworkResponse after this call.
     pub fn initFromNetworkResponse(allocator: Allocator, network_response: anytype) !*Self {
         const response = try allocator.create(Self);
         errdefer allocator.destroy(response);

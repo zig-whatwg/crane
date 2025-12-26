@@ -107,22 +107,20 @@ pub const GlobalType = enum {
 
     /// Check if this context type is implemented and can execute tests
     ///
-    /// NOTE: Worker context is marked as not implemented because:
-    /// 1. Worker tests require fetch_tests_from_worker infrastructure from testharness.js
-    /// 2. The Worker constructor doesn't fully spawn workers with message passing
-    /// 3. Worker tests timeout waiting for worker communication that doesn't happen
+    /// Window and Worker contexts are supported. The WPT server generates proper
+    /// HTML wrappers for worker tests:
+    /// - `.any.js` tests get `.any.worker.html` which uses fetch_tests_from_worker
+    /// - The server handles all testharness.js infrastructure
+    /// - Our Worker implementation supports the required postMessage/onmessage
     ///
-    /// Worker support can be re-enabled when:
-    /// - Worker constructor properly spawns V8 workers
-    /// - postMessage/onmessage work between main and worker contexts
-    /// - fetch_tests_from_worker function is available or polyfilled
+    /// SharedWorker/ServiceWorker require additional infrastructure not yet implemented.
     pub fn isImplemented(self: GlobalType) bool {
         return switch (self) {
             .window => true,
-            // Worker tests are disabled due to incomplete infrastructure
-            // They timeout because fetch_tests_from_worker is not available
-            // and Worker constructor doesn't spawn real workers
-            .worker => false,
+            // Worker context is supported - WPT server generates .any.worker.html
+            // wrappers that handle fetch_tests_from_worker infrastructure
+            .worker => true,
+            // SharedWorker/ServiceWorker need additional infrastructure
             .sharedworker => false,
             .serviceworker => false,
             // All ShadowRealm variants not implemented
@@ -1185,10 +1183,10 @@ test "GlobalType.toString - shadowrealm variants" {
 }
 
 test "GlobalType.isImplemented - shadowrealm returns false" {
-    // Implemented contexts (only window for now)
+    // Implemented contexts: window and worker
     try std.testing.expect(GlobalType.window.isImplemented());
-    // Worker is NOT implemented - requires fetch_tests_from_worker infrastructure
-    try std.testing.expect(!GlobalType.worker.isImplemented());
+    // Worker IS implemented - WPT server handles fetch_tests_from_worker via generated HTML
+    try std.testing.expect(GlobalType.worker.isImplemented());
 
     // Not implemented contexts
     try std.testing.expect(!GlobalType.sharedworker.isImplemented());
@@ -1284,8 +1282,8 @@ test "multi-context: test runs in each specified context" {
         }
     }
 
-    // Only window is implemented (worker disabled due to missing infrastructure)
-    try std.testing.expectEqual(@as(usize, 1), executed_contexts);
+    // Both window and worker are implemented
+    try std.testing.expectEqual(@as(usize, 2), executed_contexts);
 }
 
 test "multi-context: unimplemented contexts are skipped" {
@@ -1387,9 +1385,10 @@ test "multi-context: counting implemented vs unimplemented contexts" {
         }
     }
 
-    // Only window is implemented (worker disabled due to missing fetch_tests_from_worker)
-    try std.testing.expectEqual(@as(usize, 1), implemented);
-    try std.testing.expectEqual(@as(usize, 4), unimplemented);
+    // Window and worker are implemented
+    try std.testing.expectEqual(@as(usize, 2), implemented);
+    // SharedWorker, ServiceWorker, ShadowRealm are not implemented
+    try std.testing.expectEqual(@as(usize, 3), unimplemented);
 }
 
 test "multi-context: effective test count with variants and globals" {

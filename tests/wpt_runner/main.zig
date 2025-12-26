@@ -36,6 +36,7 @@ const test_harness = @import("test_harness.zig");
 const browser_adapter = @import("browser_adapter.zig");
 const result_reporter = @import("result_reporter.zig");
 const wpt_server = @import("wpt_server.zig");
+const parallel = @import("parallel.zig");
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -773,6 +774,77 @@ fn calculateTotalTests(
     return total;
 }
 
+/// Build work items for parallel execution
+/// Each work item is a test file + context combination
+fn buildWorkItems(
+    allocator: std.mem.Allocator,
+    discovery: DiscoveryResult,
+    options: Options,
+) ![]parallel.WorkItem {
+    var items: std.ArrayList(parallel.WorkItem) = .{};
+    errdefer {
+        for (items.items) |*item| {
+            allocator.free(item.parsed_content);
+            item.metadata.deinit();
+        }
+        items.deinit(allocator);
+    }
+
+    for (discovery.test_files.items) |test_file| {
+        // Load content
+        const content = loadTestContent(allocator, options, test_file) catch |err| {
+            std.debug.print("Warning: Failed to load {s}: {}\n", .{ test_file.path, err });
+            continue;
+        };
+        errdefer allocator.free(content);
+
+        // Parse to get metadata
+        var parsed = test_parser.parseTestFile(allocator, test_file.path, content) catch |err| {
+            std.debug.print("Warning: Failed to parse {s}: {}\n", .{ test_file.path, err });
+            allocator.free(content);
+            continue;
+        };
+
+        // Create work item for each implemented context
+        for (parsed.metadata.globals.items) |ctx| {
+            if (!ctx.isImplemented()) continue;
+
+            const context_name: ?[]const u8 = if (parsed.metadata.globals.items.len > 1)
+                ctx.toString()
+            else
+                null;
+
+            // Clone metadata for this work item
+            var cloned_metadata = test_parser.TestMetadata.init(allocator);
+            cloned_metadata.timeout = parsed.metadata.timeout;
+            for (parsed.metadata.globals.items) |g| {
+                try cloned_metadata.globals.append(allocator, g);
+            }
+            for (parsed.metadata.scripts.items) |s| {
+                try cloned_metadata.scripts.append(allocator, test_parser.ScriptRef{
+                    .path = try allocator.dupe(u8, s.path),
+                    .inline_script = s.inline_script,
+                    .script_type = if (s.script_type) |t| try allocator.dupe(u8, t) else null,
+                });
+            }
+
+            try items.append(allocator, parallel.WorkItem{
+                .test_file = test_file,
+                .context = ctx,
+                .context_name = context_name,
+                .parsed_content = try allocator.dupe(u8, content),
+                .metadata = cloned_metadata,
+            });
+        }
+
+        // Free original content and parsed (we duped what we need)
+        allocator.free(content);
+        parsed.deinit();
+    }
+
+    return items.toOwnedSlice(allocator);
+}
+
 /// Execute all discovered tests
 pub fn executeTests(
     allocator: std.mem.Allocator,
@@ -781,6 +853,31 @@ pub fn executeTests(
     report: *result_reporter.WptReport,
     server: *wpt_server.WptServer,
 ) !void {
+    // Use parallel execution if requested
+    if (options.parallel > 0 or options.parallel == 0) {
+        // Build work items
+        const work_items = try buildWorkItems(allocator, discovery, options);
+        defer {
+            for (work_items) |*item| {
+                var mutable_item = item.*;
+                allocator.free(mutable_item.parsed_content);
+                mutable_item.metadata.deinit();
+            }
+            allocator.free(work_items);
+        }
+
+        if (work_items.len == 0) {
+            print("No tests to run.\n", .{});
+            return;
+        }
+
+        // Only use parallel execution if explicitly requested (parallel > 0)
+        if (options.parallel > 0) {
+            return parallel.executeTestsParallel(allocator, work_items, options, report, server);
+        }
+    }
+
+    // Sequential execution (default)
     // Calculate total accounting for multi-context execution
     // This requires parsing all files upfront, but gives accurate progress tracking
     const total = try calculateTotalTests(allocator, discovery, options);
@@ -1224,11 +1321,12 @@ test "multi-context: parsing and context iteration integration" {
         }
     }
 
-    // Should have 1 result (only window is implemented, worker/sharedworker are not)
-    try std.testing.expectEqual(@as(usize, 1), results.items.len);
+    // Should have 2 results (window and worker are implemented, sharedworker is not)
+    try std.testing.expectEqual(@as(usize, 2), results.items.len);
 
     // Verify contexts
     try std.testing.expectEqualStrings("window", results.items[0].context.?);
+    try std.testing.expectEqualStrings("worker", results.items[1].context.?);
 }
 
 test "multi-context: GlobalType iteration for test execution" {
@@ -1252,10 +1350,10 @@ test "multi-context: GlobalType iteration for test execution" {
         }
     }
 
-    // only window is implemented (worker disabled due to missing fetch_tests_from_worker)
-    try std.testing.expectEqual(@as(usize, 1), implemented_count);
-    // worker, sharedworker, serviceworker, shadowrealm are not implemented
-    try std.testing.expectEqual(@as(usize, 4), skipped_count);
+    // window and worker are implemented
+    try std.testing.expectEqual(@as(usize, 2), implemented_count);
+    // sharedworker, serviceworker, shadowrealm are not implemented
+    try std.testing.expectEqual(@as(usize, 3), skipped_count);
 }
 
 test "multi-context: result collection per context" {
@@ -1298,16 +1396,16 @@ test "calculateTotalTests counts implemented contexts" {
     // for multi-context execution.
 
     // Test the counting logic directly:
-    // - .any.js with no META: defaults to window + worker, but only window is implemented = 1
+    // - .any.js with no META: defaults to window + worker, both implemented = 2
     // - .any.js with global=window: explicit window = 1
-    // - .any.js with global=window,worker: only window is implemented = 1
-    // - .any.js with global=window,worker,sharedworker: only window is implemented = 1
+    // - .any.js with global=window,worker: both implemented = 2
+    // - .any.js with global=window,worker,sharedworker: window + worker = 2
     // - .window.js: always window = 1
-    // - .worker.js: always worker = 0 (worker not implemented)
+    // - .worker.js: always worker = 1 (worker is now implemented)
 
     const allocator = std.testing.allocator;
 
-    // Test case 1: .any.js with no META defaults to window+worker, but only window implemented
+    // Test case 1: .any.js with no META defaults to window+worker, both implemented
     {
         const content = "test(() => {});";
         var parsed = try test_parser.parseTestFile(allocator, "test.any.js", content);
@@ -1317,7 +1415,7 @@ test "calculateTotalTests counts implemented contexts" {
         for (parsed.metadata.globals.items) |ctx| {
             if (ctx.isImplemented()) implemented_count += 1;
         }
-        try std.testing.expectEqual(@as(usize, 1), implemented_count);
+        try std.testing.expectEqual(@as(usize, 2), implemented_count);
     }
 
     // Test case 2: explicit single context
@@ -1349,8 +1447,8 @@ test "calculateTotalTests counts implemented contexts" {
         for (parsed.metadata.globals.items) |ctx| {
             if (ctx.isImplemented()) implemented_count += 1;
         }
-        // only window is implemented (worker, sharedworker, serviceworker are not)
-        try std.testing.expectEqual(@as(usize, 1), implemented_count);
+        // window and worker are implemented (sharedworker, serviceworker are not)
+        try std.testing.expectEqual(@as(usize, 2), implemented_count);
     }
 
     // Test case 4: .window.js forces window only
@@ -1370,7 +1468,7 @@ test "calculateTotalTests counts implemented contexts" {
         try std.testing.expectEqual(test_parser.GlobalType.window, parsed.metadata.globals.items[0]);
     }
 
-    // Test case 5: .worker.js forces worker only (but worker is not implemented)
+    // Test case 5: .worker.js forces worker only (worker IS implemented)
     {
         const content = "test(() => {});";
         var parsed = try test_parser.parseTestFile(allocator, "test.worker.js", content);
@@ -1380,8 +1478,8 @@ test "calculateTotalTests counts implemented contexts" {
         for (parsed.metadata.globals.items) |ctx| {
             if (ctx.isImplemented()) implemented_count += 1;
         }
-        // Worker is not implemented, so 0 contexts will execute
-        try std.testing.expectEqual(@as(usize, 0), implemented_count);
+        // Worker is now implemented, so 1 context will execute
+        try std.testing.expectEqual(@as(usize, 1), implemented_count);
         try std.testing.expectEqual(test_parser.GlobalType.worker, parsed.metadata.globals.items[0]);
     }
 }
