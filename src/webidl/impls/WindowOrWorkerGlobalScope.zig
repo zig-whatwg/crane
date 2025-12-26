@@ -564,8 +564,83 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             }
         }
 
-        // Note: mode, credentials, cache, redirect, referrer, referrerPolicy
-        // are parsed here but applied during NetworkRequest construction below
+        // Note: mode, referrer, referrerPolicy are applied below during
+        // NetworkRequest construction (mode affects CORS, referrer affects headers)
+    }
+
+    // Extract RequestInit options for network configuration
+    // Spec: https://fetch.spec.whatwg.org/#request-class
+    var follow_redirects: bool = true; // Default: follow redirects
+
+    if (init_data.wasPassed()) {
+        const init_opts = init_data.getValue();
+
+        // Redirect mode - controls how redirects are handled
+        // Spec: https://fetch.spec.whatwg.org/#dom-requestinit-redirect
+        if (init_opts.redirect) |redirect| {
+            follow_redirects = switch (redirect) {
+                ._follow_ => true, // Follow redirects automatically
+                ._error_ => false, // Will error on redirect (TODO: handle in completion callback)
+                ._manual_ => false, // Return opaque-redirect response (TODO: handle in callback)
+            };
+        }
+
+        // Cache mode - add appropriate Cache-Control headers
+        // Spec: https://fetch.spec.whatwg.org/#dom-requestinit-cache
+        if (init_opts.cache) |cache_mode| {
+            switch (cache_mode) {
+                ._no_store_ => {
+                    // Don't store request/response in cache
+                    try headers_list.append(allocator, .{
+                        .name = "Cache-Control",
+                        .value = "no-store",
+                    });
+                },
+                ._no_cache_ => {
+                    // Revalidate with server before using cached response
+                    try headers_list.append(allocator, .{
+                        .name = "Cache-Control",
+                        .value = "no-cache",
+                    });
+                },
+                ._reload_ => {
+                    // Ignore cache, fetch fresh from server
+                    try headers_list.append(allocator, .{
+                        .name = "Cache-Control",
+                        .value = "no-cache",
+                    });
+                    try headers_list.append(allocator, .{
+                        .name = "Pragma",
+                        .value = "no-cache",
+                    });
+                },
+                ._force_cache_ => {
+                    // Use cache even if stale, only fetch if not cached
+                    // No special headers needed - let cache decide
+                },
+                ._only_if_cached_ => {
+                    // Only use cache, fail if not cached
+                    // Note: This requires mode to be "same-origin"
+                    try headers_list.append(allocator, .{
+                        .name = "Cache-Control",
+                        .value = "only-if-cached",
+                    });
+                },
+                ._default_ => {
+                    // Normal cache behavior - no special headers
+                },
+            }
+        }
+
+        // Credentials mode - controls cookie behavior
+        // Spec: https://fetch.spec.whatwg.org/#dom-requestinit-credentials
+        // TODO: Configure curl to send/receive cookies based on:
+        // - omit: Don't send or receive cookies
+        // - same-origin: Only for same-origin requests (default)
+        // - include: Always send cookies, even cross-origin
+        if (init_opts.credentials) |credentials| {
+            _ = credentials; // Will be used when cookie jar is implemented
+        }
     }
 
     // CORS handling: Add Origin header for cross-origin requests
@@ -621,6 +696,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
             .method = request_method,
             .headers = headers_list.items,
             .body = request_init.body,
+            .follow_redirects = follow_redirects,
         };
 
         // Add the async request - returns immediately
