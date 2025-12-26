@@ -105,6 +105,10 @@ pub const Options = struct {
     excludes: std.ArrayList([]const u8),
     /// Output format (json, xunit, both)
     output_format: OutputFormat = .json,
+    /// Run each test N times (default 1)
+    repeat: u32 = 1,
+    /// Retry unexpected failures up to N times (default 0)
+    retry_unexpected: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -324,6 +328,13 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             } else {
                 print("Warning: Unknown output format '{s}', using default 'json'\n", .{value});
             }
+        } else if (std.mem.startsWith(u8, arg, "--repeat=")) {
+            const value = arg["--repeat=".len..];
+            options.repeat = std.fmt.parseInt(u32, value, 10) catch 1;
+            if (options.repeat == 0) options.repeat = 1; // Minimum 1
+        } else if (std.mem.startsWith(u8, arg, "--retry-unexpected=")) {
+            const value = arg["--retry-unexpected=".len..];
+            options.retry_unexpected = std.fmt.parseInt(u32, value, 10) catch 0;
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
@@ -553,6 +564,7 @@ pub const ProgressTracker = struct {
     timeouts: usize = 0,
     notrun: usize = 0,
     skipped: usize = 0,
+    flaky: usize = 0,
     start_time: i64,
     verbose: bool,
     /// Failures by category for summary
@@ -753,6 +765,9 @@ pub const ProgressTracker = struct {
         print("  Timeout:  {d}\n", .{self.timeouts});
         if (self.notrun > 0) {
             print("  Not Run:  {d}\n", .{self.notrun});
+        }
+        if (self.flaky > 0) {
+            print("  Flaky:    {d}\n", .{self.flaky});
         }
         print("\n", .{});
         print("Duration:   {s}\n", .{elapsed});
@@ -1014,66 +1029,114 @@ pub fn executeTests(
             // Calculate adjusted timeout based on multiplier
             const timeout_ms = options.getAdjustedTimeout(parsed.metadata.timeout);
 
-            // Execute test in this context
-            const test_result = executeTestFileInContext(
-                allocator,
-                test_file,
-                browser,
-                global_context,
-                context_name,
-                server,
-                timeout_ms,
-            ) catch |err| {
-                // Create error result with stack trace and context
-                var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
-                error_result.status = .@"error";
+            // Execute test with retry support
+            // --repeat=N: run N times (report final result, track flakiness)
+            // --retry-unexpected=N: retry on failure up to N times (for CI stability)
+            var final_result: ?test_harness.TestResult = null;
+            var total_runs: u32 = 0;
+            var failures_before_pass: u32 = 0;
+            var had_execution_error = false;
 
-                // Capture and print full stack trace for debugging
-                const trace = @errorReturnTrace();
-                if (trace) |t| {
-                    std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
-                    std.debug.print("Error: {}\n", .{err});
-                    std.debug.dumpStackTrace(t.*);
-                    std.debug.print("=== END ERROR ===\n\n", .{});
-                } else {
-                    std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
-                    std.debug.print("Error: {} (no stack trace available)\n", .{err});
-                    std.debug.print("=== END ERROR ===\n\n", .{});
+            repeat_loop: for (0..options.repeat) |_| {
+                // Reset for retry loop within each repeat iteration
+                var retry_count: u32 = 0;
+
+                retry_loop: while (true) {
+                    total_runs += 1;
+
+                    // Execute test in this context
+                    const test_result = executeTestFileInContext(
+                        allocator,
+                        test_file,
+                        browser,
+                        global_context,
+                        context_name,
+                        server,
+                        timeout_ms,
+                    ) catch |err| {
+                        // Create error result with stack trace and context
+                        var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
+                        error_result.status = .@"error";
+
+                        // Capture and print full stack trace for debugging
+                        const trace = @errorReturnTrace();
+                        if (trace) |t| {
+                            std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
+                            std.debug.print("Error: {}\n", .{err});
+                            std.debug.dumpStackTrace(t.*);
+                            std.debug.print("=== END ERROR ===\n\n", .{});
+                        } else {
+                            std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
+                            std.debug.print("Error: {} (no stack trace available)\n", .{err});
+                            std.debug.print("=== END ERROR ===\n\n", .{});
+                        }
+
+                        error_result.message = try std.fmt.allocPrint(allocator, "Execution error in {s} context: {}", .{ global_context.toString(), err });
+
+                        // Check if we should retry
+                        if (retry_count < options.retry_unexpected) {
+                            retry_count += 1;
+                            failures_before_pass += 1;
+                            error_result.deinit(allocator);
+                            if (options.verbose) {
+                                print("  Retrying ({d}/{d})...\n", .{ retry_count, options.retry_unexpected });
+                            }
+                            continue :retry_loop;
+                        }
+
+                        // No more retries, record as final result
+                        had_execution_error = true;
+                        if (final_result) |*prev| {
+                            prev.deinit(allocator);
+                        }
+                        final_result = error_result;
+                        break :repeat_loop;
+                    };
+
+                    // Check if test passed or if we should retry
+                    if (test_result.hasUnexpectedFailures() and retry_count < options.retry_unexpected) {
+                        retry_count += 1;
+                        failures_before_pass += 1;
+                        var mutable = test_result;
+                        mutable.deinit(allocator);
+                        if (options.verbose) {
+                            print("  Retrying ({d}/{d})...\n", .{ retry_count, options.retry_unexpected });
+                        }
+                        continue :retry_loop;
+                    }
+
+                    // Update final result (keep the last one)
+                    if (final_result) |*prev| {
+                        prev.deinit(allocator);
+                    }
+                    final_result = test_result;
+                    break :retry_loop;
                 }
+            }
 
-                error_result.message = try std.fmt.allocPrint(allocator, "Execution error in {s} context: {}", .{ global_context.toString(), err });
-
-                // Record with expected status so expected-fail tests don't increment error count
+            // Process final result
+            if (final_result) |test_result| {
+                // Record result with expected status metadata for proper counting
                 if (expected_results) |*exp| {
-                    progress.recordResultWithExpected(test_file.path, error_result, exp);
+                    progress.recordResultWithExpected(test_file.path, test_result, exp);
                 } else {
-                    progress.recordResult(test_file.path, error_result);
+                    progress.recordResult(test_file.path, test_result);
                 }
                 progress.printProgressWithContext(test_file.path, context_name);
 
-                try report.addResult(error_result);
-                error_result.deinit(allocator);
-                continue;
-            };
+                // Add result with retry metadata
+                if (expected_results) |*exp| {
+                    try report.addResultWithExpectedAndRetry(test_result, exp, total_runs, failures_before_pass);
+                } else {
+                    try report.addResultWithRetry(test_result, total_runs, failures_before_pass);
+                }
 
-            // Record result with expected status metadata for proper counting
-            if (expected_results) |*exp| {
-                progress.recordResultWithExpected(test_file.path, test_result, exp);
-            } else {
-                progress.recordResult(test_file.path, test_result);
+                // Clean up the test result (addResult copies the data)
+                var mutable_result = test_result;
+                mutable_result.deinit(allocator);
+            } else if (had_execution_error) {
+                // Error case already handled above
             }
-            progress.printProgressWithContext(test_file.path, context_name);
-
-            // Add result with expected status metadata (for XFAIL tracking)
-            if (expected_results) |*exp| {
-                try report.addResultWithExpected(test_result, exp);
-            } else {
-                try report.addResult(test_result);
-            }
-
-            // Clean up the test result (addResult copies the data)
-            var mutable_result = test_result;
-            mutable_result.deinit(allocator);
         }
     }
 
@@ -1372,6 +1435,51 @@ test "OutputFormat.fromString" {
     try std.testing.expectEqual(OutputFormat.xunit, OutputFormat.fromString("xunit").?);
     try std.testing.expectEqual(OutputFormat.both, OutputFormat.fromString("both").?);
     try std.testing.expectEqual(@as(?OutputFormat, null), OutputFormat.fromString("invalid"));
+}
+
+test "parseArgs with repeat" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--repeat=5", "url/" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(u32, 5), options.repeat);
+}
+
+test "parseArgs with retry-unexpected" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--retry-unexpected=3", "url/" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(u32, 3), options.retry_unexpected);
+}
+
+test "parseArgs with repeat and retry combined" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--repeat=3", "--retry-unexpected=2", "url/" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(u32, 3), options.repeat);
+    try testing.expectEqual(@as(u32, 2), options.retry_unexpected);
+}
+
+test "parseArgs repeat minimum is 1" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--repeat=0", "url/" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(u32, 1), options.repeat);
 }
 
 test "isTestFile" {

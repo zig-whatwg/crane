@@ -441,8 +441,18 @@ pub const WptReport = struct {
         try self.addResultWithExpected(harness_result, null);
     }
 
+    /// Add a test result with retry information (for flaky test tracking)
+    pub fn addResultWithRetry(self: *WptReport, harness_result: test_harness.TestResult, runs: u32, failures_before_pass: u32) !void {
+        try self.addResultWithExpectedAndRetry(harness_result, null, runs, failures_before_pass);
+    }
+
     /// Add a test result with optional expected results metadata (for XFAIL tracking)
     pub fn addResultWithExpected(self: *WptReport, harness_result: test_harness.TestResult, expected: ?*const ExpectedResults) !void {
+        try self.addResultWithExpectedAndRetry(harness_result, expected, 1, 0);
+    }
+
+    /// Add a test result with both expected results and retry information
+    pub fn addResultWithExpectedAndRetry(self: *WptReport, harness_result: test_harness.TestResult, expected: ?*const ExpectedResults, runs: u32, failures_before_pass: u32) !void {
         // Build test path with context suffix for multi-context tests
         const test_path = if (harness_result.context) |ctx|
             try std.fmt.allocPrint(self.allocator, "{s} [{s}]", .{ harness_result.test_path, ctx })
@@ -464,6 +474,9 @@ pub const WptReport = struct {
             .expected = test_expected,
             .duration = harness_result.duration_ms,
             .subtests = .{},
+            .runs = runs,
+            .failures_before_pass = failures_before_pass,
+            .flaky = failures_before_pass > 0 and !harness_result.hasUnexpectedFailures(),
         };
 
         for (harness_result.subtests.items) |sub| {
@@ -629,6 +642,12 @@ pub const TestResultJson = struct {
     duration: u64 = 0,
     /// Subtest results
     subtests: std.ArrayList(SubtestResultJson),
+    /// Number of times this test was run (for retry tracking)
+    runs: u32 = 1,
+    /// Number of failures before final result (for flakiness detection)
+    failures_before_pass: u32 = 0,
+    /// Whether this test is flaky (passed after retry)
+    flaky: bool = false,
 
     pub fn deinit(self: *TestResultJson, allocator: std.mem.Allocator) void {
         allocator.free(self.test_path);
@@ -665,6 +684,15 @@ pub const TestResultJson = struct {
         }
 
         try writer.print("{s}  \"duration\": {d},\n", .{ indent, self.duration });
+
+        // Write retry/flakiness information if applicable
+        if (self.runs > 1) {
+            try writer.print("{s}  \"runs\": {d},\n", .{ indent, self.runs });
+            if (self.flaky) {
+                try writer.print("{s}  \"flaky\": true,\n", .{indent});
+                try writer.print("{s}  \"failures_before_pass\": {d},\n", .{ indent, self.failures_before_pass });
+            }
+        }
 
         try writer.print("{s}  \"subtests\": [\n", .{indent});
         for (self.subtests.items, 0..) |sub, i| {

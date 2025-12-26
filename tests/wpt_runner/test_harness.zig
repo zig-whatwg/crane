@@ -231,6 +231,27 @@ pub const TestResult = struct {
         }
         return count;
     }
+
+    /// Check if the test has any unexpected failures
+    /// Unexpected failures are: error status, timeout, or failed subtests
+    pub fn hasUnexpectedFailures(self: TestResult) bool {
+        // Check test-level status
+        switch (self.status) {
+            .@"error" => return true,
+            .timeout => return true,
+            .ok, .skip => {},
+        }
+
+        // Check subtest-level status
+        for (self.subtests.items) |sub| {
+            switch (sub.status) {
+                .fail, .timeout => return true,
+                .pass, .notrun, .precondition_failed => {},
+            }
+        }
+
+        return false;
+    }
 };
 
 /// Collects results from multiple test files
@@ -558,4 +579,82 @@ test "TestResult initWithContext null context" {
     const display_name = try result.getDisplayName(allocator);
     defer allocator.free(display_name);
     try testing.expectEqualStrings("url/test.window.js", display_name);
+}
+
+test "TestResult hasUnexpectedFailures" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test with no failures
+    {
+        var result = try TestResult.init(allocator, "url/test.any.js");
+        defer result.deinit(allocator);
+        result.status = .ok;
+
+        const subtest = SubtestResult{
+            .name = try allocator.dupe(u8, "passing test"),
+            .status = .pass,
+            .duration_ms = 5,
+        };
+        try result.addSubtest(subtest);
+
+        try testing.expect(!result.hasUnexpectedFailures());
+    }
+
+    // Test with error status
+    {
+        var result = try TestResult.init(allocator, "url/test.any.js");
+        defer result.deinit(allocator);
+        result.status = .@"error";
+
+        try testing.expect(result.hasUnexpectedFailures());
+    }
+
+    // Test with timeout status
+    {
+        var result = try TestResult.init(allocator, "url/test.any.js");
+        defer result.deinit(allocator);
+        result.status = .timeout;
+
+        try testing.expect(result.hasUnexpectedFailures());
+    }
+
+    // Test with failing subtest
+    {
+        var result = try TestResult.init(allocator, "url/test.any.js");
+        defer result.deinit(allocator);
+        result.status = .ok;
+
+        const subtest = SubtestResult{
+            .name = try allocator.dupe(u8, "failing test"),
+            .status = .fail,
+            .duration_ms = 5,
+        };
+        try result.addSubtest(subtest);
+
+        try testing.expect(result.hasUnexpectedFailures());
+    }
+
+    // Test with mixed results (one pass, one fail)
+    {
+        var result = try TestResult.init(allocator, "url/test.any.js");
+        defer result.deinit(allocator);
+        result.status = .ok;
+
+        const pass_subtest = SubtestResult{
+            .name = try allocator.dupe(u8, "passing test"),
+            .status = .pass,
+            .duration_ms = 5,
+        };
+        try result.addSubtest(pass_subtest);
+
+        const fail_subtest = SubtestResult{
+            .name = try allocator.dupe(u8, "failing test"),
+            .status = .fail,
+            .duration_ms = 5,
+        };
+        try result.addSubtest(fail_subtest);
+
+        try testing.expect(result.hasUnexpectedFailures());
+    }
 }
