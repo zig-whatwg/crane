@@ -19,6 +19,9 @@ const WorkerGlobalScope = interfaces.WorkerGlobalScope;
 const WorkerLocation = interfaces.WorkerLocation;
 const WorkerNavigator = interfaces.WorkerNavigator;
 
+// Import WindowOrWorkerGlobalScope mixin implementation for fetch delegation
+const WindowOrWorkerGlobalScopeImpl = @import("WindowOrWorkerGlobalScope.zig");
+
 // Import workers infrastructure
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -881,156 +884,15 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 /// 5. Return p."
 ///
 /// Implementation:
-/// - Creates a V8 Promise to return to JavaScript
-/// - Parses RequestInfo into an InternalRequest
-/// - Executes the fetch algorithm
-/// - Resolves/rejects the Promise with the Response
+/// Per WHATWG Fetch spec, fetch() MUST always return a Promise (never throw synchronously).
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation which handles:
+/// - Promise creation FIRST (before any error-prone operations)
+/// - All errors converted to Promise rejections
+/// - Async networking via AsyncCurlManager
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.NotImplemented;
-    const allocator = internal.allocator;
-
-    // Step 1: Get the URL from RequestInfo
-    // RequestInfo is either a URL string or a Request object
-    const url_str: []const u8 = switch (input) {
-        .usvstring => |url| url, // USVString (URL)
-        .request => {
-            // Request object - extract URL
-            // For now, we don't have access to Request's URL directly
-            // This requires the Request interface to expose its URL
-            return error.NotImplemented; // TODO: Extract URL from Request object
-        },
-    };
-
-    // Step 2: Create InternalRequest
-    // Import fetch module
-    const fetch_mod = @import("fetch");
-    const InternalRequest = fetch_mod.internal.request.InternalRequest;
-    const Response = fetch_mod.Response;
-
-    var request = InternalRequest.init(allocator, url_str) catch {
-        return error.OutOfMemory;
-    };
-    errdefer request.deinit();
-
-    // Step 3: Apply init options if provided
-    if (init_data.wasPassed()) {
-        const req_init = init_data.getValue();
-
-        // Apply method
-        if (req_init.method) |method_str| {
-            request.setMethod(method_str) catch {};
-        }
-
-        // Apply mode
-        if (req_init.mode) |mode| {
-            request.mode = switch (mode) {
-                ._cors_ => .cors,
-                ._no_cors_ => .no_cors,
-                ._same_origin_ => .same_origin,
-                ._navigate_ => .navigate,
-            };
-        }
-
-        // Apply credentials
-        if (req_init.credentials) |creds| {
-            request.credentials_mode = switch (creds) {
-                ._omit_ => .omit,
-                ._same_origin_ => .same_origin,
-                ._include_ => .include,
-            };
-        }
-
-        // Apply cache mode
-        if (req_init.cache) |cache_mode| {
-            request.cache_mode = switch (cache_mode) {
-                ._default_ => .default,
-                ._no_store_ => .no_store,
-                ._reload_ => .reload,
-                ._no_cache_ => .no_cache,
-                ._force_cache_ => .force_cache,
-                ._only_if_cached_ => .only_if_cached,
-            };
-        }
-
-        // Apply redirect mode
-        if (req_init.redirect) |redirect_mode| {
-            request.redirect_mode = switch (redirect_mode) {
-                ._follow_ => .follow,
-                ._error_ => .@"error",
-                ._manual_ => .manual,
-            };
-        }
-
-        // Apply referrer policy
-        if (req_init.referrerPolicy) |ref_policy| {
-            request.referrer_policy = switch (ref_policy) {
-                .__ => .empty,
-                ._no_referrer_ => .no_referrer,
-                ._no_referrer_when_downgrade_ => .no_referrer_when_downgrade,
-                ._same_origin_ => .same_origin,
-                ._origin_ => .origin,
-                ._strict_origin_ => .strict_origin,
-                ._origin_when_cross_origin_ => .origin_when_cross_origin,
-                ._strict_origin_when_cross_origin_ => .strict_origin_when_cross_origin,
-                ._unsafe_url_ => .unsafe_url,
-            };
-        }
-
-        // Apply keepalive
-        if (req_init.keepalive) |keepalive| {
-            request.keepalive = keepalive;
-        }
-
-        // Apply integrity
-        if (req_init.integrity) |integrity| {
-            request.integrity_metadata = integrity.asSlice();
-        }
-    }
-
-    // Set origin from worker's settings object
-    if (internal.origin.len > 0) {
-        request.origin = .{ .origin = internal.origin };
-    }
-
-    // Step 4: Execute fetch algorithm
-    // For now, we execute synchronously. Full async requires V8 Promise integration.
-    // The V8 Promise API is available in src/runtime/engines/v8/promise.zig
-    // but requires V8 Isolate and Context which aren't directly accessible here.
-    var fetch_result = fetch_mod.fetch(allocator, request, .{
-        .cross_origin_isolated_capability = internal.cross_origin_isolated,
-    }) catch |err| {
-        request.deinit();
-        return switch (err) {
-            fetch_mod.FetchError.OutOfMemory => error.OutOfMemory,
-            fetch_mod.FetchError.NetworkError => error.NetworkError,
-            fetch_mod.FetchError.AbortError => error.NetworkError,
-        };
-    };
-    defer fetch_result.timing_info.deinit();
-
-    // Request is now consumed
-    request.deinit();
-
-    // Step 5: Create Response WebIDL object from InternalResponse
-    const response = Response.fromInternal(allocator, fetch_result.response) catch {
-        fetch_result.response.deinit();
-        return error.OutOfMemory;
-    };
-    // Note: ownership of fetch_result.response is transferred to Response
-
-    // Return the Response object as opaque pointer
-    // In a full Promise-based implementation, we would:
-    // 1. Create a V8 Promise (Promise(void).init(isolate, context))
-    // 2. Schedule async fetch task on event loop
-    // 3. Return promise.getPromise() cast to *const anyopaque
-    // 4. When fetch completes, resolve promise with Response
-    //
-    // TODO: Return proper WebIDL Response interface instance
-    // response is a Zig Response struct that needs to be wrapped as a WebIDL interface
-    // For now return undefined as placeholder
-    _ = response;
-    return runtime.JSValue.jsUndefined;
+    // Delegate to the WindowOrWorkerGlobalScope mixin implementation
+    // which properly returns a Promise and rejects on any errors.
+    return WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
 }
 
 // ============================================================================

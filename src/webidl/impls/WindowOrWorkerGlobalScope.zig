@@ -909,10 +909,64 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 /// - Extracts URL from RequestInfo (string or Request object)
 /// - Applies RequestInit options (method, headers, body, mode, credentials, etc.)
 /// - Returns a Promise that resolves to a Response object
-/// - Currently synchronous (blocking) - true async requires libuv event loop integration
+/// - Per spec, fetch() ALWAYS returns a Promise (never throws synchronously)
+/// - All errors during initialization are converted to Promise rejections
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
     const allocator = instance.ctx.allocator;
 
+    // Per WHATWG Fetch spec, fetch() MUST always return a Promise.
+    // We need to create the Promise FIRST, before any error-prone operations.
+    // Get the engine interface and context - these are required for Promise creation.
+    const engine = instance.ctx.engine orelse {
+        // Fatal: no engine means we can't create a Promise at all.
+        // This is a configuration error, not a fetch error.
+        return error.InvalidStateError;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return error.InvalidStateError;
+    };
+
+    // Create a Promise to return to JavaScript FIRST - before any other operations.
+    // Per spec, all subsequent errors must reject this promise, not throw synchronously.
+    const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
+        // If we can't even create a promise, we have a fatal error.
+        return error.OutOfMemory;
+    };
+
+    // Call the internal implementation that handles all the fetch logic.
+    // Any error from here will reject the promise instead of throwing.
+    const result = callFetchInternal(instance, input, init_data, allocator, engine, engine_ctx, promise_handle);
+
+    if (result) |maybe_async_value| {
+        if (maybe_async_value) |async_promise_value| {
+            // Async path: the promise is owned by the completion callback.
+            // Return the promise directly without cleaning up the handle.
+            return async_promise_value;
+        } else {
+            // Sync path: promise was already resolved/rejected, clean up handle.
+            return getPromiseAndCleanup(engine, promise_handle, allocator);
+        }
+    } else |err| {
+        // Error during initialization: reject the promise instead of throwing synchronously.
+        engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+        return getPromiseAndCleanup(engine, promise_handle, allocator);
+    }
+}
+
+/// Internal fetch implementation that can return errors.
+/// All errors from this function are caught by call_fetch and converted to Promise rejections.
+/// Returns:
+/// - runtime.JSValue for async path (promise is owned by callback, return promise directly)
+/// - null for sync path (promise was resolved/rejected, caller should clean up handle)
+fn callFetchInternal(
+    instance: *runtime.Instance,
+    input: typedefs.RequestInfo,
+    init_data: webidl.Opt(dictionaries.RequestInit),
+    allocator: std.mem.Allocator,
+    engine: *const runtime.EngineInterface,
+    engine_ctx: *anyopaque,
+    promise_handle: *anyopaque,
+) !?runtime.JSValue {
     // Create headers list for network request
     // These will be converted from HeadersInit and passed to NetworkRequest
     var headers_list: std.ArrayList(NetworkRequest.Header) = .{};
@@ -920,19 +974,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
     // Track the method string (default to GET)
     var request_method: []const u8 = "GET";
-
-    // Get the engine interface and context
-    const engine = instance.ctx.engine orelse {
-        return error.InvalidStateError;
-    };
-    const engine_ctx = instance.ctx.engine_ctx orelse {
-        return error.InvalidStateError;
-    };
-
-    // Create a Promise to return to JavaScript
-    const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
-        return error.OutOfMemory;
-    };
 
     // Extract URL from input (RequestInfo is USVString or Request)
     // Track if URL was allocated (from get_href) so we can free it later
@@ -955,8 +996,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                     break :blk url_href;
                 } else |_| {
                     // Neither Request nor URL - this is an error
-                    engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
-                    return getPromiseAndCleanup(engine, promise_handle, allocator);
+                    return error.TypeError;
                 }
             }
         },
@@ -1200,10 +1240,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         const async_curl: *AsyncCurlManager = @ptrCast(@alignCast(nm_ptr));
 
         // Create completion context for the async callback
-        const completion_ctx = allocator.create(FetchCompletionContext) catch {
-            engine.rejectPromise(engine_ctx, promise_handle, error.OutOfMemory) catch {};
-            return getPromiseAndCleanup(engine, promise_handle, allocator);
-        };
+        const completion_ctx = try allocator.create(FetchCompletionContext);
 
         completion_ctx.* = .{
             .promise_handle = promise_handle,
@@ -1227,12 +1264,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         // Add the async request - returns immediately
         _ = async_curl.addRequest(&net_request, asyncFetchCompletionCallback, completion_ctx) catch |err| {
             completion_ctx.deinit();
-            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-            return getPromiseAndCleanup(engine, promise_handle, allocator);
+            return err;
         };
 
-        // Return Promise immediately - callback will resolve/reject when response arrives
-        // Note: We DON'T call getPromiseAndCleanup here because the callback owns the promise handle
+        // Async path: Promise is owned by the callback, don't clean it up.
+        // Return the promise value directly - caller will NOT clean up the handle.
         const promise_obj = engine.getPromiseObject(promise_handle);
         return runtime.JSValue.fromHandle(promise_obj);
     }
@@ -1258,9 +1294,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 // Also clean up the fetch Response wrapper (but not the internal we already handle)
                 fetch_response.headers_obj.deinit();
                 allocator.destroy(fetch_response);
-
-                engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
-                return getPromiseAndCleanup(engine, promise_handle, allocator);
+                return err;
             };
 
             // Clean up the fetch Response wrapper without deiniting the internal
@@ -1270,13 +1304,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
 
             // Wrap the Response instance as a V8 object
             const wrapInstance = engine.wrapInstance orelse {
-                engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-                return getPromiseAndCleanup(engine, promise_handle, allocator);
+                return error.InvalidState;
             };
 
             const js_response = wrapInstance(engine_ctx, response_instance) catch {
-                engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
-                return getPromiseAndCleanup(engine, promise_handle, allocator);
+                return error.InvalidState;
             };
 
             // Resolve the promise with the JS Response object
@@ -1293,7 +1325,8 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         },
     }
 
-    return getPromiseAndCleanup(engine, promise_handle, allocator);
+    // Sync path completed - return null to signal caller should clean up promise handle.
+    return null;
 }
 
 // Helper to get promise object and destroy handle to prevent memory leaks

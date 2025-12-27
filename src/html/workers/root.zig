@@ -101,6 +101,7 @@ pub const WorkerAgent = worker_agent.WorkerAgent;
 // Dedicated Worker
 pub const dedicated_worker = @import("dedicated_worker.zig");
 pub const DedicatedWorker = dedicated_worker.DedicatedWorker;
+pub const ThreadedWorkerRegistry = dedicated_worker.ThreadedWorkerRegistry;
 
 // Shared Worker
 pub const shared_worker = @import("shared_worker.zig");
