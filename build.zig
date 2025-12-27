@@ -1460,6 +1460,8 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("fetch", fetch_mod);
     html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
     html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
+    html_core_mod.addImport("csp", csp_mod); // For CSP checks on worker script loading
+    html_core_mod.addImport("file", file_mod); // For blob: URL worker script loading
 
     // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
     // Uses full.zig as root which re-exports html_core plus adds interface access.

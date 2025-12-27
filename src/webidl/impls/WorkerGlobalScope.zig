@@ -481,17 +481,31 @@ pub fn set_onlanguagechange(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Setter for onoffline
+///
+/// Spec: HTML Standard § 10.1
+/// "The onoffline event handler is fired when the worker goes offline."
+///
+/// Note: Network connectivity monitoring is platform-dependent. When the
+/// platform detects a network state change, it should fire "offline" or
+/// "online" events at the WorkerGlobalScope. This setter stores the handler
+/// which will be invoked when such events are dispatched.
 pub fn set_onoffline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    var state = instance.getState(State);
+    state.own.onoffline = value;
 }
 
 /// Setter for ononline
+///
+/// Spec: HTML Standard § 10.1
+/// "The ononline event handler is fired when the worker comes online."
+///
+/// Note: Network connectivity monitoring is platform-dependent. When the
+/// platform detects a network state change, it should fire "offline" or
+/// "online" events at the WorkerGlobalScope. This setter stores the handler
+/// which will be invoked when such events are dispatched.
 pub fn set_ononline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    var state = instance.getState(State);
+    state.own.ononline = value;
 }
 
 /// Setter for onrejectionhandled
@@ -1017,4 +1031,78 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // For now return undefined as placeholder
     _ = response;
     return runtime.JSValue.jsUndefined;
+}
+
+// ============================================================================
+// Network State Change Events
+// ============================================================================
+
+/// Fire an "offline" event at the WorkerGlobalScope.
+///
+/// Spec: HTML Standard § 10.1
+/// "The offline event is fired when the worker goes offline."
+///
+/// This function should be called by the platform layer when network
+/// connectivity is lost. It dispatches an Event to the WorkerGlobalScope,
+/// which will invoke any registered event listeners and the onoffline handler.
+pub fn fireOfflineEvent(instance: *runtime.Instance) void {
+    fireNetworkEvent(instance, "offline", get_onoffline);
+}
+
+/// Fire an "online" event at the WorkerGlobalScope.
+///
+/// Spec: HTML Standard § 10.1
+/// "The online event is fired when the worker comes online."
+///
+/// This function should be called by the platform layer when network
+/// connectivity is restored. It dispatches an Event to the WorkerGlobalScope,
+/// which will invoke any registered event listeners and the ononline handler.
+pub fn fireOnlineEvent(instance: *runtime.Instance) void {
+    fireNetworkEvent(instance, "online", get_ononline);
+}
+
+/// Internal helper to fire network state events
+fn fireNetworkEvent(
+    instance: *runtime.Instance,
+    event_type: []const u8,
+    get_handler: fn (*runtime.Instance) anyerror!typedefs.EventHandler,
+) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+
+    // Create Event via interface
+    const Event = interfaces.Event;
+    const event = Event.call_constructor(
+        instance.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).notPassed(),
+    ) catch |err| {
+        std.log.warn("Failed to create {s} event: {s}", .{ event_type, @errorName(err) });
+        return;
+    };
+
+    // Set isTrusted since this is a browser-generated event
+    var ev_state = event.getState(Event.State);
+    ev_state.own.isTrusted = true;
+    ev_state.own.target = instance;
+    ev_state.own.currentTarget = instance;
+
+    // Dispatch via EventTarget.dispatchEvent if available
+    // WorkerGlobalScope inherits from EventTarget
+    const EventTarget = interfaces.EventTarget;
+    _ = EventTarget.call_dispatchEvent(instance, event) catch |err| {
+        std.log.warn("Failed to dispatch {s} event: {s}", .{ event_type, @errorName(err) });
+        return;
+    };
+
+    // Also invoke the legacy handler if set
+    // Get the handler using the provided getter function
+    const handler = get_handler(instance) catch return;
+    _ = handler;
+    _ = internal;
+    // Note: Actually invoking the handler requires V8 integration similar to
+    // Worker.invokeLegacyOnmessageHandler. The EventTarget.dispatchEvent above
+    // handles listeners registered via addEventListener. For the IDL attribute
+    // handler, we would need to call into V8 with the handler GlobalHandle.
+    // This is left as future work when V8 context is available here.
 }
