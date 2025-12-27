@@ -145,6 +145,10 @@ pub const InternalState = struct {
     /// Whether to use threaded execution (true = spawn OS thread, false = same-thread)
     use_threading: bool = true,
 
+    /// Parent Window instance for error propagation
+    /// Per HTML § 10.2.5: If error not handled at Worker, propagate to parent context
+    parent_window: ?*runtime.Instance = null,
+
     pub fn deinit(self: *InternalState) void {
         // Dispose V8 Global handles to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
@@ -327,10 +331,14 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
 
         // Get the document origin for resolving relative worker script URLs
         // The origin is needed to resolve URLs like "/path/to/worker.js"
+        // Also store the parent Window for error propagation per HTML § 10.2.5
         const document_origin: ?[]const u8 = blk: {
             // Get the Window instance from the V8 context via context_manager
             const v8_ctx = @as(*v8_engine.ffi.Context, @ptrCast(ctx.engine_ctx));
             if (v8_engine.context_manager.getWindowForContext(v8_ctx)) |window_instance| {
+                // Store parent Window for error propagation (per HTML § 10.2.5)
+                internal_state.parent_window = window_instance;
+
                 // Get the document from the Window
                 if (WindowImpl.get_document(window_instance)) |doc_instance| {
                     if (interfaces.Document.get_URL(doc_instance)) |doc_url| {
@@ -1467,9 +1475,112 @@ pub fn dispatchErrorEvent(
         _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
     }
 
-    // Per spec: If the error event is not canceled, it should propagate to the parent
-    // For now, we log it - in a full implementation, this would bubble to Window.onerror
+    // Per HTML § 10.2.5: If the error event is not canceled, propagate to parent context
+    // "If the error is not handled, fire an event named error at the Worker object"
+    // "If that's also not canceled, then report the exception to the user"
     if (not_canceled) {
+        // Propagate to parent Window
+        propagateErrorToParent(internal, message_text, filename, lineno, colno, error_value);
+    }
+}
+
+/// Propagate an unhandled worker error to the parent Window
+///
+/// Spec: HTML Standard § 10.2.5 "Run a worker" step 11
+/// "If the script has muted errors... Otherwise, fire an event named error at the Worker object"
+/// "If that event is not canceled, then report the exception to the user"
+///
+/// This function implements the "error not handled" algorithm:
+/// 1. Fire ErrorEvent at the parent Window
+/// 2. If not canceled, report to console
+fn propagateErrorToParent(
+    internal: *InternalState,
+    message_text: []const u8,
+    filename: []const u8,
+    lineno: u32,
+    colno: u32,
+    error_value: ?*const anyopaque,
+) void {
+    // Get parent Window for error propagation
+    const parent_window = internal.parent_window orelse {
+        // No parent Window - just log to console
+        std.log.warn("Unhandled worker error (no parent Window): {s} at {s}:{d}:{d}", .{
+            message_text, filename, lineno, colno,
+        });
+        return;
+    };
+
+    // Get the parent Window's context
+    const parent_ctx = parent_window.ctx;
+    const parent_v8_ctx: *v8_engine.ffi.Context = parent_ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
+        std.log.warn("Unhandled worker error (no parent V8 context): {s} at {s}:{d}:{d}", .{
+            message_text, filename, lineno, colno,
+        });
+        return;
+    };
+
+    // Get V8 isolate
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        std.log.warn("Unhandled worker error (no V8 isolate): {s} at {s}:{d}:{d}", .{
+            message_text, filename, lineno, colno,
+        });
+        return;
+    };
+
+    // Create HandleScope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Ensure we're in the parent context
+    const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
+    const need_enter_context = (current_context == null) or (current_context != parent_v8_ctx);
+    if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Enter(parent_v8_ctx);
+    }
+    defer if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Exit(parent_v8_ctx);
+    };
+
+    // Create ErrorEvent for the parent Window
+    const ErrorEventImpl = @import("ErrorEvent.zig");
+    const error_event = ErrorEventImpl.createErrorEvent(
+        parent_ctx.allocator,
+        parent_ctx,
+        message_text,
+        filename,
+        lineno,
+        colno,
+        error_value,
+        true, // cancelable
+    ) catch |err| {
+        std.log.warn("Failed to create ErrorEvent for parent Window: {s}", .{@errorName(err)});
+        std.log.warn("Unhandled worker error: {s} at {s}:{d}:{d}", .{
+            message_text, filename, lineno, colno,
+        });
+        return;
+    };
+
+    // Set isTrusted
+    {
+        var ev_state = error_event.getState(interfaces.ErrorEvent.State);
+        ev_state.base.own.isTrusted = true;
+        ev_state.base.own.target = parent_window;
+        ev_state.base.own.currentTarget = parent_window;
+    }
+
+    // Dispatch error event to parent Window via EventTarget.dispatchEvent
+    const not_canceled_at_window = EventTarget.call_dispatchEvent(parent_window, error_event) catch |err| {
+        std.log.warn("Failed to dispatch ErrorEvent to parent Window: {s}", .{@errorName(err)});
+        std.log.warn("Unhandled worker error: {s} at {s}:{d}:{d}", .{
+            message_text, filename, lineno, colno,
+        });
+        return;
+    };
+
+    // If still not canceled, report to console (final fallback)
+    if (not_canceled_at_window) {
+        // Per spec: "Report the exception to the user"
+        // In browsers, this shows in the DevTools console
         std.log.warn("Unhandled worker error: {s} at {s}:{d}:{d}", .{
             message_text, filename, lineno, colno,
         });
