@@ -429,10 +429,74 @@ pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Operation: reportError
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#dom-reporterror
+///
+/// Reports an exception to the console and fires an ErrorEvent.
+/// This is the programmatic way for scripts to report exceptions.
+///
+/// The algorithm is:
+/// 1. If e is not an exception, convert it to one
+/// 2. Get error message, filename, line, column from exception
+/// 3. Fire "error" event at the global object
+/// 4. If not canceled, report to console
 pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = e;
-    return error.NotImplemented;
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        return error.InvalidStateError;
+    };
+
+    const v8_context: *v8_engine.ffi.Context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
+        return error.InvalidStateError;
+    };
+
+    // Create HandleScope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Get the error value (may be any JS value, but we treat it as an error)
+    const error_value: ?*anyopaque = e.toAnyopaque();
+
+    // TODO: Extract actual message, filename, lineno, colno from Error stack trace
+    // For now, use generic error info. Full implementation would:
+    // 1. Check if e is an Error object
+    // 2. Get e.message, e.fileName, e.lineNumber, e.columnNumber
+    // 3. Parse stack trace for location info
+    _ = v8_context; // Will be used for property access in full implementation
+    const message: []const u8 = "Uncaught error";
+    const filename: []const u8 = "";
+    const lineno: u32 = 0;
+    const colno: u32 = 0;
+
+    // Import ErrorEvent implementation
+    const ErrorEventImpl = @import("ErrorEvent.zig");
+
+    // Create ErrorEvent
+    const error_event = try ErrorEventImpl.createErrorEvent(
+        instance.ctx.allocator,
+        instance.ctx,
+        message,
+        filename,
+        lineno,
+        colno,
+        error_value,
+        true, // cancelable
+    );
+
+    // Set isTrusted (reportError fires a trusted event)
+    {
+        var ev_state = error_event.getState(interfaces.ErrorEvent.State);
+        ev_state.base.own.isTrusted = true;
+        ev_state.base.own.target = instance;
+        ev_state.base.own.currentTarget = instance;
+    }
+
+    // Dispatch via EventTarget.dispatchEvent
+    const EventTarget = interfaces.EventTarget;
+    const not_canceled = try EventTarget.call_dispatchEvent(instance, error_event);
+
+    // If not canceled, report to console
+    if (not_canceled) {
+        std.log.warn("Uncaught (in reportError): {s}", .{message});
+    }
 }
 
 /// Operation: setInterval
