@@ -892,7 +892,11 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
             ctx.allocator,
             msg.data,
         ) catch |err| {
-            std.log.warn("Failed to deserialize worker message: {}", .{err});
+            // Fire messageerror event instead of message when deserialization fails
+            // Spec: HTML Standard § 9.3.6.2
+            // "If this throws an exception, then fire an event named messageerror"
+            std.log.warn("Failed to deserialize worker message, firing messageerror: {}", .{err});
+            dispatchMessageErrorEvent(instance, internal, isolate, v8_context, ctx);
             return;
         };
 
@@ -1037,6 +1041,87 @@ fn invokeLegacyOnmessageHandler(
         const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
         // Call the V8 function with the MessageEvent as argument
+        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+        _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+    }
+}
+
+/// Dispatch a messageerror event to the Worker
+///
+/// Spec: HTML Standard § 9.3.6.2
+/// "If this throws an exception, then fire an event named messageerror at the port,
+/// using MessageEvent, with the origin attribute initialized to origin..."
+///
+/// This is called when structured clone deserialization fails on a received message.
+fn dispatchMessageErrorEvent(
+    instance: *runtime.Instance,
+    internal: *const InternalState,
+    isolate: *v8_engine.ffi.Isolate,
+    v8_context: *v8_engine.ffi.Context,
+    ctx: runtime.Context,
+) void {
+    // Create MessageEventInit dictionary for messageerror
+    // Per spec, data is undefined for messageerror events
+    const init_dict = dictionaries.MessageEventInit{
+        .base = .{
+            .bubbles = false,
+            .cancelable = false,
+            .composed = false,
+        },
+        .data = null, // data is undefined for messageerror
+        .origin = "",
+        .lastEventId = null,
+        .source = null,
+        .ports = null,
+    };
+
+    // Create MessageEvent via interface with type "messageerror"
+    const message_event = MessageEvent.call_constructor(
+        ctx,
+        runtime.DOMString.initInterned("messageerror"),
+        webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
+    ) catch |err| {
+        std.log.warn("Failed to create messageerror event: {s}", .{@errorName(err)});
+        return;
+    };
+
+    // Set isTrusted and target/currentTarget
+    {
+        var ev_state = message_event.getState(MessageEvent.State);
+        ev_state.base.own.isTrusted = true;
+        ev_state.base.own.target = instance;
+        ev_state.base.own.currentTarget = instance;
+    }
+
+    // Wrap event as V8 object
+    const v8_event = template_registry.wrapInstanceAsV8Object(
+        message_event,
+        "MessageEvent",
+        isolate,
+        v8_context,
+    ) catch |err| {
+        std.log.warn("Failed to wrap messageerror event: {s}", .{@errorName(err)});
+        return;
+    };
+
+    // Dispatch via EventTarget.dispatchEvent
+    _ = EventTarget.call_dispatchEvent(instance, message_event) catch |err| {
+        std.log.warn("Failed to dispatch messageerror event: {s}", .{@errorName(err)});
+        return;
+    };
+
+    // Also invoke the legacy onmessageerror handler if set
+    if (internal.onmessageerror_handle) |onmessageerror_global| {
+        const local_value = onmessageerror_global.get(isolate) orelse {
+            return;
+        };
+
+        if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+            return;
+        }
+        const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
         _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);

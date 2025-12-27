@@ -237,8 +237,12 @@ pub fn dispatchMessageEvent(instance: *runtime.Instance, serialized_data: *struc
         allocator,
         serialized_data,
     ) catch {
-        // If deserialization fails, we should fire 'messageerror' instead
-        // TODO: Implement messageerror event dispatch
+        // If deserialization fails, fire 'messageerror' event instead of 'message'
+        // Spec: HTML Standard § 9.3.6.2
+        // "If this throws an exception, then fire an event named messageerror at the port"
+        dispatchMessageErrorEvent(instance, origin) catch |err| {
+            std.log.warn("Failed to dispatch messageerror event: {s}", .{@errorName(err)});
+        };
         return error.DeserializationFailed;
     };
 
@@ -291,6 +295,98 @@ fn invokeLegacyOnmessageHandler(instance: *runtime.Instance, event: *runtime.Ins
 
     // Get the onmessage handler
     const handler = state.own.onmessage orelse return;
+
+    // Get V8 context from the event's runtime context
+    const engine_ctx = event.ctx.engine_ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // Create HandleScope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Untag the pointer to get the GlobalHandle
+    const untagged = v8_engine.pointer_tag.untagPointer(handler);
+    if (untagged.tag != .global_handle and untagged.tag != .untagged) {
+        return; // Not a V8 callback
+    }
+
+    const global_handle = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+    const local_value = global_handle.get(v8_isolate) orelse return;
+
+    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+        return;
+    }
+    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+
+    // Wrap the event as a V8 object
+    const v8_event = template_registry.wrapInstanceAsV8Object(
+        event,
+        "MessageEvent",
+        v8_isolate,
+        v8_context,
+    ) catch return;
+
+    // Call the handler
+    const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate);
+    var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+    _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+}
+
+/// Dispatch a messageerror event to this DedicatedWorkerGlobalScope
+///
+/// Spec: HTML Standard § 9.3.6.2
+/// "If this throws an exception, then fire an event named messageerror at the port,
+/// using MessageEvent, with the origin attribute initialized to origin..."
+///
+/// This is called when structured clone deserialization fails on a received message.
+fn dispatchMessageErrorEvent(instance: *runtime.Instance, origin: ?[]const u8) anyerror!void {
+    // Create MessageEventInit dictionary for messageerror
+    // Per spec, data is undefined for messageerror events
+    const init_dict = dictionaries.MessageEventInit{
+        .base = .{
+            .bubbles = false,
+            .cancelable = false,
+            .composed = false,
+        },
+        .data = null, // data is undefined for messageerror
+        .origin = origin orelse "",
+        .lastEventId = null,
+        .source = null,
+        .ports = null,
+    };
+
+    // Create MessageEvent via interface with type "messageerror"
+    const event = try MessageEvent.call_constructor(
+        instance.ctx,
+        runtime.DOMString.initInterned("messageerror"),
+        webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
+    );
+
+    // Set isTrusted and target/currentTarget
+    {
+        var ev_state = event.getState(MessageEvent.State);
+        ev_state.base.own.isTrusted = true;
+        ev_state.base.own.target = instance;
+        ev_state.base.own.currentTarget = instance;
+    }
+
+    // Dispatch via EventTarget.dispatchEvent
+    _ = EventTarget.call_dispatchEvent(instance, event) catch |err| {
+        std.log.warn("Failed to dispatch messageerror event to worker scope: {s}", .{@errorName(err)});
+        return err;
+    };
+
+    // Also invoke the legacy onmessageerror handler if set
+    invokeLegacyOnmessageerrorHandler(instance, event);
+}
+
+/// Invoke the legacy onmessageerror IDL attribute handler
+fn invokeLegacyOnmessageerrorHandler(instance: *runtime.Instance, event: *runtime.Instance) void {
+    const state = instance.getState(State);
+
+    // Get the onmessageerror handler
+    const handler = state.own.onmessageerror orelse return;
 
     // Get V8 context from the event's runtime context
     const engine_ctx = event.ctx.engine_ctx orelse return;
