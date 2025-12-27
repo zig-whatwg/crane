@@ -816,6 +816,43 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         v8_engine.ffi.v8_Context_Exit(v8_context);
     };
 
+    // Reconstruct transferred ArrayBuffers in the receiving context
+    // Per HTML § 2.7.7 StructuredDeserializeWithTransfer:
+    // "For each transferDataHolder of serializeWithTransferResult's [[TransferDataHolders]]:
+    //  Let value be a new instance of transferDataHolder.[[Type]] with internal state from transferDataHolder."
+    var reconstructed_buffers: std.ArrayListUnmanaged(*v8_engine.ffi.ArrayBuffer) = .{};
+    defer reconstructed_buffers.deinit(ctx.allocator);
+
+    if (msg.transferred) |transfers| {
+        for (transfers) |maybe_transfer| {
+            if (maybe_transfer) |transfer_ptr| {
+                // Check if this is a TransferredArrayBuffer by trying to interpret it
+                // Note: We stored TransferredArrayBuffer pointers in parseTransferList
+                const tab: *TransferredArrayBuffer = @ptrCast(@alignCast(transfer_ptr));
+
+                // Create new ArrayBuffer in this context with the transferred data
+                const new_buffer = v8_engine.ffi.v8_ArrayBuffer_New(isolate, tab.byte_length);
+                if (new_buffer) |buffer| {
+                    // Copy the transferred data into the new ArrayBuffer
+                    if (tab.data.len > 0) {
+                        const dest_ptr = v8_engine.ffi.v8_ArrayBuffer_Data(buffer);
+                        if (dest_ptr) |dest| {
+                            const dest_slice: [*]u8 = @ptrCast(dest);
+                            @memcpy(dest_slice[0..tab.byte_length], tab.data);
+                        }
+                    }
+                    reconstructed_buffers.append(ctx.allocator, buffer) catch {};
+                }
+
+                // Clean up the transfer data - we've consumed it
+                tab.deinit();
+                ctx.allocator.destroy(tab);
+            }
+        }
+        // Free the transfers array itself
+        ctx.allocator.free(transfers);
+    }
+
     // Get the message data - check if it's a JSON string from worker
     // The worker sends JSON-serialized messages for cross-isolate safety
     var v8_data: ?*v8_engine.ffi.Value = null;
@@ -1039,8 +1076,10 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             const v8_value: *v8_engine.ffi.Value = @ptrCast(message.toAnyopaque() orelse return error.TypeError);
 
             // Parse transfer list if provided
+            // NOTE: transfer_pointers contains TransferredArrayBuffer structs that own their data.
+            // We pass ownership to postMessageTyped → QueuedMessage → receiving end.
+            // DO NOT free transfer_pointers here - the receiving end is responsible for cleanup.
             var transfer_pointers: ?[]?*anyopaque = null;
-            defer if (transfer_pointers) |ptrs| instance.ctx.allocator.free(ptrs);
 
             if (transfer != .undefined and transfer != .null) {
                 transfer_pointers = try parseTransferList(instance.ctx.allocator, transfer);
@@ -1082,19 +1121,36 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     }
 }
 
-/// Parse a V8 transfer list (array of transferable objects) into pointers
+/// Transferred ArrayBuffer data - stores the copied data before detachment
+pub const TransferredArrayBuffer = struct {
+    /// Copied data from the original ArrayBuffer
+    data: []u8,
+    /// Original byte length
+    byte_length: usize,
+    /// Allocator used for this struct
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *TransferredArrayBuffer) void {
+        self.allocator.free(self.data);
+    }
+};
+
+/// Parse a V8 transfer list (array of transferable objects) into transfer data
 ///
 /// Spec: HTML Standard § 9.3.1 "postMessage(message, transfer)"
 /// The transfer list contains objects that should be transferred (not cloned).
 ///
 /// For ArrayBuffers, this function:
 /// 1. Identifies each ArrayBuffer in the transfer list
-/// 2. Detaches (neuters) the ArrayBuffer, transferring ownership of its data
-/// 3. Stores the ArrayBuffer pointer for reconstruction on the receiving end
+/// 2. Copies the ArrayBuffer data (BEFORE detaching - V8 frees backing store on detach)
+/// 3. Detaches (neuters) the ArrayBuffer, making original unusable
+/// 4. Returns the copied data for reconstruction on the receiving end
 ///
 /// Per HTML § 2.7.3 Transferable objects:
 /// "When an ArrayBuffer is transferred, the original buffer is detached
 /// and becomes unusable."
+///
+/// Returns: Array of TransferredArrayBuffer pointers (or null for non-ArrayBuffer items)
 fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?[]?*anyopaque {
     // Transfer should be an array
     const transfer_ptr = transfer.toAnyopaque() orelse return null;
@@ -1116,46 +1172,84 @@ fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?
         return null;
     }
 
-    // Allocate array for transfer pointers
-    var pointers = try allocator.alloc(?*anyopaque, length);
-    errdefer allocator.free(pointers);
+    // Allocate array for transfer data
+    var transfers = try allocator.alloc(?*anyopaque, length);
+    errdefer {
+        // Clean up any allocated TransferredArrayBuffer on error
+        for (transfers) |maybe_transfer| {
+            if (maybe_transfer) |transfer_ptr_inner| {
+                const tab: *TransferredArrayBuffer = @ptrCast(@alignCast(transfer_ptr_inner));
+                tab.deinit();
+                allocator.destroy(tab);
+            }
+        }
+        allocator.free(transfers);
+    }
 
     for (0..length) |i| {
         const element = v8_engine.ffi.v8_Array_Get(v8_context, transfer_array, @intCast(i));
         if (element) |elem| {
             // Check if it's an ArrayBuffer - these are transferable
             if (v8_engine.ffi.v8_Value_IsArrayBuffer(elem)) {
-                // Cast to ArrayBuffer and detach it
+                // Cast to ArrayBuffer
                 const array_buffer: *v8_engine.ffi.ArrayBuffer = @ptrCast(elem);
 
                 // Check if already detached (per spec: throw DataCloneError)
                 if (v8_engine.ffi.v8_ArrayBuffer_IsDetached(array_buffer)) {
                     // DataCloneError: Cannot transfer a detached ArrayBuffer
-                    allocator.free(pointers);
                     return error.DataCloneError;
                 }
 
-                // Detach the ArrayBuffer - this transfers ownership of the backing store
-                // Per HTML § 2.7.3: "If value has a [[ArrayBufferData]] internal slot, then:
-                // 1. Let arrayBufferTransferred be value[[ArrayBufferData]].
-                // 2. Detach(value)."
+                // Step 1: Get the data and length BEFORE detaching
+                // (V8 frees the backing store on detach, so we must copy first)
+                const byte_length = v8_engine.ffi.v8_ArrayBuffer_ByteLength(array_buffer);
+                const data_ptr = v8_engine.ffi.v8_ArrayBuffer_Data(array_buffer);
+
+                // Create transfer data structure
+                const transferred = try allocator.create(TransferredArrayBuffer);
+                errdefer allocator.destroy(transferred);
+
+                // Copy the data
+                if (data_ptr != null and byte_length > 0) {
+                    const data_copy = try allocator.alloc(u8, byte_length);
+                    errdefer allocator.free(data_copy);
+
+                    const src: [*]const u8 = @ptrCast(data_ptr.?);
+                    @memcpy(data_copy, src[0..byte_length]);
+
+                    transferred.* = .{
+                        .data = data_copy,
+                        .byte_length = byte_length,
+                        .allocator = allocator,
+                    };
+                } else {
+                    // Empty ArrayBuffer
+                    transferred.* = .{
+                        .data = &[_]u8{},
+                        .byte_length = 0,
+                        .allocator = allocator,
+                    };
+                }
+
+                // Step 2: Detach the ArrayBuffer - this makes the original unusable
+                // Per HTML § 2.7.3: "Detach(value)"
                 v8_engine.ffi.v8_ArrayBuffer_Detach(array_buffer);
 
-                // Store the pointer for reconstruction on the receiving end
-                pointers[i] = @ptrCast(elem);
+                // Store the transfer data
+                transfers[i] = @ptrCast(transferred);
             } else if (v8_engine.ffi.v8_Value_IsObject(elem)) {
                 // Other transferable objects (MessagePort, etc.) - store for now
                 // TODO: Implement MessagePort transfer (disentangle + re-entangle)
-                pointers[i] = @ptrCast(elem);
+                transfers[i] = @ptrCast(elem);
             } else {
-                pointers[i] = null;
+                transfers[i] = null;
             }
         } else {
-            pointers[i] = null;
+            transfers[i] = null;
         }
     }
 
-    return pointers;
+    return transfers;
 }
 
 // ============================================================================
