@@ -227,21 +227,31 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
     errdefer deinit(instance);
 
-    // Parse options - use defaults for type/credentials since dictionary has opaque enum pointers
-    const worker_type = WorkerType.classic;
-    const credentials = RequestCredentials.same_origin;
+    // Parse options from WorkerOptions dictionary
+    var worker_type = WorkerType.classic;
+    var credentials = RequestCredentials.same_origin;
     var name: []const u8 = "";
 
     if (options.wasPassed()) {
         const opts = options.getValue();
-        // Note: opts.type and opts.credentials are ?*const anyopaque (opaque enum pointers)
-        // The dictionary codegen doesn't provide typed enum access yet.
-        // For now, we use default values (classic, same_origin).
-        // TODO: When dictionary codegen supports typed enums, parse these:
-        // - type: "classic" | "module" -> WorkerType
-        // - credentials: "omit" | "same-origin" | "include" -> RequestCredentials
-        _ = opts.type; // Acknowledge but skip (uses default: classic)
-        _ = opts.credentials; // Acknowledge but skip (uses default: same_origin)
+
+        // Parse type: "classic" | "module"
+        // Per HTML § 10.2.3.1: If type is "module", the script is treated as a module script
+        if (opts.type) |wt| {
+            worker_type = switch (wt) {
+                ._classic_ => WorkerType.classic,
+                ._module_ => WorkerType.module,
+            };
+        }
+
+        // Parse credentials: "omit" | "same-origin" | "include"
+        if (opts.credentials) |creds| {
+            credentials = switch (creds) {
+                ._omit_ => RequestCredentials.omit,
+                ._same_origin_ => RequestCredentials.same_origin,
+                ._include_ => RequestCredentials.include,
+            };
+        }
 
         // Parse name if present (this is a DOMString, not an enum)
         if (opts.name) |n| {

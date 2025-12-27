@@ -647,6 +647,104 @@ pub const WorkerV8Context = struct {
 
         return @ptrCast(run_result.value);
     }
+
+    /// Execute an ES module in this worker's context
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 24 (for type: "module")
+    /// "Run the module script scriptOrModule."
+    ///
+    /// This compiles, instantiates, and evaluates the source as an ES module,
+    /// enabling import/export statements and import.meta support.
+    pub fn executeModule(self: *Self, source: []const u8, source_url: []const u8) !void {
+        // Enter worker's isolate and context for module execution
+        v8.ffi.v8_Isolate_Enter(self.isolate);
+        v8.ffi.v8_Context_Enter(self.context);
+        defer {
+            v8.ffi.v8_Context_Exit(self.context);
+            v8.ffi.v8_Isolate_Exit(self.isolate);
+        }
+
+        // Create HandleScope for V8 handle allocation
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+        return self.executeModuleInternal(source, source_url);
+    }
+
+    /// Execute a module - internal version that assumes context is already entered
+    fn executeModuleInternal(self: *Self, source: []const u8, source_url: []const u8) !void {
+        // Create V8 string from source
+        const source_str = v8.ffi.v8_String_NewFromUtf8(
+            self.isolate,
+            source.ptr,
+            @intCast(source.len),
+        ) orelse {
+            return error.StringCreationFailed;
+        };
+
+        // Create resource name (required for modules - used for import.meta.url)
+        const resource_name = v8.ffi.v8_String_NewFromUtf8(
+            self.isolate,
+            source_url.ptr,
+            @intCast(source_url.len),
+        );
+
+        // Compile as ES Module using safe variant with TryCatch
+        const compile_result = v8.ffi.v8_Module_Compile_Safe(self.context, source_str, resource_name);
+        defer v8.ffi.v8_FreeModuleCompileResult(compile_result);
+
+        // Clean up resource name string (V8 manages the V8 string memory)
+        if (resource_name) |name| {
+            v8.ffi.v8_String_Dispose(name);
+        }
+
+        // Check for compilation error
+        if (compile_result.error_info) |err_info| {
+            // Log the error details
+            if (err_info.message) |msg| {
+                std.log.err("Module compilation error: {s}", .{msg});
+            }
+            if (err_info.source_line) |line| {
+                std.log.err("Source line: {s}", .{line});
+            }
+            return error.ModuleCompilationFailed;
+        }
+
+        const module = compile_result.module orelse {
+            std.log.err("Module compilation returned null without error", .{});
+            return error.ModuleCompilationFailed;
+        };
+
+        // Instantiate the module (link imports)
+        const instantiate_result = v8.ffi.v8_Module_Instantiate_Safe(self.context, module);
+        defer v8.ffi.v8_FreeModuleInstantiateResult(instantiate_result);
+
+        if (instantiate_result.error_info) |err_info| {
+            if (err_info.message) |msg| {
+                std.log.err("Module instantiation error: {s}", .{msg});
+            }
+            return error.ModuleInstantiationFailed;
+        }
+
+        if (!instantiate_result.success) {
+            std.log.err("Module instantiation failed without error details", .{});
+            return error.ModuleInstantiationFailed;
+        }
+
+        // Evaluate the module (execute top-level code)
+        const evaluate_result = v8.ffi.v8_Module_Evaluate_Safe(self.context, module);
+        defer v8.ffi.v8_FreeModuleEvaluateResult(evaluate_result);
+
+        if (evaluate_result.error_info) |err_info| {
+            if (err_info.message) |msg| {
+                std.log.err("Module evaluation error: {s}", .{msg});
+            }
+            return error.ModuleEvaluationFailed;
+        }
+
+        // Run microtasks after module execution
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+    }
 };
 
 // ============================================================================
@@ -665,16 +763,19 @@ fn compileAndRunScriptCallback(
 }
 
 /// Compile and run a module
+///
+/// Spec: HTML Standard § 10.2.5 step 24 (for type: "module")
+/// "Run the module script scriptOrModule."
+///
+/// This compiles, instantiates, and evaluates the source as an ES module,
+/// enabling import/export statements and import.meta support.
 fn compileAndRunModuleCallback(
     engine_ctx: *EngineContext,
     source: []const u8,
     source_url: []const u8,
 ) anyerror!void {
-    _ = source_url; // TODO: Used for import resolution
     const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
-
-    // For now, execute as script. Full module support needs more V8 FFI.
-    _ = try self.executeScript(source);
+    try self.executeModule(source, source_url);
 }
 
 /// Run microtask checkpoint
@@ -879,6 +980,9 @@ pub const WorkerV8Error = error{
     StringCreationFailed,
     CompilationFailed,
     ExecutionFailed,
+    ModuleCompilationFailed,
+    ModuleInstantiationFailed,
+    ModuleEvaluationFailed,
     OutOfMemory,
     FunctionTemplateCreateFailed,
     FunctionCreateFailed,
