@@ -1132,6 +1132,20 @@ bool v8_Value_IsArray(Global<Value>* value) {
     return val->IsArray();
 }
 
+bool v8_Value_IsArrayBuffer(Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsArrayBuffer();
+}
+
+bool v8_Value_IsArrayBufferView(Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsArrayBufferView();
+}
+
 // Version for Local handle internal pointers
 bool v8_Value_IsArray_Local(void* value_ptr) {
     if (!value_ptr) return false;

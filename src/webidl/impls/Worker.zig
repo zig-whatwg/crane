@@ -1086,6 +1086,15 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 ///
 /// Spec: HTML Standard § 9.3.1 "postMessage(message, transfer)"
 /// The transfer list contains objects that should be transferred (not cloned).
+///
+/// For ArrayBuffers, this function:
+/// 1. Identifies each ArrayBuffer in the transfer list
+/// 2. Detaches (neuters) the ArrayBuffer, transferring ownership of its data
+/// 3. Stores the ArrayBuffer pointer for reconstruction on the receiving end
+///
+/// Per HTML § 2.7.3 Transferable objects:
+/// "When an ArrayBuffer is transferred, the original buffer is detached
+/// and becomes unusable."
 fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?[]?*anyopaque {
     // Transfer should be an array
     const transfer_ptr = transfer.toAnyopaque() orelse return null;
@@ -1114,10 +1123,29 @@ fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?
     for (0..length) |i| {
         const element = v8_engine.ffi.v8_Array_Get(v8_context, transfer_array, @intCast(i));
         if (element) |elem| {
-            // Store all transferable objects as pointers
-            // TODO: Add v8_Value_IsArrayBuffer FFI function to properly identify and detach ArrayBuffers
-            // For now, we store all objects and handle transfer at the message channel level
-            if (v8_engine.ffi.v8_Value_IsObject(elem)) {
+            // Check if it's an ArrayBuffer - these are transferable
+            if (v8_engine.ffi.v8_Value_IsArrayBuffer(elem)) {
+                // Cast to ArrayBuffer and detach it
+                const array_buffer: *v8_engine.ffi.ArrayBuffer = @ptrCast(elem);
+
+                // Check if already detached (per spec: throw DataCloneError)
+                if (v8_engine.ffi.v8_ArrayBuffer_IsDetached(array_buffer)) {
+                    // DataCloneError: Cannot transfer a detached ArrayBuffer
+                    allocator.free(pointers);
+                    return error.DataCloneError;
+                }
+
+                // Detach the ArrayBuffer - this transfers ownership of the backing store
+                // Per HTML § 2.7.3: "If value has a [[ArrayBufferData]] internal slot, then:
+                // 1. Let arrayBufferTransferred be value[[ArrayBufferData]].
+                // 2. Detach(value)."
+                v8_engine.ffi.v8_ArrayBuffer_Detach(array_buffer);
+
+                // Store the pointer for reconstruction on the receiving end
+                pointers[i] = @ptrCast(elem);
+            } else if (v8_engine.ffi.v8_Value_IsObject(elem)) {
+                // Other transferable objects (MessagePort, etc.) - store for now
+                // TODO: Implement MessagePort transfer (disentangle + re-entangle)
                 pointers[i] = @ptrCast(elem);
             } else {
                 pointers[i] = null;
