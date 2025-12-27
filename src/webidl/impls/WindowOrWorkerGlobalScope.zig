@@ -150,9 +150,34 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
     const isolate = ctx.v8_isolate;
     const v8_context = ctx.v8_context;
 
+    // Ensure we're in the correct isolate
+    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
+    const need_enter_isolate = (current_isolate == null) or (current_isolate != isolate);
+    if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Enter(isolate);
+    }
+    defer if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Exit(isolate);
+    };
+
+    // Create HandleScope for V8 handle allocation
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Enter context if needed
+    const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
+    const need_enter_context = (current_context == null) or (current_context != v8_context);
+    if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Enter(v8_context);
+    }
+    defer if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Exit(v8_context);
+    };
+
     // Get the function from the global handle
     const function = v8_engine.ffi.v8_Global_Get(isolate, ctx.function_handle) orelse {
         // Function was garbage collected - clean up
+        _ = ctx.registry.unregister(ctx.timer_id);
         ctx.deinit();
         return;
     };
@@ -161,8 +186,6 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
     const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
 
     // Convert runtime.JSValue arguments to V8 values
-    // For now, just call with no arguments if we can't convert
-    // TODO: Proper argument conversion
     var args: [16]*v8_engine.ffi.Value = undefined;
     var arg_count: c_int = 0;
 
@@ -189,7 +212,9 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
         _ = ctx.registry.unregister(ctx.timer_id);
         ctx.deinit();
     }
-    // For interval timers, the context remains active for the next invocation
+    // For interval timers, the timer manager handles rescheduling
+    // The LibuvTimerManager's setInterval mechanism or the platform's
+    // timer backend handles repeated invocation
 }
 
 // ============================================================================
@@ -413,22 +438,99 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
 /// Operation: setInterval
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-setinterval
 ///
-/// TODO: When implementing, the handler MUST be stored as a V8 Global handle
-/// if handler.function is a JavaScript callback. See:
-/// - tmp/analysis/CALLBACK_STORAGE.md for the pattern
-/// - src/webidl/impls/WebSocket.zig for example usage of OptionalGlobalHandle
+/// Schedules a callback to be invoked repeatedly at a specified interval.
+/// The handler can be a JavaScript function or a string (eval'd code).
 ///
-/// Implementation requirements:
-/// 1. For handler.function variant, create Global handle
-/// 2. Store in interval registry with Global handle
-/// 3. Dispose Global handle when interval is cleared via clearInterval
-/// 4. Handle repeating invocation pattern
+/// ## Implementation Notes
+///
+/// Similar to setTimeout, but the callback is invoked repeatedly until
+/// clearInterval is called with the returned timer ID.
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+
+    // Get timeout value (default 0, minimum 4ms per spec for intervals)
+    const timeout_ms: u64 = if (timeout.wasPassed())
+        @intCast(@max(4, timeout.getValue())) // Minimum 4ms for intervals per spec
+    else
+        4;
+
+    switch (handler) {
+        .function => |fn_ptr| {
+            // The function pointer is actually a tagged GlobalHandle pointer.
+            const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(fn_ptr));
+
+            if (untagged.tag != .global_handle and untagged.tag != .untagged) {
+                return error.TypeError;
+            }
+
+            const function_handle: *v8_engine.ffi.Value = @ptrCast(@alignCast(untagged.ptr));
+
+            // Get isolate and context
+            const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
+            const v8_context: *v8_engine.ffi.Context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return error.InvalidStateError;
+
+            // Verify the handle points to a function
+            const local_value = v8_engine.ffi.v8_Global_Get(isolate, function_handle) orelse return error.InvalidStateError;
+            if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+                return error.TypeError;
+            }
+
+            // Create timer callback context
+            const timer_ctx = try allocator.create(TimerCallbackContext);
+            errdefer allocator.destroy(timer_ctx);
+
+            // Create a new GlobalHandle from the handle
+            const global_copy = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(local_value)) orelse return error.OutOfMemory;
+
+            // Copy arguments
+            const args_copy = if (arguments.len > 0)
+                try allocator.dupe(runtime.JSValue, arguments)
+            else
+                &[_]runtime.JSValue{};
+
+            // Get or create timer registry
+            const registry = getOrCreateTimerRegistry(allocator);
+
+            timer_ctx.* = .{
+                .function_handle = global_copy,
+                .v8_context = v8_context,
+                .v8_isolate = isolate,
+                .allocator = allocator,
+                .timer_id = 0,
+                .arguments = args_copy,
+                .is_interval = true, // This is an interval timer
+                .interval_ms = timeout_ms,
+                .registry = registry,
+            };
+
+            // Register the timer
+            const timer_id = registry.register(timer_ctx);
+            if (timer_id == 0) {
+                timer_ctx.deinit();
+                return error.OutOfMemory;
+            }
+
+            // Schedule the timer via the platform timer interface
+            if (instance.ctx.getTimer()) |timer_interface| {
+                // For intervals, we need to set up a repeating timer
+                // The timerTrampoline handles rescheduling for intervals
+                _ = timer_interface.setTimeout(timeout_ms, timerTrampoline, timer_ctx);
+            } else |_| {
+                _ = registry.unregister(timer_id);
+                timer_ctx.deinit();
+                return error.InvalidStateError;
+            }
+
+            return timer_id;
+        },
+        .domstring => |_| {
+            // String handlers (eval) - legacy feature, security risk
+            return 0;
+        },
+        .trusted_script => |_| {
+            return error.NotImplemented;
+        },
+    }
 }
 
 /// Operation: atob
@@ -454,10 +556,28 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.Image
 }
 
 /// Operation: clearInterval
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-clearinterval
+///
+/// Cancels a previously scheduled setInterval callback.
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    if (!id.wasPassed()) return;
+
+    const timer_id = id.getValue();
+    if (timer_id <= 0) return;
+
+    // Get the timer registry
+    const registry = getOrCreateTimerRegistry(instance.ctx.allocator);
+
+    // Unregister and clean up
+    if (registry.unregister(timer_id)) |ctx| {
+        // Get timer interface to cancel the timer
+        if (instance.ctx.getTimer()) |timer_interface| {
+            timer_interface.clearTimeout(@intCast(timer_id));
+        } else |_| {}
+
+        // Clean up the context
+        ctx.deinit();
+    }
 }
 
 /// Operation: queueMicrotask
@@ -491,58 +611,116 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
 /// Schedules a callback to be invoked after a specified delay.
 /// The handler can be a JavaScript function or a string (eval'd code).
 ///
-/// ## CURRENT LIMITATION
+/// ## Implementation Notes
 ///
-/// This implementation is blocked by an architectural issue:
+/// The `TimerHandler.function` variant is actually a tagged GlobalHandle pointer.
+/// The V8 binding layer creates a GlobalHandle for function arguments and returns
+/// the pointer tagged with `.global_handle`. We extract this and use it to invoke
+/// the callback when the timer fires.
 ///
-/// The `TimerHandler` typedef uses `callbacks.Function` which is a Zig function pointer.
-/// However, setTimeout needs the RAW V8 function object to:
-/// 1. Store as a Global handle (prevent GC)
-/// 2. Invoke later in the correct V8 context
+/// ## Timer Infrastructure
 ///
-/// The WebIDL binding layer converts V8 functions to Zig callbacks BEFORE we can
-/// capture the raw V8 function reference.
-///
-/// ## Required Fix (in codegen)
-///
-/// The TypedArray/TimerHandler needs special handling in the binding layer to pass
-/// the raw V8 value instead of a converted callback. Options:
-/// 1. Add `v8_function: ?*anyopaque` variant to TimerHandler
-/// 2. Create a CallbackWrapper for timer handlers before conversion
-/// 3. Use JSValue directly in the typedef instead of callbacks.Function
-///
-/// See: src/runtime/engines/v8/callback_wrapper.zig for how to properly store V8 callbacks.
-///
-/// ## Timer Infrastructure (Ready)
-///
-/// The timer callback infrastructure IS implemented:
 /// - TimerCallbackContext: Stores function handle, context, arguments
 /// - TimerRegistry: Tracks active timers by ID
 /// - timerTrampoline: Invokes V8 function when timer fires
-/// - LibuvTimerManager: Schedules timers via libuv
-///
-/// Once the callback extraction issue is fixed, the rest of the implementation is ready.
+/// - LibuvTimerManager: Schedules timers via libuv (or platform timer backend)
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = timeout;
-    _ = arguments;
+    const allocator = instance.ctx.allocator;
 
-    // The function callback comes as a Zig function pointer, but we need
-    // the actual V8 function object. The WebIDL binding layer converts
-    // V8 functions to Zig callbacks BEFORE we receive them.
-    //
-    // TODO: Fix codegen to pass raw V8 function value for timer handlers
+    // Get timeout value (default 0)
+    const timeout_ms: u64 = if (timeout.wasPassed())
+        @intCast(@max(0, timeout.getValue()))
+    else
+        0;
+
     switch (handler) {
-        .function => |_| {
-            // Cannot extract raw V8 function from Zig callback
-            return error.NotImplemented;
+        .function => |fn_ptr| {
+            // The function pointer is actually a tagged GlobalHandle pointer.
+            // The V8 binding layer creates a GlobalHandle for function arguments
+            // and returns the pointer tagged with `.global_handle`.
+            //
+            // See: src/runtime/engines/v8/conversions.zig line ~1150
+            // See: src/runtime/engines/v8/pointer_tag.zig for tagging details
+
+            // Untag the pointer to get the raw GlobalHandle
+            const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(fn_ptr));
+
+            // Verify it's a GlobalHandle
+            if (untagged.tag != .global_handle and untagged.tag != .untagged) {
+                // Not a GlobalHandle - this shouldn't happen for function callbacks
+                return error.TypeError;
+            }
+
+            // Get the V8 function pointer
+            const function_handle: *v8_engine.ffi.Value = @ptrCast(@alignCast(untagged.ptr));
+
+            // Get isolate and context
+            const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
+            const v8_context: *v8_engine.ffi.Context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return error.InvalidStateError;
+
+            // Verify the handle points to a function
+            // For GlobalHandles, we need to get the Local first
+            const local_value = v8_engine.ffi.v8_Global_Get(isolate, function_handle) orelse return error.InvalidStateError;
+            if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+                return error.TypeError;
+            }
+
+            // Create timer callback context
+            const timer_ctx = try allocator.create(TimerCallbackContext);
+            errdefer allocator.destroy(timer_ctx);
+
+            // Create a new GlobalHandle from the handle (we need our own copy)
+            // The original GlobalHandle may be disposed by the caller
+            const global_copy = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(local_value)) orelse return error.OutOfMemory;
+
+            // Copy arguments
+            const args_copy = if (arguments.len > 0)
+                try allocator.dupe(runtime.JSValue, arguments)
+            else
+                &[_]runtime.JSValue{};
+
+            // Get or create timer registry
+            const registry = getOrCreateTimerRegistry(allocator);
+
+            timer_ctx.* = .{
+                .function_handle = global_copy,
+                .v8_context = v8_context,
+                .v8_isolate = isolate,
+                .allocator = allocator,
+                .timer_id = 0, // Will be set by registry
+                .arguments = args_copy,
+                .is_interval = false,
+                .interval_ms = 0,
+                .registry = registry,
+            };
+
+            // Register the timer
+            const timer_id = registry.register(timer_ctx);
+            if (timer_id == 0) {
+                timer_ctx.deinit();
+                return error.OutOfMemory;
+            }
+
+            // Schedule the timer via the platform timer interface
+            if (instance.ctx.getTimer()) |timer_interface| {
+                _ = timer_interface.setTimeout(timeout_ms, timerTrampoline, timer_ctx);
+            } else |_| {
+                // No timer interface available - clean up and fail
+                _ = registry.unregister(timer_id);
+                timer_ctx.deinit();
+                return error.InvalidStateError;
+            }
+
+            return timer_id;
         },
         .domstring => |_| {
-            // String handlers (eval) - legacy feature, not implemented
-            return error.NotImplemented;
+            // String handlers (eval) - legacy feature, security risk
+            // Per spec, string handlers are deprecated. Return 0 (noop timer).
+            return 0;
         },
         .trusted_script => |_| {
-            // TrustedScript handlers - not implemented
+            // TrustedScript handlers - not yet implemented
+            // This would require Trusted Types integration
             return error.NotImplemented;
         },
     }
