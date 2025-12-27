@@ -165,6 +165,8 @@ pub const InternalState = struct {
             v8_ctx.deinit();
         }
         if (self.dedicated_worker) |worker| {
+            // Unregister from the global registry before cleanup
+            workers.message_channel.WorkerPortRegistry.unregister(worker.port_pair.outside_port);
             worker.deinit();
         }
         self.allocator.free(self.script_url);
@@ -329,6 +331,10 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // Messages are queued until start() is called
         dedicated_worker.startMessageQueue();
 
+        // Register the outside_port with the global registry so the event loop
+        // can poll for pending messages from the worker thread
+        workers.message_channel.WorkerPortRegistry.register(dedicated_worker.port_pair.outside_port);
+
         // Get the document origin for resolving relative worker script URLs
         // The origin is needed to resolve URLs like "/path/to/worker.js"
         // Also store the parent Window for error propagation per HTML § 10.2.5
@@ -366,8 +372,17 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             // Log error but don't fail construction - worker enters error state
             // Per spec, errors during script fetch should fire an error event
             std.log.warn("Failed to fetch worker script: {}", .{err});
+            // Free the document_origin before returning (it was allocated by Document.get_URL)
+            if (document_origin) |origin| {
+                ctx.allocator.free(origin);
+            }
             return instance;
         };
+
+        // Free the document_origin now that fetching is complete (it was allocated by Document.get_URL)
+        if (document_origin) |origin| {
+            ctx.allocator.free(origin);
+        }
         // CRITICAL: DO NOT create V8 isolate/context during constructor!
         // WorkerV8Context.init() enters the worker's isolate, which corrupts
         // the main isolate's HandleScope state during constructor execution.
@@ -574,15 +589,37 @@ fn spawnWorkerThread(internal: *InternalState) !void {
         },
     );
 
+    // Initialize global wakeup for efficient main thread notification
+    // All workers share this wakeup - when any worker posts a message,
+    // the main thread is woken up immediately instead of polling
+    const wakeup: ?*workers.ThreadedWorkerRegistry.EventWakeup = workers.ThreadedWorkerRegistry.getOrCreateGlobalWakeup(internal.allocator) catch |err| blk: {
+        std.log.warn("Worker: Failed to create global wakeup: {}, message delivery may be delayed", .{err});
+        // Continue without wakeup - will fall back to polling
+        break :blk null;
+    };
+    if (wakeup) |w| {
+        thread_state.wakeup = w;
+        thread_state.outbox.setWakeup(w);
+    }
+
+    // Link the DedicatedWorker and thread_state bidirectionally:
+    // - thread_state.worker_ptr allows callbacks to access the DedicatedWorker
+    // - dedicated_worker.thread_state allows postMessageFromWorker to use thread-safe outbox
+    if (internal.dedicated_worker) |dw| {
+        dw.setThreadState(thread_state);
+    }
+
     // Create the thread runner
     var runner = try WorkerThreadRunner.init(internal.allocator, thread_state);
 
     // Set up V8 callbacks - these run ON THE WORKER THREAD
+    // Use WorkerV8Context-based callbacks which have proper WebIDL interface
+    // registration (XMLHttpRequest, etc.) instead of raw V8 FFI
     runner.setCallbacks(
-        WorkerV8Integration.createIsolateCallback(),
-        WorkerV8Integration.disposeIsolateCallback(),
-        WorkerV8Integration.executeScriptCallback(),
-        WorkerV8Integration.dispatchMessageCallback(),
+        createIsolateCallback(),
+        disposeIsolateCallback(),
+        executeScriptCallback(),
+        dispatchMessageCallback(),
         null, // No callback context needed
     );
 
@@ -601,12 +638,20 @@ fn spawnWorkerThread(internal: *InternalState) !void {
     );
 
     // Create a SerializedMessage on the heap for cross-thread transfer
-    const msg = internal.allocator.create(workers.ThreadSafeMessageQueue.SerializedMessage) catch return;
+    const msg = internal.allocator.create(workers.ThreadSafeMessageQueue.SerializedMessage) catch {
+        // Clean up the serialized value struct (but not its contents, as we haven't copied yet)
+        internal.allocator.destroy(serialized);
+        return;
+    };
     msg.* = .{
         .data = serialized.*,
         .transfers = null,
         .allocator = internal.allocator,
     };
+
+    // Free the SerializedValue struct (its contents are now owned by msg.data)
+    internal.allocator.destroy(serialized);
+
     thread_state.inbox.enqueue(msg) catch {
         msg.deinit();
         return;
@@ -761,11 +806,18 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 /// on the outside_port (worker → main thread direction).
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
     // Get the Worker instance from user_data stored in DedicatedWorker
-    const user_data = dedicated_worker.getUserData() orelse return;
+    const user_data = dedicated_worker.getUserData() orelse {
+        // Still need to clean up the message even if we can't dispatch
+        msg.deinit();
+        return;
+    };
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
 
     // Dispatch the message event to onmessage handler
     dispatchMessageEvent(instance, msg);
+
+    // Clean up the message after dispatching - the callback owns the message
+    msg.deinit();
 }
 
 /// Dispatch a MessageEvent to the Worker's message handlers using EventTarget.dispatchEvent
@@ -1585,4 +1637,118 @@ fn propagateErrorToParent(
             message_text, filename, lineno, colno,
         });
     }
+}
+
+// ============================================================================
+// WorkerV8Context-based Callbacks for Worker Threads
+// ============================================================================
+// These callbacks use WorkerV8Context which has proper WebIDL interface
+// registration (XMLHttpRequest, etc.) instead of WorkerIsolateData which
+// only has raw V8 FFI without interfaces.
+
+/// Callback to create a V8 isolate with proper WebIDL interface registration
+fn createIsolateWithInterfaces(thread_state: *workers.WorkerThreadState, allocator: std.mem.Allocator) anyerror!*anyopaque {
+    const worker_ctx = try WorkerV8Context.init(
+        allocator,
+        thread_state.script_url,
+        thread_state.worker_type,
+    );
+
+    // Set up worker-specific global scope (postMessage, close, importScripts, done)
+    // using the DedicatedWorker pointer passed through thread_state
+    if (thread_state.worker_ptr) |worker_ptr| {
+        const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
+        try worker_ctx.setupWorkerGlobalScope(dedicated_worker);
+    }
+
+    return @ptrCast(worker_ctx);
+}
+
+/// Callback to dispose a WorkerV8Context
+fn disposeIsolateWithInterfaces(isolate_data: *anyopaque) void {
+    const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
+    worker_ctx.deinit();
+}
+
+/// Callback to execute a script in the WorkerV8Context
+fn executeScriptWithInterfaces(isolate_data: *anyopaque, script: []const u8, source_url: []const u8) anyerror!void {
+    const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
+    _ = source_url; // WorkerV8Context uses its own script_url
+
+    // Execute the script (WorkerV8Context.executeScript handles enter/exit internally)
+    _ = try worker_ctx.executeScript(script);
+}
+
+/// Callback to dispatch a message to the WorkerV8Context
+fn dispatchMessageWithInterfaces(isolate_data: *anyopaque, msg: *workers.ThreadSafeMessageQueue.SerializedMessage) anyerror!void {
+    const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
+
+    std.log.info("[Worker] dispatchMessageWithInterfaces: msg.data.type={}", .{msg.data.type});
+
+    // Deserialize and dispatch as MessageEvent
+    // For now, if this is the initial script message, execute it as script
+    if (msg.data.type == .string_object) {
+        const script = msg.data.data.string_object;
+        std.log.info("[Worker] Executing script (string_object), len={d}", .{script.len});
+        _ = try worker_ctx.executeScript(script);
+    } else if (msg.data.type == .primitive) {
+        // Check if it's a string primitive
+        if (msg.data.data.primitive == .string) {
+            const script = msg.data.data.primitive.string;
+            std.log.info("[Worker] Executing script (primitive.string), len={d}", .{script.len});
+            _ = try worker_ctx.executeScript(script);
+        } else {
+            std.log.info("[Worker] Received primitive but not string: {}", .{msg.data.data.primitive});
+        }
+    } else {
+        std.log.info("[Worker] Received non-script message type: {}", .{msg.data.type});
+    }
+    // TODO: Handle actual postMessage data as MessageEvent
+
+    // Clean up the message
+    msg.deinit();
+}
+
+/// Get the create isolate callback function pointer
+pub fn createIsolateCallback() workers.WorkerThreadRunner.CreateIsolateFn {
+    return createIsolateWithInterfaces;
+}
+
+/// Get the dispose isolate callback function pointer
+pub fn disposeIsolateCallback() workers.WorkerThreadRunner.DisposeIsolateFn {
+    return disposeIsolateWithInterfaces;
+}
+
+/// Get the execute script callback function pointer
+pub fn executeScriptCallback() workers.WorkerThreadRunner.ExecuteScriptFn {
+    return executeScriptWithInterfaces;
+}
+
+/// Get the dispatch message callback function pointer
+pub fn dispatchMessageCallback() workers.WorkerThreadRunner.DispatchMessageFn {
+    return dispatchMessageWithInterfaces;
+}
+
+/// Get the global worker wakeup primitive.
+/// Returns null if no workers have been created yet or wakeup initialization failed.
+/// Used by Browser.runEventLoop to wait efficiently for worker messages.
+pub fn getGlobalWorkerWakeup() ?*workers.ThreadedWorkerRegistry.EventWakeup {
+    return workers.ThreadedWorkerRegistry.global_wakeup;
+}
+
+/// Flush pending messages from all workers to the main thread.
+/// This should be called from the main thread's event loop to deliver
+/// messages that workers have posted via postMessage().
+pub fn flushPendingWorkerMessages() void {
+    // First, poll threaded workers' outboxes for cross-thread messages.
+    // This is the primary path for workers running on separate OS threads.
+    _ = workers.ThreadedWorkerRegistry.pollAndDispatch();
+
+    // Then, flush any messages still in the thread-local pending_messages list.
+    // This handles same-thread workers (tests, single-threaded mode).
+    DedicatedWorker.flushPendingMessages();
+
+    // Finally, poll all registered worker ports and dispatch queued messages.
+    // Messages may have been transferred to port queues by worker thread cleanup.
+    _ = workers.message_channel.WorkerPortRegistry.pollAndDispatch();
 }

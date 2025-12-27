@@ -432,6 +432,11 @@ pub const Browser = struct {
     /// Run the event loop until a condition is met or timeout
     ///
     /// Used for running async tests or waiting for page load.
+    ///
+    /// Uses efficient wakeup mechanism when workers are active:
+    /// - Workers signal via EventWakeup when posting messages
+    /// - Main thread wakes immediately instead of polling at 1ms intervals
+    /// - Falls back to short sleep if no wakeup is available
     pub fn runEventLoop(self: *Browser, timeout_ms: u64) !void {
         const event_loop = self.event_loop orelse return error.NotInitialized;
         const start_time = std.time.milliTimestamp();
@@ -440,6 +445,11 @@ pub const Browser = struct {
             // Run one iteration
             _ = event_loop.eventLoop().runOnce();
 
+            // Flush pending worker messages to the main thread
+            // Workers post messages via postMessage() which queue to pending_messages.
+            // This transfers them to message_queue and dispatches to handlers.
+            impls.Worker.flushPendingWorkerMessages();
+
             // Check timeout
             const now = std.time.milliTimestamp();
             const elapsed: u64 = @intCast(now - start_time);
@@ -447,8 +457,17 @@ pub const Browser = struct {
                 return;
             }
 
-            // Short sleep to avoid busy-waiting
-            std.Thread.sleep(1 * std.time.ns_per_ms);
+            // Wait for worker wakeup or short timeout
+            // This is the key optimization: instead of busy-polling at 1ms,
+            // we wait on the wakeup primitive that workers signal when posting messages
+            // Access through impls.Worker which has the ThreadedWorkerRegistry
+            if (impls.Worker.getGlobalWorkerWakeup()) |wakeup| {
+                // Wait up to 1ms for a signal, then loop to run event loop again
+                _ = wakeup.wait(1) catch {};
+            } else {
+                // No wakeup available, fall back to short sleep
+                std.Thread.sleep(1 * std.time.ns_per_ms);
+            }
         }
     }
 
