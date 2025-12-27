@@ -4050,6 +4050,103 @@ void v8_Isolate_SetMicrotasksPolicy(Isolate* isolate, int policy) {
 }
 
 // ============================================================================
+// Promise Rejection Tracking (for unhandledrejection/rejectionhandled events)
+// ============================================================================
+
+/// Type definition for Zig promise rejection event callback
+/// Signature: fn(user_data: *anyopaque, event_type: i32, promise: *anyopaque, value: ?*anyopaque) void
+/// 
+/// event_type values (from V8 PromiseRejectEvent enum):
+///   0 = kPromiseRejectWithNoHandler       - Promise rejected, no handler attached
+///   1 = kPromiseHandlerAddedAfterReject   - Handler added to previously-rejected promise
+///   2 = kPromiseRejectAfterResolved       - Promise rejected after already resolved (unused)
+///   3 = kPromiseResolveAfterResolved      - Promise resolved after already resolved (unused)
+typedef void (*ZigPromiseRejectEventCallback)(
+    void* user_data,
+    int event_type,
+    void* promise,
+    void* value
+);
+
+/// Global storage for promise reject callback data
+struct PromiseRejectCallbackData {
+    void* user_data;
+    ZigPromiseRejectEventCallback callback;
+};
+static PromiseRejectCallbackData* g_promise_reject_callback = nullptr;
+
+/// V8 callback that forwards promise rejection events to Zig
+static void V8PromiseRejectCallback(PromiseRejectMessage message) {
+    if (!g_promise_reject_callback || !g_promise_reject_callback->callback) {
+        return;
+    }
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    // Get the promise (always available)
+    Local<Promise> promise = message.GetPromise();
+    
+    // Get the rejection value (may be empty for some event types)
+    Local<Value> value = message.GetValue();
+    
+    // Create Global handles for Zig to use
+    // Note: Zig is responsible for disposing these
+    Global<Promise>* promise_global = trackHandle(new Global<Promise>(isolate, promise));
+    
+    Global<Value>* value_global = nullptr;
+    if (!value.IsEmpty()) {
+        value_global = trackHandle(new Global<Value>(isolate, value));
+    }
+    
+    // Map V8 event type to integer
+    int event_type = static_cast<int>(message.GetEvent());
+    
+    // Call Zig callback
+    g_promise_reject_callback->callback(
+        g_promise_reject_callback->user_data,
+        event_type,
+        promise_global,
+        value_global
+    );
+}
+
+/// Set the promise rejection callback for an isolate
+/// 
+/// This enables tracking of unhandled promise rejections and late-attached handlers.
+/// The callback will be invoked when:
+/// - A promise is rejected with no handler (event_type=0)
+/// - A handler is added to a previously-rejected promise (event_type=1)
+///
+/// @param isolate - The V8 isolate to configure
+/// @param user_data - Opaque pointer passed to callback
+/// @param callback - Zig callback function
+void v8_Isolate_SetPromiseRejectCallback(
+    Isolate* isolate,
+    void* user_data,
+    ZigPromiseRejectEventCallback callback
+) {
+    // Store callback data
+    if (!g_promise_reject_callback) {
+        g_promise_reject_callback = new PromiseRejectCallbackData();
+    }
+    g_promise_reject_callback->user_data = user_data;
+    g_promise_reject_callback->callback = callback;
+    
+    // Register with V8
+    isolate->SetPromiseRejectCallback(V8PromiseRejectCallback);
+}
+
+/// Clear the promise rejection callback for an isolate
+void v8_Isolate_ClearPromiseRejectCallback(Isolate* isolate) {
+    if (g_promise_reject_callback) {
+        delete g_promise_reject_callback;
+        g_promise_reject_callback = nullptr;
+    }
+    isolate->SetPromiseRejectCallback(nullptr);
+}
+
+// ============================================================================
 // Function Call Support (Phase 1: Runtime Callback Infrastructure)
 // ============================================================================
 

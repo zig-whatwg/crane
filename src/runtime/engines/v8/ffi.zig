@@ -1699,6 +1699,61 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;
 
 // ============================================================================
+// Promise Rejection Tracking
+// ============================================================================
+
+/// Promise reject event types (from V8 PromiseRejectEvent enum)
+pub const PromiseRejectEvent = enum(c_int) {
+    /// Promise rejected, no handler attached
+    kPromiseRejectWithNoHandler = 0,
+    /// Handler added to previously-rejected promise (rejectionhandled event)
+    kPromiseHandlerAddedAfterReject = 1,
+    /// Promise rejected after already resolved (usually ignored)
+    kPromiseRejectAfterResolved = 2,
+    /// Promise resolved after already resolved (usually ignored)
+    kPromiseResolveAfterResolved = 3,
+};
+
+/// Callback type for promise rejection events
+///
+/// Called when a promise is rejected without a handler, or when
+/// a handler is added to a previously-rejected promise.
+///
+/// Parameters:
+///   - user_data: Opaque pointer passed to SetPromiseRejectCallback
+///   - event_type: Type of promise rejection event (see PromiseRejectEvent)
+///   - promise: Global handle to the rejected promise
+///   - value: Global handle to the rejection reason (may be null)
+pub const PromiseRejectEventCallback = *const fn (
+    user_data: ?*anyopaque,
+    event_type: c_int,
+    promise: ?*anyopaque,
+    value: ?*anyopaque,
+) callconv(.c) void;
+
+/// Set the promise rejection callback for an isolate
+///
+/// This enables tracking of unhandled promise rejections for the
+/// "unhandledrejection" and "rejectionhandled" events (HTML § 8.1.4.7).
+///
+/// The callback will be invoked when:
+/// - A promise is rejected with no handler attached (kPromiseRejectWithNoHandler)
+/// - A handler is added to a previously-rejected promise (kPromiseHandlerAddedAfterReject)
+///
+/// Arguments:
+///   isolate: The V8 isolate to configure
+///   user_data: Opaque pointer passed to callback
+///   callback: Function to call on promise rejection events
+pub extern fn v8_Isolate_SetPromiseRejectCallback(
+    isolate: *Isolate,
+    user_data: ?*anyopaque,
+    callback: PromiseRejectEventCallback,
+) void;
+
+/// Clear the promise rejection callback for an isolate
+pub extern fn v8_Isolate_ClearPromiseRejectCallback(isolate: *Isolate) void;
+
+// ============================================================================
 // External - Wrap C pointers for storage in V8
 // ============================================================================
 

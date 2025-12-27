@@ -255,6 +255,10 @@ pub const FrozenContextManager = frozen_context_manager.FrozenContextManager;
 pub const FrozenContext = frozen_context_manager.FrozenContext;
 pub const FrozenTimer = frozen_context_manager.FrozenTimer;
 
+/// Promise Rejection Tracking (for unhandledrejection/rejectionhandled events)
+pub const promise_rejection = @import("promise_rejection.zig");
+pub const PromiseRejectionTracker = promise_rejection.PromiseRejectionTracker;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
