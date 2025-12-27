@@ -583,18 +583,105 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 /// Operation: queueMicrotask
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-queuemicrotask
 ///
-/// TODO: When implementing, the callback MUST be stored as a V8 Global handle.
-/// Unlike setTimeout/setInterval, microtasks execute on the current event loop turn
-/// but still need Global handles since the callback must survive the caller's HandleScope.
+/// Queues a microtask to invoke the given callback.
+/// Microtasks execute after the current task completes but before the next task begins.
 ///
-/// Implementation requirements:
+/// Implementation:
 /// 1. Create Global handle for the VoidFunction callback
-/// 2. Queue in microtask queue
+/// 2. Queue in V8's microtask queue
 /// 3. Dispose Global handle after callback executes
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+
+    // The callback is a tagged pointer containing a V8 GlobalHandle
+    // Untag to get the raw pointer
+    const untagged = v8_engine.pointer_tag.untagPointer(callback);
+
+    if (untagged.tag != .global_handle and untagged.tag != .untagged) {
+        // Not a valid function pointer
+        std.log.warn("queueMicrotask: callback is not a valid function (tag={})", .{untagged.tag});
+        return error.InvalidCallback;
+    }
+
+    // Get V8 isolate and context
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        std.log.warn("queueMicrotask: no current V8 isolate", .{});
+        return error.NoIsolate;
+    };
+
+    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.log.warn("queueMicrotask: no current V8 context", .{});
+        return error.NoContext;
+    };
+
+    // Allocate context for the microtask callback
+    const ctx = try allocator.create(MicrotaskCallbackContext);
+    errdefer allocator.destroy(ctx);
+
+    // Get the function handle from the global handle
+    const global_handle = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+    const local_value = global_handle.get(isolate) orelse {
+        std.log.warn("queueMicrotask: failed to get local value from global handle", .{});
+        return error.InvalidCallback;
+    };
+
+    // Verify it's a function
+    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+        std.log.warn("queueMicrotask: callback is not a function", .{});
+        return error.InvalidCallback;
+    }
+
+    // Create a new global handle for the callback (to prevent GC)
+    const function_global = v8_engine.ffi.v8_Global_New(isolate, @ptrCast(local_value)) orelse {
+        return error.OutOfMemory;
+    };
+
+    ctx.* = .{
+        .function_handle = function_global,
+        .v8_context = v8_context,
+        .v8_isolate = isolate,
+        .allocator = allocator,
+    };
+
+    // Enqueue the microtask via V8
+    const callback_ptr: ?*const anyopaque = @ptrCast(&microtaskTrampoline);
+    v8_engine.ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_ptr, ctx);
+}
+
+/// Context for microtask callbacks
+const MicrotaskCallbackContext = struct {
+    /// Global handle to the JavaScript function (prevents GC)
+    function_handle: *v8_engine.ffi.Value,
+    /// V8 context pointer for invoking the function
+    v8_context: *v8_engine.ffi.Context,
+    /// V8 isolate pointer
+    v8_isolate: *v8_engine.ffi.Isolate,
+    /// Allocator for cleanup
+    allocator: std.mem.Allocator,
+};
+
+/// Trampoline function for microtask execution
+/// Called by V8 when the microtask is due to run
+fn microtaskTrampoline(data: ?*anyopaque) callconv(.C) void {
+    const ctx: *MicrotaskCallbackContext = @ptrCast(@alignCast(data orelse return));
+    defer {
+        // Dispose the global handle and free the context
+        v8_engine.ffi.v8_Global_Dispose(ctx.function_handle);
+        ctx.allocator.destroy(ctx);
+    }
+
+    // Get the local handle from the global
+    const local_value = v8_engine.ffi.v8_Global_Get(ctx.v8_isolate, ctx.function_handle) orelse {
+        std.log.warn("microtaskTrampoline: failed to get local value", .{});
+        return;
+    };
+
+    // Cast to function
+    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+
+    // Call the function with no arguments
+    const undefined_recv = v8_engine.ffi.v8_Undefined(ctx.v8_isolate);
+    _ = v8_engine.ffi.v8_Function_Call(function, ctx.v8_context, @ptrCast(undefined_recv), 0, null);
 }
 
 /// Operation: structuredClone
