@@ -148,6 +148,18 @@ pub fn clear() void {
 /// **Snapshot Mode**: When `snapshot_mode` is true, templates are NOT registered.
 /// This prevents storing Global handles that would cause V8's
 /// "CheckGlobalAndEternalHandles failed" error during snapshot creation.
+/// Register a FunctionTemplate for an interface in a specific isolate.
+///
+/// **IMPORTANT**: Templates are keyed by (name, isolate) pair, NOT just name.
+/// This allows each isolate (main, worker1, worker2, etc.) to have its own
+/// set of templates without interfering with each other.
+///
+/// Called by V8Interface.registerGlobal after creating the template.
+/// This allows later wrapping of instances via wrapInstanceAsV8Object.
+///
+/// **Snapshot Mode**: When `snapshot_mode` is true, templates are NOT registered.
+/// This prevents storing Global handles that would cause V8's
+/// "CheckGlobalAndEternalHandles failed" error during snapshot creation.
 pub fn register(
     interface_name: []const u8,
     template: *v8.FunctionTemplate,
@@ -159,19 +171,19 @@ pub fn register(
 
     ensureInitialized();
 
-    // Check if already registered (avoid duplicates on re-registration)
+    // Check if already registered for THIS SPECIFIC ISOLATE
+    // Key is (name, isolate) pair - each isolate can have its own template for the same interface
     for (&templates) |*entry| {
         if (entry.*) |*e| {
-            if (std.mem.eql(u8, e.name, interface_name)) {
-                // Update existing entry
+            if (std.mem.eql(u8, e.name, interface_name) and e.isolate == isolate) {
+                // Update existing entry for this isolate
                 e.template = template;
-                e.isolate = isolate;
                 return;
             }
         }
     }
 
-    // Add new entry
+    // Add new entry for this (name, isolate) pair
     if (template_count < MAX_TEMPLATES) {
         templates[template_count] = .{
             .name = interface_name,
@@ -179,17 +191,40 @@ pub fn register(
             .isolate = isolate,
         };
         template_count += 1;
+    } else {
+        std.log.err("[template_registry.register] Template registry full! Cannot register '{s}' for isolate {*}", .{ interface_name, isolate });
     }
 }
 
 /// Get a registered FunctionTemplate by interface name
+/// Get a registered FunctionTemplate by interface name for a specific isolate.
+///
+/// **IMPORTANT**: V8 templates are isolate-specific. A template created in one
+/// isolate cannot be used in another. This function checks the current isolate
+/// and only returns a template if it was registered for that same isolate.
+///
+/// For worker isolates, this will correctly return null, signaling that
+/// templates need to be re-registered for the worker's isolate.
 pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
     ensureInitialized();
+
+    // Get the current isolate to verify template compatibility
+    const current_isolate = v8.v8_Isolate_GetCurrent();
+    if (current_isolate == null) {
+        std.log.warn("[getTemplate] No current isolate!", .{});
+        return null;
+    }
 
     // Only iterate over registered templates, not the full array
     for (templates[0..template_count]) |entry| {
         if (entry) |e| {
             if (std.mem.eql(u8, e.name, interface_name)) {
+                // CRITICAL: Verify isolate matches!
+                // Templates are isolate-specific and cannot be used across isolates.
+                if (e.isolate != current_isolate) {
+                    // Template is from a different isolate - don't return it
+                    continue;
+                }
                 return e.template;
             }
         }
@@ -220,6 +255,7 @@ pub fn wrapInstanceAsV8Object(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !*v8.Object {
+
     // ========================================
     // SPECIAL CASE: Window instances with bound V8 global
     // ========================================
@@ -273,6 +309,27 @@ pub fn wrapInstanceAsV8Object(
     };
 
     // ========================================
+    // SET INTERNAL FIELDS IMMEDIATELY after object creation
+    // ========================================
+    // CRITICAL: Must set internal fields BEFORE setting prototype, because
+    // prototype setup can trigger accessor callbacks that need the instance pointer.
+    // Store the Zig instance in internal field 0
+    v8.v8_Object_SetAlignedPointerInInternalField(
+        v8_object,
+        0,
+        @ptrCast(instance),
+    );
+
+    // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
+    if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
+        v8.v8_Object_SetAlignedPointerInInternalField(
+            v8_object,
+            1,
+            @ptrCast(@constCast(type_info)),
+        );
+    }
+
+    // ========================================
     // SET PROTOTYPE: Use FunctionTemplate's prototype, NOT Constructor.prototype from global
     // ========================================
     // When loading from a V8 snapshot, Constructor.prototype from the global may not have
@@ -290,29 +347,10 @@ pub fn wrapInstanceAsV8Object(
             const prototype_value = v8.v8_Object_Get(@ptrCast(constructor_func), context, @ptrCast(proto_name));
             if (prototype_value) |proto_val| {
                 if (v8.v8_Value_IsObject(proto_val)) {
-                    const success = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
-                    if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-                        std.log.info("[wrapInstanceAsV8Object] Set MessageEvent prototype from template: success={}", .{success});
-                    }
+                    _ = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
                 }
             }
         }
-    }
-
-    // Store the Zig instance in internal field 0
-    v8.v8_Object_SetAlignedPointerInInternalField(
-        v8_object,
-        0,
-        @ptrCast(instance),
-    );
-
-    // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
-    if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
-        v8.v8_Object_SetAlignedPointerInInternalField(
-            v8_object,
-            1,
-            @ptrCast(@constCast(type_info)),
-        );
     }
 
     // For legacy platform objects, wrap in a Proxy to ensure correct

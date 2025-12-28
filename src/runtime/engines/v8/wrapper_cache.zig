@@ -99,8 +99,13 @@ const CacheEntry = struct {
 /// 4. Remove entry from cache HashMap
 /// 5. Dispose the V8 Global<Object>* handle
 /// 6. Free the CacheEntry
+/// Global counter for tracking weak callback calls
+var weak_callback_count: std.atomic.Value(u32) = std.atomic.Value(u32).init(0);
+
 fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     _ = length_in_bytes;
+
+    // Note: weak_callback_count tracking removed (was for debugging)
 
     if (data) |entry_ptr| {
         const entry: *CacheEntry = @ptrCast(@alignCast(entry_ptr));

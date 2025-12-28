@@ -135,7 +135,7 @@ pub const ThreadedWorkerRegistry = struct {
         }
         if (to_remove) |id| {
             _ = workers.remove(id);
-        }
+        } else {}
     }
 
     /// Poll all registered workers' outboxes and dispatch messages to their outside ports.
@@ -195,30 +195,61 @@ pub const ThreadedWorkerRegistry = struct {
     /// Terminate all workers without destroying the registry.
     /// Called during navigation to clean up workers from the previous context.
     /// Workers will be unregistered as they terminate.
+    ///
+    /// CRITICAL: This function MUST join all worker threads before returning.
+    /// Otherwise, worker threads may still be running when the context is destroyed,
+    /// leading to use-after-free crashes (Bus error at address 0x3a0048448).
     pub fn terminateAllWorkers() void {
-        mutex.lock();
-        defer mutex.unlock();
 
-        var iter = workers.valueIterator();
-        while (iter.next()) |worker_ptr| {
-            const worker = worker_ptr.*;
+        // First pass: collect thread handles and request termination
+        // We need to do this outside the mutex to avoid deadlock when joining
+        var threads_to_join: [32]?std.Thread = [_]?std.Thread{null} ** 32;
+        var thread_count: usize = 0;
+        var worker_count: usize = 0;
 
-            // Terminate the worker agent (stops event loop, closes ports)
-            worker.agent.terminate();
+        {
+            mutex.lock();
+            defer mutex.unlock();
 
-            // Request termination on the thread state (signals thread to exit)
-            if (worker.thread_state) |ts| {
-                ts.requestTermination();
+            var iter = workers.valueIterator();
+            while (iter.next()) |worker_ptr| {
+                worker_count += 1;
+                const worker = worker_ptr.*;
+
+                // Terminate the worker agent (stops event loop, closes ports)
+                worker.agent.terminate();
+
+                // Request termination on the thread state (signals thread to exit)
+                if (worker.thread_state) |ts| {
+                    ts.requestTermination();
+
+                    // Collect thread handle for joining
+                    if (ts.thread) |thread| {
+                        if (thread_count < threads_to_join.len) {
+                            threads_to_join[thread_count] = thread;
+                            thread_count += 1;
+                        }
+                        // Clear the thread handle to prevent double-join
+                        ts.thread = null;
+                    } else {}
+                } else {}
             }
         }
 
-        // Wait briefly for threads to process termination signal
-        // This allows worker threads to exit their loop cleanly
-        std.Thread.sleep(10_000_000); // 10ms grace period
+        // Second pass: join all worker threads (outside mutex to avoid deadlock)
+        // This ensures all worker threads have fully exited before we return
+        for (threads_to_join[0..thread_count]) |maybe_thread| {
+            if (maybe_thread) |thread| {
+                thread.join();
+            }
+        }
 
-        // Clear the workers map - they should unregister themselves,
-        // but we clear to avoid stale references
-        workers.clearRetainingCapacity();
+        // Final pass: clear the workers map
+        {
+            mutex.lock();
+            defer mutex.unlock();
+            workers.clearRetainingCapacity();
+        }
     }
 
     /// Cleanup the registry
@@ -345,9 +376,7 @@ pub const DedicatedWorker = struct {
     fn handleOutsidePortMessage(port: *WorkerPort, msg: *QueuedMessage, context: ?*anyopaque) void {
         _ = port;
         const self: *DedicatedWorker = @ptrCast(@alignCast(context));
-        std.log.info("[handleOutsidePortMessage] Message received, on_message={}", .{self.on_message != null});
         if (self.on_message) |handler| {
-            std.log.info("[handleOutsidePortMessage] Calling on_message handler", .{});
             handler(self, msg);
         }
     }
@@ -669,32 +698,44 @@ pub const DedicatedWorker = struct {
             return;
         }
 
-        const serialized = try serializeForPostMessage(self.allocator, message);
+        // CRITICAL: For cross-thread messaging, we MUST use a thread-safe allocator.
+        // The worker's allocator (self.allocator) may not be safe to use from the main thread.
+        // The page allocator is inherently thread-safe (it just maps/unmaps memory pages).
+        // Using it ensures that when the main thread calls deinit() on the serialized data,
+        // the memory can be safely freed without cross-thread allocator issues.
+        const cross_thread_allocator = if (self.thread_state != null)
+            std.heap.page_allocator
+        else
+            self.allocator; // Same-thread mode can use the worker's allocator
+
+        const serialized = try serializeForPostMessage(cross_thread_allocator, message);
 
         // If we have a thread state, use the thread-safe outbox for cross-thread messaging.
         // This is the correct path when running on a separate OS thread.
         if (self.thread_state) |ts| {
             // Create a SerializedMessage for the thread-safe queue
-            const thread_msg = self.allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
+            // Use page_allocator for the wrapper too, ensuring consistency
+            const thread_msg = std.heap.page_allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
                 // Clean up serialized on allocation failure
                 var mutable = @constCast(serialized);
                 mutable.deinit();
-                self.allocator.destroy(mutable);
+                std.heap.page_allocator.destroy(mutable);
                 return error.OutOfMemory;
             };
 
             // Copy the serialized value into thread_msg (shallow copy - internal pointers shared)
+            // Note: serialized.allocator is already page_allocator from serializeForPostMessage above
             thread_msg.* = .{
                 .data = serialized.*,
                 .transfers = null,
-                .allocator = self.allocator,
+                .allocator = std.heap.page_allocator, // Use page_allocator for thread-safety
             };
 
             // Free ONLY the original serialized pointer container (not the internal data).
             // The internal data is now owned by thread_msg.data via the shallow copy above.
             // DO NOT call serialized.deinit() - that would free the internal data that
             // thread_msg now references.
-            self.allocator.destroy(serialized);
+            std.heap.page_allocator.destroy(serialized);
 
             // Enqueue to the thread-safe outbox - main thread will poll this
             // The outbox has a wakeup that will signal the main thread immediately
