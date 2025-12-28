@@ -51,6 +51,223 @@ Is that correct, or did you mean [alternative interpretation]?"
 
 ---
 
+## ⚠️ CRITICAL: Production Quality Browser - NO SHORTCUTS EVER
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   🛑🛑🛑 THIS IS A PRODUCTION QUALITY BROWSER - NOT A TOY 🛑🛑🛑             ║
+║                                                                              ║
+║   Every line of code must be production-ready. Every feature must be        ║
+║   100% spec-compliant. There are NO acceptable shortcuts. EVER.             ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+### The Mandate
+
+**You are building a production-quality web browser.** This is not a prototype, not a proof-of-concept, not a learning exercise. This is production software that must:
+
+1. **Match browser behavior exactly** (Chrome, Firefox, Safari)
+2. **Implement 100% of WHATWG specifications** - not 80%, not 95%, but 100%
+3. **Pass all Web Platform Tests (WPT)** for implemented features
+4. **Have zero memory leaks**
+5. **Have zero crashes**
+6. **Have zero undefined behavior**
+
+### When You Struggle - STOP AND ASK
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   IF YOU ARE STRUGGLING WITH A PROBLEM:                                     ║
+║                                                                              ║
+║   1. STOP what you are doing                                                ║
+║   2. EXPLAIN the problem clearly to the user                                ║
+║   3. ASK for guidance before proceeding                                     ║
+║                                                                              ║
+║   DO NOT:                                                                   ║
+║   - Implement a workaround                                                  ║
+║   - Take a shortcut "for now"                                               ║
+║   - Skip the hard part                                                      ║
+║   - Assume you know the right approach                                      ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+**Example of correct behavior:**
+```
+Agent: "I'm encountering a problem implementing the HTML parser's tree construction.
+        The spec requires maintaining an 'active formatting elements' list, but I'm 
+        unclear how this interacts with the foster parenting algorithm.
+        
+        Should I:
+        1. Read more of the spec to understand the interaction?
+        2. Look at how Chromium/Firefox implement this?
+        3. Something else?
+        
+        I don't want to implement this incorrectly."
+```
+
+### Spec-First Development - MANDATORY
+
+**Before implementing ANY feature, you MUST:**
+
+1. **Find the relevant spec** in `specs/whatwg/` or `specs/idl/`
+2. **Read the COMPLETE algorithm** - not just the parts you think you need
+3. **Understand ALL edge cases** mentioned in the spec
+4. **Check cross-references** to other specs
+5. **Identify test cases** from the spec's examples
+6. **ONLY THEN begin implementation**
+
+**If you cannot find the spec:**
+- ASK the user where to find it
+- DO NOT guess or implement from memory
+- DO NOT implement a "reasonable approximation"
+
+### Zero Tolerance for Shortcuts and Workarounds
+
+**The following are ABSOLUTELY FORBIDDEN:**
+
+| Forbidden Action | Why It's Wrong | What To Do Instead |
+|------------------|----------------|-------------------|
+| "Quick fix for now" | Creates tech debt that becomes permanent | Implement correctly the first time |
+| "TODO: implement later" | TODOs are rarely completed | Implement it NOW - no exceptions |
+| "Simplified version" | Spec compliance is binary - you're compliant or you're not | Implement the full spec |
+| "Skip edge case" | Edge cases are where browsers differ and bugs hide | Implement ALL edge cases |
+| "Works for common cases" | Uncommon cases are still part of the web | Implement ALL cases |
+| "Workaround for X" | Workarounds mask underlying bugs | Fix the actual problem |
+| "Close enough" | Close enough is not compliant | Match the spec exactly |
+
+### When You Encounter Problems in Existing Code
+
+**You have permission AND obligation to fix these:**
+
+| What You Find | What You MUST Do |
+|---------------|------------------|
+| **TODO comment** | Implement it. No exceptions. TODOs are not acceptable. |
+| **Memory leak** | Fix it immediately, even if unrelated to your task. |
+| **Bug** | Fix it immediately, even if unrelated to your task. |
+| **Shortcut/workaround** | Refactor to proper implementation. |
+| **Missing spec compliance** | Implement the missing parts. |
+| **Missing tests** | Add them. |
+| **Missing error handling** | Add it. |
+
+**You are not just implementing features - you are maintaining code quality.**
+
+### The Complexity Principle
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   ALWAYS choose the MORE COMPLEX, TIME-CONSUMING, FEATURE-COMPLETE          ║
+║   implementation over ANY shortcut or workaround.                           ║
+║                                                                              ║
+║   If the correct implementation takes 10x longer than a workaround,         ║
+║   you MUST take the 10x longer path.                                        ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+**Why?**
+- Shortcuts compound. One shortcut leads to another.
+- Workarounds become permanent. "Temporary" fixes never get fixed.
+- Tech debt accumulates interest. The longer it exists, the harder it is to fix.
+- Browser compatibility is non-negotiable. Users expect the web to work.
+
+### Implementation Checklist (For Every Feature)
+
+Before marking ANY feature complete, verify:
+
+- [ ] **Spec located**: Found and read the complete WHATWG spec section
+- [ ] **Algorithm implemented**: Every step of the spec algorithm is implemented
+- [ ] **Edge cases handled**: All edge cases mentioned in spec are covered
+- [ ] **Error handling complete**: All error conditions produce correct errors
+- [ ] **Memory safe**: No leaks (tested with `std.testing.allocator`)
+- [ ] **Tests written**: Comprehensive tests for all algorithm paths
+- [ ] **Cross-spec correct**: Dependencies on other specs handled properly
+- [ ] **Browser compatible**: Behavior matches Chrome/Firefox/Safari
+- [ ] **No TODOs left**: Any TODOs encountered were implemented
+- [ ] **No workarounds**: Implementation is the "right way", not the "easy way"
+
+### Examples of WRONG vs RIGHT
+
+**❌ WRONG: Taking a shortcut**
+```zig
+// TODO: Handle surrogate pairs properly
+// For now, just treat them as regular characters
+fn processCodePoint(cp: u21) void {
+    // Simplified implementation
+}
+```
+
+**✅ RIGHT: Full implementation**
+```zig
+/// Process a code point according to the Infra Standard § 4.5
+/// https://infra.spec.whatwg.org/#code-points
+fn processCodePoint(cp: u21) void {
+    if (isSurrogate(cp)) {
+        // Surrogates are handled per spec step 3.2
+        handleSurrogate(cp);
+    } else if (isScalar(cp)) {
+        // Scalar values per spec step 3.1
+        handleScalar(cp);
+    }
+    // ... complete implementation of all cases
+}
+```
+
+**❌ WRONG: Workaround for a bug**
+```zig
+// HACK: Parser sometimes returns null here, just skip it
+if (node == null) continue;
+```
+
+**✅ RIGHT: Fix the actual bug**
+```zig
+// Parser should never return null at this point per spec step 4
+// If it does, that's a bug in the parser that must be fixed
+std.debug.assert(node != null); // Fail fast to find the real bug
+```
+
+**❌ WRONG: Partial implementation**
+```zig
+// Only handles ASCII for now
+fn isWhitespace(c: u8) bool {
+    return c == ' ' or c == '\t' or c == '\n';
+}
+```
+
+**✅ RIGHT: Spec-compliant implementation**
+```zig
+/// ASCII whitespace per Infra Standard § 4.6
+/// https://infra.spec.whatwg.org/#ascii-whitespace
+fn isAsciiWhitespace(cp: u21) bool {
+    return switch (cp) {
+        0x09, // TAB
+        0x0A, // LF
+        0x0C, // FF
+        0x0D, // CR
+        0x20, // SPACE
+        => true,
+        else => false,
+    };
+}
+```
+
+### This Is Non-Negotiable
+
+If you find yourself thinking:
+- "This is good enough for now" → **NO. Implement it correctly.**
+- "I'll fix this later" → **NO. Fix it now.**
+- "This edge case probably doesn't matter" → **NO. It matters.**
+- "The spec is unclear here" → **ASK for clarification.**
+- "This is taking too long" → **Take the time. Quality over speed.**
+
+**There are no exceptions to these rules. Ever.**
+
+---
+
 ## ⚠️ CRITICAL: No Mid-Task Summaries
 
 **NEVER provide summaries or progress reports in the middle of active work.**
@@ -203,7 +420,11 @@ WHATWG specifications frequently reference each other:
 - **Fetch** depends on: URL, Streams, Infra, WebIDL, MIME Sniff
 - **Console** depends on: WebIDL
 
-**Finding Dependencies**: Check `src/` for existing implementations or create temporary mocks for unimplemented specs.
+**Finding Dependencies**: Check `src/` for existing implementations. If a dependency is not implemented, you MUST either:
+1. **Implement the dependency first** - This is the ONLY acceptable approach
+2. **ASK the user** how to proceed if implementing the dependency is unclear
+
+**ZERO TOLERANCE FOR MOCKS, STUBS, OR PLACEHOLDERS.** There are no exceptions. If a dependency doesn't exist, implement it properly or stop and ask the user for guidance. Never create mock implementations under any circumstances.
 
 ## Memory Management
 
@@ -256,6 +477,8 @@ Before every commit, these checks MUST pass:
 - **Recommended**: Install pre-commit hooks to automate checks
 - **Acceptable**: Run checks manually before each commit
 - **Not Acceptable**: Commit without running checks
+
+**Note**: While hook installation is optional, RUNNING the checks is MANDATORY. Every commit MUST pass format, build, and test checks.
 
 **Installing Pre-Commit Hooks** (Optional but Recommended):
 ```bash
@@ -320,8 +543,8 @@ WHATWG specs define web platform behavior. Implement EXACTLY as specified, step 
 ### 3. **Memory Safety**
 Zero leaks, proper cleanup with defer, test with `std.testing.allocator`. No exceptions. Every allocation must have a corresponding deinit or free.
 
-### 4. **Test Thoroughly**
-Write comprehensive tests for all implementations. Test-driven development (TDD) is encouraged but not mandatory. All algorithm steps, edge cases, and error conditions must have test coverage before committing.
+### 4. **Test Thoroughly** ⭐⭐⭐
+Write comprehensive tests for all implementations. **All algorithm steps, edge cases, and error conditions MUST have test coverage before committing.** This is non-negotiable. Untested code is unacceptable code.
 
 ### 5. **Browser Compatibility**
 Implementations must match browser behavior. Test against edge cases and boundary conditions. When in doubt, check how browser implementations (Chrome, Firefox, Safari) handle it.
@@ -340,7 +563,7 @@ WHATWG specs underpin all web platform functionality. Optimize for performance w
 **Use descriptive commit messages** following the project's conventional commit style. See "Workflow" sections below for commit procedures.
 
 ### 8. **Handle Dependencies Correctly** ⭐
-When a spec depends on another spec, check `src/` for implementation. If not implemented, create a temporary mock with clear markers. Never skip dependency handling.
+When a spec depends on another spec, check `src/` for implementation. If not implemented, you MUST implement the dependency first. NEVER create mocks, stubs, or placeholders. There are zero exceptions to this rule.
 
 ### 9. **All Temporary Files Go to tmp/** ⭐
 **DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it.
@@ -707,8 +930,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 ```
 
 **Note on init vs deinit:**
-- `init` may call parent impl directly (for StateType comptime parameter)
-- `deinit` MUST always call parent through interface
+- `init` MAY call parent impl directly ONLY for passing `StateType` comptime parameters
+- This exception applies to EXACTLY this one case: `ParentImpl.init(instance, StateType)` where `StateType` is a comptime type parameter
+- This exception does NOT extend to:
+  - Any other operations during initialization
+  - Helper functions called during init
+  - Any code that "feels like" or "is similar to" init
+  - Passing runtime values (only comptime type parameters qualify)
+- **If you are unsure whether your case qualifies, it does NOT. Go through interfaces.**
+- `deinit` MUST always call parent through interface - NO exceptions, EVER
 - Use `errdefer ParentInterface.deinit(instance)` in init functions
 
 **Correct Pattern:**
@@ -798,7 +1028,7 @@ If you find code that imports `v8` directly in impl files:
 
 **Why This Matters:**
 - **Engine Independence**: Enables future support for JSC, SpiderMonkey, etc.
-- **Testability**: Runtime abstractions can be mocked for unit tests
+- **Testability**: Tests run against real runtime implementations - no mocks
 - **Encapsulation**: V8-specific quirks are isolated in runtime layer
 - **Maintainability**: Engine upgrades only affect runtime layer, not all impls
 
@@ -993,6 +1223,72 @@ This rule was added because the agent REPEATEDLY tried to "temporarily disable" 
 
 **NO EXCEPTIONS. NO "JUST FOR TESTING." NO "TEMPORARY." FIX THE SNAPSHOT BUG.**
 
+### 19. **MUST Validate Features Before Claiming Completion** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║   🛑🛑🛑 YOU CANNOT CLAIM WORK IS DONE WITHOUT VALIDATION 🛑🛑🛑             ║
+║                                                                              ║
+║   Every feature MUST be validated by running tests that prove it works      ║
+║   correctly according to the relevant WHATWG specification.                 ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+**Before claiming ANY feature is complete, you MUST:**
+
+1. **Run tests that validate the behavior** - Not just "it compiles", but actual behavioral validation
+2. **Verify against the spec** - Tests must check that behavior matches the WHATWG specification
+3. **Prefer WPT tests when available** - Web Platform Tests are the gold standard for browser conformance
+4. **See the tests PASS** - You must actually run the tests and observe them passing
+
+**Test Priority Order:**
+
+| Priority | Test Type | When to Use |
+|----------|-----------|-------------|
+| 1st | **WPT Tests** | If a WPT test exists for the feature, RUN IT. This is the authoritative validation. |
+| 2nd | **Existing Unit Tests** | Run any existing tests in `tests/` that cover the feature |
+| 3rd | **New Unit Tests** | Write tests that validate spec compliance if none exist |
+
+**What "Validation" Means:**
+
+- ✅ Running `zig build test` and seeing relevant tests pass
+- ✅ Running WPT tests via the WPT runner and seeing them pass
+- ✅ Writing a new test that exercises the feature and watching it pass
+- ❌ Just saying "I implemented it"
+- ❌ Just saying "the code looks correct"
+- ❌ Just saying "it compiles"
+- ❌ Assuming it works without running tests
+
+**Finding WPT Tests:**
+
+```bash
+# Find WPT tests for a feature (example: URL)
+ls tests/wpt/url/
+
+# Run specific WPT tests
+zig build wpt -- --filter="url"
+```
+
+**FORBIDDEN Behavior:**
+
+| What You Say | Why It's Wrong |
+|--------------|----------------|
+| "Feature X is complete" (without running tests) | You don't know if it works |
+| "I've implemented the algorithm" (without validation) | Implementation != correctness |
+| "Tests can be added later" | NO. Tests validate NOW, before claiming done |
+| "It should work based on the code" | "Should" is not "does" - RUN THE TESTS |
+
+**The Rule Is Simple:**
+
+```
+IF you haven't run tests that validate the feature
+THEN you cannot say the feature is complete
+```
+
+**NO EXCEPTIONS. NO SKIPPING VALIDATION. RUN THE TESTS.**
+
 ---
 
 ## Critical Project Context
@@ -1035,7 +1331,7 @@ This rule was added because the agent REPEATEDLY tried to "temporarily disable" 
 2. **Read spec** - Load complete spec from `specs/whatwg/[spec-name]/` or relevant spec directory
 3. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
 4. **Check dependencies** - Find required specs in `src/`
-5. **Handle missing dependencies** - Create temporary mocks if needed
+5. **Handle missing dependencies** - Implement the dependency first (NEVER mock)
 6. **Write tests first** - Test all algorithm steps and edge cases
 7. **Implement precisely** - Follow spec steps exactly, numbered comments
 8. **Document** - Inline docs with spec references (do this BEFORE committing)
@@ -1352,7 +1648,7 @@ CONTRIBUTING.md                      # ✅ Project documentation
 - **Browser incompatibility** (test against browser implementations)
 - **Missing spec references** (must cite WHATWG spec section)
 - **Incorrect cross-spec behavior** (dependencies must be handled correctly)
-- **Unmarked temporary mocks** (all mocks must have clear TODO markers)
+- **Mocks, stubs, or placeholder implementations** (zero tolerance - implement properly or ask for guidance)
 - **Generated files in project root** (must use `tmp/` unless explicitly requested otherwise)
 - **Accumulating uncommitted changes** (commit after every logical unit of work)
 - **Modifying generated files directly** (changes must go through codegen source files)
@@ -1378,8 +1674,9 @@ Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 - URL, Fetch, and others depend on each other
 
 **If Dependency Not Implemented:**
-1. **Create temporary mock** with clear markers
-2. **Mark as TODO** - Indicate this must be replaced with real implementation
+1. **Implement the dependency first** - This is the ONLY acceptable approach
+2. **ASK the user** how to proceed if the dependency is complex or unclear
+3. **NEVER create mocks, stubs, or placeholders** - There are zero exceptions
 
 ### Internal WebIDL Codegen
 
@@ -1742,7 +2039,7 @@ Add new lessons when you:
 
 **WHATWG specs define the web.** Browser compatibility depends on correct implementations. Precision matters.
 
-**Cross-spec dependencies matter.** Handle them correctly by checking `src/` for implementations or creating temporary mocks.
+**Cross-spec dependencies matter.** Handle them correctly by checking `src/` for implementations. If a dependency doesn't exist, implement it first - never mock.
 
 **Document what you learn.** Future agents (and humans) will thank you for expanding this file when you discover better approaches.
 
