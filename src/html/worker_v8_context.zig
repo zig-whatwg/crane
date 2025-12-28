@@ -1,19 +1,31 @@
-//! Worker V8 Context Setup
+//! Worker V8 Context Setup (PRODUCTION - Used by WPT)
 //!
 //! Spec: HTML Standard § 10.2.5 Processing model
 //! https://html.spec.whatwg.org/#run-a-worker
 //!
-//! This module creates V8 isolates and contexts for worker execution.
+//! This is the PRODUCTION worker implementation used by WPT tests.
 //! Each worker gets its own V8 isolate for complete memory isolation.
 //!
-//! ## Design
+//! ## THIS IS THE CORRECT PATH FOR WPT
 //!
-//! Workers need isolated V8 execution contexts separate from the main thread.
-//! This module provides:
-//! - V8 isolate creation per worker
-//! - V8 context creation within the isolate
-//! - EngineCallbacks implementation for WorkerContext
-//! - Global scope setup (self, console, etc.)
+//! When JavaScript calls `new Worker(url)`, the WebIDL Worker.zig impl uses
+//! this module via the callbacks in `Worker.zig:spawnWorkerThread()`:
+//! - `createIsolateWithInterfaces()` → WorkerV8Context.init()
+//! - `executeScriptWithInterfaces()` → WorkerV8Context.executeScript()
+//!
+//! ## Working Implementations
+//!
+//! This module has REAL, WORKING implementations:
+//! - `importScriptsCallback()` - Fetches scripts via HTTP and executes them
+//! - `workerPostMessageCallback()` - Serializes messages and sends to main thread
+//! - `workerCloseCallback()` - Properly terminates the worker
+//! - Registers WebIDL interfaces (URL, Event, EventTarget, WebSocket, etc.)
+//!
+//! ## vs worker_v8_integration.zig
+//!
+//! Do NOT confuse with `workers/worker_v8_integration.zig` which has STUB
+//! implementations that just log "TODO". That module is LEGACY and NOT
+//! used by WPT.
 //!
 //! ## Usage
 //!
@@ -175,7 +187,6 @@ pub const WorkerV8Context = struct {
             isolate = result.isolate;
             context = result.context;
             used_snapshot = true;
-            std.log.info("[WorkerV8Context] Created worker from snapshot", .{});
         } else {
             // Fallback to raw isolate (no WebIDL interfaces)
             std.log.warn("[WorkerV8Context] Snapshot not available, falling back to raw V8 isolate", .{});
@@ -525,19 +536,11 @@ pub const WorkerV8Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
         }
 
-        // Register done() for WPT test harness - signals test completion
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerDoneCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "done", 4) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
+        // NOTE: We do NOT register a native done() function here.
+        // testharness.js defines its own done() function when loaded via importScripts().
+        // Registering a native done() would override testharness.js's done() and break
+        // the test harness's ability to collect and send test results.
+        // testharness.js's done() will call postMessage() to send results to the main thread.
 
         // Set up worker 'name' property
         const name = dedicated_worker.getName();
@@ -991,7 +994,9 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
         const actual_len = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(buf.len));
         if (actual_len <= 0) continue;
 
-        const url = buf[0..@intCast(actual_len)];
+        // v8_String_WriteUtf8 returns count INCLUDING null terminator, so subtract 1
+        const url_len: usize = @intCast(actual_len);
+        const url = buf[0 .. url_len - 1];
 
         // Fetch the script
         // Per HTML Standard § 10.2.4.2 importScripts(urls):

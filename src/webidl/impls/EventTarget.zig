@@ -854,7 +854,6 @@ pub fn invokeEventListenerCallback(
     // Use the actual event's interface name (e.g., "MessageEvent", "MouseEvent")
     // to ensure the correct prototype chain is set up with the right properties.
     const event_interface_name = template_registry.getInstanceInterfaceName(event);
-    std.log.info("[invokeEventListenerCallback] Wrapping event as {s}", .{event_interface_name});
     const event_v8_obj = template_registry.wrapInstanceAsV8Object(
         event,
         event_interface_name,
@@ -870,9 +869,7 @@ pub fn invokeEventListenerCallback(
     };
 
     // Invoke the callback with the event as argument
-    std.log.info("[invokeEventListenerCallback] Invoking callback for {s}", .{event_interface_name});
     const result = callback_wrapper.call1(v8_context, @ptrCast(event_v8_obj));
-    std.log.info("[invokeEventListenerCallback] Callback returned for {s}, result null: {}", .{ event_interface_name, result == null });
 
     // If result is null, the callback threw an exception
     if (result == null) {

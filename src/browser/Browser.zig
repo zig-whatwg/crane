@@ -166,11 +166,7 @@ pub const Browser = struct {
             // when it creates the isolate
 
             if (config.log_performance) {
-                if (used_snapshot) {
-                    std.log.info("Browser initialized from snapshot in {d}ms", .{init_result.startup_time_ms});
-                } else {
-                    std.log.info("Browser initialized without snapshot in {d}ms", .{init_result.startup_time_ms});
-                }
+                if (used_snapshot) {} else {}
             }
         } else {
             // No snapshot - create fresh isolate
@@ -447,16 +443,29 @@ pub const Browser = struct {
     /// - Falls back to short sleep if no wakeup is available
     pub fn runEventLoop(self: *Browser, timeout_ms: u64) !void {
         const event_loop = self.event_loop orelse return error.NotInitialized;
+        const isolate = self.isolate orelse return error.NotInitialized;
         const start_time = std.time.milliTimestamp();
 
+        var iteration: u32 = 0;
         while (true) {
+            iteration += 1;
+
             // Run one iteration
             _ = event_loop.eventLoop().runOnce();
 
             // Flush pending worker messages to the main thread
             // Workers post messages via postMessage() which queue to pending_messages.
             // This transfers them to message_queue and dispatches to handlers.
-            impls.Worker.flushPendingWorkerMessages();
+            //
+            // CRITICAL: Create a HandleScope before flushing worker messages.
+            // Message dispatch can trigger V8 GC, which may fire weak callbacks.
+            // Without a HandleScope, V8 crashes with "Cannot create a handle without a HandleScope".
+            // This was discovered investigating Bus error crashes during WPT worker tests.
+            {
+                const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
+                defer if (handle_scope) |h| v8.ffi.v8_HandleScope_Dispose(h);
+                impls.Worker.flushPendingWorkerMessages();
+            }
 
             // Check timeout
             const now = std.time.milliTimestamp();

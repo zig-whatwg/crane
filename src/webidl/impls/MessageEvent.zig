@@ -131,7 +131,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // MessageEvent -> Event, so we use state.base.own._internal
     const EventImpl = @import("Event.zig");
     const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const event_internal = try ArenaAllocator.get().create(EventImpl.InternalState);
+    const arena = ArenaAllocator.get();
+    const event_internal = try arena.create(EventImpl.InternalState);
     event_internal.* = EventImpl.InternalState.init(ctx.allocator);
     state.base.own._internal = event_internal;
 
@@ -190,7 +191,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    std.log.info("[MessageEvent.get_data] Called on instance {*}, data type: {s}", .{ instance, @tagName(state.own.data) });
     return state.own.data;
 }
 

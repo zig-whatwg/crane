@@ -1,39 +1,36 @@
-//! Worker V8 Integration
+//! Worker V8 Integration (LEGACY - DO NOT USE FOR WPT)
+//!
+//! ⚠️ DEPRECATED: This module contains STUB implementations that are NOT suitable
+//! for WPT tests or production use. For WPT worker tests, use WorkerV8Context
+//! from `src/html/worker_v8_context.zig` instead.
+//!
+//! ## Why This Exists
+//!
+//! This module was an early threading infrastructure attempt that has STUB
+//! implementations of:
+//! - importScripts() - just logs, doesn't fetch
+//! - postMessage() - just logs, doesn't send
+//! - close() - just logs, doesn't terminate
+//!
+//! ## What To Use Instead
+//!
+//! For WPT tests and production workers, use the callbacks in Worker.zig:
+//! - `createIsolateWithInterfaces()` → Uses WorkerV8Context.init()
+//! - `executeScriptWithInterfaces()` → Uses WorkerV8Context.executeScript()
+//! - `dispatchMessageWithInterfaces()` → Real message dispatch
+//!
+//! The WebIDL Worker constructor already uses the correct path via
+//! `Worker.zig:spawnWorkerThread()` which sets up WorkerV8Context-based
+//! callbacks.
+//!
+//! ## Legacy Usage (Thread Runner only)
+//!
+//! This module is ONLY for the low-level ThreadedWorkerManager when
+//! external code needs raw V8 isolate management without WebIDL interfaces.
+//! This is NOT used by WPT.
 //!
 //! Spec: HTML Standard § 10.2.5 Processing model
 //! https://html.spec.whatwg.org/#run-a-worker
-//!
-//! This module integrates the worker threading infrastructure with V8:
-//! - Creates isolated V8 contexts per worker thread
-//! - Sets up WorkerGlobalScope bindings
-//! - Handles import.meta.url for module workers
-//! - Manages per-isolate memory allocation
-//!
-//! ## V8 Isolate Per Worker
-//!
-//! Each worker thread gets its own V8 Isolate, providing:
-//! - Complete memory isolation (no shared heap)
-//! - Independent garbage collection
-//! - Thread-safe script execution
-//! - No data races between JavaScript contexts
-//!
-//! ## Usage
-//!
-//! ```zig
-//! const v8_worker = @import("worker_v8_integration.zig");
-//!
-//! // Create V8 integration for worker manager
-//! var integration = try v8_worker.WorkerV8Integration.init(allocator);
-//! defer integration.deinit();
-//!
-//! // Wire up to worker manager
-//! manager.setV8Callbacks(
-//!     integration.createIsolateCallback(),
-//!     integration.disposeIsolateCallback(),
-//!     integration.executeScriptCallback(),
-//!     integration.getContext(),
-//! );
-//! ```
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -310,7 +307,6 @@ pub const WorkerIsolateData = struct {
         // First message is the worker script to execute
         if (!self.script_executed) {
             self.script_executed = true;
-            std.log.info("Executing worker script ({d} bytes)", .{data_str.len});
             try self.executeScript(data_str);
             return;
         }

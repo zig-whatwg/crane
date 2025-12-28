@@ -1216,7 +1216,13 @@ fn print(comptime fmt: []const u8, args: anytype) void {
 
 /// Main entry point
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // Enable thread safety for multi-threaded worker execution.
+    // Worker threads allocate messages using the main allocator, so it must be thread-safe.
+    // Also enable safety checks for debugging.
+    var gpa = std.heap.GeneralPurposeAllocator(.{
+        .thread_safe = true, // CRITICAL: Workers use main allocator from separate threads
+        .safety = true,
+    }){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

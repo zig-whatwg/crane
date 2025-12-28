@@ -348,7 +348,6 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
                 // Get the document from the Window
                 if (WindowImpl.get_document(window_instance)) |doc_instance| {
                     if (interfaces.Document.get_URL(doc_instance)) |doc_url| {
-                        std.log.info("[Worker] Got document URL: {s}", .{doc_url});
                         break :blk doc_url;
                     } else |err| {
                         std.log.warn("[Worker] Failed to get document URL: {}", .{err});
@@ -631,26 +630,34 @@ fn spawnWorkerThread(internal: *InternalState) !void {
 
     // Send the script to the worker thread for execution
     // The worker thread will execute it after creating its V8 context
+    //
+    // CRITICAL: Use page_allocator for cross-thread messaging.
+    // The message will be freed by the worker thread via msg.deinit().
+    // Using the main thread's allocator (internal.allocator) from the worker thread
+    // would corrupt the allocator's internal state and cause Bus errors.
+    // page_allocator is thread-safe (it just maps/unmaps memory pages).
+    const cross_thread_allocator = std.heap.page_allocator;
+
     const js_value = structured_clone.JSValue{ .string = script };
     const serialized = try structured_clone.structuredSerialize(
-        internal.allocator,
+        cross_thread_allocator,
         &js_value,
     );
 
     // Create a SerializedMessage on the heap for cross-thread transfer
-    const msg = internal.allocator.create(workers.ThreadSafeMessageQueue.SerializedMessage) catch {
+    const msg = cross_thread_allocator.create(workers.ThreadSafeMessageQueue.SerializedMessage) catch {
         // Clean up the serialized value struct (but not its contents, as we haven't copied yet)
-        internal.allocator.destroy(serialized);
+        cross_thread_allocator.destroy(serialized);
         return;
     };
     msg.* = .{
         .data = serialized.*,
         .transfers = null,
-        .allocator = internal.allocator,
+        .allocator = cross_thread_allocator,
     };
 
     // Free the SerializedValue struct (its contents are now owned by msg.data)
-    internal.allocator.destroy(serialized);
+    cross_thread_allocator.destroy(serialized);
 
     thread_state.inbox.enqueue(msg) catch {
         msg.deinit();
@@ -852,6 +859,9 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         return;
     };
 
+    // Check if the internal pointer itself is valid by reading a simple field
+    // If this crashes, internal is a bad pointer
+
     // Get isolate and V8 context
     const isolate = internal.isolate orelse {
         return;
@@ -955,7 +965,7 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
             },
             else => {},
         }
-    }
+    } else {}
 
     // If we couldn't get V8 data (JSON parse failed or not a string message),
     // fire messageerror event per HTML Standard § 9.3.6.2:
@@ -1657,26 +1667,18 @@ fn executeScriptWithInterfaces(isolate_data: *anyopaque, script: []const u8, sou
 fn dispatchMessageWithInterfaces(isolate_data: *anyopaque, msg: *workers.ThreadSafeMessageQueue.SerializedMessage) anyerror!void {
     const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
 
-    std.log.info("[Worker] dispatchMessageWithInterfaces: msg.data.type={}", .{msg.data.type});
-
     // Deserialize and dispatch as MessageEvent
     // For now, if this is the initial script message, execute it as script
     if (msg.data.type == .string_object) {
         const script = msg.data.data.string_object;
-        std.log.info("[Worker] Executing script (string_object), len={d}", .{script.len});
         _ = try worker_ctx.executeScript(script);
     } else if (msg.data.type == .primitive) {
         // Check if it's a string primitive
         if (msg.data.data.primitive == .string) {
             const script = msg.data.data.primitive.string;
-            std.log.info("[Worker] Executing script (primitive.string), len={d}", .{script.len});
             _ = try worker_ctx.executeScript(script);
-        } else {
-            std.log.info("[Worker] Received primitive but not string: {}", .{msg.data.data.primitive});
-        }
-    } else {
-        std.log.info("[Worker] Received non-script message type: {}", .{msg.data.type});
-    }
+        } else {}
+    } else {}
     // TODO: Handle actual postMessage data as MessageEvent
 
     // Clean up the message
@@ -1714,6 +1716,7 @@ pub fn getGlobalWorkerWakeup() ?*workers.ThreadedWorkerRegistry.EventWakeup {
 /// This should be called from the main thread's event loop to deliver
 /// messages that workers have posted via postMessage().
 pub fn flushPendingWorkerMessages() void {
+
     // First, poll threaded workers' outboxes for cross-thread messages.
     // This is the primary path for workers running on separate OS threads.
     _ = workers.ThreadedWorkerRegistry.pollAndDispatch();

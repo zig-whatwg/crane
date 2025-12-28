@@ -165,7 +165,8 @@ pub const V8EventLoop = struct {
     const Self = @This();
 
     /// Backoff configuration
-    const BACKOFF_THRESHOLD: u32 = 10; // Start backoff after 10 empty polls
+    /// DIAGNOSTIC: Temporarily disabled by setting threshold very high
+    const BACKOFF_THRESHOLD: u32 = 10000; // Start backoff after 10000 empty polls (effectively disabled)
     const MAX_BACKOFF_MS: u64 = 100; // Cap at 100ms
 
     /// Initialize a new V8 event loop with timer support
@@ -500,7 +501,17 @@ pub const V8EventLoop = struct {
                 const exponent = self.empty_poll_count - BACKOFF_THRESHOLD;
                 const backoff_ms: u64 = @min(MAX_BACKOFF_MS, @as(u64, 1) << @min(exponent, 6));
                 const ns_per_ms: u64 = 1_000_000;
+
+                // DIAGNOSTIC: Print self address and some key fields before sleep
+                std.fs.File.stderr().writeAll("") catch {}; // Flush stderr
+
+                std.fs.File.stderr().writeAll("") catch {}; // Flush stderr
+
                 std.Thread.sleep(backoff_ms * ns_per_ms);
+
+                std.fs.File.stderr().writeAll("") catch {}; // Flush stderr
+
+                // DIAGNOSTIC: Check if self is still valid after sleep
             }
         }
 

@@ -475,7 +475,9 @@ pub const WorkerPort = struct {
     /// Public so that the event loop can poll and dispatch worker messages
     /// Thread-safe: messages are removed under lock, handlers called without lock
     pub fn dispatchMessages(self: *WorkerPort) void {
+        var iteration: usize = 0;
         while (true) {
+            iteration += 1;
             // Remove one message under lock
             const msg = blk: {
                 self.queue_mutex.lock();
@@ -484,10 +486,14 @@ pub const WorkerPort = struct {
                     break :blk null;
                 }
                 break :blk self.message_queue.orderedRemove(0);
-            } orelse break;
+            } orelse {
+                break;
+            };
 
             // Call handler without holding lock (allows worker to post more messages)
-            defer msg.deinit();
+            defer {
+                msg.deinit();
+            }
             if (self.on_message) |handler| {
                 handler(self, msg, self.on_message_context);
             }
@@ -524,12 +530,20 @@ pub const QueuedMessage = struct {
     }
 
     pub fn deinit(self: *QueuedMessage) void {
+
         // Free the serialized data
         self.data.deinit();
-        self.allocator.destroy(self.data);
 
-        // Free this message
-        self.allocator.destroy(self);
+        // Cache allocator locally before destroying anything
+        const alloc = self.allocator;
+        const data_ptr = self.data;
+        const self_ptr = self;
+
+        alloc.destroy(data_ptr);
+
+        // Free this message (self is now invalid after this call!)
+        alloc.destroy(self_ptr);
+        // NOTE: Cannot log here - self_ptr memory is freed!
     }
 };
 

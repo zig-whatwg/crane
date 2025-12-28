@@ -173,7 +173,6 @@ pub fn createWorkerIsolateFromSnapshot() ?SnapshotResult {
         return null;
     }
 
-    std.log.info("[snapshot_loader] Worker: Created isolate from snapshot successfully", .{});
 
     return SnapshotResult{
         .isolate = isolate.?,

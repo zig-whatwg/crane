@@ -1535,6 +1535,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Use compile-time debug logging to avoid runtime overhead
                     // This is called on every property access, so must be zero-cost when disabled
                     debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ iface_name, getter_name });
+
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
 
@@ -1952,9 +1953,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                 const current_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
-                                break :comptime_convert conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
+                                const v8_converted = conv.toV8Value(runtime.JSValue, isolate_inner, current_context, result) catch {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
+                                break :comptime_convert v8_converted;
                             } else if (comptime isOptionalCallbackType(PayloadType)) {
                                 // Optional callback type (like EventHandler = ?*const fn(...))
                                 // These are stored as tagged pointers to V8 GlobalHandles
