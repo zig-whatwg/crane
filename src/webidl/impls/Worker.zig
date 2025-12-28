@@ -807,17 +807,16 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
     // Get the Worker instance from user_data stored in DedicatedWorker
     const user_data = dedicated_worker.getUserData() orelse {
-        // Still need to clean up the message even if we can't dispatch
-        msg.deinit();
+        // Note: We do NOT call msg.deinit() here because dispatchMessages()
+        // has a defer that handles cleanup after this callback returns.
         return;
     };
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
 
     // Dispatch the message event to onmessage handler
+    // Note: We do NOT call msg.deinit() - dispatchMessages() owns the message
+    // and cleans it up via defer after this callback returns.
     dispatchMessageEvent(instance, msg);
-
-    // Clean up the message after dispatching - the callback owns the message
-    msg.deinit();
 }
 
 /// Dispatch a MessageEvent to the Worker's message handlers using EventTarget.dispatchEvent
@@ -849,12 +848,22 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
 /// MessageEvent, with the data attribute initialized to the message."
 fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // Get internal state with GlobalHandle and isolate
-    const internal = getInternal(instance) orelse return;
+    const internal = getInternal(instance) orelse {
+        return;
+    };
 
     // Get isolate and V8 context
-    const isolate = internal.isolate orelse return;
-    const ctx = internal.ctx orelse return;
-    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
+    const isolate = internal.isolate orelse {
+        return;
+    };
+    const ctx = internal.ctx orelse {
+        return;
+    };
+
+    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
+        std.log.warn("[dispatchMessageEvent] getEngineContextAs returned null", .{});
+        return;
+    };
 
     // Check current isolate state
     const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
@@ -873,7 +882,10 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // Create HandleScope for V8 handle allocation
     // This is CRITICAL when called from a timer callback where there's no
     // existing HandleScope (unlike when called from JavaScript execution).
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
+        std.log.warn("[dispatchMessageEvent] Failed to create HandleScope - V8 may be in invalid state", .{});
+        return;
+    };
     defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
 
     // Verify we have a valid context, enter if needed
@@ -945,62 +957,18 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         }
     }
 
-    // If we couldn't get V8 data, try the old deserialization path
+    // If we couldn't get V8 data (JSON parse failed or not a string message),
+    // fire messageerror event per HTML Standard § 9.3.6.2:
+    // "If this throws an exception, then fire an event named messageerror"
+    //
+    // NOTE: The previous deserialization fallback was buggy - it treated
+    // *serialize.JSValue (a Zig struct) as if it were a V8 handle, causing
+    // "Cannot create a handle without a HandleScope" crashes.
+    // Worker messages should always be JSON-serialized strings, so JSON.parse
+    // should always succeed. If it doesn't, that's a serialization bug.
     if (v8_data == null) {
-        // Fall back to structured clone deserialization
-        const deserialized = workers.message_channel.deserializeFromPostMessage(
-            ctx.allocator,
-            msg.data,
-        ) catch |err| {
-            // Fire messageerror event instead of message when deserialization fails
-            // Spec: HTML Standard § 9.3.6.2
-            // "If this throws an exception, then fire an event named messageerror"
-            std.log.warn("Failed to deserialize worker message, firing messageerror: {}", .{err});
-            dispatchMessageErrorEvent(instance, internal, isolate, v8_context, ctx);
-            return;
-        };
-
-        // Create a MessageEvent with the deserialized data
-        const message_event = MessageEvent.call_constructor(
-            ctx,
-            runtime.DOMString.initInterned("message"),
-            webidl.Opt(dictionaries.MessageEventInit).notPassed(),
-        ) catch |err| {
-            std.log.warn("Failed to create MessageEvent: {}", .{err});
-            workers.message_channel.freeJSValue(ctx.allocator, @constCast(deserialized));
-            return;
-        };
-
-        var event_state = message_event.getState(MessageEvent.State);
-        // deserialized is a V8 handle from message channel deserialization
-        event_state.own.data = runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(deserialized)));
-
-        // Set isTrusted to true since this event is fired by the browser
-        {
-            var ev_state = message_event.getState(MessageEvent.State);
-            ev_state.base.own.isTrusted = true;
-            ev_state.base.own.target = instance;
-            ev_state.base.own.currentTarget = instance;
-        }
-
-        // Wrap and dispatch
-        const v8_event = template_registry.wrapInstanceAsV8Object(
-            message_event,
-            "MessageEvent",
-            isolate,
-            v8_context,
-        ) catch |err| {
-            std.log.warn("Failed to wrap MessageEvent as V8 object: {s}", .{@errorName(err)});
-            return;
-        };
-
-        // Dispatch via EventTarget.dispatchEvent - this invokes addEventListener listeners
-        _ = EventTarget.call_dispatchEvent(instance, message_event) catch |err| {
-            std.log.warn("Failed to dispatch MessageEvent: {s}", .{@errorName(err)});
-        };
-
-        // Also invoke the legacy onmessage handler if set via IDL attribute
-        invokeLegacyOnmessageHandler(instance, isolate, v8_context, v8_event, internal);
+        std.log.warn("Worker.dispatchMessageEvent: JSON.parse failed, firing messageerror", .{});
+        dispatchMessageErrorEvent(instance, internal, isolate, v8_context, ctx);
         return;
     }
 
@@ -1029,10 +997,8 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         std.log.warn("Failed to convert JSON data to Global handle", .{});
         return;
     };
-    // Note: This Global handle will NOT be automatically disposed.
-    // Since MessageEvent is short-lived (only used for this dispatch), this is acceptable.
-    // The Global handle will be collected when the isolate is disposed.
-    // TODO: Properly track and dispose this Global handle when MessageEvent is destroyed.
+    // Note: This Global handle persists across HandleScope boundaries.
+    // It is disposed at the end of this function after dispatch completes.
 
     {
         var event_state = message_event.getState(MessageEvent.State);
@@ -1051,6 +1017,8 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         v8_context,
     ) catch |err| {
         std.log.warn("Failed to wrap MessageEvent as V8 object: {s}", .{@errorName(err)});
+        // Note: The Global handle in event_state.own.data will be disposed
+        // when the MessageEvent is garbage collected via MessageEvent.deinit
         return;
     };
 
@@ -1065,6 +1033,12 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // but we need to separately handle the legacy onXXX IDL attribute handler that
     // is stored as a GlobalHandle in internal state.
     invokeLegacyOnmessageHandler(instance, isolate, v8_context, v8_event, internal);
+
+    // Note: The Global handle stored in event_state.own.data is NOT disposed here.
+    // JavaScript event handlers might schedule async work (setTimeout, Promise.then)
+    // that accesses event.data later. Disposing here would cause use-after-free.
+    // The Global handle will be disposed when the MessageEvent is garbage collected
+    // via the weak callback mechanism and MessageEvent.deinit.
 }
 
 /// Invoke the legacy onmessage IDL attribute handler

@@ -158,6 +158,10 @@ pub const V8EventLoop = struct {
     /// When set, runOnce() will poll these for completed work
     external_pollable: ?Pollable,
 
+    /// Optional worker port pollable for message passing from workers
+    /// When set, runOnce() will poll worker message ports and dispatch messages
+    worker_port_pollable: ?Pollable,
+
     const Self = @This();
 
     /// Backoff configuration
@@ -192,6 +196,7 @@ pub const V8EventLoop = struct {
             .frozen = false,
             .empty_poll_count = 0,
             .external_pollable = null,
+            .worker_port_pollable = null,
         };
     }
 
@@ -209,7 +214,21 @@ pub const V8EventLoop = struct {
             .frozen = false,
             .empty_poll_count = 0,
             .external_pollable = null,
+            .worker_port_pollable = null,
         };
+    }
+
+    /// Set a worker port pollable for dispatching worker messages
+    ///
+    /// When set, runOnce() will poll this to dispatch pending worker messages.
+    /// This integrates worker message passing into the browser's event loop.
+    pub fn setWorkerPortPollable(self: *Self, pollable: ?Pollable) void {
+        self.worker_port_pollable = pollable;
+    }
+
+    /// Get the worker port pollable
+    pub fn getWorkerPortPollable(self: *Self) ?Pollable {
+        return self.worker_port_pollable;
     }
 
     /// Set an external pollable resource (e.g., AsyncCurlManager for HTTP)
@@ -440,6 +459,15 @@ pub const V8EventLoop = struct {
         if (self.external_pollable) |pollable| {
             const external_work = pollable.poll();
             if (external_work) {
+                did_work = true;
+            }
+        }
+
+        // Step 1c: Poll worker message ports
+        // This dispatches messages from workers to the main thread
+        if (self.worker_port_pollable) |pollable| {
+            const worker_work = pollable.poll();
+            if (worker_work) {
                 did_work = true;
             }
         }

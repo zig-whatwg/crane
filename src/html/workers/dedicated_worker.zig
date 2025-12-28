@@ -192,6 +192,35 @@ pub const ThreadedWorkerRegistry = struct {
         return dispatched_any;
     }
 
+    /// Terminate all workers without destroying the registry.
+    /// Called during navigation to clean up workers from the previous context.
+    /// Workers will be unregistered as they terminate.
+    pub fn terminateAllWorkers() void {
+        mutex.lock();
+        defer mutex.unlock();
+
+        var iter = workers.valueIterator();
+        while (iter.next()) |worker_ptr| {
+            const worker = worker_ptr.*;
+
+            // Terminate the worker agent (stops event loop, closes ports)
+            worker.agent.terminate();
+
+            // Request termination on the thread state (signals thread to exit)
+            if (worker.thread_state) |ts| {
+                ts.requestTermination();
+            }
+        }
+
+        // Wait briefly for threads to process termination signal
+        // This allows worker threads to exit their loop cleanly
+        std.Thread.sleep(10_000_000); // 10ms grace period
+
+        // Clear the workers map - they should unregister themselves,
+        // but we clear to avoid stale references
+        workers.clearRetainingCapacity();
+    }
+
     /// Cleanup the registry
     pub fn deinit() void {
         mutex.lock();
@@ -641,28 +670,36 @@ pub const DedicatedWorker = struct {
         }
 
         const serialized = try serializeForPostMessage(self.allocator, message);
-        errdefer {
-            var mutable = @constCast(serialized);
-            mutable.deinit();
-            self.allocator.destroy(mutable);
-        }
 
         // If we have a thread state, use the thread-safe outbox for cross-thread messaging.
         // This is the correct path when running on a separate OS thread.
         if (self.thread_state) |ts| {
             // Create a SerializedMessage for the thread-safe queue
             const thread_msg = self.allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
+                // Clean up serialized on allocation failure
+                var mutable = @constCast(serialized);
+                mutable.deinit();
+                self.allocator.destroy(mutable);
                 return error.OutOfMemory;
             };
+
+            // Copy the serialized value into thread_msg (shallow copy - internal pointers shared)
             thread_msg.* = .{
                 .data = serialized.*,
                 .transfers = null,
                 .allocator = self.allocator,
             };
 
+            // Free ONLY the original serialized pointer container (not the internal data).
+            // The internal data is now owned by thread_msg.data via the shallow copy above.
+            // DO NOT call serialized.deinit() - that would free the internal data that
+            // thread_msg now references.
+            self.allocator.destroy(serialized);
+
             // Enqueue to the thread-safe outbox - main thread will poll this
             // The outbox has a wakeup that will signal the main thread immediately
             ts.outbox.enqueue(thread_msg) catch |err| {
+                // thread_msg.deinit() frees both the internal data AND the thread_msg struct
                 thread_msg.deinit();
                 return switch (err) {
                     error.WorkerClosing => error.OutOfMemory, // Map to existing error type
@@ -674,7 +711,12 @@ pub const DedicatedWorker = struct {
 
         // Fallback: same-thread mode (tests, single-threaded execution)
         // Use thread-local pending_messages as workaround for V8 HandleScope crash
+        // QueuedMessage.init takes ownership of the serialized pointer
         const msg = message_channel.QueuedMessage.init(self.allocator, serialized, null) catch {
+            // Clean up serialized on allocation failure
+            var mutable = @constCast(serialized);
+            mutable.deinit();
+            self.allocator.destroy(mutable);
             return error.OutOfMemory;
         };
 
@@ -682,6 +724,7 @@ pub const DedicatedWorker = struct {
             .port = self.port_pair.outside_port,
             .msg = msg,
         }) catch {
+            // msg.deinit() handles freeing both msg and its internal serialized data
             msg.deinit();
             return error.OutOfMemory;
         };

@@ -1538,6 +1538,7 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("impls", impls_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dictionaries", dictionaries_mod);
+    browser_mod.addImport("html", html_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
     const intl_mod = b.addModule("intl", .{

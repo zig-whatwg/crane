@@ -1253,6 +1253,15 @@ pub extern fn v8_Object_GetCreationContext_Raw(obj_ptr: *const anyopaque) ?*Cont
 /// TypeError constructor comes from the correct realm.
 pub extern fn v8_Exception_TypeErrorInContext(context: *Context, message: *String) ?*Value;
 
+/// Create RangeError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_RangeErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create SyntaxError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_SyntaxErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create Error in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_ErrorInContext(context: *Context, message: *String) ?*Value;
+
 /// Get the creation context of an object's prototype.
 /// This walks up the prototype chain to find the context where the method/property
 /// was defined, which is needed for cross-realm error handling.

@@ -112,7 +112,74 @@ pub const SnapshotError = error{
     PlatformInitFailed,
     /// Out of memory
     OutOfMemory,
+    /// External references not registered (call initializeV8 first from main thread)
+    ExternalRefsNotRegistered,
 };
+
+/// Create a new V8 isolate from the snapshot for use in worker threads.
+///
+/// IMPORTANT: This function is designed for worker threads and assumes:
+/// 1. The main browser has already called initializeV8() which registered external references
+/// 2. The snapshot has been loaded and cached (tracked_snapshot_data is valid)
+///
+/// Unlike initializeV8(), this function:
+/// - Does NOT re-register external references (uses already-registered ones)
+/// - Does NOT reload the snapshot file (uses cached data)
+/// - IS thread-safe for creating worker isolates
+///
+/// Returns null if:
+/// - External references haven't been registered yet
+/// - Snapshot data isn't available
+/// - Isolate/context creation fails
+pub fn createWorkerIsolateFromSnapshot() ?SnapshotResult {
+    // Check if external references have been registered by the main browser
+    if (!ext_refs.hasRegisteredExternalReferences()) {
+        std.log.err("[snapshot_loader] Worker: External references not registered (main browser must initialize first)", .{});
+        return null;
+    }
+
+    // Get the already-registered external references
+    const refs_ptr = ext_refs.getRuntimeExternalReferencesPtr();
+
+    // Use the cached snapshot data from the main browser's initialization
+    const snapshot_data = tracked_snapshot_data orelse {
+        std.log.err("[snapshot_loader] Worker: No snapshot data available (main browser must initialize first)", .{});
+        return null;
+    };
+
+    // Validate the snapshot data
+    const validation = validateSnapshotData(snapshot_data);
+    if (!validation.isUsable()) {
+        std.log.err("[snapshot_loader] Worker: Cached snapshot data is invalid: {s}", .{validation.error_message orelse "unknown"});
+        return null;
+    }
+
+    // Create a new isolate from the snapshot using already-registered external refs
+    const isolate = ffi.v8_Isolate_NewFromSnapshot(
+        snapshot_data.ptr,
+        @intCast(snapshot_data.len),
+        refs_ptr,
+    );
+    if (isolate == null) {
+        std.log.err("[snapshot_loader] Worker: Failed to create isolate from snapshot", .{});
+        return null;
+    }
+
+    // Create context from the snapshot
+    const context = ffi.v8_Context_NewFromSnapshot(isolate.?);
+    if (context == null) {
+        std.log.err("[snapshot_loader] Worker: Failed to create context from snapshot", .{});
+        ffi.v8_Isolate_Dispose(isolate.?);
+        return null;
+    }
+
+    std.log.info("[snapshot_loader] Worker: Created isolate from snapshot successfully", .{});
+
+    return SnapshotResult{
+        .isolate = isolate.?,
+        .context = context.?,
+    };
+}
 
 /// Initialize V8 from a snapshot if available, otherwise fall back to fresh initialization.
 ///

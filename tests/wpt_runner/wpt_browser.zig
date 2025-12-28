@@ -37,6 +37,7 @@ const std = @import("std");
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
+const html = @import("html");
 
 const test_harness = @import("test_harness.zig");
 const test_parser = @import("test_parser.zig");
@@ -287,13 +288,20 @@ pub const WptBrowser = struct {
             if (complete_result) |val| {
                 // Check if it's true
                 if (self.isV8True(val)) {
+                    // Terminate all workers immediately to avoid lingering threads
+                    // This is critical for performance - workers use EventWakeup.wait()
+                    // which will block until signaled by terminateAllWorkers()
+                    html.workers.ThreadedWorkerRegistry.terminateAllWorkers();
+
                     // Collect results
                     return try self.collectResults(ctx, start_time, test_path);
                 }
             }
         }
 
-        // Timeout
+        // Timeout - also terminate workers to clean up
+        html.workers.ThreadedWorkerRegistry.terminateAllWorkers();
+
         const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
         var result = try test_harness.TestResult.init(self.allocator, test_path);
         result.status = .timeout;

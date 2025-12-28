@@ -272,6 +272,33 @@ pub fn wrapInstanceAsV8Object(
         return error.ObjectCreationFailed;
     };
 
+    // ========================================
+    // SET PROTOTYPE: Use FunctionTemplate's prototype, NOT Constructor.prototype from global
+    // ========================================
+    // When loading from a V8 snapshot, Constructor.prototype from the global may not have
+    // the accessor properties registered. This is because accessor properties are registered
+    // on FunctionTemplate's PrototypeTemplate, but only the Constructor function itself
+    // gets serialized into the snapshot.
+    //
+    // Solution: Use v8_FunctionTemplate_GetFunction() to get a function from the runtime
+    // template, then get its .prototype property. This prototype WILL have the accessor
+    // properties because it's created from the runtime template.
+    const func = v8.v8_FunctionTemplate_GetFunction(template, context);
+    if (func) |constructor_func| {
+        const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+        if (prototype_str) |proto_name| {
+            const prototype_value = v8.v8_Object_Get(@ptrCast(constructor_func), context, @ptrCast(proto_name));
+            if (prototype_value) |proto_val| {
+                if (v8.v8_Value_IsObject(proto_val)) {
+                    const success = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
+                    if (std.mem.eql(u8, interface_name, "MessageEvent")) {
+                        std.log.info("[wrapInstanceAsV8Object] Set MessageEvent prototype from template: success={}", .{success});
+                    }
+                }
+            }
+        }
+    }
+
     // Store the Zig instance in internal field 0
     v8.v8_Object_SetAlignedPointerInInternalField(
         v8_object,
@@ -498,6 +525,16 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 
     if (inst_vtable == &interfaces.AbortSignal.vtable) {
         return "AbortSignal";
+    }
+
+    // Event subtypes - must be checked BEFORE base Event
+    // (because subtype vtables are different from Event.vtable)
+    if (inst_vtable == &interfaces.MessageEvent.vtable) {
+        return "MessageEvent";
+    }
+
+    if (inst_vtable == &interfaces.CustomEvent.vtable) {
+        return "CustomEvent";
     }
 
     if (inst_vtable == &interfaces.Event.vtable) {

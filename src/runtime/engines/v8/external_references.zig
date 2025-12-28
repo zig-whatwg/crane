@@ -233,6 +233,12 @@ pub fn registerAllInterfaceCallbacks() void {
 /// 7. Context manager callbacks
 var registration_call_count: usize = 0;
 
+/// Check if external references have been registered.
+/// Workers use this to verify the main browser has initialized before creating isolates.
+pub fn hasRegisteredExternalReferences() bool {
+    return registration_call_count > 0;
+}
+
 pub fn registerAllExternalReferences() void {
     registration_call_count += 1;
     std.debug.print("[registerAllExternalReferences] CALL #{d}\n", .{registration_call_count});

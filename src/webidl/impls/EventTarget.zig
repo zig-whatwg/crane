@@ -752,10 +752,12 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     // Verify it's a function
     if (!v8_engine.ffi.v8_Value_IsFunction(callback_value)) return;
 
-    // Wrap the event as a V8 object
+    // Wrap the event as a V8 object with the actual event type
+    // (e.g., "MessageEvent", "MouseEvent") for correct prototype chain
+    const event_interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
     const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
         event,
-        "Event",
+        event_interface_name,
         v8_isolate,
         v8_context,
     ) catch return;
@@ -849,12 +851,17 @@ pub fn invokeEventListenerCallback(
     const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return false;
 
     // Wrap the event as a V8 object so we can pass it to the callback
+    // Use the actual event's interface name (e.g., "MessageEvent", "MouseEvent")
+    // to ensure the correct prototype chain is set up with the right properties.
+    const event_interface_name = template_registry.getInstanceInterfaceName(event);
+    std.log.info("[invokeEventListenerCallback] Wrapping event as {s}", .{event_interface_name});
     const event_v8_obj = template_registry.wrapInstanceAsV8Object(
         event,
-        "Event", // Base type - V8 will use the actual event's prototype
+        event_interface_name,
         v8_isolate,
         v8_context,
-    ) catch {
+    ) catch |err| {
+        std.log.warn("[invokeEventListenerCallback] Failed to wrap event: {s}", .{@errorName(err)});
         // Failed to wrap event - cannot invoke callback
         if (legacy_flag) |flag| {
             flag.* = true;
@@ -863,7 +870,9 @@ pub fn invokeEventListenerCallback(
     };
 
     // Invoke the callback with the event as argument
+    std.log.info("[invokeEventListenerCallback] Invoking callback for {s}", .{event_interface_name});
     const result = callback_wrapper.call1(v8_context, @ptrCast(event_v8_obj));
+    std.log.info("[invokeEventListenerCallback] Callback returned for {s}, result null: {}", .{ event_interface_name, result == null });
 
     // If result is null, the callback threw an exception
     if (result == null) {

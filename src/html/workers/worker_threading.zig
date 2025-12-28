@@ -40,6 +40,18 @@ const Condition = std.Thread.Condition;
 const platform = @import("platform");
 const EventWakeup = platform.EventWakeup;
 
+// Debug logging - disabled for worker threading to avoid compilation issues
+// across different build configurations. Enable manually if needed.
+const debug = struct {
+    pub inline fn print(comptime fmt: []const u8, args: anytype) void {
+        _ = fmt;
+        _ = args;
+        // Intentionally empty - logging disabled for performance
+        // To enable: uncomment the line below
+        // std.debug.print("[html] " ++ fmt, args);
+    }
+};
+
 const types = @import("types.zig");
 const WorkerType = types.WorkerType;
 const WorkerState = types.WorkerState;
@@ -259,6 +271,10 @@ pub const WorkerThreadState = struct {
     /// This is shared with outbox.wakeup so messages trigger immediate delivery
     wakeup: ?*EventWakeup,
 
+    /// EventWakeup for waking up the worker thread when messages arrive or termination requested
+    /// This enables efficient event-driven waiting instead of polling
+    worker_wakeup: ?*EventWakeup,
+
     const Self = @This();
 
     /// State values for atomic operations
@@ -298,6 +314,7 @@ pub const WorkerThreadState = struct {
             .allocator = allocator,
             .worker_ptr = null,
             .wakeup = null,
+            .worker_wakeup = null,
         };
 
         return state;
@@ -312,6 +329,11 @@ pub const WorkerThreadState = struct {
         }
         if (self.error_message) |msg| {
             self.allocator.free(msg);
+        }
+        // Clean up worker wakeup if allocated
+        if (self.worker_wakeup) |wakeup| {
+            wakeup.deinit();
+            self.allocator.destroy(wakeup);
         }
         self.allocator.destroy(self);
     }
@@ -351,6 +373,12 @@ pub const WorkerThreadState = struct {
 
         // Close message queues to unblock any waiting threads
         self.inbox.close();
+
+        // Signal the worker wakeup to immediately wake the worker thread
+        // This ensures the worker exits promptly instead of waiting for a timeout
+        if (self.worker_wakeup) |wakeup| {
+            wakeup.signal();
+        }
     }
 };
 
@@ -453,6 +481,19 @@ pub const WorkerThreadRunner = struct {
             return WorkerError.WorkerNotRunning;
         }
 
+        // Create EventWakeup for efficient worker thread waiting
+        // This replaces busy-polling with event-driven waiting
+        const wakeup = try self.allocator.create(EventWakeup);
+        errdefer self.allocator.destroy(wakeup);
+        wakeup.* = EventWakeup.init() catch |err| {
+            self.allocator.destroy(wakeup);
+            return err;
+        };
+        self.thread_state.worker_wakeup = wakeup;
+
+        // Set the wakeup on the inbox so message enqueues wake the worker
+        self.thread_state.inbox.setWakeup(wakeup);
+
         // Spawn the worker thread
         self.thread_state.thread = try Thread.spawn(
             .{},
@@ -471,14 +512,14 @@ pub const WorkerThreadRunner = struct {
 
     /// The main function that runs on the worker thread
     fn workerThreadMain(self: *Self) void {
-        std.log.info("[WorkerThread] workerThreadMain starting", .{});
+        debug.print("[WorkerThread] workerThreadMain starting\n", .{});
         var v8_isolate: ?*anyopaque = null;
 
         // Import DedicatedWorker for cleanup
         const DedicatedWorker = @import("dedicated_worker.zig").DedicatedWorker;
 
         defer {
-            std.log.info("[WorkerThread] workerThreadMain defer cleanup", .{});
+            debug.print("[WorkerThread] workerThreadMain defer cleanup\n", .{});
 
             // Clean up the DedicatedWorker's port pair message queues
             // This prevents memory leaks from messages queued but never consumed
@@ -490,7 +531,7 @@ pub const WorkerThreadRunner = struct {
                 // The main thread will poll the outbox and dispatch them.
                 dedicated_worker.port_pair.cleanupInsidePortMessages();
 
-                std.log.info("[WorkerThread] Cleaned up inside port messages (outside port preserved for main thread)", .{});
+                debug.print("[WorkerThread] Cleaned up inside port messages (outside port preserved for main thread)\n", .{});
             }
 
             // Clean up V8 isolate if created
@@ -505,17 +546,17 @@ pub const WorkerThreadRunner = struct {
         }
 
         // Create V8 isolate for this worker thread
-        std.log.info("[WorkerThread] Creating V8 isolate...", .{});
+        debug.print("[WorkerThread] Creating V8 isolate...\n", .{});
         if (self.create_isolate_fn) |create| {
             v8_isolate = create(self.thread_state, self.allocator) catch |err| {
                 self.setError("Failed to create V8 isolate: {s}", .{@errorName(err)});
                 self.thread_state.state.store(WorkerThreadState.STATE_ERROR, .release);
-                std.log.err("[WorkerThread] Failed to create isolate: {s}", .{@errorName(err)});
+                debug.print("[WorkerThread] Failed to create isolate: {s}\n", .{@errorName(err)});
                 return;
             };
-            std.log.info("[WorkerThread] V8 isolate created successfully", .{});
+            debug.print("[WorkerThread] V8 isolate created successfully\n", .{});
         } else {
-            std.log.warn("[WorkerThread] No create_isolate_fn set!", .{});
+            debug.print("[WorkerThread] No create_isolate_fn set!\n", .{});
         }
 
         // Transition to running
@@ -523,14 +564,14 @@ pub const WorkerThreadRunner = struct {
             WorkerThreadState.STATE_STARTING,
             WorkerThreadState.STATE_RUNNING,
         )) {
-            std.log.warn("[WorkerThread] Failed to transition to RUNNING", .{});
+            debug.print("[WorkerThread] Failed to transition to RUNNING\n", .{});
             return; // Worker was terminated during startup
         }
-        std.log.info("[WorkerThread] Transitioned to RUNNING, entering event loop", .{});
+        debug.print("[WorkerThread] Transitioned to RUNNING, entering event loop\n", .{});
 
         // Run the worker event loop
         self.runWorkerLoop(v8_isolate);
-        std.log.info("[WorkerThread] Event loop exited", .{});
+        debug.print("[WorkerThread] Event loop exited\n", .{});
     }
 
     /// Worker event loop - processes messages and runs microtasks
@@ -542,7 +583,7 @@ pub const WorkerThreadRunner = struct {
         while (self.thread_state.isRunning()) {
             loop_count += 1;
             if (loop_count == 1 or loop_count % 1000 == 0) {
-                std.log.info("[WorkerThread] runWorkerLoop iteration {d}", .{loop_count});
+                debug.print("[WorkerThread] runWorkerLoop iteration {d}\n", .{loop_count});
             }
 
             // Check if the DedicatedWorker has been closed (e.g., via done() or close())
@@ -550,7 +591,7 @@ pub const WorkerThreadRunner = struct {
             if (self.thread_state.worker_ptr) |worker_ptr| {
                 const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
                 if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
-                    std.log.info("[WorkerThread] DedicatedWorker is closing/terminated, exiting loop", .{});
+                    debug.print("[WorkerThread] DedicatedWorker is closing/terminated, exiting loop\n", .{});
                     // Worker has been closed, exit the loop
                     self.thread_state.requestTermination();
                     break;
@@ -559,7 +600,7 @@ pub const WorkerThreadRunner = struct {
 
             // Process incoming messages (non-blocking)
             while (self.thread_state.inbox.tryDequeue()) |msg| {
-                std.log.info("[WorkerThread] Dequeued message, dispatching...", .{});
+                debug.print("[WorkerThread] Dequeued message, dispatching...\n", .{});
                 // Note: handleIncomingMessage takes ownership of the message
                 // and is responsible for calling msg.deinit() via the dispatch callback
                 self.handleIncomingMessage(isolate, msg);
@@ -569,7 +610,7 @@ pub const WorkerThreadRunner = struct {
             if (self.thread_state.worker_ptr) |worker_ptr| {
                 const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
                 if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
-                    std.log.info("[WorkerThread] DedicatedWorker closed after message processing, exiting", .{});
+                    debug.print("[WorkerThread] DedicatedWorker closed after message processing, exiting\n", .{});
                     self.thread_state.requestTermination();
                     break;
                 }
@@ -578,11 +619,21 @@ pub const WorkerThreadRunner = struct {
             // Run V8 microtasks here (if V8 integration available)
             // TODO: Add microtask checkpoint callback
 
-            // Small sleep to avoid busy-waiting
-            // In a production system, this would use proper event notification
-            std.Thread.sleep(1_000_000); // 1ms
+            // Wait for messages or termination signal using EventWakeup
+            // This is efficient - no busy-polling, just event-driven waiting
+            // The wakeup is signaled when:
+            // - A message is enqueued to the inbox (via inbox.setWakeup)
+            // - Termination is requested (via requestTermination signaling worker_wakeup)
+            if (self.thread_state.worker_wakeup) |wakeup| {
+                // Wait with 100ms timeout as a fallback for edge cases
+                // (e.g., worker script calling close() without message)
+                _ = wakeup.wait(100) catch {};
+            } else {
+                // Fallback if no wakeup configured (shouldn't happen in normal use)
+                std.Thread.sleep(1_000_000); // 1ms
+            }
         }
-        std.log.info("[WorkerThread] runWorkerLoop exited after {d} iterations", .{loop_count});
+        debug.print("[WorkerThread] runWorkerLoop exited after {d} iterations\n", .{loop_count});
     }
 
     /// Handle an incoming message from the main thread

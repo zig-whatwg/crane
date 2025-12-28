@@ -37,6 +37,7 @@ const Allocator = std.mem.Allocator;
 // V8 FFI through runtime module
 const v8 = @import("v8");
 const runtime = @import("runtime");
+const context_manager = v8.context_manager;
 
 // V8Interface for registering constructors
 const V8Interface = v8.V8Interface;
@@ -143,9 +144,13 @@ pub const WorkerV8Context = struct {
     /// Create a new V8 context for a worker
     ///
     /// This creates:
-    /// 1. A new V8 isolate (separate from main thread)
+    /// 1. A new V8 isolate from the snapshot (with all WebIDL interfaces pre-registered)
     /// 2. A V8 context within that isolate
     /// 3. Sets up basic global scope
+    ///
+    /// IMPORTANT: The main browser MUST have called initializeV8() first to:
+    /// - Register external references
+    /// - Load and cache the snapshot data
     pub fn init(
         allocator: Allocator,
         script_url: []const u8,
@@ -158,29 +163,46 @@ pub const WorkerV8Context = struct {
         const url_copy = try allocator.dupe(u8, script_url);
         errdefer allocator.free(url_copy);
 
-        // Initialize V8 platform if not already done
-        // NOTE: The main browser context should have already called
-        // snapshot_loader.initializePlatformForSnapshots() which sets the
-        // required V8 flags before platform init. If this is the first
-        // V8 initialization, it won't support snapshot loading properly.
-        v8.ffi.v8_Platform_Initialize();
+        // Try to create isolate from snapshot (thread-safe, uses already-registered refs)
+        // This gives us all WebIDL interfaces pre-registered
+        const snapshot_result = v8.snapshot_loader.createWorkerIsolateFromSnapshot();
 
-        // Create V8 Isolate for this worker
-        const isolate = v8.ffi.v8_Isolate_New() orelse {
-            return error.V8IsolateCreationFailed;
-        };
-        errdefer v8.ffi.v8_Isolate_Dispose(isolate);
+        var isolate: *v8.ffi.Isolate = undefined;
+        var context: *v8.ffi.Context = undefined;
+        var used_snapshot = false;
 
-        // Enter the isolate temporarily to create the context
-        v8.ffi.v8_Isolate_Enter(isolate);
+        if (snapshot_result) |result| {
+            isolate = result.isolate;
+            context = result.context;
+            used_snapshot = true;
+            std.log.info("[WorkerV8Context] Created worker from snapshot", .{});
+        } else {
+            // Fallback to raw isolate (no WebIDL interfaces)
+            std.log.warn("[WorkerV8Context] Snapshot not available, falling back to raw V8 isolate", .{});
 
-        // Create V8 Context within the isolate
-        const context = v8.ffi.v8_Context_New(isolate) orelse {
+            // Initialize V8 platform if not already done
+            v8.ffi.v8_Platform_Initialize();
+
+            // Create raw V8 Isolate for this worker
+            isolate = v8.ffi.v8_Isolate_New() orelse {
+                return error.V8IsolateCreationFailed;
+            };
+            errdefer v8.ffi.v8_Isolate_Dispose(isolate);
+
+            // Enter the isolate temporarily to create the context
+            v8.ffi.v8_Isolate_Enter(isolate);
+
+            // Create V8 Context within the isolate
+            context = v8.ffi.v8_Context_New(isolate) orelse {
+                v8.ffi.v8_Isolate_Exit(isolate);
+                return error.V8ContextCreationFailed;
+            };
+
             v8.ffi.v8_Isolate_Exit(isolate);
-            return error.V8ContextCreationFailed;
-        };
+        }
 
-        // Enter the context for setup
+        // Enter isolate and context for setup
+        v8.ffi.v8_Isolate_Enter(isolate);
         v8.ffi.v8_Context_Enter(context);
 
         self.* = .{
@@ -192,21 +214,37 @@ pub const WorkerV8Context = struct {
         };
 
         // CRITICAL: Create HandleScope for V8 handle allocation during setup
-        // V8 requires any API calls that create Local handles to be within a HandleScope.
-        // setupWorkerGlobals() calls v8_String_NewFromUtf8 which creates Local<String>.
-        // Without this, those calls will crash with "Cannot create a handle without a HandleScope".
-        const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
+        const handle_scope = v8.ffi.v8_HandleScope_New(isolate) orelse {
+            v8.ffi.v8_Isolate_Exit(isolate);
+            return error.HandleScopeCreationFailed;
+        };
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
         // Set up basic worker globals (self, globalThis)
         try self.setupWorkerGlobals();
 
-        // Register essential WebIDL interfaces needed for worker scripts
-        // This is a minimal subset needed for WPT tests
-        self.registerWorkerInterfaces();
+        // Only register interfaces if we didn't use the snapshot
+        // (snapshot already has all interfaces pre-registered)
+        if (!used_snapshot) {
+            self.registerWorkerInterfaces();
+        }
+
+        // CRITICAL: Initialize the thread-local context manager for this worker thread
+        // This allows WebIDL interfaces (like URL) to get the runtime context
+        context_manager.init(allocator) catch |err| switch (err) {
+            error.AlreadyInitialized => {
+                // Context manager already initialized for this thread, that's fine
+            },
+        };
+
+        // Register this V8 context with the context manager
+        // This creates a runtime context that WebIDL interfaces can use
+        _ = context_manager.getOrCreate(context, allocator) catch |err| {
+            std.log.err("[WorkerV8Context] Failed to register context: {}", .{err});
+            return error.ContextRegistrationFailed;
+        };
 
         // Exit worker context/isolate after setup - we'll re-enter when executing scripts
-        // This allows the main isolate to remain active during Worker construction
         v8.ffi.v8_Context_Exit(context);
         v8.ffi.v8_Isolate_Exit(isolate);
 
@@ -237,6 +275,10 @@ pub const WorkerV8Context = struct {
         // - Track worker isolates separately from main isolate
         // - Dispose worker isolates BEFORE main isolate
         // - Or run workers in actual separate threads with their own cleanup
+
+        // Clean up the thread-local context manager
+        // This removes the runtime context and frees associated resources
+        context_manager.deinit();
 
         // Free Zig allocations only
         self.allocator.free(self.script_url);
@@ -292,7 +334,10 @@ pub const WorkerV8Context = struct {
     /// because it requires the main isolate's context manager state.
     fn registerWorkerInterfaces(self: *Self) void {
         // Create HandleScope for interface registration
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
+            std.log.err("[WorkerV8Context] Failed to create HandleScope for interface registration", .{});
+            return;
+        };
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
         // Register URL interface
@@ -356,12 +401,21 @@ pub const WorkerV8Context = struct {
 
         // CRITICAL: Create HandleScope for V8 handle allocation
         // All V8 API calls that create Local handles must be within a HandleScope
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
+            return error.HandleScopeCreationFailed;
+        };
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
         const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
             return error.NoGlobalObject;
         };
+
+        // First, set up 'self' to point to globalThis (required by worker scripts)
+        // In browser workers, 'self' is an alias for the global scope
+        const self_script =
+            \\globalThis.self = globalThis;
+        ;
+        _ = try self.executeScript(self_script);
 
         // Set up GLOBAL object for WPT tests
         // This is required by testharness.js to detect the execution context
@@ -377,22 +431,23 @@ pub const WorkerV8Context = struct {
         // Set up DedicatedWorkerGlobalScope constructor for testharness.js detection
         // testharness.js checks: 'DedicatedWorkerGlobalScope' in global_scope &&
         //                        global_scope instanceof DedicatedWorkerGlobalScope
-        // We create a constructor and make self an instance of it
+        // V8 snapshots have immutable global prototypes, so we use Symbol.hasInstance
+        // to make `self instanceof DedicatedWorkerGlobalScope` return true
         const worker_scope_script =
             \\(function() {
-            \\  // Create DedicatedWorkerGlobalScope constructor
-            \\  function DedicatedWorkerGlobalScope() {}
-            \\  globalThis.DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
-            \\
-            \\  // Make the global object (self) have DedicatedWorkerGlobalScope.prototype in its chain
-            \\  // This makes `self instanceof DedicatedWorkerGlobalScope` return true
-            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, Object.getPrototypeOf(globalThis));
-            \\  Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
-            \\
-            \\  // Also add WorkerGlobalScope as a fallback
+            \\  // Create WorkerGlobalScope base class with custom instanceof
             \\  function WorkerGlobalScope() {}
+            \\  Object.defineProperty(WorkerGlobalScope, Symbol.hasInstance, {
+            \\    value: function(obj) { return obj === globalThis || obj === self; }
+            \\  });
             \\  globalThis.WorkerGlobalScope = WorkerGlobalScope;
-            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, WorkerGlobalScope.prototype);
+            \\
+            \\  // Create DedicatedWorkerGlobalScope with custom instanceof
+            \\  function DedicatedWorkerGlobalScope() {}
+            \\  Object.defineProperty(DedicatedWorkerGlobalScope, Symbol.hasInstance, {
+            \\    value: function(obj) { return obj === globalThis || obj === self; }
+            \\  });
+            \\  globalThis.DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
             \\})();
         ;
         _ = try self.executeScript(worker_scope_script);
@@ -607,7 +662,10 @@ pub const WorkerV8Context = struct {
         // V8 requires any API calls that create Local handles to be within a HandleScope.
         // Without this, v8_String_NewFromUtf8 and other handle-creating calls will crash
         // with "Cannot create a handle without a HandleScope".
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
+            std.log.err("[WorkerV8Context] Failed to create HandleScope - V8 may be in invalid state", .{});
+            return error.HandleScopeCreationFailed;
+        };
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
         return self.executeScriptInternal(source);
@@ -638,7 +696,13 @@ pub const WorkerV8Context = struct {
         const run_result = v8.ffi.v8_Script_Run_Safe(self.context, script);
         defer v8.ffi.v8_FreeScriptRunResult(run_result);
 
-        if (run_result.error_info != null) {
+        if (run_result.error_info) |err_info| {
+            // Log the actual V8 error for debugging
+            const err_msg = if (err_info.message) |msg| std.mem.span(msg) else "<no message>";
+            std.log.err("[WorkerV8Context] Script execution failed: {s}", .{err_msg});
+            if (err_info.source_line) |line| {
+                std.log.err("[WorkerV8Context] Source line: {s}", .{std.mem.span(line)});
+            }
             return error.ExecutionFailed;
         }
 
@@ -665,7 +729,10 @@ pub const WorkerV8Context = struct {
         }
 
         // Create HandleScope for V8 handle allocation
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
+            std.log.err("[WorkerV8Context] Failed to create HandleScope for module execution", .{});
+            return error.HandleScopeCreationFailed;
+        };
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
         return self.executeModuleInternal(source, source_url);
@@ -845,28 +912,20 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         return;
     }
 
-    // Serialize the JSON string for posting
+    // Use the dedicated worker's postMessageFromWorker which handles thread-safe outbox
+    // for cross-thread communication. This is CRITICAL for threaded workers - messages
+    // must go through the thread-safe outbox (not pending_messages) so the main thread
+    // can poll them via ThreadedWorkerRegistry.pollAndDispatch().
     var js_value = workers.message_channel.JSValue{ .string = json_str };
-    const serialized = workers.message_channel.serializeForPostMessage(
-        dedicated_worker.allocator,
-        &js_value,
-    ) catch return;
-
-    // Create QueuedMessage
-    const msg = workers.message_channel.QueuedMessage.init(dedicated_worker.allocator, serialized, null) catch {
-        serialized.deinit();
-        dedicated_worker.allocator.destroy(serialized);
+    dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
+        std.log.warn("Worker postMessage failed: {}", .{err});
         return;
     };
 
-    // Append to pending_messages for deferred dispatch
-    workers.dedicated_worker.DedicatedWorker.appendPendingMessage(
-        dedicated_worker.port_pair.outside_port,
-        msg,
-    ) catch {
-        msg.deinit();
-        return;
-    };
+    // NOTE: We intentionally do NOT auto-close the worker based on message content.
+    // Per HTML Standard § 10.2, browsers should NEVER inspect message content to
+    // decide on close(). The worker script (testharness.js) is responsible for
+    // calling close() when it's done, not the browser.
 }
 
 /// V8 callback for close() - terminates the worker
@@ -961,12 +1020,26 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
 /// V8 callback for done() - signals test completion (WPT testharness)
 ///
 /// This is called by worker test scripts to signal they're done running tests.
-/// The worker then posts a completion message to the main thread.
+/// The worker then posts a completion message to the main thread and signals
+/// the worker thread to terminate.
+///
+/// Spec: This is a WPT-specific extension that allows worker tests to signal
+/// completion. After done() is called, the worker should stop processing
+/// and allow the thread to exit cleanly.
 fn workerDoneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     _ = info;
-    // Note: The actual done() function in testharness.js handles posting
-    // the completion message. We just need to have this function exist
-    // so the worker script can call it.
+
+    // Get WorkerV8Context from thread-local storage
+    const self = current_worker_context orelse {
+        return;
+    };
+
+    // Close the dedicated worker to signal termination
+    // This sets the closing flag on the worker agent
+    if (self.dedicated_worker) |dedicated_worker| {
+        dedicated_worker.close();
+        std.log.debug("Worker done() called - signaling termination", .{});
+    }
 }
 
 // ============================================================================

@@ -53,6 +53,7 @@ const impls = @import("impls");
 const namespaces = @import("namespaces");
 const fetch = @import("fetch");
 const network = fetch.network;
+const html = @import("html");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -337,6 +338,9 @@ pub const Browser = struct {
             // freed by cleanupAll(). We must clean them up while allocators are valid.
             impls.cleanup.cleanupAllDomRegistries();
 
+            // Clean up global worker threading state (EventWakeup, worker registry HashMap)
+            html.workers.ThreadedWorkerRegistry.deinit();
+
             // Central cleanup - calls all registered handlers in priority order
             // This includes: isolate_templates, template_registry, context_manager, etc.
             v8.cleanupAll(isolate, self.allocator);
@@ -378,6 +382,10 @@ pub const Browser = struct {
     /// 6. Fire DOMContentLoaded and load events
     pub fn navigate(self: *Browser, url: []const u8, context_type: context_mod.ContextType) !void {
         const isolate = self.isolate orelse return error.NotInitialized;
+
+        // Terminate all workers from the previous context before destroying it.
+        // This prevents workers from spinning indefinitely after their context is gone.
+        html.workers.ThreadedWorkerRegistry.terminateAllWorkers();
 
         // Destroy current context if any
         if (self.current_context) |old_ctx| {

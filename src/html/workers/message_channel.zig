@@ -28,6 +28,76 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// ============================================================================
+// Global Worker Port Registry
+// ============================================================================
+// This registry tracks active worker ports that need to be polled by the
+// main thread's event loop. When a worker posts a message, it goes into
+// the port's message_queue. The event loop polls this registry to dispatch
+// pending messages to their handlers.
+
+/// Global registry of worker ports that need event loop polling
+pub const WorkerPortRegistry = struct {
+    var ports: std.AutoHashMapUnmanaged(u64, *WorkerPort) = .{};
+    var mutex: std.Thread.Mutex = .{};
+    var registry_allocator: ?Allocator = null;
+
+    /// Initialize the registry with an allocator
+    pub fn init(allocator: Allocator) void {
+        mutex.lock();
+        defer mutex.unlock();
+        if (registry_allocator == null) {
+            registry_allocator = allocator;
+        }
+    }
+
+    /// Register a port for event loop polling
+    pub fn register(port: *WorkerPort) void {
+        mutex.lock();
+        defer mutex.unlock();
+        if (registry_allocator) |alloc| {
+            ports.put(alloc, port.id, port) catch {};
+        }
+    }
+
+    /// Unregister a port (called when port is closed/destroyed)
+    pub fn unregister(port: *WorkerPort) void {
+        mutex.lock();
+        defer mutex.unlock();
+        _ = ports.remove(port.id);
+    }
+
+    /// Poll all registered ports and dispatch pending messages
+    /// Called by the event loop to process worker messages
+    /// Returns true if any messages were dispatched
+    pub fn pollAndDispatch() bool {
+        mutex.lock();
+        defer mutex.unlock();
+
+        var dispatched_any = false;
+        var iter = ports.valueIterator();
+        while (iter.next()) |port_ptr| {
+            const port = port_ptr.*;
+            if (port.hasPendingMessages()) {
+                port.dispatchMessages();
+                dispatched_any = true;
+            }
+        }
+        return dispatched_any;
+    }
+
+    /// Cleanup the registry
+    pub fn deinit() void {
+        mutex.lock();
+        defer mutex.unlock();
+        if (registry_allocator) |alloc| {
+            ports.deinit(alloc);
+            ports = .{};
+            registry_allocator = null;
+        }
+    }
+};
+
 // Import types from workers
 const types = @import("types.zig");
 const WorkerType = types.WorkerType;
@@ -152,6 +222,22 @@ pub const WorkerPortPair = struct {
         self.inside_port.deinit();
         self.allocator.destroy(self);
     }
+
+    /// Clean up any queued messages on the inside port (worker side)
+    /// This is called when the worker thread terminates to prevent memory leaks.
+    /// NOTE: We only clean up inside_port because outside_port contains messages
+    /// from worker to main thread that should be cleaned up by the main thread
+    /// (when Worker.deinit is called during GC or browser teardown)
+    pub fn cleanupInsidePortMessages(self: *WorkerPortPair) void {
+        self.inside_port.clearMessageQueue();
+    }
+
+    /// Clean up all queued messages on both ports
+    /// This is called during full cleanup (e.g., Worker.deinit)
+    pub fn cleanupQueuedMessages(self: *WorkerPortPair) void {
+        self.outside_port.clearMessageQueue();
+        self.inside_port.clearMessageQueue();
+    }
 };
 
 // ============================================================================
@@ -172,7 +258,12 @@ pub const WorkerPort = struct {
     entangled: ?*WorkerPort,
 
     /// Message queue (pending messages)
+    /// Protected by queue_mutex for thread-safe access between worker and main threads
     message_queue: std.ArrayListUnmanaged(*QueuedMessage),
+
+    /// Mutex protecting message_queue operations
+    /// Worker thread posts messages, main thread dispatches them
+    queue_mutex: std.Thread.Mutex,
 
     /// Whether the port is closed
     closed: bool,
@@ -195,6 +286,7 @@ pub const WorkerPort = struct {
             .id = @atomicRmw(u64, &next_id, .Add, 1, .monotonic),
             .entangled = null,
             .message_queue = .{},
+            .queue_mutex = .{},
             .closed = false,
             .queue_enabled = false,
             .on_message = null,
@@ -210,9 +302,7 @@ pub const WorkerPort = struct {
 
     pub fn deinit(self: *WorkerPort) void {
         // Clean up queued messages
-        for (self.message_queue.items) |msg| {
-            msg.deinit();
-        }
+        self.clearMessageQueue();
         self.message_queue.deinit(self.allocator);
 
         // Disentangle
@@ -221,6 +311,18 @@ pub const WorkerPort = struct {
         }
 
         self.allocator.destroy(self);
+    }
+
+    /// Clear all queued messages without destroying the port
+    /// Used for cleanup when worker terminates before messages are consumed
+    /// Thread-safe: uses mutex to access the queue
+    pub fn clearMessageQueue(self: *WorkerPort) void {
+        self.queue_mutex.lock();
+        defer self.queue_mutex.unlock();
+        for (self.message_queue.items) |msg| {
+            msg.deinit();
+        }
+        self.message_queue.clearRetainingCapacity();
     }
 
     /// Entangle this port with another
@@ -255,7 +357,9 @@ pub const WorkerPort = struct {
         };
         errdefer msg.deinit();
 
-        // Queue to target port
+        // Queue to target port (thread-safe: worker thread posts, main thread dispatches)
+        target.queue_mutex.lock();
+        defer target.queue_mutex.unlock();
         target.message_queue.append(target.allocator, msg) catch {
             return WorkerMessageError.OutOfMemory;
         };
@@ -321,12 +425,17 @@ pub const WorkerPort = struct {
         };
         errdefer msg.deinit();
 
-        // Queue to target port
-        target.message_queue.append(target.allocator, msg) catch {
-            return WorkerMessageError.OutOfMemory;
-        };
+        // Queue to target port (thread-safe: worker thread posts, main thread dispatches)
+        {
+            target.queue_mutex.lock();
+            defer target.queue_mutex.unlock();
+            target.message_queue.append(target.allocator, msg) catch {
+                return WorkerMessageError.OutOfMemory;
+            };
+        }
 
         // If target queue is enabled, dispatch immediately
+        // NOTE: dispatchMessages has its own locking, so we release the lock first
         if (target.queue_enabled) {
             target.dispatchMessages();
         }
@@ -354,12 +463,31 @@ pub const WorkerPort = struct {
         self.on_message_context = context;
     }
 
-    /// Dispatch all queued messages
-    fn dispatchMessages(self: *WorkerPort) void {
-        while (self.message_queue.items.len > 0) {
-            const msg = self.message_queue.orderedRemove(0);
-            defer msg.deinit();
+    /// Check if there are pending messages in the queue
+    /// Thread-safe: uses mutex to check queue length
+    pub fn hasPendingMessages(self: *WorkerPort) bool {
+        self.queue_mutex.lock();
+        defer self.queue_mutex.unlock();
+        return self.queue_enabled and self.message_queue.items.len > 0;
+    }
 
+    /// Dispatch all queued messages
+    /// Public so that the event loop can poll and dispatch worker messages
+    /// Thread-safe: messages are removed under lock, handlers called without lock
+    pub fn dispatchMessages(self: *WorkerPort) void {
+        while (true) {
+            // Remove one message under lock
+            const msg = blk: {
+                self.queue_mutex.lock();
+                defer self.queue_mutex.unlock();
+                if (self.message_queue.items.len == 0) {
+                    break :blk null;
+                }
+                break :blk self.message_queue.orderedRemove(0);
+            } orelse break;
+
+            // Call handler without holding lock (allows worker to post more messages)
+            defer msg.deinit();
             if (self.on_message) |handler| {
                 handler(self, msg, self.on_message_context);
             }

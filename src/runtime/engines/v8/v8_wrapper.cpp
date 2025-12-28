@@ -2296,6 +2296,54 @@ Global<Value>* v8_Exception_TypeErrorInContext(Global<Context>* context, Global<
     return trackHandle(new Global<Value>(isolate, exception));
 }
 
+/// Create RangeError in a specific context (for cross-realm errors).
+Global<Value>* v8_Exception_RangeErrorInContext(Global<Context>* context, Global<String>* message) {
+    if (!context || !message) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<String> msg = message->Get(isolate);
+    
+    // Enter the context to ensure RangeError comes from this realm
+    Context::Scope context_scope(ctx);
+    
+    Local<Value> exception = Exception::RangeError(msg);
+    return trackHandle(new Global<Value>(isolate, exception));
+}
+
+/// Create SyntaxError in a specific context (for cross-realm errors).
+Global<Value>* v8_Exception_SyntaxErrorInContext(Global<Context>* context, Global<String>* message) {
+    if (!context || !message) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<String> msg = message->Get(isolate);
+    
+    // Enter the context to ensure SyntaxError comes from this realm
+    Context::Scope context_scope(ctx);
+    
+    Local<Value> exception = Exception::SyntaxError(msg);
+    return trackHandle(new Global<Value>(isolate, exception));
+}
+
+/// Create Error in a specific context (for cross-realm errors).
+Global<Value>* v8_Exception_ErrorInContext(Global<Context>* context, Global<String>* message) {
+    if (!context || !message) return nullptr;
+    
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<String> msg = message->Get(isolate);
+    
+    // Enter the context to ensure Error comes from this realm
+    Context::Scope context_scope(ctx);
+    
+    Local<Value> exception = Exception::Error(msg);
+    return trackHandle(new Global<Value>(isolate, exception));
+}
+
 /// Get the holder object from FunctionCallbackInfo.
 /// The holder is the object where the property was found in the prototype chain.
 /// For methods called on an instance, this is typically the prototype object

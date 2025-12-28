@@ -25,6 +25,13 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const MessageEvent = interfaces.MessageEvent;
 
+// V8 engine for Global handle disposal
+// Note: This direct import is needed for proper GC cleanup of MessageEvent.data
+// which stores a V8 Global handle when the event carries JSON-parsed data.
+// Ideally this would go through EngineInterface, but that abstraction doesn't
+// currently support handle disposal.
+const v8_engine = @import("v8");
+
 pub const State = MessageEvent.State;
 
 /// Static sentinel value for "undefined" data - avoids using @ptrFromInt
@@ -76,6 +83,23 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+
+    // Dispose the V8 Global handle if state.own.data holds one that we own
+    // This is critical for preventing memory leaks and use-after-free crashes.
+    // The Global handle was created in Worker.dispatchMessageEvent when JSON-parsing
+    // the message data, and stored via runtime.JSValue.fromHandle() which sets needs_disposal = true.
+    switch (state.own.data) {
+        .handle => |h| {
+            if (h.needs_disposal) {
+                v8_engine.ffi.v8_Global_Dispose(@ptrCast(h.ptr));
+            }
+        },
+        else => {
+            // Other JSValue variants (undefined, null, boolean, number, string, instance)
+            // don't require V8 Global handle disposal
+        },
+    }
+
     if (state.own._internal) |internal| {
         if (internal.owns_binary) {
             if (internal.message_data) |data| {
@@ -101,6 +125,18 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     errdefer deinit(instance);
 
     const state = instance.getState(State);
+
+    // Create internal state for Event (required for flags like dispatch_flag, initialized_flag, path)
+    // This is stored in the Event's part of the state hierarchy (state.base.own._internal)
+    // MessageEvent -> Event, so we use state.base.own._internal
+    const EventImpl = @import("Event.zig");
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const event_internal = try ArenaAllocator.get().create(EventImpl.InternalState);
+    event_internal.* = EventImpl.InternalState.init(ctx.allocator);
+    state.base.own._internal = event_internal;
+
+    // Set the initialized flag
+    event_internal.initialized_flag = true;
 
     // Initialize base Event attributes (Event fields in state.base.own)
     state.base.own.type = try @"type".clone(ctx.allocator);
@@ -154,6 +190,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
+    std.log.info("[MessageEvent.get_data] Called on instance {*}, data type: {s}", .{ instance, @tagName(state.own.data) });
     return state.own.data;
 }
 

@@ -270,6 +270,11 @@ pub fn V8Interface(comptime Interface: type) type {
         pub fn registerExternalReferences() void {
             const ext_refs = @import("external_references.zig");
 
+            // Debug: Log which interface is registering callbacks
+            if (comptime std.mem.eql(u8, interface_name, "MessageEvent")) {
+                debug.print("[registerExternalReferences] Registering callbacks for MessageEvent\n", .{});
+            }
+
             // Register constructor/non-constructor callback
             if (has_constructor) {
                 ext_refs.registerCallbackRuntime(constructorCallback);
@@ -1179,6 +1184,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 const getter_name: []const u8 = prop[1];
                 const setter_name: ?[]const u8 = prop[2];
 
+                // Debug: Log property registration for MessageEvent
+                if (comptime std.mem.eql(u8, interface_name, "MessageEvent")) {
+                    debug.print("[createTemplate] MessageEvent: registering property '{s}'\n", .{prop_name});
+                }
+
                 const prop_name_str = v8.v8_String_NewFromUtf8(
                     isolate,
                     prop_name.ptr,
@@ -1520,9 +1530,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// The iface_name parameter ensures that each interface gets unique function objects
         /// for its attributes, as required by WebIDL spec.
         fn PropertyGetterCallback(comptime iface_name: []const u8, comptime getter_name: []const u8) type {
-            _ = iface_name; // Used only for uniqueness of instantiation
             return struct {
                 pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // Use compile-time debug logging to avoid runtime overhead
+                    // This is called on every property access, so must be zero-cost when disabled
+                    debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ iface_name, getter_name });
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
 
@@ -2951,7 +2963,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // Cache the wrapper (log but don't fail if caching fails)
                 cache.set(instance, this_obj, isolate) catch |err| {
-                    std.log.warn("Failed to cache constructor wrapper: {s}", .{@errorName(err)});
+                    debug.print("Failed to cache constructor wrapper: {s}\n", .{@errorName(err)});
                 };
             }
 
