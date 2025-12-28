@@ -914,14 +914,16 @@ pub const DedicatedWorker = struct {
     /// queue a global task..."
     pub fn processQueuedMessages(self: *DedicatedWorker) void {
         // Dispatch all messages queued on the outside port
-        // The outside port's on_message handler will invoke the Worker's onmessage
+        // The DedicatedWorker.on_message handler will invoke the Worker's onmessage
         const outside_port = self.port_pair.outside_port;
 
         while (outside_port.message_queue.items.len > 0) {
             const msg = outside_port.message_queue.orderedRemove(0);
 
-            if (outside_port.on_message) |handler| {
-                handler(outside_port, msg, outside_port.on_message_context);
+            // Use DedicatedWorker.on_message (set via setOnMessage), not WorkerPort.on_message
+            // The Worker.zig sets this via dedicated_worker.setOnMessage(handleMessageFromWorkerCallback)
+            if (self.on_message) |handler| {
+                handler(self, msg);
             }
             // Clean up message after handler returns
             msg.deinit();
