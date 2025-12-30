@@ -1605,6 +1605,20 @@ pub fn createChildContext(
         global,
     );
 
+    // 4d2. Set self/window/frames as DATA properties pointing to global
+    // This is CRITICAL for testharness.js compatibility:
+    // (function(global_scope){...})(self) requires self === globalThis
+    // so that properties set on global_scope become true global bindings.
+    if (v8.v8_String_NewFromUtf8(options.isolate, "self", 4)) |self_str| {
+        _ = v8.v8_Object_Set(global, child_context, @ptrCast(self_str), @ptrCast(global));
+    }
+    if (v8.v8_String_NewFromUtf8(options.isolate, "window", 6)) |window_str| {
+        _ = v8.v8_Object_Set(global, child_context, @ptrCast(window_str), @ptrCast(global));
+    }
+    if (v8.v8_String_NewFromUtf8(options.isolate, "frames", 6)) |frames_str| {
+        _ = v8.v8_Object_Set(global, child_context, @ptrCast(frames_str), @ptrCast(global));
+    }
+
     // 4e. Register browser-level globals (setTimeout, setInterval, etc.)
     // These are not WebIDL interfaces but are essential for web platform functionality.
     // The browser layer sets a callback via setChildContextGlobalsCallback() that
@@ -2032,6 +2046,306 @@ pub fn registerExternalReferences() void {
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyGetter));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyQuery));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyEnumerator));
+}
+
+// ============================================================================
+// Centralized Runtime Hydration API
+// ============================================================================
+//
+// These functions centralize post-snapshot steps (template registry population,
+// accessor reinstall, namespace registration, prototype fixes) into single
+// per-context-type hydration functions.
+//
+// This eliminates duplication between Context.zig and worker_v8_context.zig.
+// ============================================================================
+
+/// Context type for hydration
+pub const HydrationContextType = enum {
+    /// Window context (for HTML pages) - gets document, location, navigator
+    window,
+    /// Worker context - gets self, postMessage (NO document, location)
+    worker,
+};
+
+/// Options for hydrating a context
+pub const HydrationOptions = struct {
+    /// V8 isolate
+    isolate: *v8.Isolate,
+    /// V8 context to hydrate
+    context: *v8.Context,
+    /// Allocator for runtime objects
+    allocator: std.mem.Allocator,
+    /// Timer interface for setTimeout/setInterval
+    timer_interface: ?runtime.TimerInterface = null,
+    /// Event loop interface (streams EventLoop interface)
+    event_loop_interface: ?@import("event_loop").EventLoop = null,
+    /// Network manager for async fetch (Window only)
+    network_manager: ?*anyopaque = null,
+};
+
+/// Hydration result containing created instances
+pub const WindowHydrationResult = struct {
+    /// Runtime context for the V8 context
+    runtime_ctx: runtime.Context,
+    /// Created Window instance
+    window_instance: *runtime.Instance,
+    /// Whether hydration succeeded
+    success: bool = true,
+};
+
+/// Hydration result for worker contexts
+pub const WorkerHydrationResult = struct {
+    /// Runtime context for the V8 context
+    runtime_ctx: runtime.Context,
+    /// Whether hydration succeeded
+    success: bool = true,
+};
+
+/// Hydrate a V8 context as a Window context (from snapshot)
+///
+/// This function performs all post-snapshot hydration steps for Window contexts:
+/// 1. Populates Zig-side template registry (wrapInstanceAsV8Object support)
+/// 2. Reinstalls accessor callbacks on prototypes (stale after snapshot load)
+/// 3. Registers namespaces (console, WebAssembly, etc.)
+/// 4. Sets up Window prototype chain on global
+/// 5. Creates and binds Window instance to global object's internal fields
+/// 6. Registers Window with context manager for cross-realm support
+/// 7. Registers browser globals (document, navigator, location, etc.)
+/// 8. Attaches event loop for setTimeout/setInterval
+///
+/// ## Usage
+///
+/// ```zig
+/// const result = try context_manager.hydrateWindowContext(.{
+///     .isolate = isolate,
+///     .context = v8_ctx,
+///     .allocator = allocator,
+///     .timer_interface = event_loop.timerInterface(),
+///     .event_loop_interface = event_loop.eventLoop(),
+///     .namespaces_module = namespaces,
+/// });
+/// const window = result.window_instance;
+/// ```
+pub fn hydrateWindowContext(comptime namespaces_module: type, options: HydrationOptions) !WindowHydrationResult {
+    const interface_bindings = @import("interface_bindings.zig");
+    const interfaces = @import("interfaces");
+    const impls = @import("impls");
+    const dom_type_info = @import("dom_type_info.zig");
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+
+    const isolate = options.isolate;
+    const v8_ctx = options.context;
+    const allocator = options.allocator;
+
+    // 1. Initialize context manager (if not already initialized)
+    init(allocator) catch |err| {
+        if (err != error.AlreadyInitialized) {
+            return err;
+        }
+    };
+
+    // 2. Register context with context manager for wrapper caching
+    const runtime_ctx = try getOrCreateWithExternalEventLoop(
+        v8_ctx,
+        options.timer_interface,
+        options.event_loop_interface,
+        allocator,
+    );
+
+    // 3. Set network manager on runtime context for async fetch()
+    if (options.network_manager) |nm| {
+        runtime_ctx.setNetworkManager(nm);
+    }
+
+    // 4. Populate Zig-side template registry (interfaces already in snapshot)
+    interface_bindings.registerAllTemplatesOnly(isolate);
+
+    // 5. Reinstall accessor callbacks on prototype objects
+    // V8 snapshots serialize JS objects but accessor callback pointers become
+    // stale after loading. This re-installs them.
+    interface_bindings.reinstallAllAccessorCallbacks(isolate, v8_ctx);
+
+    // 5b. Reinstall method callbacks on prototype objects
+    // Method callbacks (FunctionTemplate callbacks) also become stale after snapshot load.
+    interface_bindings.reinstallAllMethodCallbacks(isolate, v8_ctx);
+
+    // 6. Register namespaces (console, WebAssembly, etc.) - NOT in snapshot
+    interface_bindings.registerNamespacesGeneric(namespaces_module, isolate, v8_ctx);
+
+    // 7. Get the global object
+    const global = v8.v8_Context_Global(v8_ctx) orelse {
+        return error.NoGlobal;
+    };
+
+    // 8. Set up Window prototype chain: global → Window.prototype
+    const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
+    if (window_key) |wk| {
+        if (v8.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
+            const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+            if (proto_key) |pk| {
+                if (v8.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
+                    _ = v8.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
+                }
+            }
+        }
+    }
+
+    // 9. Create Window instance
+    const Window = interfaces.Window;
+    const window_instance = try Window.init(allocator, runtime_ctx);
+    errdefer Window.deinit(window_instance);
+
+    // 10. Bind Window instance to global object's internal fields
+    // Field 0: instance pointer, Field 1: type info pointer
+    v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
+    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
+        v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+    }
+
+    // 11. Bind V8 global to Window instance for cross-realm access
+    impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+
+    // 12. Register Window in wrapper cache
+    if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+        const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+        try cache.set(window_instance, global, isolate);
+    }
+
+    // 13. Register Window with context manager (for getWindowForContext)
+    try setWindowForContext(v8_ctx, window_instance);
+
+    // 14. Register Window properties as own properties on global
+    interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, v8_ctx, global);
+
+    // 15. Register methods as own properties (Window + EventTarget methods)
+    interface_bindings.Window.registerMethodsAsOwnOnObject(isolate, v8_ctx, global);
+    interface_bindings.EventTarget.registerMethodsAsOwnOnObject(isolate, v8_ctx, global);
+
+    // 16. Set self/window/frames as data properties equal to global
+    // This is critical for testharness.js compatibility: (function(global_scope){...})(self)
+    // requires that self === globalThis so that properties set on global_scope become
+    // accessible as global variables. The accessor approach returns a new handle each time
+    // which breaks object identity. Setting as data properties ensures self === globalThis.
+    if (v8.v8_String_NewFromUtf8(isolate, "self", 4)) |self_prop_key| {
+        _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
+    }
+    if (v8.v8_String_NewFromUtf8(isolate, "window", 6)) |window_prop_key| {
+        _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
+    }
+    if (v8.v8_String_NewFromUtf8(isolate, "frames", 6)) |frames_prop_key| {
+        _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
+    }
+
+    return WindowHydrationResult{
+        .runtime_ctx = runtime_ctx,
+        .window_instance = window_instance,
+        .success = true,
+    };
+}
+
+/// Hydrate a V8 context as a Worker context (from snapshot)
+///
+/// This function performs all post-snapshot hydration steps for Worker contexts:
+/// 1. Populates Zig-side template registry (wrapInstanceAsV8Object support)
+/// 2. Reinstalls accessor callbacks on prototypes (stale after snapshot load)
+/// 3. Sets up basic worker globals (self, globalThis)
+/// 4. Registers context with context manager
+///
+/// ## Worker-specific behavior
+///
+/// Workers do NOT get:
+/// - document, location, navigator (DOM-specific)
+/// - Window instance (workers use DedicatedWorkerGlobalScope)
+///
+/// Workers DO get:
+/// - self (reference to global)
+/// - postMessage (registered separately by worker setup)
+/// - console (registered separately)
+///
+/// ## Usage
+///
+/// ```zig
+/// const result = try context_manager.hydrateWorkerContext(.{
+///     .isolate = isolate,
+///     .context = v8_ctx,
+///     .allocator = allocator,
+/// });
+/// ```
+pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
+    const interface_bindings = @import("interface_bindings.zig");
+
+    const isolate = options.isolate;
+    const v8_ctx = options.context;
+    const allocator = options.allocator;
+
+    // 1. Initialize context manager (if not already initialized)
+    init(allocator) catch |err| {
+        if (err != error.AlreadyInitialized) {
+            return err;
+        }
+    };
+
+    // 2. Register context with context manager
+    const runtime_ctx = try getOrCreate(v8_ctx, allocator);
+
+    // 3. Populate Zig-side template registry (interfaces already in snapshot)
+    interface_bindings.registerAllTemplatesOnly(isolate);
+
+    // 4. Reinstall accessor callbacks on prototype objects
+    interface_bindings.reinstallAllAccessorCallbacks(isolate, v8_ctx);
+
+    // 4b. Reinstall method callbacks on prototype objects
+    interface_bindings.reinstallAllMethodCallbacks(isolate, v8_ctx);
+
+    // 5. Set up basic worker globals
+    const global_obj = v8.v8_Context_Global(v8_ctx) orelse {
+        return error.NoGlobal;
+    };
+
+    // 'self' = globalThis (reference to global object)
+    const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse {
+        return error.StringCreationFailed;
+    };
+    _ = v8.v8_Object_Set(global_obj, v8_ctx, @ptrCast(self_key), @ptrCast(global_obj));
+
+    // 'globalThis' = global object
+    const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse {
+        return error.StringCreationFailed;
+    };
+    _ = v8.v8_Object_Set(global_obj, v8_ctx, @ptrCast(global_this_key), @ptrCast(global_obj));
+
+    return WorkerHydrationResult{
+        .runtime_ctx = runtime_ctx,
+        .success = true,
+    };
+}
+
+/// Check if a context has Window-specific globals
+///
+/// Returns true if the context has 'document' as a property (Window context),
+/// false if it has 'postMessage' but no 'document' (Worker context).
+pub fn isWindowContext(isolate: *v8.Isolate, context: *v8.Context) bool {
+    const global = v8.v8_Context_Global(context) orelse return false;
+
+    // Check for 'document' property - Window contexts have this
+    const doc_key = v8.v8_String_NewFromUtf8(isolate, "document", 8) orelse return false;
+    const has_doc = v8.v8_Object_Has(global, context, @ptrCast(doc_key));
+
+    return has_doc;
+}
+
+/// Check if a context is a Worker context
+pub fn isWorkerContext(isolate: *v8.Isolate, context: *v8.Context) bool {
+    const global = v8.v8_Context_Global(context) orelse return false;
+
+    // Workers have 'self' but NOT 'document'
+    const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse return false;
+    const has_self = v8.v8_Object_Has(global, context, @ptrCast(self_key));
+
+    const doc_key = v8.v8_String_NewFromUtf8(isolate, "document", 8) orelse return false;
+    const has_doc = v8.v8_Object_Has(global, context, @ptrCast(doc_key));
+
+    return has_self and !has_doc;
 }
 
 // ============================================================================

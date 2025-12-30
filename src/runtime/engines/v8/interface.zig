@@ -270,6 +270,9 @@ pub fn V8Interface(comptime Interface: type) type {
         pub fn registerExternalReferences() void {
             const ext_refs = @import("external_references.zig");
 
+            // Set registration context for manifest tracking
+            ext_refs.setRegistrationContext(interface_name, .interface_constructor);
+
             // Debug: Log which interface is registering callbacks
             if (comptime std.mem.eql(u8, interface_name, "MessageEvent")) {
                 debug.print("[registerExternalReferences] Registering callbacks for MessageEvent\n", .{});
@@ -285,6 +288,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Register property getter/setter callbacks
             // Each property generates a unique getter callback (and optionally setter)
             // Now using PropertyGetterCallback which provides named, referenceable callbacks
+            ext_refs.setRegistrationContext(interface_name, .interface_property_getter);
             inline for (eager_properties) |prop| {
                 const getter_name: []const u8 = prop[1];
                 const setter_name: ?[]const u8 = prop[2];
@@ -295,8 +299,10 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // Register setter callback if present
                 if (setter_name) |s_name| {
+                    ext_refs.setRegistrationContext(interface_name, .interface_property_setter);
                     const setter_cb = makeSetterCallback(interface_name, s_name);
                     ext_refs.registerCallbackRuntime(setter_cb);
+                    ext_refs.setRegistrationContext(interface_name, .interface_property_getter);
                 }
             }
 
@@ -309,8 +315,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 ext_refs.registerCallbackRuntime(GetterCallback.callback);
 
                 if (setter_name) |s_name| {
+                    ext_refs.setRegistrationContext(interface_name, .interface_property_setter);
                     const setter_cb = makeSetterCallback(interface_name, s_name);
                     ext_refs.registerCallbackRuntime(setter_cb);
+                    ext_refs.setRegistrationContext(interface_name, .interface_property_getter);
                 }
             }
 
@@ -328,6 +336,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Register method callbacks
             // Method tuple format: { js_name, zig_call_name, arg_count }
+            ext_refs.setRegistrationContext(interface_name, .interface_method);
             inline for (methods) |method| {
                 const zig_name: []const u8 = method[1];
                 const Callback = MethodCallback(zig_name);
@@ -337,6 +346,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Register static method callbacks
             // Static methods are defined in Meta.static_operations or Meta.static_methods
             // Static operation tuple format: { js_name, zig_call_name, arg_count }
+            ext_refs.setRegistrationContext(interface_name, .interface_static_method);
             if (@hasDecl(Meta, "static_operations")) {
                 inline for (Meta.static_operations) |op| {
                     const zig_name: []const u8 = op[1];
@@ -355,6 +365,7 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // Register iterator callbacks if interface is iterable
+            ext_refs.setRegistrationContext(interface_name, .interface_iterator);
             if (@hasDecl(Meta, "iterable")) {
                 ext_refs.registerCallbackRuntime(iteratorCallback);
                 ext_refs.registerCallbackRuntime(entriesCallback);
@@ -393,6 +404,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Register indexed property callbacks if interface has call_item with u32 parameter
             // This matches the condition in createTemplate() for indexed property handler registration
+            ext_refs.setRegistrationContext(interface_name, .interface_indexed_property);
             const has_indexed_item = comptime blk: {
                 if (!@hasDecl(Interface, "call_item")) break :blk false;
                 const CallItemFn = @TypeOf(Interface.call_item);
@@ -413,6 +425,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Register named property callbacks if interface has named getter
             // This matches the condition in createTemplate() for named property handler registration
+            ext_refs.setRegistrationContext(interface_name, .interface_named_property);
             const has_call_getter_with_domstring = comptime blk: {
                 if (!@hasDecl(Interface, "call_getter")) break :blk false;
                 const fn_info = @typeInfo(@TypeOf(Interface.call_getter)).@"fn";
@@ -869,6 +882,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 const getter_name: []const u8 = prop[1];
                 const setter_name: ?[]const u8 = prop[2];
 
+                // CRITICAL: Skip self, window, frames - these MUST be data properties
+                // equal to globalThis for testharness.js compatibility.
+                // If we register them as accessors here, they return WindowProxy
+                // which is !== globalThis, breaking testharness.js expose() function.
+                // These are set as data properties in hydrateWindowContext() instead.
+                if (comptime std.mem.eql(u8, prop_name, "self") or
+                    std.mem.eql(u8, prop_name, "window") or
+                    std.mem.eql(u8, prop_name, "frames"))
+                {
+                    continue;
+                }
+
                 const prop_name_str = v8.v8_String_NewFromUtf8(
                     isolate,
                     prop_name.ptr,
@@ -906,6 +931,229 @@ pub fn V8Interface(comptime Interface: type) type {
                     getter_cb,
                     setter_cb,
                 );
+            }
+        }
+
+        /// Reinstall accessor callbacks on a prototype object after loading from snapshot
+        ///
+        /// V8 snapshots serialize JavaScript objects but native callback pointers become
+        /// stale. This function re-installs accessor callbacks on the prototype object
+        /// so property getters/setters work correctly.
+        ///
+        /// Must be called after loading from snapshot for each interface that has
+        /// accessor properties (eager_properties).
+        pub fn reinstallAccessorCallbacksOnPrototype(
+            isolate: *v8.Isolate,
+            context: *v8.Context,
+        ) void {
+            // Skip interfaces without eager properties
+            if (eager_properties.len == 0) return;
+
+            // CRITICAL: Get the prototype from the TEMPLATE, not from global.Constructor.prototype
+            // Instances created via wrapInstanceAsV8Object use the template's prototype,
+            // which is different from global.Constructor.prototype after snapshot loading.
+            const tpl_registry = @import("template_registry.zig");
+            const prototype_obj: *v8.Object = blk: {
+                // Try to get template from registry first
+                if (tpl_registry.getTemplate(interface_name)) |template| {
+                    std.debug.print("[REINSTALL-DEBUG] {s}: Template found\n", .{interface_name});
+                    // Get the function from the template (same as wrapInstanceAsV8Object does)
+                    if (v8.v8_FunctionTemplate_GetFunction(template, context)) |func| {
+                        std.debug.print("[REINSTALL-DEBUG] {s}: Function from template obtained\n", .{interface_name});
+                        const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse break :blk null;
+                        const prototype_value = v8.v8_Object_Get(@ptrCast(func), context, @ptrCast(prototype_key)) orelse break :blk null;
+                        if (v8.v8_Value_IsObject(prototype_value)) {
+                            std.debug.print("[REINSTALL-DEBUG] {s}: Using TEMPLATE prototype @{*}\n", .{ interface_name, prototype_value });
+                            const proto_obj: *v8.Object = @ptrCast(prototype_value);
+                            break :blk proto_obj;
+                        }
+                    } else {
+                        std.debug.print("[REINSTALL-DEBUG] {s}: GetFunction failed, falling back to global\n", .{interface_name});
+                    }
+                } else {
+                    std.debug.print("[REINSTALL-DEBUG] {s}: Template NOT found, using global\n", .{interface_name});
+                }
+                // Fallback to global constructor's prototype if template not found
+                const global = v8.v8_Context_Global(context) orelse break :blk null;
+                const constructor_name = v8.v8_String_NewFromUtf8(
+                    isolate,
+                    interface_name.ptr,
+                    @intCast(interface_name.len),
+                ) orelse break :blk null;
+                const constructor_value = v8.v8_Object_Get(global, context, @ptrCast(constructor_name)) orelse break :blk null;
+                if (!v8.v8_Value_IsObject(constructor_value)) break :blk null;
+                const constructor_obj: *v8.Object = @ptrCast(constructor_value);
+                const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse break :blk null;
+                const prototype_value = v8.v8_Object_Get(constructor_obj, context, @ptrCast(prototype_key)) orelse break :blk null;
+                if (!v8.v8_Value_IsObject(prototype_value)) break :blk null;
+                const proto_obj: *v8.Object = @ptrCast(prototype_value);
+                break :blk proto_obj;
+            } orelse return;
+
+            // Re-install accessor callbacks on the prototype
+            inline for (eager_properties) |prop| {
+                const prop_name: []const u8 = prop[0];
+                const getter_name: []const u8 = prop[1];
+                const setter_name: ?[]const u8 = prop[2];
+
+                if (v8.v8_String_NewFromUtf8(
+                    isolate,
+                    prop_name.ptr,
+                    @intCast(prop_name.len),
+                )) |prop_name_str| {
+                    // Use PropertyGetterCallback to generate the getter callback
+                    const getter_cb: v8.FunctionCallback = PropertyGetterCallback(interface_name, getter_name).callback;
+
+                    // Check if this property has [PutForwards] extended attribute
+                    const put_forwards_target: ?[]const u8 = comptime blk: {
+                        if (!@hasDecl(Meta, "put_forwards_attributes")) break :blk null;
+                        for (Meta.put_forwards_attributes) |pf| {
+                            if (std.mem.eql(u8, pf[0], prop_name)) {
+                                break :blk pf[1];
+                            }
+                        }
+                        break :blk null;
+                    };
+
+                    // Generate setter callback
+                    const setter_cb: ?v8.FunctionCallback = if (put_forwards_target) |forward_prop|
+                        PutForwardsSetterCallback(prop_name, forward_prop).callback
+                    else if (setter_name) |s_name|
+                        makeSetterCallback(interface_name, s_name)
+                    else
+                        null;
+
+                    // Re-install accessor property on the prototype
+                    const result = v8.v8_Object_SetAccessorProperty(
+                        prototype_obj,
+                        context,
+                        prop_name_str,
+                        getter_cb,
+                        setter_cb,
+                    );
+                    if (std.mem.eql(u8, interface_name, "MessageEvent") and std.mem.eql(u8, prop_name, "data")) {
+                        std.debug.print("[ACCESSOR-REINSTALL] MessageEvent.data accessor reinstalled, result: {}\n", .{result});
+                    }
+                }
+            }
+        }
+
+        /// Reinstall method callbacks on the prototype after snapshot load.
+        ///
+        /// After loading a V8 snapshot, native callback pointers for methods become
+        /// stale (they point to addresses in the snapshot creator binary). This function
+        /// creates fresh FunctionTemplates with valid callback pointers and reinstalls
+        /// them on the prototype object.
+        ///
+        /// This complements `reinstallAccessorCallbacksOnPrototype` which handles
+        /// property getters/setters. Both must be called for full snapshot hydration.
+        pub fn reinstallMethodCallbacksOnPrototype(isolate: *v8.Isolate, context: *v8.Context) void {
+            @setEvalBranchQuota(20000);
+
+            // Get the prototype object - same pattern as reinstallAccessorCallbacksOnPrototype
+            const prototype_obj: ?*v8.Object = blk: {
+                // Try to get from template registry first
+                if (template_registry.getTemplate(interface_name)) |template| {
+                    if (v8.v8_FunctionTemplate_GetFunction(template, context)) |func| {
+                        const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse break :blk null;
+                        const prototype_value = v8.v8_Object_Get(@ptrCast(func), context, @ptrCast(prototype_key)) orelse break :blk null;
+                        if (v8.v8_Value_IsObject(prototype_value)) {
+                            break :blk @ptrCast(prototype_value);
+                        }
+                    }
+                }
+
+                // Fallback: get Constructor.prototype from global
+                const global = v8.v8_Context_Global(context) orelse break :blk null;
+                const constructor_name = v8.v8_String_NewFromUtf8(
+                    isolate,
+                    interface_name.ptr,
+                    @intCast(interface_name.len),
+                ) orelse break :blk null;
+
+                const constructor_val = v8.v8_Object_Get(
+                    global,
+                    context,
+                    @ptrCast(constructor_name),
+                ) orelse break :blk null;
+
+                if (!v8.v8_Value_IsObject(constructor_val)) break :blk null;
+                const constructor_obj: *v8.Object = @ptrCast(constructor_val);
+
+                const prototype_str = v8.v8_String_NewFromUtf8(
+                    isolate,
+                    "prototype",
+                    9,
+                ) orelse break :blk null;
+
+                const prototype_val = v8.v8_Object_Get(
+                    constructor_obj,
+                    context,
+                    @ptrCast(prototype_str),
+                ) orelse break :blk null;
+
+                if (!v8.v8_Value_IsObject(prototype_val)) break :blk null;
+                break :blk @ptrCast(prototype_val);
+            };
+
+            if (prototype_obj == null) return;
+
+            // Get own method names (methods defined on THIS interface, not inherited)
+            // Inherited methods will be reinstalled by their defining interface
+            const own_method_names = if (@hasDecl(Meta, "own_methods")) Meta.own_methods else &.{};
+
+            // Build a set of own method names for O(1) lookup at comptime
+            const OwnMethodSet = std.StaticStringMap(void);
+            const own_method_set = comptime blk: {
+                var entries: [own_method_names.len]struct { []const u8, void } = undefined;
+                for (own_method_names, 0..) |own_name, i| {
+                    entries[i] = .{ own_name, {} };
+                }
+                break :blk OwnMethodSet.initComptime(entries);
+            };
+
+            // Reinstall each method defined on THIS interface
+            // Iterate over full methods tuple, filter by own_methods membership
+            inline for (methods) |method| {
+                const method_name: []const u8 = method[0];
+                const zig_name: []const u8 = method[1];
+
+                // If we have own_methods, check membership; otherwise register all
+                const should_reinstall = comptime (own_method_names.len == 0 or own_method_set.has(method_name));
+                if (!should_reinstall) continue;
+
+                // Create fresh FunctionTemplate with valid callback pointer
+                const Callback = MethodCallback(zig_name);
+                const method_tmpl = v8.v8_FunctionTemplate_New(
+                    isolate,
+                    Callback.callback,
+                    null,
+                );
+
+                if (method_tmpl) |tmpl| {
+                    // Get Function from template
+                    const method_fn = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
+
+                    if (method_fn) |func| {
+                        // Create string for method name
+                        const name_str = v8.v8_String_NewFromUtf8(
+                            isolate,
+                            method_name.ptr,
+                            @intCast(method_name.len),
+                        );
+
+                        if (name_str) |name_v8_str| {
+                            // Set on prototype object
+                            // Per WebIDL, methods should be writable, configurable, but NOT enumerable
+                            _ = v8.v8_Object_Set(
+                                prototype_obj.?,
+                                context,
+                                @ptrCast(name_v8_str),
+                                @ptrCast(func),
+                            );
+                        }
+                    }
+                }
             }
         }
 
@@ -1004,6 +1252,7 @@ pub fn V8Interface(comptime Interface: type) type {
         ///
         /// The generation counter is retained as a safety net even with isolate-local storage.
         pub fn createTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
+            @setEvalBranchQuota(20000); // Raise for nested inline loops
             const isolate_templates = @import("isolate_templates.zig");
             const isolate_alloc = @import("isolate_allocator.zig");
 
@@ -1183,11 +1432,6 @@ pub fn V8Interface(comptime Interface: type) type {
                 const prop_name: []const u8 = prop[0];
                 const getter_name: []const u8 = prop[1];
                 const setter_name: ?[]const u8 = prop[2];
-
-                // Debug: Log property registration for MessageEvent
-                if (comptime std.mem.eql(u8, interface_name, "MessageEvent")) {
-                    debug.print("[createTemplate] MessageEvent: registering property '{s}'\n", .{prop_name});
-                }
 
                 const prop_name_str = v8.v8_String_NewFromUtf8(
                     isolate,
@@ -1532,9 +1776,18 @@ pub fn V8Interface(comptime Interface: type) type {
         fn PropertyGetterCallback(comptime iface_name: []const u8, comptime getter_name: []const u8) type {
             return struct {
                 pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // UNCONDITIONAL DEBUG - remove after fixing MessageEvent.data issue
+                    if (comptime std.mem.eql(u8, iface_name, "MessageEvent") and std.mem.eql(u8, getter_name, "get_data")) {
+                        std.debug.print("!!! PropertyGetterCallback INVOKED for MessageEvent.get_data !!!\n", .{});
+                    }
                     // Use compile-time debug logging to avoid runtime overhead
                     // This is called on every property access, so must be zero-cost when disabled
                     debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ iface_name, getter_name });
+
+                    // MessageEvent investigation logging - always print for MessageEvent
+                    if (comptime std.mem.eql(u8, iface_name, "MessageEvent")) {
+                        std.log.warn("[PropertyGetterCallback] ENTRY for MessageEvent.{s}", .{getter_name});
+                    }
 
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
@@ -1701,8 +1954,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                     // Regular attribute - fall through to throw TypeError
                                 } else {
-                                    // Type info not registered in dom_type_info.zig - check WrapperTypeInfo in slot 1
-                                    // if available, otherwise fall back to legacy behavior
+                                    // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
                                     if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
                                         // WrapperTypeInfo is present - use it for type checking
                                         // Per WebIDL spec: "If the this value is null or undefined, or is not a
@@ -1716,10 +1968,11 @@ pub fn V8Interface(comptime Interface: type) type {
                                         }
                                         // Type mismatch - fall through to throw TypeError
                                     } else {
-                                        // No WrapperTypeInfo - fall back to legacy getInstance check
-                                        // This path is used for interfaces not yet in dom_type_info.zig
-                                        // (e.g., HTMLCollection, NodeList, etc.)
+                                        // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
                                         const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+                                        if (comptime std.mem.eql(u8, iface_name, "MessageEvent")) {
+                                            std.log.warn("[PropertyGetterCallback] MessageEvent.{s}: legacy path, instance_ptr={?*}", .{ getter_name, instance_ptr });
+                                        }
                                         if (instance_ptr != null) {
                                             break :blk instance_ptr;
                                         }
@@ -1787,6 +2040,27 @@ pub fn V8Interface(comptime Interface: type) type {
                                 info.setReturnValue(undef);
                             }
                             return;
+                        }
+
+                        // SPECIAL HANDLING: Window.self and Window.window must return the V8 global object
+                        // Per HTML spec, these properties return the WindowProxy which IS the global object.
+                        // testharness.js relies on this: (function(global_scope){...})(self)
+                        // If we return a wrapped Window instance instead of the actual global, the
+                        // exposed functions won't be accessible as global variables.
+                        if (comptime is_global_interface and std.mem.eql(u8, iface_name, "Window")) {
+                            if (comptime std.mem.eql(u8, getter_name, "get_self") or
+                                std.mem.eql(u8, getter_name, "get_window") or
+                                std.mem.eql(u8, getter_name, "get_frames"))
+                            {
+                                std.debug.print("[SELF-FIX] Window.{s} accessor called - returning This()\n", .{getter_name});
+                                // Return info.This() - the actual receiver object
+                                // For a property access on the global, this is the global proxy
+                                // that JS uses for variable resolution
+                                const global_this = info.getThis();
+                                std.debug.print("[SELF-FIX] Got This() object, setting return value\n", .{});
+                                info.setReturnValue(@ptrCast(global_this));
+                                return;
+                            }
                         }
 
                         // Capture allocator BEFORE calling getter and converting to V8
@@ -2005,12 +2279,6 @@ pub fn V8Interface(comptime Interface: type) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                     // DEBUG: Trace method callback invocation
-                    if (comptime std.mem.eql(u8, zig_name, "call_addEventListener") or
-                        std.mem.eql(u8, zig_name, "call_dispatchEvent"))
-                    {
-                        std.debug.print("[MethodCallback] {s}.{s} callback invoked\n", .{ interface_name, zig_name });
-                    }
-
                     const isolate = info.getIsolate();
 
                     // Get V8 context - for arguments parsing, we use the current context
@@ -2102,8 +2370,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :blk inst;
                                 }
                             } else {
-                                // Type info not registered in dom_type_info.zig - check WrapperTypeInfo in slot 1
-                                // if available, otherwise fall back to legacy behavior
+                                // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
                                 if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
                                     // WrapperTypeInfo is present - use it for type checking
                                     if (std.mem.eql(u8, stored_type_info.getName(), interface_name)) {
@@ -2114,8 +2381,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                     // Type mismatch - fall through to implicit this handling or TypeError
                                 } else {
-                                    // No WrapperTypeInfo - fall back to legacy getInstance check
-                                    // This path is used for interfaces not yet in dom_type_info.zig
+                                    // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
                                     if (getInstance(runtime.Instance, this_obj)) |inst| {
                                         break :blk inst;
                                     }
@@ -2951,8 +3217,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (dom_type_info_mod.getTypeInfoByName(interface_name)) |type_info| {
                 setInstanceWithTypeInfo(runtime.Instance, this_obj, instance, type_info);
             } else {
-                // Fall back to legacy setInstance if type info not found
-                // This is expected for interfaces not yet in dom_type_info.zig
+                // Fall back to legacy setInstance if type info not found via comptime lookup
                 setInstance(runtime.Instance, this_obj, instance);
             }
 
@@ -4551,7 +4816,25 @@ pub fn V8Interface(comptime Interface: type) type {
                         info.setReturnValue(@ptrCast(wrapped));
                         return .kYes;
                     } else {
-                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kYes;
+                        // Special case for DOMString - convert to string directly
+                        if (ChildType == runtime.DOMString) {
+                            const slice = unwrapped_result.asSlice();
+                            if (slice.len == 0) {
+                                const empty_str = v8.v8_String_Empty(isolate) orelse {
+                                    return .kYes;
+                                };
+                                info.setReturnValue(@ptrCast(empty_str));
+                            } else {
+                                const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
+                                    return .kYes;
+                                };
+                                info.setReturnValue(@ptrCast(v8_str));
+                            }
+                            return .kYes;
+                        }
+                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
+                            return .kYes;
+                        };
                         info.setReturnValue(@ptrCast(v8_value));
                         return .kYes;
                     }
@@ -4729,7 +5012,44 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // For CSS properties, JavaScript uses camelCase (backgroundColor) but
+            // CSS property names are kebab-case (background-color). Try converting.
+            var kebab_buf: [256]u8 = undefined;
+            if (camelToKebab(prop_name, &kebab_buf)) |kebab_name| {
+                for (names) |supported_name| {
+                    if (std.mem.eql(u8, supported_name.asSlice(), kebab_name)) {
+                        return true;
+                    }
+                }
+            }
+
             return false;
+        }
+
+        /// Convert camelCase to kebab-case for CSS property name matching
+        /// e.g., "backgroundColor" -> "background-color"
+        fn camelToKebab(input: []const u8, buf: *[256]u8) ?[]const u8 {
+            if (input.len == 0) return null;
+            var out_idx: usize = 0;
+
+            for (input) |c| {
+                if (out_idx >= buf.len - 2) return null; // Need room for potential '-' + char
+
+                if (c >= 'A' and c <= 'Z') {
+                    // Uppercase letter - insert hyphen and lowercase
+                    if (out_idx > 0) {
+                        buf[out_idx] = '-';
+                        out_idx += 1;
+                    }
+                    buf[out_idx] = c + 32; // Convert to lowercase
+                    out_idx += 1;
+                } else {
+                    buf[out_idx] = c;
+                    out_idx += 1;
+                }
+            }
+
+            return buf[0..out_idx];
         }
 
         /// Check if a string is a valid array index (non-negative integer < 2^32 - 1)
@@ -4801,7 +5121,12 @@ pub fn V8Interface(comptime Interface: type) type {
             if (prop_len <= 0) return .kNo;
 
             var prop_buf: [256]u8 = undefined;
-            const actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            var actual_len = v8.v8_String_WriteUtf8_Raw(prop_str, &prop_buf, @intCast(prop_buf.len));
+            if (actual_len <= 0) return .kNo;
+            // Strip null terminator if present (V8's WriteUtf8 may include it in the length)
+            if (actual_len > 0 and prop_buf[@intCast(actual_len - 1)] == 0) {
+                actual_len -= 1;
+            }
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
@@ -4832,7 +5157,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const type_info = @typeInfo(ActualReturnType);
 
             if (type_info == .optional) {
-                if (result != null) {
+                // Use Zig's if-unwrap pattern for optionals (works for all optional types including unions)
+                if (result) |_| {
                     // Property exists - set attribute flags (enumerable, configurable)
                     // Per WebIDL §3.9.1, named properties are enumerable by default
                     // unless [LegacyUnenumerableNamedProperties] is specified.
@@ -5172,8 +5498,7 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
-            const result = getter_fn(instance, dom_str) catch |err| {
-                std.debug.print("namedPropertyDescriptor: getter_fn failed with {s}\n", .{@errorName(err)});
+            const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
             };
 
@@ -5196,8 +5521,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         ) catch return .kNo;
                         v8_value = @ptrCast(wrapped);
                     } else {
-                        v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch |err| {
-                            std.debug.print("namedPropertyDescriptor: toV8Value (optional) failed with {s}\n", .{@errorName(err)});
+                        v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
                             return .kNo;
                         };
                     }
@@ -5206,8 +5530,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .kNo;
                 }
             } else {
-                v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch |err| {
-                    std.debug.print("namedPropertyDescriptor: toV8Value failed with {s}\n", .{@errorName(err)});
+                v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
                     return .kNo;
                 };
             }
@@ -6258,8 +6581,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                 }
                                 // Regular attribute - fall through to throw TypeError
                             } else {
-                                // Type info not registered in dom_type_info.zig - check WrapperTypeInfo in slot 1
-                                // if available, otherwise fall back to legacy behavior
+                                // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
                                 if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
                                     // WrapperTypeInfo is present - use it for type checking
                                     // Per WebIDL spec: "If the this value is null or undefined, or is not a
@@ -6273,9 +6595,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                     // Type mismatch - fall through to throw TypeError
                                 } else {
-                                    // No WrapperTypeInfo - fall back to legacy getInstance check
-                                    // This path is used for interfaces not yet in dom_type_info.zig
-                                    // (e.g., HTMLCollection, NodeList, etc.)
+                                    // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
                                     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
                                     if (instance_ptr != null) {
                                         break :blk instance_ptr;
