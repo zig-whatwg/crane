@@ -990,6 +990,20 @@ fn createWindowBoundToGlobal(
         try cache.set(window_instance, global, isolate);
     }
 
+    // 7. Set up Window-specific global properties (window, self, globalThis)
+    // Per HTML spec, browsers expose these properties on the global object:
+    // - 'window' references the global Window object
+    // - 'self' references the global object (works in both window and worker contexts)
+    // - 'globalThis' is the standard reference to the global object
+    const window_key = v8.v8_String_NewFromUtf8(isolate, "window", 6) orelse return error.StringCreationFailed;
+    _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(window_key), @ptrCast(global));
+
+    const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreationFailed;
+    _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(self_key), @ptrCast(global));
+
+    const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse return error.StringCreationFailed;
+    _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(global_this_key), @ptrCast(global));
+
     return window_instance;
 }
 

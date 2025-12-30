@@ -65,6 +65,34 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 
+/// Registration context types for tracking which part of an interface is being registered
+pub const RegistrationContextType = enum {
+    interface_constructor,
+    interface_property_getter,
+    interface_property_setter,
+    interface_method,
+    interface_static_method,
+    interface_iterator,
+    interface_indexed_property,
+    interface_named_property,
+};
+
+/// Current registration context - used for debugging and manifest tracking
+var current_interface_name: []const u8 = "";
+var current_context_type: RegistrationContextType = .interface_constructor;
+
+/// Set the current registration context for manifest tracking
+/// This is called before registering callbacks to track which interface/context they belong to
+pub fn setRegistrationContext(interface_name: []const u8, context_type: RegistrationContextType) void {
+    current_interface_name = interface_name;
+    current_context_type = context_type;
+}
+
+/// Get the current registration context (for debugging)
+pub fn getRegistrationContext() struct { interface_name: []const u8, context_type: RegistrationContextType } {
+    return .{ .interface_name = current_interface_name, .context_type = current_context_type };
+}
+
 /// Maximum number of external references we can collect
 /// This needs to be large enough for all interfaces * (methods + properties + callbacks)
 /// Estimate: ~1200 interfaces * ~20 callbacks each = ~24000 callbacks

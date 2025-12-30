@@ -491,6 +491,20 @@ pub const Context = struct {
         v8.interface_bindings.Window.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
         v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
 
+        // Set up window, self, and globalThis properties on the global object
+        // Per HTML spec, browsers expose these properties:
+        // - 'window' references the global Window object (same as globalThis in browsers)
+        // - 'self' references the global object (works in both window and worker contexts)
+        // - 'globalThis' is the standard reference to the global object
+        const window_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6) orelse return error.StringCreationFailed;
+        _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
+
+        const self_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4) orelse return error.StringCreationFailed;
+        _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
+
+        const global_this_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "globalThis", 10) orelse return error.StringCreationFailed;
+        _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(global_this_prop_key), @ptrCast(global));
+
         // Set up global aliases FIRST (creates __internal object and accessor properties)
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
         self.setupGlobalAliases() catch |err| {
