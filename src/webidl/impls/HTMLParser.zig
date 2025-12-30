@@ -27,6 +27,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
@@ -902,16 +903,19 @@ fn fireDOMContentLoadedEvent(
     ctx: runtime.Context,
     document: *runtime.Instance,
 ) !void {
-    // Create the DOMContentLoaded event
-    const event = interfaces.Event.init(allocator, ctx) catch return error.OutOfMemory;
-    errdefer interfaces.Event.deinit(event);
+    _ = allocator; // ctx.allocator is used by call_constructor
 
-    // Initialize the event with type "DOMContentLoaded"
+    // Create the DOMContentLoaded event using call_constructor
+    // This properly initializes InternalState (required for dispatch)
     // Per spec: bubbles = true, cancelable = false
     const event_type = runtime.DOMString.initInterned("DOMContentLoaded");
-    const bubbles = webidl.Opt(bool).passed(true);
-    const cancelable = webidl.Opt(bool).passed(false);
-    interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.InvalidStateError;
+    const event_init = dictionaries.EventInit{
+        .bubbles = true,
+        .cancelable = false,
+        .composed = false,
+    };
+    const event = interfaces.Event.call_constructor(ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch return error.OutOfMemory;
+    defer interfaces.Event.deinit(event);
 
     // Dispatch the event on the document
     // Document inherits from EventTarget so it can receive events
