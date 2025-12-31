@@ -71,6 +71,11 @@ pub fn clearTimerInterface() void {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
+            // CRITICAL: Set destroyed flag BEFORE any cleanup to prevent use-after-free.
+            // The libuv uv_close() is async, so a timer callback could still fire
+            // between clearTimeout() and destroy(). The destroyed flag ensures the
+            // callback handler will early-exit instead of accessing freed memory.
+            wrapper.getData().destroyed = true;
             // Cancel the timer at the libuv level to prevent callback from firing
             // and to properly clean up the libuv timer handle
             if (current_timer_interface) |timer| {
@@ -93,6 +98,11 @@ pub fn clearPendingTimers() void {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
+            // CRITICAL: Set destroyed flag BEFORE any cleanup to prevent use-after-free.
+            // The libuv uv_close() is async, so a timer callback could still fire
+            // between clearTimeout() and destroy(). The destroyed flag ensures the
+            // callback handler will early-exit instead of accessing freed memory.
+            wrapper.getData().destroyed = true;
             // Cancel the timer at the libuv level
             if (current_timer_interface) |timer| {
                 timer.clearTimeout(wrapper.getData().current_timer_id);
@@ -125,8 +135,14 @@ fn unregisterTimerContext(timer_id: TimerId) void {
     if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
             const wrapper = kv.value;
+            const data = wrapper.getData();
+            // CRITICAL: Set destroyed flag BEFORE any cleanup to prevent use-after-free.
+            // The libuv uv_close() is async, so a timer callback could still fire
+            // between clearTimeout() and destroy(). The destroyed flag ensures the
+            // callback handler will early-exit instead of accessing freed memory.
+            data.destroyed = true;
             // Mark as cancelled so interval callbacks know to stop rescheduling
-            wrapper.getData().cancelled = true;
+            data.cancelled = true;
             // Cancel the timer at the libuv level to prevent callback from firing
             if (current_timer_interface) |timer| {
                 timer.clearTimeout(timer_id);
@@ -159,6 +175,12 @@ const V8TimerContextData = struct {
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
+    /// Flag to prevent use-after-free when timer fires during cleanup.
+    /// Set to true BEFORE destroy() is called. Timer handlers check this
+    /// flag and early-exit if true, preventing access to freed memory.
+    /// This addresses the race condition where libuv's uv_close() is async
+    /// but we destroy the wrapper memory synchronously.
+    destroyed: bool = false,
 };
 
 /// Type-safe timer callback wrapper for V8 timer contexts.
@@ -195,6 +217,12 @@ fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, 
 
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
 fn v8TimerHandler(data: *V8TimerContextData) void {
+    // CRITICAL: Check destroyed flag FIRST to prevent use-after-free.
+    // If the timer context was destroyed during cleanup (clearTimerInterface,
+    // clearPendingTimers, or unregisterTimerContext), the memory may be freed
+    // but this callback could still fire due to libuv's async uv_close().
+    if (data.destroyed) return;
+
     // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
     if (timer_contexts) |*map| {
         _ = map.remove(data.current_timer_id);
@@ -239,6 +267,12 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
 
 /// Handler function for interval callbacks (invoked via SelfContainedCallback trampoline)
 fn v8IntervalHandler(data: *V8TimerContextData) void {
+    // CRITICAL: Check destroyed flag FIRST to prevent use-after-free.
+    // If the timer context was destroyed during cleanup (clearTimerInterface,
+    // clearPendingTimers, or unregisterTimerContext), the memory may be freed
+    // but this callback could still fire due to libuv's async uv_close().
+    if (data.destroyed) return;
+
     // Check if interval was cancelled
     if (data.cancelled) {
         if (timer_contexts) |*map| {
