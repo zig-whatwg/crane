@@ -263,6 +263,40 @@ fn getDocumentOrigin(ctx: runtime.Context, allocator: std.mem.Allocator) ?[]cons
 // Async Fetch Support
 // ============================================================================
 
+/// Thread-safe abort token for in-flight fetch cancellation.
+/// The atomic flag is set by the AbortSignal's abort algorithm (on event loop thread)
+/// and read by curl progress callbacks (potentially on different thread).
+const AbortToken = struct {
+    aborted: std.atomic.Value(bool),
+    signal: ?*runtime.Instance,
+    allocator: std.mem.Allocator,
+
+    fn init(allocator: std.mem.Allocator, signal: ?*runtime.Instance) !*AbortToken {
+        const token = try allocator.create(AbortToken);
+        token.* = .{
+            .aborted = std.atomic.Value(bool).init(false),
+            .signal = signal,
+            .allocator = allocator,
+        };
+        return token;
+    }
+
+    fn deinit(self: *AbortToken) void {
+        // Remove abort algorithm from signal if still valid
+        if (self.signal) |signal| {
+            const AbortSignalImpl = @import("AbortSignal.zig");
+            AbortSignalImpl.removeAbortAlgorithm(signal, abortAlgorithmCallback, self) catch {};
+        }
+        self.allocator.destroy(self);
+    }
+};
+
+/// Abort algorithm callback - sets the atomic flag when signal aborts
+fn abortAlgorithmCallback(data: ?*anyopaque) void {
+    const token: *AbortToken = @ptrCast(@alignCast(data orelse return));
+    token.aborted.store(true, .seq_cst);
+}
+
 /// Context for async fetch completion callback.
 /// Holds the V8 promise handle and engine context needed to resolve/reject.
 const FetchCompletionContext = struct {
@@ -276,8 +310,14 @@ const FetchCompletionContext = struct {
     engine_ctx: *anyopaque,
     /// Runtime context for creating Response instance
     runtime_ctx: runtime.Context,
+    /// Abort token for thread-safe abort checking
+    abort_token: ?*AbortToken = null,
 
     fn deinit(self: *FetchCompletionContext) void {
+        // Clean up abort token
+        if (self.abort_token) |token| {
+            token.deinit();
+        }
         // Destroy promise handle
         if (self.engine.destroyPromiseHandle) |destroy| {
             destroy(self.promise_handle, self.allocator);
@@ -287,12 +327,10 @@ const FetchCompletionContext = struct {
 };
 
 /// Abort signal check callback for in-flight fetch cancellation.
-/// Called periodically during curl data transfer to check if AbortSignal has been aborted.
-/// This enables AbortSignal.timeout() and manual abort() to cancel in-progress HTTP requests.
+/// Reads only the atomic flag - thread-safe, no runtime/GC access.
 fn abortSignalCheck(user_data: ?*anyopaque) bool {
-    const signal: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return false));
-    const AbortSignalImpl = @import("AbortSignal.zig");
-    return AbortSignalImpl.get_aborted(signal) catch false;
+    const token: *AbortToken = @ptrCast(@alignCast(user_data orelse return false));
+    return token.aborted.load(.seq_cst);
 }
 
 /// Completion callback invoked when async fetch completes.
@@ -1264,8 +1302,34 @@ fn callFetchInternal(
     if (instance.ctx.getNetworkManager()) |nm_ptr| {
         const async_curl: *AsyncCurlManager = @ptrCast(@alignCast(nm_ptr));
 
+        // Get abort signal if provided (for in-flight abort support)
+        const abort_signal: ?*runtime.Instance = if (init_data.wasPassed())
+            init_data.getValue().signal
+        else
+            null;
+
+        // Create abort token for thread-safe abort checking
+        // The token contains an atomic flag that curl can safely read from any thread
+        var abort_token: ?*AbortToken = null;
+        if (abort_signal) |signal| {
+            abort_token = try AbortToken.init(allocator, signal);
+            errdefer abort_token.?.deinit();
+
+            // Register abort algorithm - when signal aborts, it sets the atomic flag
+            const AbortSignalImpl = @import("AbortSignal.zig");
+            const added = try AbortSignalImpl.addAbortAlgorithm(signal, abortAlgorithmCallback, abort_token.?);
+            if (!added) {
+                // Signal was already aborted - set flag immediately
+                abort_token.?.aborted.store(true, .seq_cst);
+            }
+        }
+
         // Create completion context for the async callback
         const completion_ctx = try allocator.create(FetchCompletionContext);
+        errdefer {
+            if (abort_token) |token| token.deinit();
+            allocator.destroy(completion_ctx);
+        }
 
         completion_ctx.* = .{
             .promise_handle = promise_handle,
@@ -1273,13 +1337,8 @@ fn callFetchInternal(
             .engine = engine,
             .engine_ctx = engine_ctx,
             .runtime_ctx = instance.ctx,
+            .abort_token = abort_token,
         };
-
-        // Get abort signal if provided (for in-flight abort support)
-        const abort_signal: ?*runtime.Instance = if (init_data.wasPassed())
-            init_data.getValue().signal
-        else
-            null;
 
         // Build NetworkRequest for async manager
         // Note: headers_list.items is a slice that survives until headers_list.deinit()
@@ -1290,9 +1349,9 @@ fn callFetchInternal(
             .headers = headers_list.items,
             .body = request_init.body,
             .follow_redirects = follow_redirects,
-            // Wire up abort signal check for in-flight cancellation
-            .abort_check = if (abort_signal != null) abortSignalCheck else null,
-            .abort_check_data = if (abort_signal) |sig| @ptrCast(sig) else null,
+            // Wire up abort token for thread-safe in-flight cancellation
+            .abort_check = if (abort_token != null) abortSignalCheck else null,
+            .abort_check_data = if (abort_token) |token| @ptrCast(token) else null,
         };
 
         // Add the async request - returns immediately
