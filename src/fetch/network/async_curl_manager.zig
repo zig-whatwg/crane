@@ -74,6 +74,10 @@ const RequestContext = struct {
     /// Null-terminated URL string that must remain valid for the duration of the request.
     /// Curl's CURLOPT_URL requires the string to stay valid until the request completes.
     url_z: ?[:0]u8,
+    /// Optional callback to check if request should be aborted (from AbortSignal)
+    abort_check: ?*const fn (?*anyopaque) bool,
+    /// User data for abort check callback
+    abort_check_data: ?*anyopaque,
 
     fn init(
         allocator: Allocator,
@@ -95,6 +99,8 @@ const RequestContext = struct {
             .aborted = std.atomic.Value(bool).init(false),
             .manager = manager,
             .url_z = null,
+            .abort_check = null,
+            .abort_check_data = null,
         };
     }
 
@@ -370,6 +376,10 @@ pub const AsyncCurlManager = struct {
     // =========================================================================
 
     fn configureRequest(self: *Self, handle: *curl.CURL, request: *const NetworkRequest, ctx: *RequestContext) !void {
+        // Store abort check callback for progress monitoring (AbortSignal integration)
+        ctx.abort_check = request.abort_check;
+        ctx.abort_check_data = request.abort_check_data;
+
         // Attach cookie manager if available (enables cookie sending/receiving)
         if (self.cookie_manager) |cm| {
             cm.attachToHandle(handle);
@@ -583,9 +593,20 @@ fn progressCallback(
 ) callconv(.c) c_int {
     const ctx: *RequestContext = @ptrCast(@alignCast(userdata));
 
+    // Check if already marked aborted
     if (ctx.aborted.load(.seq_cst)) {
         return 1; // Abort transfer
     }
+
+    // Check external abort signal (e.g., AbortSignal.timeout())
+    if (ctx.abort_check) |check_fn| {
+        if (check_fn(ctx.abort_check_data)) {
+            // Signal is aborted - mark context and abort transfer
+            ctx.aborted.store(true, .seq_cst);
+            return 1;
+        }
+    }
+
     return 0;
 }
 

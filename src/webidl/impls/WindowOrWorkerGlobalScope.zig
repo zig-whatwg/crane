@@ -286,6 +286,15 @@ const FetchCompletionContext = struct {
     }
 };
 
+/// Abort signal check callback for in-flight fetch cancellation.
+/// Called periodically during curl data transfer to check if AbortSignal has been aborted.
+/// This enables AbortSignal.timeout() and manual abort() to cancel in-progress HTTP requests.
+fn abortSignalCheck(user_data: ?*anyopaque) bool {
+    const signal: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return false));
+    const AbortSignalImpl = @import("AbortSignal.zig");
+    return AbortSignalImpl.get_aborted(signal) catch false;
+}
+
 /// Completion callback invoked when async fetch completes.
 /// This runs on the event loop thread when the HTTP response arrives.
 fn asyncFetchCompletionCallback(result: AsyncResult, user_data: ?*anyopaque) void {
@@ -967,6 +976,22 @@ fn callFetchInternal(
     engine_ctx: *anyopaque,
     promise_handle: *anyopaque,
 ) !?runtime.JSValue {
+    // Step 5 per Fetch spec: If request's signal's aborted flag is set, reject with AbortError
+    // https://fetch.spec.whatwg.org/#fetch-method
+    // Check abort signal BEFORE any other fetch work
+    if (init_data.wasPassed()) {
+        const init_opts = init_data.getValue();
+        if (init_opts.signal) |signal| {
+            // Import AbortSignal impl to check aborted state
+            const AbortSignalImpl = @import("AbortSignal.zig");
+            const aborted = AbortSignalImpl.get_aborted(signal) catch false;
+            if (aborted) {
+                // Signal is already aborted - reject promise with AbortError
+                return error.AbortError;
+            }
+        }
+    }
+
     // Create headers list for network request
     // These will be converted from HeadersInit and passed to NetworkRequest
     var headers_list: std.ArrayList(NetworkRequest.Header) = .{};
@@ -1250,6 +1275,12 @@ fn callFetchInternal(
             .runtime_ctx = instance.ctx,
         };
 
+        // Get abort signal if provided (for in-flight abort support)
+        const abort_signal: ?*runtime.Instance = if (init_data.wasPassed())
+            init_data.getValue().signal
+        else
+            null;
+
         // Build NetworkRequest for async manager
         // Note: headers_list.items is a slice that survives until headers_list.deinit()
         // which happens after addRequest returns, so the headers are safely copied by curl
@@ -1259,6 +1290,9 @@ fn callFetchInternal(
             .headers = headers_list.items,
             .body = request_init.body,
             .follow_redirects = follow_redirects,
+            // Wire up abort signal check for in-flight cancellation
+            .abort_check = if (abort_signal != null) abortSignalCheck else null,
+            .abort_check_data = if (abort_signal) |sig| @ptrCast(sig) else null,
         };
 
         // Add the async request - returns immediately
