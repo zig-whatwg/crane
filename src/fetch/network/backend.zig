@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const certificate_trust = @import("certificate_trust.zig");
 
 // =============================================================================
 // Network Request/Response Types
@@ -71,6 +72,9 @@ pub const CertVerifyOptions = struct {
     client_cert_path: ?[]const u8 = null,
     /// Path to client private key (for mutual TLS)
     client_key_path: ?[]const u8 = null,
+    /// Certificate trust store for per-browser trusted certificates
+    /// When set, certificates in this store are trusted in addition to system certs
+    trust_store: ?*const certificate_trust.CertificateTrustStore = null,
 };
 
 /// Network request configuration.

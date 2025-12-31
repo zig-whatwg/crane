@@ -53,6 +53,7 @@ const impls = @import("impls");
 const namespaces = @import("namespaces");
 const fetch = @import("fetch");
 const network = fetch.network;
+const certificate_trust = network.certificate_trust;
 const html = @import("html");
 
 const context_mod = @import("Context.zig");
@@ -106,6 +107,8 @@ pub const Browser = struct {
     used_snapshot: bool,
     /// Async HTTP manager for non-blocking fetch()
     async_curl_manager: ?*network.AsyncCurlManager,
+    /// Certificate trust store for per-browser TLS certificate management
+    certificate_trust_store: *certificate_trust.CertificateTrustStore,
 
     /// Initialize a new Browser instance
     ///
@@ -221,6 +224,11 @@ pub const Browser = struct {
         const async_curl = try network.AsyncCurlManager.init(allocator);
         errdefer async_curl.deinit();
 
+        // Create certificate trust store for per-browser TLS certificate management
+        const trust_store = try allocator.create(certificate_trust.CertificateTrustStore);
+        errdefer allocator.destroy(trust_store);
+        trust_store.* = certificate_trust.CertificateTrustStore.init(allocator);
+
         // Register curl manager with event loop so it gets polled
         // Note: AsyncCurlManager.Pollable and V8EventLoop.Pollable are structurally identical
         // but different types, so we cast the compatible struct
@@ -244,6 +252,7 @@ pub const Browser = struct {
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
             .async_curl_manager = async_curl,
+            .certificate_trust_store = trust_store,
         };
 
         // Always create initial about:blank context - a real browser always has a window/document
@@ -323,6 +332,10 @@ pub const Browser = struct {
             // Note: deinit deallocates self, no need for allocator.destroy
         }
         network.globalCleanup();
+
+        // Cleanup certificate trust store
+        self.certificate_trust_store.deinit();
+        self.allocator.destroy(self.certificate_trust_store);
 
         // Use the isolate lifecycle manager for centralized cleanup
         // This ensures all V8-dependent modules are cleaned up in the correct order
@@ -522,6 +535,52 @@ pub const Browser = struct {
     /// is faster.
     pub fn isUsingSnapshot(self: *Browser) bool {
         return self.used_snapshot;
+    }
+
+    // =========================================================================
+    // Certificate Trust Store API
+    // =========================================================================
+
+    /// Add a trusted certificate for a specific host pattern.
+    ///
+    /// The certificate will be trusted for TLS connections matching the pattern.
+    /// This allows testing with self-signed certificates (e.g., WPT HTTPS tests)
+    /// without globally disabling SSL verification.
+    ///
+    /// ## Patterns
+    /// - `"localhost:8445"` - Exact host and port match
+    /// - `"*:8446"` - Any host on specific port
+    /// - `"*"` - Match all hosts (use with caution)
+    ///
+    /// ## Example
+    /// ```zig
+    /// try browser.addTrustedCertificate("localhost:8445", pem_data);
+    /// ```
+    pub fn addTrustedCertificate(self: *Browser, host_pattern: []const u8, pem_data: []const u8) !void {
+        try self.certificate_trust_store.addTrustedCertificate(host_pattern, pem_data, .{});
+    }
+
+    /// Add a trusted certificate from a file for a specific host pattern.
+    ///
+    /// Reads the PEM-encoded certificate from the specified file path and
+    /// adds it to the trust store for the given host pattern.
+    ///
+    /// ## Example
+    /// ```zig
+    /// try browser.addTrustedCertificateFromFile("localhost:8445", "/path/to/cert.pem");
+    /// ```
+    pub fn addTrustedCertificateFromFile(self: *Browser, host_pattern: []const u8, cert_path: []const u8) !void {
+        try self.certificate_trust_store.addTrustedCertificateFromFile(host_pattern, cert_path, .{});
+    }
+
+    /// Get the certificate trust store for advanced certificate management.
+    ///
+    /// Returns the underlying CertificateTrustStore for operations like:
+    /// - Checking if a certificate is trusted: `store.isTrustedForHost(host, fingerprint)`
+    /// - Generating CA bundle files: `store.generateCaBundleFile(output_dir)`
+    /// - Setting custom CA bundle path: `store.setCaBundlePath(path)`
+    pub fn getCertificateTrustStore(self: *Browser) *certificate_trust.CertificateTrustStore {
+        return self.certificate_trust_store;
     }
 };
 

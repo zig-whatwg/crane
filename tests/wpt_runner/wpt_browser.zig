@@ -89,8 +89,10 @@ pub const WptBrowser = struct {
     tests_run: usize,
     /// Test completion state - set by native __wpt_report_completion()
     test_complete: bool,
-    /// Test results - set by native __wpt_report_result()
-    test_results: ?test_harness.TestResult,
+    /// Test status - set by native __wpt_report_result()
+    test_status: ?test_harness.HarnessStatus,
+    /// Test message - set by native __wpt_report_result()
+    test_message: ?[]const u8,
 
     /// Initialize WptBrowser with a fresh Browser instance
     pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*WptBrowser {
@@ -111,7 +113,14 @@ pub const WptBrowser = struct {
             .testharnessreport_js = null,
             .tests_run = 0,
             .test_complete = false,
-            .test_results = null,
+            .test_status = null,
+            .test_message = null,
+        };
+
+        // Load WPT self-signed certificates for HTTPS tests
+        WptBrowser.loadWptCertificates(browser_instance, wpt_root, allocator) catch |err| {
+            std.debug.print("[WPT] Warning: Failed to load WPT certificates: {}\n", .{err});
+            // Continue without certs - HTTPS tests may fail but HTTP tests will work
         };
 
         // Pre-load testharness.js for efficiency
@@ -119,6 +128,77 @@ pub const WptBrowser = struct {
         self.testharnessreport_js = self.loadWptScript("resources/testharnessreport.js") catch null;
 
         return self;
+    }
+
+    /// Load WPT self-signed certificates for HTTPS testing.
+    ///
+    /// WPT tests use self-signed certificates on HTTPS ports 8443, 8445, 8446.
+    /// This function loads the WPT CA certificate and registers it for all
+    /// relevant hosts so that HTTPS tests can run without certificate errors.
+    ///
+    /// The CA certificate is located at: wpt/tools/certs/cacert.pem
+    fn loadWptCertificates(browser_instance: *Browser, wpt_root: []const u8, allocator: std.mem.Allocator) !void {
+        // Build path to WPT CA certificate
+        const ca_cert_path = try std.fs.path.join(allocator, &.{ wpt_root, "tools", "certs", "cacert.pem" });
+        defer allocator.free(ca_cert_path);
+
+        // Check if the certificate file exists
+        std.fs.cwd().access(ca_cert_path, .{}) catch |err| {
+            std.debug.print("[WPT] CA certificate not found at {s}: {}\n", .{ ca_cert_path, err });
+            return err;
+        };
+
+        // WPT HTTPS ports: 8443 (main), 8445 (alternate), 8446 (alternate)
+        // Host patterns to trust for these ports
+        const wpt_https_hosts = [_][]const u8{
+            // localhost variants
+            "localhost:8443",
+            "localhost:8445",
+            "localhost:8446",
+            // 127.0.0.1 variants
+            "127.0.0.1:8443",
+            "127.0.0.1:8445",
+            "127.0.0.1:8446",
+            // web-platform.test domain (WPT's default test domain)
+            "web-platform.test:8443",
+            "web-platform.test:8445",
+            "web-platform.test:8446",
+            // Subdomains of web-platform.test
+            "www.web-platform.test:8443",
+            "www1.web-platform.test:8443",
+            "www2.web-platform.test:8443",
+            "xn--n3h.web-platform.test:8443",
+            "xn--lve-6lad.web-platform.test:8443",
+        };
+
+        var loaded_count: usize = 0;
+        for (wpt_https_hosts) |host| {
+            browser_instance.addTrustedCertificateFromFile(host, ca_cert_path) catch |err| {
+                std.debug.print("[WPT] Warning: Failed to add WPT cert for {s}: {}\n", .{ host, err });
+                continue;
+            };
+            loaded_count += 1;
+        }
+
+        if (loaded_count > 0) {
+            std.debug.print("[WPT] Loaded CA certificate for {d} hosts from {s}\n", .{ loaded_count, ca_cert_path });
+
+            // Generate CA bundle file for curl to use
+            // This sets up the trust store so fetch requests can validate the certs
+            const trust_store = browser_instance.getCertificateTrustStore();
+
+            // Generate CA bundle in a temporary location
+            const bundle_path = trust_store.generateCaBundleFile("/tmp") catch |err| {
+                std.debug.print("[WPT] Warning: Failed to generate CA bundle: {}\n", .{err});
+                return;
+            };
+            defer allocator.free(bundle_path);
+
+            // Set the CA bundle path so curl uses it
+            trust_store.setCaBundlePath(bundle_path) catch |err| {
+                std.debug.print("[WPT] Warning: Failed to set CA bundle path: {}\n", .{err});
+            };
+        }
     }
 
     /// Cleanup
@@ -253,7 +333,7 @@ pub const WptBrowser = struct {
     }
 
     /// Native callback for __wpt_report_completion()
-    fn wptReportCompletionCallback(info: *const @import("v8").ffi.FunctionCallbackInfo) callconv(.C) void {
+    fn wptReportCompletionCallback(info: *const @import("v8").ffi.FunctionCallbackInfo) callconv(.c) void {
         _ = info; // Parameter not used in this simple callback
 
         if (getCurrentWptBrowser()) |wpt_browser| {
@@ -263,23 +343,16 @@ pub const WptBrowser = struct {
     }
 
     /// Native callback for __wpt_report_result()
-    fn wptReportResultCallback(info: *const @import("v8").ffi.FunctionCallbackInfo) callconv(.C) void {
+    fn wptReportResultCallback(info: *const @import("v8").ffi.FunctionCallbackInfo) callconv(.c) void {
         _ = info; // Not used in simplified implementation
         if (getCurrentWptBrowser()) |wpt_browser| {
-            // For now, just create a dummy result since parsing is complex
+            // For now, just set dummy status since parsing is complex
             // In a full implementation, we'd extract the actual data from the arguments
-            wpt_browser.test_results = wpt_browser.createDummyResult("native-callback");
+            wpt_browser.test_status = .ok;
+            wpt_browser.test_message = "Test completed via native functions";
 
             std.debug.print("[WPT] Test results reported via native function\n", .{});
         }
-    }
-
-    /// Create a dummy test result for testing
-    fn createDummyResult(self: *WptBrowser, test_path: []const u8) test_harness.TestResult {
-        var result = test_harness.TestResult.init(self.allocator, test_path) catch unreachable;
-        result.status = .ok;
-        result.message = self.allocator.dupe(u8, "Test completed via native functions") catch null;
-        return result;
     }
 
     /// Parse test results from JSON string
@@ -424,24 +497,24 @@ pub const WptBrowser = struct {
     fn registerWptNativeFunctions(self: *WptBrowser, ctx: *Context) !void {
         _ = self; // Not used in this simple implementation
         const v8 = @import("v8");
-        const isolate = ctx.isolate orelse return error.NoIsolate;
+        const isolate = ctx.isolate;
         const v8_ctx = ctx.v8_context orelse return error.NoContext;
-        const global = v8.v8_Context_Global(v8_ctx) orelse return error.NoGlobal;
+        const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return error.NoGlobal;
 
         // Register __wpt_report_completion
         {
-            const template = v8.v8_FunctionTemplate_New(isolate, wptReportCompletionCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            const func = v8.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.v8_String_NewFromUtf8(isolate, "__wpt_report_completion", 23) orelse return error.StringCreateFailed;
-            _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(key), @ptrCast(func));
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, wptReportCompletionCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "__wpt_report_completion", 23) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
 
         // Register __wpt_report_result
         {
-            const template = v8.v8_FunctionTemplate_New(isolate, wptReportResultCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            const func = v8.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.v8_String_NewFromUtf8(isolate, "__wpt_report_result", 19) orelse return error.StringCreateFailed;
-            _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(key), @ptrCast(func));
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, wptReportResultCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "__wpt_report_result", 19) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
     }
 
@@ -482,9 +555,13 @@ pub const WptBrowser = struct {
     fn getStoredResults(self: *WptBrowser, start_time: i64, test_path: []const u8) !test_harness.TestResult {
         const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
 
-        if (self.test_results) |stored_result| {
-            // We already have the parsed result
-            var result = stored_result;
+        if (self.test_status) |status| {
+            // We have test results - construct the TestResult
+            var result = try test_harness.TestResult.init(self.allocator, test_path);
+            result.status = status;
+            if (self.test_message) |msg| {
+                result.message = try self.allocator.dupe(u8, msg);
+            }
             result.duration_ms = duration;
             return result;
         } else {

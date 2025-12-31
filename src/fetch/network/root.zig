@@ -49,6 +49,7 @@ pub const cookie_store = @import("cookie_store.zig");
 pub const connection_pool = @import("connection_pool.zig");
 pub const streaming_source = @import("streaming_source.zig");
 pub const async_curl_manager = @import("async_curl_manager.zig");
+pub const certificate_trust = @import("certificate_trust.zig");
 
 // Re-export main types
 pub const NetworkBackend = backend.NetworkBackend;
@@ -86,6 +87,11 @@ pub const CookieError = curl_cookies.CookieError;
 // Re-export async HTTP manager
 pub const AsyncCurlManager = async_curl_manager.AsyncCurlManager;
 pub const AsyncResult = async_curl_manager.AsyncResult;
+
+// Re-export certificate trust store
+pub const CertificateTrustStore = certificate_trust.CertificateTrustStore;
+pub const TrustedCertificate = certificate_trust.TrustedCertificate;
+pub const TrustedCertificateOptions = certificate_trust.TrustedCertificateOptions;
 
 // Re-export CookieStore API
 pub const CookieStore = cookie_store.CookieStore;
