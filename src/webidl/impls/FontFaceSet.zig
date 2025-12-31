@@ -60,13 +60,48 @@ pub fn get_onloadingerror(instance: *runtime.Instance) anyerror!typedefs.EventHa
 
 /// Getter for ready
 /// Returns a Promise that resolves when the FontFaceSet is done loading fonts.
-/// Stub: Returns undefined as a placeholder for a resolved promise.
 /// Per CSS Font Loading spec §4.3, this should return a Promise<FontFaceSet>.
+///
+/// For WPT infrastructure tests, this Promise resolves immediately since we
+/// don't actually load fonts - there's nothing to wait for.
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    // Stub: Return undefined as placeholder for resolved promise
-    // Real implementation would return a Promise that resolves to this FontFaceSet
-    return .{ .undefined = {} };
+    // Get the engine interface and context for Promise creation
+    const engine = instance.ctx.engine orelse {
+        // No engine available - return undefined as fallback
+        return runtime.JSValue.jsUndefined;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return runtime.JSValue.jsUndefined;
+    };
+
+    // Create a Promise through the engine abstraction
+    const allocator = instance.ctx.allocator;
+    const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
+        return runtime.JSValue.jsUndefined;
+    };
+
+    // Resolve the promise immediately with the FontFaceSet instance (wrapped)
+    // Per spec, fonts.ready resolves with the FontFaceSet when all fonts loaded.
+    // Since we have no fonts to load, it resolves immediately.
+    // Use wrapInstance to get the JS wrapper, or resolve with null (undefined) if unavailable
+    const resolve_value: ?*const anyopaque = if (engine.wrapInstance) |wrap_fn| blk: {
+        const wrapped = wrap_fn(engine_ctx, instance) catch null;
+        break :blk if (wrapped) |w| @ptrCast(w) else null;
+    } else null;
+
+    engine.resolvePromise(engine_ctx, promise_handle, resolve_value) catch {
+        // If resolve fails, still return the promise (it will be pending forever)
+    };
+
+    // Get the JS Promise object
+    const promise_ptr = engine.getPromiseObject(promise_handle);
+
+    // Clean up the handle (Promise object is still valid, managed by GC)
+    if (engine.destroyPromiseHandle) |destroy_fn| {
+        destroy_fn(promise_handle, allocator);
+    }
+
+    return runtime.JSValue.fromPromise(promise_ptr);
 }
 
 /// Getter for status
