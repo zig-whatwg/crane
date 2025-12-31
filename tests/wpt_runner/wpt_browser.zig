@@ -93,6 +93,10 @@ pub const WptBrowser = struct {
     test_status: ?test_harness.HarnessStatus,
     /// Test message - set by native __wpt_report_result()
     test_message: ?[]const u8,
+    /// Whether test_message was allocated (vs string literal)
+    test_message_owned: bool,
+    /// Stored subtests - parsed from __wpt_report_result() callback
+    stored_subtests: std.ArrayList(test_harness.SubtestResult),
 
     /// Initialize WptBrowser with a fresh Browser instance
     pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*WptBrowser {
@@ -115,6 +119,8 @@ pub const WptBrowser = struct {
             .test_complete = false,
             .test_status = null,
             .test_message = null,
+            .test_message_owned = false,
+            .stored_subtests = .{},
         };
 
         // Load WPT self-signed certificates for HTTPS tests
@@ -209,6 +215,18 @@ pub const WptBrowser = struct {
         }
         if (self.testharnessreport_js) |js| {
             self.allocator.free(js);
+        }
+        // Clean up stored subtests
+        for (self.stored_subtests.items) |subtest| {
+            self.allocator.free(subtest.name);
+            if (subtest.message) |msg| self.allocator.free(msg);
+        }
+        self.stored_subtests.deinit(self.allocator);
+        // Clean up test_message only if we allocated it
+        if (self.test_message_owned) {
+            if (self.test_message) |msg| {
+                self.allocator.free(msg);
+            }
         }
         self.allocator.free(self.wpt_root);
         self.browser.deinit();
@@ -343,16 +361,179 @@ pub const WptBrowser = struct {
     }
 
     /// Native callback for __wpt_report_result()
+    /// Called from JavaScript with: __wpt_report_result({tests: [...], status: {status: number, message: string}})
     fn wptReportResultCallback(info: *const @import("v8").ffi.FunctionCallbackInfo) callconv(.c) void {
-        _ = info; // Not used in simplified implementation
-        if (getCurrentWptBrowser()) |wpt_browser| {
-            // For now, just set dummy status since parsing is complex
-            // In a full implementation, we'd extract the actual data from the arguments
-            wpt_browser.test_status = .ok;
-            wpt_browser.test_message = "Test completed via native functions";
+        const v8 = @import("v8");
 
-            std.debug.print("[WPT] Test results reported via native function\n", .{});
+        const wpt_browser = getCurrentWptBrowser() orelse {
+            std.debug.print("[WPT] Error: No WPT browser instance available\n", .{});
+            return;
+        };
+
+        // Get the first argument (the results object) using inline methods
+        const arg_count = info.length();
+        if (arg_count < 1) {
+            std.debug.print("[WPT] Error: __wpt_report_result called with no arguments\n", .{});
+            wpt_browser.test_status = .@"error";
+            wpt_browser.test_message = "No arguments provided to __wpt_report_result";
+            return;
         }
+
+        const results_value: *v8.ffi.Value = info.get(0);
+
+        // Get the V8 context using inline methods
+        const isolate = info.getIsolate();
+        const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+            std.debug.print("[WPT] Error: Could not get V8 context\n", .{});
+            wpt_browser.test_status = .@"error";
+            wpt_browser.test_message = "Could not get V8 context";
+            return;
+        };
+
+        // Convert the results object to JSON string using V8's JSON.stringify
+        var json_buffer: [64 * 1024]u8 = undefined; // 64KB buffer for JSON
+        const json_len = v8.ffi.v8_JSON_Stringify_ToBuffer(context, results_value, &json_buffer, json_buffer.len);
+
+        if (json_len < 0) {
+            std.debug.print("[WPT] Error: Failed to stringify results to JSON\n", .{});
+            wpt_browser.test_status = .@"error";
+            wpt_browser.test_message = "Failed to stringify results to JSON";
+            return;
+        }
+
+        const json_str = json_buffer[0..@intCast(json_len)];
+        std.debug.print("[WPT] Received results JSON ({d} bytes)\n", .{json_len});
+
+        // Parse the JSON to extract test results
+        wpt_browser.parseAndStoreResults(json_str) catch |err| {
+            std.debug.print("[WPT] Error parsing results: {}\n", .{err});
+            wpt_browser.test_status = .@"error";
+            wpt_browser.test_message = "Failed to parse test results";
+            return;
+        };
+
+        std.debug.print("[WPT] Test results reported via native function\n", .{});
+    }
+
+    /// Parse JSON results and store in WptBrowser
+    fn parseAndStoreResults(self: *WptBrowser, json_str: []const u8) !void {
+        // Parse JSON
+        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, json_str, .{}) catch {
+            self.test_status = .@"error";
+            self.test_message = "Failed to parse JSON";
+            return error.JsonParseError;
+        };
+        defer parsed.deinit();
+
+        const root = parsed.value;
+        if (root != .object) {
+            self.test_status = .@"error";
+            self.test_message = "Invalid results format: not an object";
+            return error.InvalidFormat;
+        }
+
+        // Get harness status from status.status (nested object)
+        var harness_status: test_harness.HarnessStatus = .ok;
+        var harness_message: ?[]const u8 = null;
+
+        if (root.object.get("status")) |status_obj| {
+            if (status_obj == .object) {
+                // status is an object with {status: number, message: string}
+                if (status_obj.object.get("status")) |s| {
+                    const status_num: i64 = switch (s) {
+                        .integer => s.integer,
+                        .float => @intFromFloat(s.float),
+                        else => 1, // Error
+                    };
+                    harness_status = switch (status_num) {
+                        0 => .ok,
+                        1 => .@"error",
+                        2 => .timeout,
+                        else => .@"error",
+                    };
+                }
+                if (status_obj.object.get("message")) |m| {
+                    if (m == .string) {
+                        harness_message = try self.allocator.dupe(u8, m.string);
+                    }
+                }
+            } else if (status_obj == .integer or status_obj == .float) {
+                // status is directly a number (legacy format)
+                const status_num: i64 = switch (status_obj) {
+                    .integer => status_obj.integer,
+                    .float => @intFromFloat(status_obj.float),
+                    else => 1,
+                };
+                harness_status = switch (status_num) {
+                    0 => .ok,
+                    1 => .@"error",
+                    2 => .timeout,
+                    else => .@"error",
+                };
+            }
+        }
+
+        self.test_status = harness_status;
+        // Free previous test_message if we allocated it
+        if (self.test_message_owned) {
+            if (self.test_message) |old_msg| {
+                self.allocator.free(old_msg);
+            }
+        }
+        self.test_message = harness_message;
+        self.test_message_owned = (harness_message != null); // Only owned if we allocated it
+
+        // Clear any existing subtests
+        for (self.stored_subtests.items) |subtest| {
+            self.allocator.free(subtest.name);
+            if (subtest.message) |msg| self.allocator.free(msg);
+        }
+        self.stored_subtests.clearRetainingCapacity();
+
+        // Parse tests array
+        if (root.object.get("tests")) |tests| {
+            if (tests == .array) {
+                for (tests.array.items) |test_item| {
+                    if (test_item == .object) {
+                        const name = if (test_item.object.get("name")) |n| switch (n) {
+                            .string => try self.allocator.dupe(u8, n.string),
+                            else => try self.allocator.dupe(u8, "<unknown>"),
+                        } else try self.allocator.dupe(u8, "<unknown>");
+
+                        const test_status_num: i64 = if (test_item.object.get("status")) |s| switch (s) {
+                            .integer => s.integer,
+                            .float => @intFromFloat(s.float),
+                            else => 1,
+                        } else 1;
+
+                        const test_status: test_harness.TestStatus = switch (test_status_num) {
+                            0 => .pass,
+                            1 => .fail,
+                            2 => .timeout,
+                            3 => .notrun,
+                            4 => .precondition_failed,
+                            else => .fail,
+                        };
+
+                        const test_message = if (test_item.object.get("message")) |m| switch (m) {
+                            .string => try self.allocator.dupe(u8, m.string),
+                            else => null,
+                        } else null;
+
+                        try self.stored_subtests.append(self.allocator, .{
+                            .name = name,
+                            .status = test_status,
+                            .message = test_message,
+                        });
+                    }
+                }
+            }
+        }
+
+        std.debug.print("[WPT] Parsed {d} subtests, harness status: {s}\n", .{
+            self.stored_subtests.items.len,
+            harness_status.toString(),
+        });
     }
 
     /// Parse test results from JSON string
@@ -563,6 +744,16 @@ pub const WptBrowser = struct {
                 result.message = try self.allocator.dupe(u8, msg);
             }
             result.duration_ms = duration;
+
+            // Copy stored subtests to result
+            for (self.stored_subtests.items) |subtest| {
+                try result.subtests.append(self.allocator, .{
+                    .name = try self.allocator.dupe(u8, subtest.name),
+                    .status = subtest.status,
+                    .message = if (subtest.message) |m| try self.allocator.dupe(u8, m) else null,
+                });
+            }
+
             return result;
         } else {
             // No results stored - this shouldn't happen with proper native function calls
