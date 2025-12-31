@@ -165,6 +165,16 @@ pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return runtime.JSValue.fromPromise(promise_ptr);
 }
 
+/// Getter for size
+/// Returns the number of FontFace objects in the FontFaceSet.
+/// Per CSS Font Loading spec §4.3, FontFaceSet is a setlike interface.
+/// For our minimal implementation, we return 0 (no fonts loaded).
+pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    // No fonts loaded in our minimal implementation
+    return 0;
+}
+
 /// Getter for status
 /// Returns the loading status of the FontFaceSet.
 /// Per CSS Font Loading spec §4.3, this is either "loading" or "loaded".

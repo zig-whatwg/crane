@@ -144,15 +144,11 @@ fn unregisterTimerContext(timer_id: TimerId) void {
 /// V8 Timer Context Data
 ///
 /// Holds the V8 function reference and metadata for timer/interval callbacks.
-/// This works for short-lived tests but could cause issues if V8 GCs
-/// the function before the timer fires. For production use, the V8 FFI
-/// would need to expose v8::Global<v8::Function> creation.
-///
-/// NOTE: This stores raw V8 function pointers without proper persistent handles.
-/// The V8 FFI doesn't currently support Persistent/Global handle creation.
+/// Uses GlobalHandle to prevent V8 GC from collecting the callback function
+/// before the timer fires.
 const V8TimerContextData = struct {
-    /// Raw pointer to the V8 function (not GC-protected!)
-    callback_fn: *v8.ffi.Function,
+    /// GlobalHandle to the V8 function (GC-protected!)
+    callback_handle: v8.GlobalHandle,
     /// V8 isolate
     isolate: *v8.ffi.Isolate,
     /// Whether this is an interval (repeating) timer - affects cleanup
@@ -180,12 +176,17 @@ fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, 
         return error.NotAFunction;
     }
 
+    // Create a GlobalHandle to prevent V8 GC from collecting the callback
+    const callback_handle = v8.GlobalHandle.create(isolate, callback_value) orelse {
+        return error.FailedToCreateGlobalHandle;
+    };
+
     const callback_fn = if (is_interval) &v8IntervalHandler else &v8TimerHandler;
     return try V8TimerCallback.create(
         allocator,
         callback_fn,
         .{
-            .callback_fn = @ptrCast(callback_value),
+            .callback_handle = callback_handle,
             .isolate = isolate,
             .is_interval = is_interval,
         },
@@ -203,12 +204,32 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
-    // Invoke the V8 function (stored directly, not via persistent handle)
+    // Enter the context before making V8 calls
+    v8.ffi.v8_Context_Enter(context);
+    defer v8.ffi.v8_Context_Exit(context);
+
+    // Get the callback function from GlobalHandle (prevents GC issues)
+    const callback_value = data.callback_handle.get(isolate) orelse return;
+
+    // Verify the callback is still a function (safety check)
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        data.callback_handle.dispose();
+        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+        wrapper.destroy();
+        return;
+    }
+
+    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
+
+    // Invoke the V8 function
     var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // Dispose the GlobalHandle before destroying the wrapper
+    data.callback_handle.dispose();
 
     // Destroy the wrapper - this is a one-shot timer, so clean up after execution
     // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedCallback)
@@ -223,6 +244,8 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
         if (timer_contexts) |*map| {
             _ = map.remove(data.current_timer_id);
         }
+        // Dispose the GlobalHandle when interval is cancelled
+        data.callback_handle.dispose();
         return;
     }
 
@@ -230,9 +253,24 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
+    // Enter the context before making V8 calls
+    v8.ffi.v8_Context_Enter(context);
+    defer v8.ffi.v8_Context_Exit(context);
+
+    // Get the callback function from GlobalHandle (prevents GC issues)
+    const callback_value = data.callback_handle.get(isolate) orelse return;
+
+    // Verify the callback is still a function (safety check)
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        data.callback_handle.dispose();
+        return;
+    }
+
+    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
+
     // Invoke the V8 function
     var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
 
     // Run microtasks after the timer callback
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -417,8 +455,9 @@ pub const Context = struct {
             runtime_ctx.setNetworkManager(nm);
         }
 
-        // SNAPSHOT MODE: Skip initializeBindings() - interfaces are already in the snapshot!
-        // However, we still need to populate the Zig-side template registry so that
+        // SNAPSHOT MODE: The snapshot contains V8 builtins AND WebIDL interfaces.
+        // Interfaces are pre-registered in the snapshot with proper external references.
+        // We only need to populate the Zig-side template registry so that
         // wrapInstanceAsV8Object() can wrap Document, Navigator, etc. with correct prototypes.
         v8.interface_bindings.registerAllTemplatesOnly(self.isolate);
 
@@ -464,6 +503,11 @@ pub const Context = struct {
 
         // Bind the V8 global to the Window instance for cross-realm access
         impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+
+        // Set isSecureContext based on URL scheme
+        // Per HTML spec, secure contexts include https, wss, file, and localhost
+        const is_secure = self.determineSecureContext();
+        impls.Window.setIsSecureContext(window_instance, is_secure);
 
         // Register Window in wrapper cache for proper cleanup
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
@@ -616,6 +660,11 @@ pub const Context = struct {
 
         // Bind the V8 global to the Window instance
         impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+
+        // Set isSecureContext based on URL scheme
+        // Per HTML spec, secure contexts include https, wss, file, and localhost
+        const is_secure = self.determineSecureContext();
+        impls.Window.setIsSecureContext(window_instance, is_secure);
 
         // Register Window in wrapper cache
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
@@ -1424,6 +1473,45 @@ pub const Context = struct {
         }
     }
 
+    /// Determine if the current URL represents a secure context
+    /// Per HTML spec, secure contexts include:
+    /// - https:// and wss:// URLs
+    /// - file:// URLs
+    /// - localhost and 127.0.0.1 and [::1] regardless of scheme
+    fn determineSecureContext(self: *Context) bool {
+        // Parse the URL to extract scheme and host
+        const url_str = self.url;
+
+        // Find scheme (everything before "://")
+        const scheme_end = std.mem.indexOf(u8, url_str, "://") orelse {
+            // No scheme found - treat as insecure
+            return false;
+        };
+        const scheme = url_str[0..scheme_end];
+
+        // Check if scheme is inherently secure
+        if (impls.Window.isSecureScheme(scheme)) {
+            return true;
+        }
+
+        // Extract host (after "://" and before "/" or ":" or end)
+        const after_scheme = url_str[scheme_end + 3 ..];
+        var host_end = after_scheme.len;
+
+        // Find end of host (first "/" or ":" for port)
+        if (std.mem.indexOf(u8, after_scheme, "/")) |pos| {
+            host_end = @min(host_end, pos);
+        }
+        if (std.mem.indexOf(u8, after_scheme, ":")) |pos| {
+            host_end = @min(host_end, pos);
+        }
+
+        const host = after_scheme[0..host_end];
+
+        // Check if localhost (secure regardless of scheme)
+        return impls.Window.isSecureLocalhost(host);
+    }
+
     /// Evaluate JavaScript in this context
     pub fn evaluateScript(self: *Context, script: []const u8) !?*v8.ffi.Value {
         const isolate = self.isolate;
@@ -1579,14 +1667,12 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
         return;
     };
 
-    const allocator = current_allocator orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
+    // Use page_allocator for timer wrappers - they must outlive the current arena
+    // because timers fire asynchronously after the current operation completes
+    const timer_allocator = std.heap.page_allocator;
 
     // Create typed timer context wrapper (one-shot timer)
-    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, false) catch {
+    const timer_wrapper = createV8TimerContext(timer_allocator, isolate, callback_value, false) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
@@ -1720,14 +1806,12 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
         return;
     };
 
-    const allocator = current_allocator orelse {
-        const result = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(result));
-        return;
-    };
+    // Use page_allocator for timer wrappers - they must outlive the current arena
+    // because timers fire asynchronously after the current operation completes
+    const timer_allocator = std.heap.page_allocator;
 
     // Create typed timer context wrapper (interval timer)
-    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, true) catch {
+    const timer_wrapper = createV8TimerContext(timer_allocator, isolate, callback_value, true) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;

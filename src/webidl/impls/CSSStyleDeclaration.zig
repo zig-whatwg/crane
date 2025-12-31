@@ -321,9 +321,17 @@ fn getComputedPropertyValue(property: []const u8, element: *runtime.Instance) ru
 /// Get the default display value for an element based on its tag name
 /// Per HTML spec, different elements have different default display values
 fn getDefaultDisplay(element: *runtime.Instance) []const u8 {
-    // Get the element's tag name
-    const elem_internal = ElementImpl.getInternal(element) orelse return "inline";
-    const tag_name = elem_internal.local_name.asSlice();
+    // Get the element's tag name - try internal state first, then fallback
+    const tag_name = blk: {
+        if (ElementImpl.getInternal(element)) |elem_internal| {
+            break :blk elem_internal.local_name.asSlice();
+        }
+        // Use fallback storage when Registry lookup fails
+        if (ElementImpl.getLocalNameFromFallback(element)) |fallback_name| {
+            break :blk fallback_name;
+        }
+        return "inline";
+    };
 
     // Block-level elements
     if (isBlockElement(tag_name)) {
@@ -528,10 +536,51 @@ pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, v
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
 
+    var names: std.ArrayList(runtime.DOMString) = .{};
+
+    // For computed styles, return all supported CSS property names
+    // These are the properties that getComputedPropertyValue can return values for
+    if (internal.is_computed) {
+        const supported_properties = [_][]const u8{
+            "display",
+            "backgroundColor",
+            "visibility",
+            "position",
+            "color",
+            "width",
+            "height",
+            "margin",
+            "marginTop",
+            "marginRight",
+            "marginBottom",
+            "marginLeft",
+            "padding",
+            "paddingTop",
+            "paddingRight",
+            "paddingBottom",
+            "paddingLeft",
+            // Also include kebab-case versions for compatibility
+            "background-color",
+            "margin-top",
+            "margin-right",
+            "margin-bottom",
+            "margin-left",
+            "padding-top",
+            "padding-right",
+            "padding-bottom",
+            "padding-left",
+        };
+
+        for (supported_properties) |prop| {
+            try names.append(allocator, runtime.DOMString.initInterned(prop));
+        }
+
+        return names.toOwnedSlice(allocator);
+    }
+
+    // For inline styles, return properties from the HashMap
     const count = internal.properties.count();
     if (count == 0) return &[_]runtime.DOMString{};
-
-    var names: std.ArrayList(runtime.DOMString) = .{};
 
     var iter = internal.properties.iterator();
     while (iter.next()) |entry| {
