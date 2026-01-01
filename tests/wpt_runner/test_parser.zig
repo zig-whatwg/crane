@@ -537,6 +537,14 @@ pub fn isReftestReference(path: []const u8) bool {
         std.mem.endsWith(u8, path, "-notref.htm");
 }
 
+/// Check if HTML content uses testharness.js
+/// This is used to differentiate between testharness.js tests and other test types
+pub fn htmlUsesTestHarness(content: []const u8) bool {
+    // Search for <script tags with src="/resources/testharness.js"
+    // Handle both single and double quotes
+    return std.mem.indexOf(u8, content, "/resources/testharness.js") != null;
+}
+
 /// Parse script tags from HTML content (both external and inline)
 fn parseHtmlScriptTags(_: std.mem.Allocator, content: []const u8, metadata: *TestMetadata) !void {
     var pos: usize = 0;
@@ -1496,4 +1504,29 @@ test "isReftestReference - detects reference files" {
     try std.testing.expect(!isReftestReference("test.html"));
     try std.testing.expect(!isReftestReference("reftest.html"));
     try std.testing.expect(!isReftestReference("test-reference.html"));
+}
+
+test "htmlUsesTestHarness - detects testharness.js" {
+    const content =
+        \\<!DOCTYPE html>
+        \\<script src="/resources/testharness.js"></script>
+        \\<script src="/resources/testharnessreport.js"></script>
+    ;
+    try std.testing.expect(htmlUsesTestHarness(content));
+}
+
+test "htmlUsesTestHarness - detects testharness.js with single quotes" {
+    const content =
+        \\<!DOCTYPE html>
+        \\<script src='/resources/testharness.js'></script>
+    ;
+    try std.testing.expect(htmlUsesTestHarness(content));
+}
+
+test "htmlUsesTestHarness - false for harnessless content" {
+    const content =
+        \\<!DOCTYPE html>
+        \\<p>Just some HTML</p>
+    ;
+    try std.testing.expect(!htmlUsesTestHarness(content));
 }
