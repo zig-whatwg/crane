@@ -174,6 +174,10 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // Our polyfill doesn't fully intercept the native element behavior.
     "assumptions/allowed-to-play",
 
+    // Font loading tests (1 failure)
+    // Requires layout engine (getBoundingClientRect) to verify font rendering.
+    "assumptions/document-fonts-ready.html",
+
     // ==========================================================================
     // WPT Infrastructure Helper Files (not standalone tests)
     // These are loaded by parent tests with specific parameters (uuid, etc.)
