@@ -303,6 +303,18 @@ pub fn getParentInfoByPtr(info: *const WrapperTypeInfo) ?*const WrapperTypeInfo 
     return null;
 }
 
+/// Check if child is a subclass of ancestor using the registry for parent lookup
+/// This is required because WrapperTypeInfo structs in the registry have null parent pointers
+/// due to comptime initialization constraints.
+pub fn isSubclassOf(child: *const WrapperTypeInfo, ancestor: *const WrapperTypeInfo) bool {
+    var current: ?*const WrapperTypeInfo = child;
+    while (current) |info| {
+        if (info == ancestor) return true;
+        current = getParentInfoByPtr(info);
+    }
+    return false;
+}
+
 // ============================================================================
 // Lookup Functions
 // ============================================================================

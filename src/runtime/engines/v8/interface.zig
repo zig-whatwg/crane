@@ -1987,6 +1987,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             // Throw TypeError from getter's realm (function's creation context)
                             // Per WebIDL spec: "Throw a TypeError using the function's realm."
                             conv.throwTypeErrorFromContext(isolate_inner, getter_context, "Illegal invocation");
+
                             return;
                         };
 
@@ -7130,8 +7131,11 @@ pub fn getInstanceTypeSafe(
     const stored_type_info: *const WrapperTypeInfo = @ptrCast(@alignCast(type_info_ptr));
 
     // Validate that stored type is compatible with expected type
-    // The stored tag must be in the expected type's valid range (allows subclasses)
-    if (!expected_type.isValidTag(stored_type_info.this_tag)) {
+    // Use registry.isSubclassOf for authoritative check (walks parent chain using registry indices)
+    // The tag check is just a fast path/preliminary check, and WrapperTypeInfo.parent pointers
+    // are null in the registry, so we must use the registry helper.
+    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
+    if (!wrapper_type_info_registry.isSubclassOf(stored_type_info, expected_type)) {
         return null;
     }
 
