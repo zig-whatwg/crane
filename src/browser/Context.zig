@@ -27,6 +27,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 
+const callback_registry = v8.callback_registry;
 const storage_mod = @import("storage/Storage.zig");
 const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
@@ -475,6 +476,10 @@ pub const Context = struct {
             }
         };
 
+        // Initialize callback registry for tracking CallbackWrapper instances
+        // This allows proper cleanup of event listeners, promise handlers, etc.
+        callback_registry.init(self.allocator);
+
         // Register context with context manager for wrapper caching
         // Pass timer and event loop interfaces so all runtime contexts share the same libuv loop
         const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
@@ -687,6 +692,10 @@ pub const Context = struct {
                 std.debug.print("Warning: Context manager init failed: {}\n", .{err});
             }
         };
+
+        // Initialize callback registry for tracking CallbackWrapper instances
+        // This allows proper cleanup of event listeners, promise handlers, etc.
+        callback_registry.init(self.allocator);
 
         // Register context with context manager for wrapper caching
         const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
@@ -1697,6 +1706,10 @@ pub const Context = struct {
         // This must happen before context manager deinit to prevent callbacks
         // from firing after the V8 context is disposed
         clearTimerInterface();
+
+        // Clean up all registered CallbackWrappers (EventListener, etc.)
+        // This must happen before V8 context disposal to properly release Global handles
+        callback_registry.deinit();
 
         // Clear iframe src load hook to prevent callbacks after context disposal
         impls.HTMLIFrameElement.setIframeSrcLoadHook(null);

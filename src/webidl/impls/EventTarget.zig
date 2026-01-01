@@ -12,6 +12,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const callback_registry = @import("v8").callback_registry;
 const EventTarget = interfaces.EventTarget;
 
 pub const State = EventTarget.State;
@@ -92,16 +93,11 @@ pub const InternalState = struct {
                 @"type".deinit(self.allocator);
 
                 // Clean up callback wrapper (disposes Global handles)
-                // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
-                // Skip V8 cleanup during final runtime shutdown when isolate is disposed
-                if (cleanup_v8_resources) {
-                    if (listener.callback) |callback_instance| {
-                        // Get the CallbackWrapper and deinit it to dispose Global handles
-                        const v8_engine = @import("v8");
-                        const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                        callback_wrapper.deinit();
-                    }
-                }
+                // NOTE: CallbackWrapper cleanup is handled by callback_registry.deinit()
+                // in Context.deinit(). Do NOT call callback_wrapper.deinit() here
+                // as it causes double-free (registry cleans up before EventTarget.deinit runs).
+                _ = listener.callback; // Silence unused warning
+                _ = cleanup_v8_resources;
             }
             list.deinit();
             self.allocator.destroy(list);

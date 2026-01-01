@@ -27,6 +27,7 @@ const namespace = @import("namespace.zig");
 const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
+const callback_registry = @import("callback_registry.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
@@ -1472,6 +1473,8 @@ pub fn fromV8Value(
             value,
             "handleEvent", // Default method name for callback interfaces
         ) orelse return ConversionError.TypeError;
+        // Register wrapper for cleanup when context is destroyed
+        callback_registry.register(v8_wrapper);
         // Cast to opaque runtime.CallbackWrapper pointer
         // The runtime.CallbackWrapper and v8 CallbackWrapper are layout-compatible for this use
         return @ptrCast(v8_wrapper);
@@ -1489,6 +1492,8 @@ pub fn fromV8Value(
             "handleEvent",
         );
         if (v8_wrapper) |w| {
+            // Register wrapper for cleanup when context is destroyed
+            callback_registry.register(w);
             return @ptrCast(w);
         }
         return null;
