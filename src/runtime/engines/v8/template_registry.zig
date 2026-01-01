@@ -378,379 +378,57 @@ pub fn wrapInstanceAsV8Object(
     return final_object;
 }
 
+/// Comptime-generated vtable lookup using inline for loop.
+/// Automatically discovers all interfaces at compile time by iterating over
+/// the interfaces module's declarations, eliminating manual maintenance.
+pub const VtableLookup = struct {
+    const interfaces = @import("interfaces");
+
+    /// Look up the interface name for a given vtable pointer.
+    /// Uses comptime inline for to generate efficient comparison code.
+    pub fn lookup(vtable_ptr: *const anyopaque) []const u8 {
+        // Need high branch quota to handle ~1100 interfaces
+        @setEvalBranchQuota(200000);
+
+        const decls = @typeInfo(interfaces).@"struct".decls;
+
+        inline for (decls) |decl| {
+            const T = @field(interfaces, decl.name);
+            // Check if this is actually a type (not a value or function)
+            if (@typeInfo(@TypeOf(T)) == .type) {
+                // Check if it has both vtable and Meta declarations
+                if (@hasDecl(T, "vtable") and @hasDecl(T, "Meta")) {
+                    const meta = T.Meta;
+                    // Exclude mixins - they don't have instantiable vtables
+                    const is_mixin = if (@hasDecl(meta, "is_mixin")) meta.is_mixin else false;
+                    if (!is_mixin) {
+                        // Compare vtable pointer addresses
+                        if (vtable_ptr == @as(*const anyopaque, @ptrCast(&T.vtable))) {
+                            return meta.name;
+                        }
+                    }
+                }
+            }
+        }
+        // Default to "Object" for unknown vtables
+        return "Object";
+    }
+};
+
 /// Get the interface name from an Instance
 ///
 /// This looks at the instance's vtable to determine which interface it belongs to.
-/// Compares vtable addresses against known vtables to identify the interface.
+/// Uses comptime-generated VtableLookup to compare vtable addresses against all
+/// known interface vtables automatically.
 pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
-    // Import generated interfaces to get their vtables
-    const interfaces = @import("interfaces");
-
     // Safety check: validate instance pointer before dereferencing vtable
     if (@intFromPtr(instance) < 0x1000) {
         // Invalid pointer - return generic name
         return "Object";
     }
 
-    // Get the instance's vtable address
-    const inst_vtable = instance.vtable;
-
-    // Compare against known vtable addresses
-    // NOTE: This compares pointer addresses, which works because vtables are comptime constants
-
-    // Check NodeList first (most common for querySelectorAll)
-    if (inst_vtable == &interfaces.NodeList.vtable) {
-        return "NodeList";
-    }
-
-    // Check specific HTML element types (before generic Element check)
-    // These must be checked BEFORE HTMLElement and Element since subclasses
-    // have different vtables than their parents
-    if (inst_vtable == &interfaces.HTMLDivElement.vtable) return "HTMLDivElement";
-    if (inst_vtable == &interfaces.HTMLSpanElement.vtable) return "HTMLSpanElement";
-    if (inst_vtable == &interfaces.HTMLParagraphElement.vtable) return "HTMLParagraphElement";
-    if (inst_vtable == &interfaces.HTMLAnchorElement.vtable) return "HTMLAnchorElement";
-    if (inst_vtable == &interfaces.HTMLImageElement.vtable) return "HTMLImageElement";
-    if (inst_vtable == &interfaces.HTMLInputElement.vtable) return "HTMLInputElement";
-    if (inst_vtable == &interfaces.HTMLButtonElement.vtable) return "HTMLButtonElement";
-    if (inst_vtable == &interfaces.HTMLFormElement.vtable) return "HTMLFormElement";
-    if (inst_vtable == &interfaces.HTMLScriptElement.vtable) return "HTMLScriptElement";
-    if (inst_vtable == &interfaces.HTMLStyleElement.vtable) return "HTMLStyleElement";
-    if (inst_vtable == &interfaces.HTMLLinkElement.vtable) return "HTMLLinkElement";
-    if (inst_vtable == &interfaces.HTMLIFrameElement.vtable) return "HTMLIFrameElement";
-    if (inst_vtable == &interfaces.HTMLHtmlElement.vtable) return "HTMLHtmlElement";
-    if (inst_vtable == &interfaces.HTMLHeadElement.vtable) return "HTMLHeadElement";
-    if (inst_vtable == &interfaces.HTMLBodyElement.vtable) return "HTMLBodyElement";
-    if (inst_vtable == &interfaces.HTMLTitleElement.vtable) return "HTMLTitleElement";
-    if (inst_vtable == &interfaces.HTMLMetaElement.vtable) return "HTMLMetaElement";
-    if (inst_vtable == &interfaces.HTMLBaseElement.vtable) return "HTMLBaseElement";
-    if (inst_vtable == &interfaces.HTMLHeadingElement.vtable) return "HTMLHeadingElement";
-    if (inst_vtable == &interfaces.HTMLBRElement.vtable) return "HTMLBRElement";
-    if (inst_vtable == &interfaces.HTMLHRElement.vtable) return "HTMLHRElement";
-    if (inst_vtable == &interfaces.HTMLPreElement.vtable) return "HTMLPreElement";
-    if (inst_vtable == &interfaces.HTMLQuoteElement.vtable) return "HTMLQuoteElement";
-    if (inst_vtable == &interfaces.HTMLOListElement.vtable) return "HTMLOListElement";
-    if (inst_vtable == &interfaces.HTMLUListElement.vtable) return "HTMLUListElement";
-    if (inst_vtable == &interfaces.HTMLLIElement.vtable) return "HTMLLIElement";
-    if (inst_vtable == &interfaces.HTMLDListElement.vtable) return "HTMLDListElement";
-    if (inst_vtable == &interfaces.HTMLMenuElement.vtable) return "HTMLMenuElement";
-    if (inst_vtable == &interfaces.HTMLTableElement.vtable) return "HTMLTableElement";
-    if (inst_vtable == &interfaces.HTMLTableCaptionElement.vtable) return "HTMLTableCaptionElement";
-    if (inst_vtable == &interfaces.HTMLTableColElement.vtable) return "HTMLTableColElement";
-    if (inst_vtable == &interfaces.HTMLTableSectionElement.vtable) return "HTMLTableSectionElement";
-    if (inst_vtable == &interfaces.HTMLTableRowElement.vtable) return "HTMLTableRowElement";
-    if (inst_vtable == &interfaces.HTMLTableCellElement.vtable) return "HTMLTableCellElement";
-    if (inst_vtable == &interfaces.HTMLLabelElement.vtable) return "HTMLLabelElement";
-    if (inst_vtable == &interfaces.HTMLSelectElement.vtable) return "HTMLSelectElement";
-    if (inst_vtable == &interfaces.HTMLDataListElement.vtable) return "HTMLDataListElement";
-    if (inst_vtable == &interfaces.HTMLOptGroupElement.vtable) return "HTMLOptGroupElement";
-    if (inst_vtable == &interfaces.HTMLOptionElement.vtable) return "HTMLOptionElement";
-    if (inst_vtable == &interfaces.HTMLTextAreaElement.vtable) return "HTMLTextAreaElement";
-    if (inst_vtable == &interfaces.HTMLOutputElement.vtable) return "HTMLOutputElement";
-    if (inst_vtable == &interfaces.HTMLProgressElement.vtable) return "HTMLProgressElement";
-    if (inst_vtable == &interfaces.HTMLMeterElement.vtable) return "HTMLMeterElement";
-    if (inst_vtable == &interfaces.HTMLFieldSetElement.vtable) return "HTMLFieldSetElement";
-    if (inst_vtable == &interfaces.HTMLLegendElement.vtable) return "HTMLLegendElement";
-    if (inst_vtable == &interfaces.HTMLEmbedElement.vtable) return "HTMLEmbedElement";
-    if (inst_vtable == &interfaces.HTMLObjectElement.vtable) return "HTMLObjectElement";
-    if (inst_vtable == &interfaces.HTMLParamElement.vtable) return "HTMLParamElement";
-    if (inst_vtable == &interfaces.HTMLVideoElement.vtable) return "HTMLVideoElement";
-    if (inst_vtable == &interfaces.HTMLAudioElement.vtable) return "HTMLAudioElement";
-    if (inst_vtable == &interfaces.HTMLSourceElement.vtable) return "HTMLSourceElement";
-    if (inst_vtable == &interfaces.HTMLTrackElement.vtable) return "HTMLTrackElement";
-    if (inst_vtable == &interfaces.HTMLCanvasElement.vtable) return "HTMLCanvasElement";
-    if (inst_vtable == &interfaces.CanvasRenderingContext2D.vtable) return "CanvasRenderingContext2D";
-    if (inst_vtable == &interfaces.HTMLMapElement.vtable) return "HTMLMapElement";
-    if (inst_vtable == &interfaces.HTMLAreaElement.vtable) return "HTMLAreaElement";
-    if (inst_vtable == &interfaces.HTMLTemplateElement.vtable) return "HTMLTemplateElement";
-    if (inst_vtable == &interfaces.HTMLSlotElement.vtable) return "HTMLSlotElement";
-    if (inst_vtable == &interfaces.HTMLDialogElement.vtable) return "HTMLDialogElement";
-    if (inst_vtable == &interfaces.HTMLDetailsElement.vtable) return "HTMLDetailsElement";
-    if (inst_vtable == &interfaces.HTMLDataElement.vtable) return "HTMLDataElement";
-    if (inst_vtable == &interfaces.HTMLTimeElement.vtable) return "HTMLTimeElement";
-    if (inst_vtable == &interfaces.HTMLModElement.vtable) return "HTMLModElement";
-    if (inst_vtable == &interfaces.HTMLPictureElement.vtable) return "HTMLPictureElement";
-    if (inst_vtable == &interfaces.HTMLMediaElement.vtable) return "HTMLMediaElement";
-    if (inst_vtable == &interfaces.HTMLUnknownElement.vtable) return "HTMLUnknownElement";
-
-    // Check Element and subclasses (generic fallbacks)
-    if (inst_vtable == &interfaces.Element.vtable) {
-        return "Element";
-    }
-
-    if (inst_vtable == &interfaces.HTMLElement.vtable) {
-        return "HTMLElement";
-    }
-
-    // Check Document
-    if (inst_vtable == &interfaces.Document.vtable) {
-        return "Document";
-    }
-
-    // Check other common types
-    if (inst_vtable == &interfaces.Text.vtable) {
-        return "Text";
-    }
-
-    if (inst_vtable == &interfaces.Comment.vtable) {
-        return "Comment";
-    }
-
-    if (inst_vtable == &interfaces.DocumentFragment.vtable) {
-        return "DocumentFragment";
-    }
-
-    if (inst_vtable == &interfaces.Attr.vtable) {
-        return "Attr";
-    }
-
-    if (inst_vtable == &interfaces.CharacterData.vtable) {
-        return "CharacterData";
-    }
-
-    if (inst_vtable == &interfaces.ProcessingInstruction.vtable) {
-        return "ProcessingInstruction";
-    }
-
-    if (inst_vtable == &interfaces.CDATASection.vtable) {
-        return "CDATASection";
-    }
-
-    if (inst_vtable == &interfaces.DocumentType.vtable) {
-        return "DocumentType";
-    }
-
-    if (inst_vtable == &interfaces.ShadowRoot.vtable) {
-        return "ShadowRoot";
-    }
-
-    if (inst_vtable == &interfaces.Range.vtable) {
-        return "Range";
-    }
-
-    if (inst_vtable == &interfaces.StaticRange.vtable) {
-        return "StaticRange";
-    }
-
-    if (inst_vtable == &interfaces.TreeWalker.vtable) {
-        return "TreeWalker";
-    }
-
-    if (inst_vtable == &interfaces.NodeIterator.vtable) {
-        return "NodeIterator";
-    }
-
-    if (inst_vtable == &interfaces.DOMTokenList.vtable) {
-        return "DOMTokenList";
-    }
-
-    if (inst_vtable == &interfaces.HTMLCollection.vtable) {
-        return "HTMLCollection";
-    }
-
-    if (inst_vtable == &interfaces.NamedNodeMap.vtable) {
-        return "NamedNodeMap";
-    }
-
-    if (inst_vtable == &interfaces.DOMImplementation.vtable) {
-        return "DOMImplementation";
-    }
-
-    // DOM Events and AbortController/AbortSignal
-    if (inst_vtable == &interfaces.AbortController.vtable) {
-        return "AbortController";
-    }
-
-    if (inst_vtable == &interfaces.AbortSignal.vtable) {
-        return "AbortSignal";
-    }
-
-    // Event subtypes - must be checked BEFORE base Event
-    // (because subtype vtables are different from Event.vtable)
-    if (inst_vtable == &interfaces.MessageEvent.vtable) {
-        return "MessageEvent";
-    }
-
-    if (inst_vtable == &interfaces.CustomEvent.vtable) {
-        return "CustomEvent";
-    }
-
-    if (inst_vtable == &interfaces.Event.vtable) {
-        return "Event";
-    }
-
-    if (inst_vtable == &interfaces.EventTarget.vtable) {
-        return "EventTarget";
-    }
-
-    // Web Storage types
-    if (inst_vtable == &interfaces.Storage.vtable) {
-        return "Storage";
-    }
-
-    // IndexedDB types
-    if (inst_vtable == &interfaces.IDBKeyRange.vtable) {
-        return "IDBKeyRange";
-    }
-
-    if (inst_vtable == &interfaces.IDBFactory.vtable) {
-        return "IDBFactory";
-    }
-
-    if (inst_vtable == &interfaces.IDBDatabase.vtable) {
-        return "IDBDatabase";
-    }
-
-    if (inst_vtable == &interfaces.IDBObjectStore.vtable) {
-        return "IDBObjectStore";
-    }
-
-    if (inst_vtable == &interfaces.IDBIndex.vtable) {
-        return "IDBIndex";
-    }
-
-    if (inst_vtable == &interfaces.IDBRequest.vtable) {
-        return "IDBRequest";
-    }
-
-    if (inst_vtable == &interfaces.IDBOpenDBRequest.vtable) {
-        return "IDBOpenDBRequest";
-    }
-
-    if (inst_vtable == &interfaces.IDBTransaction.vtable) {
-        return "IDBTransaction";
-    }
-
-    if (inst_vtable == &interfaces.IDBCursor.vtable) {
-        return "IDBCursor";
-    }
-
-    if (inst_vtable == &interfaces.IDBCursorWithValue.vtable) {
-        return "IDBCursorWithValue";
-    }
-
-    // Fetch types
-    if (inst_vtable == &interfaces.Headers.vtable) {
-        return "Headers";
-    }
-
-    if (inst_vtable == &interfaces.Request.vtable) {
-        return "Request";
-    }
-
-    if (inst_vtable == &interfaces.Response.vtable) {
-        return "Response";
-    }
-
-    if (inst_vtable == &interfaces.Blob.vtable) {
-        return "Blob";
-    }
-
-    if (inst_vtable == &interfaces.File.vtable) {
-        return "File";
-    }
-
-    if (inst_vtable == &interfaces.FormData.vtable) {
-        return "FormData";
-    }
-
-    // Streams types
-    if (inst_vtable == &interfaces.ReadableStream.vtable) {
-        return "ReadableStream";
-    }
-
-    if (inst_vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
-        return "ReadableStreamDefaultReader";
-    }
-
-    if (inst_vtable == &interfaces.ReadableStreamDefaultController.vtable) {
-        return "ReadableStreamDefaultController";
-    }
-
-    if (inst_vtable == &interfaces.WritableStream.vtable) {
-        return "WritableStream";
-    }
-
-    if (inst_vtable == &interfaces.WritableStreamDefaultWriter.vtable) {
-        return "WritableStreamDefaultWriter";
-    }
-
-    if (inst_vtable == &interfaces.WritableStreamDefaultController.vtable) {
-        return "WritableStreamDefaultController";
-    }
-
-    if (inst_vtable == &interfaces.TransformStream.vtable) {
-        return "TransformStream";
-    }
-
-    if (inst_vtable == &interfaces.TransformStreamDefaultController.vtable) {
-        return "TransformStreamDefaultController";
-    }
-
-    // XHR types
-    if (inst_vtable == &interfaces.XMLHttpRequest.vtable) {
-        return "XMLHttpRequest";
-    }
-
-    if (inst_vtable == &interfaces.XMLHttpRequestUpload.vtable) {
-        return "XMLHttpRequestUpload";
-    }
-
-    if (inst_vtable == &interfaces.XMLHttpRequestEventTarget.vtable) {
-        return "XMLHttpRequestEventTarget";
-    }
-
-    // Progress events
-    if (inst_vtable == &interfaces.ProgressEvent.vtable) {
-        return "ProgressEvent";
-    }
-
-    // URL types
-    if (inst_vtable == &interfaces.URL.vtable) {
-        return "URL";
-    }
-
-    if (inst_vtable == &interfaces.URLSearchParams.vtable) {
-        return "URLSearchParams";
-    }
-
-    // CSSOM types
-    if (inst_vtable == &interfaces.CSSStyleDeclaration.vtable) {
-        return "CSSStyleDeclaration";
-    }
-
-    // Geometry types (CSSOM View)
-    if (inst_vtable == &interfaces.DOMRect.vtable) {
-        return "DOMRect";
-    }
-
-    if (inst_vtable == &interfaces.DOMRectReadOnly.vtable) {
-        return "DOMRectReadOnly";
-    }
-
-    if (inst_vtable == &interfaces.DOMRectList.vtable) {
-        return "DOMRectList";
-    }
-
-    if (inst_vtable == &interfaces.DOMPoint.vtable) {
-        return "DOMPoint";
-    }
-
-    if (inst_vtable == &interfaces.DOMPointReadOnly.vtable) {
-        return "DOMPointReadOnly";
-    }
-
-    if (inst_vtable == &interfaces.DOMQuad.vtable) {
-        return "DOMQuad";
-    }
-
-    // Window - critical for cross-realm support
-    if (inst_vtable == &interfaces.Window.vtable) {
-        return "Window";
-    }
-
-    // Default to "Element" for unknown types (backwards compat)
-    return "Element";
+    // Use comptime-generated lookup
+    return VtableLookup.lookup(@ptrCast(instance.vtable));
 }
 
 // ============================================================================

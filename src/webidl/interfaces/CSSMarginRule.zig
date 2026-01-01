@@ -135,7 +135,8 @@ pub const CSSMarginRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        try runtime.setPropertyOnInstance(target, "cssText", value);
+        // Note: target is a JSValue (from [SameObject] caching), not *Instance
+        try runtime.setPropertyOnJSValue(target, instance, "cssText", value);
     }
 
 };

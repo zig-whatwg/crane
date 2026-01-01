@@ -3073,7 +3073,16 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("        \n");
             try writer.writeAll("        // Use JavaScript [[Set]] semantics to set the forwarded property\n");
             try writer.writeAll("        // This respects prototype chain and user-defined setters\n");
-            try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
+            // Check if the getter returns JSValue vs *Instance
+            // If the return type contains "JSValue", use setPropertyOnJSValue; otherwise use setPropertyOnInstance
+            const is_jsvalue_return = std.mem.indexOf(u8, return_type, "JSValue") != null;
+            if (is_jsvalue_return) {
+                try writer.writeAll("        // Note: target is a JSValue (from [SameObject] caching), not *Instance\n");
+                try writer.print("        try runtime.setPropertyOnJSValue(target, instance, \"{s}\", value);\n", .{forwarded_property});
+            } else {
+                try writer.writeAll("        // Note: target is a *Instance, use setPropertyOnInstance\n");
+                try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
+            }
             try writer.writeAll("    }\n\n");
         } else if (is_replaceable) {
             // [Replaceable] setter - creates an own property on the object
