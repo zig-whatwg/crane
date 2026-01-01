@@ -216,6 +216,119 @@ pub const mixin_count: usize = getMixinInterfaces().len;
 /// Total count of all interfaces (including mixins)
 pub const total_interface_count: usize = getAllInterfaces().len;
 
+// ============================================================================
+// InterfaceIndex - Comptime index for O(1) array-based lookups
+// ============================================================================
+
+/// Index type for interface arrays. Uses comptime-known indices for O(1) lookup.
+/// This replaces name-based O(n) linear searches with direct array indexing.
+pub const InterfaceIndex = usize;
+
+/// Sentinel value indicating an invalid/unknown interface index
+pub const INVALID_INDEX: InterfaceIndex = std.math.maxInt(InterfaceIndex);
+
+/// Get the comptime index of an interface type.
+/// Returns the position of the interface in getValidInterfaces().
+/// Use this for O(1) array-based lookups instead of name-based searches.
+///
+/// Example:
+///   const idx = comptime InterfaceCatalog.indexOf(interfaces.Element);
+///   const template = templates[idx]; // O(1) lookup
+pub fn indexOf(comptime T: type) InterfaceIndex {
+    @setEvalBranchQuota(100000);
+    comptime {
+        if (!@hasDecl(T, "Meta")) {
+            return INVALID_INDEX;
+        }
+        const target_name = T.Meta.name;
+        const valid = getValidInterfaces();
+        for (valid, 0..) |entry, idx| {
+            if (std.mem.eql(u8, entry.name, target_name)) {
+                return idx;
+            }
+        }
+        return INVALID_INDEX;
+    }
+}
+
+/// Get the comptime index of an interface by name string.
+/// Returns the position of the interface in getValidInterfaces().
+///
+/// Example:
+///   const idx = comptime InterfaceCatalog.indexOfByName("Element");
+///   const template = templates[idx]; // O(1) lookup
+pub fn indexOfByName(comptime name: []const u8) InterfaceIndex {
+    @setEvalBranchQuota(100000);
+    comptime {
+        const valid = getValidInterfaces();
+        for (valid, 0..) |entry, idx| {
+            if (std.mem.eql(u8, entry.name, name)) {
+                return idx;
+            }
+        }
+        return INVALID_INDEX;
+    }
+}
+
+/// Runtime O(1) lookup of interface index by name using StaticStringMap.
+/// Use this when the interface name is only known at runtime.
+///
+/// Example:
+///   const idx = InterfaceCatalog.indexOfByNameRuntime(interface_name);
+///   if (idx != INVALID_INDEX) {
+///       const template = templates[idx];
+///   }
+pub fn indexOfByNameRuntime(name: []const u8) InterfaceIndex {
+    return name_to_index_map.get(name) orelse INVALID_INDEX;
+}
+
+/// Comptime-generated StaticStringMap for O(1) runtime name-to-index lookup
+const name_to_index_map = blk: {
+    @setEvalBranchQuota(200000);
+    const valid = getValidInterfaces();
+    var kvs: [valid.len]struct { []const u8, InterfaceIndex } = undefined;
+    for (valid, 0..) |entry, idx| {
+        kvs[idx] = .{ entry.name, idx };
+    }
+    break :blk std.StaticStringMap(InterfaceIndex).initComptime(kvs);
+};
+
+/// Get the interface name at a given index. Returns null if index is invalid.
+pub fn nameAt(comptime idx: InterfaceIndex) ?[]const u8 {
+    comptime {
+        const valid = getValidInterfaces();
+        if (idx >= valid.len) {
+            return null;
+        }
+        return valid[idx].name;
+    }
+}
+
+/// Get the interface type at a given index. Returns null if not found.
+/// This allows reverse lookup from index to type.
+pub fn typeAt(comptime idx: InterfaceIndex) ?type {
+    @setEvalBranchQuota(100000);
+    comptime {
+        const valid = getValidInterfaces();
+        if (idx >= valid.len) {
+            return null;
+        }
+        const name = valid[idx].name;
+        const decls = @typeInfo(interfaces).@"struct".decls;
+        for (decls) |decl| {
+            const T = @field(interfaces, decl.name);
+            if (@typeInfo(@TypeOf(T)) == .type) {
+                if (@hasDecl(T, "Meta")) {
+                    if (std.mem.eql(u8, T.Meta.name, name)) {
+                        return T;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+}
+
 /// Find an interface entry by name at comptime
 pub fn findInterface(comptime name: []const u8) ?InterfaceEntry {
     @setEvalBranchQuota(100000);
@@ -468,4 +581,78 @@ test "valid_interface_count is correct" {
 test "total_interface_count includes mixins" {
     try std.testing.expect(total_interface_count >= valid_interface_count);
     try std.testing.expect(total_interface_count == valid_interface_count + mixin_count);
+}
+
+test "indexOf returns correct index for known interfaces" {
+    const Element = interfaces.Element;
+    const Node = interfaces.Node;
+    const EventTarget = interfaces.EventTarget;
+
+    const element_idx = comptime indexOf(Element);
+    const node_idx = comptime indexOf(Node);
+    const event_target_idx = comptime indexOf(EventTarget);
+
+    // All should be valid indices
+    try std.testing.expect(element_idx != INVALID_INDEX);
+    try std.testing.expect(node_idx != INVALID_INDEX);
+    try std.testing.expect(event_target_idx != INVALID_INDEX);
+
+    // Indices should be unique
+    try std.testing.expect(element_idx != node_idx);
+    try std.testing.expect(element_idx != event_target_idx);
+    try std.testing.expect(node_idx != event_target_idx);
+
+    // Indices should be within bounds
+    try std.testing.expect(element_idx < valid_interface_count);
+    try std.testing.expect(node_idx < valid_interface_count);
+    try std.testing.expect(event_target_idx < valid_interface_count);
+}
+
+test "indexOfByName returns correct index" {
+    const element_idx = comptime indexOfByName("Element");
+    const node_idx = comptime indexOfByName("Node");
+
+    try std.testing.expect(element_idx != INVALID_INDEX);
+    try std.testing.expect(node_idx != INVALID_INDEX);
+
+    // Should match indexOf for same interface
+    try std.testing.expect(element_idx == comptime indexOf(interfaces.Element));
+    try std.testing.expect(node_idx == comptime indexOf(interfaces.Node));
+
+    // Non-existent interface should return INVALID_INDEX
+    const invalid_idx = comptime indexOfByName("NonExistentInterface12345");
+    try std.testing.expect(invalid_idx == INVALID_INDEX);
+}
+
+test "nameAt returns correct name" {
+    const element_idx = comptime indexOf(interfaces.Element);
+    const name = comptime nameAt(element_idx);
+
+    try std.testing.expect(name != null);
+    try std.testing.expectEqualStrings("Element", name.?);
+
+    // Invalid index should return null
+    const invalid_name = comptime nameAt(INVALID_INDEX);
+    try std.testing.expect(invalid_name == null);
+}
+
+test "typeAt returns correct type" {
+    const element_idx = comptime indexOf(interfaces.Element);
+    const T = comptime typeAt(element_idx);
+
+    try std.testing.expect(T != null);
+    try std.testing.expect(T.? == interfaces.Element);
+
+    // Invalid index should return null
+    const invalid_type = comptime typeAt(INVALID_INDEX);
+    try std.testing.expect(invalid_type == null);
+}
+
+test "indexOf and indexOfByName are consistent" {
+    // For all valid interfaces, indexOf(type) should equal indexOfByName(name)
+    const valid = comptime getValidInterfaces();
+    inline for (valid, 0..) |entry, expected_idx| {
+        const by_name_idx = comptime indexOfByName(entry.name);
+        try std.testing.expect(by_name_idx == expected_idx);
+    }
 }

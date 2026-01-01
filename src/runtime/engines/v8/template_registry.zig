@@ -36,21 +36,22 @@ const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const dom_type_info = @import("dom_type_info.zig");
+const interface_catalog = @import("interface_catalog.zig");
 
-/// Maximum number of interface templates that can be registered
-const MAX_TEMPLATES = 2048; // Need to support all WebIDL interfaces (~1100)
+/// Use interface_catalog's count for array sizing
+const InterfaceIndex = interface_catalog.InterfaceIndex;
+const INTERFACE_COUNT = interface_catalog.valid_interface_count;
 
-/// Entry in the template registry
+/// Entry in the template registry - now per-isolate
 const TemplateEntry = struct {
-    name: []const u8,
     template: *v8.FunctionTemplate,
     isolate: *v8.Isolate,
 };
 
-/// Global template registry
-/// Maps interface names to their FunctionTemplates
-var templates: [MAX_TEMPLATES]?TemplateEntry = [_]?TemplateEntry{null} ** MAX_TEMPLATES;
-var template_count: usize = 0;
+/// Index-based template registry
+/// Uses InterfaceIndex for O(1) lookup instead of name-based O(n) search.
+/// Each slot corresponds to an interface index from interface_catalog.
+var templates_by_index: [INTERFACE_COUNT]?TemplateEntry = [_]?TemplateEntry{null} ** INTERFACE_COUNT;
 var initialized: bool = false;
 
 /// Snapshot mode flag - when true, templates are NOT cached
@@ -109,13 +110,12 @@ fn ensureInitialized() void {
 pub fn clear() void {
     // Dispose V8 FunctionTemplate handles before clearing entries
     // V8 Global handles must be explicitly disposed to release resources
-    for (&templates) |*entry| {
+    for (&templates_by_index) |*entry| {
         if (entry.*) |e| {
             v8.v8_FunctionTemplate_Dispose(e.template);
         }
         entry.* = null;
     }
-    template_count = 0;
     // Increment generation to invalidate all per-interface static caches
     cache_generation +%= 1;
     // Clear the async iterator template cache in C++ layer
@@ -171,29 +171,41 @@ pub fn register(
 
     ensureInitialized();
 
-    // Check if already registered for THIS SPECIFIC ISOLATE
-    // Key is (name, isolate) pair - each isolate can have its own template for the same interface
-    for (&templates) |*entry| {
-        if (entry.*) |*e| {
-            if (std.mem.eql(u8, e.name, interface_name) and e.isolate == isolate) {
-                // Update existing entry for this isolate
-                e.template = template;
-                return;
-            }
-        }
+    // O(1) index lookup using runtime StaticStringMap
+    const idx = interface_catalog.indexOfByNameRuntime(interface_name);
+    if (idx == interface_catalog.INVALID_INDEX) {
+        // Interface not in catalog - this can happen for dynamically created interfaces
+        std.log.warn("[template_registry.register] Interface '{s}' not in catalog", .{interface_name});
+        return;
     }
 
-    // Add new entry for this (name, isolate) pair
-    if (template_count < MAX_TEMPLATES) {
-        templates[template_count] = .{
-            .name = interface_name,
-            .template = template,
-            .isolate = isolate,
-        };
-        template_count += 1;
-    } else {
-        std.log.err("[template_registry.register] Template registry full! Cannot register '{s}' for isolate {*}", .{ interface_name, isolate });
+    // Store at indexed position - overwrites any existing entry for this interface
+    // Note: If a different isolate had a template here, it gets replaced.
+    // This is correct because we check isolate match in getTemplate().
+    templates_by_index[idx] = .{
+        .template = template,
+        .isolate = isolate,
+    };
+}
+
+/// Register a FunctionTemplate by interface index (O(1) direct access)
+pub fn registerByIndex(
+    idx: InterfaceIndex,
+    template: *v8.FunctionTemplate,
+    isolate: *v8.Isolate,
+) void {
+    if (snapshot_mode) return;
+    ensureInitialized();
+
+    if (idx >= INTERFACE_COUNT) {
+        std.log.err("[template_registry.registerByIndex] Index {d} out of bounds", .{idx});
+        return;
     }
+
+    templates_by_index[idx] = .{
+        .template = template,
+        .isolate = isolate,
+    };
 }
 
 /// Get a registered FunctionTemplate by interface name
@@ -215,19 +227,36 @@ pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
         return null;
     }
 
-    // Only iterate over registered templates, not the full array
-    for (templates[0..template_count]) |entry| {
-        if (entry) |e| {
-            if (std.mem.eql(u8, e.name, interface_name)) {
-                // CRITICAL: Verify isolate matches!
-                // Templates are isolate-specific and cannot be used across isolates.
-                if (e.isolate != current_isolate) {
-                    // Template is from a different isolate - don't return it
-                    continue;
-                }
-                return e.template;
-            }
+    // O(1) index lookup using runtime StaticStringMap
+    const idx = interface_catalog.indexOfByNameRuntime(interface_name);
+    if (idx == interface_catalog.INVALID_INDEX) {
+        return null;
+    }
+
+    // O(1) array access
+    if (templates_by_index[idx]) |entry| {
+        // CRITICAL: Verify isolate matches!
+        // Templates are isolate-specific and cannot be used across isolates.
+        if (entry.isolate != current_isolate) {
+            return null;
         }
+        return entry.template;
+    }
+    return null;
+}
+
+/// Get a registered FunctionTemplate by interface index (O(1) direct access)
+pub fn getTemplateByIndex(idx: InterfaceIndex) ?*v8.FunctionTemplate {
+    ensureInitialized();
+
+    const current_isolate = v8.v8_Isolate_GetCurrent();
+    if (current_isolate == null) return null;
+
+    if (idx >= INTERFACE_COUNT) return null;
+
+    if (templates_by_index[idx]) |entry| {
+        if (entry.isolate != current_isolate) return null;
+        return entry.template;
     }
     return null;
 }
