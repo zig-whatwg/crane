@@ -342,14 +342,27 @@ pub const WptServer = struct {
     }
 
     /// Build test URL with scheme based on test path
-    /// Tests with .https. in the path or ending in .https.html use HTTPS
+    /// Tests with .https. in the path use HTTPS on port 8443
+    /// Tests with .h2. in the path use HTTP/2 (HTTPS) on port 9000
+    /// Tests with .www. in the path use www subdomain
     pub fn buildTestUrlWithScheme(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
-        // Determine if test requires HTTPS
+        _ = self; // WptServer not needed for URL construction
+
+        // Parse file flags from test path
         const use_https = std.mem.indexOf(u8, test_path, ".https.") != null or
             std.mem.endsWith(u8, test_path, ".https.html") or
             std.mem.endsWith(u8, test_path, ".https.htm");
+        const use_h2 = std.mem.indexOf(u8, test_path, ".h2.") != null;
+        const use_www = std.mem.indexOf(u8, test_path, ".www.") != null;
 
-        const base_url = if (use_https) self.getHttpsBaseUrl() else self.getBaseUrl();
+        // Determine scheme, host, and port based on flags
+        const scheme = if (use_https or use_h2) "https" else "http";
+        const host = if (use_www) "www.web-platform.test" else "web-platform.test";
+        const port: u16 = if (use_h2) 9000 else if (use_https) 8443 else 8000;
+
+        // Build base URL
+        var base_url_buf: [128]u8 = undefined;
+        const base_url = std.fmt.bufPrint(&base_url_buf, "{s}://{s}:{d}", .{ scheme, host, port }) catch unreachable;
 
         var url_path = test_path;
         var suffix: []const u8 = "";
