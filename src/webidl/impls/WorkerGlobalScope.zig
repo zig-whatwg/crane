@@ -50,6 +50,56 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+/// Check if a scheme is inherently secure
+/// Per https://w3c.github.io/webappsec-secure-contexts/
+fn isSecureScheme(scheme: []const u8) bool {
+    return std.mem.eql(u8, scheme, "https") or
+        std.mem.eql(u8, scheme, "wss") or
+        std.mem.eql(u8, scheme, "file");
+}
+
+/// Check if a host is a secure localhost
+/// Per https://w3c.github.io/webappsec-secure-contexts/
+fn isSecureLocalhost(host: []const u8) bool {
+    return std.mem.eql(u8, host, "localhost") or
+        std.mem.eql(u8, host, "127.0.0.1") or
+        std.mem.eql(u8, host, "::1");
+}
+
+/// Determine if a URL represents a secure context
+/// Secure Contexts spec: https://w3c.github.io/webappsec-secure-contexts/
+fn isSecureContext(url: []const u8) bool {
+    // Check for secure schemes first (fast path)
+    if (std.mem.startsWith(u8, url, "https://") or
+        std.mem.startsWith(u8, url, "wss://") or
+        std.mem.startsWith(u8, url, "file://"))
+    {
+        return true;
+    }
+
+    // For http:// and ws://, check if host is localhost
+    if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "ws://")) {
+        // Extract host from URL: scheme://host[:port][/path]
+        const scheme_end = std.mem.indexOf(u8, url, "://") orelse return false;
+        const host_start = scheme_end + 3;
+        if (host_start >= url.len) return false;
+
+        const rest = url[host_start..];
+        // Find end of host (port separator, path, or end of string)
+        var host_end = rest.len;
+        for (rest, 0..) |c, i| {
+            if (c == ':' or c == '/' or c == '?' or c == '#') {
+                host_end = i;
+                break;
+            }
+        }
+        const host = rest[0..host_end];
+        return isSecureLocalhost(host);
+    }
+
+    return false;
+}
+
 /// Internal state for WorkerGlobalScope implementation
 ///
 /// Contains cached WorkerLocation and WorkerNavigator objects,
@@ -167,9 +217,11 @@ pub fn initWithUrl(
     errdefer navigator.deinit();
 
     // Determine if secure context
-    const is_secure = std.mem.startsWith(u8, url, "https://") or
-        std.mem.startsWith(u8, url, "wss://") or
-        std.mem.startsWith(u8, url, "file://");
+    // Secure Contexts spec: https://w3c.github.io/webappsec-secure-contexts/
+    // A context is secure if:
+    // 1. Scheme is https, wss, or file
+    // 2. OR host is localhost, 127.0.0.1, or ::1 (for http/ws)
+    const is_secure = isSecureContext(url);
 
     internal_state.* = .{
         .internal_location = location,
@@ -967,4 +1019,50 @@ fn fireNetworkEvent(
     // handles listeners registered via addEventListener. For the IDL attribute
     // handler, we would need to call into V8 with the handler GlobalHandle.
     // This is left as future work when V8 context is available here.
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+test "isSecureContext - HTTPS is secure" {
+    try std.testing.expect(isSecureContext("https://example.com/path"));
+    try std.testing.expect(isSecureContext("https://example.com:443/path"));
+}
+
+test "isSecureContext - WSS is secure" {
+    try std.testing.expect(isSecureContext("wss://example.com/socket"));
+}
+
+test "isSecureContext - file:// is secure" {
+    try std.testing.expect(isSecureContext("file:///path/to/file"));
+}
+
+test "isSecureContext - HTTP localhost is secure" {
+    try std.testing.expect(isSecureContext("http://localhost/path"));
+    try std.testing.expect(isSecureContext("http://localhost:8080/path"));
+    try std.testing.expect(isSecureContext("http://127.0.0.1/path"));
+    try std.testing.expect(isSecureContext("http://127.0.0.1:3000/path"));
+    try std.testing.expect(isSecureContext("http://[::1]/path"));
+    try std.testing.expect(isSecureContext("http://::1/path"));
+}
+
+test "isSecureContext - WS localhost is secure" {
+    try std.testing.expect(isSecureContext("ws://localhost/socket"));
+    try std.testing.expect(isSecureContext("ws://127.0.0.1:8080/socket"));
+}
+
+test "isSecureContext - HTTP non-localhost is NOT secure" {
+    try std.testing.expect(!isSecureContext("http://example.com/path"));
+    try std.testing.expect(!isSecureContext("http://web-platform.test:8000/path"));
+    try std.testing.expect(!isSecureContext("http://192.168.1.1/path"));
+}
+
+test "isSecureContext - WS non-localhost is NOT secure" {
+    try std.testing.expect(!isSecureContext("ws://example.com/socket"));
+}
+
+test "isSecureContext - unknown schemes are NOT secure" {
+    try std.testing.expect(!isSecureContext("ftp://example.com/path"));
+    try std.testing.expect(!isSecureContext("data:text/html,<h1>test</h1>"));
 }

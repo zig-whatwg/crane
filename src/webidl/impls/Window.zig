@@ -175,7 +175,9 @@ pub const InternalState = struct {
     cookie_store: ?*runtime.Instance = null,
 
     /// Whether this is a secure context (for SecureContext checks)
-    is_secure_context: bool = true,
+    /// Default to false - Browser Context.zig sets this correctly via setIsSecureContext()
+    /// Secure Contexts spec: https://w3c.github.io/webappsec-secure-contexts/
+    is_secure_context: bool = false,
 
     /// The window's origin string for storage access
     /// Derived from the document's URL
