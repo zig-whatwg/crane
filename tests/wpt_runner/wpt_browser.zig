@@ -1010,10 +1010,17 @@ pub const WptBrowser = struct {
         const flags = file_flags.FileFlags.parse(test_path);
 
         // Build URL with correct scheme, host, and port based on file flags
-        return try std.fmt.allocPrint(
+        const url = try std.fmt.allocPrint(
             self.allocator,
             "{s}://{s}:{d}/{s}",
             .{ flags.getScheme(), flags.getHost(), flags.getPort(), test_path },
         );
+
+        // Debug: show URL being used for HTTPS tests
+        if (flags.https or flags.h2) {
+            std.debug.print("DEBUG: HTTPS test URL = {s}\n", .{url});
+        }
+
+        return url;
     }
 };

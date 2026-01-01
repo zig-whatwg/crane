@@ -382,33 +382,12 @@ pub const WptServer = struct {
     /// For .any.js tests, the WPT server generates different HTML wrappers:
     /// - Window context: test.any.html (runs test directly in window)
     /// - Worker context: test.any.worker.html (uses fetch_tests_from_worker)
+    ///
+    /// This method automatically detects HTTPS requirements from file flags
+    /// (.https., .h2.) and uses the appropriate scheme and port.
     pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
-        var url_path = test_path;
-        var suffix: []const u8 = "";
-
-        if (std.mem.endsWith(u8, test_path, ".any.js")) {
-            url_path = test_path[0 .. test_path.len - 7];
-            // Generate context-specific URL
-            suffix = switch (context) {
-                .worker => ".any.worker.html",
-                .sharedworker => ".any.sharedworker.html",
-                .serviceworker => ".any.serviceworker.html",
-                else => ".any.html", // window and other contexts
-            };
-        } else if (std.mem.endsWith(u8, test_path, ".window.js")) {
-            url_path = test_path[0 .. test_path.len - 10];
-            suffix = ".window.html";
-        } else if (std.mem.endsWith(u8, test_path, ".worker.js")) {
-            url_path = test_path[0 .. test_path.len - 10];
-            suffix = ".worker.html";
-        }
-
-        const url = try std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
-            self.getBaseUrl(),
-            url_path,
-            suffix,
-        });
-        return url;
+        // Delegate to buildTestUrlWithScheme which handles HTTPS detection
+        return self.buildTestUrlWithScheme(allocator, test_path, context);
     }
 };
 
