@@ -231,6 +231,15 @@ pub const WorkerV8Context = struct {
         };
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
+        // Hydrate worker context if using snapshot (reinstalls callbacks)
+        if (used_snapshot) {
+            _ = try context_manager.hydrateWorkerContext(.{
+                .isolate = isolate,
+                .context = context,
+                .allocator = allocator,
+            });
+        }
+
         // Set up basic worker globals (self, globalThis)
         try self.setupWorkerGlobals();
 

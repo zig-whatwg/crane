@@ -956,22 +956,15 @@ pub fn V8Interface(comptime Interface: type) type {
             const prototype_obj: *v8.Object = blk: {
                 // Try to get template from registry first
                 if (tpl_registry.getTemplate(interface_name)) |template| {
-                    std.debug.print("[REINSTALL-DEBUG] {s}: Template found\n", .{interface_name});
                     // Get the function from the template (same as wrapInstanceAsV8Object does)
                     if (v8.v8_FunctionTemplate_GetFunction(template, context)) |func| {
-                        std.debug.print("[REINSTALL-DEBUG] {s}: Function from template obtained\n", .{interface_name});
                         const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse break :blk null;
                         const prototype_value = v8.v8_Object_Get(@ptrCast(func), context, @ptrCast(prototype_key)) orelse break :blk null;
                         if (v8.v8_Value_IsObject(prototype_value)) {
-                            std.debug.print("[REINSTALL-DEBUG] {s}: Using TEMPLATE prototype @{*}\n", .{ interface_name, prototype_value });
                             const proto_obj: *v8.Object = @ptrCast(prototype_value);
                             break :blk proto_obj;
                         }
-                    } else {
-                        std.debug.print("[REINSTALL-DEBUG] {s}: GetFunction failed, falling back to global\n", .{interface_name});
                     }
-                } else {
-                    std.debug.print("[REINSTALL-DEBUG] {s}: Template NOT found, using global\n", .{interface_name});
                 }
                 // Fallback to global constructor's prototype if template not found
                 const global = v8.v8_Context_Global(context) orelse break :blk null;
@@ -1024,16 +1017,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         null;
 
                     // Re-install accessor property on the prototype
-                    const result = v8.v8_Object_SetAccessorProperty(
+                    _ = v8.v8_Object_SetAccessorProperty(
                         prototype_obj,
                         context,
                         prop_name_str,
                         getter_cb,
                         setter_cb,
                     );
-                    if (std.mem.eql(u8, interface_name, "MessageEvent") and std.mem.eql(u8, prop_name, "data")) {
-                        std.debug.print("[ACCESSOR-REINSTALL] MessageEvent.data accessor reinstalled, result: {}\n", .{result});
-                    }
                 }
             }
         }

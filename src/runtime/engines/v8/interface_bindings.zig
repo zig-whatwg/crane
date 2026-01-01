@@ -796,5 +796,83 @@ test "EventTarget binding has methods" {
 
     try testing.expect(has_addEventListener);
     try testing.expect(has_removeEventListener);
+
     try testing.expect(has_dispatchEvent);
+}
+
+/// Reinstall accessor callbacks on ALL interface prototypes
+///
+/// This is used after loading from a V8 snapshot. V8 snapshots serialize JavaScript
+/// objects but native callback pointers become stale. This function re-installs
+/// accessor callbacks (getters/setters) on all interface prototypes so properties
+/// work correctly.
+///
+/// Must be called after registerAllTemplatesOnly() and before using the context.
+pub fn reinstallAllAccessorCallbacks(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        // Skip problematic interfaces using centralized skip list
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        // Only bind types that have Meta (actual interfaces)
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            // Skip mixin interfaces
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            const Binding = V8Interface(InterfaceType);
+            Binding.reinstallAccessorCallbacksOnPrototype(isolate, context);
+        }
+    }
+}
+
+/// Reinstall method callbacks on ALL interface prototypes
+///
+/// This is used after loading from a V8 snapshot. V8 snapshots serialize JavaScript
+/// objects but native callback pointers become stale. This function re-installs
+/// method callbacks on all interface prototypes so methods work correctly.
+///
+/// Must be called after registerAllTemplatesOnly() and before using the context.
+pub fn reinstallAllMethodCallbacks(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        // Skip problematic interfaces using centralized skip list
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        // Only bind types that have Meta (actual interfaces)
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            // Skip mixin interfaces
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            const Binding = V8Interface(InterfaceType);
+            Binding.reinstallMethodCallbacksOnPrototype(isolate, context);
+        }
+    }
 }
