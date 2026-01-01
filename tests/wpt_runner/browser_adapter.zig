@@ -284,6 +284,12 @@ pub const BrowserAdapter = struct {
             return result;
         }
 
+        // Detect harnessless HTML tests (no testharness.js) - "smoke tests"
+        // These just parse the HTML and complete immediately
+        if (!test_parser.htmlUsesTestHarness(fetch_result.body)) {
+            return test_harness.TestResult.createSmokeTest(self.allocator, test_path, 0);
+        }
+
         // Always parse HTML in window context - the URL determines the actual test context
         // (e.g., .any.worker.html will spawn a Worker internally)
         // Pass the full URL as base_url so relative script URLs can be resolved
