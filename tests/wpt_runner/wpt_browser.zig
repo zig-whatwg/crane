@@ -288,6 +288,10 @@ pub const WptBrowser = struct {
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
 
+        // Register native functions BEFORE loading testharness/scripts
+        setCurrentWptBrowser(self);
+        try self.registerWptNativeFunctions(ctx);
+
         // Load testharness.js
         try self.loadTestHarness(ctx);
 
@@ -326,6 +330,11 @@ pub const WptBrowser = struct {
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
 
+        // Register native functions BEFORE loading HTML/scripts
+        // This ensures __wpt_report_completion exists when scripts run
+        setCurrentWptBrowser(self);
+        try self.registerWptNativeFunctions(ctx);
+
         // Let the browser handle ALL script loading naturally via HTTP
         // No pre-loading, no script interception - this is how a real browser works
         ctx.loadHTML(html_content, .{
@@ -339,9 +348,9 @@ pub const WptBrowser = struct {
             return result;
         };
 
-        // Set up completion callback AFTER HTML parsing
+        // Inject completion hook JS to capture results
         // testharness.js should now be loaded and its globals available
-        try self.setupCompletionCallback(ctx);
+        try self.injectCompletionHook(ctx);
 
         // Run event loop until test completes or timeout
         const result = try self.waitForCompletion(ctx, timeout_ms, test_path);
@@ -648,14 +657,10 @@ pub const WptBrowser = struct {
         return result;
     }
 
-    /// Set up completion callback AFTER HTML parsing
+    /// Inject completion hook JS to capture results
     /// testharness.js should have been loaded by the HTML parser via HTTP
-    fn setupCompletionCallback(self: *WptBrowser, ctx: *Context) !void {
-        // Set the current WPT browser for native callbacks
-        setCurrentWptBrowser(self);
-
-        // Register native functions on the global object
-        try self.registerWptNativeFunctions(ctx);
+    fn injectCompletionHook(self: *WptBrowser, ctx: *Context) !void {
+        _ = self; // Not used in this implementation (stored_subtests populated by native callback)
 
         // Set up completion callback to capture results
         // This runs after testharness.js has been loaded by the HTML parser
