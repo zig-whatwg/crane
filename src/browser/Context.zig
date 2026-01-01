@@ -742,40 +742,26 @@ pub const Context = struct {
                     }
                 }
             }
-            
+
             // Create and bind DedicatedWorkerGlobalScope instance
             const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
             const worker_instance = DedicatedWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
                 std.debug.print("Warning: Failed to create worker instance: {}\n", .{err});
                 return error.ContextCreateFailed;
             };
-            
+
             // Store instance in internal field 0
             v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
-            
+
             // Store WrapperTypeInfo in internal field 1
             if (v8.dom_type_info.getTypeInfoByName("DedicatedWorkerGlobalScope")) |type_info| {
                 v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
             }
-            
+
             // Register in wrapper cache
             if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
                 const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
                 cache.set(worker_instance, global, self.isolate) catch {};
-            }
-        }
-
-                    }
-                } else {
-                    std.debug.print("ContextFresh: DedicatedWorkerGlobalScope constructor NOT found on global\n", .{});
-                }
-            }
-
-            // Check MessageEvent registration
-            if (v8.template_registry.getTemplate("MessageEvent") == null) {
-                std.debug.print("ContextFresh: WARNING - MessageEvent template NOT registered!\n", .{});
-            } else {
-                std.debug.print("ContextFresh: MessageEvent template IS registered\n", .{});
             }
         }
 
