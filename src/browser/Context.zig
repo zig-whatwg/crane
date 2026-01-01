@@ -890,8 +890,10 @@ pub const Context = struct {
             self.document_instance = doc_instance;
 
             // Link the document to the Window instance so window.document accessor works
+            // Also link the Window to the Document so document.location and document.defaultView work
             if (self.window_instance) |win| {
                 impls.Window.setDocument(win, doc_instance);
+                impls.Document.setDefaultView(doc_instance, win);
             }
 
             const v8_document = v8.template_registry.wrapInstanceAsV8Object(
