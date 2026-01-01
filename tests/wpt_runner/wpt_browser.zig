@@ -794,6 +794,124 @@ pub const WptBrowser = struct {
         }
     }
 
+    /// Run a crashtest
+    ///
+    /// Crashtests are simple: load the page and see if it crashes.
+    /// They pass if:
+    /// 1. The page loads successfully (no parse errors)
+    /// 2. The page reaches the "painted" state
+    /// 3. If test-wait class is on root, wait for it to be removed
+    ///
+    /// This function does NOT wait for testharness.js callbacks since
+    /// crashtests don't use testharness.js.
+    pub fn runCrashTest(
+        self: *WptBrowser,
+        test_path: []const u8,
+        html_content: []const u8,
+        base_url: []const u8,
+        timeout_ms: u64,
+    ) !test_harness.TestResult {
+        const start_time = std.time.milliTimestamp();
+
+        // Navigate to create fresh context
+        self.browser.navigate(base_url, .window) catch |err| {
+            const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
+            var result = try test_harness.TestResult.createCrashTest(self.allocator, test_path, false, duration);
+            if (result.message) |msg| self.allocator.free(msg);
+            result.message = try std.fmt.allocPrint(self.allocator, "Failed to navigate: {}", .{err});
+            return result;
+        };
+
+        // Get the context
+        const ctx = self.browser.current_context orelse {
+            const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
+            return test_harness.TestResult.createCrashTest(self.allocator, test_path, false, duration);
+        };
+
+        // Load the HTML - don't inject testharness hooks
+        ctx.loadHTML(html_content, .{
+            .base_url = base_url,
+            .scripting_enabled = true,
+        }) catch |err| {
+            // Parse/load error counts as a crash failure
+            const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
+            var result = try test_harness.TestResult.createCrashTest(self.allocator, test_path, false, duration);
+            if (result.message) |msg| self.allocator.free(msg);
+            result.message = try std.fmt.allocPrint(self.allocator, "Failed to load HTML: {}", .{err});
+            return result;
+        };
+
+        // Check for test-wait class on root element and wait if needed
+        const has_test_wait = self.checkTestWaitClass(ctx) catch false;
+
+        if (has_test_wait) {
+            // Wait for test-wait to be removed (up to timeout)
+            self.waitForTestWaitRemoval(ctx, timeout_ms, start_time) catch |err| {
+                const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
+                var result = try test_harness.TestResult.createCrashTest(self.allocator, test_path, false, duration);
+                if (result.message) |msg| self.allocator.free(msg);
+                result.message = try std.fmt.allocPrint(self.allocator, "test-wait timeout: {}", .{err});
+                result.status = .timeout;
+                return result;
+            };
+        } else {
+            // Wait briefly for paint (requestAnimationFrame simulation)
+            self.waitForPaint(ctx) catch {};
+        }
+
+        // Terminate workers to clean up
+        html.workers.ThreadedWorkerRegistry.terminateAllWorkers();
+
+        const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
+
+        // If we got here without crashing, the test passed
+        return test_harness.TestResult.createCrashTest(self.allocator, test_path, true, duration);
+    }
+
+    /// Check if the root element has class="test-wait"
+    fn checkTestWaitClass(self: *WptBrowser, ctx: *Context) !bool {
+        _ = self;
+        const check_script =
+            \\(function() {
+            \\  return document.documentElement && 
+            \\         document.documentElement.classList &&
+            \\         document.documentElement.classList.contains('test-wait');
+            \\})();
+        ;
+
+        const result = ctx.evaluateScript(check_script) catch return false;
+        // Check if result is truthy (V8 returns a Value)
+        return result != null;
+    }
+
+    /// Wait for test-wait class to be removed from root element
+    fn waitForTestWaitRemoval(self: *WptBrowser, ctx: *Context, timeout_ms: u64, start_time: i64) !void {
+        const deadline = start_time + @as(i64, @intCast(timeout_ms));
+
+        while (std.time.milliTimestamp() < deadline) {
+            // Run event loop briefly
+            self.browser.runEventLoop(50) catch {};
+
+            // Check if test-wait was removed
+            if (!try self.checkTestWaitClass(ctx)) {
+                // test-wait removed - now wait for paint
+                self.waitForPaint(ctx) catch {};
+                return;
+            }
+        }
+
+        return error.Timeout;
+    }
+
+    /// Wait for paint barrier (run event loop briefly to allow rendering)
+    fn waitForPaint(self: *WptBrowser, ctx: *Context) !void {
+        _ = ctx;
+        // Run event loop briefly to allow any pending paint operations
+        // In a real browser, we'd wait for requestAnimationFrame callbacks
+        // For MVP, just run the event loop for a short time
+        self.browser.runEventLoop(50) catch {};
+    }
+
     /// Parse JSON test results into TestResult struct
     fn parseTestResults(self: *WptBrowser, json_str: []const u8, duration: u64, test_path: []const u8) !test_harness.TestResult {
         // Parse JSON
@@ -886,9 +1004,16 @@ pub const WptBrowser = struct {
         return result;
     }
 
-    /// Build test URL from path
+    /// Build test URL from path, respecting WPT file name flags
     fn buildTestUrl(self: *WptBrowser, test_path: []const u8) ![]const u8 {
-        // Create a file:// URL or http://web-platform.test URL
-        return try std.fmt.allocPrint(self.allocator, "http://web-platform.test:8000/{s}", .{test_path});
+        const file_flags = @import("file_flags.zig");
+        const flags = file_flags.FileFlags.parse(test_path);
+
+        // Build URL with correct scheme, host, and port based on file flags
+        return try std.fmt.allocPrint(
+            self.allocator,
+            "{s}://{s}:{d}/{s}",
+            .{ flags.getScheme(), flags.getHost(), flags.getPort(), test_path },
+        );
     }
 };
