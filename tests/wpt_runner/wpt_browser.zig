@@ -391,8 +391,9 @@ pub const WptBrowser = struct {
         };
 
         // Convert the results object to JSON string using V8's JSON.stringify
-        var json_buffer: [64 * 1024]u8 = undefined; // 64KB buffer for JSON
-        const json_len = v8.ffi.v8_JSON_Stringify_ToBuffer(context, results_value, &json_buffer, json_buffer.len);
+        // Use a stack buffer for small results, dynamically allocate for large ones
+        var stack_buffer: [256 * 1024]u8 = undefined; // 256KB stack buffer
+        const json_len = v8.ffi.v8_JSON_Stringify_ToBuffer(context, results_value, &stack_buffer, stack_buffer.len);
 
         if (json_len < 0) {
             std.debug.print("[WPT] Error: Failed to stringify results to JSON\n", .{});
@@ -401,7 +402,30 @@ pub const WptBrowser = struct {
             return;
         }
 
-        const json_str = json_buffer[0..@intCast(json_len)];
+        const json_len_usize: usize = @intCast(json_len);
+        var heap_buffer: ?[]u8 = null;
+        defer if (heap_buffer) |buf| wpt_browser.allocator.free(buf);
+
+        const json_str = if (json_len_usize <= stack_buffer.len)
+            stack_buffer[0..json_len_usize]
+        else blk: {
+            // Result is larger than stack buffer - allocate on heap and retry
+            std.debug.print("[WPT] Large result ({d} bytes), using heap allocation\n", .{json_len});
+            heap_buffer = wpt_browser.allocator.alloc(u8, json_len_usize) catch {
+                std.debug.print("[WPT] Error: Failed to allocate {d} bytes for JSON\n", .{json_len});
+                wpt_browser.test_status = .@"error";
+                wpt_browser.test_message = "Out of memory for large test results";
+                return;
+            };
+            const retry_len = v8.ffi.v8_JSON_Stringify_ToBuffer(context, results_value, heap_buffer.?.ptr, @intCast(heap_buffer.?.len));
+            if (retry_len < 0 or @as(usize, @intCast(retry_len)) != json_len_usize) {
+                std.debug.print("[WPT] Error: JSON stringify retry failed\n", .{});
+                wpt_browser.test_status = .@"error";
+                wpt_browser.test_message = "Failed to stringify large results";
+                return;
+            }
+            break :blk heap_buffer.?;
+        };
         std.debug.print("[WPT] Received results JSON ({d} bytes)\n", .{json_len});
 
         // Parse the JSON to extract test results
