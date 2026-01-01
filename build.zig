@@ -1808,6 +1808,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "platform", .module = platform_mod },
+            .{ .name = "browser", .module = browser_mod },
+            .{ .name = "v8", .module = v8_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});

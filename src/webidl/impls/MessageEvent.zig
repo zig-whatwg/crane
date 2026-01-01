@@ -349,7 +349,7 @@ pub fn createBinaryMessageEvent(
     // Store in internal state
     if (state.own._internal) |internal| {
         internal.message_data = .{ .binary = binary_data };
-        internal.owns_data = owns_data;
+        internal.owns_binary = owns_data;
     }
 
     return instance;

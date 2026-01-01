@@ -503,17 +503,68 @@ pub const Context = struct {
             return error.NoGlobal;
         };
 
-        // Set up Window prototype chain
-        // Set global's prototype to Window.prototype
-        const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
-        if (window_key) |wk| {
-            if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
-                const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                if (proto_key) |pk| {
-                    if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                        _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
+        // Set up prototype chain based on context type
+        if (self.context_type == .window) {
+            // Set up Window prototype chain
+            const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
+            if (window_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
+                        }
                     }
                 }
+            }
+        } else if (self.context_type == .worker) {
+            // Set up DedicatedWorkerGlobalScope prototype chain
+            std.debug.print("Context: Setting up Worker prototype chain...\n", .{});
+            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "DedicatedWorkerGlobalScope", 26);
+            if (worker_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
+                    std.debug.print("Context: Found DedicatedWorkerGlobalScope constructor\n", .{});
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
+                            std.debug.print("Context: Worker prototype set successfully\n", .{});
+                        }
+                    }
+                } else {
+                    std.debug.print("Context: DedicatedWorkerGlobalScope constructor NOT found on global\n", .{});
+                }
+            }
+
+            // Create and bind DedicatedWorkerGlobalScope instance
+            const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
+            const worker_instance = DedicatedWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create worker instance: {}\n", .{err});
+                // Continue without instance binding (will cause crashes if methods called)
+                // We can't easily return error here as we are in a block that doesn't propagate easily?
+                // Actually createV8Context returns !void, so we can return error.
+                return error.ContextCreateFailed;
+            };
+
+            // Store instance in internal field 0
+            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
+
+            // Store WrapperTypeInfo in internal field 1
+            if (v8.dom_type_info.getTypeInfoByName("DedicatedWorkerGlobalScope")) |type_info| {
+                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+            }
+
+            // Register in wrapper cache (needed for event dispatch to find the V8 object)
+            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
+                cache.set(worker_instance, global, self.isolate) catch {};
+            }
+
+            // Check MessageEvent registration
+            if (v8.template_registry.getTemplate("MessageEvent") == null) {
+                std.debug.print("Context: WARNING - MessageEvent template NOT registered!\n", .{});
+            } else {
+                std.debug.print("Context: MessageEvent template IS registered\n", .{});
             }
         }
 
@@ -662,16 +713,69 @@ pub const Context = struct {
             return error.NoGlobal;
         };
 
-        // Set up Window prototype chain
-        const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
-        if (window_key) |wk| {
-            if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
-                const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                if (proto_key) |pk| {
-                    if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                        _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
+        // Set up prototype chain based on context type
+        if (self.context_type == .window) {
+            // Set up Window prototype chain
+            const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
+            if (window_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
+                        }
                     }
                 }
+            }
+        } else if (self.context_type == .worker) {
+            // Set up DedicatedWorkerGlobalScope prototype chain
+            // Note: This logic mirrors createV8Context (fast path) to ensure workers using fresh isolates
+            // also get the correct prototype chain.
+            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "DedicatedWorkerGlobalScope", 26);
+            if (worker_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
+                        }
+                    }
+                }
+            }
+            
+            // Create and bind DedicatedWorkerGlobalScope instance
+            const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
+            const worker_instance = DedicatedWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create worker instance: {}\n", .{err});
+                return error.ContextCreateFailed;
+            };
+            
+            // Store instance in internal field 0
+            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
+            
+            // Store WrapperTypeInfo in internal field 1
+            if (v8.dom_type_info.getTypeInfoByName("DedicatedWorkerGlobalScope")) |type_info| {
+                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+            }
+            
+            // Register in wrapper cache
+            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
+                cache.set(worker_instance, global, self.isolate) catch {};
+            }
+        }
+
+                    }
+                } else {
+                    std.debug.print("ContextFresh: DedicatedWorkerGlobalScope constructor NOT found on global\n", .{});
+                }
+            }
+
+            // Check MessageEvent registration
+            if (v8.template_registry.getTemplate("MessageEvent") == null) {
+                std.debug.print("ContextFresh: WARNING - MessageEvent template NOT registered!\n", .{});
+            } else {
+                std.debug.print("ContextFresh: MessageEvent template IS registered\n", .{});
             }
         }
 
@@ -1176,14 +1280,14 @@ pub const Context = struct {
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
         // Step 1: Fetch URL content
+        // For about:blank, return early without fetching (empty document)
+        if (std.mem.eql(u8, self.url, "about:blank")) {
+            return;
+        }
+
         var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
             // Handle navigation errors gracefully
             std.debug.print("Navigation error for {s}: {}\n", .{ self.url, err });
-
-            // For about:blank or errors, just return with empty document
-            if (std.mem.eql(u8, self.url, "about:blank")) {
-                return;
-            }
             return error.NavigationFailed;
         };
         defer result.deinit();
