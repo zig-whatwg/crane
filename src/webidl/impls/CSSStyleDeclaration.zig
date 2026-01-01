@@ -48,6 +48,10 @@ pub const InternalState = struct {
     /// Cached cssText representation
     css_text: ?[]const u8 = null,
 
+    /// Cached tag name for the element (used for getDefaultDisplay)
+    /// This is stored at init time to avoid lookup issues later
+    element_tag_name: ?[]const u8 = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -55,6 +59,7 @@ pub const InternalState = struct {
             .is_computed = false,
             .properties = .{},
             .css_text = null,
+            .element_tag_name = null,
         };
     }
 
@@ -161,6 +166,14 @@ pub fn initForComputedStyle(
     if (getInternal(instance)) |internal| {
         internal.element = element;
         internal.is_computed = true;
+
+        // Cache the element's tag name at init time to avoid lookup issues later
+        // Try Registry first, then fallback storage
+        if (ElementImpl.getInternal(element)) |elem_internal| {
+            internal.element_tag_name = elem_internal.local_name.asSlice();
+        } else if (ElementImpl.getLocalNameFromFallback(element)) |fallback_name| {
+            internal.element_tag_name = fallback_name;
+        }
     }
 
     return instance;
@@ -261,9 +274,7 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
 
     // For computed styles, return element-specific values
     if (internal.is_computed) {
-        if (internal.element) |element| {
-            return getComputedPropertyValue(prop_name, element);
-        }
+        return getComputedPropertyValue(prop_name, internal.element_tag_name);
     }
 
     // For inline styles, check our stored properties
@@ -278,10 +289,10 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
 
 /// Get computed property value for an element
 /// Returns default CSS values based on element type and property
-fn getComputedPropertyValue(property: []const u8, element: *runtime.Instance) runtime.DOMString {
+fn getComputedPropertyValue(property: []const u8, cached_tag_name: ?[]const u8) runtime.DOMString {
     // Handle display property - most commonly tested
     if (std.mem.eql(u8, property, "display")) {
-        return runtime.DOMString.initInterned(getDefaultDisplay(element));
+        return runtime.DOMString.initInterned(getDefaultDisplayByTagName(cached_tag_name));
     }
 
     // Handle background-color
@@ -318,20 +329,10 @@ fn getComputedPropertyValue(property: []const u8, element: *runtime.Instance) ru
     return runtime.DOMString.initEmpty();
 }
 
-/// Get the default display value for an element based on its tag name
+/// Get the default display value based on tag name
 /// Per HTML spec, different elements have different default display values
-fn getDefaultDisplay(element: *runtime.Instance) []const u8 {
-    // Get the element's tag name - try internal state first, then fallback
-    const tag_name = blk: {
-        if (ElementImpl.getInternal(element)) |elem_internal| {
-            break :blk elem_internal.local_name.asSlice();
-        }
-        // Use fallback storage when Registry lookup fails
-        if (ElementImpl.getLocalNameFromFallback(element)) |fallback_name| {
-            break :blk fallback_name;
-        }
-        return "inline";
-    };
+fn getDefaultDisplayByTagName(cached_tag_name: ?[]const u8) []const u8 {
+    const tag_name = cached_tag_name orelse return "inline";
 
     // Block-level elements
     if (isBlockElement(tag_name)) {
@@ -457,10 +458,13 @@ fn isBlockElement(tag_name: []const u8) bool {
 /// Example: style.backgroundColor -> getPropertyValue("background-color")
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
     const prop_name = name.asSlice();
+    std.debug.print("[call_namedItem] CALLED with prop_name={s}\n", .{prop_name});
 
     const internal = getInternal(instance) orelse {
+        std.debug.print("[call_namedItem] getInternal returned null for {s}\n", .{prop_name});
         return null;
     };
+    std.debug.print("[call_namedItem] getInternal succeeded, is_computed={}\n", .{internal.is_computed});
 
     // Convert camelCase to kebab-case
     var kebab_buf: [256]u8 = undefined;
@@ -470,12 +474,11 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
 
     // For computed styles, check computed value
     if (internal.is_computed) {
-        if (internal.element) |element| {
-            const result = getComputedPropertyValue(kebab_name, element);
-            const slice = result.asSlice();
-            if (slice.len == 0) return null;
-            return result;
-        }
+        // Use cached tag name instead of looking up element's tag name
+        const result = getComputedPropertyValue(kebab_name, internal.element_tag_name);
+        const slice = result.asSlice();
+        if (slice.len == 0) return null;
+        return result;
     }
 
     // For inline styles, check stored properties
@@ -534,59 +537,121 @@ pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, v
 /// Get supported property names for named property enumeration
 /// Returns CSS property names in camelCase format
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
-    const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
+    _ = getInternal(instance) orelse return &[_]runtime.DOMString{};
 
     var names: std.ArrayList(runtime.DOMString) = .{};
 
-    // For computed styles, return all supported CSS property names
-    // These are the properties that getComputedPropertyValue can return values for
-    if (internal.is_computed) {
-        const supported_properties = [_][]const u8{
-            "display",
-            "backgroundColor",
-            "visibility",
-            "position",
-            "color",
-            "width",
-            "height",
-            "margin",
-            "marginTop",
-            "marginRight",
-            "marginBottom",
-            "marginLeft",
-            "padding",
-            "paddingTop",
-            "paddingRight",
-            "paddingBottom",
-            "paddingLeft",
-            // Also include kebab-case versions for compatibility
-            "background-color",
-            "margin-top",
-            "margin-right",
-            "margin-bottom",
-            "margin-left",
-            "padding-top",
-            "padding-right",
-            "padding-bottom",
-            "padding-left",
-        };
+    // Per CSS spec, CSSStyleDeclaration supports ALL valid CSS property names
+    // The 'in' operator should return true for any valid CSS property
+    // This list includes both computed and inline style property names
+    const supported_properties = [_][]const u8{
+        // CSS-wide keywords and shorthand
+        "all",
+        // Display and visibility
+        "display",
+        "visibility",
+        "opacity",
+        // Positioning
+        "position",
+        "top",
+        "right",
+        "bottom",
+        "left",
+        "zIndex",
+        "z-index",
+        // Box model
+        "width",
+        "height",
+        "minWidth",
+        "maxWidth",
+        "minHeight",
+        "maxHeight",
+        "min-width",
+        "max-width",
+        "min-height",
+        "max-height",
+        // Margin
+        "margin",
+        "marginTop",
+        "marginRight",
+        "marginBottom",
+        "marginLeft",
+        "margin-top",
+        "margin-right",
+        "margin-bottom",
+        "margin-left",
+        // Padding
+        "padding",
+        "paddingTop",
+        "paddingRight",
+        "paddingBottom",
+        "paddingLeft",
+        "padding-top",
+        "padding-right",
+        "padding-bottom",
+        "padding-left",
+        // Border
+        "border",
+        "borderWidth",
+        "borderStyle",
+        "borderColor",
+        "border-width",
+        "border-style",
+        "border-color",
+        // Colors and backgrounds
+        "color",
+        "backgroundColor",
+        "background-color",
+        "background",
+        // Font
+        "font",
+        "fontFamily",
+        "fontSize",
+        "fontWeight",
+        "fontStyle",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "font-style",
+        // Text
+        "textAlign",
+        "textDecoration",
+        "lineHeight",
+        "text-align",
+        "text-decoration",
+        "line-height",
+        // Flexbox
+        "flex",
+        "flexDirection",
+        "flexWrap",
+        "justifyContent",
+        "alignItems",
+        "alignContent",
+        "flex-direction",
+        "flex-wrap",
+        "justify-content",
+        "align-items",
+        "align-content",
+        // Grid
+        "grid",
+        "gridTemplateColumns",
+        "gridTemplateRows",
+        "grid-template-columns",
+        "grid-template-rows",
+        // Overflow
+        "overflow",
+        "overflowX",
+        "overflowY",
+        "overflow-x",
+        "overflow-y",
+        // Transform and animation
+        "transform",
+        "transition",
+        "animation",
+    };
 
-        for (supported_properties) |prop| {
-            try names.append(allocator, runtime.DOMString.initInterned(prop));
-        }
-
-        return names.toOwnedSlice(allocator);
-    }
-
-    // For inline styles, return properties from the HashMap
-    const count = internal.properties.count();
-    if (count == 0) return &[_]runtime.DOMString{};
-
-    var iter = internal.properties.iterator();
-    while (iter.next()) |entry| {
-        // Convert kebab-case to camelCase for enumeration
-        const camel_name = try kebabToCamel(allocator, entry.key_ptr.*);
-        try names.append(allocator, runtime.DOMString.initOwned(camel_name));
+    for (supported_properties) |prop| {
+        try names.append(allocator, runtime.DOMString.initInterned(prop));
     }
 
     return names.toOwnedSlice(allocator);

@@ -1637,6 +1637,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     break :blk false;
                 };
 
+                // CSSStyleDeclaration needs masking mode because CSS properties like "display"
+                // may exist on a parent prototype (CSS2Properties), but we need the named
+                // property getter to intercept them first to provide computed style values.
+                const is_css_style_declaration = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
+                const use_masking = has_legacy_override_builtins or is_css_style_declaration;
+
                 v8.v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
                     instance_tmpl,
                     namedPropertyGetter,
@@ -1646,7 +1652,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     namedPropertyEnumerator,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
-                    if (has_legacy_override_builtins) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
+                    if (use_masking) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
                 );
             }
 
@@ -1939,8 +1945,9 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Per WebIDL spec, type checking should be done via internal slots:
                                 // "If the this value is null or undefined, or is not a platform object
                                 // that implements the interface, then throw a TypeError"
-                                const dom_type_info_mod = @import("dom_type_info.zig");
-                                if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                                // Use comptime-generated registry which has ALL interfaces
+                                const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
+                                if (wrapper_type_info_registry.getWrapperTypeInfoByName(interface_name)) |expected_type| {
                                     if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
                                         break :blk @ptrCast(inst);
                                     }
@@ -2316,7 +2323,6 @@ pub fn V8Interface(comptime Interface: type) type {
                     // For [Global] interfaces (like Window), we need special handling:
                     // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
                     // See PropertyGetterCallback for detailed explanation.
-                    const dom_type_info_mod = @import("dom_type_info.zig");
                     const instance = blk: {
                         if (is_global_interface) {
                             if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx| {
@@ -2364,8 +2370,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         } else {
                             // Non-[Global] interface: use normal this handling
                             //
-                            // First, try to get instance using type-safe or legacy getInstance
-                            if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                            // First, try to get instance using type-safe check with comptime registry
+                            const wrapper_type_info_registry_method = @import("wrapper_type_info_registry.zig");
+                            if (wrapper_type_info_registry_method.getWrapperTypeInfoByName(interface_name)) |expected_type| {
                                 if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
                                     break :blk inst;
                                 }
@@ -3213,8 +3220,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Store the Zig instance in the V8 object's internal field (slot 0)
             // Also store WrapperTypeInfo in slot 1 for type-safe unwrapping
-            const dom_type_info_mod = @import("dom_type_info.zig");
-            if (dom_type_info_mod.getTypeInfoByName(interface_name)) |type_info| {
+            const wrapper_type_info_registry_ctor = @import("wrapper_type_info_registry.zig");
+            if (wrapper_type_info_registry_ctor.getWrapperTypeInfoByName(interface_name)) |type_info| {
                 setInstanceWithTypeInfo(runtime.Instance, this_obj, instance, type_info);
             } else {
                 // Fall back to legacy setInstance if type info not found via comptime lookup
@@ -4776,11 +4783,20 @@ pub fn V8Interface(comptime Interface: type) type {
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
+            // DEBUG: Log all property accesses on CSSStyleDeclaration
+            const is_css_debug = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
+            if (is_css_debug) {
+                std.debug.print("[namedPropertyGetter] CSSStyleDeclaration access: '{s}'\n", .{prop_name});
+            }
+
             // WebIDL named property visibility algorithm step 1:
             // If P is NOT a supported property name, do not intercept.
             // This ensures that properties like __proto__, toString, etc. fall through
             // to the prototype chain instead of being incorrectly intercepted.
             if (!isSupportedPropertyName(instance, prop_name)) {
+                if (is_css_debug and std.mem.eql(u8, prop_name, "display")) {
+                    std.debug.print("[namedPropertyGetter] 'display' NOT in supported names!\n", .{});
+                }
                 return .kNo;
             }
 
@@ -5006,8 +5022,15 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Check if prop_name is in the list of supported property names
+            const is_css = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
+            if (is_css and std.mem.eql(u8, prop_name, "display")) {
+                std.debug.print("[isSupportedPropertyName] Checking 'display', names.len={d}\n", .{names.len});
+            }
             for (names) |supported_name| {
                 if (std.mem.eql(u8, supported_name.asSlice(), prop_name)) {
+                    if (is_css and std.mem.eql(u8, prop_name, "display")) {
+                        std.debug.print("[isSupportedPropertyName] FOUND 'display'\n", .{});
+                    }
                     return true;
                 }
             }
@@ -6346,9 +6369,9 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getThis();
 
             // Try type-safe unwrapping first
-            const dom_type_info_mod = @import("dom_type_info.zig");
+            const wrapper_type_info_registry_iter = @import("wrapper_type_info_registry.zig");
             const instance = blk: {
-                if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                if (wrapper_type_info_registry_iter.getWrapperTypeInfoByName(interface_name)) |expected_type| {
                     break :blk getInstanceTypeSafe(runtime.Instance, this_obj, expected_type) orelse {
                         conv.throwError(isolate, "Invalid instance for async iterator - type mismatch");
                         return;
@@ -6566,8 +6589,8 @@ pub fn V8Interface(comptime Interface: type) type {
                             // Per WebIDL spec, type checking should be done via internal slots:
                             // "If the this value is null or undefined, or is not a platform object
                             // that implements the interface, then throw a TypeError"
-                            const dom_type_info_mod = @import("dom_type_info.zig");
-                            if (dom_type_info_mod.getTypeInfoByName(interface_name)) |expected_type| {
+                            const wrapper_type_info_registry_setter = @import("wrapper_type_info_registry.zig");
+                            if (wrapper_type_info_registry_setter.getWrapperTypeInfoByName(interface_name)) |expected_type| {
                                 if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
                                     break :blk @ptrCast(inst);
                                 }

@@ -941,7 +941,6 @@ fn createWindowBoundToGlobal(
     const interfaces = @import("interfaces");
     const Window = interfaces.Window;
     const WindowImpl = @import("impls").Window;
-    const dom_type_info = @import("dom_type_info.zig");
     const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
     // 1. Create Window instance
@@ -960,7 +959,9 @@ fn createWindowBoundToGlobal(
         @ptrCast(window_instance),
     );
 
-    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
+    // Use comptime-generated registry which has ALL interfaces
+    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
+    if (wrapper_type_info_registry.getWrapperTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(
             global,
             1,
@@ -1255,9 +1256,10 @@ fn createWindowForExistingBrowsingContext(
     WindowImpl.setDocument(window_instance, document_instance);
 
     // 9. Bind Window to global (internal fields + wrapper cache)
-    const dom_type_info = @import("dom_type_info.zig");
+    // Use comptime-generated registry which has ALL interfaces
+    const wrapper_type_info_registry_2 = @import("wrapper_type_info_registry.zig");
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
-    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
+    if (wrapper_type_info_registry_2.getWrapperTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
     }
     WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
@@ -2144,7 +2146,6 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     const interface_bindings = @import("interface_bindings.zig");
     const interfaces = @import("interfaces");
     const impls = @import("impls");
-    const dom_type_info = @import("dom_type_info.zig");
     const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
     const isolate = options.isolate;
@@ -2211,8 +2212,10 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
 
     // 10. Bind Window instance to global object's internal fields
     // Field 0: instance pointer, Field 1: type info pointer
+    // Use comptime-generated registry which has ALL interfaces
+    const wrapper_type_info_registry_3 = @import("wrapper_type_info_registry.zig");
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
-    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
+    if (wrapper_type_info_registry_3.getWrapperTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
     }
 

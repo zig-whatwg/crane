@@ -367,7 +367,7 @@ fn fireAbortEvent(instance: *runtime.Instance) !void {
         event_type,
         webidl.Opt(dictionaries.EventInit).notPassed(), // Use defaults
     );
-    // Note: Event will be cleaned up by GC after dispatch
+    defer interfaces.Event.deinit(event); // Clean up event after dispatch
 
     // Dispatch the event to this signal (AbortSignal inherits from EventTarget)
     _ = try interfaces.EventTarget.call_dispatchEvent(instance, event);

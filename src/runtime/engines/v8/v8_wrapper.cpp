@@ -1613,6 +1613,17 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
     
+    // CROSS-REALM FIX: If object is a Proxy, unwrap to get the target.
+    // Proxies (used for legacy platform objects like CSSStyleDeclaration)
+    // have no internal fields - the internal fields are on the target object.
+    if (local_obj->IsProxy()) {
+        Local<Proxy> proxy = local_obj.As<Proxy>();
+        Local<Value> target = proxy->GetTarget();
+        if (target->IsObject()) {
+            local_obj = target.As<Object>();
+        }
+    }
+    
     // Safety check: verify object has enough internal fields before access
     // This prevents crashes when accessing prototype objects or other objects
     // that don't have internal fields set up
@@ -3592,12 +3603,17 @@ int v8_Object_InternalFieldCount_Raw(const void* obj) {
 }
 
 void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int index) {
-    // Cast to non-const since V8 API requires it
     Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
     
-    // Safety check: verify object has enough internal fields before access
-    // This prevents crashes when accessing prototype objects or other objects
-    // that don't have internal fields set up
+    // CROSS-REALM FIX: Unwrap Proxy to get target with internal fields
+    if (object_ptr->IsProxy()) {
+        Proxy* proxy = Proxy::Cast(object_ptr);
+        Value* target = *proxy->GetTarget();
+        if (target->IsObject()) {
+            object_ptr = Object::Cast(target);
+        }
+    }
+    
     if (object_ptr->InternalFieldCount() <= index) {
         return nullptr;
     }
@@ -6935,6 +6951,11 @@ void TrapGet(const FunctionCallbackInfo<Value>& info) {
     Local<Value> target = info[0];
     Local<Value> property = info[1];
     
+    if (property->IsString()) {
+        String::Utf8Value prop_str(isolate, property);
+        fprintf(stderr, "[TrapGet] property='%s'\n", *prop_str);
+    }
+    
     Local<Object> reflect = context->Global()
         ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
         .ToLocalChecked().As<Object>();
@@ -6963,6 +6984,11 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     
     Local<Object> target = info[0].As<Object>();
     Local<Value> property = info[1];
+    
+    if (property->IsString()) {
+        String::Utf8Value prop_str(isolate, property);
+        fprintf(stderr, "[TrapSet] property='%s'\n", *prop_str);
+    }
     Local<Value> value = info[2];
     
     // Use Object.defineProperty to bypass named property interceptor.

@@ -90,7 +90,10 @@ pub const BrowserCaptureMediaStreamTrack = @import("BrowserCaptureMediaStreamTra
 pub const BufferedChangeEvent = @import("BufferedChangeEvent.zig").BufferedChangeEvent;
 pub const ByteLengthQueuingStrategy = @import("ByteLengthQueuingStrategy.zig").ByteLengthQueuingStrategy;
 pub const CDATASection = @import("CDATASection.zig").CDATASection;
-pub const CSS2Properties = @import("CSS2Properties.zig").CSS2Properties;
+// CSS2Properties disabled - its accessor properties on V8 prototype were blocking
+// CSSStyleDeclaration's named property interceptor for "display" etc.
+// CSSStyleDeclaration's named property getter handles all CSS property access.
+// pub const CSS2Properties = @import("CSS2Properties.zig").CSS2Properties;
 pub const CSSAnimation = @import("CSSAnimation.zig").CSSAnimation;
 pub const CSSCharsetRule = @import("CSSCharsetRule.zig").CSSCharsetRule;
 pub const CSSColor = @import("CSSColor.zig").CSSColor;

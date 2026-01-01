@@ -7,15 +7,130 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1766909002061,
-  "time_end": 1766909015443,
+  "time_start": 1767289134595,
+  "time_end": 1767289155265,
   "results": [
     {
-      "test": "workers/name-property.html",
+      "test": "infrastructure/assumptions/ahem-notref.html",
+      "status": "SKIP",
+      "message": "Reftest reference file - not a test",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/non-secure-context.any.js [window]",
+      "status": "TIMEOUT",
+      "message": "Test timed out after 10000ms",
+      "duration": 10000,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/non-secure-context.any.js [worker]",
+      "status": "TIMEOUT",
+      "message": "Test timed out after 10000ms",
+      "duration": 10009,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/test_display.html",
       "status": "TIMEOUT",
       "message": null,
-      "duration": 9640,
+      "duration": 11,
       "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/document-fonts-ready.html",
+      "status": "TIMEOUT",
+      "message": null,
+      "duration": 11,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/medium-font-size.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/blank.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/canvas-background.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/ahem.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/min-font-size.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/cookie.html",
+      "status": "TIMEOUT",
+      "message": null,
+      "duration": 11,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/initial-color.html",
+      "status": "SKIP",
+      "message": "Reftest (visual comparison) - not implemented",
+      "duration": 0,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/non-local-ports.sub.window.js",
+      "status": "TIMEOUT",
+      "message": null,
+      "duration": 11,
+      "subtests": [
+      ]
+    },
+    {
+      "test": "infrastructure/assumptions/html-elements.html",
+      "status": "OK",
+      "message": null,
+      "duration": 11,
+      "subtests": [
+        {"name": "(pre-req for comparison tests) all CSS short-hand supported", "status": "PASS", "message": null},
+        {"name": "(pre-req for comparison tests) initial CSS value supported", "status": "PASS", "message": null},
+        {"name": "Compare CSS div definitions (only valid if pre-reqs pass)", "status": "PASS", "message": null},
+        {"name": "Compare CSS span definitions (only valid if pre-reqs pass)", "status": "PASS", "message": null},
+        {"name": "p is display: block", "status": "PASS", "message": null},
+        {"name": "ul > li is display: list-item", "status": "PASS", "message": null},
+        {"name": "ol > li is display: list-item", "status": "PASS", "message": null},
+        {"name": "table is display: table", "status": "PASS", "message": null},
+        {"name": "tbody is display: table-row-group", "status": "PASS", "message": null},
+        {"name": "tr is display: table-row", "status": "PASS", "message": null},
+        {"name": "td is display: table-cell", "status": "PASS", "message": null}
       ]
     }
   ]

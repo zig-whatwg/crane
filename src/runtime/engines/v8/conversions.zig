@@ -1772,6 +1772,23 @@ pub fn toV8Value(
         };
     }
 
+    // Handle webidl.Opt types (WebIDL optional parameters)
+    // These are structs with was_passed and value fields, used for optional parameters
+    // that need to distinguish between "not passed" and "passed with value"
+    if (@typeInfo(T) == .@"struct") {
+        if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed") and @hasDecl(T, "getValue")) {
+            // This is a webidl.Opt type
+            if (!value.wasPassed()) {
+                // Not passed -> undefined
+                return toV8Undefined(isolate);
+            } else {
+                // Passed -> convert inner value
+                const InnerType = @TypeOf(value.getValue());
+                return try toV8Value(InnerType, isolate, context, value.getValue());
+            }
+        }
+    }
+
     // Handle optional types (nullable)
     const type_info = @typeInfo(T);
     if (type_info == .optional) {

@@ -350,7 +350,9 @@ pub fn wrapInstanceAsV8Object(
     );
 
     // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
-    if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
+    // Use comptime-generated registry which has ALL interfaces, not the manual dom_type_info
+    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
+    if (wrapper_type_info_registry.getWrapperTypeInfoByName(interface_name)) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(
             v8_object,
             1,
