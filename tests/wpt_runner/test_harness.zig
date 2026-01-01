@@ -190,6 +190,18 @@ pub const TestResult = struct {
         };
     }
 
+    /// Create a result for a smoke test (HTML test without testharness.js)
+    pub fn createSmokeTest(allocator: std.mem.Allocator, test_path: []const u8, duration_ms: u64) !TestResult {
+        return TestResult{
+            .test_path = try allocator.dupe(u8, test_path),
+            .status = .ok,
+            .subtests = .{},
+            .allocator = allocator,
+            .message = try allocator.dupe(u8, "No testharness.js; treated as smoke test (completed after parsing)"),
+            .duration_ms = duration_ms,
+        };
+    }
+
     pub fn deinit(self: *TestResult, allocator: std.mem.Allocator) void {
         allocator.free(self.test_path);
         if (self.context) |ctx| allocator.free(ctx);
@@ -657,4 +669,18 @@ test "TestResult hasUnexpectedFailures" {
 
         try testing.expect(result.hasUnexpectedFailures());
     }
+}
+
+test "createSmokeTestResult" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var result = try TestResult.createSmokeTest(allocator, "html/smoke-test.html", 42);
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("html/smoke-test.html", result.test_path);
+    try testing.expectEqual(HarnessStatus.ok, result.status);
+    try testing.expectEqual(@as(u64, 42), result.duration_ms);
+    try testing.expectEqualStrings("No testharness.js; treated as smoke test (completed after parsing)", result.message.?);
+    try testing.expectEqual(@as(usize, 0), result.subtests.items.len);
 }
