@@ -39,6 +39,7 @@ pub const Logger = @import("logger.zig").Logger;
 // Realm and context type infrastructure (WHATWG HTML/WebIDL)
 pub const realm = @import("realm.zig");
 pub const ContextType = realm.ContextType;
+pub const GlobalScopeKind = realm.GlobalScopeKind;
 pub const Exposure = realm.Exposure;
 pub const RealmInfo = realm.RealmInfo;
 pub const Realm = realm.Realm;

@@ -9,27 +9,48 @@ const std = @import("std");
 const codegen = @import("codegen/root.zig");
 
 /// Global scope identifier for checking interface exposure
+/// Aligned with runtime.GlobalScopeKind for unified scope handling
+/// Note: Conversion to/from GlobalScopeKind is in src/runtime/realm.zig
 pub const GlobalScope = enum {
     /// Window global (browsers)
     Window,
 
-    /// Worker global (Web Workers)
+    /// Generic Worker (matches "Worker" in [Exposed=Worker])
     Worker,
-
-    /// Worklet global (Audio/Paint/Layout worklets)
-    Worklet,
-
-    /// ServiceWorker global
-    ServiceWorker,
-
-    /// SharedWorker global
-    SharedWorker,
 
     /// DedicatedWorker global
     DedicatedWorker,
 
-    /// Convert from string identifier
+    /// SharedWorker global
+    SharedWorker,
+
+    /// ServiceWorker global
+    ServiceWorker,
+
+    /// Generic Worklet (matches "Worklet" in [Exposed=Worklet])
+    Worklet,
+
+    /// AudioWorklet global
+    AudioWorklet,
+
+    /// PaintWorklet global
+    PaintWorklet,
+
+    /// AnimationWorklet global
+    AnimationWorklet,
+
+    /// LayoutWorklet global
+    LayoutWorklet,
+
+    /// SharedStorageWorklet global
+    SharedStorageWorklet,
+
+    /// ShadowRealm global
+    ShadowRealm,
+
+    /// Convert from string identifier (WebIDL exposure attribute value)
     pub fn fromString(identifier: []const u8) ?GlobalScope {
+        // Direct enum name matches
         inline for (std.meta.fields(GlobalScope)) |field| {
             if (std.mem.eql(u8, identifier, field.name)) {
                 return @enumFromInt(field.value);
@@ -42,9 +63,39 @@ pub const GlobalScope = enum {
     pub fn toString(self: GlobalScope) []const u8 {
         return @tagName(self);
     }
+
+    /// Check if this scope matches an exposure identifier from WebIDL
+    /// Handles abstract categories like "Worker" matching all worker types
+    pub fn matchesExposure(self: GlobalScope, exposure_id: []const u8) bool {
+        // Direct match
+        if (std.mem.eql(u8, exposure_id, self.toString())) {
+            return true;
+        }
+
+        // Abstract "Worker" matches all worker types
+        if (std.mem.eql(u8, exposure_id, "Worker")) {
+            return switch (self) {
+                .Worker, .DedicatedWorker, .SharedWorker, .ServiceWorker => true,
+                else => false,
+            };
+        }
+
+        // Abstract "Worklet" matches all worklet types
+        if (std.mem.eql(u8, exposure_id, "Worklet")) {
+            return switch (self) {
+                .Worklet, .AudioWorklet, .PaintWorklet, .AnimationWorklet, .LayoutWorklet, .SharedStorageWorklet => true,
+                else => false,
+            };
+        }
+
+        return false;
+    }
 };
 
 /// Check if an interface/namespace is exposed in a given global scope
+///
+/// Handles abstract categories like [Exposed=Worker] matching DedicatedWorker,
+/// SharedWorker, and ServiceWorker scopes.
 ///
 /// Usage:
 /// ```zig
@@ -53,6 +104,10 @@ pub const GlobalScope = enum {
 ///
 /// const ReadableStream = @import("streams").ReadableStream;
 /// const exposed_in_worker = isExposedIn(ReadableStream, .Worker); // true ([Exposed=*])
+///
+/// // Abstract category matching:
+/// // If an interface has [Exposed=Worker], it matches DedicatedWorker, SharedWorker, ServiceWorker
+/// const exposed_in_dedicated = isExposedIn(SomeWorkerInterface, .DedicatedWorker); // true
 /// ```
 pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
     // Check if type has __webidl__ metadata
@@ -78,13 +133,13 @@ pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
 
         // [Exposed=Window] - single identifier (value is struct with identifier field)
         if (@hasField(ValueType, "identifier")) {
-            return std.mem.eql(u8, attr.value.identifier, scope.toString());
+            return scope.matchesExposure(attr.value.identifier);
         }
 
         // [Exposed=(Window,Worker)] - list of identifiers (value is struct with identifier_list field)
         if (@hasField(ValueType, "identifier_list")) {
             for (attr.value.identifier_list) |id| {
-                if (std.mem.eql(u8, id, scope.toString())) {
+                if (scope.matchesExposure(id)) {
                     return true;
                 }
             }
@@ -98,6 +153,19 @@ pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
     return false;
 }
 
+/// Check if an interface/namespace is exposed in a given runtime scope
+///
+/// This is the main entry point for runtime exposure checking, using GlobalScopeKind.
+/// Note: Use runtime.GlobalScopeKind.toGlobalScope() to convert from GlobalScopeKind,
+/// then call isExposedIn() with the result.
+///
+/// Usage:
+/// ```zig
+/// const scope = runtime.GlobalScopeKind.window.toGlobalScope();
+/// const exposed = isExposedIn(EventTarget, scope);
+/// ```
+/// (This function is commented out because webidl module cannot import runtime.
+/// The conversion should happen at the call site in runtime code.)
 /// Check if an interface is transferable (can be transferred via postMessage)
 ///
 /// Usage:
@@ -290,10 +358,60 @@ const testing = std.testing;
 test "GlobalScope.fromString and toString" {
     try testing.expectEqual(GlobalScope.Window, GlobalScope.fromString("Window").?);
     try testing.expectEqual(GlobalScope.Worker, GlobalScope.fromString("Worker").?);
+    try testing.expectEqual(GlobalScope.DedicatedWorker, GlobalScope.fromString("DedicatedWorker").?);
+    try testing.expectEqual(GlobalScope.SharedWorker, GlobalScope.fromString("SharedWorker").?);
+    try testing.expectEqual(GlobalScope.ServiceWorker, GlobalScope.fromString("ServiceWorker").?);
+    try testing.expectEqual(GlobalScope.AudioWorklet, GlobalScope.fromString("AudioWorklet").?);
+    try testing.expectEqual(GlobalScope.PaintWorklet, GlobalScope.fromString("PaintWorklet").?);
+    try testing.expectEqual(GlobalScope.ShadowRealm, GlobalScope.fromString("ShadowRealm").?);
     try testing.expectEqual(@as(?GlobalScope, null), GlobalScope.fromString("InvalidScope"));
 
     try testing.expectEqualStrings("Window", GlobalScope.Window.toString());
     try testing.expectEqualStrings("Worker", GlobalScope.Worker.toString());
+    try testing.expectEqualStrings("AudioWorklet", GlobalScope.AudioWorklet.toString());
+}
+
+// Note: Conversion tests between GlobalScope and GlobalScopeKind are in
+// src/runtime/realm.zig where both types are accessible.
+
+test "GlobalScope.matchesExposure - direct matches" {
+    try testing.expect(GlobalScope.Window.matchesExposure("Window"));
+    try testing.expect(GlobalScope.DedicatedWorker.matchesExposure("DedicatedWorker"));
+    try testing.expect(GlobalScope.ServiceWorker.matchesExposure("ServiceWorker"));
+    try testing.expect(GlobalScope.AudioWorklet.matchesExposure("AudioWorklet"));
+    try testing.expect(GlobalScope.ShadowRealm.matchesExposure("ShadowRealm"));
+
+    // Non-matches
+    try testing.expect(!GlobalScope.Window.matchesExposure("Worker"));
+    try testing.expect(!GlobalScope.ShadowRealm.matchesExposure("Window"));
+}
+
+test "GlobalScope.matchesExposure - abstract Worker category" {
+    // [Exposed=Worker] should match all worker types
+    try testing.expect(GlobalScope.Worker.matchesExposure("Worker"));
+    try testing.expect(GlobalScope.DedicatedWorker.matchesExposure("Worker"));
+    try testing.expect(GlobalScope.SharedWorker.matchesExposure("Worker"));
+    try testing.expect(GlobalScope.ServiceWorker.matchesExposure("Worker"));
+
+    // But Window and worklets should not match Worker
+    try testing.expect(!GlobalScope.Window.matchesExposure("Worker"));
+    try testing.expect(!GlobalScope.AudioWorklet.matchesExposure("Worker"));
+    try testing.expect(!GlobalScope.ShadowRealm.matchesExposure("Worker"));
+}
+
+test "GlobalScope.matchesExposure - abstract Worklet category" {
+    // [Exposed=Worklet] should match all worklet types
+    try testing.expect(GlobalScope.Worklet.matchesExposure("Worklet"));
+    try testing.expect(GlobalScope.AudioWorklet.matchesExposure("Worklet"));
+    try testing.expect(GlobalScope.PaintWorklet.matchesExposure("Worklet"));
+    try testing.expect(GlobalScope.AnimationWorklet.matchesExposure("Worklet"));
+    try testing.expect(GlobalScope.LayoutWorklet.matchesExposure("Worklet"));
+    try testing.expect(GlobalScope.SharedStorageWorklet.matchesExposure("Worklet"));
+
+    // But Window and workers should not match Worklet
+    try testing.expect(!GlobalScope.Window.matchesExposure("Worklet"));
+    try testing.expect(!GlobalScope.DedicatedWorker.matchesExposure("Worklet"));
+    try testing.expect(!GlobalScope.ShadowRealm.matchesExposure("Worklet"));
 }
 
 // Note: Integration tests with actual generated interfaces are in tests/webidl/helpers_test.zig

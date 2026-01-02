@@ -86,7 +86,12 @@ pub const InitResult = struct {
     used_snapshot: bool,
     /// Startup time in milliseconds (for performance tracking)
     startup_time_ms: i64,
+    /// The context index that was restored (0 if not from indexed snapshot)
+    context_index: usize = 0,
 };
+
+// Import SnapshotContextIndex for scope-based context selection
+const SnapshotContextIndex = @import("snapshot_context_index.zig").SnapshotContextIndex;
 
 /// Options for V8 initialization
 pub const InitOptions = struct {
@@ -96,6 +101,9 @@ pub const InitOptions = struct {
     embedded_snapshot: ?[]const u8 = null,
     /// Whether to log performance information
     log_performance: bool = true,
+    /// Context index to restore from snapshot (default 0 = Window context)
+    /// Use SnapshotContextIndex enum values for type safety.
+    context_index: usize = 0,
 };
 
 /// Error set for snapshot loading
@@ -173,7 +181,6 @@ pub fn createWorkerIsolateFromSnapshot() ?SnapshotResult {
         return null;
     }
 
-
     return SnapshotResult{
         .isolate = isolate.?,
         .context = context.?,
@@ -193,7 +200,7 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
 
     // Try embedded snapshot first
     if (options.embedded_snapshot) |snapshot_data| {
-        if (try initFromSnapshotData(snapshot_data, options.log_performance)) |result| {
+        if (try initFromSnapshotData(snapshot_data, options.log_performance, options.context_index)) |result| {
             const elapsed = std.time.milliTimestamp() - start_time;
             return .{
                 .isolate = result.isolate,
@@ -244,10 +251,45 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
 const SnapshotResult = struct {
     isolate: *ffi.Isolate,
     context: *ffi.Context,
+    context_index: usize = 0,
 };
 
+/// Create a context from a specific index in the snapshot.
+///
+/// This is used for multi-context snapshots where different scope types
+/// (Window, Worker, ServiceWorker, etc.) have separate pre-configured contexts.
+///
+/// @param isolate - Isolate created from snapshot
+/// @param index - Context index (from SnapshotContextIndex enum)
+/// @return Context at that index, or null if index is invalid
+pub fn createContextFromSnapshotAt(isolate: *ffi.Isolate, index: SnapshotContextIndex) ?*ffi.Context {
+    return ffi.v8_Context_NewFromSnapshotAt(isolate, @intFromEnum(index));
+}
+
+/// Create a context for a specific scope kind from the snapshot.
+///
+/// This is the high-level API that maps GlobalScopeKind to the appropriate
+/// snapshot context index.
+///
+/// @param isolate - Isolate created from snapshot
+/// @param scope_kind - The global scope kind (Window, DedicatedWorker, etc.)
+/// @return Context for that scope, or null if not available in snapshot
+pub fn createContextForScope(isolate: *ffi.Isolate, scope_kind: anytype) ?*ffi.Context {
+    const index = SnapshotContextIndex.forScopeKind(scope_kind);
+    return createContextFromSnapshotAt(isolate, index);
+}
+
+/// Get the number of indexed contexts available in the snapshot.
+///
+/// @param data - Snapshot data
+/// @return Number of contexts, or 0 if snapshot is invalid
+pub fn getSnapshotContextCount(data: []const u8) usize {
+    if (data.len < 8) return 0;
+    return ffi.v8_Snapshot_GetContextCount(data.ptr, @intCast(data.len));
+}
+
 /// Try to initialize from in-memory snapshot data
-fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResult {
+fn initFromSnapshotData(data: []const u8, log_performance: bool, context_index: usize) !?SnapshotResult {
     // === Snapshot Validation ===
     // Validate snapshot data thoroughly before attempting to load.
     // This helps provide clear error messages and fail fast.
@@ -315,17 +357,23 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
     ffi.v8_Isolate_Enter(isolate);
     errdefer ffi.v8_Isolate_Exit(isolate);
 
-    // Create a context from the snapshot using Context::FromSnapshot(isolate, 0).
+    // Create a context from the snapshot using Context::FromSnapshot(isolate, index).
     // This retrieves the indexed context that was added via AddContext() during
     // snapshot creation. This is the proper way to restore context state from snapshot.
     //
-    // IMPORTANT: The snapshot generator MUST add a context at index 0 using
+    // IMPORTANT: The snapshot generator MUST add contexts using
     // v8_SnapshotCreator_CreateAndAddContext() for this to work.
+    //
+    // Index 0 = Window context (default)
+    // Index 1 = DedicatedWorker context
+    // Index 2 = SharedWorker context
+    // Index 3 = ServiceWorker context
+    // etc. (see SnapshotContextIndex enum)
     //
     // This gives us:
     // - Fast isolate startup (~2ms vs ~40ms) from snapshot's pre-compiled builtins
-    // - Context from the snapshot (currently V8 builtins, will contain WebIDL interfaces later)
-    const context = ffi.v8_Context_NewFromSnapshot(isolate) orelse {
+    // - Context from the snapshot with scope-appropriate WebIDL interfaces
+    const context = ffi.v8_Context_NewFromSnapshotAt(isolate, context_index) orelse {
         if (log_performance) {
             std.log.warn("Failed to create context from snapshot (Context::FromSnapshot failed)", .{});
             std.log.warn("  This usually means no indexed context was added during snapshot creation", .{});
@@ -373,7 +421,7 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool)
         return null;
     }
 
-    return initFromSnapshotData(snapshot_data, false);
+    return initFromSnapshotData(snapshot_data, false, 0); // Default to window context
 }
 
 /// Register all external references for snapshot loading

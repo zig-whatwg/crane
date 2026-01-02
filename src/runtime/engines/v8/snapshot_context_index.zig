@@ -14,19 +14,30 @@
 //!
 //! - Index 0: Window context (Document, Window, etc.)
 //! - Index 1: DedicatedWorker context (WorkerGlobalScope, etc.)
-//! - Index 2: SharedWorker context (future)
-//! - Index 3: ServiceWorker context (future)
+//! - Index 2: SharedWorker context
+//! - Index 3: ServiceWorker context
+//! - Index 4: AudioWorklet context
+//! - Index 5: PaintWorklet context
+//! - Index 6: AnimationWorklet context
+//! - Index 7: LayoutWorklet context
+//! - Index 8: SharedStorageWorklet context
+//! - Index 9: ShadowRealm context
 //!
 //! ## Usage
 //!
 //! ```zig
 //! const index = SnapshotContextIndex.dedicated_worker;
 //! const context = v8_Context_NewFromSnapshotAt(isolate, @intFromEnum(index));
+//!
+//! // Convert from GlobalScopeKind
+//! const scope_kind = GlobalScopeKind.audio_worklet;
+//! const snapshot_index = SnapshotContextIndex.forScopeKind(scope_kind);
 //! ```
 //!
 //! ## Specification References
 //! - HTML Realms: https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm
 //! - WebIDL [Exposed]: https://webidl.spec.whatwg.org/#Exposed
+//! - Worklets: https://drafts.css-houdini.org/worklets/
 
 const std = @import("std");
 
@@ -35,6 +46,9 @@ const std = @import("std");
 /// These indices correspond to the order in which contexts are added to the
 /// V8 snapshot via SnapshotCreator::AddContext(). The indices are stable and
 /// must not change between snapshot creation and loading.
+///
+/// IMPORTANT: The enum values (0, 1, 2, ...) are the actual snapshot indices.
+/// Adding new context types MUST append to the end to maintain compatibility.
 pub const SnapshotContextIndex = enum(usize) {
     /// Window context (primary browser context)
     /// Contains: Document, Window, Element, etc.
@@ -46,20 +60,73 @@ pub const SnapshotContextIndex = enum(usize) {
     /// [Exposed=Worker] or [Exposed=DedicatedWorker] interfaces
     dedicated_worker = 1,
 
-    /// SharedWorkerGlobalScope context (future)
+    /// SharedWorkerGlobalScope context
     /// [Exposed=Worker] or [Exposed=SharedWorker] interfaces
     shared_worker = 2,
 
-    /// ServiceWorkerGlobalScope context (future)
+    /// ServiceWorkerGlobalScope context
     /// [Exposed=Worker] or [Exposed=ServiceWorker] interfaces
     service_worker = 3,
+
+    /// AudioWorkletGlobalScope context
+    /// [Exposed=AudioWorklet] interfaces
+    audio_worklet = 4,
+
+    /// PaintWorkletGlobalScope context
+    /// [Exposed=PaintWorklet] interfaces
+    paint_worklet = 5,
+
+    /// AnimationWorkletGlobalScope context
+    /// [Exposed=AnimationWorklet] interfaces
+    animation_worklet = 6,
+
+    /// LayoutWorkletGlobalScope context
+    /// [Exposed=LayoutWorklet] interfaces
+    layout_worklet = 7,
+
+    /// SharedStorageWorkletGlobalScope context
+    /// [Exposed=SharedStorageWorklet] interfaces
+    shared_storage_worklet = 8,
+
+    /// ShadowRealm context
+    /// Limited exposure for isolated JavaScript realms
+    shadow_realm = 9,
+
+    /// Convert from a scope kind value (as usize) to SnapshotContextIndex.
+    /// The values correspond to GlobalScopeKind enum values:
+    /// 0=window, 1=dedicated_worker, 2=shared_worker, 3=service_worker,
+    /// 4=audio_worklet, 5=paint_worklet, 6=animation_worklet,
+    /// 7=layout_worklet, 8=shared_storage_worklet, 9=shadow_realm
+    ///
+    /// Usage: SnapshotContextIndex.forScopeKindValue(@intFromEnum(scope_kind))
+    pub fn forScopeKindValue(value: usize) ?SnapshotContextIndex {
+        return std.meta.intToEnum(SnapshotContextIndex, value) catch null;
+    }
+
+    /// Get the scope kind value (matches GlobalScopeKind enum values)
+    pub fn toScopeKindValue(self: SnapshotContextIndex) usize {
+        return @intFromEnum(self);
+    }
 
     /// Check if this context type is a worker context
     pub fn isWorker(self: SnapshotContextIndex) bool {
         return switch (self) {
-            .window => false,
             .dedicated_worker, .shared_worker, .service_worker => true,
+            else => false,
         };
+    }
+
+    /// Check if this context type is a worklet context
+    pub fn isWorklet(self: SnapshotContextIndex) bool {
+        return switch (self) {
+            .audio_worklet, .paint_worklet, .animation_worklet, .layout_worklet, .shared_storage_worklet => true,
+            else => false,
+        };
+    }
+
+    /// Check if this context type is implemented
+    pub fn isImplemented(self: SnapshotContextIndex) bool {
+        return self.toScopeKind().isImplemented();
     }
 
     /// Get the global object interface name for this context
@@ -69,18 +136,38 @@ pub const SnapshotContextIndex = enum(usize) {
             .dedicated_worker => "DedicatedWorkerGlobalScope",
             .shared_worker => "SharedWorkerGlobalScope",
             .service_worker => "ServiceWorkerGlobalScope",
+            .audio_worklet => "AudioWorkletGlobalScope",
+            .paint_worklet => "PaintWorkletGlobalScope",
+            .animation_worklet => "AnimationWorkletGlobalScope",
+            .layout_worklet => "LayoutWorkletGlobalScope",
+            .shared_storage_worklet => "SharedStorageWorkletGlobalScope",
+            .shadow_realm => "ShadowRealm",
         };
     }
 
     /// Total number of context types in the snapshot
     /// Used by snapshot generator to know how many contexts to create
-    pub const count: usize = 4;
+    pub const count: usize = 10;
 
     /// Currently implemented context types
     /// Only window and dedicated_worker are fully implemented
     pub const implemented = [_]SnapshotContextIndex{
         .window,
         .dedicated_worker,
+    };
+
+    /// All context types for iteration
+    pub const all = [_]SnapshotContextIndex{
+        .window,
+        .dedicated_worker,
+        .shared_worker,
+        .service_worker,
+        .audio_worklet,
+        .paint_worklet,
+        .animation_worklet,
+        .layout_worklet,
+        .shared_storage_worklet,
+        .shadow_realm,
     };
 };
 
@@ -91,10 +178,37 @@ pub const SnapshotContextIndex = enum(usize) {
 test "isWorker" {
     const testing = std.testing;
 
+    // Workers
     try testing.expect(!SnapshotContextIndex.window.isWorker());
     try testing.expect(SnapshotContextIndex.dedicated_worker.isWorker());
     try testing.expect(SnapshotContextIndex.shared_worker.isWorker());
     try testing.expect(SnapshotContextIndex.service_worker.isWorker());
+
+    // Worklets are not workers
+    try testing.expect(!SnapshotContextIndex.audio_worklet.isWorker());
+    try testing.expect(!SnapshotContextIndex.paint_worklet.isWorker());
+    try testing.expect(!SnapshotContextIndex.animation_worklet.isWorker());
+    try testing.expect(!SnapshotContextIndex.layout_worklet.isWorker());
+    try testing.expect(!SnapshotContextIndex.shared_storage_worklet.isWorker());
+    try testing.expect(!SnapshotContextIndex.shadow_realm.isWorker());
+}
+
+test "isWorklet" {
+    const testing = std.testing;
+
+    // Non-worklets
+    try testing.expect(!SnapshotContextIndex.window.isWorklet());
+    try testing.expect(!SnapshotContextIndex.dedicated_worker.isWorklet());
+    try testing.expect(!SnapshotContextIndex.shared_worker.isWorklet());
+    try testing.expect(!SnapshotContextIndex.service_worker.isWorklet());
+    try testing.expect(!SnapshotContextIndex.shadow_realm.isWorklet());
+
+    // Worklets
+    try testing.expect(SnapshotContextIndex.audio_worklet.isWorklet());
+    try testing.expect(SnapshotContextIndex.paint_worklet.isWorklet());
+    try testing.expect(SnapshotContextIndex.animation_worklet.isWorklet());
+    try testing.expect(SnapshotContextIndex.layout_worklet.isWorklet());
+    try testing.expect(SnapshotContextIndex.shared_storage_worklet.isWorklet());
 }
 
 test "globalInterfaceName" {
@@ -104,6 +218,12 @@ test "globalInterfaceName" {
     try testing.expectEqualStrings("DedicatedWorkerGlobalScope", SnapshotContextIndex.dedicated_worker.globalInterfaceName());
     try testing.expectEqualStrings("SharedWorkerGlobalScope", SnapshotContextIndex.shared_worker.globalInterfaceName());
     try testing.expectEqualStrings("ServiceWorkerGlobalScope", SnapshotContextIndex.service_worker.globalInterfaceName());
+    try testing.expectEqualStrings("AudioWorkletGlobalScope", SnapshotContextIndex.audio_worklet.globalInterfaceName());
+    try testing.expectEqualStrings("PaintWorkletGlobalScope", SnapshotContextIndex.paint_worklet.globalInterfaceName());
+    try testing.expectEqualStrings("AnimationWorkletGlobalScope", SnapshotContextIndex.animation_worklet.globalInterfaceName());
+    try testing.expectEqualStrings("LayoutWorkletGlobalScope", SnapshotContextIndex.layout_worklet.globalInterfaceName());
+    try testing.expectEqualStrings("SharedStorageWorkletGlobalScope", SnapshotContextIndex.shared_storage_worklet.globalInterfaceName());
+    try testing.expectEqualStrings("ShadowRealm", SnapshotContextIndex.shadow_realm.globalInterfaceName());
 }
 
 test "enum values are sequential" {
@@ -114,13 +234,41 @@ test "enum values are sequential" {
     try testing.expectEqual(@as(usize, 1), @intFromEnum(SnapshotContextIndex.dedicated_worker));
     try testing.expectEqual(@as(usize, 2), @intFromEnum(SnapshotContextIndex.shared_worker));
     try testing.expectEqual(@as(usize, 3), @intFromEnum(SnapshotContextIndex.service_worker));
+    try testing.expectEqual(@as(usize, 4), @intFromEnum(SnapshotContextIndex.audio_worklet));
+    try testing.expectEqual(@as(usize, 5), @intFromEnum(SnapshotContextIndex.paint_worklet));
+    try testing.expectEqual(@as(usize, 6), @intFromEnum(SnapshotContextIndex.animation_worklet));
+    try testing.expectEqual(@as(usize, 7), @intFromEnum(SnapshotContextIndex.layout_worklet));
+    try testing.expectEqual(@as(usize, 8), @intFromEnum(SnapshotContextIndex.shared_storage_worklet));
+    try testing.expectEqual(@as(usize, 9), @intFromEnum(SnapshotContextIndex.shadow_realm));
+}
+
+test "count matches all array" {
+    const testing = std.testing;
+
+    try testing.expectEqual(SnapshotContextIndex.count, SnapshotContextIndex.all.len);
+}
+
+test "forScopeKind roundtrip" {
+    const testing = std.testing;
+
+    // Test all scope kinds convert correctly
+    for (SnapshotContextIndex.all) |idx| {
+        const kind = idx.toScopeKind();
+        const back = SnapshotContextIndex.forScopeKind(kind);
+        try testing.expectEqual(idx, back);
+    }
 }
 
 test "implemented contexts" {
     const testing = std.testing;
 
-    // Verify implemented list matches expected
+    // Verify implemented list matches expected (only window and dedicated_worker for now)
     try testing.expectEqual(@as(usize, 2), SnapshotContextIndex.implemented.len);
     try testing.expectEqual(SnapshotContextIndex.window, SnapshotContextIndex.implemented[0]);
     try testing.expectEqual(SnapshotContextIndex.dedicated_worker, SnapshotContextIndex.implemented[1]);
+
+    // Verify isImplemented matches implemented array
+    for (SnapshotContextIndex.implemented) |idx| {
+        try testing.expect(idx.isImplemented());
+    }
 }

@@ -5957,6 +5957,52 @@ return nullptr;
     return trackHandle(new Global<Context>(isolate, context));
 }
 
+/// Create a context from a specific index in the snapshot
+///
+/// This creates a new context based on the context that was added at the
+/// specified index during snapshot creation. Use this to restore different
+/// context types (e.g., window context at index 0, worker context at index 1).
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @param context_index - The index of the context to restore (0-based)
+/// @return New context with snapshot state, or nullptr if index is invalid
+Global<Context>* v8_Context_NewFromSnapshotAt(Isolate* isolate, size_t context_index) {
+    if (!isolate) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] ERROR: isolate is null\n");
+        return nullptr;
+    }
+    
+    // Enter the isolate before creating context
+    Isolate::Scope isolate_scope(isolate);
+    HandleScope handle_scope(isolate);
+    
+    // Add TryCatch to capture any exception
+    TryCatch try_catch(isolate);
+    
+    // Use Context::FromSnapshot to retrieve the context at the specified index
+    MaybeLocal<Context> maybe_context = Context::FromSnapshot(
+        isolate, context_index,
+        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
+    
+    if (try_catch.HasCaught()) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] Exception caught during FromSnapshot(%zu)\n", context_index);
+        Local<Message> message = try_catch.Message();
+        if (!message.IsEmpty()) {
+            String::Utf8Value msg_str(isolate, message->Get());
+            fprintf(stderr, "[v8_Context_NewFromSnapshotAt] Exception: %s\n", *msg_str);
+        }
+    }
+    
+    Local<Context> context;
+    if (!maybe_context.ToLocal(&context)) {
+        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] ERROR: Context::FromSnapshot(%zu) failed\n", context_index);
+        fprintf(stderr, "  This usually means no context was added at index %zu during snapshot creation\n", context_index);
+        return nullptr;
+    }
+    
+    return trackHandle(new Global<Context>(isolate, context));
+}
+
 /// Create a NEW context for an isolate that was created from a snapshot
 ///
 /// Unlike v8_Context_NewFromSnapshot which restores a specific context from the

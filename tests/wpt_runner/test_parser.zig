@@ -35,6 +35,8 @@
 
 const std = @import("std");
 const config = @import("config.zig");
+const runtime = @import("runtime");
+const GlobalScopeKind = runtime.GlobalScopeKind;
 
 /// Error types for test parsing
 pub const ParseError = error{
@@ -147,6 +149,30 @@ pub const GlobalType = enum {
             .shadowrealm_in_serviceworker,
             => true,
             else => false,
+        };
+    }
+
+    /// Convert to unified GlobalScopeKind from runtime module
+    ///
+    /// This provides a single source of truth for scope type mapping.
+    /// All ShadowRealm variants map to a single shadow_realm scope kind,
+    /// as the "in-X" suffix indicates where the ShadowRealm was created,
+    /// not a fundamentally different scope type.
+    pub fn toGlobalScopeKind(self: GlobalType) GlobalScopeKind {
+        return switch (self) {
+            .window => .window,
+            .worker => .dedicated_worker,
+            .sharedworker => .shared_worker,
+            .serviceworker => .service_worker,
+            // All ShadowRealm variants map to single scope kind
+            .shadowrealm,
+            .shadowrealm_in_window,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_audioworklet,
+            .shadowrealm_in_serviceworker,
+            => .shadow_realm,
         };
     }
 };

@@ -2192,6 +2192,33 @@ pub extern fn v8_Context_NewFromSnapshot(isolate: *Isolate) ?*Context;
 /// @return New context (fresh, not from snapshot state)
 pub extern fn v8_Context_NewFromSnapshotDefault(isolate: *Isolate) ?*Context;
 
+/// Create a context from a specific indexed context in the snapshot
+///
+/// During snapshot creation, multiple contexts can be added via AddContext().
+/// Each context is assigned an index (0, 1, 2, ...). This function restores
+/// the context at the specified index.
+///
+/// Use this for multi-context snapshots where different scope types
+/// (Window, Worker, ServiceWorker, etc.) have different pre-registered interfaces.
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @param context_index - Index of the context to restore (0-based)
+/// @return Context at that index, or null if index is out of range
+pub extern fn v8_Context_NewFromSnapshotAt(isolate: *Isolate, context_index: usize) ?*Context;
+
+/// Get the number of indexed contexts stored in the snapshot
+///
+/// Returns the count of contexts that were added via AddContext() during
+/// snapshot creation. Valid indices are 0 to (count - 1).
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @return Number of indexed contexts in the snapshot
+pub extern fn v8_Snapshot_GetContextCount(
+    snapshot_data: [*]const u8,
+    snapshot_size: c_int,
+) usize;
+
 /// Check if a snapshot blob is valid
 ///
 /// Validates that the snapshot data can be used with the current V8 version.

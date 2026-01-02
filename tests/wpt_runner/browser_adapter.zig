@@ -100,20 +100,25 @@ pub const BrowserAdapter = struct {
     }
 
     /// Map GlobalType (from test_parser) to ContextType (from browser)
+    ///
+    /// Uses the unified GlobalScopeKind mapping layer for consistent behavior.
+    /// See src/runtime/realm.zig GlobalScopeKind for the authoritative mapping.
     fn mapContextType(context_type: test_parser.GlobalType) browser.ContextType {
-        return switch (context_type) {
+        const scope_kind = context_type.toGlobalScopeKind();
+        return switch (scope_kind) {
             .window => .window,
-            .worker => .worker,
-            .sharedworker => .shared_worker,
-            .serviceworker => .service_worker,
-            // ShadowRealm variants map to window for now (not implemented)
-            .shadowrealm,
-            .shadowrealm_in_window,
-            .shadowrealm_in_dedicatedworker,
-            .shadowrealm_in_sharedworker,
-            .shadowrealm_in_shadowrealm,
-            .shadowrealm_in_audioworklet,
-            .shadowrealm_in_serviceworker,
+            .dedicated_worker => .worker,
+            .shared_worker => .shared_worker,
+            .service_worker => .service_worker,
+            // Worklets and ShadowRealm are not yet implemented in browser module
+            // Return window as fallback (tests will be skipped via isImplemented check)
+            .audio_worklet,
+            .paint_worklet,
+            .animation_worklet,
+            .layout_worklet,
+            .shared_storage_worklet,
+            .shadow_realm,
+            .unknown,
             => .window,
         };
     }
