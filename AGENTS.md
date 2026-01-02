@@ -2035,6 +2035,77 @@ Add new lessons when you:
 
 ---
 
+## Oh My OpenCode Integration (Ultrawork Mode)
+
+This project uses **Oh My OpenCode** for agent orchestration. The following rules clarify how beads issue tracking integrates with Oh My OpenCode's workflow.
+
+### Beads vs TodoWrite: Different Purposes
+
+| Tool | Purpose | Scope |
+|------|---------|-------|
+| **Beads (`bd_*`)** | Issue tracking, dependencies, project management | Cross-session, persistent |
+| **TodoWrite** | Session step tracking, ensuring completion | Within-session, ephemeral |
+
+**These tools COEXIST and serve different purposes:**
+- Use **beads** to track issues, epics, and dependencies
+- Use **TodoWrite** to track steps within a work session (required for Oh My OpenCode's Todo Continuation Enforcer)
+
+### Working on Beads Issues (CORRECTED RULE)
+
+**⚠️ OVERRIDE**: The global config AGENTS.md says to delegate beads issues to `beads-worker`. **This is incorrect for Oh My OpenCode.**
+
+**Correct behavior when user says "work on bd-xxx" or "ultrawork bd-xxx":**
+
+1. **DO NOT** delegate to `beads-worker` (this agent doesn't exist in Oh My OpenCode)
+2. **DO** use `bd_show` to understand the issue
+3. **DO** create a TodoWrite list with the implementation steps
+4. **DO** use Oh My OpenCode's available agents for research:
+   - `explore` - Fast codebase exploration
+   - `librarian` - Documentation and implementation lookup
+   - `oracle` - Architecture decisions, debugging strategy
+5. **DO** implement the work directly as Sisyphus (the main agent)
+6. **DO** close the beads issue with `bd_close` when complete
+
+**Example workflow:**
+```
+User: "ultrawork bd-42"
+
+Agent actions:
+1. bd_show({ issue_id: "bd-42" })           # Understand the issue
+2. todowrite([...steps...])                  # Plan the work
+3. background_task(agent="explore", ...)     # Research in parallel
+4. background_task(agent="librarian", ...)   # Find docs/examples
+5. [implement the solution]                  # Do the work
+6. [run tests, verify]                       # Validate
+7. bd_close({ issue_ids: "bd-42" })         # Complete the issue
+```
+
+### Available Oh My OpenCode Agents
+
+When you need specialized help, use these agents via `background_task` or `task`:
+
+| Agent | Model | Use For |
+|-------|-------|---------|
+| `explore` | Grok Code | Fast codebase pattern matching, finding code |
+| `librarian` | Claude Sonnet 4.5 | Documentation lookup, implementation examples |
+| `oracle` | GPT 5.2 | Architecture decisions, debugging strategy |
+| `frontend-ui-ux-engineer` | Gemini 3 Pro | Frontend/UI work |
+| `document-writer` | Gemini 3 Flash | Technical documentation |
+| `general` | Default | General purpose tasks |
+
+**DO NOT use `bw` or `beads-worker`** - these don't exist.
+
+### Ultrawork Mode Behavior
+
+When the user includes `ultrawork` or `ulw` in their prompt:
+
+1. **Parallel execution** - Fire multiple background agents for research
+2. **TodoWrite tracking** - Create detailed step tracking immediately
+3. **Aggressive completion** - Don't stop until all todos are done
+4. **Direct implementation** - Sisyphus handles the work, agents assist
+
+---
+
 **Quality over speed.** Take time to do it right. The codebase is production-ready and must stay that way.
 
 **WHATWG specs define the web.** Browser compatibility depends on correct implementations. Precision matters.
