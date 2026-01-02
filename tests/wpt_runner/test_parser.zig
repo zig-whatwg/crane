@@ -56,6 +56,17 @@ pub const GlobalType = enum {
     sharedworker,
     /// Service worker context
     serviceworker,
+
+    // Worklet variants (CSS Houdini / Web Audio)
+    /// AudioWorklet context (Web Audio API)
+    audio_worklet,
+    /// PaintWorklet context (CSS Paint API)
+    paint_worklet,
+    /// AnimationWorklet context (CSS Animation Worklet)
+    animation_worklet,
+    /// LayoutWorklet context (CSS Layout API)
+    layout_worklet,
+
     // ShadowRealm variants (TC39 Stage 2.7)
     /// Base ShadowRealm context
     shadowrealm,
@@ -87,6 +98,11 @@ pub const GlobalType = enum {
         if (std.mem.eql(u8, str, "shadowrealm-in-shadowrealm")) return .shadowrealm_in_shadowrealm;
         if (std.mem.eql(u8, str, "shadowrealm-in-audioworklet")) return .shadowrealm_in_audioworklet;
         if (std.mem.eql(u8, str, "shadowrealm-in-serviceworker")) return .shadowrealm_in_serviceworker;
+        // Worklet variants (WPT uses lowercase without underscore)
+        if (std.mem.eql(u8, str, "audioworklet")) return .audio_worklet;
+        if (std.mem.eql(u8, str, "paintworklet")) return .paint_worklet;
+        if (std.mem.eql(u8, str, "animationworklet")) return .animation_worklet;
+        if (std.mem.eql(u8, str, "layoutworklet")) return .layout_worklet;
         return null;
     }
 
@@ -104,6 +120,11 @@ pub const GlobalType = enum {
             .shadowrealm_in_shadowrealm => "shadowrealm-in-shadowrealm",
             .shadowrealm_in_audioworklet => "shadowrealm-in-audioworklet",
             .shadowrealm_in_serviceworker => "shadowrealm-in-serviceworker",
+            // Worklet variants
+            .audio_worklet => "audioworklet",
+            .paint_worklet => "paintworklet",
+            .animation_worklet => "animationworklet",
+            .layout_worklet => "layoutworklet",
         };
     }
 
@@ -126,6 +147,11 @@ pub const GlobalType = enum {
             .sharedworker => true,
             // ServiceWorker needs additional infrastructure
             .serviceworker => true,
+            // Worklet variants - implemented via BSCOPE-17/18
+            .audio_worklet => true,
+            .paint_worklet => true,
+            .animation_worklet => true,
+            .layout_worklet => true,
             // All ShadowRealm variants not implemented
             .shadowrealm,
             .shadowrealm_in_window,
@@ -174,6 +200,23 @@ pub const GlobalType = enum {
             .shadowrealm_in_audioworklet,
             .shadowrealm_in_serviceworker,
             => .shadow_realm,
+            // Worklet variants map to specific worklet scope kinds
+            .audio_worklet => .audio_worklet,
+            .paint_worklet => .paint_worklet,
+            .animation_worklet => .animation_worklet,
+            .layout_worklet => .layout_worklet,
+        };
+    }
+
+    /// Check if this is any worklet variant
+    pub fn isWorklet(self: GlobalType) bool {
+        return switch (self) {
+            .audio_worklet,
+            .paint_worklet,
+            .animation_worklet,
+            .layout_worklet,
+            => true,
+            else => false,
         };
     }
 };
@@ -1558,4 +1601,94 @@ test "htmlUsesTestHarness - false for harnessless content" {
         \\<p>Just some HTML</p>
     ;
     try std.testing.expect(!htmlUsesTestHarness(content));
+}
+
+// =============================================================================
+// Worklet GlobalType Tests (BSCOPE-20)
+// =============================================================================
+
+test "GlobalType.fromString - worklet variants" {
+    // All worklet types should be parsed correctly
+    try std.testing.expectEqual(GlobalType.audio_worklet, GlobalType.fromString("audioworklet").?);
+    try std.testing.expectEqual(GlobalType.paint_worklet, GlobalType.fromString("paintworklet").?);
+    try std.testing.expectEqual(GlobalType.animation_worklet, GlobalType.fromString("animationworklet").?);
+    try std.testing.expectEqual(GlobalType.layout_worklet, GlobalType.fromString("layoutworklet").?);
+
+    // Invalid worklet names should return null
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("worklet"));
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("audio-worklet"));
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("AudioWorklet"));
+}
+
+test "GlobalType.toString - worklet variants" {
+    try std.testing.expectEqualStrings("audioworklet", GlobalType.audio_worklet.toString());
+    try std.testing.expectEqualStrings("paintworklet", GlobalType.paint_worklet.toString());
+    try std.testing.expectEqualStrings("animationworklet", GlobalType.animation_worklet.toString());
+    try std.testing.expectEqualStrings("layoutworklet", GlobalType.layout_worklet.toString());
+}
+
+test "GlobalType.isImplemented - worklets are implemented" {
+    // All worklet types should be implemented (BSCOPE-17/18 completed)
+    try std.testing.expect(GlobalType.audio_worklet.isImplemented());
+    try std.testing.expect(GlobalType.paint_worklet.isImplemented());
+    try std.testing.expect(GlobalType.animation_worklet.isImplemented());
+    try std.testing.expect(GlobalType.layout_worklet.isImplemented());
+}
+
+test "GlobalType.toGlobalScopeKind - worklet mapping" {
+    // Each worklet type maps to its specific GlobalScopeKind
+    try std.testing.expectEqual(GlobalScopeKind.audio_worklet, GlobalType.audio_worklet.toGlobalScopeKind());
+    try std.testing.expectEqual(GlobalScopeKind.paint_worklet, GlobalType.paint_worklet.toGlobalScopeKind());
+    try std.testing.expectEqual(GlobalScopeKind.animation_worklet, GlobalType.animation_worklet.toGlobalScopeKind());
+    try std.testing.expectEqual(GlobalScopeKind.layout_worklet, GlobalType.layout_worklet.toGlobalScopeKind());
+}
+
+test "GlobalType.isWorklet - worklet detection" {
+    // Worklet types should return true
+    try std.testing.expect(GlobalType.audio_worklet.isWorklet());
+    try std.testing.expect(GlobalType.paint_worklet.isWorklet());
+    try std.testing.expect(GlobalType.animation_worklet.isWorklet());
+    try std.testing.expect(GlobalType.layout_worklet.isWorklet());
+
+    // Non-worklet types should return false
+    try std.testing.expect(!GlobalType.window.isWorklet());
+    try std.testing.expect(!GlobalType.worker.isWorklet());
+    try std.testing.expect(!GlobalType.sharedworker.isWorklet());
+    try std.testing.expect(!GlobalType.serviceworker.isWorklet());
+    try std.testing.expect(!GlobalType.shadowrealm.isWorklet());
+}
+
+test "parseMetaComments - worklet globals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: global=window,audioworklet,paintworklet
+        \\test(() => {});
+    ;
+
+    var metadata = try parseMetaComments(allocator, content);
+    defer metadata.deinit();
+
+    try testing.expectEqual(@as(usize, 3), metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, metadata.globals.items[0]);
+    try testing.expectEqual(GlobalType.audio_worklet, metadata.globals.items[1]);
+    try testing.expectEqual(GlobalType.paint_worklet, metadata.globals.items[2]);
+}
+
+test "parseAnyJs - worklet globals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: global=audioworklet
+        \\test(() => {});
+    ;
+
+    var parsed = try parseAnyJs(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // Should have audioworklet as the only global (explicit override)
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.audio_worklet, parsed.metadata.globals.items[0]);
 }

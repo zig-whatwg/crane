@@ -365,6 +365,14 @@ pub const ContextType = enum {
     shared_worker,
     /// Service worker context
     service_worker,
+    /// AudioWorklet context (Web Audio API)
+    audio_worklet,
+    /// PaintWorklet context (CSS Paint API)
+    paint_worklet,
+    /// AnimationWorklet context (CSS Animation Worklet)
+    animation_worklet,
+    /// LayoutWorklet context (CSS Layout API)
+    layout_worklet,
 
     /// Convert to SnapshotContextIndex for multi-context snapshot selection.
     /// Each context type maps to a pre-created snapshot context with the
@@ -375,6 +383,10 @@ pub const ContextType = enum {
             .worker => .dedicated_worker,
             .shared_worker => .shared_worker,
             .service_worker => .service_worker,
+            .audio_worklet => .audio_worklet,
+            .paint_worklet => .paint_worklet,
+            .animation_worklet => .animation_worklet,
+            .layout_worklet => .layout_worklet,
         };
     }
 };
@@ -1353,6 +1365,32 @@ pub const Context = struct {
             \\globalThis.GLOBAL = {
             \\  isWindow: function() { return false; },
             \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+            ,
+            .audio_worklet, .paint_worklet, .animation_worklet, .layout_worklet =>
+            // Worklet context: minimal global scope per Worklet spec
+            // Worklets have a highly restricted execution environment
+            \\function __checkGlobalThis(thisArg, propName) {
+            \\  if (thisArg === null || thisArg === undefined) {
+            \\    return globalThis;
+            \\  }
+            \\  if (thisArg === globalThis) {
+            \\    return globalThis;
+            \\  }
+            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface WorkletGlobalScope.");
+            \\}
+            \\
+            \\Object.defineProperty(globalThis, 'self', {
+            \\  get: function() { return __checkGlobalThis(this, 'self'); },
+            \\  enumerable: true, configurable: true
+            \\});
+            \\
+            \\// Set up GLOBAL object for WPT tests - WORKLET context
+            \\globalThis.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return false; },
+            \\  isWorklet: function() { return true; },
             \\  isShadowRealm: function() { return false; },
             \\};
             ,

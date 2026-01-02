@@ -110,12 +110,13 @@ pub const BrowserAdapter = struct {
             .dedicated_worker => .worker,
             .shared_worker => .shared_worker,
             .service_worker => .service_worker,
-            // Worklets and ShadowRealm are not yet implemented in browser module
+            // Worklet contexts - implemented via BSCOPE-17/18/20
+            .audio_worklet => .audio_worklet,
+            .paint_worklet => .paint_worklet,
+            .animation_worklet => .animation_worklet,
+            .layout_worklet => .layout_worklet,
+            // SharedStorageWorklet and ShadowRealm not yet implemented
             // Return window as fallback (tests will be skipped via isImplemented check)
-            .audio_worklet,
-            .paint_worklet,
-            .animation_worklet,
-            .layout_worklet,
             .shared_storage_worklet,
             .shadow_realm,
             .unknown,
