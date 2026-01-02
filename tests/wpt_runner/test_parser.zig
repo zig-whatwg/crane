@@ -122,8 +122,9 @@ pub const GlobalType = enum {
             // Worker context is supported - WPT server generates .any.worker.html
             // wrappers that handle fetch_tests_from_worker infrastructure
             .worker => true,
-            // SharedWorker/ServiceWorker need additional infrastructure
-            .sharedworker => false,
+            // SharedWorker now supported with BSCOPE-11/12 infrastructure
+            .sharedworker => true,
+            // ServiceWorker needs additional infrastructure
             .serviceworker => false,
             // All ShadowRealm variants not implemented
             .shadowrealm,
@@ -1222,8 +1223,10 @@ test "GlobalType.isImplemented - shadowrealm returns false" {
     // Worker IS implemented - WPT server handles fetch_tests_from_worker via generated HTML
     try std.testing.expect(GlobalType.worker.isImplemented());
 
+    // SharedWorker IS implemented (BSCOPE-11/12)
+    try std.testing.expect(GlobalType.sharedworker.isImplemented());
+
     // Not implemented contexts
-    try std.testing.expect(!GlobalType.sharedworker.isImplemented());
     try std.testing.expect(!GlobalType.serviceworker.isImplemented());
 
     // All ShadowRealm variants return false
@@ -1334,14 +1337,14 @@ test "multi-context: unimplemented contexts are skipped" {
     // Should have 3 globals parsed
     try std.testing.expectEqual(@as(usize, 3), parsed.metadata.globals.items.len);
 
-    // But only 1 implemented (window)
+    // 2 implemented (window, sharedworker)
     var implemented: usize = 0;
     for (parsed.metadata.globals.items) |ctx| {
         if (ctx.isImplemented()) {
             implemented += 1;
         }
     }
-    try std.testing.expectEqual(@as(usize, 1), implemented);
+    try std.testing.expectEqual(@as(usize, 2), implemented);
 }
 
 test "multi-context: .any.js defaults to window+worker" {
@@ -1419,10 +1422,10 @@ test "multi-context: counting implemented vs unimplemented contexts" {
         }
     }
 
-    // Window and worker are implemented
-    try std.testing.expectEqual(@as(usize, 2), implemented);
-    // SharedWorker, ServiceWorker, ShadowRealm are not implemented
-    try std.testing.expectEqual(@as(usize, 3), unimplemented);
+    // Window, worker, and sharedworker are implemented
+    try std.testing.expectEqual(@as(usize, 3), implemented);
+    // ServiceWorker, ShadowRealm are not implemented
+    try std.testing.expectEqual(@as(usize, 2), unimplemented);
 }
 
 test "multi-context: effective test count with variants and globals" {
