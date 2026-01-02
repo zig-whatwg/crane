@@ -115,10 +115,11 @@ pub const BrowserAdapter = struct {
             .paint_worklet => .paint_worklet,
             .animation_worklet => .animation_worklet,
             .layout_worklet => .layout_worklet,
-            // SharedStorageWorklet and ShadowRealm not yet implemented
+            // ShadowRealm - implemented via BSCOPE-21/22
+            .shadow_realm => .shadow_realm,
+            // SharedStorageWorklet not yet implemented
             // Return window as fallback (tests will be skipped via isImplemented check)
             .shared_storage_worklet,
-            .shadow_realm,
             .unknown,
             => .window,
         };
