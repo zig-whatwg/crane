@@ -1627,10 +1627,10 @@ test "multi-context: GlobalType iteration for test execution" {
         }
     }
 
-    // window and worker are implemented
-    try std.testing.expectEqual(@as(usize, 2), implemented_count);
-    // sharedworker, serviceworker, shadowrealm are not implemented
-    try std.testing.expectEqual(@as(usize, 3), skipped_count);
+    // window, worker, sharedworker, and serviceworker are implemented
+    try std.testing.expectEqual(@as(usize, 4), implemented_count);
+    // shadowrealm is not implemented
+    try std.testing.expectEqual(@as(usize, 1), skipped_count);
 }
 
 test "multi-context: result collection per context" {
