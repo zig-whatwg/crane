@@ -625,6 +625,7 @@ pub const WptReport = struct {
                         .unsupported_feature => summary.skipped_feature_unsupported += 1,
                         .manual_skip => summary.skipped_manual += 1,
                         .infrastructure_issue => summary.skipped_infrastructure += 1,
+                        .platform_unsupported, .excluded, .other => summary.skipped_other += 1,
                     }
                 }
             }
@@ -800,6 +801,10 @@ pub const SkipReason = enum {
     unsupported_global_scope,
     /// Test skipped because a required feature is not implemented
     unsupported_feature,
+    /// Test skipped manually via skip list or command line
+    manual_skip,
+    /// Test skipped due to infrastructure issues (timeout, crash, etc.)
+    infrastructure_issue,
     /// Test skipped due to platform limitations (e.g., OS-specific)
     platform_unsupported,
     /// Test skipped by explicit exclusion pattern
@@ -811,6 +816,8 @@ pub const SkipReason = enum {
         return switch (self) {
             .unsupported_global_scope => "unsupported_global_scope",
             .unsupported_feature => "unsupported_feature",
+            .manual_skip => "manual_skip",
+            .infrastructure_issue => "infrastructure_issue",
             .platform_unsupported => "platform_unsupported",
             .excluded => "excluded",
             .other => "other",
@@ -829,14 +836,18 @@ pub const Summary = struct {
     timeout_subtests: usize = 0,
     notrun_subtests: usize = 0,
     /// Tests skipped due to unimplemented global scope
-    skipped_scope: usize = 0,
+    skipped_scope_unsupported: usize = 0,
     /// Tests skipped due to missing feature
-    skipped_feature: usize = 0,
+    skipped_feature_unsupported: usize = 0,
+    /// Tests skipped manually
+    skipped_manual: usize = 0,
+    /// Tests skipped due to infrastructure issues
+    skipped_infrastructure: usize = 0,
     /// Tests skipped for other reasons
     skipped_other: usize = 0,
 
     pub fn totalSkipped(self: Summary) usize {
-        return self.skipped_scope + self.skipped_feature + self.skipped_other;
+        return self.skipped_scope_unsupported + self.skipped_feature_unsupported + self.skipped_manual + self.skipped_infrastructure + self.skipped_other;
     }
 
     pub fn passRate(self: Summary) f64 {
@@ -857,11 +868,11 @@ pub const Summary = struct {
         if (self.totalSkipped() > 0) {
             try writer.writeAll("--------------------------------\n");
             try writer.print("Skipped:   {d}\n", .{self.totalSkipped()});
-            if (self.skipped_scope > 0) {
-                try writer.print("  Scope:   {d}\n", .{self.skipped_scope});
+            if (self.skipped_scope_unsupported > 0) {
+                try writer.print("  Scope:   {d}\n", .{self.skipped_scope_unsupported});
             }
-            if (self.skipped_feature > 0) {
-                try writer.print("  Feature: {d}\n", .{self.skipped_feature});
+            if (self.skipped_feature_unsupported > 0) {
+                try writer.print("  Feature: {d}\n", .{self.skipped_feature_unsupported});
             }
             if (self.skipped_other > 0) {
                 try writer.print("  Other:   {d}\n", .{self.skipped_other});
@@ -876,7 +887,7 @@ pub const Summary = struct {
         // If we have scope skips, it means tests were skipped for scopes
         // that the WPT runner encountered. If those scopes are marked as
         // implemented, this is a problem.
-        return self.skipped_scope > 0;
+        return self.skipped_scope_unsupported > 0;
     }
 };
 
