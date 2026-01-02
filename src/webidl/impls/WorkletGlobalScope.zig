@@ -292,3 +292,129 @@ pub fn createInternalStateForWorklet(
         true, // Worklets always require secure context
     );
 }
+
+// ============================================================================
+// Module Evaluation
+// ============================================================================
+
+/// Evaluate a module in this worklet's context
+///
+/// Spec: HTML Standard § 10.3.2 The WorkletGlobalScope interface
+/// https://html.spec.whatwg.org/#worklet-global-scope-type
+///
+/// This compiles and evaluates JavaScript module source code in the worklet's
+/// V8 context. The module is registered upon successful evaluation.
+///
+/// Arguments:
+///   - instance: The WorkletGlobalScope instance
+///   - source: UTF-8 encoded JavaScript module source code
+///   - url: The module's URL (for import resolution and error reporting)
+///
+/// Returns:
+///   - Opaque pointer to the compiled module on success
+///   - null if compilation or evaluation failed
+///   - Error on critical failures
+pub fn evaluateModule(
+    instance: *runtime.Instance,
+    source: []const u8,
+    url: []const u8,
+) !?*anyopaque {
+    const internal = getInternalState(instance) orelse return error.NotImplemented;
+    const ctx = instance.ctx;
+
+    // Get the engine interface
+    const engine = ctx.getEngine() orelse return error.ModuleLoadError;
+    const engine_ctx = ctx.getEngineContext() orelse return error.ModuleLoadError;
+
+    // Check if module is already loaded
+    if (internal.isModuleLoaded(url)) {
+        // Return existing module record
+        if (internal.loaded_modules.get(url)) |loaded| {
+            return loaded.module_record;
+        }
+        return null;
+    }
+
+    // Compile the module
+    const compile_fn = engine.compileModule orelse return error.NotImplemented;
+    const module = compile_fn(engine_ctx, source, url) catch |err| {
+        internal.markModuleFailed(url);
+        return err;
+    };
+
+    if (module == null) {
+        internal.markModuleFailed(url);
+        return null;
+    }
+
+    // Check for top-level await
+    const has_tla_fn = engine.hasTopLevelAwait orelse {
+        // No TLA check available, run synchronously
+        const run_fn = engine.runModule orelse return error.NotImplemented;
+        run_fn(engine_ctx, module.?) catch |err| {
+            internal.markModuleFailed(url);
+            return err;
+        };
+        try internal.registerModule(url, module);
+        return module;
+    };
+
+    const has_tla = has_tla_fn(module.?);
+
+    if (has_tla) {
+        // Module has top-level await - run asynchronously
+        const run_async_fn = engine.runModuleAsync orelse {
+            // Fall back to sync if async not available
+            const run_fn = engine.runModule orelse return error.NotImplemented;
+            run_fn(engine_ctx, module.?) catch |err| {
+                internal.markModuleFailed(url);
+                return err;
+            };
+            try internal.registerModule(url, module);
+            return module;
+        };
+
+        // Run async - the promise will resolve when module evaluation completes
+        _ = run_async_fn(engine_ctx, module.?) catch |err| {
+            internal.markModuleFailed(url);
+            return err;
+        };
+    } else {
+        // No TLA - run synchronously
+        const run_fn = engine.runModule orelse return error.NotImplemented;
+        run_fn(engine_ctx, module.?) catch |err| {
+            internal.markModuleFailed(url);
+            return err;
+        };
+    }
+
+    // Register the module as loaded
+    try internal.registerModule(url, module);
+    return module;
+}
+
+/// Evaluate multiple modules in order
+///
+/// This evaluates a list of modules in the order they were added.
+/// Each module is compiled and evaluated before moving to the next.
+///
+/// Arguments:
+///   - instance: The WorkletGlobalScope instance
+///   - modules: List of (url, source) pairs to evaluate
+///
+/// Returns:
+///   - Number of modules successfully evaluated
+///   - Error on critical failures
+pub fn evaluateModules(
+    instance: *runtime.Instance,
+    modules: []const struct { url: []const u8, source: []const u8 },
+) !usize {
+    var count: usize = 0;
+    for (modules) |mod| {
+        const result = try evaluateModule(instance, mod.source, mod.url);
+        if (result != null) {
+            count += 1;
+        }
+    }
+    return count;
+}

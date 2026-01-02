@@ -104,23 +104,29 @@ test "BSCOPE-09: unknown GlobalScopeKind falls back to window" {
 // BSCOPE-09 Validation Test 4: Implemented Contexts Match Design
 // ============================================================================
 
-test "BSCOPE-09: implemented contexts are window, dedicated_worker, shared_worker, and service_worker" {
-    // Per BSCOPE-09/11/14 design, window, dedicated_worker, shared_worker, and service_worker are implemented
+test "BSCOPE-09: all 9 scope contexts are implemented" {
+    // Per BSCOPE-09/11/14/17 design, all 9 contexts are now implemented:
+    // Window + 4 workers (dedicated, shared, service, worklet) + 5 worklets
 
-    try testing.expectEqual(@as(usize, 4), SnapshotContextIndex.implemented.len);
+    try testing.expectEqual(@as(usize, 9), SnapshotContextIndex.implemented.len);
     try testing.expect(SnapshotContextIndex.window.isImplemented());
     try testing.expect(SnapshotContextIndex.dedicated_worker.isImplemented());
     try testing.expect(SnapshotContextIndex.shared_worker.isImplemented());
     try testing.expect(SnapshotContextIndex.service_worker.isImplemented());
+    try testing.expect(SnapshotContextIndex.audio_worklet.isImplemented());
+    try testing.expect(SnapshotContextIndex.paint_worklet.isImplemented());
+    try testing.expect(SnapshotContextIndex.animation_worklet.isImplemented());
+    try testing.expect(SnapshotContextIndex.layout_worklet.isImplemented());
+    try testing.expect(SnapshotContextIndex.shared_storage_worklet.isImplemented());
 
-    // Verify these are the only implemented ones
+    // Verify all contexts are implemented
     var implemented_count: usize = 0;
     for (SnapshotContextIndex.all) |idx| {
         if (idx.isImplemented()) {
             implemented_count += 1;
         }
     }
-    try testing.expectEqual(@as(usize, 4), implemented_count);
+    try testing.expectEqual(@as(usize, 9), implemented_count);
 }
 
 // ============================================================================
