@@ -209,16 +209,16 @@ pub const GlobalScopeKind = enum {
             .window => true,
             .dedicated_worker => true,
             .shared_worker => true,
-
-            // Implemented
             .service_worker => true,
 
+            // Worklets implemented (BSCOPE-17)
+            .audio_worklet => true,
+            .paint_worklet => true,
+            .animation_worklet => true,
+            .layout_worklet => true,
+            .shared_storage_worklet => true,
+
             // Not implemented
-            .audio_worklet => false,
-            .paint_worklet => false,
-            .animation_worklet => false,
-            .layout_worklet => false,
-            .shared_storage_worklet => false,
             .shadow_realm => false,
             .unknown => false,
         };

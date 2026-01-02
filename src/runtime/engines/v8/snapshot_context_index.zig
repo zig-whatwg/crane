@@ -203,12 +203,17 @@ pub const SnapshotContextIndex = enum(usize) {
     pub const count: usize = 10;
 
     /// Currently implemented context types
-    /// Window, dedicated_worker, and shared_worker are fully implemented
+    /// Window, workers, and worklets are fully implemented
     pub const implemented = [_]SnapshotContextIndex{
         .window,
         .dedicated_worker,
         .shared_worker,
         .service_worker,
+        .audio_worklet,
+        .paint_worklet,
+        .animation_worklet,
+        .layout_worklet,
+        .shared_storage_worklet,
     };
 
     /// All context types for iteration
@@ -317,10 +322,17 @@ test "forScopeKind roundtrip" {
 test "implemented contexts" {
     const testing = std.testing;
 
-    // Verify implemented list matches expected (only window and dedicated_worker for now)
-    try testing.expectEqual(@as(usize, 2), SnapshotContextIndex.implemented.len);
+    // Verify implemented list matches expected (workers + worklets)
+    try testing.expectEqual(@as(usize, 9), SnapshotContextIndex.implemented.len);
     try testing.expectEqual(SnapshotContextIndex.window, SnapshotContextIndex.implemented[0]);
     try testing.expectEqual(SnapshotContextIndex.dedicated_worker, SnapshotContextIndex.implemented[1]);
+    try testing.expectEqual(SnapshotContextIndex.shared_worker, SnapshotContextIndex.implemented[2]);
+    try testing.expectEqual(SnapshotContextIndex.service_worker, SnapshotContextIndex.implemented[3]);
+    try testing.expectEqual(SnapshotContextIndex.audio_worklet, SnapshotContextIndex.implemented[4]);
+    try testing.expectEqual(SnapshotContextIndex.paint_worklet, SnapshotContextIndex.implemented[5]);
+    try testing.expectEqual(SnapshotContextIndex.animation_worklet, SnapshotContextIndex.implemented[6]);
+    try testing.expectEqual(SnapshotContextIndex.layout_worklet, SnapshotContextIndex.implemented[7]);
+    try testing.expectEqual(SnapshotContextIndex.shared_storage_worklet, SnapshotContextIndex.implemented[8]);
 
     // Verify isImplemented matches implemented array
     for (SnapshotContextIndex.implemented) |idx| {
