@@ -40,6 +40,10 @@
 //! - Worklets: https://drafts.css-houdini.org/worklets/
 
 const std = @import("std");
+const runtime = @import("runtime");
+const GlobalScopeKind = runtime.GlobalScopeKind;
+const helpers = @import("webidl").helpers;
+const HelperGlobalScope = helpers.GlobalScope;
 
 /// Snapshot context indices
 ///
@@ -106,6 +110,55 @@ pub const SnapshotContextIndex = enum(usize) {
     /// Get the scope kind value (matches GlobalScopeKind enum values)
     pub fn toScopeKindValue(self: SnapshotContextIndex) usize {
         return @intFromEnum(self);
+    }
+
+    /// Convert to GlobalScopeKind
+    pub fn toScopeKind(self: SnapshotContextIndex) GlobalScopeKind {
+        return switch (self) {
+            .window => .window,
+            .dedicated_worker => .dedicated_worker,
+            .shared_worker => .shared_worker,
+            .service_worker => .service_worker,
+            .audio_worklet => .audio_worklet,
+            .paint_worklet => .paint_worklet,
+            .animation_worklet => .animation_worklet,
+            .layout_worklet => .layout_worklet,
+            .shared_storage_worklet => .shared_storage_worklet,
+            .shadow_realm => .shadow_realm,
+        };
+    }
+
+    /// Convert to helpers.GlobalScope (for WebIDL interface installation)
+    pub fn toHelperScope(self: SnapshotContextIndex) HelperGlobalScope {
+        return switch (self) {
+            .window => .Window,
+            .dedicated_worker => .DedicatedWorker,
+            .shared_worker => .SharedWorker,
+            .service_worker => .ServiceWorker,
+            .audio_worklet => .AudioWorklet,
+            .paint_worklet => .PaintWorklet,
+            .animation_worklet => .AnimationWorklet,
+            .layout_worklet => .LayoutWorklet,
+            .shared_storage_worklet => .SharedStorageWorklet,
+            .shadow_realm => .ShadowRealm,
+        };
+    }
+
+    /// Convert from GlobalScopeKind to SnapshotContextIndex
+    pub fn forScopeKind(kind: GlobalScopeKind) SnapshotContextIndex {
+        return switch (kind) {
+            .window => .window,
+            .dedicated_worker => .dedicated_worker,
+            .shared_worker => .shared_worker,
+            .service_worker => .service_worker,
+            .audio_worklet => .audio_worklet,
+            .paint_worklet => .paint_worklet,
+            .animation_worklet => .animation_worklet,
+            .layout_worklet => .layout_worklet,
+            .shared_storage_worklet => .shared_storage_worklet,
+            .shadow_realm => .shadow_realm,
+            .unknown => .window, // Fallback to window for unknown
+        };
     }
 
     /// Check if this context type is a worker context

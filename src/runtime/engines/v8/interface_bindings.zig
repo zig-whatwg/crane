@@ -284,7 +284,7 @@ pub fn registerAllTemplatesOnly(
 pub fn installForScope(
     isolate: *v8.Isolate,
     context: *v8.Context,
-    scope: helpers.GlobalScope,
+    comptime scope: helpers.GlobalScope,
 ) void {
     @setEvalBranchQuota(200_000);
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
@@ -452,7 +452,7 @@ pub fn initializeBindingsWithGlobalTemplate(
 /// Per HTML spec, some interfaces have historical aliases that should be
 /// available on the global object. For example:
 /// - HTMLDocument is an alias for Document
-fn registerLegacyInterfaceAliases(
+pub fn registerLegacyInterfaceAliases(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
@@ -479,7 +479,7 @@ fn registerLegacyInterfaceAliases(
 /// - Image creates HTMLImageElement instances
 /// - Audio creates HTMLAudioElement instances
 /// - Option creates HTMLOptionElement instances
-fn registerLegacyFactoryFunctions(
+pub fn registerLegacyFactoryFunctions(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {

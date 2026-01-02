@@ -238,6 +238,10 @@ pub const snapshot_loader = @import("snapshot_loader.zig");
 pub const initializeV8FromSnapshot = snapshot_loader.initializeV8;
 pub const SnapshotInitResult = snapshot_loader.InitResult;
 pub const SnapshotInitOptions = snapshot_loader.InitOptions;
+
+/// Snapshot context indices for multi-context snapshots
+pub const snapshot_context_index = @import("snapshot_context_index.zig");
+pub const SnapshotContextIndex = snapshot_context_index.SnapshotContextIndex;
 /// Initialize V8 platform with proper flags for snapshot support
 /// MUST be used instead of ffi.v8_Platform_Initialize() when using snapshots
 pub const initializePlatformForSnapshots = snapshot_loader.initializePlatformForSnapshots;
