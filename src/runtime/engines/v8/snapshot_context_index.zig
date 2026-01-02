@@ -208,6 +208,7 @@ pub const SnapshotContextIndex = enum(usize) {
         .window,
         .dedicated_worker,
         .shared_worker,
+        .service_worker,
     };
 
     /// All context types for iteration

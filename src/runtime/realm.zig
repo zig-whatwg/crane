@@ -210,8 +210,8 @@ pub const GlobalScopeKind = enum {
             .dedicated_worker => true,
             .shared_worker => true,
 
-            // Partially implemented or in progress
-            .service_worker => false,
+            // Implemented
+            .service_worker => true,
 
             // Not implemented
             .audio_worklet => false,

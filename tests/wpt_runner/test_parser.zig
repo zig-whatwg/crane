@@ -125,7 +125,7 @@ pub const GlobalType = enum {
             // SharedWorker now supported with BSCOPE-11/12 infrastructure
             .sharedworker => true,
             // ServiceWorker needs additional infrastructure
-            .serviceworker => false,
+            .serviceworker => true,
             // All ShadowRealm variants not implemented
             .shadowrealm,
             .shadowrealm_in_window,
