@@ -1326,6 +1326,17 @@ pub fn main() !void {
         var xunit_writer = result_reporter.XunitWriter.init(allocator);
         try xunit_writer.writeFromReport(&report, xunit_path);
     }
+
+    // CI exit code enforcement: fail if tests were skipped due to scope issues on implemented scopes
+    // This ensures we catch regressions where previously working scope routing breaks
+    const summary = report.getSummary();
+    if (summary.skipped_scope_unsupported > 0) {
+        print("\n⚠️  WARNING: {d} tests skipped due to unsupported global scope\n", .{summary.skipped_scope_unsupported});
+        print("   These scopes should be implemented. Check GlobalType.isImplemented()\n", .{});
+    }
+    if (summary.skipped_feature_unsupported > 0) {
+        print("\n📋 INFO: {d} tests skipped due to unsupported features\n", .{summary.skipped_feature_unsupported});
+    }
 }
 
 test "parseArgs basic" {

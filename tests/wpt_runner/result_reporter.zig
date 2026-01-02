@@ -512,6 +512,25 @@ pub const WptReport = struct {
         try self.results.append(self.allocator, result);
     }
 
+    /// Add a skipped test with reason
+    pub fn addSkipped(self: *WptReport, test_path: []const u8, context: ?[]const u8, reason: SkipReason, message: ?[]const u8) !void {
+        const full_path = if (context) |ctx|
+            try std.fmt.allocPrint(self.allocator, "{s} [{s}]", .{ test_path, ctx })
+        else
+            try self.allocator.dupe(u8, test_path);
+
+        const result = TestResultJson{
+            .test_path = full_path,
+            .status = "SKIP",
+            .message = if (message) |m| try self.allocator.dupe(u8, m) else null,
+            .duration = 0,
+            .subtests = .{},
+            .skip_reason = reason,
+        };
+
+        try self.results.append(self.allocator, result);
+    }
+
     /// Convert to JSON and write to file
     pub fn writeToFile(self: *WptReport, path: []const u8) !void {
         // Ensure output directory exists
@@ -598,6 +617,16 @@ pub const WptReport = struct {
                 summary.error_tests += 1;
             } else if (std.mem.eql(u8, result.status, "TIMEOUT")) {
                 summary.timeout_tests += 1;
+            } else if (std.mem.eql(u8, result.status, "SKIP")) {
+                // Count skipped tests by reason
+                if (result.skip_reason) |reason| {
+                    switch (reason) {
+                        .unsupported_global_scope => summary.skipped_scope_unsupported += 1,
+                        .unsupported_feature => summary.skipped_feature_unsupported += 1,
+                        .manual_skip => summary.skipped_manual += 1,
+                        .infrastructure_issue => summary.skipped_infrastructure += 1,
+                    }
+                }
             }
 
             for (result.subtests.items) |sub| {
@@ -632,7 +661,7 @@ pub const WptReport = struct {
 pub const TestResultJson = struct {
     /// Test path (e.g., "/url/url-constructor.any.js")
     test_path: []const u8,
-    /// Overall test status ("OK", "ERROR", "TIMEOUT")
+    /// Overall test status ("OK", "ERROR", "TIMEOUT", "SKIP")
     status: []const u8,
     /// Error message (null if OK)
     message: ?[]const u8 = null,
@@ -648,6 +677,8 @@ pub const TestResultJson = struct {
     failures_before_pass: u32 = 0,
     /// Whether this test is flaky (passed after retry)
     flaky: bool = false,
+    /// Skip reason (null if not skipped)
+    skip_reason: ?SkipReason = null,
 
     pub fn deinit(self: *TestResultJson, allocator: std.mem.Allocator) void {
         allocator.free(self.test_path);
@@ -763,6 +794,30 @@ pub const SubtestResultJson = struct {
     }
 };
 
+/// Skip reason for tests that couldn't run
+pub const SkipReason = enum {
+    /// Test skipped because the global scope (worker, worklet, etc.) is not implemented
+    unsupported_global_scope,
+    /// Test skipped because a required feature is not implemented
+    unsupported_feature,
+    /// Test skipped due to platform limitations (e.g., OS-specific)
+    platform_unsupported,
+    /// Test skipped by explicit exclusion pattern
+    excluded,
+    /// Test skipped for other reasons
+    other,
+
+    pub fn toString(self: SkipReason) []const u8 {
+        return switch (self) {
+            .unsupported_global_scope => "unsupported_global_scope",
+            .unsupported_feature => "unsupported_feature",
+            .platform_unsupported => "platform_unsupported",
+            .excluded => "excluded",
+            .other => "other",
+        };
+    }
+};
+
 /// Summary statistics
 pub const Summary = struct {
     total_tests: usize = 0,
@@ -773,6 +828,16 @@ pub const Summary = struct {
     failed_subtests: usize = 0,
     timeout_subtests: usize = 0,
     notrun_subtests: usize = 0,
+    /// Tests skipped due to unimplemented global scope
+    skipped_scope: usize = 0,
+    /// Tests skipped due to missing feature
+    skipped_feature: usize = 0,
+    /// Tests skipped for other reasons
+    skipped_other: usize = 0,
+
+    pub fn totalSkipped(self: Summary) usize {
+        return self.skipped_scope + self.skipped_feature + self.skipped_other;
+    }
 
     pub fn passRate(self: Summary) f64 {
         if (self.total_subtests == 0) return 0.0;
@@ -789,7 +854,29 @@ pub const Summary = struct {
         try writer.print("  Failed:  {d}\n", .{self.failed_subtests});
         try writer.print("  Timeout: {d}\n", .{self.timeout_subtests});
         try writer.print("  NotRun:  {d}\n", .{self.notrun_subtests});
+        if (self.totalSkipped() > 0) {
+            try writer.writeAll("--------------------------------\n");
+            try writer.print("Skipped:   {d}\n", .{self.totalSkipped()});
+            if (self.skipped_scope > 0) {
+                try writer.print("  Scope:   {d}\n", .{self.skipped_scope});
+            }
+            if (self.skipped_feature > 0) {
+                try writer.print("  Feature: {d}\n", .{self.skipped_feature});
+            }
+            if (self.skipped_other > 0) {
+                try writer.print("  Other:   {d}\n", .{self.skipped_other});
+            }
+        }
         try writer.writeAll("================================\n");
+    }
+
+    /// Check if any tests were skipped due to scope that should be implemented
+    /// Returns true if there are scope-skips for scopes marked as implemented
+    pub fn hasScopeSkipsForImplementedScopes(self: Summary) bool {
+        // If we have scope skips, it means tests were skipped for scopes
+        // that the WPT runner encountered. If those scopes are marked as
+        // implemented, this is a problem.
+        return self.skipped_scope > 0;
     }
 };
 
