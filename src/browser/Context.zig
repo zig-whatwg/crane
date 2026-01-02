@@ -365,6 +365,18 @@ pub const ContextType = enum {
     shared_worker,
     /// Service worker context
     service_worker,
+
+    /// Convert to SnapshotContextIndex for multi-context snapshot selection.
+    /// Each context type maps to a pre-created snapshot context with the
+    /// appropriate global scope interfaces already registered.
+    pub fn toSnapshotIndex(self: ContextType) v8.SnapshotContextIndex {
+        return switch (self) {
+            .window => .window,
+            .worker => .dedicated_worker,
+            .shared_worker => .shared_worker,
+            .service_worker => .service_worker,
+        };
+    }
 };
 
 /// V8 Context representing a single page navigation
@@ -454,9 +466,11 @@ pub const Context = struct {
             // FAST PATH: Use snapshot context with interfaces already registered
             // The snapshot contains all WebIDL interfaces pre-registered on the global,
             // so we don't need to call initializeBindings() - saving ~1099 registrations.
-            v8_ctx = v8.ffi.v8_Context_NewFromSnapshot(self.isolate) orelse {
+            // Select the correct snapshot context index based on context type.
+            const snapshot_index = self.context_type.toSnapshotIndex();
+            v8_ctx = v8.snapshot_loader.createContextFromSnapshotAt(self.isolate, snapshot_index) orelse {
                 // Fallback to slow path if snapshot context fails
-                std.debug.print("Warning: Snapshot context failed, falling back to fresh context\n", .{});
+                std.debug.print("Warning: Snapshot context at index {} failed, falling back to fresh context\n", .{@intFromEnum(snapshot_index)});
                 return self.createV8ContextFresh();
             };
         } else {
@@ -571,61 +585,145 @@ pub const Context = struct {
             } else {
                 std.debug.print("Context: MessageEvent template IS registered\n", .{});
             }
+        } else if (self.context_type == .shared_worker) {
+            // Set up SharedWorkerGlobalScope prototype chain
+            std.debug.print("Context: Setting up SharedWorker prototype chain...\n", .{});
+            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "SharedWorkerGlobalScope", 23);
+            if (worker_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
+                    std.debug.print("Context: Found SharedWorkerGlobalScope constructor\n", .{});
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
+                            std.debug.print("Context: SharedWorker prototype set successfully\n", .{});
+                        }
+                    }
+                } else {
+                    std.debug.print("Context: SharedWorkerGlobalScope constructor NOT found on global\n", .{});
+                }
+            }
+
+            // Create and bind SharedWorkerGlobalScope instance
+            const SharedWorkerGlobalScope = interfaces.SharedWorkerGlobalScope;
+            const worker_instance = SharedWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create shared worker instance: {}\n", .{err});
+                return error.ContextCreateFailed;
+            };
+
+            // Store instance in internal field 0
+            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
+
+            // Store WrapperTypeInfo in internal field 1
+            if (v8.dom_type_info.getTypeInfoByName("SharedWorkerGlobalScope")) |type_info| {
+                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+            }
+
+            // Register in wrapper cache (needed for event dispatch to find the V8 object)
+            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
+                cache.set(worker_instance, global, self.isolate) catch {};
+            }
+        } else if (self.context_type == .service_worker) {
+            // Set up ServiceWorkerGlobalScope prototype chain
+            std.debug.print("Context: Setting up ServiceWorker prototype chain...\n", .{});
+            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "ServiceWorkerGlobalScope", 24);
+            if (worker_key) |wk| {
+                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
+                    std.debug.print("Context: Found ServiceWorkerGlobalScope constructor\n", .{});
+                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                    if (proto_key) |pk| {
+                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
+                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
+                            std.debug.print("Context: ServiceWorker prototype set successfully\n", .{});
+                        }
+                    }
+                } else {
+                    std.debug.print("Context: ServiceWorkerGlobalScope constructor NOT found on global\n", .{});
+                }
+            }
+
+            // Create and bind ServiceWorkerGlobalScope instance
+            const ServiceWorkerGlobalScope = interfaces.ServiceWorkerGlobalScope;
+            const worker_instance = ServiceWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create service worker instance: {}\n", .{err});
+                return error.ContextCreateFailed;
+            };
+
+            // Store instance in internal field 0
+            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
+
+            // Store WrapperTypeInfo in internal field 1
+            if (v8.dom_type_info.getTypeInfoByName("ServiceWorkerGlobalScope")) |type_info| {
+                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+            }
+
+            // Register in wrapper cache (needed for event dispatch to find the V8 object)
+            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
+                cache.set(worker_instance, global, self.isolate) catch {};
+            }
         }
 
-        // Create and bind Window instance to global object's internal fields
+        // For window contexts only: Create and bind Window instance to global object's internal fields
         // This is required for WebIDL method callbacks to extract the Zig instance from `this`
-        const Window = interfaces.Window;
-        const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
-            std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
-            self.window_instance = null;
-            return;
-        };
-        self.window_instance = window_instance;
+        if (self.context_type == .window) {
+            const Window = interfaces.Window;
+            const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
+                std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
+                self.window_instance = null;
+                return;
+            };
+            self.window_instance = window_instance;
 
-        // Store Window instance in internal field 0
-        v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
+            // Store Window instance in internal field 0
+            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
 
-        // Store WrapperTypeInfo in internal field 1 for type-safe unwrapping
-        if (v8.dom_type_info.getTypeInfoByName("Window")) |type_info| {
-            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+            // Store WrapperTypeInfo in internal field 1 for type-safe unwrapping
+            if (v8.dom_type_info.getTypeInfoByName("Window")) |type_info| {
+                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
+            }
+
+            // Bind the V8 global to the Window instance for cross-realm access
+            impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+
+            // Set isSecureContext based on URL scheme
+            // Per HTML spec, secure contexts include https, wss, file, and localhost
+            const is_secure = self.determineSecureContext();
+            impls.Window.setIsSecureContext(window_instance, is_secure);
+
+            // Register Window in wrapper cache for proper cleanup
+            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
+                cache.set(window_instance, global, self.isolate) catch {};
+            }
+
+            // CRITICAL: Register Window with context manager so getWindowForContext() works.
+            // This is required for iframe browsing context creation in handleIframeInsertion().
+            context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
+                std.debug.print("Warning: Failed to register Window with context manager: {}\n", .{err});
+            };
+
+            // Register Window properties (document, navigator, etc.) as own properties on the global object.
+            // This is required because the global's prototype is immutable (set via SetImmutableProto),
+            // so we can't inherit properties from Window.prototype through the prototype chain.
+            // This matches how child contexts (iframes) register Window properties.
+            v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
+
+            // Register methods as own properties on the global object.
+            // This includes Window's own methods AND inherited EventTarget methods
+            // (addEventListener, removeEventListener, dispatchEvent).
+            // The global's immutable prototype means we can't rely on prototype chain lookup,
+            // so we must register these methods directly on the global object.
+            v8.interface_bindings.Window.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+            v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+
+            // Set up window property (Window-specific)
+            const window_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6) orelse return error.StringCreationFailed;
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
         }
 
-        // Bind the V8 global to the Window instance for cross-realm access
-        impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
-
-        // Set isSecureContext based on URL scheme
-        // Per HTML spec, secure contexts include https, wss, file, and localhost
-        const is_secure = self.determineSecureContext();
-        impls.Window.setIsSecureContext(window_instance, is_secure);
-
-        // Register Window in wrapper cache for proper cleanup
-        if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
-            const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
-            cache.set(window_instance, global, self.isolate) catch {};
-        }
-
-        // CRITICAL: Register Window with context manager so getWindowForContext() works.
-        // This is required for iframe browsing context creation in handleIframeInsertion().
-        context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
-            std.debug.print("Warning: Failed to register Window with context manager: {}\n", .{err});
-        };
-
-        // Register Window properties (document, navigator, etc.) as own properties on the global object.
-        // This is required because the global's prototype is immutable (set via SetImmutableProto),
-        // so we can't inherit properties from Window.prototype through the prototype chain.
-        // This matches how child contexts (iframes) register Window properties.
-        v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
-
-        // Register methods as own properties on the global object.
-        // This includes Window's own methods AND inherited EventTarget methods
-        // (addEventListener, removeEventListener, dispatchEvent).
-        // The global's immutable prototype means we can't rely on prototype chain lookup,
-        // so we must register these methods directly on the global object.
-        v8.interface_bindings.Window.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
-        v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
-
-        // Set up window, self, and globalThis properties on the global object
+        // Set up self and globalThis properties on the global object (shared across all contexts)
         // Per HTML spec, browsers expose these properties:
         // - 'window' references the global Window object (same as globalThis in browsers)
         // - 'self' references the global object (works in both window and worker contexts)

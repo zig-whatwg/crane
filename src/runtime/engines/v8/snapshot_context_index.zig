@@ -203,10 +203,11 @@ pub const SnapshotContextIndex = enum(usize) {
     pub const count: usize = 10;
 
     /// Currently implemented context types
-    /// Only window and dedicated_worker are fully implemented
+    /// Window, dedicated_worker, and shared_worker are fully implemented
     pub const implemented = [_]SnapshotContextIndex{
         .window,
         .dedicated_worker,
+        .shared_worker,
     };
 
     /// All context types for iteration

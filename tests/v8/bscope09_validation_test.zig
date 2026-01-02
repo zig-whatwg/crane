@@ -104,12 +104,13 @@ test "BSCOPE-09: unknown GlobalScopeKind falls back to window" {
 // BSCOPE-09 Validation Test 4: Implemented Contexts Match Design
 // ============================================================================
 
-test "BSCOPE-09: implemented contexts are window and dedicated_worker" {
-    // Per BSCOPE-09 design, only window and dedicated_worker are fully implemented
+test "BSCOPE-09: implemented contexts are window, dedicated_worker, and shared_worker" {
+    // Per BSCOPE-09/11 design, window, dedicated_worker, and shared_worker are implemented
 
-    try testing.expectEqual(@as(usize, 2), SnapshotContextIndex.implemented.len);
+    try testing.expectEqual(@as(usize, 3), SnapshotContextIndex.implemented.len);
     try testing.expect(SnapshotContextIndex.window.isImplemented());
     try testing.expect(SnapshotContextIndex.dedicated_worker.isImplemented());
+    try testing.expect(SnapshotContextIndex.shared_worker.isImplemented());
 
     // Verify these are the only implemented ones
     var implemented_count: usize = 0;
@@ -118,7 +119,7 @@ test "BSCOPE-09: implemented contexts are window and dedicated_worker" {
             implemented_count += 1;
         }
     }
-    try testing.expectEqual(@as(usize, 2), implemented_count);
+    try testing.expectEqual(@as(usize, 3), implemented_count);
 }
 
 // ============================================================================

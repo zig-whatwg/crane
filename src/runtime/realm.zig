@@ -208,9 +208,9 @@ pub const GlobalScopeKind = enum {
             // Fully implemented
             .window => true,
             .dedicated_worker => true,
+            .shared_worker => true,
 
             // Partially implemented or in progress
-            .shared_worker => false,
             .service_worker => false,
 
             // Not implemented
@@ -1036,8 +1036,10 @@ test "GlobalScopeKind - isImplemented reflects current status" {
     try std.testing.expect(GlobalScopeKind.window.isImplemented());
     try std.testing.expect(GlobalScopeKind.dedicated_worker.isImplemented());
 
+    // SharedWorker now implemented (BSCOPE-11)
+    try std.testing.expect(GlobalScopeKind.shared_worker.isImplemented());
+
     // Not implemented contexts
-    try std.testing.expect(!GlobalScopeKind.shared_worker.isImplemented());
     try std.testing.expect(!GlobalScopeKind.service_worker.isImplemented());
     try std.testing.expect(!GlobalScopeKind.audio_worklet.isImplemented());
     try std.testing.expect(!GlobalScopeKind.paint_worklet.isImplemented());
