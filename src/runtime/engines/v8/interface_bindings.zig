@@ -28,6 +28,8 @@ const std = @import("std");
 const v8 = @import("ffi.zig");
 const V8Interface = @import("interface.zig").V8Interface;
 pub const V8Namespace = @import("namespace.zig").V8Namespace;
+const webidl = @import("webidl");
+const helpers = webidl.helpers;
 
 // Import generated interfaces
 const interfaces = @import("interfaces");
@@ -263,6 +265,64 @@ pub fn registerAllTemplatesOnly(
             const Binding = V8Interface(InterfaceType);
             const template = Binding.createTemplate(isolate);
             template_registry.register(decl.name, template, isolate);
+        }
+    }
+}
+
+/// Install interfaces filtered by scope exposure
+///
+/// This function registers only the interfaces that are exposed in the given
+/// GlobalScopeKind. Uses the [Exposed] WebIDL extended attribute to determine
+/// which interfaces should be available in each scope.
+///
+/// For example:
+/// - Window scope: Document, HTMLElement, etc.
+/// - Worker scope: WorkerGlobalScope, MessagePort, etc.
+/// - ServiceWorker scope: ServiceWorkerGlobalScope, Cache, etc.
+///
+/// This is the exposure-driven interface installation from BSCOPE-03.
+pub fn installForScope(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    scope: helpers.GlobalScope,
+) void {
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const global = v8.v8_Context_Global(context) orelse return;
+
+    inline for (iface_decls) |decl| {
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            const has_legacy_namespace = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "extended_attributes")) {
+                    const ext_attrs = Meta.extended_attributes;
+                    for (ext_attrs) |attr| {
+                        if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
+                            break :blk true;
+                        }
+                    }
+                }
+                break :blk false;
+            };
+            if (has_legacy_namespace) continue;
+
+            if (comptime helpers.isExposedIn(InterfaceType, scope)) {
+                const Binding = V8Interface(InterfaceType);
+                Binding.registerGlobalFast(isolate, context, global, decl.name);
+            }
         }
     }
 }

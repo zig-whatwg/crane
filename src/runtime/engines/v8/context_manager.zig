@@ -48,6 +48,8 @@ const runtime = @import("runtime");
 const V8EventLoop = @import("event_loop.zig").V8EventLoop;
 const v8_engine = @import("engine.zig");
 const intl_binding = @import("intl_binding.zig");
+const iface_bindings_mod = @import("interface_bindings.zig");
+const helpers = @import("webidl").helpers;
 
 /// Context mapping entry
 pub const ContextEntry = struct {
@@ -568,6 +570,25 @@ pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
     }
 
     return null;
+}
+
+/// Hydrate a V8 context restored from snapshot with the appropriate interfaces for the given scope
+///
+/// This function installs only the interfaces that are exposed in the given scope,
+/// using the exposure metadata from WebIDL [Exposed] attributes.
+///
+/// Thread safety: Thread-local, no synchronization needed
+///
+/// Arguments:
+/// - isolate: V8 isolate pointer
+/// - v8_ctx: V8 context pointer (restored from snapshot)
+/// - scope: The global scope kind to install interfaces for
+pub fn hydrateContextFromSnapshot(
+    isolate: *v8.Isolate,
+    v8_ctx: *v8.Context,
+    scope: helpers.GlobalScope,
+) void {
+    iface_bindings_mod.installForScope(isolate, v8_ctx, scope);
 }
 
 /// Register an existing runtime context for a V8 context
