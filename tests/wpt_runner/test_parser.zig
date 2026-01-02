@@ -152,7 +152,7 @@ pub const GlobalType = enum {
             .paint_worklet => true,
             .animation_worklet => true,
             .layout_worklet => true,
-            // All ShadowRealm variants not implemented
+            // ShadowRealm variants - implemented via BSCOPE-21 (TC39 Stage 3, V8 built-in)
             .shadowrealm,
             .shadowrealm_in_window,
             .shadowrealm_in_dedicatedworker,
@@ -160,7 +160,7 @@ pub const GlobalType = enum {
             .shadowrealm_in_shadowrealm,
             .shadowrealm_in_audioworklet,
             .shadowrealm_in_serviceworker,
-            => false,
+            => true,
         };
     }
 

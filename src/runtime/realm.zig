@@ -218,8 +218,8 @@ pub const GlobalScopeKind = enum {
             .layout_worklet => true,
             .shared_storage_worklet => true,
 
-            // Not implemented
-            .shadow_realm => false,
+            // ShadowRealm (TC39 Stage 3 - V8 built-in)
+            .shadow_realm => true,
             .unknown => false,
         };
     }
@@ -266,7 +266,7 @@ pub const GlobalScopeKind = enum {
             .layout_worklet,
             .shared_storage_worklet,
             => .worklet,
-            .shadow_realm => .unknown, // ShadowRealm not in legacy enum
+            .shadow_realm => .shadow_realm,
             .unknown => .unknown,
         };
     }
@@ -282,6 +282,7 @@ pub const GlobalScopeKind = enum {
             .shared_worker => .shared_worker,
             .service_worker => .service_worker,
             .worklet => .audio_worklet, // Default to audio_worklet
+            .shadow_realm => .shadow_realm,
             .unknown => .unknown,
         };
     }
@@ -1100,8 +1101,8 @@ test "GlobalScopeKind - toContextType conversion" {
     try std.testing.expectEqual(ContextType.worklet, GlobalScopeKind.layout_worklet.toContextType());
     try std.testing.expectEqual(ContextType.worklet, GlobalScopeKind.shared_storage_worklet.toContextType());
 
-    // ShadowRealm not in legacy enum, maps to unknown
-    try std.testing.expectEqual(ContextType.unknown, GlobalScopeKind.shadow_realm.toContextType());
+    // ShadowRealm maps to shadow_realm context type
+    try std.testing.expectEqual(ContextType.shadow_realm, GlobalScopeKind.shadow_realm.toContextType());
     try std.testing.expectEqual(ContextType.unknown, GlobalScopeKind.unknown.toContextType());
 }
 
@@ -1113,6 +1114,7 @@ test "GlobalScopeKind - fromContextType conversion" {
 
     // Generic worklet defaults to audio_worklet
     try std.testing.expectEqual(GlobalScopeKind.audio_worklet, GlobalScopeKind.fromContextType(.worklet));
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromContextType(.shadow_realm));
     try std.testing.expectEqual(GlobalScopeKind.unknown, GlobalScopeKind.fromContextType(.unknown));
 }
 

@@ -126,7 +126,10 @@ test "BSCOPE-09: all 9 scope contexts are implemented" {
             implemented_count += 1;
         }
     }
-    try testing.expectEqual(@as(usize, 9), implemented_count);
+    // 10 contexts: window, dedicated_worker, shared_worker, service_worker,
+    // audio_worklet, paint_worklet, animation_worklet, layout_worklet,
+    // shared_storage_worklet, shadow_realm
+    try testing.expectEqual(@as(usize, 10), implemented_count);
 }
 
 // ============================================================================

@@ -373,6 +373,8 @@ pub const ContextType = enum {
     animation_worklet,
     /// LayoutWorklet context (CSS Layout API)
     layout_worklet,
+    /// ShadowRealm context (TC39 Stage 3 proposal)
+    shadow_realm,
 
     /// Convert to SnapshotContextIndex for multi-context snapshot selection.
     /// Each context type maps to a pre-created snapshot context with the
@@ -387,6 +389,7 @@ pub const ContextType = enum {
             .paint_worklet => .paint_worklet,
             .animation_worklet => .animation_worklet,
             .layout_worklet => .layout_worklet,
+            .shadow_realm => .shadow_realm,
         };
     }
 };
@@ -1392,6 +1395,17 @@ pub const Context = struct {
             \\  isWorker: function() { return false; },
             \\  isWorklet: function() { return true; },
             \\  isShadowRealm: function() { return false; },
+            \\};
+            ,
+            .shadow_realm =>
+            // ShadowRealm context: isolated realm per TC39 Stage 3 proposal
+            // ShadowRealms have minimal global scope - no DOM, no I/O
+            // Only pure JavaScript built-ins are available
+            \\// Set up GLOBAL object for WPT tests - SHADOWREALM context
+            \\globalThis.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return false; },
+            \\  isShadowRealm: function() { return true; },
             \\};
             ,
         };
