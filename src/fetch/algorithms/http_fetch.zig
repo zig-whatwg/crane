@@ -81,10 +81,34 @@ pub fn httpFetch(
 
     // Step 3: Service worker handling
     // If request's service-workers mode is "all", handle service worker interception
-    // TODO: Implement service worker interception when circular dependency is resolved
-    // The service_worker module imports interfaces, creating a cycle when fetch imports service_worker.
-    // Solution: Use a callback registration pattern where browser module registers SW intercept at startup.
-    // For now, skip service worker and proceed directly to network fetch
+    // Uses VTable-based FetchInterceptor pattern to avoid circular dependency:
+    // - fetch owns the contract (interception/fetch_interceptor.zig)
+    // - service_worker implements and registers via Browser.zig at startup
+    // - fetch retrieves from registry without importing service_worker
+    if (request.service_workers_mode == .all and !request.skip_service_worker_interception) {
+        const interception = @import("../interception/root.zig");
+        if (interception.registry.get()) |interceptor| {
+            var ictx = interception.InterceptionContext{
+                .allocator = allocator,
+                .bypass_service_worker = false,
+            };
+
+            switch (interceptor.intercept(allocator, request, &ictx)) {
+                .network_fallback => {
+                    // No service worker interception, proceed to network fetch
+                },
+                .response => |sw_response| {
+                    // Service worker provided a response
+                    return sw_response;
+                },
+                .err => |err| {
+                    // Service worker error - return network error per spec
+                    _ = err;
+                    return try internal_response.networkError(allocator);
+                },
+            }
+        }
+    }
 
     // Step 4: If response is null, run HTTP-network-or-cache fetch
     if (response == null) {

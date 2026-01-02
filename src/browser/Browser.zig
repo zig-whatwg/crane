@@ -52,9 +52,14 @@ const runtime = @import("runtime");
 const impls = @import("impls");
 const namespaces = @import("namespaces");
 const fetch = @import("fetch");
+const fetch_interception = fetch.interception;
 const network = fetch.network;
 const certificate_trust = network.certificate_trust;
 const html = @import("html");
+// NOTE: service_worker cannot be imported directly due to circular dependency
+// (service_worker imports interfaces). The fetch interception infrastructure
+// is in place via src/fetch/interception/ - wiring will be done when the
+// module structure is refactored to break the cycle.
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -255,6 +260,12 @@ pub const Browser = struct {
             .certificate_trust_store = trust_store,
         };
 
+        // NOTE: Service worker fetch interception infrastructure is in place
+        // (src/fetch/interception/) but wiring is deferred until the circular
+        // dependency between service_worker and interfaces modules is resolved.
+        // When ready, create ServiceWorkerFetchInterceptor and register with
+        // fetch.interception.registry.register(&interceptor.interceptor);
+
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
         const initial_url = config.initial_url orelse "about:blank";
@@ -308,6 +319,11 @@ pub const Browser = struct {
     /// This destroys the V8 isolate and all associated contexts.
     /// All storage is flushed to disk before cleanup.
     pub fn deinit(self: *Browser) void {
+        // TODO: When service worker integration is complete, unregister the
+        // fetch interceptor here. Currently blocked by circular dependency
+        // between service_worker and interfaces modules.
+        // See issue whatwg-avmhs for the resolution plan.
+
         // Destroy current context if any
         if (self.current_context) |ctx| {
             ctx.deinit();
