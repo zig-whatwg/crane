@@ -274,8 +274,20 @@ pub const WptBrowser = struct {
             .worker => .worker,
             .sharedworker => .shared_worker,
             .serviceworker => .service_worker,
-            // ShadowRealm variants map to window for now
-            else => .window,
+            // Worklet variants
+            .audio_worklet => .audio_worklet,
+            .paint_worklet => .paint_worklet,
+            .animation_worklet => .animation_worklet,
+            .layout_worklet => .layout_worklet,
+            // ShadowRealm variants all map to shadow_realm context
+            .shadowrealm,
+            .shadowrealm_in_window,
+            .shadowrealm_in_dedicatedworker,
+            .shadowrealm_in_sharedworker,
+            .shadowrealm_in_shadowrealm,
+            .shadowrealm_in_audioworklet,
+            .shadowrealm_in_serviceworker,
+            => .shadow_realm,
         };
 
         // Build test URL

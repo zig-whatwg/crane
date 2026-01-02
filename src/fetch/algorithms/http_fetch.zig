@@ -81,7 +81,9 @@ pub fn httpFetch(
 
     // Step 3: Service worker handling
     // If request's service-workers mode is "all", handle service worker interception
-    // TODO: Implement service worker interception when service worker module is available
+    // TODO: Implement service worker interception when circular dependency is resolved
+    // The service_worker module imports interfaces, creating a cycle when fetch imports service_worker.
+    // Solution: Use a callback registration pattern where browser module registers SW intercept at startup.
     // For now, skip service worker and proceed directly to network fetch
 
     // Step 4: If response is null, run HTTP-network-or-cache fetch

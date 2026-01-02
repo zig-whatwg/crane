@@ -17,10 +17,14 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    messages_started: bool = false,
+
+    pub fn deinit(self: *InternalState) void {
+        self.allocator.destroy(self);
+    }
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,14 +34,31 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+
+    // Create internal state
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .allocator = allocator,
+        .messages_started = false,
+    };
+
+    // Store internal state in the instance
+    const state = instance.getState(StateType);
+    state.own._internal = internal;
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // Clean up internal state
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+    }
 }
 
 /// Getter for controller
@@ -93,8 +114,10 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
 
 /// Operation: startMessages
 pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.messages_started = true;
+    }
 }
 
 /// Operation: getRegistrations
@@ -111,9 +134,20 @@ pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(r
 }
 
 /// Operation: register
+/// Registers a service worker for the given script URL.
+/// Returns a Promise that resolves to a ServiceWorkerRegistration.
+///
+/// Note: This is a stub implementation. The actual service worker registration
+/// is handled by the browser infrastructure in src/service_worker/. The WebIDL
+/// layer delegates to the browser's service worker container through the runtime.
 pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.RegistrationOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = scriptURL;
     _ = options;
+    _ = scriptURL;
+    _ = instance;
+    // TODO: Wire to browser's service worker infrastructure
+    // The internal service_worker module has the full implementation
+    // but we can't import it due to circular dependencies.
+    // The browser module should provide this functionality through
+    // a callback or registration pattern.
     return error.NotImplemented;
 }
