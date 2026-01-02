@@ -171,6 +171,74 @@ pub const ServiceWorkerFetchInterceptor = struct {
     }
 };
 
+// ============================================================================
+// Global Registration
+// ============================================================================
+
+/// Global state for lazy registration.
+/// Uses atomic to be thread-safe.
+var global_registered: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
+var global_interceptor: ?*ServiceWorkerFetchInterceptor = null;
+
+/// Ensure the service worker fetch interceptor is registered with the fetch module.
+///
+/// This function is idempotent - calling it multiple times is safe.
+/// It should be called when service worker functionality is first used
+/// (e.g., when a ServiceWorkerContainer is created).
+///
+/// Parameters:
+/// - allocator: Allocator for creating the interceptor instance
+/// - registration_map: The global registration map for SW lookups
+///
+/// Returns true if registration was performed, false if already registered.
+pub fn ensureRegistered(
+    allocator: Allocator,
+    registration_map: *RegistrationMap,
+) bool {
+    // Fast path: already registered
+    if (global_registered.load(.acquire)) {
+        return false;
+    }
+
+    // Create and register the interceptor
+    const interceptor = allocator.create(ServiceWorkerFetchInterceptor) catch return false;
+    interceptor.* = ServiceWorkerFetchInterceptor.init(allocator, registration_map);
+
+    // Register with the fetch module
+    fetch_interception.registry.register(interceptor.asFetchInterceptor());
+
+    // Store globally and mark as registered
+    global_interceptor = interceptor;
+    global_registered.store(true, .release);
+
+    return true;
+}
+
+/// Unregister the global service worker fetch interceptor.
+///
+/// Should be called during shutdown to clean up resources.
+pub fn unregister(allocator: Allocator) void {
+    if (!global_registered.load(.acquire)) {
+        return;
+    }
+
+    // Unregister from fetch module
+    fetch_interception.registry.unregister();
+
+    // Free the interceptor
+    if (global_interceptor) |interceptor| {
+        allocator.destroy(interceptor);
+        global_interceptor = null;
+    }
+
+    global_registered.store(false, .release);
+}
+
+/// Check if the interceptor is currently registered.
+pub fn isRegistered() bool {
+    return global_registered.load(.acquire);
+}
+
 test "ServiceWorkerFetchInterceptor - basic creation" {
     const allocator = std.testing.allocator;
 
