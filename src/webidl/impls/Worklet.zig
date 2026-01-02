@@ -250,9 +250,26 @@ pub fn call_addModule(
     // Check if module already loaded
     if (internal.hasModule(url_slice)) {
         // Return resolved promise - module already added
-        // TODO: Return a resolved promise once V8 promise infrastructure is integrated
-        // For now, return undefined as a placeholder - the interface will wrap this
-        return runtime.JSValue{ .undefined = {} };
+        const ctx = instance.ctx;
+        const engine = ctx.getEngine() orelse {
+            return runtime.JSValue{ .undefined = {} };
+        };
+        const engine_ctx = ctx.engine_ctx orelse {
+            return runtime.JSValue{ .undefined = {} };
+        };
+
+        const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+            return runtime.JSValue{ .undefined = {} };
+        };
+        engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
+        const promise_obj = engine.getPromiseObject(promise_handle);
+        // Don't destroy handle yet - the promise object needs it
+        return runtime.JSValue{
+            .handle = .{
+                .ptr = promise_obj,
+                .needs_disposal = false, // Engine manages promise lifecycle
+            },
+        };
     }
 
     // Add module to tracking (source will be set after fetching)
@@ -319,9 +336,38 @@ pub fn call_addModule(
         };
     }
 
-    // Return a resolved promise (undefined means success)
-    // The interface layer wraps this in a proper Promise
-    return runtime.JSValue{ .undefined = {} };
+    // Create and return a resolved Promise per spec
+    // The addModule method returns a Promise that resolves with undefined on success
+    const ctx = instance.ctx;
+    const engine = ctx.getEngine() orelse {
+        // No engine available - return undefined as fallback
+        return runtime.JSValue{ .undefined = {} };
+    };
+    const engine_ctx = ctx.engine_ctx orelse {
+        return runtime.JSValue{ .undefined = {} };
+    };
+
+    // Create the Promise
+    const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
+        // Promise creation failed - return undefined as fallback
+        return runtime.JSValue{ .undefined = {} };
+    };
+
+    // Resolve with undefined (success)
+    engine.resolvePromise(engine_ctx, promise_handle, null) catch {
+        // Resolution failed - still return the promise
+    };
+
+    // Get the Promise object to return
+    const promise_obj = engine.getPromiseObject(promise_handle);
+
+    // Don't destroy handle yet - the promise object needs it
+    return runtime.JSValue{
+        .handle = .{
+            .ptr = promise_obj,
+            .needs_disposal = false, // Engine manages promise lifecycle
+        },
+    };
 }
 
 // Tests
