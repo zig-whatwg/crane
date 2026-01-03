@@ -260,9 +260,9 @@ pub const Browser = struct {
         };
 
         // NOTE: Service worker fetch interception infrastructure is in place
-        // (src/fetch/interception/) but wiring is deferred until the circular
-        // dependency between service_worker and interfaces modules is resolved.
-        // When ready, create ServiceWorkerFetchInterceptor and register with
+        // (src/fetch/interception/). The circular dependency has been resolved
+        // via service_worker.common and service_worker.manager modules.
+        // TODO: Create ServiceWorkerFetchInterceptor and register with
         // fetch.interception.registry.register(&interceptor.interceptor);
 
         // Always create initial about:blank context - a real browser always has a window/document
@@ -319,9 +319,8 @@ pub const Browser = struct {
     /// All storage is flushed to disk before cleanup.
     pub fn deinit(self: *Browser) void {
         // TODO: When service worker integration is complete, unregister the
-        // fetch interceptor here. Currently blocked by circular dependency
-        // between service_worker and interfaces modules.
-        // See issue whatwg-avmhs for the resolution plan.
+        // fetch interceptor here. The circular dependency has been resolved
+        // via service_worker.common and service_worker.manager modules.
 
         // Destroy current context if any
         if (self.current_context) |ctx| {
