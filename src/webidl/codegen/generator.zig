@@ -675,10 +675,14 @@ pub fn generateMixin(
     mixin: @import("ir.zig").Interface,
     type_registry: *const @import("ir.zig").TypeRegistry,
 ) !void {
+    // Use arena allocator for all temporary allocations to prevent memory leaks
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
     const mixin_name = mixin.name;
 
-    const file_path = try std.fs.path.join(allocator, &.{ mixins_path, try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name}) });
-    defer allocator.free(file_path);
+    const file_path = try std.fs.path.join(arena_alloc, &.{ mixins_path, try std.fmt.allocPrint(arena_alloc, "{s}.zig", .{mixin_name}) });
 
     // Ensure the mixins directory exists
     std.fs.cwd().makePath(mixins_path) catch |err| switch (err) {
@@ -719,19 +723,19 @@ pub fn generateMixin(
 
     // Collect operations and attributes from members
     var all_ops = std.ArrayList(types.Operation).empty;
-    defer all_ops.deinit(allocator);
+    // No defer needed - arena handles cleanup
 
     var all_attrs = std.ArrayList(types.Attribute).empty;
-    defer all_attrs.deinit(allocator);
+    // No defer needed - arena handles cleanup
 
     for (mixin.members.items) |member| {
         if (member.asOperation()) |op| {
             if (op.name != null) {
-                try all_ops.append(allocator, op);
+                try all_ops.append(arena_alloc, op);
             }
         }
         if (member.asAttribute()) |attr| {
-            try all_attrs.append(allocator, attr);
+            try all_attrs.append(arena_alloc, attr);
         }
     }
 
@@ -757,14 +761,14 @@ pub fn generateMixin(
     }
 
     // Group operations by name to detect overloads
-    const overload_sets = try overload.groupOperationsByName(allocator, all_ops.items);
-    defer overload.freeOverloadSets(allocator, overload_sets);
+    const overload_sets = try overload.groupOperationsByName(arena_alloc, all_ops.items);
+    // No defer needed - arena handles cleanup
 
     // Generate operation delegates (with overload support)
     for (overload_sets) |set| {
         if (set.isOverloaded()) {
             // Multiple overloads - generate tagged union and dispatch function
-            try writeMixinOverloadedOperation(allocator, w, mixin_name, set, type_registry);
+            try writeMixinOverloadedOperation(arena_alloc, w, mixin_name, set, type_registry);
         } else {
             // Single operation - generate normal delegate function
             const op = set.operations[0];
@@ -2802,15 +2806,18 @@ pub fn generateTypedef(
     typedefs_path: []const u8,
     ir: *const ir_mod.IR,
 ) !void {
+    // Use arena allocator for all temporary allocations in this function
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
     // Create typedefs directory
     try std.fs.cwd().makePath(typedefs_path);
 
     // Create typedef file
-    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{typedef.name});
-    defer allocator.free(output_filename);
+    const output_filename = try std.fmt.allocPrint(arena_alloc, "{s}.zig", .{typedef.name});
 
-    const output_path = try std.fs.path.join(allocator, &.{ typedefs_path, output_filename });
-    defer allocator.free(output_path);
+    const output_path = try std.fs.path.join(arena_alloc, &.{ typedefs_path, output_filename });
 
     const output_file = try std.fs.cwd().createFile(output_path, .{});
     defer output_file.close();
@@ -2888,7 +2895,7 @@ pub fn generateTypedef(
             defer allocator.free(variant_name);
 
             try w.print("    {s}: ", .{variant_name});
-            try writeTypeForTypedefWithRegistry(allocator, w, union_type, typedefs_path, &ir.type_registry);
+            try writeTypeForTypedefWithRegistry(arena_alloc, w, union_type, typedefs_path, &ir.type_registry);
             try w.writeAll(",\n");
         }
 
@@ -2902,7 +2909,7 @@ pub fn generateTypedef(
             try w.writeAll("?");
         }
 
-        try writeTypeForTypedefWithRegistry(allocator, w, typedef.idlType, typedefs_path, &ir.type_registry);
+        try writeTypeForTypedefWithRegistry(arena_alloc, w, typedef.idlType, typedefs_path, &ir.type_registry);
         try w.writeAll(";\n");
     }
 
@@ -2978,15 +2985,21 @@ pub fn generateDictionary(
     dictionaries_path: []const u8,
     ir: *const ir_mod.IR,
 ) !void {
+    // Use arena allocator to prevent memory leaks from temporary allocations
+    // in parseInlineType and writeDictionaryMemberType
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
     // Create dictionaries directory
     try std.fs.cwd().makePath(dictionaries_path);
 
     // Create dictionary file
-    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{dictionary.name});
-    defer allocator.free(output_filename);
+    const output_filename = try std.fmt.allocPrint(arena_alloc, "{s}.zig", .{dictionary.name});
+    // No defer needed - arena handles cleanup
 
-    const output_path = try std.fs.path.join(allocator, &.{ dictionaries_path, output_filename });
-    defer allocator.free(output_path);
+    const output_path = try std.fs.path.join(arena_alloc, &.{ dictionaries_path, output_filename });
+    // No defer needed - arena handles cleanup
 
     const output_file = try std.fs.cwd().createFile(output_path, .{});
     defer output_file.close();
@@ -3077,7 +3090,7 @@ pub fn generateDictionary(
             try w.writeAll("?");
         }
 
-        try writeDictionaryMemberType(allocator, w, member.idlType, &ir.type_registry);
+        try writeDictionaryMemberType(arena_alloc, w, member.idlType, &ir.type_registry);
 
         // Default value
         if (!is_required) {
