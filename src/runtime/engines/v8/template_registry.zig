@@ -3,6 +3,20 @@
 //! Runtime registry for V8 FunctionTemplates, enabling dynamic wrapping
 //! of Zig instances into properly typed V8 objects.
 //!
+//! ## BSCOPE-04 Audit: Isolate-Level Template Sharing
+//!
+//! Templates are ISOLATE-scoped, NOT context-scoped. This is critical for:
+//! - Memory efficiency: N interfaces = N templates (not N*contexts)
+//! - Performance: Templates created once per isolate lifetime
+//! - Correctness: All contexts share the same prototype chains
+//!
+//! Guarantees verified by audit (BSCOPE-04):
+//! 1. `templates_by_index` is a global array, shared across all contexts
+//! 2. `getTemplate()` checks isolate match before returning cached template
+//! 3. `clear()` invalidates all templates when isolate is disposed
+//! 4. `cache_generation` provides staleness detection for isolate reuse
+//! 5. `V8Interface(T).createTemplate()` implements getOrCreate pattern
+//!
 //! ## Problem Solved
 //!
 //! When a Zig method returns `*runtime.Instance` (e.g., Document.createElement
