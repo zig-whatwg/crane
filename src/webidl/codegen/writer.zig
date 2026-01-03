@@ -254,8 +254,12 @@ pub fn writeImports(
     for (mixins) |mixin| {
         if (!imported.contains(mixin)) {
             if (getImportModuleWithFallback(mixin, type_registry, "mixins")) |module| {
-                // Mixins use "mixins" module, not direct peer imports
-                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
+                // Use direct peer imports for interface types to avoid fat-module dependency
+                if (std.mem.eql(u8, module, "interfaces")) {
+                    try writer.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ mixin, mixin, mixin });
+                } else {
+                    try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
+                }
                 try imported.put(mixin, {});
             }
         }
