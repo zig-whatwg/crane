@@ -205,11 +205,22 @@ pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, 
     // Convert result to Promise
     switch (result) {
         .success, .pending => |handle| {
-            // Create a resolved promise with the registration handle
-            // TODO: Actually create a ServiceWorkerRegistration object from handle
-            _ = handle;
-            // Pass null for undefined - resolvePromise accepts ?*const anyopaque
-            engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
+            // Create a ServiceWorkerRegistration object from the handle
+            _ = handle; // Handle id stored in registry, used for lookups
+
+            // Create the ServiceWorkerRegistration instance
+            const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
+            const registration = ServiceWorkerRegistration.init(allocator, instance.ctx) catch |err| {
+                engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+                return getPromiseAndCleanup(engine, promise_handle, allocator);
+            };
+
+            // Note: Registration uses default scope "/" for now
+            // TODO: Pass scope to registration init or add setScope method
+
+            // Resolve the promise with the registration instance
+            // The engine wraps the instance pointer appropriately
+            engine.resolvePromise(engine_ctx, promise_handle, @ptrCast(registration)) catch {};
         },
         .invalid_script_url => {
             engine.rejectPromise(engine_ctx, promise_handle, error.TypeError) catch {};
