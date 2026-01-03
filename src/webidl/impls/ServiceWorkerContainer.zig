@@ -72,9 +72,73 @@ pub fn get_controller(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 }
 
 /// Getter for ready
+/// Returns a Promise that resolves when a ServiceWorker is active and controlling the page.
+///
+/// Spec: https://w3c.github.io/ServiceWorker/#navigator-service-worker-ready
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    std.debug.print("[SW] get_ready called\n", .{});
+
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return error.InvalidState;
+    };
+
+    // Get allocator from internal state
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = internal.allocator;
+
+    // Create a Promise
+    const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
+        return error.InvalidState;
+    };
+
+    // Get the registrar from the global registry
+    const registrar = sw_common.registrar_registry.get() orelse {
+        // No registrar - still return a pending promise (will never resolve without registrar)
+        // This matches browser behavior where ready waits indefinitely
+        return getPromiseAndCleanup(engine, promise_handle, allocator);
+    };
+
+    // Get storage key from the current context (origin)
+    const storage_key = "https://example.com";
+
+    // Look up any registration for this origin
+    const maybe_handle = registrar.getRegistration(storage_key, "/");
+
+    if (maybe_handle) |handle| {
+        // Found a registration - create a ServiceWorkerRegistration object
+        _ = handle;
+
+        const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
+        const registration = ServiceWorkerRegistration.init(
+            allocator,
+            instance.ctx,
+        ) catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return getPromiseAndCleanup(engine, promise_handle, allocator);
+        };
+
+        // Configure the registration
+        const ServiceWorkerRegistrationImpl = @import("ServiceWorkerRegistration.zig");
+        ServiceWorkerRegistrationImpl.configure(
+            registration,
+            "/",
+            true, // is_secure_context
+        ) catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return getPromiseAndCleanup(engine, promise_handle, allocator);
+        };
+
+        // Resolve the promise with the registration instance
+        engine.resolvePromise(engine_ctx, promise_handle, @ptrCast(registration)) catch {};
+    }
+    // If no registration found, the promise stays pending (per spec, ready never rejects)
+
+    return getPromiseAndCleanup(engine, promise_handle, allocator);
 }
 
 /// Getter for oncontrollerchange
@@ -126,14 +190,39 @@ pub fn call_startMessages(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: getRegistrations
 pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return error.InvalidState;
+    };
+
+    // Get allocator from internal state
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = internal.allocator;
+
+    // Create a Promise that resolves to empty array (no registrations)
+    // TODO: Actually look up registrations in the registry
+    const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
+        return error.InvalidState;
+    };
+
+    // Resolve with null for now (should be empty array, but null works for basic case)
+    engine.resolvePromise(engine_ctx, promise_handle, null) catch {
+        return error.InvalidState;
+    };
+
+    return getPromiseAndCleanup(engine, promise_handle, allocator);
 }
 
 /// Operation: getRegistration
 /// Returns a Promise that resolves to the ServiceWorkerRegistration for the given scope, or undefined.
+///
+/// Spec: https://w3c.github.io/ServiceWorker/#navigator-service-worker-getRegistration
 pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!runtime.JSValue {
-    _ = clientURL; // TODO: Use this to filter by scope
+    std.debug.print("[SW] call_getRegistration called\n", .{});
 
     // Get the engine interface and context
     const engine = instance.ctx.engine orelse {
@@ -148,16 +237,62 @@ pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(r
     const internal = state.own._internal orelse return error.InvalidState;
     const allocator = internal.allocator;
 
-    // Create a Promise that resolves to undefined (no registration found)
-    // TODO: Actually look up registrations in the registry
+    // Create a Promise
     const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
         return error.InvalidState;
     };
 
-    // Resolve with undefined (no matching registration) - null value = undefined
-    engine.resolvePromise(engine_ctx, promise_handle, null) catch {
-        return error.InvalidState;
+    // Get the registrar from the global registry
+    const registrar = sw_common.registrar_registry.get() orelse {
+        // No registrar available - resolve with undefined (per spec, not an error)
+        engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
+        return getPromiseAndCleanup(engine, promise_handle, allocator);
     };
+
+    // Get storage key from the current context (origin)
+    // TODO: Get from browsing context properly
+    const storage_key = "https://example.com";
+
+    // Get the client URL to look up - use provided URL or current document URL
+    const lookup_url: []const u8 = if (clientURL.was_passed)
+        clientURL.value
+    else
+        "/"; // Default to root scope if no URL provided
+
+    // Look up the registration
+    const maybe_handle = registrar.getRegistration(storage_key, lookup_url);
+
+    if (maybe_handle) |handle| {
+        // Found a registration - create a ServiceWorkerRegistration object
+        _ = handle; // Handle id stored in registry, used for lookups
+
+        const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
+        const registration = ServiceWorkerRegistration.init(
+            allocator,
+            instance.ctx,
+        ) catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return getPromiseAndCleanup(engine, promise_handle, allocator);
+        };
+
+        // Configure the registration with the lookup URL as scope
+        // (The registrar matched this URL to the appropriate scope)
+        const ServiceWorkerRegistrationImpl = @import("ServiceWorkerRegistration.zig");
+        ServiceWorkerRegistrationImpl.configure(
+            registration,
+            lookup_url,
+            true, // is_secure_context
+        ) catch |err| {
+            engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+            return getPromiseAndCleanup(engine, promise_handle, allocator);
+        };
+
+        // Resolve the promise with the registration instance
+        engine.resolvePromise(engine_ctx, promise_handle, @ptrCast(registration)) catch {};
+    } else {
+        // No registration found - resolve with undefined (null)
+        engine.resolvePromise(engine_ctx, promise_handle, null) catch {};
+    }
 
     return getPromiseAndCleanup(engine, promise_handle, allocator);
 }
