@@ -60,16 +60,20 @@ pub const InternalState = struct {
 };
 
 /// Initialize instance (creates the instance)
+/// scope_url: The scope URL for this registration (e.g., "/app/")
+/// is_secure_context: Whether the registration is in a secure context
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
+    scope_url: []const u8,
+    is_secure_context: bool,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
 
-    // Initialize internal state with default scope
-    const internal = try InternalState.init(allocator, "/", true);
+    // Initialize internal state with provided scope
+    const internal = try InternalState.init(allocator, scope_url, is_secure_context);
 
     const state = instance.getState(StateType);
     state.own._internal = internal;

@@ -49,13 +49,13 @@ pub const ServiceWorkerRegistration = struct {
             .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{
             .Window = true,
             .Worker = true,
         };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "installing", "get_installing", null },
@@ -73,7 +73,7 @@ pub const ServiceWorkerRegistration = struct {
             .{ "paymentManager", "get_paymentManager", null },
             .{ "pushManager", "get_pushManager", null },
         };
-        
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "update", "call_update", 0 },
@@ -81,7 +81,7 @@ pub const ServiceWorkerRegistration = struct {
             .{ "showNotification", "call_showNotification", 1 },
             .{ "getNotifications", "call_getNotifications", 0 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "update",
@@ -89,7 +89,7 @@ pub const ServiceWorkerRegistration = struct {
             "showNotification",
             "getNotifications",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -97,7 +97,7 @@ pub const ServiceWorkerRegistration = struct {
             "dispatchEvent",
             "when",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "installing", "get_installing", null },
@@ -115,11 +115,10 @@ pub const ServiceWorkerRegistration = struct {
             .{ "paymentManager", "get_paymentManager", null },
             .{ "pushManager", "get_pushManager", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -150,7 +149,6 @@ pub const ServiceWorkerRegistration = struct {
     );
 
     const delegates = .{
-
         .get_active = &get_active,
         .get_backgroundFetch = &get_backgroundFetch,
         .get_cookies = &get_cookies,
@@ -177,9 +175,16 @@ pub const ServiceWorkerRegistration = struct {
     };
     pub const vtable = runtime.buildVTable(&delegates);
 
-    /// Initialize a new instance
-    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return ServiceWorkerRegistrationImpl.init(allocator, State, &vtable, ctx);
+    /// Initialize a new instance with scope
+    /// scope_url: The scope URL for this registration (e.g., "/app/")
+    /// is_secure_context: Whether in a secure context (default true for HTTPS)
+    pub fn init(
+        allocator: std.mem.Allocator,
+        ctx: runtime.Context,
+        scope_url: []const u8,
+        is_secure_context: bool,
+    ) !*runtime.Instance {
+        return ServiceWorkerRegistrationImpl.init(allocator, State, &vtable, ctx, scope_url, is_secure_context);
     }
 
     /// Initialize with custom state type (for subclasses)
@@ -189,8 +194,10 @@ pub const ServiceWorkerRegistration = struct {
         comptime StateType: type,
         vtable_ptr: *const runtime.VTable,
         ctx: runtime.Context,
+        scope_url: []const u8,
+        is_secure_context: bool,
     ) !*runtime.Instance {
-        return ServiceWorkerRegistrationImpl.init(allocator, StateType, vtable_ptr, ctx);
+        return ServiceWorkerRegistrationImpl.init(allocator, StateType, vtable_ptr, ctx, scope_url, is_secure_context);
     }
 
     /// Clean up instance resources
@@ -297,7 +304,6 @@ pub const ServiceWorkerRegistration = struct {
     }
 
     pub fn call_getNotifications(instance: *runtime.Instance, filter: webidl.Opt(GetNotificationOptions)) anyerror!runtime.JSValue {
-        
         return try ServiceWorkerRegistrationImpl.call_getNotifications(instance, filter);
     }
 
@@ -308,8 +314,6 @@ pub const ServiceWorkerRegistration = struct {
     }
 
     pub fn call_showNotification(instance: *runtime.Instance, title: DOMString, options: webidl.Opt(NotificationOptions)) anyerror!runtime.JSValue {
-        
         return try ServiceWorkerRegistrationImpl.call_showNotification(instance, title, options);
     }
-
 };

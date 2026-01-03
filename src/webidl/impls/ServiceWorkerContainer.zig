@@ -208,15 +208,17 @@ pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, 
             // Create a ServiceWorkerRegistration object from the handle
             _ = handle; // Handle id stored in registry, used for lookups
 
-            // Create the ServiceWorkerRegistration instance
+            // Create the ServiceWorkerRegistration instance with actual scope
             const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
-            const registration = ServiceWorkerRegistration.init(allocator, instance.ctx) catch |err| {
+            const registration = ServiceWorkerRegistration.init(
+                allocator,
+                instance.ctx,
+                scope orelse "/", // Use the actual scope, default to "/" if null
+                true, // is_secure_context - assume HTTPS for now
+            ) catch |err| {
                 engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
                 return getPromiseAndCleanup(engine, promise_handle, allocator);
             };
-
-            // Note: Registration uses default scope "/" for now
-            // TODO: Pass scope to registration init or add setScope method
 
             // Resolve the promise with the registration instance
             // The engine wraps the instance pointer appropriately
