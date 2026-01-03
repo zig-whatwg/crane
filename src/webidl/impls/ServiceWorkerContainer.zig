@@ -208,11 +208,20 @@ pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, 
             // Create a ServiceWorkerRegistration object from the handle
             _ = handle; // Handle id stored in registry, used for lookups
 
-            // Create the ServiceWorkerRegistration instance with actual scope
+            // Create the ServiceWorkerRegistration instance
             const ServiceWorkerRegistration = interfaces.ServiceWorkerRegistration;
             const registration = ServiceWorkerRegistration.init(
                 allocator,
                 instance.ctx,
+            ) catch |err| {
+                engine.rejectPromise(engine_ctx, promise_handle, err) catch {};
+                return getPromiseAndCleanup(engine, promise_handle, allocator);
+            };
+
+            // Configure the registration with actual scope and security context
+            const ServiceWorkerRegistrationImpl = @import("ServiceWorkerRegistration.zig");
+            ServiceWorkerRegistrationImpl.configure(
+                registration,
                 scope orelse "/", // Use the actual scope, default to "/" if null
                 true, // is_secure_context - assume HTTPS for now
             ) catch |err| {

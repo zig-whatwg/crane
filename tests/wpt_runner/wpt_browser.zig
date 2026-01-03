@@ -458,8 +458,6 @@ pub const WptBrowser = struct {
             }
             break :blk heap_buffer.?;
         };
-        std.debug.print("[WPT] Received results JSON ({d} bytes)\n", .{json_len});
-
         // Parse the JSON to extract test results
         wpt_browser.parseAndStoreResults(json_str) catch |err| {
             std.debug.print("[WPT] Error parsing results: {}\n", .{err});
@@ -483,9 +481,9 @@ pub const WptBrowser = struct {
 
         const root = parsed.value;
         if (root != .object) {
-            self.test_status = .@"error";
-            self.test_message = "Invalid results format: not an object";
-            return error.InvalidFormat;
+            // Skip non-object values (e.g., test name announcements as strings)
+            // These are intermediate callbacks, not final results
+            return;
         }
 
         // Get harness status from status.status (nested object)
