@@ -591,6 +591,108 @@ pub fn hydrateContextFromSnapshot(
     iface_bindings_mod.installForScope(isolate, v8_ctx, scope);
 }
 
+/// Create a new context for a specific global scope kind (BSCOPE-05)
+///
+/// This function creates a V8 context from the snapshot for the given scope,
+/// sets up the runtime context with proper wrapper cache isolation, and
+/// optionally links it to a parent context for iframe/worker hierarchies.
+///
+/// The created context will have:
+/// - Interfaces filtered by [Exposed] attribute for the scope
+/// - Its own isolated wrapper cache
+/// - Proper realm with context_type matching the scope
+/// - Parent-child relationship if parent is provided
+///
+/// Thread safety: Thread-local, no synchronization needed
+///
+/// Arguments:
+/// - isolate: V8 isolate pointer
+/// - scope_kind: The global scope kind to create context for
+/// - parent: Optional parent context entry for hierarchical contexts
+/// - allocator: Allocator for context resources
+///
+/// Returns: Pointer to the created ContextEntry, or error
+pub fn createContext(
+    isolate: *v8.Isolate,
+    scope_kind: runtime.realm.GlobalScopeKind,
+    parent: ?*ContextEntry,
+    allocator: std.mem.Allocator,
+) !*ContextEntry {
+    const state = &(manager_state orelse return error.NotInitialized);
+
+    // Create V8 context from snapshot for this scope
+    const snapshot_loader = @import("snapshot_loader.zig");
+    const v8_ctx = snapshot_loader.createContextForScope(isolate, scope_kind) orelse
+        return error.ContextCreationFailed;
+
+    // Get raw address for HashMap key (stable across Global/Local conversions)
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse
+        return error.ContextCreationFailed;
+    const key = @intFromPtr(raw_addr);
+
+    // Create the context entry
+    const entry = try state.allocator.create(ContextEntry);
+    errdefer state.allocator.destroy(entry);
+
+    // Initialize runtime context
+    var ctx_data = runtime.Context{
+        .allocator = allocator,
+        .arena = null,
+        .v8_isolate = isolate,
+        .v8_ctx = v8_ctx,
+    };
+
+    // Create isolated wrapper cache for this context
+    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+    const wrapper_cache = try allocator.create(WrapperCache);
+    errdefer allocator.destroy(wrapper_cache);
+    wrapper_cache.* = WrapperCache.init(allocator);
+    ctx_data.setV8WrapperCacheStorage(wrapper_cache);
+
+    // Map scope_kind to context_type for realm
+    const context_type: runtime.realm.ContextType = switch (scope_kind) {
+        .window => .window,
+        .dedicated_worker => .dedicated_worker,
+        .shared_worker => .shared_worker,
+        .service_worker => .service_worker,
+        .audio_worklet, .paint_worklet, .animation_worklet, .layout_worklet, .shared_storage_worklet => .worklet,
+        .shadow_realm, .unknown => .unknown,
+    };
+
+    // Create realm with appropriate context type
+    const realm_instance = try allocator.create(runtime.Realm);
+    errdefer allocator.destroy(realm_instance);
+    realm_instance.* = runtime.Realm.init(allocator, context_type);
+
+    // Initialize entry
+    entry.* = ContextEntry{
+        .v8_ctx = v8_ctx,
+        .runtime_ctx = ctx_data,
+        .owns_context = true,
+        .event_loop = null, // Will be set up separately if needed
+        .realm = realm_instance,
+        .parent_entry = parent,
+        .children = .{},
+        .allocator = state.allocator,
+    };
+
+    // Link to parent if provided
+    if (parent) |p| {
+        try p.children.append(state.allocator, entry);
+    }
+
+    // Store in contexts HashMap
+    try state.contexts.put(key, entry);
+
+    // Hydrate with scope-specific interfaces (already filtered by snapshot)
+    // Note: Snapshot already contains only exposed interfaces, but we call
+    // hydrateContextFromSnapshot for any additional runtime setup
+    const helper_scope = snapshot_loader.SnapshotContextIndex.forScopeKind(scope_kind).toHelperScope();
+    hydrateContextFromSnapshot(isolate, v8_ctx, helper_scope);
+
+    return entry;
+}
+
 /// Register an existing runtime context for a V8 context
 ///
 /// Use this when you have an existing runtime context that you want to associate
