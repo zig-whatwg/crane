@@ -23,8 +23,8 @@ const fetch_internal = @import("fetch").internal;
 const InternalRequest = fetch_internal.InternalRequest;
 const InternalResponse = fetch_internal.InternalResponse;
 
-// Import local service worker types
-const sw_intercept = @import("fetch_intercept.zig");
+// Import local service worker types (standalone types without algorithm deps)
+const sw_intercept = @import("fetch_intercept_types.zig");
 const RegistrationMap = @import("../registration_map.zig").RegistrationMap;
 
 /// Service Worker implementation of the FetchInterceptor interface.
@@ -41,12 +41,27 @@ pub const ServiceWorkerFetchInterceptor = struct {
     /// Optional callback for dispatching fetch events to actual JS runtime.
     /// If null, interception will check for controlling worker but cannot
     /// actually dispatch events (useful for testing registration logic).
-    dispatch_callback: ?*const fn (*@import("../service_worker.zig").ServiceWorker, sw_intercept.RequestForInterception) ?sw_intercept.InterceptedResponse = null,
+    /// Uses *anyopaque to avoid circular dependency with service_worker.zig.
+    dispatch_callback: ?*const fn (*anyopaque, sw_intercept.RequestForInterception) ?sw_intercept.InterceptedResponse = null,
 
     /// Optional cache lookup callback.
     cache_lookup: ?*const fn ([]const u8) ?sw_intercept.InterceptedResponse = null,
 
+    /// Cached FetchInterceptor for returning stable pointer
+    fetch_interceptor_cache: ?FetchInterceptor = null,
+
     const Self = @This();
+
+    /// Get this as a generic FetchInterceptor pointer for registration with the fetch module.
+    pub fn asFetchInterceptor(self: *Self) *const FetchInterceptor {
+        if (self.fetch_interceptor_cache == null) {
+            self.fetch_interceptor_cache = .{
+                .ptr = self,
+                .vtable = &vtable,
+            };
+        }
+        return &self.fetch_interceptor_cache.?;
+    }
 
     /// Initialize a new ServiceWorkerFetchInterceptor.
     pub fn init(
@@ -63,9 +78,10 @@ pub const ServiceWorkerFetchInterceptor = struct {
 
     /// Set the dispatch callback for handling fetch events.
     /// This should be called by the runtime when a ServiceWorker context is ready.
+    /// The first parameter is a *ServiceWorker cast to *anyopaque to avoid circular deps.
     pub fn setDispatchCallback(
         self: *Self,
-        callback: *const fn (*@import("../service_worker.zig").ServiceWorker, sw_intercept.RequestForInterception) ?sw_intercept.InterceptedResponse,
+        callback: *const fn (*anyopaque, sw_intercept.RequestForInterception) ?sw_intercept.InterceptedResponse,
     ) void {
         self.dispatch_callback = callback;
     }
@@ -78,14 +94,6 @@ pub const ServiceWorkerFetchInterceptor = struct {
         self.cache_lookup = callback;
     }
 
-    /// Get this as a generic FetchInterceptor for registration with the fetch module.
-    pub fn asFetchInterceptor(self: *Self) FetchInterceptor {
-        return .{
-            .ptr = self,
-            .vtable = &vtable,
-        };
-    }
-
     /// VTable for the FetchInterceptor interface.
     const vtable: FetchInterceptor.VTable = .{
         .intercept = intercept,
@@ -96,7 +104,7 @@ pub const ServiceWorkerFetchInterceptor = struct {
         ptr: *anyopaque,
         allocator: Allocator,
         request: *InternalRequest,
-        ctx: *InterceptionContext,
+        ctx: *const InterceptionContext,
     ) InterceptionDecision {
         const self: *Self = @ptrCast(@alignCast(ptr));
 
@@ -111,9 +119,15 @@ pub const ServiceWorkerFetchInterceptor = struct {
         }
 
         // Build the SW-specific request info
+        // Get current URL from url_list (last item after redirects)
+        const current_url = if (request.url_list.items.len > 0)
+            request.url_list.items[request.url_list.items.len - 1]
+        else
+            return .network_fallback;
+
         const sw_request = sw_intercept.RequestForInterception{
-            .url = request.url orelse return .network_fallback,
-            .method = @tagName(request.method),
+            .url = current_url,
+            .method = request.method,
             .service_workers_mode = switch (request.service_workers_mode) {
                 .all => .all,
                 .none => .none,
@@ -164,21 +178,20 @@ pub const ServiceWorkerFetchInterceptor = struct {
         sw_response: sw_intercept.InterceptedResponse,
     ) !*InternalResponse {
         // Create a new InternalResponse
-        var response = try allocator.create(InternalResponse);
-        response.* = InternalResponse.init(allocator);
+        const response = try InternalResponse.init(allocator);
 
         // Set status
         response.status = sw_response.status;
         response.status_message = sw_response.status_text;
 
-        // Set body if present
-        if (sw_response.body) |body| {
-            response.body = try allocator.dupe(u8, body);
-        }
+        // Note: Body handling requires proper Body type creation
+        // For now, we skip body assignment as the stub returns no_interception
+        // TODO: Implement proper Body creation when real SW interception is wired up
+        _ = sw_response.body;
 
         // Set content-type header if present
         if (sw_response.content_type) |ct| {
-            try response.headers.append("content-type", ct);
+            try response.header_list.append("content-type", ct);
         }
 
         // Mark as from service worker for timing

@@ -60,6 +60,8 @@ const html = @import("html");
 // This uses the VTable pattern to avoid circular dependencies between
 // webidl/impls and service_worker modules.
 const sw_common = @import("sw_common");
+// Standalone SW fetch integration - safe to import without circular deps
+const sw_fetch_integration = @import("sw_fetch_integration");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -114,9 +116,8 @@ pub const Browser = struct {
     async_curl_manager: ?*network.AsyncCurlManager,
     /// Certificate trust store for per-browser TLS certificate management
     certificate_trust_store: *certificate_trust.CertificateTrustStore,
-    // Note: Service worker registration infrastructure is initialized lazily
-    // through the sw_common.registrar_registry when the first registration occurs.
-    // This avoids circular dependencies between browser and service_worker modules.
+    /// Service worker registration map - tracks all SW registrations for this browser
+    registration_map: *sw_fetch_integration.RegistrationMap,
 
     /// Initialize a new Browser instance
     ///
@@ -237,10 +238,10 @@ pub const Browser = struct {
         errdefer allocator.destroy(trust_store);
         trust_store.* = certificate_trust.CertificateTrustStore.init(allocator);
 
-        // Note: Service worker registration is handled lazily through sw_common.registrar_registry
-        // The full service_worker module cannot be imported here due to circular dependencies
-        // with webidl/interfaces. When a ServiceWorkerContainer.register() call is made,
-        // it will use the registrar_registry to find the registered implementation.
+        // Create service worker registration map for tracking SW registrations
+        const registration_map = try allocator.create(sw_fetch_integration.RegistrationMap);
+        errdefer allocator.destroy(registration_map);
+        registration_map.* = sw_fetch_integration.RegistrationMap.init(allocator);
 
         // Register curl manager with event loop so it gets polled
         // Note: AsyncCurlManager.Pollable and V8EventLoop.Pollable are structurally identical
@@ -266,13 +267,12 @@ pub const Browser = struct {
             .used_snapshot = used_snapshot,
             .async_curl_manager = async_curl,
             .certificate_trust_store = trust_store,
+            .registration_map = registration_map,
         };
 
-        // NOTE: Service worker fetch interception infrastructure is in place
-        // (src/fetch/interception/). The circular dependency has been resolved
-        // via service_worker.common and service_worker.manager modules.
-        // TODO: Create ServiceWorkerFetchInterceptor and register with
-        // fetch.interception.registry.register(&interceptor.interceptor);
+        // Register the service worker fetch interceptor with the fetch module.
+        // This enables fetch() calls to be intercepted by controlling service workers.
+        _ = sw_fetch_integration.ensureRegistered(allocator, registration_map);
 
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
@@ -327,9 +327,8 @@ pub const Browser = struct {
     /// This destroys the V8 isolate and all associated contexts.
     /// All storage is flushed to disk before cleanup.
     pub fn deinit(self: *Browser) void {
-        // TODO: When service worker integration is complete, unregister the
-        // fetch interceptor here. The circular dependency has been resolved
-        // via service_worker.common and service_worker.manager modules.
+        // Unregister the service worker fetch interceptor
+        sw_fetch_integration.unregister(self.allocator);
 
         // Destroy current context if any
         if (self.current_context) |ctx| {
@@ -359,6 +358,10 @@ pub const Browser = struct {
         // Cleanup certificate trust store
         self.certificate_trust_store.deinit();
         self.allocator.destroy(self.certificate_trust_store);
+
+        // Cleanup service worker registration map
+        self.registration_map.deinit();
+        self.allocator.destroy(self.registration_map);
 
         // Use the isolate lifecycle manager for centralized cleanup
         // This ensures all V8-dependent modules are cleaned up in the correct order

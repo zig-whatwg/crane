@@ -1546,6 +1546,13 @@ pub fn build(b: *std.Build) void {
     });
     service_worker_mod.addImport("fetch", fetch_mod);
 
+    // Standalone SW fetch integration module - no WebIDL deps, safe for browser to import
+    const sw_fetch_integration_mod = b.addModule("sw_fetch_integration", .{
+        .root_source_file = b.path("src/service_worker/sw_fetch_integration.zig"),
+        .target = target,
+    });
+    sw_fetch_integration_mod.addImport("fetch", fetch_mod);
+
     // Browser module - Single V8 isolate browser implementation for WPT
     const browser_mod = b.addModule("browser", .{
         .root_source_file = b.path("src/browser/root.zig"),
@@ -1560,8 +1567,8 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dictionaries", dictionaries_mod);
     browser_mod.addImport("html", html_mod);
-    // Note: service_worker module NOT imported here to avoid circular dependency
-    // Browser uses sw_common (registrar_contract.zig) for the VTable pattern instead
+    // Standalone SW fetch integration - safe to import without circular deps
+    browser_mod.addImport("sw_fetch_integration", sw_fetch_integration_mod);
     browser_mod.addImport("sw_common", sw_common_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
