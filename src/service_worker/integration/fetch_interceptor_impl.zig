@@ -61,6 +61,23 @@ pub const ServiceWorkerFetchInterceptor = struct {
         };
     }
 
+    /// Set the dispatch callback for handling fetch events.
+    /// This should be called by the runtime when a ServiceWorker context is ready.
+    pub fn setDispatchCallback(
+        self: *Self,
+        callback: *const fn (*@import("../service_worker.zig").ServiceWorker, sw_intercept.RequestForInterception) ?sw_intercept.InterceptedResponse,
+    ) void {
+        self.dispatch_callback = callback;
+    }
+
+    /// Set the cache lookup callback.
+    pub fn setCacheLookup(
+        self: *Self,
+        callback: *const fn ([]const u8) ?sw_intercept.InterceptedResponse,
+    ) void {
+        self.cache_lookup = callback;
+    }
+
     /// Get this as a generic FetchInterceptor for registration with the fetch module.
     pub fn asFetchInterceptor(self: *Self) FetchInterceptor {
         return .{
