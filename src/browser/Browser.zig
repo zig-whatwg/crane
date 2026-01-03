@@ -56,9 +56,10 @@ const fetch_interception = fetch.interception;
 const network = fetch.network;
 const certificate_trust = network.certificate_trust;
 const html = @import("html");
-// Service worker support via leaf modules (no WebIDL dependency cycle)
-const sw_common = @import("service_worker").common;
-const sw_manager = @import("service_worker").manager;
+// Service worker registrar contract (standalone module - no WebIDL dependencies)
+// This uses the VTable pattern to avoid circular dependencies between
+// webidl/impls and service_worker modules.
+const sw_common = @import("sw_common");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -113,6 +114,9 @@ pub const Browser = struct {
     async_curl_manager: ?*network.AsyncCurlManager,
     /// Certificate trust store for per-browser TLS certificate management
     certificate_trust_store: *certificate_trust.CertificateTrustStore,
+    // Note: Service worker registration infrastructure is initialized lazily
+    // through the sw_common.registrar_registry when the first registration occurs.
+    // This avoids circular dependencies between browser and service_worker modules.
 
     /// Initialize a new Browser instance
     ///
@@ -232,6 +236,11 @@ pub const Browser = struct {
         const trust_store = try allocator.create(certificate_trust.CertificateTrustStore);
         errdefer allocator.destroy(trust_store);
         trust_store.* = certificate_trust.CertificateTrustStore.init(allocator);
+
+        // Note: Service worker registration is handled lazily through sw_common.registrar_registry
+        // The full service_worker module cannot be imported here due to circular dependencies
+        // with webidl/interfaces. When a ServiceWorkerContainer.register() call is made,
+        // it will use the registrar_registry to find the registered implementation.
 
         // Register curl manager with event loop so it gets polled
         // Note: AsyncCurlManager.Pollable and V8EventLoop.Pollable are structurally identical

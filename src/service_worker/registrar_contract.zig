@@ -1,97 +1,43 @@
-//! Service Worker Common Types - SELF-CONTAINED LEAF MODULE
+//! ServiceWorker Registrar Contract
 //!
-//! This module is COMPLETELY SELF-CONTAINED with NO imports from other
-//! service_worker files. This is critical to avoid Zig module ownership
-//! conflicts when both sw_common and service_worker modules exist.
+//! This file is a STANDALONE leaf module with ZERO imports from service_worker.
+//! It can be safely used as a separate module without file ownership conflicts.
 //!
-//! Leaf types that have NO WebIDL dependencies.
-//! Safe to import from Browser and other modules that cannot import WebIDL.
-//!
-//! This module breaks the circular dependency:
-//! Browser -> service_worker -> webidl/interfaces -> browser
+//! Used by:
+//! - webidl/impls/ServiceWorkerContainer.zig (via sw_common module)
+//! - service_worker (internally for type compatibility)
+//! - Browser.zig (for wiring)
 
 const std = @import("std");
 
 // =============================================================================
-// Core Enums (Self-contained definitions)
+// Types (self-contained, no external imports)
 // =============================================================================
 
-/// Worker type - classic or module.
-/// Spec: https://w3c.github.io/ServiceWorker/#dfn-type
+/// Worker type for service worker scripts.
 pub const WorkerType = enum {
     classic,
     module,
-
-    pub fn name(self: WorkerType) []const u8 {
-        return switch (self) {
-            .classic => "classic",
-            .module => "module",
-        };
-    }
 };
 
-/// Update via cache mode.
-/// Spec: https://w3c.github.io/ServiceWorker/#enumdef-serviceworkerupdateviacache
+/// Update via cache mode for service worker registration.
 pub const UpdateViaCacheMode = enum {
     imports,
     all,
     none,
-
-    pub fn name(self: UpdateViaCacheMode) []const u8 {
-        return switch (self) {
-            .imports => "imports",
-            .all => "all",
-            .none => "none",
-        };
-    }
 };
 
-// =============================================================================
-// Opaque Handles for Cross-Layer Communication
-// =============================================================================
-
-/// Opaque handle for a service worker registration.
-/// Used by Browser to reference registrations without importing WebIDL types.
+/// Opaque handle to a service worker registration.
+/// Uses an integer ID that can be used to look up the actual registration.
 pub const RegistrationHandle = struct {
     id: u64,
-
-    pub const invalid: RegistrationHandle = .{ .id = 0 };
 
     pub fn isValid(self: RegistrationHandle) bool {
         return self.id != 0;
     }
-};
 
-/// Opaque handle for a service worker instance.
-/// Used by Browser to reference workers without importing WebIDL types.
-pub const ServiceWorkerHandle = struct {
-    id: u64,
-
-    pub const invalid: ServiceWorkerHandle = .{ .id = 0 };
-
-    pub fn isValid(self: ServiceWorkerHandle) bool {
-        return self.id != 0;
-    }
-};
-
-/// Registration key for looking up registrations by scope.
-/// This is a value type that can be used as a hash map key.
-pub const RegistrationKey = struct {
-    /// The serialized storage key (origin).
-    storage_key: []const u8,
-    /// The scope URL.
-    scope: []const u8,
-
-    pub fn hash(self: RegistrationKey) u64 {
-        var hasher = std.hash.Wyhash.init(0);
-        hasher.update(self.storage_key);
-        hasher.update(self.scope);
-        return hasher.final();
-    }
-
-    pub fn eql(a: RegistrationKey, b: RegistrationKey) bool {
-        return std.mem.eql(u8, a.storage_key, b.storage_key) and
-            std.mem.eql(u8, a.scope, b.scope);
+    pub fn invalid() RegistrationHandle {
+        return .{ .id = 0 };
     }
 };
 
@@ -100,7 +46,6 @@ pub const RegistrationKey = struct {
 // =============================================================================
 
 /// Result of a registration operation.
-/// This is a value type that can cross module boundaries without WebIDL deps.
 pub const RegistrationResult = union(enum) {
     /// Registration succeeded or already exists.
     success: RegistrationHandle,
@@ -121,16 +66,12 @@ pub const RegistrationResult = union(enum) {
 /// VTable-based interface for service worker registration.
 /// This allows ServiceWorkerContainer (in webidl/impls) to call into
 /// service_worker/integration without creating circular dependencies.
-///
-/// Pattern: Same as FetchInterceptor - interface defined in leaf module,
-/// implementation in integration/, wired by Browser.
 pub const ServiceWorkerRegistrar = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
     pub const VTable = struct {
         /// Register a service worker for the given script URL.
-        /// Returns a RegistrationResult immediately (may be pending for async).
         register: *const fn (
             self: *anyopaque,
             storage_key: []const u8,
@@ -261,37 +202,18 @@ pub const registrar_registry = struct {
 // =============================================================================
 
 test "RegistrationHandle validity" {
-    const invalid = RegistrationHandle.invalid;
-    try std.testing.expect(!invalid.isValid());
-
-    const valid = RegistrationHandle{ .id = 42 };
+    const valid = RegistrationHandle{ .id = 123 };
     try std.testing.expect(valid.isValid());
+
+    const invalid = RegistrationHandle.invalid();
+    try std.testing.expect(!invalid.isValid());
 }
 
-test "ServiceWorkerHandle validity" {
-    const invalid = ServiceWorkerHandle.invalid;
-    try std.testing.expect(!invalid.isValid());
+test "registrar_registry operations" {
+    // Ensure clean state
+    registrar_registry.resetForTesting();
+    defer registrar_registry.resetForTesting();
 
-    const valid = ServiceWorkerHandle{ .id = 42 };
-    try std.testing.expect(valid.isValid());
-}
-
-test "RegistrationKey hashing" {
-    const key1 = RegistrationKey{
-        .storage_key = "https://example.com",
-        .scope = "/app/",
-    };
-    const key2 = RegistrationKey{
-        .storage_key = "https://example.com",
-        .scope = "/app/",
-    };
-    const key3 = RegistrationKey{
-        .storage_key = "https://other.com",
-        .scope = "/app/",
-    };
-
-    try std.testing.expectEqual(key1.hash(), key2.hash());
-    try std.testing.expect(key1.hash() != key3.hash());
-    try std.testing.expect(key1.eql(key2));
-    try std.testing.expect(!key1.eql(key3));
+    try std.testing.expect(!registrar_registry.isRegistered());
+    try std.testing.expect(registrar_registry.get() == null);
 }

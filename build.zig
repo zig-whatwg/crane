@@ -1525,6 +1525,27 @@ pub fn build(b: *std.Build) void {
     // Add permissions to impls for navigator.permissions implementation
     impls_mod.addImport("permissions", permissions_mod);
 
+    // Service Worker Common module (leaf module - no WebIDL dependencies)
+    // Contains VTable interfaces and types that can be safely imported by impls
+    // Uses registrar_contract.zig which is completely standalone (no service_worker imports)
+    const sw_common_mod = b.addModule("sw_common", .{
+        .root_source_file = b.path("src/service_worker/registrar_contract.zig"),
+        .target = target,
+    });
+
+    // Add sw_common to impls for ServiceWorkerContainer VTable pattern
+    // This avoids circular dependencies since common.zig has no WebIDL imports
+    impls_mod.addImport("sw_common", sw_common_mod);
+
+    // Service Worker module (full module - for Browser use only)
+    // Contains registration_map, job queues, integration, etc.
+    // NOTE: This module has WebIDL dependencies via global/ and cannot be imported by impls
+    const service_worker_mod = b.addModule("service_worker", .{
+        .root_source_file = b.path("src/service_worker/root.zig"),
+        .target = target,
+    });
+    service_worker_mod.addImport("fetch", fetch_mod);
+
     // Browser module - Single V8 isolate browser implementation for WPT
     const browser_mod = b.addModule("browser", .{
         .root_source_file = b.path("src/browser/root.zig"),
@@ -1539,6 +1560,9 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dictionaries", dictionaries_mod);
     browser_mod.addImport("html", html_mod);
+    // Note: service_worker module NOT imported here to avoid circular dependency
+    // Browser uses sw_common (registrar_contract.zig) for the VTable pattern instead
+    browser_mod.addImport("sw_common", sw_common_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
     const intl_mod = b.addModule("intl", .{

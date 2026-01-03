@@ -68,11 +68,13 @@ pub const NavigationPreloadState = types.NavigationPreloadState;
 pub const CacheQueryOptions = types.CacheQueryOptions;
 pub const MultiCacheQueryOptions = types.MultiCacheQueryOptions;
 
-// Common types and opaque handles (NO WebIDL dependencies - safe for Browser import)
-pub const common = @import("common.zig");
-pub const RegistrationHandle = common.RegistrationHandle;
-pub const ServiceWorkerHandle = common.ServiceWorkerHandle;
-pub const RegistrationKey = common.RegistrationKey;
+// NOTE: common.zig is NOT imported here to avoid Zig module ownership conflict.
+// When both sw_common and service_worker modules exist, common.zig can only belong to one.
+// Use @import("sw_common") directly for common types like RegistrationHandle.
+// Re-export types from types.zig instead:
+pub const RegistrationHandle = types.RegistrationHandle;
+pub const ServiceWorkerHandle = types.ServiceWorkerHandle;
+pub const RegistrationKey = types.RegistrationKey;
 
 // Browser-side manager (NO WebIDL dependencies - safe for Browser import)
 pub const manager = @import("manager.zig");
@@ -116,11 +118,12 @@ pub const ClientInterface = interfaces.ClientInterface;
 pub const WindowClientInterface = interfaces.WindowClientInterface;
 
 // ServiceWorkerGlobalScope and context APIs (Phase 4)
-pub const global = @import("global/root.zig");
-
-// Re-export commonly used global types
-pub const ServiceWorkerGlobalScope = global.ServiceWorkerGlobalScope;
-pub const Clients = global.Clients;
+// NOTE: The global module has WebIDL dependencies and cannot be exported here
+// when service_worker is used as a build module (causes file ownership conflict).
+// Access global scope functionality through webidl/interfaces instead.
+// pub const global = @import("global/root.zig");
+// pub const ServiceWorkerGlobalScope = global.ServiceWorkerGlobalScope;
+// pub const Clients = global.Clients;
 
 // Events (Phase 5)
 pub const events = @import("events/root.zig");

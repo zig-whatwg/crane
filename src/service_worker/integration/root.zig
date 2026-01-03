@@ -44,6 +44,10 @@ pub const ServiceWorkersMode = fetch_intercept.ServiceWorkersMode;
 pub const timing = @import("timing.zig");
 pub const ServiceWorkerTiming = timing.ServiceWorkerTiming;
 
+// Registrar implementation
+pub const registrar_impl = @import("registrar_impl.zig");
+pub const ServiceWorkerRegistrarImpl = registrar_impl.ServiceWorkerRegistrarImpl;
+
 // =============================================================================
 // Tests
 // =============================================================================
