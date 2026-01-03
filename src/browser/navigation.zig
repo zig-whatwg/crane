@@ -27,6 +27,7 @@ const webidl = @import("webidl");
 const dictionaries = @import("dictionaries");
 
 const html_parser = @import("html").parser;
+const certificate_trust = @import("fetch").network.certificate_trust;
 
 /// Navigation result containing parsed content info
 pub const NavigationResult = struct {
@@ -62,6 +63,8 @@ pub const NavigationOptions = struct {
     follow_redirects: bool = true,
     /// Maximum redirects to follow
     max_redirects: u8 = 20,
+    /// Certificate trust store for HTTPS (for WPT self-signed certs)
+    trust_store: ?*const certificate_trust.CertificateTrustStore = null,
 
     pub const Header = struct {
         name: []const u8,
@@ -275,8 +278,6 @@ fn fetchHttpUrl(
     url: []const u8,
     options: NavigationOptions,
 ) NavigationError!NavigationResult {
-    _ = options;
-
     // For HTTP URLs, we need to use libcurl which is set up in the full build.
     // In the browser module context, we'll use the fetch module via imports.
     // For standalone testing, return a stub indicating HTTP is not available.
@@ -289,8 +290,10 @@ fn fetchHttpUrl(
     var request = InternalRequest.init(allocator, url) catch return NavigationError.OutOfMemory;
     defer request.deinit();
 
-    // Perform fetch using the fetch algorithms
-    var result = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| {
+    // Perform fetch using the fetch algorithms, passing through certificate trust store
+    var result = fetch_mod.algorithms.fetch(allocator, request, .{
+        .trust_store = options.trust_store,
+    }) catch |err| {
         return switch (err) {
             error.NetworkError => NavigationError.NetworkError,
             error.AbortError => NavigationError.Timeout,

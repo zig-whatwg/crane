@@ -29,6 +29,7 @@ const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
 const LibcurlBackend = network.LibcurlBackend;
 const CurlCookieManager = network.curl_cookies.CurlCookieManager;
+const CertificateTrustStore = network.certificate_trust.CertificateTrustStore;
 const cors = @import("../cors/root.zig");
 const PreflightCache = cors.PreflightCache;
 
@@ -56,6 +57,8 @@ pub const HttpFetchOptions = struct {
     cookie_manager: ?*CurlCookieManager = null,
     /// Preflight cache for CORS preflight requests (optional)
     preflight_cache: ?*PreflightCache = null,
+    /// Certificate trust store for HTTPS (e.g., for WPT self-signed certs)
+    trust_store: ?*const CertificateTrustStore = null,
 };
 
 /// Execute the HTTP fetch algorithm.
@@ -301,7 +304,7 @@ pub fn httpNetworkFetch(
     const request = params.request;
 
     // Step 1: Build NetworkRequest from InternalRequest
-    const network_request = buildNetworkRequest(allocator, request) catch {
+    const network_request = buildNetworkRequest(allocator, request, options.trust_store) catch {
         return HttpFetchError.OutOfMemory;
     };
     defer freeNetworkRequest(allocator, network_request);
@@ -378,7 +381,7 @@ pub fn httpNetworkFetch(
 }
 
 /// Build a NetworkRequest from an InternalRequest.
-fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest) !NetworkRequest {
+fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, trust_store: ?*const CertificateTrustStore) !NetworkRequest {
     // Get headers from header list using iterator()
     const header_entries = request.header_list.iterator();
 
@@ -413,6 +416,7 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest) !Network
         .cert_options = .{
             .verify_peer = true,
             .verify_host = true,
+            .trust_store = trust_store,
         },
         .verbose = false,
     };

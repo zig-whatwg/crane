@@ -258,7 +258,11 @@ pub const BrowserAdapter = struct {
         _ = context_type; // URL already encodes the context (e.g., .any.worker.html)
 
         // Fetch the test HTML from the WPT server
-        var fetch_result = navigation.fetchUrl(self.allocator, test_url, .{}) catch |err| {
+        // Pass the certificate trust store to handle HTTPS tests with WPT's self-signed certs
+        const trust_store = self.wpt_browser.browser.getCertificateTrustStore();
+        var fetch_result = navigation.fetchUrl(self.allocator, test_url, .{
+            .trust_store = trust_store,
+        }) catch |err| {
             var result = try test_harness.TestResult.init(self.allocator, test_path);
             result.status = .@"error";
             result.message = try std.fmt.allocPrint(self.allocator, "Failed to fetch test from {s}: {}", .{ test_url, err });
