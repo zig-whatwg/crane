@@ -56,10 +56,9 @@ const fetch_interception = fetch.interception;
 const network = fetch.network;
 const certificate_trust = network.certificate_trust;
 const html = @import("html");
-// NOTE: service_worker cannot be imported directly due to circular dependency
-// (service_worker imports interfaces). The fetch interception infrastructure
-// is in place via src/fetch/interception/ - wiring will be done when the
-// module structure is refactored to break the cycle.
+// Service worker support via leaf modules (no WebIDL dependency cycle)
+const sw_common = @import("service_worker").common;
+const sw_manager = @import("service_worker").manager;
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;

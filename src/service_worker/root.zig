@@ -68,6 +68,16 @@ pub const NavigationPreloadState = types.NavigationPreloadState;
 pub const CacheQueryOptions = types.CacheQueryOptions;
 pub const MultiCacheQueryOptions = types.MultiCacheQueryOptions;
 
+// Common types and opaque handles (NO WebIDL dependencies - safe for Browser import)
+pub const common = @import("common.zig");
+pub const RegistrationHandle = common.RegistrationHandle;
+pub const ServiceWorkerHandle = common.ServiceWorkerHandle;
+pub const RegistrationKey = common.RegistrationKey;
+
+// Browser-side manager (NO WebIDL dependencies - safe for Browser import)
+pub const manager = @import("manager.zig");
+pub const ServiceWorkerManager = manager.ServiceWorkerManager;
+
 // Timing
 pub const timing = @import("timing.zig");
 pub const TimingInfo = timing.TimingInfo;
@@ -86,7 +96,7 @@ pub const WindowClient = client.WindowClient;
 // Global state
 pub const registration_map = @import("registration_map.zig");
 pub const RegistrationMap = registration_map.RegistrationMap;
-pub const RegistrationKey = registration_map.RegistrationKey;
+// Note: RegistrationKey is now exported from common.zig above
 
 // Job queue
 pub const job = @import("job.zig");
