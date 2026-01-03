@@ -429,6 +429,20 @@ pub const HttpServer = struct {
             return try self.generateWorkerWrapper(original_js, response);
         }
 
+        // Check for .any.serviceworker.js → generate serviceworker wrapper script
+        // This is the script that gets executed in the ServiceWorker context
+        // It imports testharness.js first, then the actual test file
+        if (std.mem.endsWith(u8, path, ".any.serviceworker.js")) {
+            const base_path = path[0 .. path.len - 21]; // Remove ".any.serviceworker.js"
+            const original_js = try std.mem.concat(self.allocator, u8, &.{
+                base_path,
+                ".any.js",
+            });
+            defer self.allocator.free(original_js);
+
+            return try self.generateServiceWorkerWrapper(original_js, response);
+        }
+
         // Check for .window.html → generate from .window.js
         if (std.mem.endsWith(u8, path, ".window.html")) {
             const js_path = try std.mem.concat(self.allocator, u8, &.{
@@ -481,6 +495,37 @@ pub const HttpServer = struct {
             try html.appendSlice(self.allocator, "<script>\nfetch_tests_from_worker(new Worker(\"");
             try html.appendSlice(self.allocator, worker_js_url);
             try html.appendSlice(self.allocator, "\"));\n</script>\n");
+        } else if (std.mem.eql(u8, test_type, "serviceworker")) {
+            // ServiceWorker test - register SW with the test script and use fetch_tests_from_worker
+            // The SW wrapper script loads testharness.js first, then the actual test file
+            const sw_js_url = try std.mem.concat(self.allocator, u8, &.{
+                js_url[0 .. js_url.len - 3], // Remove ".js"
+                ".serviceworker.js",
+            });
+            defer self.allocator.free(sw_js_url);
+
+            // Use service_worker_test helper from testharness.js
+            // This registers the SW and uses fetch_tests_from_worker with navigator.serviceWorker
+            try html.appendSlice(self.allocator,
+                \\<script>
+                \\(async function() {
+                \\  const scope = new URL('./', location.href).href;
+                \\  try {
+                \\    const reg = await navigator.serviceWorker.register('
+            );
+            try html.appendSlice(self.allocator, sw_js_url);
+            try html.appendSlice(self.allocator,
+                \\', {scope: scope});
+                \\    await navigator.serviceWorker.ready;
+                \\    fetch_tests_from_worker(navigator.serviceWorker);
+                \\  } catch (e) {
+                \\    // Report error if SW registration fails
+                \\    test(function() { throw e; }, 'ServiceWorker registration');
+                \\  }
+                \\})();
+                \\</script>
+                \\
+            );
         } else {
             // Window or any test - include script directly
             try html.appendSlice(self.allocator, "<script src=\"");
@@ -538,6 +583,55 @@ pub const HttpServer = struct {
 
         // Call done() to signal test completion
         // Per testharness.js: in worker context, done() is called after all tests are defined
+        try script.appendSlice(self.allocator, "done();\n");
+
+        response.status_code = 200;
+        response.status_text = "OK";
+        try response.setHeader("Content-Type", "application/javascript;charset=utf-8");
+        response.body = try script.toOwnedSlice(self.allocator);
+
+        return true;
+    }
+
+    /// Generate serviceworker wrapper script for .any.serviceworker.js requests
+    /// This script loads testharness.js first, then the actual test file
+    /// Per WPT: ServiceWorkers need a wrapper that imports testharness.js before the test
+    fn generateServiceWorkerWrapper(self: *Self, original_js_path: []const u8, response: *HttpResponse) !bool {
+        // Check if the original JS file exists
+        const file_path = if (original_js_path.len > 0 and original_js_path[0] == '/')
+            original_js_path[1..]
+        else
+            original_js_path;
+
+        const full_path = try std.fs.path.join(self.allocator, &.{ self.config.wpt_root, file_path });
+        defer self.allocator.free(full_path);
+
+        std.fs.cwd().access(full_path, .{}) catch return false;
+
+        // Generate serviceworker wrapper script
+        var script = std.ArrayListUnmanaged(u8){};
+        errdefer script.deinit(self.allocator);
+
+        // Set up GLOBAL object for WPT serviceworker context
+        try script.appendSlice(self.allocator,
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isServiceWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+            \\
+        );
+
+        // Import testharness.js first
+        try script.appendSlice(self.allocator, "importScripts(\"/resources/testharness.js\");\n");
+
+        // Import the actual test file
+        try script.appendSlice(self.allocator, "importScripts(\"");
+        try script.appendSlice(self.allocator, original_js_path);
+        try script.appendSlice(self.allocator, "\");\n");
+
+        // Call done() to signal test completion
         try script.appendSlice(self.allocator, "done();\n");
 
         response.status_code = 200;

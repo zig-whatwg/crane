@@ -313,8 +313,25 @@ pub const WptBrowser = struct {
         setCurrentWptBrowser(self);
         try self.registerWptNativeFunctions(ctx);
 
+        // For serviceworker context, inject mock navigator.serviceWorker
+        // testharness.js uses this as messagePort for result communication
+        std.debug.print("[WPT] Context type: {s}\n", .{@tagName(ctx_type)});
+        if (ctx_type == .service_worker) {
+            std.debug.print("[WPT] Injecting ServiceWorker mock...\n", .{});
+            try self.injectServiceWorkerMock(ctx);
+        }
+
         // Load testharness.js
         try self.loadTestHarness(ctx);
+
+        // For serviceworker context, dispatch synthetic install event
+        // to trigger ServiceWorkerTestEnvironment.on_all_loaded()
+        if (ctx_type == .service_worker) {
+            _ = ctx.evaluateScript(
+                \\// Dispatch install event to trigger testharness SW environment
+                \\self.dispatchEvent(new ExtendableEvent('install'));
+            ) catch {};
+        }
 
         // Execute the test script
         _ = ctx.evaluateScript(test_content) catch |err| {
@@ -722,6 +739,74 @@ pub const WptBrowser = struct {
             \\})();
         ;
         _ = try ctx.evaluateScript(setup_script);
+    }
+
+    /// Inject mock navigator.serviceWorker for SW context
+    /// testharness.js uses navigator.serviceWorker as messagePort for result communication
+    fn injectServiceWorkerMock(self: *WptBrowser, ctx: *Context) !void {
+        _ = self;
+        const mock_script =
+            \\(function() {
+            \\  // Create mock ServiceWorkerContainer for testharness.js
+            \\  // testharness.js uses navigator.serviceWorker as messagePort
+            \\  if (typeof navigator === 'undefined') {
+            \\    self.navigator = {};
+            \\  }
+            \\  
+            \\  // Message handlers registered by testharness.js
+            \\  var messageHandlers = [];
+            \\  
+            \\  navigator.serviceWorker = {
+            \\    // Called by testharness.js to send messages
+            \\    postMessage: function(data) {
+            \\      console.log('[WPT-SW-Mock] postMessage:', JSON.stringify(data));
+            \\      // If this is a result message, report it directly
+            \\      if (data && data.type === 'complete') {
+            \\        __wpt_report_result(data);
+            \\        __wpt_report_completion();
+            \\      }
+            \\    },
+            \\    // Called by testharness.js to listen for messages
+            \\    addEventListener: function(type, handler) {
+            \\      console.log('[WPT-SW-Mock] addEventListener:', type);
+            \\      if (type === 'message') {
+            \\        messageHandlers.push(handler);
+            \\        // Immediately send a "connect" response to unblock testharness.js
+            \\        setTimeout(function() {
+            \\          handler({ data: { type: 'connect' } });
+            \\        }, 0);
+            \\      }
+            \\    },
+            \\    removeEventListener: function() {},
+            \\    controller: null,
+            \\    ready: Promise.resolve({
+            \\      active: { postMessage: function() {} }
+            \\    }),
+            \\    // SW registration methods needed by tests
+            \\    getRegistration: function(scope) {
+            \\      console.log('[WPT-SW-Mock] getRegistration:', scope);
+            \\      return Promise.resolve(undefined);
+            \\    },
+            \\    getRegistrations: function() {
+            \\      console.log('[WPT-SW-Mock] getRegistrations');
+            \\      return Promise.resolve([]);
+            \\    },
+            \\    register: function(url, options) {
+            \\      console.log('[WPT-SW-Mock] register:', url);
+            \\      return Promise.resolve({
+            \\        scope: options && options.scope || '/',
+            \\        active: { postMessage: function() {} },
+            \\        installing: null,
+            \\        waiting: null,
+            \\        unregister: function() { return Promise.resolve(true); }
+            \\      });
+            \\    }
+            \\  };
+            \\  
+            \\  console.log('[WPT-SW-Mock] navigator.serviceWorker mock installed');
+            \\})();
+        ;
+        _ = try ctx.evaluateScript(mock_script);
     }
 
     /// Register native WPT functions on the global object

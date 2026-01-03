@@ -131,10 +131,35 @@ pub fn call_getRegistrations(instance: *runtime.Instance) anyerror!runtime.JSVal
 }
 
 /// Operation: getRegistration
+/// Returns a Promise that resolves to the ServiceWorkerRegistration for the given scope, or undefined.
 pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(runtime.USVString)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = clientURL;
-    return error.NotImplemented;
+    _ = clientURL; // TODO: Use this to filter by scope
+
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return error.InvalidState;
+    };
+
+    // Get allocator from internal state
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidState;
+    const allocator = internal.allocator;
+
+    // Create a Promise that resolves to undefined (no registration found)
+    // TODO: Actually look up registrations in the registry
+    const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
+        return error.InvalidState;
+    };
+
+    // Resolve with undefined (no matching registration) - null value = undefined
+    engine.resolvePromise(engine_ctx, promise_handle, null) catch {
+        return error.InvalidState;
+    };
+
+    return getPromiseAndCleanup(engine, promise_handle, allocator);
 }
 
 /// Operation: register
