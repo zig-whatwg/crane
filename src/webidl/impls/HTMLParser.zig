@@ -249,6 +249,8 @@ pub const ScriptingParseOptions = struct {
     /// parsing so that scripts executing during parsing can access DOM elements via
     /// document.getElementById(), document.querySelector(), etc.
     existing_document: ?*runtime.Instance = null,
+    /// Certificate trust store for HTTPS script fetching (e.g., WPT self-signed certs)
+    trust_store: ?*const @import("fetch").network.CertificateTrustStore = null,
 };
 
 /// Parse an HTML document with scripting support
@@ -332,6 +334,9 @@ pub fn parseHTMLWithScripting(
         &tree_builder,
         options.scripting_enabled,
     );
+
+    // Set trust store for HTTPS script fetching (e.g., WPT self-signed certs)
+    script_context.trust_store = options.trust_store;
 
     // Set base URL for resolving relative script URLs
     script_context.setBaseUrl(options.base_url);

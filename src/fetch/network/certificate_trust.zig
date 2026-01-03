@@ -262,6 +262,7 @@ pub const CertificateTrustStore = struct {
         }
 
         // Then append all custom trusted certificates
+        var cert_count: usize = 0;
         var it = self.trusted_certs.iterator();
         while (it.next()) |entry| {
             for (entry.value_ptr.items) |cert| {
@@ -270,6 +271,7 @@ pub const CertificateTrustStore = struct {
                 if (cert.pem_data.len > 0 and cert.pem_data[cert.pem_data.len - 1] != '\n') {
                     try file.writeAll("\n");
                 }
+                cert_count += 1;
             }
         }
 

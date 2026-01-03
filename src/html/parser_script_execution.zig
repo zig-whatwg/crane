@@ -87,6 +87,10 @@ pub const ParserScriptContext = struct {
     script_loader_fn: ?ScriptLoaderFn = null,
     script_loader_ctx: ?*anyopaque = null,
 
+    /// Certificate trust store for HTTPS script fetching.
+    /// Required for fetching scripts from HTTPS URLs with custom/self-signed certificates.
+    trust_store: ?*const fetch.network.CertificateTrustStore = null,
+
     /// Create a new parser script context.
     pub fn init(
         allocator: Allocator,
@@ -142,7 +146,7 @@ pub const ParserScriptContext = struct {
         defer if (resolved_url.ptr != url.ptr) self.allocator.free(resolved_url);
 
         // Default: HTTP fetch like a real browser
-        return fetchScriptViaHttp(self.allocator, resolved_url);
+        return fetchScriptViaHttp(self.allocator, resolved_url, self.trust_store);
     }
 
     /// Get the DOM element for a TreeNode (if it has been converted).
@@ -355,13 +359,36 @@ fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8)
 ///
 /// This is the default behavior when no custom script loader is provided.
 /// It uses the Fetch API to retrieve scripts from URLs.
-fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
-
+fn fetchScriptViaHttp(
+    allocator: Allocator,
+    url: []const u8,
+    trust_store: ?*const fetch.network.CertificateTrustStore,
+) ?[]const u8 {
     // Use the fetch module to retrieve the script
-    const response = fetch.fetchSimple(allocator, url) catch |err| {
+    // Create a request so we can pass fetch options including trust_store
+    const request = fetch.internal.InternalRequest.init(allocator, url) catch {
+        std.debug.print("Failed to create request for script {s}\n", .{url});
+        return null;
+    };
+    defer request.deinit();
+
+    // Debug: Check if trust_store is being passed
+    if (trust_store) |ts| {
+        if (ts.getCaBundlePath()) |path| {
+            std.debug.print("[DEBUG] fetchScriptViaHttp: trust_store has CA path: {s}\n", .{path});
+        } else {
+            std.debug.print("[DEBUG] fetchScriptViaHttp: trust_store exists but getCaBundlePath() is null\n", .{});
+        }
+    } else {
+        std.debug.print("[DEBUG] fetchScriptViaHttp: trust_store is NULL!\n", .{});
+    }
+
+    const result = fetch.algorithms.fetch_algorithm.fetch(allocator, request, .{ .trust_store = trust_store }) catch |err| {
         std.debug.print("HTTP fetch error for script {s}: {}\n", .{ url, err });
         return null;
     };
+    const response = result.response;
+    // Note: timing_info is const, no need to deinit
     defer response.deinit();
 
     // Check for successful response (2xx status)

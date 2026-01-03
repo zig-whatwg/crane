@@ -85,6 +85,8 @@ pub const WptBrowser = struct {
     testharness_js: ?[]const u8,
     /// Cached testharnessreport.js content
     testharnessreport_js: ?[]const u8,
+    /// CA bundle path for HTTPS cert validation (freed in deinit)
+    ca_bundle_path: ?[]const u8,
     /// Number of tests run
     tests_run: usize,
     /// Test completion state - set by native __wpt_report_completion()
@@ -121,6 +123,7 @@ pub const WptBrowser = struct {
             .test_message = null,
             .test_message_owned = false,
             .stored_subtests = .{},
+            .ca_bundle_path = null,
         };
 
         // Load WPT self-signed certificates for HTTPS tests
@@ -198,12 +201,18 @@ pub const WptBrowser = struct {
                 std.debug.print("[WPT] Warning: Failed to generate CA bundle: {}\n", .{err});
                 return;
             };
-            defer allocator.free(bundle_path);
+            // Don't free bundle_path here - it's needed for the lifetime of the WptBrowser
+            // Store it via the trust_store for later cleanup
 
             // Set the CA bundle path so curl uses it
             trust_store.setCaBundlePath(bundle_path) catch |err| {
                 std.debug.print("[WPT] Warning: Failed to set CA bundle path: {}\n", .{err});
+                allocator.free(bundle_path);
+                return;
             };
+
+            // setCaBundlePath duplicates the path internally, so we free the original
+            allocator.free(bundle_path);
         }
     }
 
@@ -337,7 +346,8 @@ pub const WptBrowser = struct {
         context_type: browser_mod.ContextType,
     ) !test_harness.TestResult {
         // Navigate to create fresh context with the specified context type
-        try self.browser.navigate(base_url, context_type);
+        // Use skip_load: true since we already have html_content - don't fetch it again
+        try self.browser.navigateWithOptions(base_url, context_type, .{ .skip_load = true });
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
@@ -352,6 +362,7 @@ pub const WptBrowser = struct {
         ctx.loadHTML(html_content, .{
             .base_url = base_url,
             .scripting_enabled = true,
+            .trust_store = self.browser.getCertificateTrustStore(),
             // No script_loader - browser fetches scripts via HTTP
         }) catch |err| {
             var result = try test_harness.TestResult.init(self.allocator, test_path);

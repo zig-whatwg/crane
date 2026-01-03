@@ -1601,6 +1601,8 @@ pub const Context = struct {
         /// Custom script loader (optional)
         /// If null, external scripts will use default HTTP fetch
         script_loader: ?ScriptLoader = null,
+        /// Certificate trust store for HTTPS script fetching (e.g., WPT self-signed certs)
+        trust_store: ?*const @import("fetch").network.CertificateTrustStore = null,
     };
 
     /// Load and parse HTML content into the document
@@ -1691,6 +1693,7 @@ pub const Context = struct {
                 .base_url = options.base_url,
                 .script_loader = script_loader,
                 .existing_document = document,
+                .trust_store = options.trust_store,
             },
         ) catch |err| {
             std.debug.print("HTML parse error: {}\n", .{err});

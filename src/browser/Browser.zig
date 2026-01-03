@@ -413,9 +413,20 @@ pub const Browser = struct {
     /// 2. Create new V8 context
     /// 3. Register browser globals (skipped if using snapshot)
     /// 4. Fetch URL content
+    /// Navigation options for navigate()
+    pub const NavigateOptions = struct {
+        /// If true, skip fetching the page (useful when content will be loaded via loadHTML)
+        skip_load: bool = false,
+    };
+
     /// 5. Parse HTML and execute scripts
     /// 6. Fire DOMContentLoaded and load events
     pub fn navigate(self: *Browser, url: []const u8, context_type: context_mod.ContextType) !void {
+        return self.navigateWithOptions(url, context_type, .{});
+    }
+
+    /// Navigate with options - allows skipping the initial page load
+    pub fn navigateWithOptions(self: *Browser, url: []const u8, context_type: context_mod.ContextType, options: NavigateOptions) !void {
         const isolate = self.isolate orelse return error.NotInitialized;
 
         // Terminate all workers from the previous context before destroying it.
@@ -450,7 +461,10 @@ pub const Browser = struct {
         self.current_context = ctx;
 
         // Navigation loading is handled by Context.loadPage()
-        try ctx.loadPage();
+        // Skip if caller will provide content via loadHTML
+        if (!options.skip_load) {
+            try ctx.loadPage();
+        }
     }
 
     /// Reload the current page
