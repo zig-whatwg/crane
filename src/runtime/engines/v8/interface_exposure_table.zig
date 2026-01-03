@@ -166,6 +166,24 @@ pub fn getInterfaceName(index: InterfaceIndex) ?[]const u8 {
     return InterfaceCatalog.getValidInterfaces()[index].name;
 }
 
+/// Count how many interfaces are exposed in a given scope
+///
+/// Used for BSCOPE-08 validation to verify different scopes have
+/// different interface counts (e.g., Window has more than AudioWorklet).
+pub fn getExposedInterfaceCountForScope(scope: GlobalScopeKind) usize {
+    var count: usize = 0;
+    const scope_idx = @intFromEnum(scope);
+    if (scope_idx >= scope_count) {
+        return 0;
+    }
+    for (0..interface_count) |i| {
+        if (exposure_table[i][scope_idx]) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
 // ============================================================================
 // Comptime-Generated Exposure Table
 // ============================================================================
@@ -350,4 +368,25 @@ test "exposure table - ExposedScopes helpers" {
     scopes.audio_worklet = true;
     try std.testing.expectEqual(@as(usize, 3), scopes.count());
     try std.testing.expect(scopes.isExposedInAnyWorklet());
+}
+
+test "exposure table - getExposedInterfaceCountForScope" {
+    // Window should have more interfaces than AudioWorklet
+    const window_count = getExposedInterfaceCountForScope(.window);
+    const audio_worklet_count = getExposedInterfaceCountForScope(.audio_worklet);
+
+    // Window is the main browsing context, should have most interfaces
+    try std.testing.expect(window_count > 0);
+
+    // AudioWorklet is a specialized context with fewer interfaces
+    // Window should have more or equal interfaces
+    try std.testing.expect(window_count >= audio_worklet_count);
+
+    // DedicatedWorker should also have interfaces
+    const dedicated_worker_count = getExposedInterfaceCountForScope(.dedicated_worker);
+    try std.testing.expect(dedicated_worker_count > 0);
+
+    // All scope counts should be deterministic
+    const window_count2 = getExposedInterfaceCountForScope(.window);
+    try std.testing.expectEqual(window_count, window_count2);
 }
