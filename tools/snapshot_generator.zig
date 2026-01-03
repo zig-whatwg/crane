@@ -172,9 +172,9 @@ pub fn main() !void {
     log(allocator, "  5c: Entering default context and registering interfaces...\\n", .{});
     v8.ffi.v8_Context_Enter(default_context);
 
-    // Register ALL WebIDL interfaces in this context
-    interface_bindings.initializeBindings(isolate, default_context);
-    log(allocator, "  5d: WebIDL interfaces registered in default context\\n", .{});
+    // Register only Window-exposed WebIDL interfaces in default context
+    interface_bindings.initializeBindingsForScope(isolate, default_context, .Window);
+    log(allocator, "  5d: Window-scoped WebIDL interfaces registered in default context\\n", .{});
 
     // Exit context before adding to snapshot
     v8.ffi.v8_Context_Exit(default_context);
@@ -190,10 +190,9 @@ pub fn main() !void {
     log(allocator, "  5e: Creating indexed contexts for each scope kind...\\n", .{});
 
     // Create a context for each implemented scope kind
-    // Use inline for to make scope_index comptime-known (required by installForScope)
+    // Use inline for to make scope_index comptime-known (required by initializeBindingsForScope)
     inline for (SnapshotContextIndex.implemented) |scope_index| {
-        // scope_index.toHelperScope() available for scope-specific filtering if needed
-        _ = scope_index.toHelperScope(); // silence unused warning
+        const helper_scope = comptime scope_index.toHelperScope();
         const scope_name = scope_index.globalInterfaceName();
 
         log(allocator, "    Creating context for {s} (index {d})...\\n", .{ scope_name, @intFromEnum(scope_index) });
@@ -209,10 +208,9 @@ pub fn main() !void {
         // Enter context and register scope-specific interfaces
         v8.ffi.v8_Context_Enter(scope_context);
 
-        // Register ALL interfaces in each context (same as default context)
-        // This ensures consistent interface availability. Runtime filtering can
-        // be applied if scope-specific restrictions are needed.
-        interface_bindings.initializeBindings(isolate, scope_context);
+        // Register only interfaces exposed to this specific scope
+        // Each scope gets only the interfaces defined by [Exposed] attribute
+        interface_bindings.initializeBindingsForScope(isolate, scope_context, helper_scope);
 
         // Exit context before adding to snapshot
         v8.ffi.v8_Context_Exit(scope_context);

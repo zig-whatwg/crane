@@ -447,6 +447,54 @@ pub fn initializeBindingsWithGlobalTemplate(
     // Step 8: WindowProperties insertion is deferred (same as initializeBindings)
 }
 
+/// Initialize bindings for a specific scope context (used by snapshot generator)
+///
+/// This is the SCOPE-FILTERED path for context initialization. Only interfaces
+/// that are exposed to the given scope are registered on the global object.
+///
+/// This enables proper scope isolation:
+/// - Window context gets Document, Window-specific APIs
+/// - DedicatedWorker context gets WorkerGlobalScope, but NOT Document
+/// - ServiceWorker context gets ServiceWorkerGlobalScope, clients, etc.
+/// - AudioWorklet context gets AudioWorkletGlobalScope, but NOT DOM APIs
+///
+/// Per WebIDL spec, the [Exposed] extended attribute controls which global
+/// scopes an interface is available in.
+pub fn initializeBindingsForScope(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    comptime scope: helpers.GlobalScope,
+) void {
+    // Step 1: Register only interfaces exposed to this scope
+    installForScope(isolate, context, scope);
+
+    // Step 2: Set up constructor inheritance chain
+    // This sets Element.__proto__ = Node, etc. on the constructor functions
+    setupConstructorInheritance(isolate, context);
+
+    // Step 3: Register legacy factory functions
+    // These are separate constructors that create instances of other interfaces
+    // e.g., Image creates HTMLImageElement, Audio creates HTMLAudioElement
+    registerLegacyFactoryFunctions(isolate, context);
+
+    // Step 4: Register Intl namespace (pure Zig i18n - replaces ICU)
+    const intl_binding = @import("intl_binding.zig");
+    intl_binding.registerGlobal(isolate, context);
+
+    // Step 5: Register toLocaleString methods on built-in prototypes
+    intl_binding.registerToLocaleStringMethods(isolate, context);
+
+    // Step 6: Register legacy interface aliases
+    // These are historical aliases that map to other interfaces
+    // e.g., HTMLDocument is an alias for Document per HTML spec
+    registerLegacyInterfaceAliases(isolate, context);
+
+    // Step 7: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
+    // (See comment in initializeBindings for explanation)
+
+    // Step 8: WindowProperties insertion is deferred (same as initializeBindings)
+}
+
 /// Register legacy interface aliases
 ///
 /// Per HTML spec, some interfaces have historical aliases that should be
