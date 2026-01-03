@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SVGAnimatedLength = @import("interfaces").SVGAnimatedLength;
-const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
+const SVGAnimatedLength = @import("SVGAnimatedLength.zig").SVGAnimatedLength;
+const SVGAnimatedString = @import("SVGAnimatedString.zig").SVGAnimatedString;
 
 pub const SVGFilterPrimitiveStandardAttributes = struct {
     pub const Meta = struct {

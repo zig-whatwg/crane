@@ -10,14 +10,14 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SpeechSynthesisEvent = @import("interfaces").SpeechSynthesisEvent;
+const SpeechSynthesisEvent = @import("SpeechSynthesisEvent.zig").SpeechSynthesisEvent;
 const SpeechSynthesisErrorCode = @import("enums").SpeechSynthesisErrorCode;
 const SpeechSynthesisErrorEventInit = @import("dictionaries").SpeechSynthesisErrorEventInit;
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const SpeechSynthesisEventInit = @import("dictionaries").SpeechSynthesisEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const SpeechSynthesisUtterance = @import("interfaces").SpeechSynthesisUtterance;
+const SpeechSynthesisUtterance = @import("SpeechSynthesisUtterance.zig").SpeechSynthesisUtterance;
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechSynthesisErrorEvent = struct {

@@ -240,7 +240,12 @@ pub fn writeImports(
     // Import base type if present
     if (base_type) |base| {
         if (getImportModuleWithFallback(base, type_registry, "interfaces")) |module| {
-            try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ base, module, base });
+            // Use direct peer imports for interface types to avoid fat-module dependency
+            if (std.mem.eql(u8, module, "interfaces")) {
+                try writer.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ base, base, base });
+            } else {
+                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ base, module, base });
+            }
             try imported.put(base, {});
         }
     }
@@ -248,7 +253,8 @@ pub fn writeImports(
     // Import mixin types
     for (mixins) |mixin| {
         if (!imported.contains(mixin)) {
-            if (getImportModuleWithFallback(mixin, type_registry, "interfaces")) |module| {
+            if (getImportModuleWithFallback(mixin, type_registry, "mixins")) |module| {
+                // Mixins use "mixins" module, not direct peer imports
                 try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
                 try imported.put(mixin, {});
             }
@@ -297,7 +303,12 @@ pub fn writeImports(
 
             // Try to get the import module - skip if type is not registered
             if (getImportModuleWithFallback(ref, type_registry, "interfaces")) |module| {
-                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ ref, module, ref });
+                // Use direct peer imports for interface types to avoid fat-module dependency
+                if (std.mem.eql(u8, module, "interfaces")) {
+                    try writer.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ ref, ref, ref });
+                } else {
+                    try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ ref, module, ref });
+                }
                 try imported.put(ref, {});
             }
             // If module is null, the type is not in the registry - skip it silently
@@ -3742,8 +3753,8 @@ test "writeImports includes base type" {
 
     // Should import impl from "impls" module
     try testing.expect(std.mem.indexOf(u8, output, "const NodeImpl = @import(\"impls\").Node;") != null);
-    // Should import base type from "interfaces" module
-    try testing.expect(std.mem.indexOf(u8, output, "const EventTarget = @import(\"interfaces\").EventTarget;") != null);
+    // Should import base type as direct peer import (breaks circular dependency)
+    try testing.expect(std.mem.indexOf(u8, output, "const EventTarget = @import(\"EventTarget.zig\").EventTarget;") != null);
 }
 
 test "writeImports includes mixins" {
@@ -3759,9 +3770,9 @@ test "writeImports includes mixins" {
 
     // Should import impl from "impls" module
     try testing.expect(std.mem.indexOf(u8, output, "const ElementImpl = @import(\"impls\").Element;") != null);
-    // Should import both mixins from "interfaces" module
-    try testing.expect(std.mem.indexOf(u8, output, "const ParentNode = @import(\"interfaces\").ParentNode;") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "const ChildNode = @import(\"interfaces\").ChildNode;") != null);
+    // Should import both mixins from "mixins" module
+    try testing.expect(std.mem.indexOf(u8, output, "const ParentNode = @import(\"mixins\").ParentNode;") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "const ChildNode = @import(\"mixins\").ChildNode;") != null);
 }
 
 test "writeImports includes both base and mixins" {
@@ -3794,9 +3805,9 @@ test "writeImports includes referenced interfaces" {
 
     const output = buffer.items;
 
-    // Should import referenced interfaces from "interfaces" module
-    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"interfaces\").Node;") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "const Document = @import(\"interfaces\").Document;") != null);
+    // Should import referenced interfaces as direct peer imports (breaks circular dependency)
+    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"Node.zig\").Node;") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "const Document = @import(\"Document.zig\").Document;") != null);
 }
 
 test "writeImports avoids duplicate imports" {

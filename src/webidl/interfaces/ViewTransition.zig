@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ViewTransitionTypeSet = @import("interfaces").ViewTransitionTypeSet;
-const Element = @import("interfaces").Element;
+const ViewTransitionTypeSet = @import("ViewTransitionTypeSet.zig").ViewTransitionTypeSet;
+const Element = @import("Element.zig").Element;
 
 pub const ViewTransition = struct {
     pub const Meta = struct {

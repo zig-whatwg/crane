@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceEntry = @import("interfaces").PerformanceEntry;
+const PerformanceEntry = @import("PerformanceEntry.zig").PerformanceEntry;
 const ByteString = @import("typedefs").ByteString;
 const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;
-const PerformanceServerTiming = @import("interfaces").PerformanceServerTiming;
+const PerformanceServerTiming = @import("PerformanceServerTiming.zig").PerformanceServerTiming;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
 

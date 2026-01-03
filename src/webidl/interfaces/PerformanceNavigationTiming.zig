@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceResourceTiming = @import("interfaces").PerformanceResourceTiming;
+const PerformanceResourceTiming = @import("PerformanceResourceTiming.zig").PerformanceResourceTiming;
 const ByteString = @import("typedefs").ByteString;
-const NotRestoredReasons = @import("interfaces").NotRestoredReasons;
-const PerformanceServerTiming = @import("interfaces").PerformanceServerTiming;
+const NotRestoredReasons = @import("NotRestoredReasons.zig").NotRestoredReasons;
+const PerformanceServerTiming = @import("PerformanceServerTiming.zig").PerformanceServerTiming;
 const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const PerformanceTimingConfidence = @import("interfaces").PerformanceTimingConfidence;
+const PerformanceTimingConfidence = @import("PerformanceTimingConfidence.zig").PerformanceTimingConfidence;
 const NavigationTimingType = @import("enums").NavigationTimingType;
 const DOMString = @import("typedefs").DOMString;
 

@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CanvasGradient = @import("interfaces").CanvasGradient;
+const CanvasGradient = @import("CanvasGradient.zig").CanvasGradient;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
-const CanvasPattern = @import("interfaces").CanvasPattern;
+const CanvasPattern = @import("CanvasPattern.zig").CanvasPattern;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CanvasFillStrokeStyles = struct {

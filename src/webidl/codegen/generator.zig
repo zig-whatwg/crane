@@ -297,9 +297,11 @@ fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types
 }
 
 /// Generate root.zig file that exports all interfaces by scanning the directory
+/// Only includes interfaces that have corresponding impl files
 pub fn generateInterfacesRoot(
     allocator: std.mem.Allocator,
     interfaces_path: []const u8,
+    impls_path: []const u8,
     _: []const []const u8, // interface_names - ignored, we scan the directory instead
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ interfaces_path, "root.zig" });
@@ -328,6 +330,19 @@ pub fn generateInterfacesRoot(
 
         // Extract interface name from filename (remove .zig extension)
         const name = entry.name[0 .. entry.name.len - 4];
+
+        // Only include interfaces that have corresponding impl files
+        const impl_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{name});
+        defer allocator.free(impl_filename);
+        const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
+        defer allocator.free(impl_path);
+
+        // Check if impl file exists
+        std.fs.cwd().access(impl_path, .{}) catch {
+            // No corresponding impl, skip this interface
+            continue;
+        };
+
         try interface_names_list.append(allocator, try allocator.dupe(u8, name));
     }
 
@@ -2188,7 +2203,8 @@ pub fn generateFromFile(
 
     // Generate root.zig files
     if (try cfg.getInterfacesPath()) |interfaces_path| {
-        try generateInterfacesRoot(allocator, interfaces_path, interface_names.items);
+        const impls_path = try cfg.getImplsPath() orelse interfaces_path;
+        try generateInterfacesRoot(allocator, interfaces_path, impls_path, interface_names.items);
     }
 
     if (try cfg.getImplsPath()) |impls_path| {

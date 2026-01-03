@@ -157,8 +157,7 @@ pub const CropTarget = @import("CropTarget.zig");
 pub const Crypto = @import("Crypto.zig");
 pub const CryptoKey = @import("CryptoKey.zig");
 pub const CSS = @import("CSS.zig");
-// CSS2Properties disabled - see interfaces/root.zig for explanation
-// pub const CSS2Properties = @import("CSS2Properties.zig");
+pub const CSS2Properties = @import("CSS2Properties.zig");
 pub const CSSAnimation = @import("CSSAnimation.zig");
 pub const CSSCharsetRule = @import("CSSCharsetRule.zig");
 pub const CSSColor = @import("CSSColor.zig");

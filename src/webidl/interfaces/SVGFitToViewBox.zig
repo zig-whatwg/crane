@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SVGAnimatedRect = @import("interfaces").SVGAnimatedRect;
-const SVGAnimatedPreserveAspectRatio = @import("interfaces").SVGAnimatedPreserveAspectRatio;
+const SVGAnimatedRect = @import("SVGAnimatedRect.zig").SVGAnimatedRect;
+const SVGAnimatedPreserveAspectRatio = @import("SVGAnimatedPreserveAspectRatio.zig").SVGAnimatedPreserveAspectRatio;
 
 pub const SVGFitToViewBox = struct {
     pub const Meta = struct {

@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const URLSearchParams = @import("interfaces").URLSearchParams;
-const Blob = @import("interfaces").Blob;
+const URLSearchParams = @import("URLSearchParams.zig").URLSearchParams;
+const Blob = @import("Blob.zig").Blob;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
-const MediaSource = @import("interfaces").MediaSource;
+const MediaSource = @import("MediaSource.zig").MediaSource;
 
 pub const URL = struct {
     pub const Meta = struct {

@@ -408,7 +408,8 @@ pub fn processDirectory(
     std.debug.print("\nStage 4: Generating root.zig files\n", .{});
 
     if (try cfg.getInterfacesPath()) |interfaces_path| {
-        try generator.generateInterfacesRoot(allocator, interfaces_path, interface_names.items);
+        const impls_path = try cfg.getImplsPath() orelse interfaces_path;
+        try generator.generateInterfacesRoot(allocator, interfaces_path, impls_path, interface_names.items);
         std.debug.print("  ✓ Generated {s}/root.zig\n", .{interfaces_path});
     }
 

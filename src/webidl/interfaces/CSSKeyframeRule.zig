@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("interfaces").CSSRule;
-const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
+const CSSRule = @import("CSSRule.zig").CSSRule;
+const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSKeyframeRule = struct {
