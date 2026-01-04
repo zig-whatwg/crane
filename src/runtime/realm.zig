@@ -212,11 +212,12 @@ pub const GlobalScopeKind = enum {
             .service_worker => true,
 
             // Worklets implemented (BSCOPE-17)
+            // Note: SharedStorageWorklet is NOT implemented (all APIs return NotImplemented)
             .audio_worklet => true,
             .paint_worklet => true,
             .animation_worklet => true,
             .layout_worklet => true,
-            .shared_storage_worklet => true,
+            .shared_storage_worklet => false,
 
             // ShadowRealm (TC39 Stage 3 - V8 built-in)
             .shadow_realm => true,
@@ -1040,14 +1041,21 @@ test "GlobalScopeKind - isImplemented reflects current status" {
     // SharedWorker now implemented (BSCOPE-11)
     try std.testing.expect(GlobalScopeKind.shared_worker.isImplemented());
 
-    // Not implemented contexts
-    try std.testing.expect(!GlobalScopeKind.service_worker.isImplemented());
-    try std.testing.expect(!GlobalScopeKind.audio_worklet.isImplemented());
-    try std.testing.expect(!GlobalScopeKind.paint_worklet.isImplemented());
-    try std.testing.expect(!GlobalScopeKind.animation_worklet.isImplemented());
-    try std.testing.expect(!GlobalScopeKind.layout_worklet.isImplemented());
+    // ServiceWorker implemented (BSCOPE-15/16)
+    try std.testing.expect(GlobalScopeKind.service_worker.isImplemented());
+
+    // Worklets implemented (BSCOPE-17)
+    // Note: SharedStorageWorklet is NOT implemented (all APIs return NotImplemented)
+    try std.testing.expect(GlobalScopeKind.audio_worklet.isImplemented());
+    try std.testing.expect(GlobalScopeKind.paint_worklet.isImplemented());
+    try std.testing.expect(GlobalScopeKind.animation_worklet.isImplemented());
+    try std.testing.expect(GlobalScopeKind.layout_worklet.isImplemented());
     try std.testing.expect(!GlobalScopeKind.shared_storage_worklet.isImplemented());
-    try std.testing.expect(!GlobalScopeKind.shadow_realm.isImplemented());
+
+    // ShadowRealm implemented (BSCOPE-21 - TC39 Stage 3, V8 built-in)
+    try std.testing.expect(GlobalScopeKind.shadow_realm.isImplemented());
+
+    // Unknown is not implemented
     try std.testing.expect(!GlobalScopeKind.unknown.isImplemented());
 }
 

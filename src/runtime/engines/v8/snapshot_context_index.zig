@@ -203,7 +203,8 @@ pub const SnapshotContextIndex = enum(usize) {
     pub const count: usize = 10;
 
     /// Currently implemented context types
-    /// Window, workers, and worklets are fully implemented
+    /// Window, workers, worklets (except SharedStorageWorklet), and ShadowRealm are fully implemented
+    /// Note: SharedStorageWorklet is excluded because its impl returns NotImplemented for all APIs
     pub const implemented = [_]SnapshotContextIndex{
         .window,
         .dedicated_worker,
@@ -213,7 +214,7 @@ pub const SnapshotContextIndex = enum(usize) {
         .paint_worklet,
         .animation_worklet,
         .layout_worklet,
-        .shared_storage_worklet,
+        .shadow_realm,
     };
 
     /// All context types for iteration
@@ -332,7 +333,7 @@ test "implemented contexts" {
     try testing.expectEqual(SnapshotContextIndex.paint_worklet, SnapshotContextIndex.implemented[5]);
     try testing.expectEqual(SnapshotContextIndex.animation_worklet, SnapshotContextIndex.implemented[6]);
     try testing.expectEqual(SnapshotContextIndex.layout_worklet, SnapshotContextIndex.implemented[7]);
-    try testing.expectEqual(SnapshotContextIndex.shared_storage_worklet, SnapshotContextIndex.implemented[8]);
+    try testing.expectEqual(SnapshotContextIndex.shadow_realm, SnapshotContextIndex.implemented[8]);
 
     // Verify isImplemented matches implemented array
     for (SnapshotContextIndex.implemented) |idx| {

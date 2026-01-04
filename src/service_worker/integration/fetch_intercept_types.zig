@@ -95,11 +95,10 @@ pub const InterceptionContext = struct {
 
 /// Intercept a fetch request with service workers.
 ///
-/// This is a STUB implementation for the standalone module. It checks if there's
-/// a controlling service worker and optionally dispatches to it via callback.
+/// Checks if there's a controlling service worker and dispatches to it via callback.
 /// Without a callback, it returns no_interception (network fallback).
 ///
-/// The real service worker fetch event dispatch is handled by the full
+/// The service worker fetch event dispatch is handled by the full
 /// service_worker module when it wires up the dispatch_callback.
 pub fn interceptFetch(request: RequestForInterception, context: InterceptionContext) InterceptionResult {
     // If service workers are disabled for this request, skip interception
@@ -109,12 +108,16 @@ pub fn interceptFetch(request: RequestForInterception, context: InterceptionCont
 
     // Check if we have a dispatch callback for real SW execution
     if (context.dispatch_callback) |callback| {
-        // The callback uses *anyopaque - caller is responsible for providing
-        // a valid service worker pointer. For now, we pass null since this
-        // standalone module doesn't have access to ServiceWorker type.
-        // TODO: Wire this up properly when service_worker module initializes.
-        _ = callback;
-        // For now, fall through to no_interception
+        // Call the dispatch callback to handle the fetch event in the ServiceWorker
+        // The callback is responsible for:
+        // 1. Looking up the controlling ServiceWorker for this request
+        // 2. Creating and dispatching a FetchEvent
+        // 3. Waiting for respondWith() or falling through
+        // Pass the registration_map as context for SW lookup
+        if (callback(@ptrCast(context.registration_map), request)) |sw_response| {
+            return .{ .response = sw_response };
+        }
+        // Callback returned null - no SW handled this, fall through to cache/network
     }
 
     // Check cache lookup if available
