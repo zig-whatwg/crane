@@ -1337,6 +1337,15 @@ pub fn main() !void {
     if (summary.skipped_feature_unsupported > 0) {
         print("\n📋 INFO: {d} tests skipped due to unsupported features\n", .{summary.skipped_feature_unsupported});
     }
+
+    // BSCOPE-23: CI MUST fail if implemented scopes have skipped tests
+    // This catches regressions where previously working scope routing breaks
+    if (summary.hasScopeSkipsForImplementedScopes()) {
+        print("\n❌ CI FAILURE: Tests were skipped for implemented scopes\n", .{});
+        print("   {d} tests skipped due to unsupported scope on implemented GlobalType\n", .{summary.skipped_scope_unsupported});
+        print("   Fix the scope routing or mark the scope as unimplemented\n", .{});
+        std.process.exit(1);
+    }
 }
 
 test "parseArgs basic" {

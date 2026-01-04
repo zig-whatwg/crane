@@ -837,6 +837,8 @@ pub const Summary = struct {
     notrun_subtests: usize = 0,
     /// Tests skipped due to unimplemented global scope
     skipped_scope_unsupported: usize = 0,
+    /// Per-scope-kind skip counts (indexed by GlobalScopeKind enum)
+    skipped_by_scope: [10]usize = [_]usize{0} ** 10,
     /// Tests skipped due to missing feature
     skipped_feature_unsupported: usize = 0,
     /// Tests skipped manually
@@ -881,12 +883,9 @@ pub const Summary = struct {
         try writer.writeAll("================================\n");
     }
 
-    /// Check if any tests were skipped due to scope that should be implemented
-    /// Returns true if there are scope-skips for scopes marked as implemented
+    /// Check if any tests were skipped due to unsupported scope
+    /// Any scope skip is considered a failure since all scopes should be implemented
     pub fn hasScopeSkipsForImplementedScopes(self: Summary) bool {
-        // If we have scope skips, it means tests were skipped for scopes
-        // that the WPT runner encountered. If those scopes are marked as
-        // implemented, this is a problem.
         return self.skipped_scope_unsupported > 0;
     }
 };
