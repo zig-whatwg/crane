@@ -147,22 +147,10 @@ pub const exclusion_patterns: []const []const u8 = &.{
     "bidi/",
     "webdriver/bidi/",
 
-    // HTTP/3 (QUIC) / WebTransport tests (2 failures)
-    // Requires curl built with HTTP/3 support (ngtcp2+nghttp3 or quiche)
-    // and wpt serve configured with H3 endpoint.
-    // curl_ffi.zig has CURL_HTTP_VERSION_3 ready for future enablement.
-    "-h3.",
-    "webtransport-h3",
-
     // Browser-specific tests (1 failure)
     // Tests in browsers/ require specific browser drivers (geckodriver, chromedriver)
     // These test browser automation features, not web platform APIs.
     "browsers/",
-
-    // Proxy Auto-Config (PAC) tests (1 failure)
-    // PAC requires: PAC file fetching, JS evaluation per-request, proxy routing.
-    // Significant infrastructure (~500-1000 LOC) for non-web-platform feature.
-    "server/test-pac",
 
     // File upload tests (1 failure)
     // Requires server-side Python execution for form POST handling.
