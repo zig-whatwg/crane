@@ -328,16 +328,7 @@ pub fn call_addModule(
         return error.OutOfMemory;
     };
 
-    // Mark module as pending in each worklet global scope
-    for (internal.pending_scope_states.items) |scope_state| {
-        scope_state.markModulePending(url_slice) catch |err| {
-            std.log.warn("Worklet.addModule: Failed to mark module pending in scope: {}", .{err});
-            // Continue with other scopes even if one fails
-        };
-    }
-
-    // Create and return a resolved Promise per spec
-    // The addModule method returns a Promise that resolves with undefined on success
+    // Get engine and context for module evaluation
     const ctx = instance.ctx;
     const engine = ctx.getEngine() orelse {
         // No engine available - return undefined as fallback
@@ -346,6 +337,43 @@ pub fn call_addModule(
     const engine_ctx = ctx.engine_ctx orelse {
         return runtime.JSValue{ .undefined = {} };
     };
+
+    // Evaluate the module in V8
+    // Per spec, addModule fetches and evaluates the module script
+    if (engine.compileModule) |compile_fn| {
+        if (compile_fn(engine_ctx, source_copy, url_copy)) |maybe_module| {
+            if (maybe_module) |module| {
+                const has_tla = if (engine.hasTopLevelAwait) |tla_fn| tla_fn(module) else false;
+                if (!has_tla) {
+                    if (engine.runModule) |run_fn| {
+                        _ = run_fn(engine_ctx, module) catch |err| {
+                            std.log.warn("Worklet.addModule: Module evaluation failed: {}", .{err});
+                        };
+                    }
+                } else {
+                    if (engine.runModuleAsync) |run_async_fn| {
+                        _ = run_async_fn(engine_ctx, module) catch |err| {
+                            std.log.warn("Worklet.addModule: Async module evaluation failed: {}", .{err});
+                        };
+                    }
+                }
+                // Update module status to loaded (successfully evaluated)
+                if (internal.module_map.getPtr(url_copy)) |record| {
+                    record.status = .loaded;
+                }
+            }
+        } else |err| {
+            std.log.warn("Worklet.addModule: Module compilation failed: {}", .{err});
+        }
+    }
+
+    // Mark module as pending in each worklet global scope
+    for (internal.pending_scope_states.items) |scope_state| {
+        scope_state.markModulePending(url_slice) catch |err| {
+            std.log.warn("Worklet.addModule: Failed to mark module pending in scope: {}", .{err});
+            // Continue with other scopes even if one fails
+        };
+    }
 
     // Create the Promise
     const promise_handle = engine.createPromise(engine_ctx, internal.allocator) catch {
