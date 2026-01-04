@@ -105,8 +105,9 @@ test "BSCOPE-09: unknown GlobalScopeKind falls back to window" {
 // ============================================================================
 
 test "BSCOPE-09: all 9 scope contexts are implemented" {
-    // Per BSCOPE-09/11/14/17 design, all 9 contexts are now implemented:
-    // Window + 4 workers (dedicated, shared, service, worklet) + 5 worklets
+    // Per BSCOPE-09/11/14/17 design, 9 contexts are now implemented:
+    // Window + 3 workers (dedicated, shared, service) + 4 worklets + ShadowRealm
+    // Note: SharedStorageWorklet is NOT implemented (all APIs return NotImplemented)
 
     try testing.expectEqual(@as(usize, 9), SnapshotContextIndex.implemented.len);
     try testing.expect(SnapshotContextIndex.window.isImplemented());
@@ -117,19 +118,22 @@ test "BSCOPE-09: all 9 scope contexts are implemented" {
     try testing.expect(SnapshotContextIndex.paint_worklet.isImplemented());
     try testing.expect(SnapshotContextIndex.animation_worklet.isImplemented());
     try testing.expect(SnapshotContextIndex.layout_worklet.isImplemented());
-    try testing.expect(SnapshotContextIndex.shared_storage_worklet.isImplemented());
+    try testing.expect(SnapshotContextIndex.shadow_realm.isImplemented());
 
-    // Verify all contexts are implemented
+    // SharedStorageWorklet is NOT implemented (all APIs return NotImplemented)
+    try testing.expect(!SnapshotContextIndex.shared_storage_worklet.isImplemented());
+
+    // Verify implemented count matches
     var implemented_count: usize = 0;
     for (SnapshotContextIndex.all) |idx| {
         if (idx.isImplemented()) {
             implemented_count += 1;
         }
     }
-    // 10 contexts: window, dedicated_worker, shared_worker, service_worker,
-    // audio_worklet, paint_worklet, animation_worklet, layout_worklet,
-    // shared_storage_worklet, shadow_realm
-    try testing.expectEqual(@as(usize, 10), implemented_count);
+    // 9 contexts: window, dedicated_worker, shared_worker, service_worker,
+    // audio_worklet, paint_worklet, animation_worklet, layout_worklet, shadow_realm
+    // (SharedStorageWorklet excluded - not implemented)
+    try testing.expectEqual(@as(usize, 9), implemented_count);
 }
 
 // ============================================================================
