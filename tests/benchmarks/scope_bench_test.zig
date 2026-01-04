@@ -30,7 +30,7 @@ test "memory leak audit: 100 browser create/destroy cycles show no growth" {
     for (0..iterations) |i| {
         var browser = Browser.init(allocator, .{
             .persist_storage = false,
-            .snapshot_path = "", // Disable snapshots for consistent measurement
+            // Use snapshots for production-realistic measurement (BSCOPE-24 requirement)
         }) catch |err| {
             if (err == error.V8InitFailed) {
                 std.debug.print("V8 not available, skipping memory audit\n", .{});
