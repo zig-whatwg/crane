@@ -370,9 +370,14 @@ pub const WptServer = struct {
         if (std.mem.endsWith(u8, test_path, ".any.js")) {
             url_path = test_path[0 .. test_path.len - 7];
             suffix = switch (context) {
+                // Classic worker variants
                 .worker => ".any.worker.html",
                 .sharedworker => ".any.sharedworker.html",
                 .serviceworker => ".any.serviceworker.html",
+                // Module worker variants - WPT generates these with type="module"
+                .worker_module => ".any.worker-module.html",
+                .sharedworker_module => ".any.sharedworker-module.html",
+                .serviceworker_module => ".any.serviceworker-module.html",
                 else => ".any.html",
             };
         } else if (std.mem.endsWith(u8, test_path, ".window.js")) {
@@ -436,6 +441,27 @@ test "WptServer.buildTestUrl" {
         const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/dom/nodes/Element-matches.html", url);
+    }
+
+    // Module worker context generates .any.worker-module.html
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker_module);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker-module.html", url);
+    }
+
+    // SharedWorker module context generates .any.sharedworker-module.html
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .sharedworker_module);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.sharedworker-module.html", url);
+    }
+
+    // ServiceWorker module context generates .any.serviceworker-module.html
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .serviceworker_module);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.serviceworker-module.html", url);
     }
 }
 

@@ -67,6 +67,14 @@ pub const GlobalType = enum {
     /// LayoutWorklet context (CSS Layout API)
     layout_worklet,
 
+    // Module worker variants (ES modules in workers)
+    /// Dedicated worker with ES module support
+    worker_module,
+    /// Shared worker with ES module support
+    sharedworker_module,
+    /// Service worker with ES module support
+    serviceworker_module,
+
     // ShadowRealm variants (TC39 Stage 2.7)
     /// Base ShadowRealm context
     shadowrealm,
@@ -90,6 +98,10 @@ pub const GlobalType = enum {
         if (std.mem.eql(u8, str, "dedicatedworker")) return .worker;
         if (std.mem.eql(u8, str, "sharedworker")) return .sharedworker;
         if (std.mem.eql(u8, str, "serviceworker")) return .serviceworker;
+        // Module worker variants (ES modules in workers)
+        if (std.mem.eql(u8, str, "dedicatedworker-module")) return .worker_module;
+        if (std.mem.eql(u8, str, "sharedworker-module")) return .sharedworker_module;
+        if (std.mem.eql(u8, str, "serviceworker-module")) return .serviceworker_module;
         // ShadowRealm variants (WPT uses hyphens, we use underscores in enum)
         if (std.mem.eql(u8, str, "shadowrealm")) return .shadowrealm;
         if (std.mem.eql(u8, str, "shadowrealm-in-window")) return .shadowrealm_in_window;
@@ -113,6 +125,10 @@ pub const GlobalType = enum {
             .worker => "worker",
             .sharedworker => "sharedworker",
             .serviceworker => "serviceworker",
+            // Module worker variants
+            .worker_module => "dedicatedworker-module",
+            .sharedworker_module => "sharedworker-module",
+            .serviceworker_module => "serviceworker-module",
             .shadowrealm => "shadowrealm",
             .shadowrealm_in_window => "shadowrealm-in-window",
             .shadowrealm_in_dedicatedworker => "shadowrealm-in-dedicatedworker",
@@ -147,6 +163,11 @@ pub const GlobalType = enum {
             .sharedworker => true,
             // ServiceWorker needs additional infrastructure
             .serviceworker => true,
+            // Module worker variants - same implementation status as their non-module counterparts
+            // ES modules in workers use the same global scope, just different script loading
+            .worker_module => true,
+            .sharedworker_module => true,
+            .serviceworker_module => true,
             // Worklet variants - implemented via BSCOPE-17/18
             .audio_worklet => true,
             .paint_worklet => true,
@@ -200,6 +221,11 @@ pub const GlobalType = enum {
             .shadowrealm_in_audioworklet,
             .shadowrealm_in_serviceworker,
             => .shadow_realm,
+            // Module worker variants map to their base worker scope kinds
+            // ES modules affect script loading, not the global scope type
+            .worker_module => .dedicated_worker,
+            .sharedworker_module => .shared_worker,
+            .serviceworker_module => .service_worker,
             // Worklet variants map to specific worklet scope kinds
             .audio_worklet => .audio_worklet,
             .paint_worklet => .paint_worklet,
@@ -215,6 +241,17 @@ pub const GlobalType = enum {
             .paint_worklet,
             .animation_worklet,
             .layout_worklet,
+            => true,
+            else => false,
+        };
+    }
+
+    /// Check if this is a module worker variant (uses ES modules instead of classic scripts)
+    pub fn isModuleWorker(self: GlobalType) bool {
+        return switch (self) {
+            .worker_module,
+            .sharedworker_module,
+            .serviceworker_module,
             => true,
             else => false,
         };
@@ -1260,7 +1297,7 @@ test "GlobalType.toString - shadowrealm variants" {
     try std.testing.expectEqualStrings("shadowrealm-in-serviceworker", GlobalType.shadowrealm_in_serviceworker.toString());
 }
 
-test "GlobalType.isImplemented - shadowrealm returns false" {
+test "GlobalType.isImplemented - all contexts implemented" {
     // Implemented contexts: window and worker
     try std.testing.expect(GlobalType.window.isImplemented());
     // Worker IS implemented - WPT server handles fetch_tests_from_worker via generated HTML
@@ -1272,14 +1309,14 @@ test "GlobalType.isImplemented - shadowrealm returns false" {
     // ServiceWorker IS implemented (BSCOPE-15/16)
     try std.testing.expect(GlobalType.serviceworker.isImplemented());
 
-    // All ShadowRealm variants return false
-    try std.testing.expect(!GlobalType.shadowrealm.isImplemented());
-    try std.testing.expect(!GlobalType.shadowrealm_in_window.isImplemented());
-    try std.testing.expect(!GlobalType.shadowrealm_in_dedicatedworker.isImplemented());
-    try std.testing.expect(!GlobalType.shadowrealm_in_sharedworker.isImplemented());
-    try std.testing.expect(!GlobalType.shadowrealm_in_shadowrealm.isImplemented());
-    try std.testing.expect(!GlobalType.shadowrealm_in_audioworklet.isImplemented());
-    try std.testing.expect(!GlobalType.shadowrealm_in_serviceworker.isImplemented());
+    // All ShadowRealm variants implemented (BSCOPE-21 - TC39 Stage 3, V8 built-in)
+    try std.testing.expect(GlobalType.shadowrealm.isImplemented());
+    try std.testing.expect(GlobalType.shadowrealm_in_window.isImplemented());
+    try std.testing.expect(GlobalType.shadowrealm_in_dedicatedworker.isImplemented());
+    try std.testing.expect(GlobalType.shadowrealm_in_sharedworker.isImplemented());
+    try std.testing.expect(GlobalType.shadowrealm_in_shadowrealm.isImplemented());
+    try std.testing.expect(GlobalType.shadowrealm_in_audioworklet.isImplemented());
+    try std.testing.expect(GlobalType.shadowrealm_in_serviceworker.isImplemented());
 }
 
 test "GlobalType.isShadowRealm" {
@@ -1618,6 +1655,91 @@ test "GlobalType.fromString - worklet variants" {
     try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("worklet"));
     try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("audio-worklet"));
     try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("AudioWorklet"));
+}
+
+// =============================================================================
+// Module Worker GlobalType Tests
+// =============================================================================
+
+test "GlobalType.fromString - module worker variants" {
+    // All module worker types should be parsed correctly
+    try std.testing.expectEqual(GlobalType.worker_module, GlobalType.fromString("dedicatedworker-module").?);
+    try std.testing.expectEqual(GlobalType.sharedworker_module, GlobalType.fromString("sharedworker-module").?);
+    try std.testing.expectEqual(GlobalType.serviceworker_module, GlobalType.fromString("serviceworker-module").?);
+
+    // Invalid module worker names should return null
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("worker-module"));
+    try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("module-worker"));
+}
+
+test "GlobalType.toString - module worker variants" {
+    try std.testing.expectEqualStrings("dedicatedworker-module", GlobalType.worker_module.toString());
+    try std.testing.expectEqualStrings("sharedworker-module", GlobalType.sharedworker_module.toString());
+    try std.testing.expectEqualStrings("serviceworker-module", GlobalType.serviceworker_module.toString());
+}
+
+test "GlobalType.isImplemented - module workers are implemented" {
+    // All module worker types should be implemented (same as their non-module counterparts)
+    try std.testing.expect(GlobalType.worker_module.isImplemented());
+    try std.testing.expect(GlobalType.sharedworker_module.isImplemented());
+    try std.testing.expect(GlobalType.serviceworker_module.isImplemented());
+}
+
+test "GlobalType.toGlobalScopeKind - module worker mapping" {
+    // Each module worker type maps to the same GlobalScopeKind as its non-module counterpart
+    try std.testing.expectEqual(GlobalScopeKind.dedicated_worker, GlobalType.worker_module.toGlobalScopeKind());
+    try std.testing.expectEqual(GlobalScopeKind.shared_worker, GlobalType.sharedworker_module.toGlobalScopeKind());
+    try std.testing.expectEqual(GlobalScopeKind.service_worker, GlobalType.serviceworker_module.toGlobalScopeKind());
+}
+
+test "GlobalType.isModuleWorker - module worker detection" {
+    // Module worker types should return true
+    try std.testing.expect(GlobalType.worker_module.isModuleWorker());
+    try std.testing.expect(GlobalType.sharedworker_module.isModuleWorker());
+    try std.testing.expect(GlobalType.serviceworker_module.isModuleWorker());
+
+    // Non-module worker types should return false
+    try std.testing.expect(!GlobalType.window.isModuleWorker());
+    try std.testing.expect(!GlobalType.worker.isModuleWorker());
+    try std.testing.expect(!GlobalType.sharedworker.isModuleWorker());
+    try std.testing.expect(!GlobalType.serviceworker.isModuleWorker());
+    try std.testing.expect(!GlobalType.shadowrealm.isModuleWorker());
+    try std.testing.expect(!GlobalType.audio_worklet.isModuleWorker());
+}
+
+test "parseMetaComments - module worker globals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: global=window,dedicatedworker-module,sharedworker-module
+        \\test(() => {});
+    ;
+
+    var metadata = try parseMetaComments(allocator, content);
+    defer metadata.deinit();
+
+    try testing.expectEqual(@as(usize, 3), metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.window, metadata.globals.items[0]);
+    try testing.expectEqual(GlobalType.worker_module, metadata.globals.items[1]);
+    try testing.expectEqual(GlobalType.sharedworker_module, metadata.globals.items[2]);
+}
+
+test "parseAnyJs - module worker globals" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const content =
+        \\// META: global=dedicatedworker-module
+        \\test(() => {});
+    ;
+
+    var parsed = try parseAnyJs(allocator, "test.any.js", content);
+    defer parsed.deinit();
+
+    // Should have dedicatedworker-module as the only global (explicit override)
+    try testing.expectEqual(@as(usize, 1), parsed.metadata.globals.items.len);
+    try testing.expectEqual(GlobalType.worker_module, parsed.metadata.globals.items[0]);
 }
 
 test "GlobalType.toString - worklet variants" {
