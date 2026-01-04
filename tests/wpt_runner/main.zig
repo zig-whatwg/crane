@@ -846,8 +846,15 @@ fn calculateTotalTests(
             }
         }
 
+        // Multiply by variant count (each context runs once per variant)
+        const variant_count = if (parsed.metadata.variants.items.len > 0)
+            parsed.metadata.variants.items.len
+        else
+            1;
+
         // If no implemented contexts, we still count it as 1 (will skip execution)
-        total += if (context_count > 0) context_count else 1;
+        const effective_count = if (context_count > 0) context_count * variant_count else 1;
+        total += effective_count;
     }
 
     return total;
@@ -884,7 +891,13 @@ fn buildWorkItems(
             continue;
         };
 
-        // Create work item for each implemented context
+        // Create work item for each implemented context and variant combination
+        // If no variants specified, run once with null variant
+        const variants_to_run = if (parsed.metadata.variants.items.len > 0)
+            parsed.metadata.variants.items
+        else
+            @as([]const []const u8, &.{});
+
         for (parsed.metadata.globals.items) |ctx| {
             if (!ctx.isImplemented()) continue;
 
@@ -893,27 +906,39 @@ fn buildWorkItems(
             else
                 null;
 
-            // Clone metadata for this work item
-            var cloned_metadata = test_parser.TestMetadata.init(allocator);
-            cloned_metadata.timeout = parsed.metadata.timeout;
-            for (parsed.metadata.globals.items) |g| {
-                try cloned_metadata.globals.append(allocator, g);
-            }
-            for (parsed.metadata.scripts.items) |s| {
-                try cloned_metadata.scripts.append(allocator, test_parser.ScriptRef{
-                    .path = try allocator.dupe(u8, s.path),
-                    .inline_script = s.inline_script,
-                    .script_type = if (s.script_type) |t| try allocator.dupe(u8, t) else null,
+            // If we have variants, create a work item for each variant
+            // Otherwise, create a single work item with null variant
+            const variant_count = if (variants_to_run.len > 0) variants_to_run.len else 1;
+
+            for (0..variant_count) |variant_idx| {
+                const variant: ?[]const u8 = if (variants_to_run.len > 0)
+                    variants_to_run[variant_idx]
+                else
+                    null;
+
+                // Clone metadata for this work item
+                var cloned_metadata = test_parser.TestMetadata.init(allocator);
+                cloned_metadata.timeout = parsed.metadata.timeout;
+                for (parsed.metadata.globals.items) |g| {
+                    try cloned_metadata.globals.append(allocator, g);
+                }
+                for (parsed.metadata.scripts.items) |s| {
+                    try cloned_metadata.scripts.append(allocator, test_parser.ScriptRef{
+                        .path = try allocator.dupe(u8, s.path),
+                        .inline_script = s.inline_script,
+                        .script_type = if (s.script_type) |t| try allocator.dupe(u8, t) else null,
+                    });
+                }
+
+                try items.append(allocator, parallel.WorkItem{
+                    .test_file = test_file,
+                    .context = ctx,
+                    .context_name = context_name,
+                    .parsed_content = try allocator.dupe(u8, content),
+                    .metadata = cloned_metadata,
+                    .variant = if (variant) |v| try allocator.dupe(u8, v) else null,
                 });
             }
-
-            try items.append(allocator, parallel.WorkItem{
-                .test_file = test_file,
-                .context = ctx,
-                .context_name = context_name,
-                .parsed_content = try allocator.dupe(u8, content),
-                .metadata = cloned_metadata,
-            });
         }
 
         // Free original content and parsed (we duped what we need)
@@ -1165,7 +1190,7 @@ fn executeTestFileInContext(
     // This enables proper resource loading via wpt serve (URL rewrites, headers, etc.)
     if (test_file.file_type == .html) {
         // Build HTTP URL for this test
-        const test_url = try server.buildTestUrl(allocator, test_file.path, .window);
+        const test_url = try server.buildTestUrl(allocator, test_file.path, .window, null);
         defer allocator.free(test_url);
 
         // Fetch and run from HTTP URL
@@ -1186,7 +1211,7 @@ fn executeTestFileInContext(
     // 2. Handle META: script directives automatically
     // 3. Apply URL rewrites (WebIDLParser.js -> webidl2.js, etc.)
     // This is the correct browser-like behavior
-    const test_url = try server.buildTestUrl(allocator, test_file.path, context);
+    const test_url = try server.buildTestUrl(allocator, test_file.path, context, null);
     defer allocator.free(test_url);
 
     // Fetch and run from HTTP URL

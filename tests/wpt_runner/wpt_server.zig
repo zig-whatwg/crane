@@ -345,7 +345,7 @@ pub const WptServer = struct {
     /// Tests with .https. in the path use HTTPS on port 8443
     /// Tests with .h2. in the path use HTTP/2 (HTTPS) on port 9000
     /// Tests with .www. in the path use www subdomain
-    pub fn buildTestUrlWithScheme(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
+    pub fn buildTestUrlWithScheme(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType, variant: ?[]const u8) ![]u8 {
         _ = self; // WptServer not needed for URL construction
 
         // Parse file flags from test path
@@ -388,11 +388,21 @@ pub const WptServer = struct {
             suffix = ".worker.html";
         }
 
-        return try std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
-            base_url,
-            url_path,
-            suffix,
-        });
+        // Append variant query string if present
+        if (variant) |v| {
+            return try std.fmt.allocPrint(allocator, "{s}/{s}{s}{s}", .{
+                base_url,
+                url_path,
+                suffix,
+                v,
+            });
+        } else {
+            return try std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
+                base_url,
+                url_path,
+                suffix,
+            });
+        }
     }
 
     /// Build a test URL from a test path and context type
@@ -403,9 +413,9 @@ pub const WptServer = struct {
     ///
     /// This method automatically detects HTTPS requirements from file flags
     /// (.https., .h2.) and uses the appropriate scheme and port.
-    pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
+    pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType, variant: ?[]const u8) ![]u8 {
         // Delegate to buildTestUrlWithScheme which handles HTTPS detection
-        return self.buildTestUrlWithScheme(allocator, test_path, context);
+        return self.buildTestUrlWithScheme(allocator, test_path, context, variant);
     }
 };
 
@@ -417,49 +427,49 @@ test "WptServer.buildTestUrl" {
 
     // Window context (default for .any.js)
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window, null);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.html", url);
     }
 
     // Worker context generates .any.worker.html
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker, null);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker.html", url);
     }
 
     // Window context for another .any.js test
     {
-        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window, null);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/encoding/api-basics.any.html", url);
     }
 
     // HTML files ignore context (always use raw path)
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window, null);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/dom/nodes/Element-matches.html", url);
     }
 
     // Module worker context generates .any.worker-module.html
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker_module);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker_module, null);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker-module.html", url);
     }
 
     // SharedWorker module context generates .any.sharedworker-module.html
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .sharedworker_module);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .sharedworker_module, null);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.sharedworker-module.html", url);
     }
 
     // ServiceWorker module context generates .any.serviceworker-module.html
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .serviceworker_module);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .serviceworker_module, null);
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.serviceworker-module.html", url);
     }

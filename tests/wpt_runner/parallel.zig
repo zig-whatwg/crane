@@ -42,13 +42,15 @@ const Options = main.Options;
 
 const MAX_WORKERS = 64;
 
-/// A single work item: a test file + context combination
+/// A single work item: a test file + context + variant combination
 pub const WorkItem = struct {
     test_file: TestFile,
     context: test_parser.GlobalType,
     context_name: ?[]const u8,
     parsed_content: []const u8,
     metadata: test_parser.TestMetadata,
+    /// URL variant query string (e.g., "?no_flag" or "?wpt_flags=h2")
+    variant: ?[]const u8 = null,
 };
 
 /// Thread-safe work queue
@@ -237,7 +239,7 @@ fn executeWorkItem(
     timeout_multiplier: f32,
 ) !test_harness.TestResult {
     // Build test URL
-    const test_url = try server.buildTestUrl(allocator, item.test_file.path, item.context);
+    const test_url = try server.buildTestUrl(allocator, item.test_file.path, item.context, item.variant);
     defer allocator.free(test_url);
 
     // Calculate adjusted timeout
