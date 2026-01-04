@@ -375,6 +375,8 @@ pub const ContextType = enum {
     layout_worklet,
     /// ShadowRealm context (TC39 Stage 3 proposal)
     shadow_realm,
+    /// SharedStorageWorklet context (Shared Storage API)
+    shared_storage_worklet,
 
     /// Convert to SnapshotContextIndex for multi-context snapshot selection.
     /// Each context type maps to a pre-created snapshot context with the
@@ -390,6 +392,7 @@ pub const ContextType = enum {
             .animation_worklet => .animation_worklet,
             .layout_worklet => .layout_worklet,
             .shadow_realm => .shadow_realm,
+            .shared_storage_worklet => .shared_storage_worklet,
         };
     }
 };
@@ -1371,7 +1374,7 @@ pub const Context = struct {
             \\  isShadowRealm: function() { return false; },
             \\};
             ,
-            .audio_worklet, .paint_worklet, .animation_worklet, .layout_worklet =>
+            .audio_worklet, .paint_worklet, .animation_worklet, .layout_worklet, .shared_storage_worklet =>
             // Worklet context: minimal global scope per Worklet spec
             // Worklets have a highly restricted execution environment
             \\function __checkGlobalThis(thisArg, propName) {
