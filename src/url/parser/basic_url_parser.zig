@@ -777,6 +777,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
             }
             ctx.buffer.clear();
             ctx.state = .path_start;
+            ctx.pointer -%= 1; // Decrement so pathStartState runs with EOF
             return;
         }
         // @ sign seen, buffer contains host
@@ -788,6 +789,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
         }
         ctx.buffer.clear();
         ctx.state = .path_start;
+        ctx.pointer -%= 1; // Decrement so pathStartState runs with EOF
         return;
     }
 
@@ -1150,19 +1152,21 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (is_terminator) {
         if (path_helpers.isDoubleDotPathSegment(ctx.buffer.items())) {
+            // Shorten URL's path
             if (ctx.path_segments.size() > 0) {
                 const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
                 ctx.allocator.free(last);
             }
-            const should_append_empty = !(c != null and c.? == '/') and
-                !(ctx.isSpecial() and c != null and c.? == '\\');
-            if (!should_append_empty) {
+            // Spec: If c is NOT '/' AND NOT (url is special AND c is '\\'), append empty string
+            // This ensures paths like "/usr/.." result in "/" not empty path
+            const c_is_slash = c != null and c.? == '/';
+            if (!c_is_slash and !is_special_backslash) {
                 try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
             }
         } else if (path_helpers.isSingleDotPathSegment(ctx.buffer.items())) {
-            const should_append_empty = !(c != null and c.? == '/') and
-                !(ctx.isSpecial() and c != null and c.? == '\\');
-            if (!should_append_empty) {
+            // Spec: If c is NOT '/' AND NOT (url is special AND c is '\\'), append empty string
+            const c_is_slash = c != null and c.? == '/';
+            if (!c_is_slash and !is_special_backslash) {
                 try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
             }
         } else {
