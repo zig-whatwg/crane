@@ -418,6 +418,10 @@ pub const Context = struct {
     skip_bindings: bool,
     /// Network manager for async fetch (owned by Browser)
     network_manager: ?*anyopaque,
+    /// Certificate trust store for TLS verification (owned by Browser)
+    trust_store: ?*const @import("fetch").network.CertificateTrustStore,
+    /// Realm for this context (holds EnvironmentSettingsObject)
+    realm: ?*@import("runtime").Realm = null,
 
     // Singleton instances for cleanup
     window_instance: ?*runtime.Instance = null,
@@ -444,6 +448,7 @@ pub const Context = struct {
         context_type: ContextType,
         skip_bindings: bool,
         network_manager: ?*anyopaque,
+        trust_store: ?*const @import("fetch").network.CertificateTrustStore,
     ) !*Context {
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
@@ -462,6 +467,7 @@ pub const Context = struct {
             .event_loop = event_loop,
             .skip_bindings = skip_bindings,
             .network_manager = network_manager,
+            .trust_store = trust_store,
         };
 
         try ctx.createV8Context();
@@ -525,6 +531,27 @@ pub const Context = struct {
         if (self.network_manager) |nm| {
             runtime_ctx.setNetworkManager(nm);
         }
+
+        // Set trust store on runtime context for TLS certificate verification
+        if (self.trust_store) |ts| {
+            runtime_ctx.setTrustStore(ts);
+        }
+
+        // Create and set up the Realm for this context
+        // The Realm holds the EnvironmentSettingsObject which contains the API base URL
+        const Realm = @import("runtime").Realm;
+        const realm = try Realm.init(self.allocator, .{
+            .v8_context = v8_ctx,
+            .isolate = self.isolate,
+            .context_type = .window,
+        });
+        runtime_ctx.setRealm(realm);
+        self.realm = realm; // Store for cleanup in deinit
+
+        // Set API base URL on the settings object for relative URL resolution
+        if (realm.getSettingsObject()) |settings| {
+            settings.setApiBaseUrl(self.url, false); // false = not owned, don't free
+        } else |_| {}
 
         // SNAPSHOT MODE: The snapshot contains V8 builtins AND WebIDL interfaces.
         // Interfaces are pre-registered in the snapshot with proper external references.
@@ -1510,6 +1537,7 @@ pub const Context = struct {
                 .base_url = self.url,
                 .script_loader = null, // Use default HTTP fetching
                 .existing_document = document,
+                .trust_store = self.trust_store,
             },
         ) catch |err| {
             std.debug.print("HTML parse error: {}\n", .{err});
@@ -1750,7 +1778,7 @@ pub const Context = struct {
         }
     }
 
-    /// Set the context URL (updates location object)
+    /// Set the context URL (updates location object and document URL)
     fn setUrl(self: *Context, url: []const u8) !void {
         // Update internal URL
         self.allocator.free(self.url);
@@ -1761,6 +1789,18 @@ pub const Context = struct {
         if (self.location_instance) |loc| {
             const LocationImpl = impls.Location;
             try LocationImpl.setURLFromString(loc, url);
+        }
+
+        // Update Document's URL so Worker script resolution works
+        // Worker.fetchWorkerScript uses Document.get_URL() for origin resolution
+        if (self.document_instance) |doc| {
+            const DocumentImpl = impls.Document;
+            if (DocumentImpl.getInternal(doc)) |doc_internal| {
+                if (doc_internal.url.len > 0) {
+                    self.allocator.free(doc_internal.url);
+                }
+                doc_internal.url = self.allocator.dupe(u8, url) catch "";
+            }
         }
     }
 
@@ -1895,6 +1935,12 @@ pub const Context = struct {
             v8.ffi.v8_Context_Exit(ctx);
             v8.ffi.v8_Context_Dispose(ctx);
         }
+
+        // Clean up the Realm (which owns the EnvironmentSettingsObject)
+        if (self.realm) |realm| {
+            realm.deinit();
+        }
+        self.realm = null;
 
         self.allocator.free(self.url);
         self.initialized = false;

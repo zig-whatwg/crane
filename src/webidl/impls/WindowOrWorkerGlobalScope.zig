@@ -1067,6 +1067,50 @@ fn callFetchInternal(
     // Ensure allocated URL is freed on all exit paths
     defer if (url_allocated) allocator.free(url_str);
 
+    // Resolve relative URL against document base URL
+    // Per Fetch spec §5.4, the request URL must be resolved against the API base URL
+    var resolved_url_buf: ?[]const u8 = null;
+    defer if (resolved_url_buf) |buf| allocator.free(buf);
+
+    const final_url: []const u8 = blk: {
+        // Check if URL is already absolute (has scheme)
+        if (std.mem.indexOf(u8, url_str, "://") != null) {
+            break :blk url_str;
+        }
+
+        // Get base URL from environment settings for relative URL resolution
+        if (instance.ctx.getRealm()) |realm| {
+            if (realm.getExistingSettingsObject()) |settings| {
+                if (settings.getApiBaseUrl()) |base_url| {
+                    // Resolve relative URL against base
+                    // Use basic_parser to parse URL with base for resolution
+                    const basic_parser = @import("basic_parser");
+                    const url_serializer = @import("url_serializer");
+                    // First parse the base URL string into a URLRecord
+                    if (basic_parser.parse(allocator, base_url, null)) |base_record_const| {
+                        var base_record = base_record_const;
+                        defer base_record.deinit();
+                        // Now parse relative URL against the base
+                        if (basic_parser.parse(allocator, url_str, &base_record)) |parsed_const| {
+                            var parsed = parsed_const;
+                            defer parsed.deinit();
+                            // Serialize the resolved URL
+                            resolved_url_buf = url_serializer.serialize(allocator, &parsed, false) catch null;
+                            if (resolved_url_buf) |resolved| {
+                                break :blk resolved;
+                            }
+                        } else |_| {
+                            // Relative parse failed, use original URL
+                        }
+                    } else |_| {
+                        // Base parse failed, use original URL
+                    }
+                }
+            }
+        }
+        break :blk url_str;
+    };
+
     // Build RequestInit options for the internal fetch
     var request_init = fetch_api.webidl.request.RequestInit{};
 
@@ -1344,7 +1388,7 @@ fn callFetchInternal(
         // Note: headers_list.items is a slice that survives until headers_list.deinit()
         // which happens after addRequest returns, so the headers are safely copied by curl
         const net_request = NetworkRequest{
-            .url = url_str,
+            .url = final_url,
             .method = request_method,
             .headers = headers_list.items,
             .body = request_init.body,
@@ -1352,6 +1396,14 @@ fn callFetchInternal(
             // Wire up abort token for thread-safe in-flight cancellation
             .abort_check = if (abort_token != null) abortSignalCheck else null,
             .abort_check_data = if (abort_token) |token| @ptrCast(token) else null,
+            // Certificate verification options with trust store from runtime context
+            // Cast from anyopaque (runtime can't depend on fetch) to CertificateTrustStore
+            .cert_options = .{
+                .trust_store = if (instance.ctx.getTrustStore()) |ts|
+                    @ptrCast(@alignCast(ts))
+                else
+                    null,
+            },
         };
 
         // Add the async request - returns immediately

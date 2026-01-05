@@ -60,8 +60,10 @@ const html = @import("html");
 // This uses the VTable pattern to avoid circular dependencies between
 // webidl/impls and service_worker modules.
 const sw_common = @import("sw_common");
-// Standalone SW fetch integration - safe to import without circular deps
+// Standalone SW fetch integration - includes both fetch interception and registrar
 const sw_fetch_integration = @import("sw_fetch_integration");
+// Browser-layer service worker manager - implements RunContext for execution callbacks
+const ServiceWorkerManager = @import("service_worker/ServiceWorkerManager.zig").ServiceWorkerManager;
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -118,6 +120,8 @@ pub const Browser = struct {
     certificate_trust_store: *certificate_trust.CertificateTrustStore,
     /// Service worker registration map - tracks all SW registrations for this browser
     registration_map: *sw_fetch_integration.RegistrationMap,
+    /// Service worker manager - owns execution layer callbacks (install, activate, terminate)
+    service_worker_manager: ?*ServiceWorkerManager,
 
     /// Initialize a new Browser instance
     ///
@@ -268,11 +272,27 @@ pub const Browser = struct {
             .async_curl_manager = async_curl,
             .certificate_trust_store = trust_store,
             .registration_map = registration_map,
+            .service_worker_manager = null, // Initialized below after struct is created
         };
 
         // Register the service worker fetch interceptor with the fetch module.
         // This enables fetch() calls to be intercepted by controlling service workers.
         _ = sw_fetch_integration.ensureRegistered(allocator, registration_map);
+
+        // Initialize service worker manager - owns execution layer callbacks (install, activate, terminate)
+        // The manager implements RunContext vtable for the scheduling layer to call back into.
+        // This breaks the previous circular dependency by separating:
+        // - Layer 2 (Scheduling): algorithms/, registrar - no V8/GlobalScope imports
+        // - Layer 3 (Execution): ServiceWorkerManager - owns GlobalScope, may import V8/runtime
+        const sw_manager = try ServiceWorkerManager.init(allocator);
+        errdefer sw_manager.deinit();
+
+        // Register the manager's RunContext with the global registry so the scheduling
+        // layer can invoke execution callbacks without importing this module directly.
+        sw_manager.register();
+
+        // Store the manager in the browser struct
+        browser.service_worker_manager = sw_manager;
 
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
@@ -329,6 +349,12 @@ pub const Browser = struct {
     pub fn deinit(self: *Browser) void {
         // Unregister the service worker fetch interceptor
         sw_fetch_integration.unregister(self.allocator);
+
+        // Clean up service worker manager and unregister from global registry
+        if (self.service_worker_manager) |sw_manager| {
+            sw_common.run_context_registry.unregister();
+            sw_manager.deinit();
+        }
 
         // Destroy current context if any
         if (self.current_context) |ctx| {
@@ -452,6 +478,7 @@ pub const Browser = struct {
             context_type,
             self.used_snapshot,
             @ptrCast(self.async_curl_manager),
+            self.getCertificateTrustStore(),
         );
         errdefer {
             ctx.deinit();

@@ -71,6 +71,10 @@ const BackendType = storage.BackendType;
 const network_pollable_mod = @import("network_pollable.zig");
 const NetworkPollable = network_pollable_mod.NetworkPollable;
 
+// Certificate trust store is an opaque pointer from the fetch module.
+// We use anyopaque here because runtime cannot depend on fetch (lower in dependency graph).
+// The actual type is fetch.network.CertificateTrustStore.
+
 /// Storage configuration for IndexedDB and Storage Standard
 ///
 /// Configures the storage backend selection and parameters.
@@ -201,6 +205,13 @@ pub const ContextData = struct {
     /// Stored separately from network_pollable because impl needs direct access
     _network_manager: ?*anyopaque,
 
+    /// Certificate trust store for HTTPS verification
+    /// Optional - only needed for fetch() with HTTPS URLs
+    /// This is passed to curl for certificate validation
+    /// The actual type is fetch.network.CertificateTrustStore but we use anyopaque
+    /// because runtime cannot depend on fetch (lower in dependency graph)
+    _trust_store: ?*const anyopaque,
+
     /// Internal: Engine-created event loop storage (if created during init)
     /// This is owned by the context and must be cleaned up via engine interface
     _engine_event_loop_storage: ?*anyopaque,
@@ -311,6 +322,7 @@ pub const ContextData = struct {
             .storage_config = options.storage_config orelse StorageConfig.forTesting(),
             .network_pollable = options.network_pollable,
             ._network_manager = null, // Set via setNetworkManager()
+            ._trust_store = null, // Set via setTrustStore()
             ._engine_event_loop_storage = engine_event_loop_storage,
             ._v8_wrapper_cache_storage = null, // Initialized later via initV8WrapperCache
             .realm_info = options.realm_info orelse RealmInfo.forTesting(),
@@ -500,6 +512,18 @@ pub const ContextData = struct {
     /// Pass the AsyncCurlManager pointer that call_fetch will use
     pub fn setNetworkManager(self: *Self, manager: *anyopaque) void {
         self._network_manager = manager;
+    }
+
+    /// Get certificate trust store (for fetch() HTTPS validation)
+    /// Returns opaque pointer that must be cast to fetch.network.CertificateTrustStore
+    pub fn getTrustStore(self: *const Self) ?*const anyopaque {
+        return self._trust_store;
+    }
+
+    /// Set certificate trust store (called by Browser during setup)
+    /// Pass the CertificateTrustStore pointer for HTTPS certificate validation
+    pub fn setTrustStore(self: *Self, trust_store: *const anyopaque) void {
+        self._trust_store = trust_store;
     }
 
     // ========================================================================
