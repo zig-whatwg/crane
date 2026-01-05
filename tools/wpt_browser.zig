@@ -42,17 +42,17 @@ const WptBrowser = struct {
             \\window.__wpt_report_result = function(name, status, message, stack, duration) {
             \\    window.__wpt_results.push([name, status, message, stack]);
             \\};
-            \\window.__wpt_report_completion = function() {
+            \\window.__wpt_report_completion = function(harness_status) {
             \\    window.__wpt_completed = true;
-            \\    var passed = 0, failed = 0, total = 0;
-            \\    var results = window.__wpt_results || [];
-            \\    for (var i = 0; i < results.length; i++) {
-            \\        total++;
-            \\        if (results[i][1] === 0) passed++;
-            \\        else failed++;
-            \\    }
+            \\    if (harness_status) window.__wpt_harness_status = harness_status;
             \\    var status = window.__wpt_harness_status || {status: 0};
-            \\    console.log("CRANE_WPT_RESULT: [null," + status.status + ",null,null,[[\"summary\"," + (failed > 0 ? 1 : 0) + ",\"" + passed + "/" + total + " passed\",null]]]");
+            \\    var results = window.__wpt_results || [];
+            \\    var passed = 0;
+            \\    for (var i = 0; i < results.length; i++) {
+            \\        if (results[i][1] === 0) passed++;
+            \\    }
+            \\    var output = "CRANE_WPT_RESULT:[null," + (status.status||0) + ",null,null,[[\"" + passed + "/" + results.length + " passed\",0,null,null]]]";
+            \\    console.log(output);
             \\};
         ;
 
