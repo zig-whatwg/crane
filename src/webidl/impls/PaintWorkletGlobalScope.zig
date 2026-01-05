@@ -90,6 +90,22 @@ pub fn init(
 /// Module-level allocator for the registry (set during first init)
 var map_allocator: ?std.mem.Allocator = null;
 
+/// Cleanup all remaining internal state (for use during shutdown/testing)
+/// This prevents memory leaks when the module-level registry isn't cleaned up
+pub fn deinitRegistry() void {
+    const allocator = map_allocator orelse return;
+    if (internal_state_map) |*map| {
+        var it = map.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.deinit();
+            allocator.destroy(entry.value_ptr.*);
+        }
+        map.deinit();
+        internal_state_map = null;
+    }
+    map_allocator = null;
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const allocator = map_allocator orelse return;

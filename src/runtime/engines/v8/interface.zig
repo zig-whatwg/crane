@@ -2493,7 +2493,9 @@ pub fn V8Interface(comptime Interface: type) type {
         /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
         /// JSValue types may contain owned strings that need cleanup.
         /// CallbackWrapper types need cleanup for transient callbacks (those not stored by the callee).
+        /// Struct types (dictionaries) may contain string fields that need cleanup.
         fn needsArgCleanup(comptime T: type) bool {
+            @setEvalBranchQuota(10000);
             // Raw string slice - allocated by fromV8Value
             if (T == []const u8) return true;
             // DOMString - allocated by fromV8String
@@ -2518,6 +2520,18 @@ pub fn V8Interface(comptime Interface: type) type {
             if (isOptionalWrapper(T)) {
                 if (getOptionalValueType(T)) |vt| {
                     return needsArgCleanup(vt);
+                }
+            }
+            // Struct types (dictionaries) - check if any field needs cleanup
+            if (@typeInfo(T) == .@"struct") {
+                inline for (std.meta.fields(T)) |field| {
+                    if (needsArgCleanup(field.type)) return true;
+                }
+            }
+            // Union types (WebIDL union types) - check if any variant needs cleanup
+            if (@typeInfo(T) == .@"union") {
+                inline for (std.meta.fields(T)) |field| {
+                    if (needsArgCleanup(field.type)) return true;
                 }
             }
             return false;
@@ -2573,6 +2587,28 @@ pub fn V8Interface(comptime Interface: type) type {
                         freeConvertedArg(vt, allocator, arg.value);
                     }
                 }
+            } else if (@typeInfo(T) == .@"struct") {
+                // Struct types (dictionaries) - free any fields that need cleanup
+                inline for (std.meta.fields(T)) |field| {
+                    if (comptime needsArgCleanup(field.type)) {
+                        freeConvertedArg(field.type, allocator, @field(arg, field.name));
+                    }
+                }
+            } else if (@typeInfo(T) == .@"union") {
+                // Union types (WebIDL union types) - free the active variant if it needs cleanup
+                const union_info = @typeInfo(T).@"union";
+                if (union_info.tag_type) |_| {
+                    // Tagged union - we can switch on it
+                    switch (arg) {
+                        inline else => |val, tag| {
+                            const FieldType = std.meta.TagPayloadByName(T, @tagName(tag));
+                            if (comptime needsArgCleanup(FieldType)) {
+                                freeConvertedArg(FieldType, allocator, val);
+                            }
+                        },
+                    }
+                }
+                // Untagged unions cannot be safely freed (we don't know which variant is active)
             }
         }
 

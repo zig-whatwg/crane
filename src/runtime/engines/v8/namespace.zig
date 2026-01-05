@@ -376,10 +376,11 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // Extract and convert arguments at compile time based on parameter types
                     var args: std.meta.ArgsTuple(@TypeOf(namespace_fn)) = undefined;
 
-                    // Use stack allocator for temporary allocations during argument extraction
-                    var stack_buffer: [4096]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&stack_buffer);
-                    const allocator = fba.allocator();
+                    // Use arena allocator for temporary allocations during argument extraction
+                    // Arena is freed at end of function - handles strings of any size
+                    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                    defer arena.deinit();
+                    const allocator = arena.allocator();
 
                     // Track JS argument index separately from param index
                     var js_arg_idx: c_int = 0;
@@ -448,7 +449,6 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             };
                             for (0..remaining_args) |j| {
                                 const v8_value = info.get(@intCast(js_arg_idx + @as(c_int, @intCast(j))));
-                                // Convert V8 value to runtime.JSValue using proper conversion
                                 arg_slice[j] = conv.fromV8Value(runtime.JSValue, allocator, isolate, context, v8_value) catch {
                                     conv.throwTypeError(isolate, "Failed to convert value to JSValue");
                                     return;

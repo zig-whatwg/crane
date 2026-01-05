@@ -219,17 +219,274 @@ pub const ServiceWorkerRegistrar = struct {
 };
 
 // =============================================================================
+// RunContext VTable Interface (Execution Layer Callbacks)
+// =============================================================================
+
+/// Result of a job execution.
+/// Used by RunContext callbacks to report success/failure.
+pub const JobResult = struct {
+    success: bool,
+    value: ?*anyopaque = null,
+};
+
+/// Opaque job reference for RunContext callbacks.
+/// Contains only the scheduling-layer-safe information needed for execution.
+pub const JobInfo = struct {
+    /// The script URL to fetch/execute.
+    script_url: []const u8,
+    /// The scope URL for this registration.
+    scope_url: []const u8,
+    /// Worker type (classic or module).
+    worker_type: WorkerType,
+    /// Update via cache mode.
+    update_via_cache: UpdateViaCacheMode,
+};
+
+/// VTable-based interface for service worker execution.
+///
+/// This defines the scheduling→execution boundary. The scheduling layer
+/// (algorithms/, integration/registrar_impl.zig) calls these callbacks
+/// to delegate actual execution work to the browser layer.
+///
+/// The execution layer (browser/service_worker/ServiceWorkerManager.zig)
+/// implements these callbacks and owns V8/GlobalScope interactions.
+///
+/// Pattern: Same as ServiceWorkerRegistrar - interface defined in leaf module,
+/// implementation in browser layer, wired by Browser.init().
+///
+/// ## Layer Architecture
+///
+/// - **Layer 2 (Scheduling)**: `src/service_worker/algorithms/*`, `integration/registrar_impl.zig`
+///   - Pure scheduling/state-machine logic
+///   - NO imports of GlobalScope, WebIDL interfaces, or browser modules
+///   - Calls RunContext callbacks for execution
+///
+/// - **Layer 3 (Execution)**: `src/browser/service_worker/ServiceWorkerManager.zig`
+///   - Creates/owns ServiceWorkerGlobalScope and V8 contexts
+///   - Implements RunContext callbacks
+///   - MAY import runtime/V8/WebIDL types
+pub const RunContext = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        /// Called when a register job needs to execute.
+        /// Should fetch the script, create a GlobalScope, and execute.
+        on_register: *const fn (self: *anyopaque, job: JobInfo) JobResult,
+
+        /// Called when an update job needs to execute.
+        /// Should check for script changes and update if needed.
+        on_update: *const fn (self: *anyopaque, job: JobInfo) JobResult,
+
+        /// Called when an unregister job needs to execute.
+        /// Should terminate workers and clean up registrations.
+        on_unregister: *const fn (self: *anyopaque, job: JobInfo) JobResult,
+
+        /// Called when a service worker needs to be terminated.
+        /// Should abort fetches, clear timers, and detach GlobalScope.
+        on_terminate: *const fn (self: *anyopaque, worker: ServiceWorkerHandle) void,
+
+        /// Called when the install event should fire.
+        /// Should create InstallEvent and dispatch to GlobalScope.
+        on_install: *const fn (self: *anyopaque, worker: ServiceWorkerHandle) JobResult,
+
+        /// Called when the activate event should fire.
+        /// Should create ActivateEvent and dispatch to GlobalScope.
+        on_activate: *const fn (self: *anyopaque, worker: ServiceWorkerHandle) JobResult,
+    };
+
+    /// Execute a register job.
+    pub fn runRegister(self: RunContext, job: JobInfo) JobResult {
+        return self.vtable.on_register(self.ptr, job);
+    }
+
+    /// Execute an update job.
+    pub fn runUpdate(self: RunContext, job: JobInfo) JobResult {
+        return self.vtable.on_update(self.ptr, job);
+    }
+
+    /// Execute an unregister job.
+    pub fn runUnregister(self: RunContext, job: JobInfo) JobResult {
+        return self.vtable.on_unregister(self.ptr, job);
+    }
+
+    /// Terminate a service worker.
+    pub fn terminate(self: RunContext, worker: ServiceWorkerHandle) void {
+        self.vtable.on_terminate(self.ptr, worker);
+    }
+
+    /// Fire install event.
+    pub fn install(self: RunContext, worker: ServiceWorkerHandle) JobResult {
+        return self.vtable.on_install(self.ptr, worker);
+    }
+
+    /// Fire activate event.
+    pub fn activate(self: RunContext, worker: ServiceWorkerHandle) JobResult {
+        return self.vtable.on_activate(self.ptr, worker);
+    }
+
+    /// Create a RunContext from a concrete implementation type.
+    pub fn create(comptime T: type, impl: *T) RunContext {
+        return .{
+            .ptr = @ptrCast(impl),
+            .vtable = &.{
+                .on_register = struct {
+                    fn call(ptr: *anyopaque, job: JobInfo) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onRegister(job);
+                    }
+                }.call,
+                .on_update = struct {
+                    fn call(ptr: *anyopaque, job: JobInfo) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onUpdate(job);
+                    }
+                }.call,
+                .on_unregister = struct {
+                    fn call(ptr: *anyopaque, job: JobInfo) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onUnregister(job);
+                    }
+                }.call,
+                .on_terminate = struct {
+                    fn call(ptr: *anyopaque, worker: ServiceWorkerHandle) void {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        self.onTerminate(worker);
+                    }
+                }.call,
+                .on_install = struct {
+                    fn call(ptr: *anyopaque, worker: ServiceWorkerHandle) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onInstall(worker);
+                    }
+                }.call,
+                .on_activate = struct {
+                    fn call(ptr: *anyopaque, worker: ServiceWorkerHandle) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onActivate(worker);
+                    }
+                }.call,
+            },
+        };
+    }
+};
+
+// =============================================================================
+// RunContext Registry (Global Singleton)
+// =============================================================================
+
+/// Global registry for the active RunContext.
+/// Thread-safe via atomic operations.
+pub const run_context_registry = struct {
+    var g_run_context: std.atomic.Value(?*const RunContext) = .{ .raw = null };
+
+    /// Register a RunContext instance.
+    pub fn register(ctx: *const RunContext) void {
+        g_run_context.store(ctx, .release);
+    }
+
+    /// Unregister the current RunContext.
+    pub fn unregister() void {
+        g_run_context.store(null, .release);
+    }
+
+    /// Get the registered RunContext, if any.
+    pub fn get() ?RunContext {
+        if (g_run_context.load(.acquire)) |ptr| {
+            return ptr.*;
+        }
+        return null;
+    }
+
+    /// Check if a RunContext is registered.
+    pub fn isRegistered() bool {
+        return g_run_context.load(.acquire) != null;
+    }
+
+    /// Reset for testing.
+    pub fn resetForTesting() void {
+        g_run_context.store(null, .release);
+    }
+};
+
+// =============================================================================
 // ServiceWorkerRegistrar Registry (Global Singleton)
 // =============================================================================
 
+/// Factory function type for creating a ServiceWorkerRegistrar.
+/// This allows Browser to provide the factory without circular dependencies.
+/// The factory is called lazily when a registrar is first needed.
+pub const RegistrarFactory = *const fn () ?*const ServiceWorkerRegistrar;
+
+// =============================================================================
+// Shared Resource Storage (for lazy registrar initialization)
+// =============================================================================
+
+/// Storage for shared resources needed by registrar initialization.
+/// Browser sets these during init, registrar factory reads them.
+/// This breaks the circular dependency by using opaque pointers.
+pub const shared_resources = struct {
+    var g_registration_map: std.atomic.Value(?*anyopaque) = .{ .raw = null };
+    var g_job_queue_map: std.atomic.Value(?*anyopaque) = .{ .raw = null };
+    var g_allocator: std.atomic.Value(?*std.mem.Allocator) = .{ .raw = null };
+
+    /// Set the registration map (called by Browser during init).
+    pub fn setRegistrationMap(map: *anyopaque) void {
+        g_registration_map.store(map, .release);
+    }
+
+    /// Get the registration map.
+    pub fn getRegistrationMap() ?*anyopaque {
+        return g_registration_map.load(.acquire);
+    }
+
+    /// Set the job queue map (called by Browser during init).
+    pub fn setJobQueueMap(map: *anyopaque) void {
+        g_job_queue_map.store(map, .release);
+    }
+
+    /// Get the job queue map.
+    pub fn getJobQueueMap() ?*anyopaque {
+        return g_job_queue_map.load(.acquire);
+    }
+
+    /// Set the allocator (called by Browser during init).
+    pub fn setAllocator(alloc: *std.mem.Allocator) void {
+        g_allocator.store(alloc, .release);
+    }
+
+    /// Get the allocator.
+    pub fn getAllocator() ?*std.mem.Allocator {
+        return g_allocator.load(.acquire);
+    }
+
+    /// Reset for testing.
+    pub fn resetForTesting() void {
+        g_registration_map.store(null, .release);
+        g_job_queue_map.store(null, .release);
+        g_allocator.store(null, .release);
+    }
+};
+
 /// Global registry for the active ServiceWorkerRegistrar.
 /// Thread-safe via atomic operations.
+///
+/// Supports two initialization patterns:
+/// 1. Direct: Call register() with an already-created registrar
+/// 2. Lazy: Call setFactory() with a factory function, registrar created on first get()
 pub const registrar_registry = struct {
     var g_registrar: std.atomic.Value(?*const ServiceWorkerRegistrar) = .{ .raw = null };
+    var g_factory: std.atomic.Value(?RegistrarFactory) = .{ .raw = null };
 
-    /// Register a ServiceWorkerRegistrar instance.
+    /// Register a ServiceWorkerRegistrar instance directly.
     pub fn register(registrar: *const ServiceWorkerRegistrar) void {
         g_registrar.store(registrar, .release);
+    }
+
+    /// Set a factory function for lazy initialization.
+    /// The factory will be called on first get() if no registrar is registered.
+    pub fn setFactory(factory: RegistrarFactory) void {
+        g_factory.store(factory, .release);
     }
 
     /// Unregister the current registrar.
@@ -238,21 +495,39 @@ pub const registrar_registry = struct {
     }
 
     /// Get the registered ServiceWorkerRegistrar, if any.
+    /// If no registrar is registered but a factory is set, calls the factory.
     pub fn get() ?ServiceWorkerRegistrar {
+        // First check if we have a registrar
         if (g_registrar.load(.acquire)) |ptr| {
             return ptr.*;
         }
+
+        // No registrar - try the factory for lazy initialization
+        if (g_factory.load(.acquire)) |factory| {
+            if (factory()) |new_registrar| {
+                // Store it for future calls
+                g_registrar.store(new_registrar, .release);
+                return new_registrar.*;
+            }
+        }
+
         return null;
     }
 
-    /// Check if a registrar is registered.
+    /// Check if a registrar is registered (doesn't trigger lazy init).
     pub fn isRegistered() bool {
         return g_registrar.load(.acquire) != null;
+    }
+
+    /// Check if a factory is set.
+    pub fn hasFactory() bool {
+        return g_factory.load(.acquire) != null;
     }
 
     /// Reset for testing.
     pub fn resetForTesting() void {
         g_registrar.store(null, .release);
+        g_factory.store(null, .release);
     }
 };
 

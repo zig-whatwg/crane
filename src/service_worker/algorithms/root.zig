@@ -1,8 +1,25 @@
-//! Service Worker Algorithms Module
+//! Service Worker Algorithms Module (Layer 2 - Scheduling)
 //!
 //! Implementation of the Service Worker specification algorithms from Appendix A.
 //!
 //! Spec: https://w3c.github.io/ServiceWorker/#algorithms
+//!
+//! ## Architecture: Layer 2 (Scheduling) vs Layer 3 (Execution)
+//!
+//! This algorithms/ directory is **Layer 2 (Scheduling)** - it handles:
+//! - Registration state machine and job queue management
+//! - Lifecycle transitions (install, activate, terminate)
+//! - Fetch event routing
+//!
+//! **CRITICAL**: This layer MUST NOT import from:
+//! - `global/` (ServiceWorkerGlobalScope) - execution layer
+//! - `browser/` - browser integration layer
+//! - `runtime/` - V8/JS engine bindings
+//!
+//! The execution layer (Layer 3) is in `src/browser/service_worker/ServiceWorkerManager.zig`
+//! which implements the `RunContext` callbacks defined in `registrar_contract.zig`.
+//!
+//! This separation prevents circular dependencies. See tests/service_worker/import_cycle_test.zig.
 //!
 //! ## Overview
 //!

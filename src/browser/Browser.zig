@@ -62,8 +62,9 @@ const html = @import("html");
 const sw_common = @import("sw_common");
 // Standalone SW fetch integration - includes both fetch interception and registrar
 const sw_fetch_integration = @import("sw_fetch_integration");
-// Browser-layer service worker manager - implements RunContext for execution callbacks
-const ServiceWorkerManager = @import("service_worker/ServiceWorkerManager.zig").ServiceWorkerManager;
+// Service worker manager - browser-side coordination
+const sw_manager = @import("sw_manager");
+const ServiceWorkerManager = sw_manager.ServiceWorkerManager;
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -93,6 +94,9 @@ pub const BrowserConfig = struct {
     /// Path to V8 snapshot file (optional, auto-detected if null)
     /// Set to empty string "" to explicitly disable snapshot loading
     snapshot_path: ?[]const u8 = null,
+    /// Embedded snapshot data (takes precedence over snapshot_path)
+    /// Use @embedFile to include the snapshot at compile time
+    embedded_snapshot: ?[]const u8 = null,
     /// Whether to log performance information
     log_performance: bool = false,
 };
@@ -143,9 +147,10 @@ pub const Browser = struct {
         // between snapshot creation and loading.
         v8.initializePlatformForSnapshots();
 
-        // Determine snapshot path to use
-        const snapshot_path = resolveSnapshotPath(config.snapshot_path);
-        const use_snapshot = snapshot_path != null;
+        // Determine snapshot source: embedded (compile-time) or file path (runtime)
+        const has_embedded = config.embedded_snapshot != null;
+        const snapshot_path = if (has_embedded) null else resolveSnapshotPath(config.snapshot_path);
+        const use_snapshot = has_embedded or snapshot_path != null;
 
         // Create V8 isolate (from snapshot if available)
         var isolate: *v8.ffi.Isolate = undefined;
@@ -156,8 +161,9 @@ pub const Browser = struct {
             // These MUST match the order used when creating the snapshot
             registerSnapshotExternalReferences();
 
-            // Try to initialize from snapshot
+            // Try to initialize from snapshot (embedded takes precedence)
             const init_result = v8.snapshot_loader.initializeV8(allocator, .{
+                .embedded_snapshot = config.embedded_snapshot,
                 .snapshot_path = snapshot_path,
                 .log_performance = config.log_performance,
             }) catch |err| {
@@ -284,15 +290,15 @@ pub const Browser = struct {
         // This breaks the previous circular dependency by separating:
         // - Layer 2 (Scheduling): algorithms/, registrar - no V8/GlobalScope imports
         // - Layer 3 (Execution): ServiceWorkerManager - owns GlobalScope, may import V8/runtime
-        const sw_manager = try ServiceWorkerManager.init(allocator);
-        errdefer sw_manager.deinit();
-
-        // Register the manager's RunContext with the global registry so the scheduling
-        // layer can invoke execution callbacks without importing this module directly.
-        sw_manager.register();
+        const sw_mgr = try allocator.create(ServiceWorkerManager);
+        sw_mgr.* = ServiceWorkerManager.init(allocator);
+        errdefer {
+            sw_mgr.deinit();
+            allocator.destroy(sw_mgr);
+        }
 
         // Store the manager in the browser struct
-        browser.service_worker_manager = sw_manager;
+        browser.service_worker_manager = sw_mgr;
 
         // Always create initial about:blank context - a real browser always has a window/document
         // Then navigate to initial URL if specified
@@ -351,9 +357,10 @@ pub const Browser = struct {
         sw_fetch_integration.unregister(self.allocator);
 
         // Clean up service worker manager and unregister from global registry
-        if (self.service_worker_manager) |sw_manager| {
+        if (self.service_worker_manager) |sw_mgr| {
             sw_common.run_context_registry.unregister();
-            sw_manager.deinit();
+            sw_mgr.deinit();
+            self.allocator.destroy(sw_mgr);
         }
 
         // Destroy current context if any
@@ -511,6 +518,16 @@ pub const Browser = struct {
     pub fn evaluateScript(self: *Browser, script: []const u8) !?*v8.ffi.Value {
         const ctx = self.current_context orelse return error.NoContext;
         return ctx.evaluateScript(script);
+    }
+
+    /// Evaluate JavaScript and return result as boolean
+    ///
+    /// Returns false if script fails or returns falsy value.
+    pub fn evaluateScriptBool(self: *Browser, script: []const u8) bool {
+        const isolate = self.isolate orelse return false;
+        const result = self.evaluateScript(script) catch return false;
+        const val = result orelse return false;
+        return v8.ffi.v8_Value_BooleanValue(val, isolate);
     }
 
     /// Run the event loop until a condition is met or timeout

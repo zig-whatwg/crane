@@ -110,46 +110,107 @@ pub const GlobalScope = enum {
 /// const exposed_in_dedicated = isExposedIn(SomeWorkerInterface, .DedicatedWorker); // true
 /// ```
 pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
-        return false;
-    }
+    // Primary path: Check T.Meta.exposed_in (used by generated interfaces)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
 
-    const metadata = T.__webidl__;
-
-    // Iterate through extended attributes looking for [Exposed]
-    inline for (metadata.extended_attrs) |attr| {
-        if (comptime !std.mem.eql(u8, attr.name, "Exposed")) {
-            continue;
-        }
-
-        // Check the value type - could be .wildcard, .{ .identifier = ... }, or .{ .identifier_list = ... }
-        const ValueType = @TypeOf(attr.value);
-
-        // [Exposed=*] - exposed in all globals (value is enum literal .wildcard)
-        if (ValueType == @TypeOf(.wildcard)) {
+        // Check for exposed_in_all_contexts = true (wildcard [Exposed=*])
+        if (@hasDecl(Meta, "exposed_in_all_contexts") and Meta.exposed_in_all_contexts) {
             return true;
         }
 
-        // [Exposed=Window] - single identifier (value is struct with identifier field)
-        if (@hasField(ValueType, "identifier")) {
-            return scope.matchesExposure(attr.value.identifier);
-        }
-
-        // [Exposed=(Window,Worker)] - list of identifiers (value is struct with identifier_list field)
-        if (@hasField(ValueType, "identifier_list")) {
-            for (attr.value.identifier_list) |id| {
-                if (scope.matchesExposure(id)) {
-                    return true;
-                }
+        if (@hasDecl(Meta, "exposed_in")) {
+            const exposed_in = Meta.exposed_in;
+            // Check for wildcard exposure (exposed in all globals)
+            if (@hasField(@TypeOf(exposed_in), "all") and exposed_in.all) {
+                return true;
             }
-            return false;
+            // Check specific scope fields
+            return switch (scope) {
+                .Window => @hasField(@TypeOf(exposed_in), "Window") and exposed_in.Window,
+                .Worker => @hasField(@TypeOf(exposed_in), "Worker") and exposed_in.Worker,
+                .DedicatedWorker => blk: {
+                    // Check direct match or abstract Worker category
+                    if (@hasField(@TypeOf(exposed_in), "DedicatedWorker") and exposed_in.DedicatedWorker) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worker") and exposed_in.Worker) break :blk true;
+                    break :blk false;
+                },
+                .SharedWorker => blk: {
+                    if (@hasField(@TypeOf(exposed_in), "SharedWorker") and exposed_in.SharedWorker) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worker") and exposed_in.Worker) break :blk true;
+                    break :blk false;
+                },
+                .ServiceWorker => blk: {
+                    if (@hasField(@TypeOf(exposed_in), "ServiceWorker") and exposed_in.ServiceWorker) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worker") and exposed_in.Worker) break :blk true;
+                    break :blk false;
+                },
+                .Worklet => @hasField(@TypeOf(exposed_in), "Worklet") and exposed_in.Worklet,
+                .AudioWorklet => blk: {
+                    if (@hasField(@TypeOf(exposed_in), "AudioWorklet") and exposed_in.AudioWorklet) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worklet") and exposed_in.Worklet) break :blk true;
+                    break :blk false;
+                },
+                .PaintWorklet => blk: {
+                    if (@hasField(@TypeOf(exposed_in), "PaintWorklet") and exposed_in.PaintWorklet) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worklet") and exposed_in.Worklet) break :blk true;
+                    break :blk false;
+                },
+                .AnimationWorklet => blk: {
+                    if (@hasField(@TypeOf(exposed_in), "AnimationWorklet") and exposed_in.AnimationWorklet) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worklet") and exposed_in.Worklet) break :blk true;
+                    break :blk false;
+                },
+                .LayoutWorklet => blk: {
+                    if (@hasField(@TypeOf(exposed_in), "LayoutWorklet") and exposed_in.LayoutWorklet) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worklet") and exposed_in.Worklet) break :blk true;
+                    break :blk false;
+                },
+                .SharedStorageWorklet => blk: {
+                    if (@hasField(@TypeOf(exposed_in), "SharedStorageWorklet") and exposed_in.SharedStorageWorklet) break :blk true;
+                    if (@hasField(@TypeOf(exposed_in), "Worklet") and exposed_in.Worklet) break :blk true;
+                    break :blk false;
+                },
+                .ShadowRealm => @hasField(@TypeOf(exposed_in), "ShadowRealm") and exposed_in.ShadowRealm,
+            };
         }
-
-        return false;
     }
 
-    // No [Exposed] attribute found - default is not exposed
+    // Fallback path: Check T.__webidl__.extended_attrs (legacy)
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        inline for (metadata.extended_attrs) |attr| {
+            if (comptime !std.mem.eql(u8, attr.name, "Exposed")) {
+                continue;
+            }
+
+            const ValueType = @TypeOf(attr.value);
+
+            // [Exposed=*] - exposed in all globals
+            if (ValueType == @TypeOf(.wildcard)) {
+                return true;
+            }
+
+            // [Exposed=Window] - single identifier
+            if (@hasField(ValueType, "identifier")) {
+                return scope.matchesExposure(attr.value.identifier);
+            }
+
+            // [Exposed=(Window,Worker)] - list of identifiers
+            if (@hasField(ValueType, "identifier_list")) {
+                for (attr.value.identifier_list) |id| {
+                    if (scope.matchesExposure(id)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            return false;
+        }
+    }
+
+    // No exposure metadata found - default is not exposed
     return false;
 }
 

@@ -139,7 +139,7 @@ pub const SnapshotError = error{
 /// - External references haven't been registered yet
 /// - Snapshot data isn't available
 /// - Isolate/context creation fails
-pub fn createWorkerIsolateFromSnapshot() ?SnapshotResult {
+pub fn createWorkerIsolateFromSnapshot(context_index: ?usize) ?SnapshotResult {
     // Check if external references have been registered by the main browser
     if (!ext_refs.hasRegisteredExternalReferences()) {
         std.log.err("[snapshot_loader] Worker: External references not registered (main browser must initialize first)", .{});
@@ -173,8 +173,12 @@ pub fn createWorkerIsolateFromSnapshot() ?SnapshotResult {
         return null;
     }
 
-    // Create context from the snapshot
-    const context = ffi.v8_Context_NewFromSnapshot(isolate.?);
+    // Create context from the snapshot at the specified index
+    // Index 0 = Window, 1 = DedicatedWorker, 2 = SharedWorker, 3 = ServiceWorker, etc.
+    const context = if (context_index) |idx|
+        ffi.v8_Context_NewFromSnapshotAt(isolate.?, idx)
+    else
+        ffi.v8_Context_NewFromSnapshot(isolate.?);
     if (context == null) {
         std.log.err("[snapshot_loader] Worker: Failed to create context from snapshot", .{});
         ffi.v8_Isolate_Dispose(isolate.?);

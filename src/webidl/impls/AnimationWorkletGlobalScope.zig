@@ -50,12 +50,31 @@ pub const InternalState = struct {
 var registry: std.AutoHashMap(*runtime.Instance, InternalState) = undefined;
 var registry_initialized: bool = false;
 
+/// Module-level allocator for cleanup
+var map_allocator: ?std.mem.Allocator = null;
+
 fn getRegistry(allocator: std.mem.Allocator) *std.AutoHashMap(*runtime.Instance, InternalState) {
     if (!registry_initialized) {
         registry = std.AutoHashMap(*runtime.Instance, InternalState).init(allocator);
         registry_initialized = true;
+        map_allocator = allocator;
     }
     return &registry;
+}
+
+/// Cleanup all remaining internal state (for use during shutdown/testing)
+/// This prevents memory leaks when the module-level registry isn't cleaned up
+pub fn deinitRegistry() void {
+    if (!registry_initialized) return;
+
+    var it = registry.iterator();
+    while (it.next()) |entry| {
+        var state = entry.value_ptr.*;
+        state.deinit();
+    }
+    registry.deinit();
+    registry_initialized = false;
+    map_allocator = null;
 }
 
 /// Initialize instance (creates the instance)
@@ -77,7 +96,8 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const allocator = std.heap.page_allocator;
+    // Use the stored map_allocator, not page_allocator (prevents memory leak)
+    const allocator = map_allocator orelse return;
     if (getRegistry(allocator).get(instance)) |internal| {
         var state = internal;
         state.deinit();
@@ -88,7 +108,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Operation: registerAnimator
 /// Registers an animator class for use with WorkletAnimation
 pub fn call_registerAnimator(instance: *runtime.Instance, name: runtime.DOMString, animatorCtor: callbacks.AnimatorInstanceConstructor) anyerror!void {
-    const allocator = std.heap.page_allocator;
+    // Use the stored map_allocator, not page_allocator (consistent allocator usage)
+    const allocator = map_allocator orelse return error.InvalidState;
     const internal = getRegistry(allocator).getPtr(instance) orelse return error.InvalidState;
 
     const name_slice = name.asSlice();

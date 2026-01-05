@@ -184,10 +184,12 @@ pub const ServiceWorkerFetchInterceptor = struct {
         response.status = sw_response.status;
         response.status_message = sw_response.status_text;
 
-        // Note: Body handling requires proper Body type creation
-        // For now, we skip body assignment as the stub returns no_interception
-        // TODO: Implement proper Body creation when real SW interception is wired up
-        _ = sw_response.body;
+        // Handle body from SW response
+        if (sw_response.body) |body_bytes| {
+            // Create Body from the service worker response bytes
+            const Body = @import("fetch").internal.Body;
+            response.body = try Body.fromBytes(allocator, body_bytes);
+        }
 
         // Set content-type header if present
         if (sw_response.content_type) |ct| {

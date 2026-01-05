@@ -6997,10 +6997,11 @@ void TrapGet(const FunctionCallbackInfo<Value>& info) {
     Local<Value> target = info[0];
     Local<Value> property = info[1];
     
-    if (property->IsString()) {
-        String::Utf8Value prop_str(isolate, property);
-        fprintf(stderr, "[TrapGet] property='%s'\n", *prop_str);
-    }
+    // Debug logging disabled for performance - uncomment if needed
+    // if (property->IsString()) {
+    //     String::Utf8Value prop_str(isolate, property);
+    //     fprintf(stderr, "[TrapGet] property='%s'\n", *prop_str);
+    // }
     
     Local<Object> reflect = context->Global()
         ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))

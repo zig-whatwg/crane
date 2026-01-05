@@ -69,6 +69,24 @@ fn getRegistry(allocator: std.mem.Allocator) *Registry {
     return &registry.?;
 }
 
+/// Cleanup all remaining internal state (for use during shutdown/testing)
+/// This prevents memory leaks when the module-level registry isn't cleaned up
+pub fn deinitRegistry() void {
+    const allocator = map_allocator orelse return;
+    _ = allocator; // Used for consistency with other worklets
+
+    if (registry) |*reg| {
+        var it = reg.iterator();
+        while (it.next()) |entry| {
+            var state = entry.value_ptr.*;
+            state.deinit();
+        }
+        reg.deinit();
+        registry = null;
+    }
+    map_allocator = null;
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,

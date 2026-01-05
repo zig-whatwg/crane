@@ -1709,9 +1709,11 @@ pub fn get_onportalactivate(instance: *runtime.Instance) anyerror!typedefs.Event
 }
 
 /// Getter for origin
+/// Returns the origin of this window's associated Document.
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#dom-origin
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return "null";
+    return internal.origin;
 }
 
 /// Getter for isSecureContext

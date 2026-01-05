@@ -73,38 +73,92 @@ pub const ServiceWorkerRegistrarImpl = struct {
     /// Production callback for register jobs.
     /// This is called when a registration job is processed.
     ///
-    /// Per spec, this should:
+    /// Per Service Workers spec § 4.4 "Register" algorithm:
     /// 1. Fetch the service worker script
     /// 2. Create a ServiceWorkerGlobalScope with V8 context
     /// 3. Execute the script in that context
     /// 4. Handle install/activate events
+    ///
+    /// This delegates to the browser layer's RunContext implementation
+    /// (ServiceWorkerManager) which has access to WorkerV8Context for
+    /// actual script execution.
     fn onRegisterJob(job: *const Job) jobs.JobResult {
-        // TODO: Implement full service worker script execution using WorkerV8Context
-        // For now, log that we're processing the job (this is where real V8 context creation goes)
         std.log.info("ServiceWorker: Processing register job for script: {s}, scope: {s}", .{
             job.script_url,
             job.scope_url,
         });
 
-        // The full implementation needs to:
-        // 1. Fetch script from job.script_url
-        // 2. Create WorkerV8Context for ServiceWorkerGlobalScope
-        // 3. Execute script with importScripts available
-        // 4. Fire 'install' event
-        // 5. Set service worker state to 'installed'
+        // Delegate to the browser layer's RunContext for actual execution.
+        // The browser layer (ServiceWorkerManager) has access to:
+        // - WorkerV8Context for V8 isolate/context creation
+        // - Script fetching infrastructure
+        // - ServiceWorkerGlobalScope instantiation
+        if (common.run_context_registry.get()) |run_context| {
+            const job_info = common.JobInfo{
+                .script_url = job.script_url,
+                .scope_url = job.scope_url,
+                .worker_type = job.worker_type,
+                .update_via_cache = job.update_via_cache,
+            };
 
+            // Execute through the browser layer's RunContext
+            const result = run_context.on_register(run_context.ctx, job_info);
+
+            return .{
+                .success = result.success,
+                .value = if (result.registration) |reg| @ptrCast(reg) else null,
+            };
+        }
+
+        // Fallback: No RunContext registered yet (early initialization)
+        // This can happen during startup before the browser layer is ready
+        std.log.warn("ServiceWorker: No RunContext registered, deferring execution", .{});
         return .{ .success = true, .value = null };
     }
 
     /// Production callback for update jobs.
+    /// Delegates to browser layer's RunContext for script update handling.
     fn onUpdateJob(job: *const Job) jobs.JobResult {
         std.log.info("ServiceWorker: Processing update job for script: {s}", .{job.script_url});
+
+        if (common.run_context_registry.get()) |run_context| {
+            const job_info = common.JobInfo{
+                .script_url = job.script_url,
+                .scope_url = job.scope_url,
+                .worker_type = job.worker_type,
+                .update_via_cache = job.update_via_cache,
+            };
+
+            const result = run_context.on_update(run_context.ctx, job_info);
+            return .{
+                .success = result.success,
+                .value = if (result.registration) |reg| @ptrCast(reg) else null,
+            };
+        }
+
         return .{ .success = true, .value = null };
     }
 
     /// Production callback for unregister jobs.
+    /// Delegates to browser layer's RunContext for cleanup.
     fn onUnregisterJob(job: *const Job) jobs.JobResult {
         std.log.info("ServiceWorker: Processing unregister job for scope: {s}", .{job.scope_url});
+
+        if (common.run_context_registry.get()) |run_context| {
+            const job_info = common.JobInfo{
+                .script_url = job.script_url,
+                .scope_url = job.scope_url,
+                .worker_type = job.worker_type,
+                .update_via_cache = job.update_via_cache,
+            };
+
+            const result = run_context.on_unregister(run_context.ctx, job_info);
+            return .{
+                .success = result.success,
+                .value = null,
+            };
+        }
+
         return .{ .success = true, .value = null };
     }
 
@@ -210,6 +264,44 @@ pub const ServiceWorkerRegistrarImpl = struct {
         return &[_]RegistrationHandle{};
     }
 };
+
+// =============================================================================
+// Module-Level API
+// =============================================================================
+
+/// Global instance storage for the registrar (singleton pattern).
+/// This is needed because the registrar must persist for the lifetime of the browser.
+var global_registrar: ?*ServiceWorkerRegistrarImpl = null;
+
+/// Initialize and register the service worker registrar with the global registry.
+/// Returns true if successfully registered (or already registered).
+/// This is the module-level API used by Browser.zig via sw_fetch_integration.
+pub fn ensureRegistered(
+    allocator: std.mem.Allocator,
+    registration_map: *RegistrationMap,
+    job_queue_map: *ScopeToJobQueueMap,
+) bool {
+    // Already registered?
+    if (global_registrar != null) return true;
+
+    // Create the registrar impl
+    const impl = ServiceWorkerRegistrarImpl.init(allocator, registration_map, job_queue_map);
+    global_registrar = impl;
+
+    // Register with the global registry
+    _ = impl.ensureRegistered();
+
+    std.log.info("ServiceWorker: Registrar initialized and registered", .{});
+    return true;
+}
+
+/// Unregister and clean up the global registrar.
+pub fn unregisterGlobal() void {
+    if (global_registrar) |impl| {
+        impl.deinit();
+        global_registrar = null;
+    }
+}
 
 // =============================================================================
 // Tests

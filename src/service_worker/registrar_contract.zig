@@ -41,6 +41,130 @@ pub const RegistrationHandle = struct {
     }
 };
 
+/// Opaque handle to a service worker instance.
+pub const ServiceWorkerHandle = u64;
+
+// =============================================================================
+// RunContext VTable Interface (for execution layer callbacks)
+// =============================================================================
+
+/// Information about a job to be executed.
+pub const JobInfo = struct {
+    script_url: []const u8,
+    scope_url: []const u8,
+    worker_type: WorkerType = .classic,
+    update_via_cache: UpdateViaCacheMode = .imports,
+};
+
+/// Result of a job execution.
+pub const JobResult = struct {
+    success: bool,
+    value: ?*anyopaque = null,
+};
+
+/// VTable-based interface for service worker execution.
+/// The browser layer implements this to handle actual V8/GlobalScope work.
+/// The scheduling layer (algorithms/) calls these without importing V8.
+pub const RunContext = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        /// Called when a register job needs to execute.
+        on_register: ?*const fn (self: *anyopaque, job: JobInfo) JobResult = null,
+        /// Called when an update job needs to execute.
+        on_update: ?*const fn (self: *anyopaque, job: JobInfo) JobResult = null,
+        /// Called when an unregister job needs to execute.
+        on_unregister: ?*const fn (self: *anyopaque, job: JobInfo) JobResult = null,
+        /// Called when a service worker needs to be terminated.
+        on_terminate: ?*const fn (self: *anyopaque, worker: ServiceWorkerHandle) void = null,
+        /// Called when the install event should fire.
+        on_install: ?*const fn (self: *anyopaque, worker: ServiceWorkerHandle) JobResult = null,
+        /// Called when the activate event should fire.
+        on_activate: ?*const fn (self: *anyopaque, worker: ServiceWorkerHandle) JobResult = null,
+    };
+
+    /// Execute a register job.
+    pub fn onRegister(self: RunContext, job: JobInfo) JobResult {
+        if (self.vtable.on_register) |f| return f(self.ptr, job);
+        return .{ .success = false };
+    }
+
+    /// Execute an update job.
+    pub fn onUpdate(self: RunContext, job: JobInfo) JobResult {
+        if (self.vtable.on_update) |f| return f(self.ptr, job);
+        return .{ .success = false };
+    }
+
+    /// Execute an unregister job.
+    pub fn onUnregister(self: RunContext, job: JobInfo) JobResult {
+        if (self.vtable.on_unregister) |f| return f(self.ptr, job);
+        return .{ .success = false };
+    }
+
+    /// Terminate a service worker.
+    pub fn onTerminate(self: RunContext, worker: ServiceWorkerHandle) void {
+        if (self.vtable.on_terminate) |f| f(self.ptr, worker);
+    }
+
+    /// Fire install event.
+    pub fn onInstall(self: RunContext, worker: ServiceWorkerHandle) JobResult {
+        if (self.vtable.on_install) |f| return f(self.ptr, worker);
+        return .{ .success = false };
+    }
+
+    /// Fire activate event.
+    pub fn onActivate(self: RunContext, worker: ServiceWorkerHandle) JobResult {
+        if (self.vtable.on_activate) |f| return f(self.ptr, worker);
+        return .{ .success = false };
+    }
+
+    /// Create a RunContext from a concrete implementation type.
+    pub fn create(comptime T: type, impl: *T) RunContext {
+        return .{
+            .ptr = @ptrCast(impl),
+            .vtable = &.{
+                .on_register = if (@hasDecl(T, "onRegister")) struct {
+                    fn call(ptr: *anyopaque, job: JobInfo) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onRegister(job);
+                    }
+                }.call else null,
+                .on_update = if (@hasDecl(T, "onUpdate")) struct {
+                    fn call(ptr: *anyopaque, job: JobInfo) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onUpdate(job);
+                    }
+                }.call else null,
+                .on_unregister = if (@hasDecl(T, "onUnregister")) struct {
+                    fn call(ptr: *anyopaque, job: JobInfo) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onUnregister(job);
+                    }
+                }.call else null,
+                .on_terminate = if (@hasDecl(T, "onTerminate")) struct {
+                    fn call(ptr: *anyopaque, worker: ServiceWorkerHandle) void {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        self.onTerminate(worker);
+                    }
+                }.call else null,
+                .on_install = if (@hasDecl(T, "onInstall")) struct {
+                    fn call(ptr: *anyopaque, worker: ServiceWorkerHandle) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onInstall(worker);
+                    }
+                }.call else null,
+                .on_activate = if (@hasDecl(T, "onActivate")) struct {
+                    fn call(ptr: *anyopaque, worker: ServiceWorkerHandle) JobResult {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.onActivate(worker);
+                    }
+                }.call else null,
+            },
+        };
+    }
+};
+
 // =============================================================================
 // ServiceWorkerRegistrar VTable Interface
 // =============================================================================
@@ -194,6 +318,44 @@ pub const registrar_registry = struct {
     /// Reset for testing.
     pub fn resetForTesting() void {
         g_registrar.store(null, .release);
+    }
+};
+
+// =============================================================================
+// RunContext Registry (Global Singleton)
+// =============================================================================
+
+/// Global registry for the active RunContext (execution layer).
+/// Thread-safe via atomic operations.
+pub const run_context_registry = struct {
+    var g_run_context: std.atomic.Value(?*const RunContext) = .{ .raw = null };
+
+    /// Register a RunContext instance.
+    pub fn register(run_context: *const RunContext) void {
+        g_run_context.store(run_context, .release);
+    }
+
+    /// Unregister the current RunContext.
+    pub fn unregister() void {
+        g_run_context.store(null, .release);
+    }
+
+    /// Get the registered RunContext, if any.
+    pub fn get() ?RunContext {
+        if (g_run_context.load(.acquire)) |ptr| {
+            return ptr.*;
+        }
+        return null;
+    }
+
+    /// Check if a RunContext is registered.
+    pub fn isRegistered() bool {
+        return g_run_context.load(.acquire) != null;
+    }
+
+    /// Reset for testing.
+    pub fn resetForTesting() void {
+        g_run_context.store(null, .release);
     }
 };
 

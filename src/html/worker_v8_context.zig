@@ -177,7 +177,9 @@ pub const WorkerV8Context = struct {
 
         // Try to create isolate from snapshot (thread-safe, uses already-registered refs)
         // This gives us all WebIDL interfaces pre-registered
-        const snapshot_result = v8.snapshot_loader.createWorkerIsolateFromSnapshot();
+        // Use context index 1 = DedicatedWorkerGlobalScope (not 0 = Window)
+        const dedicated_worker_context_index: usize = 1;
+        const snapshot_result = v8.snapshot_loader.createWorkerIsolateFromSnapshot(dedicated_worker_context_index);
 
         var isolate: *v8.ffi.Isolate = undefined;
         var context: *v8.ffi.Context = undefined;
