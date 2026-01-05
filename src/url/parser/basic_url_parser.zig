@@ -643,6 +643,9 @@ fn pathOrAuthorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
 fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const base = ctx.base.?;
+    // Clear any existing scheme before copying from base
+    // (fixes duplicate scheme bug when input like "http:foo" has same scheme as base)
+    ctx.scheme.clear();
     try ctx.scheme.appendSlice(base.scheme());
 
     if (c == null) {
@@ -970,6 +973,9 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
 }
 
 fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
+    // Clear any existing scheme before setting to "file"
+    // (fixes duplicate scheme bug when input starts with "file:")
+    ctx.scheme.clear();
     try ctx.scheme.appendSlice("file");
     ctx.host = Host.empty;
 
