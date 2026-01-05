@@ -1471,7 +1471,7 @@ pub const Context = struct {
 
         // Step 2: Detect content type and delegate to appropriate handler
         if (isHtmlContentType(result.content_type)) {
-            try self.handleHtmlResponse(result.body, v8_ctx);
+            try self.handleHtmlResponse(result.body, result.final_url, v8_ctx);
         } else if (isJsonContentType(result.content_type)) {
             try self.handleJsonResponse(result.body);
         } else if (isTextContentType(result.content_type)) {
@@ -1504,7 +1504,8 @@ pub const Context = struct {
     }
 
     /// Handle HTML response - parse with full HTML parser including script execution
-    fn handleHtmlResponse(self: *Context, html_content: []const u8, v8_ctx: *v8.ffi.Context) !void {
+    /// The final_url parameter is the actual URL after redirects (with full scheme)
+    fn handleHtmlResponse(self: *Context, html_content: []const u8, final_url: []const u8, v8_ctx: *v8.ffi.Context) !void {
         // Get runtime context for HTMLParser
         const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
             std.debug.print("Failed to get runtime context: {}\n", .{err});
@@ -1517,14 +1518,12 @@ pub const Context = struct {
             return error.NotInitialized;
         };
 
-        // Update document URL to the actual page URL
-        if (impls.Document.getInternal(document)) |doc_internal| {
-            // Free old URL if it exists
-            if (doc_internal.url.len > 0) {
-                self.allocator.free(doc_internal.url);
-            }
-            doc_internal.url = self.allocator.dupe(u8, self.url) catch "";
-        }
+        // Update document URL and location object to the actual page URL (after redirects)
+        // This is critical for location.pathname, location.href, etc. to work correctly
+        // in scripts (e.g., WPT testharness.js uses location to identify tests)
+        self.setUrl(final_url) catch |err| {
+            std.debug.print("WARNING: Failed to set URL on location/document: {}\n", .{err});
+        };
 
         // Parse HTML with full scripting support
         const HTMLParser = impls.HTMLParser;
@@ -1534,7 +1533,7 @@ pub const Context = struct {
             html_content,
             .{
                 .scripting_enabled = true,
-                .base_url = self.url,
+                .base_url = final_url,
                 .script_loader = null, // Use default HTTP fetching
                 .existing_document = document,
                 .trust_store = self.trust_store,
@@ -1778,7 +1777,7 @@ pub const Context = struct {
         }
     }
 
-    /// Set the context URL (updates location object and document URL)
+    /// Set the context URL (updates location object, document URL, and API base URL)
     fn setUrl(self: *Context, url: []const u8) !void {
         // Update internal URL
         self.allocator.free(self.url);
@@ -1801,6 +1800,15 @@ pub const Context = struct {
                 }
                 doc_internal.url = self.allocator.dupe(u8, url) catch "";
             }
+        }
+
+        // Update API base URL in environment settings object
+        // This is critical for fetch() to resolve relative URLs correctly
+        // (e.g., fetch("resources/data.json") needs to resolve against the page URL)
+        if (self.realm) |realm| {
+            if (realm.getSettingsObject()) |settings| {
+                settings.setApiBaseUrl(self.url, false); // false = not owned, don't free
+            } else |_| {}
         }
     }
 
