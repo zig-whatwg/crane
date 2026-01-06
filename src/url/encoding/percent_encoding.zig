@@ -219,8 +219,26 @@ pub fn utf8PercentEncode(
             break;
         }
 
-        const cp = std.unicode.utf8Decode(input[i..][0..cp_len]) catch {
-            // Invalid UTF-8, encode the bytes
+        const cp = std.unicode.utf8Decode(input[i..][0..cp_len]) catch |err| {
+            // Check if this is a surrogate half (WTF-8 from V8)
+            // Surrogates should be replaced with U+FFFD per the URL spec
+            if (err == error.Utf8EncodesSurrogateHalf) {
+                // Replace surrogate with U+FFFD (percent-encoded as %EF%BF%BD)
+                const replacement = [_]u8{ 0xEF, 0xBF, 0xBD };
+                if (encode_sets.shouldEncode(0xFFFD, encode_set)) {
+                    // Percent-encode U+FFFD
+                    for (replacement) |byte| {
+                        const encoded = percentEncodeByte(byte);
+                        try output.appendSlice(&encoded);
+                    }
+                } else {
+                    // Append U+FFFD as-is
+                    try output.appendSlice(&replacement);
+                }
+                i += cp_len;
+                continue;
+            }
+            // Other invalid UTF-8, encode the raw bytes
             var j: usize = 0;
             while (j < cp_len) : (j += 1) {
                 const encoded = percentEncodeByte(input[i + j]);
