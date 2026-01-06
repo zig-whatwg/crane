@@ -718,7 +718,19 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
 }
 
 fn relativeSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
-    if (c == null) return;
+    // Handle EOF and non-slash characters the same way:
+    // copy base credentials/host/port and transition to path state
+    if (c == null) {
+        const base = ctx.base.?;
+        try ctx.username.appendSlice(base.username());
+        try ctx.password.appendSlice(base.password());
+        if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
+        ctx.port = base.port;
+        ctx.state = .path;
+        ctx.pointer -%= 1; // Rewind so path state sees EOF
+        return;
+    }
+
     const char = c.?;
 
     if (ctx.isSpecial() and (char == '/' or char == '\\')) {
