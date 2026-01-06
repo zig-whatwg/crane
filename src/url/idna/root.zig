@@ -41,6 +41,7 @@ const mapping = @import("mapping.zig");
 const bidi = @import("bidi.zig");
 const context = @import("context.zig");
 const idna_validation = @import("validation.zig");
+const unicode_data = @import("unicode_data.zig");
 
 // Re-export submodules for external use
 pub const validation_mod = validation;
@@ -111,9 +112,71 @@ fn processLabelToASCII(
     {
         // Try to decode the Punycode
         const punycode_part = normalized[4..];
-        const decoded = punycode.decode(allocator, punycode_part) catch null;
 
-        if (decoded) |dec| {
+        // Per UTS46, invalid punycode in xn-- labels MUST fail validation
+        const dec = punycode.decode(allocator, punycode_part) catch {
+            return IDNAError.PunycodeError;
+        };
+
+        {
+            defer allocator.free(dec);
+
+            // Per UTS46, xn-- that decodes to empty string is invalid
+            if (dec.len == 0) {
+                return IDNAError.PunycodeError;
+            }
+
+            // UTS46 Validity check 1: decoded result must be NFC normalized
+            // If the decoded string doesn't equal its NFC normalization, the punycode is invalid
+            const nfc_dec = normalization.normalize(allocator, dec) catch {
+                return IDNAError.PunycodeError;
+            };
+            defer allocator.free(nfc_dec);
+
+            if (!std.mem.eql(u8, dec, nfc_dec)) {
+                return IDNAError.PunycodeError;
+            }
+
+            // UTS46 Validity check 2: decoded result must not contain disallowed or mapped characters
+            // Per UTS46 section 4.1, a valid A-label must decode to a U-label where all characters
+            // are already in canonical form (valid status). If decoded punycode contains:
+            // - disallowed: obviously invalid
+            // - mapped: indicates non-canonical encoding (e.g., U+3253 CIRCLED NUMBER TWENTY THREE
+            //   maps to "23", so xn--pokxncvks is invalid because it encodes non-canonical chars)
+            // - ignored: would have been removed during proper encoding
+            // - deviation: depends on transitional mode, but browsers use non-transitional
+            var dec_i: usize = 0;
+            while (dec_i < dec.len) {
+                const cp_len = std.unicode.utf8ByteSequenceLength(dec[dec_i]) catch {
+                    return IDNAError.PunycodeError;
+                };
+                if (dec_i + cp_len > dec.len) {
+                    return IDNAError.PunycodeError;
+                }
+                const cp = std.unicode.utf8Decode(dec[dec_i..][0..cp_len]) catch {
+                    return IDNAError.PunycodeError;
+                };
+                const lookup = unicode_data.lookupIdnaStatus(cp);
+                // Only .valid and .deviation are acceptable in decoded punycode
+                // (.deviation is allowed in non-transitional mode which browsers use)
+                if (lookup.status == .disallowed or lookup.status == .mapped or lookup.status == .ignored) {
+                    return IDNAError.PunycodeError;
+                }
+                dec_i += cp_len;
+            }
+
+            // UTS46 Validity check 3: re-encode and compare (round-trip verification)
+            // This catches invalid punycode that decodes but doesn't re-encode to the same value
+            const reencoded = punycode.encode(allocator, nfc_dec) catch {
+                return IDNAError.PunycodeError;
+            };
+            defer allocator.free(reencoded);
+
+            // Compare re-encoded with original punycode part (case-insensitive)
+            if (!std.ascii.eqlIgnoreCase(reencoded, punycode_part)) {
+                return IDNAError.PunycodeError;
+            }
+
             // Successfully decoded - now check if the decoded result is pure ASCII
             var decoded_is_ascii = true;
             for (dec) |byte| {
@@ -125,29 +188,16 @@ fn processLabelToASCII(
 
             if (decoded_is_ascii) {
                 // Decoded result is pure ASCII (e.g., xn--ASCII- -> ascii)
-                // Special case: xn--- decodes to empty string - keep xn--- as-is
-                if (dec.len == 0) {
-                    allocator.free(dec);
-                    // Validate and return the xn-- form for empty decoded result
-                    idna_validation.validateLabel(normalized, be_strict) catch {
-                        return IDNAError.ValidationError;
-                    };
-                    return try allocator.dupe(u8, normalized);
-                }
-
                 // Validate and return the decoded ASCII form (not the xn-- form)
-                // Note: Punycode decode already returns lowercase ASCII
                 idna_validation.validateLabel(dec, be_strict) catch {
-                    allocator.free(dec);
                     return IDNAError.ValidationError;
                 };
 
                 // Return the decoded ASCII (ownership transferred)
-                return dec;
+                return try allocator.dupe(u8, dec);
             } else {
                 // Decoded result contains non-ASCII (e.g., xn--u-ccb -> u\u0308)
                 // Keep the xn-- form and validate it
-                defer allocator.free(dec);
 
                 // Validate the decoded form for bidi/context rules
                 if (be_strict) {
@@ -167,7 +217,6 @@ fn processLabelToASCII(
                 return try allocator.dupe(u8, normalized);
             }
         }
-        // If decode failed, continue to normal processing (re-encode the label)
     }
 
     // Step 3: Check if label is pure ASCII

@@ -1101,7 +1101,7 @@ fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
             return;
         }
 
-        const host = parseHost(ctx.allocator, ctx.buffer.items(), true, null) catch |err| {
+        const host = parseHost(ctx.allocator, ctx.buffer.items(), false, null) catch |err| {
             return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
         };
         if (host == .domain and std.mem.eql(u8, host.domain, "localhost")) {
