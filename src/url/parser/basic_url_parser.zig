@@ -760,46 +760,21 @@ fn specialAuthorityIgnoreSlashesState(ctx: *ParserContext, c: ?u8) ParseError!vo
 }
 
 fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
-    // Handle EOF: finalize as host
+    // Handle EOF same as terminators per WHATWG spec:
+    // "If c is EOF, /, ?, #, or (special and \), then..."
+    // We rewind pointer and transition to host state, letting host state handle
+    // the actual host parsing (which may include port handling for ':')
     if (c == null) {
         if (ctx.at_sign_seen and ctx.buffer.items().len == 0) {
             return ParseError.HostMissing;
         }
-        // If we've seen @ sign, the buffer contains the host
-        // If not, the buffer contains userinfo@host and we need to backtrack
-        if (!ctx.at_sign_seen) {
-            // No @ seen, so this is all host (no userinfo)
-            // Parse the buffer as host
-            if (ctx.isSpecial() and ctx.buffer.items().len == 0) {
-                return ParseError.HostMissing;
-            }
-            if (ctx.buffer.items().len > 0) {
-                const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
-                    return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
-                };
-                ctx.host = host;
-            } else if (!ctx.isSpecial()) {
-                // For non-special URLs with empty authority, set host to empty string
-                ctx.host = Host.empty;
-            }
-            ctx.buffer.clear();
-            ctx.state = .path_start;
-            ctx.pointer -%= 1; // Decrement so pathStartState runs with EOF
-            return;
-        }
-        // @ sign seen, buffer contains host
-        if (ctx.buffer.items().len > 0) {
-            const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
-                return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
-            };
-            ctx.host = host;
-        } else if (!ctx.isSpecial()) {
-            // For non-special URLs with empty authority, set host to empty string
-            ctx.host = Host.empty;
+        // Rewind pointer by buffer length + 1 (for the EOF/terminator itself)
+        // and transition to host state per spec step 2.2
+        if (ctx.pointer >= ctx.buffer.items().len) {
+            ctx.pointer -= ctx.buffer.items().len + 1;
         }
         ctx.buffer.clear();
-        ctx.state = .path_start;
-        ctx.pointer -%= 1; // Decrement so pathStartState runs with EOF
+        ctx.state = .host;
         return;
     }
 
