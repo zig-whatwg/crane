@@ -181,6 +181,17 @@ pub fn parseHost(
     };
     defer allocator.free(ascii_domain);
 
+    // Step 6: Check for forbidden domain code points AFTER IDNA processing
+    // IDNA mapping can introduce forbidden characters (e.g., NBSP -> space, fullwidth % -> %)
+    for (ascii_domain) |byte| {
+        if (host.isForbiddenDomainCodePoint(byte)) {
+            if (errors) |errs| {
+                try errs.append(.{ .type = .host_invalid_code_point });
+            }
+            return HostParseError.InvalidHost;
+        }
+    }
+
     // Step 7: Check if ends in number (IPv4)
     if (endsInNumber(ascii_domain)) {
         const ipv4_addr = ipv4_parser.parseIPv4(allocator, ascii_domain, errors) catch {
