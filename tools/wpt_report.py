@@ -354,11 +354,8 @@ def generate_html(data, output_path):
         <div id="tests">
 '''
 
-    # Sort results: failures first, then by name
-    sorted_results = sorted(results, key=lambda r: (
-        0 if r.get('status') not in ('OK', 'PASS') or any(s.get('status') != 'PASS' for s in r.get('subtests', [])) else 1,
-        r.get('test', '')
-    ))
+    # Sort results alphabetically by test name
+    sorted_results = sorted(results, key=lambda r: r.get('test', ''))
 
     for result in sorted_results:
         test_name = result.get('test', 'Unknown')
