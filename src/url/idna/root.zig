@@ -92,9 +92,10 @@ fn processLabelToASCII(
     label: []const u8,
     be_strict: bool,
 ) ![]u8 {
-    // Empty label
+    // Empty labels are valid - domains like "." and ".." produce empty labels
+    // when split by '.', and these are valid per the URL spec
     if (label.len == 0) {
-        return IDNAError.InvalidDomain;
+        return try allocator.dupe(u8, "");
     }
 
     // Note: Domain-level mapping has already been done in domainToASCII
@@ -305,10 +306,27 @@ pub fn domainToASCII(
         labels.deinit();
     }
 
+    // Special case: dot-only domains like "." and ".."
+    // These should pass through as-is without IDNA processing
+    var all_dots = true;
+    for (domain_mapped) |c| {
+        if (c != '.') {
+            all_dots = false;
+            break;
+        }
+    }
+    if (all_dots and domain_mapped.len > 0) {
+        return try allocator.dupe(u8, domain_mapped);
+    }
+
     var iter = std.mem.splitScalar(u8, domain_mapped, '.');
     while (iter.next()) |label| {
-        // Skip trailing empty label (trailing dot)
+        // Skip trailing empty label (trailing dot like "example.com.")
+        // But we keep ALL labels for domains with content
         if (label.len == 0 and iter.peek() == null) {
+            // This is a trailing empty label - add it to preserve trailing dots
+            const processed = try allocator.dupe(u8, "");
+            try labels.append(processed);
             continue;
         }
 
@@ -330,12 +348,10 @@ pub fn domainToASCII(
 
     const final_domain = try result.toOwnedSlice();
 
-    // Step 3: Validate final domain
-    // Check for empty string
-    if (final_domain.len == 0) {
-        allocator.free(final_domain);
-        return IDNAError.InvalidDomain;
-    }
+    // Note: We do NOT reject empty strings here. While unusual, domains like "."
+    // and ".." are valid per the URL spec and produce valid (non-empty) results
+    // after our processing. An empty result would only happen if the input was
+    // empty, which is handled by the host parser before calling IDNA.
 
     // Note: We do NOT check for forbidden domain code points here.
     // Forbidden domain code points (#, %, /, :, etc.) are a URL spec concept,
@@ -352,6 +368,11 @@ fn processLabelToUnicode(
     label: []const u8,
     be_strict: bool,
 ) ![]u8 {
+    // Empty labels are valid - domains like "." and ".." produce empty labels
+    if (label.len == 0) {
+        return try allocator.dupe(u8, "");
+    }
+
     // Check if label starts with "xn--" (Punycode)
     if (std.mem.startsWith(u8, label, "xn--") or
         std.mem.startsWith(u8, label, "XN--") or
@@ -440,6 +461,19 @@ pub fn domainToUnicode(
     };
     defer allocator.free(domain_mapped);
 
+    // Special case: dot-only domains like "." and ".."
+    // These should pass through as-is without IDNA processing
+    var all_dots = true;
+    for (domain_mapped) |c| {
+        if (c != '.') {
+            all_dots = false;
+            break;
+        }
+    }
+    if (all_dots and domain_mapped.len > 0) {
+        return try allocator.dupe(u8, domain_mapped);
+    }
+
     // Step 1: Split mapped domain into labels
     var labels = infra.List([]const u8).init(allocator);
     defer {
@@ -451,11 +485,6 @@ pub fn domainToUnicode(
 
     var iter = std.mem.splitScalar(u8, domain_mapped, '.');
     while (iter.next()) |label| {
-        // Skip trailing empty label (trailing dot)
-        if (label.len == 0 and iter.peek() == null) {
-            continue;
-        }
-
         // Process each label
         const processed = try processLabelToUnicode(allocator, label, be_strict);
         try labels.append(processed);
