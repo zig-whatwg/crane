@@ -348,10 +348,12 @@ pub fn domainToASCII(
 
     const final_domain = try result.toOwnedSlice();
 
-    // Note: We do NOT reject empty strings here. While unusual, domains like "."
-    // and ".." are valid per the URL spec and produce valid (non-empty) results
-    // after our processing. An empty result would only happen if the input was
-    // empty, which is handled by the host parser before calling IDNA.
+    // Reject truly empty domains (e.g., domain was only ignored characters like soft hyphen)
+    // Note: Domains like "." and ".." are NOT empty - they produce "." and ".." respectively
+    if (final_domain.len == 0) {
+        allocator.free(final_domain);
+        return IDNAError.InvalidDomain;
+    }
 
     // Note: We do NOT check for forbidden domain code points here.
     // Forbidden domain code points (#, %, /, :, etc.) are a URL spec concept,
