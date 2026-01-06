@@ -360,8 +360,10 @@ fn applyContextToURL(ctx: *ParserContext, url: *URLRecord) !void {
 
     url.query_start = query_start;
     url.query_len = query_len;
+    url.has_query = ctx.has_query;
     url.fragment_start = fragment_start;
     url.fragment_len = fragment_len;
+    url.has_fragment = ctx.has_fragment;
 }
 
 /// Build URLRecord from parser context
@@ -429,8 +431,10 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
         .path = path,
         .query_start = query_start,
         .query_len = query_len,
+        .has_query = ctx.has_query,
         .fragment_start = fragment_start,
         .fragment_len = fragment_len,
+        .has_fragment = ctx.has_fragment,
         .blob_url_entry = null,
         .allocator = allocator,
     };
