@@ -2861,7 +2861,16 @@ pub fn build(b: *std.Build) void {
         \\    --binary "$WPT_BROWSER_PATH" \
         \\    --processes 1 \
         \\    --timeout-multiplier 2 \
+        \\    --log-wptreport ../../wpt-results/wptreport.json \
         \\    "$FILTER"
+        \\
+        \\# Generate HTML dashboard from results
+        \\python3 ../../tools/wpt_report.py ../../wpt-results/wptreport.json ../../wpt-results/dashboard.html 2>/dev/null || true
+        \\
+        \\# Upload results to local wpt.fyi (fail silently if not running)
+        \\gzip -c ../../wpt-results/wptreport.json > ../../wpt-results/wptreport.json.gz 2>/dev/null && \
+        \\curl -s -u test:123 -X POST -F "result_file=@../../wpt-results/wptreport.json.gz" \
+        \\    http://localhost:8080/api/results/upload 2>/dev/null || true
         ,
     });
 
