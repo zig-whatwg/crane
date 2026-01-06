@@ -778,6 +778,9 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
                     return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
                 };
                 ctx.host = host;
+            } else if (!ctx.isSpecial()) {
+                // For non-special URLs with empty authority, set host to empty string
+                ctx.host = Host.empty;
             }
             ctx.buffer.clear();
             ctx.state = .path_start;
@@ -790,6 +793,9 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
             };
             ctx.host = host;
+        } else if (!ctx.isSpecial()) {
+            // For non-special URLs with empty authority, set host to empty string
+            ctx.host = Host.empty;
         }
         ctx.buffer.clear();
         ctx.state = .path_start;
@@ -898,6 +904,10 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
             };
             ctx.host = host;
+        } else if (!ctx.isSpecial()) {
+            // For non-special URLs with empty authority (e.g., "data:///test"),
+            // set host to empty string per spec step 3.3
+            ctx.host = Host.empty;
         }
 
         // Step 3.5 (line 1262): Clear buffer, set state to path start
