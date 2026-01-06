@@ -154,6 +154,11 @@ const ParserContext = struct {
         return self.pointer >= self.input.len;
     }
 
+    fn peekNext(self: *const ParserContext) ?u8 {
+        if (self.pointer + 1 >= self.input.len) return null;
+        return self.input[self.pointer + 1];
+    }
+
     fn remaining(self: *const ParserContext) []const u8 {
         return helpers.remaining(self.input, self.pointer);
     }
@@ -574,6 +579,8 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
             }
 
             // Spec step 2.9 (line 1113): Otherwise, opaque path
+            // Initialize opaque_path to empty string so even "a:" creates an opaque path URL
+            ctx.opaque_path = "";
             ctx.state = .opaque_path;
             return;
         }
@@ -794,9 +801,13 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (char == '@') {
         if (ctx.at_sign_seen) {
-            try ctx.buffer.insert(0, '%');
-            try ctx.buffer.insert(1, '4');
-            try ctx.buffer.insert(2, '0');
+            // Prepend "%40" (encoded @) to username or password
+            // We append directly instead of inserting into buffer to avoid double-encoding
+            if (ctx.password_token_seen) {
+                try ctx.password.appendSlice("%40");
+            } else {
+                try ctx.username.appendSlice("%40");
+            }
         }
         ctx.at_sign_seen = true;
 
@@ -1033,8 +1044,9 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 }
                 ctx.state = .path;
                 ctx.pointer -%= 1;
-                return;
             }
+            // If c is null (EOF), we've copied from base and are done
+            return;
         }
     }
 
@@ -1153,10 +1165,18 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (is_terminator) {
         if (path_helpers.isDoubleDotPathSegment(ctx.buffer.items())) {
-            // Shorten URL's path
+            // Shorten URL's path (but don't remove Windows drive letter from file URLs)
             if (ctx.path_segments.size() > 0) {
-                const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
-                ctx.allocator.free(last);
+                // Check for Windows drive letter: file URL with single segment that's a drive letter
+                const is_file_scheme = std.mem.eql(u8, ctx.scheme.items(), "file");
+                const should_keep = is_file_scheme and ctx.path_segments.size() == 1 and blk: {
+                    const first = ctx.path_segments.items()[0];
+                    break :blk windows_drive.isNormalizedWindowsDriveLetter(first);
+                };
+                if (!should_keep) {
+                    const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
+                    ctx.allocator.free(last);
+                }
             }
             // Spec: If c is NOT '/' AND NOT (url is special AND c is '\\'), append empty string
             // This ensures paths like "/usr/.." result in "/" not empty path
@@ -1210,9 +1230,30 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
         const result = encodeSingleAscii(char, .path);
         try ctx.buffer.appendSlice(result.bytes[0..result.length]);
     } else {
-        const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .path);
-        defer ctx.allocator.free(encoded);
-        try ctx.buffer.appendSlice(encoded);
+        // For non-ASCII, we need to collect the complete UTF-8 sequence
+        // This is important for handling surrogate code points from V8 (WTF-8)
+        const cp_len = std.unicode.utf8ByteSequenceLength(char) catch {
+            // Invalid start byte - encode as-is
+            const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .path);
+            defer ctx.allocator.free(encoded);
+            try ctx.buffer.appendSlice(encoded);
+            return;
+        };
+
+        // Collect the complete UTF-8 sequence from the input
+        if (ctx.pointer + cp_len <= ctx.input.len) {
+            const sequence = ctx.input[ctx.pointer .. ctx.pointer + cp_len];
+            const encoded = try percentEncode(ctx.allocator, sequence, .path);
+            defer ctx.allocator.free(encoded);
+            try ctx.buffer.appendSlice(encoded);
+            // Skip the remaining bytes of the sequence (we'll advance past them)
+            ctx.pointer += cp_len - 1; // -1 because main loop will add 1
+        } else {
+            // Truncated sequence - encode just this byte
+            const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .path);
+            defer ctx.allocator.free(encoded);
+            try ctx.buffer.appendSlice(encoded);
+        }
     }
 }
 
@@ -1228,10 +1269,22 @@ fn opaquePathState(ctx: *ParserContext, c: ?u8) ParseError!void {
             ctx.state = .fragment;
             return;
         }
+
+        // Special handling for space: encode if followed by ? or # or at end
+        // Per WHATWG URL spec, trailing spaces in opaque paths must be percent-encoded
+        var encode_set: EncodeSet = .c0_control;
+        if (char == 0x20) {
+            // Check if next character is ?, #, or EOF
+            const next_char = ctx.peekNext();
+            if (next_char == null or next_char.? == '?' or next_char.? == '#') {
+                encode_set = .query; // query set includes space
+            }
+        }
+
         // Percent encode and append to opaque path
         // P9 Optimization: For ASCII input, use fast path to avoid allocation
         if (ctx.is_ascii and char < 128) {
-            const result = encodeSingleAscii(char, .c0_control);
+            const result = encodeSingleAscii(char, encode_set);
             const encoded_slice = result.bytes[0..result.length];
 
             if (ctx.opaque_path) |*op| {
