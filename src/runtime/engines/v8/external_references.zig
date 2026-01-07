@@ -65,34 +65,6 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 
-/// Registration context types for tracking which part of an interface is being registered
-pub const RegistrationContextType = enum {
-    interface_constructor,
-    interface_property_getter,
-    interface_property_setter,
-    interface_method,
-    interface_static_method,
-    interface_iterator,
-    interface_indexed_property,
-    interface_named_property,
-};
-
-/// Current registration context - used for debugging and manifest tracking
-var current_interface_name: []const u8 = "";
-var current_context_type: RegistrationContextType = .interface_constructor;
-
-/// Set the current registration context for manifest tracking
-/// This is called before registering callbacks to track which interface/context they belong to
-pub fn setRegistrationContext(interface_name: []const u8, context_type: RegistrationContextType) void {
-    current_interface_name = interface_name;
-    current_context_type = context_type;
-}
-
-/// Get the current registration context (for debugging)
-pub fn getRegistrationContext() struct { interface_name: []const u8, context_type: RegistrationContextType } {
-    return .{ .interface_name = current_interface_name, .context_type = current_context_type };
-}
-
 /// Maximum number of external references we can collect
 /// This needs to be large enough for all interfaces * (methods + properties + callbacks)
 /// Estimate: ~1200 interfaces * ~20 callbacks each = ~24000 callbacks
@@ -254,17 +226,7 @@ pub fn registerAllInterfaceCallbacks() void {
 /// 5. Namespace callbacks
 /// 6. Window properties callbacks
 /// 7. Context manager callbacks
-var registration_call_count: usize = 0;
-
-/// Check if external references have been registered.
-/// Workers use this to verify the main browser has initialized before creating isolates.
-pub fn hasRegisteredExternalReferences() bool {
-    return registration_call_count > 0;
-}
-
 pub fn registerAllExternalReferences() void {
-    registration_call_count += 1;
-
     // Clear any previous registrations to ensure clean state
     clearRuntimeReferences();
 
@@ -302,14 +264,17 @@ fn registerAllNamespaceCallbacks() void {
     @setEvalBranchQuota(10_000_000);
     const V8Namespace = @import("namespace.zig").V8Namespace;
 
-    // Import namespaces module directly (added as build dependency to v8_mod)
-    const namespaces = @import("namespaces");
-    const ns_decls = @typeInfo(namespaces).@"struct".decls;
+    // Import namespaces module if available
+    // Note: This is done conditionally since namespaces may not always be available
+    if (@hasDecl(@import("root"), "namespaces")) {
+        const namespaces = @import("root").namespaces;
+        const ns_decls = @typeInfo(namespaces).@"struct".decls;
 
-    inline for (ns_decls) |decl| {
-        const NamespaceType = @field(namespaces, decl.name);
-        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-            V8Namespace(NamespaceType).registerExternalReferences();
+        inline for (ns_decls) |decl| {
+            const NamespaceType = @field(namespaces, decl.name);
+            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+                V8Namespace(NamespaceType).registerExternalReferences();
+            }
         }
     }
 }

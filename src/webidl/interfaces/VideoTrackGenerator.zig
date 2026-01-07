@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
-const WritableStream = @import("WritableStream.zig").WritableStream;
+const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const WritableStream = @import("interfaces").WritableStream;
 
 pub const VideoTrackGenerator = struct {
     pub const Meta = struct {

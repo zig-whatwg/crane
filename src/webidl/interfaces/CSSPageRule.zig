@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSGroupingRule = @import("CSSGroupingRule.zig").CSSGroupingRule;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("CSSRule.zig").CSSRule;
-const CSSPageDescriptors = @import("CSSPageDescriptors.zig").CSSPageDescriptors;
-const CSSRuleList = @import("CSSRuleList.zig").CSSRuleList;
-const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
+const CSSRule = @import("interfaces").CSSRule;
+const CSSPageDescriptors = @import("interfaces").CSSPageDescriptors;
+const CSSRuleList = @import("interfaces").CSSRuleList;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSPageRule = struct {
@@ -146,7 +146,6 @@ pub const CSSPageRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

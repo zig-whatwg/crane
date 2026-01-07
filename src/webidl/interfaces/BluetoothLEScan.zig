@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const BluetoothLEScanFilter = @import("BluetoothLEScanFilter.zig").BluetoothLEScanFilter;
+const BluetoothLEScanFilter = @import("interfaces").BluetoothLEScanFilter;
 
 pub const BluetoothLEScan = struct {
     pub const Meta = struct {

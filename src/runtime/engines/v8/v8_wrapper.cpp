@@ -1132,20 +1132,6 @@ bool v8_Value_IsArray(Global<Value>* value) {
     return val->IsArray();
 }
 
-bool v8_Value_IsArrayBuffer(Global<Value>* value) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Value> val = value->Get(isolate);
-    return val->IsArrayBuffer();
-}
-
-bool v8_Value_IsArrayBufferView(Global<Value>* value) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Value> val = value->Get(isolate);
-    return val->IsArrayBufferView();
-}
-
 // Version for Local handle internal pointers
 bool v8_Value_IsArray_Local(void* value_ptr) {
     if (!value_ptr) return false;
@@ -1612,17 +1598,6 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
-    
-    // CROSS-REALM FIX: If object is a Proxy, unwrap to get the target.
-    // Proxies (used for legacy platform objects like CSSStyleDeclaration)
-    // have no internal fields - the internal fields are on the target object.
-    if (local_obj->IsProxy()) {
-        Local<Proxy> proxy = local_obj.As<Proxy>();
-        Local<Value> target = proxy->GetTarget();
-        if (target->IsObject()) {
-            local_obj = target.As<Object>();
-        }
-    }
     
     // Safety check: verify object has enough internal fields before access
     // This prevents crashes when accessing prototype objects or other objects
@@ -2304,54 +2279,6 @@ Global<Value>* v8_Exception_TypeErrorInContext(Global<Context>* context, Global<
     Context::Scope context_scope(ctx);
     
     Local<Value> exception = Exception::TypeError(msg);
-    return trackHandle(new Global<Value>(isolate, exception));
-}
-
-/// Create RangeError in a specific context (for cross-realm errors).
-Global<Value>* v8_Exception_RangeErrorInContext(Global<Context>* context, Global<String>* message) {
-    if (!context || !message) return nullptr;
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    Local<String> msg = message->Get(isolate);
-    
-    // Enter the context to ensure RangeError comes from this realm
-    Context::Scope context_scope(ctx);
-    
-    Local<Value> exception = Exception::RangeError(msg);
-    return trackHandle(new Global<Value>(isolate, exception));
-}
-
-/// Create SyntaxError in a specific context (for cross-realm errors).
-Global<Value>* v8_Exception_SyntaxErrorInContext(Global<Context>* context, Global<String>* message) {
-    if (!context || !message) return nullptr;
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    Local<String> msg = message->Get(isolate);
-    
-    // Enter the context to ensure SyntaxError comes from this realm
-    Context::Scope context_scope(ctx);
-    
-    Local<Value> exception = Exception::SyntaxError(msg);
-    return trackHandle(new Global<Value>(isolate, exception));
-}
-
-/// Create Error in a specific context (for cross-realm errors).
-Global<Value>* v8_Exception_ErrorInContext(Global<Context>* context, Global<String>* message) {
-    if (!context || !message) return nullptr;
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    Local<String> msg = message->Get(isolate);
-    
-    // Enter the context to ensure Error comes from this realm
-    Context::Scope context_scope(ctx);
-    
-    Local<Value> exception = Exception::Error(msg);
     return trackHandle(new Global<Value>(isolate, exception));
 }
 
@@ -3603,17 +3530,12 @@ int v8_Object_InternalFieldCount_Raw(const void* obj) {
 }
 
 void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int index) {
+    // Cast to non-const since V8 API requires it
     Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
     
-    // CROSS-REALM FIX: Unwrap Proxy to get target with internal fields
-    if (object_ptr->IsProxy()) {
-        Proxy* proxy = Proxy::Cast(object_ptr);
-        Value* target = *proxy->GetTarget();
-        if (target->IsObject()) {
-            object_ptr = Object::Cast(target);
-        }
-    }
-    
+    // Safety check: verify object has enough internal fields before access
+    // This prevents crashes when accessing prototype objects or other objects
+    // that don't have internal fields set up
     if (object_ptr->InternalFieldCount() <= index) {
         return nullptr;
     }
@@ -3757,12 +3679,14 @@ bool v8_Object_SetAccessorProperty(
         setter_func = setter_tpl->GetFunction(ctx).ToLocalChecked();
     }
     
+    // Create accessor property descriptor
+    // PropertyDescriptor(Local<Value> get, Local<Value> set) creates an accessor descriptor
     PropertyDescriptor desc(
         getter ? Local<Value>(getter_func) : Local<Value>(),
         setter ? Local<Value>(setter_func) : Local<Value>()
     );
-    desc.set_enumerable(true);
-    desc.set_configurable(true);
+    desc.set_enumerable(true);  // WebIDL default
+    desc.set_configurable(true); // WebIDL default
     
     // Define the property on the object
     return obj->DefineProperty(ctx, key.As<Name>(), desc).FromMaybe(false);
@@ -4109,103 +4033,6 @@ void v8_Isolate_SetMicrotasksPolicy(Isolate* isolate, int policy) {
         default: return;  // Invalid policy
     }
     isolate->SetMicrotasksPolicy(v8_policy);
-}
-
-// ============================================================================
-// Promise Rejection Tracking (for unhandledrejection/rejectionhandled events)
-// ============================================================================
-
-/// Type definition for Zig promise rejection event callback
-/// Signature: fn(user_data: *anyopaque, event_type: i32, promise: *anyopaque, value: ?*anyopaque) void
-/// 
-/// event_type values (from V8 PromiseRejectEvent enum):
-///   0 = kPromiseRejectWithNoHandler       - Promise rejected, no handler attached
-///   1 = kPromiseHandlerAddedAfterReject   - Handler added to previously-rejected promise
-///   2 = kPromiseRejectAfterResolved       - Promise rejected after already resolved (unused)
-///   3 = kPromiseResolveAfterResolved      - Promise resolved after already resolved (unused)
-typedef void (*ZigPromiseRejectEventCallback)(
-    void* user_data,
-    int event_type,
-    void* promise,
-    void* value
-);
-
-/// Global storage for promise reject callback data
-struct PromiseRejectCallbackData {
-    void* user_data;
-    ZigPromiseRejectEventCallback callback;
-};
-static PromiseRejectCallbackData* g_promise_reject_callback = nullptr;
-
-/// V8 callback that forwards promise rejection events to Zig
-static void V8PromiseRejectCallback(PromiseRejectMessage message) {
-    if (!g_promise_reject_callback || !g_promise_reject_callback->callback) {
-        return;
-    }
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    
-    // Get the promise (always available)
-    Local<Promise> promise = message.GetPromise();
-    
-    // Get the rejection value (may be empty for some event types)
-    Local<Value> value = message.GetValue();
-    
-    // Create Global handles for Zig to use
-    // Note: Zig is responsible for disposing these
-    Global<Promise>* promise_global = trackHandle(new Global<Promise>(isolate, promise));
-    
-    Global<Value>* value_global = nullptr;
-    if (!value.IsEmpty()) {
-        value_global = trackHandle(new Global<Value>(isolate, value));
-    }
-    
-    // Map V8 event type to integer
-    int event_type = static_cast<int>(message.GetEvent());
-    
-    // Call Zig callback
-    g_promise_reject_callback->callback(
-        g_promise_reject_callback->user_data,
-        event_type,
-        promise_global,
-        value_global
-    );
-}
-
-/// Set the promise rejection callback for an isolate
-/// 
-/// This enables tracking of unhandled promise rejections and late-attached handlers.
-/// The callback will be invoked when:
-/// - A promise is rejected with no handler (event_type=0)
-/// - A handler is added to a previously-rejected promise (event_type=1)
-///
-/// @param isolate - The V8 isolate to configure
-/// @param user_data - Opaque pointer passed to callback
-/// @param callback - Zig callback function
-void v8_Isolate_SetPromiseRejectCallback(
-    Isolate* isolate,
-    void* user_data,
-    ZigPromiseRejectEventCallback callback
-) {
-    // Store callback data
-    if (!g_promise_reject_callback) {
-        g_promise_reject_callback = new PromiseRejectCallbackData();
-    }
-    g_promise_reject_callback->user_data = user_data;
-    g_promise_reject_callback->callback = callback;
-    
-    // Register with V8
-    isolate->SetPromiseRejectCallback(V8PromiseRejectCallback);
-}
-
-/// Clear the promise rejection callback for an isolate
-void v8_Isolate_ClearPromiseRejectCallback(Isolate* isolate) {
-    if (g_promise_reject_callback) {
-        delete g_promise_reject_callback;
-        g_promise_reject_callback = nullptr;
-    }
-    isolate->SetPromiseRejectCallback(nullptr);
 }
 
 // ============================================================================
@@ -5955,52 +5782,6 @@ return nullptr;
     return trackHandle(new Global<Context>(isolate, context));
 }
 
-/// Create a context from a specific index in the snapshot
-///
-/// This creates a new context based on the context that was added at the
-/// specified index during snapshot creation. Use this to restore different
-/// context types (e.g., window context at index 0, worker context at index 1).
-///
-/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
-/// @param context_index - The index of the context to restore (0-based)
-/// @return New context with snapshot state, or nullptr if index is invalid
-Global<Context>* v8_Context_NewFromSnapshotAt(Isolate* isolate, size_t context_index) {
-    if (!isolate) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] ERROR: isolate is null\n");
-        return nullptr;
-    }
-    
-    // Enter the isolate before creating context
-    Isolate::Scope isolate_scope(isolate);
-    HandleScope handle_scope(isolate);
-    
-    // Add TryCatch to capture any exception
-    TryCatch try_catch(isolate);
-    
-    // Use Context::FromSnapshot to retrieve the context at the specified index
-    MaybeLocal<Context> maybe_context = Context::FromSnapshot(
-        isolate, context_index,
-        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
-    
-    if (try_catch.HasCaught()) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] Exception caught during FromSnapshot(%zu)\n", context_index);
-        Local<Message> message = try_catch.Message();
-        if (!message.IsEmpty()) {
-            String::Utf8Value msg_str(isolate, message->Get());
-            fprintf(stderr, "[v8_Context_NewFromSnapshotAt] Exception: %s\n", *msg_str);
-        }
-    }
-    
-    Local<Context> context;
-    if (!maybe_context.ToLocal(&context)) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] ERROR: Context::FromSnapshot(%zu) failed\n", context_index);
-        fprintf(stderr, "  This usually means no context was added at index %zu during snapshot creation\n", context_index);
-        return nullptr;
-    }
-    
-    return trackHandle(new Global<Context>(isolate, context));
-}
-
 /// Create a NEW context for an isolate that was created from a snapshot
 ///
 /// Unlike v8_Context_NewFromSnapshot which restores a specific context from the
@@ -6995,12 +6776,6 @@ void TrapGet(const FunctionCallbackInfo<Value>& info) {
     Local<Value> target = info[0];
     Local<Value> property = info[1];
     
-    // Debug logging disabled for performance - uncomment if needed
-    // if (property->IsString()) {
-    //     String::Utf8Value prop_str(isolate, property);
-    //     fprintf(stderr, "[TrapGet] property='%s'\n", *prop_str);
-    // }
-    
     Local<Object> reflect = context->Global()
         ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
         .ToLocalChecked().As<Object>();
@@ -7029,11 +6804,6 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     
     Local<Object> target = info[0].As<Object>();
     Local<Value> property = info[1];
-    
-    if (property->IsString()) {
-        String::Utf8Value prop_str(isolate, property);
-        fprintf(stderr, "[TrapSet] property='%s'\n", *prop_str);
-    }
     Local<Value> value = info[2];
     
     // Use Object.defineProperty to bypass named property interceptor.

@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const FenceEvent = @import("dictionaries").FenceEvent;
-const FencedFrameConfig = @import("FencedFrameConfig.zig").FencedFrameConfig;
+const FencedFrameConfig = @import("interfaces").FencedFrameConfig;
 const ReportEventType = @import("typedefs").ReportEventType;
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 
 pub const Fence = struct {
     pub const Meta = struct {

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const NavigatorLocks = @import("mixins").NavigatorLocks;
-const LockManager = @import("LockManager.zig").LockManager;
+const LockManager = @import("interfaces").LockManager;
 
 pub const SharedStorageWorkletNavigator = struct {
     pub const Meta = struct {

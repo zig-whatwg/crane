@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PresentationRequest = @import("PresentationRequest.zig").PresentationRequest;
-const PresentationReceiver = @import("PresentationReceiver.zig").PresentationReceiver;
+const PresentationRequest = @import("interfaces").PresentationRequest;
+const PresentationReceiver = @import("interfaces").PresentationReceiver;
 
 pub const Presentation = struct {
     pub const Meta = struct {

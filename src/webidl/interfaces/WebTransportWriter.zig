@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WritableStreamDefaultWriter = @import("WritableStreamDefaultWriter.zig").WritableStreamDefaultWriter;
-const WritableStream = @import("WritableStream.zig").WritableStream;
+const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
+const WritableStream = @import("interfaces").WritableStream;
 
 pub const WebTransportWriter = struct {
     pub const Meta = struct {

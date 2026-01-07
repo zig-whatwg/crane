@@ -23,11 +23,6 @@ const DocumentTypeImpl = @import("DocumentType.zig");
 const DocumentFragmentImpl = @import("DocumentFragment.zig");
 const EventTargetImpl = @import("EventTarget.zig");
 
-// Worklet global scope impls with registries
-const PaintWorkletGlobalScopeImpl = @import("PaintWorkletGlobalScope.zig");
-const AnimationWorkletGlobalScopeImpl = @import("AnimationWorkletGlobalScope.zig");
-const LayoutWorkletGlobalScopeImpl = @import("LayoutWorkletGlobalScope.zig");
-
 /// Clean up ALL remaining internal states in DOM-related registries.
 /// This should be called during final context cleanup, BEFORE the ArenaAllocator
 /// is deinited, to ensure all owned strings and resources are properly freed.
@@ -55,9 +50,4 @@ pub fn cleanupAllDomRegistries() void {
     CharacterDataImpl.cleanupAllRemainingInternal();
     NodeImpl.cleanupAllRemainingInternal();
     DocumentImpl.cleanupAllRemainingInternal();
-
-    // Clean up worklet registries
-    PaintWorkletGlobalScopeImpl.deinitRegistry();
-    AnimationWorkletGlobalScopeImpl.deinitRegistry();
-    LayoutWorkletGlobalScopeImpl.deinitRegistry();
 }

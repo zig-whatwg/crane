@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const MutationCallback = @import("callbacks").MutationCallback;
-const Node = @import("Node.zig").Node;
-const MutationRecord = @import("MutationRecord.zig").MutationRecord;
+const Node = @import("interfaces").Node;
+const MutationRecord = @import("interfaces").MutationRecord;
 const MutationObserverInit = @import("dictionaries").MutationObserverInit;
 
 pub const MutationObserver = struct {

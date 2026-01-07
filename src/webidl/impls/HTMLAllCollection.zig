@@ -66,10 +66,3 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     _ = allocator;
     return &[_]runtime.DOMString{};
 }
-
-
-pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
-}

@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
-const XRSpace = @import("XRSpace.zig").XRSpace;
+const XRSpace = @import("interfaces").XRSpace;
 
 pub const XRMesh = struct {
     pub const Meta = struct {

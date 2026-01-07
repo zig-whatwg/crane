@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const IDBRequest = @import("IDBRequest.zig").IDBRequest;
+const IDBRequest = @import("interfaces").IDBRequest;
 const IDBGetAllOptions = @import("dictionaries").IDBGetAllOptions;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
 const DOMString = @import("typedefs").DOMString;
-const IDBObjectStore = @import("IDBObjectStore.zig").IDBObjectStore;
+const IDBObjectStore = @import("interfaces").IDBObjectStore;
 
 pub const IDBIndex = struct {
     pub const Meta = struct {

@@ -78,31 +78,10 @@ pub const Host = union(enum) {
     }
 };
 
-/// Forbidden host code point (WHATWG URL spec)
-/// U+0000 NULL, U+0009 TAB, U+000A LF, U+000D CR, U+0020 SPACE,
-/// U+0023 (#), U+002F (/), U+003A (:), U+003C (<), U+003E (>),
-/// U+003F (?), U+0040 (@), U+005B ([), U+005C (\), U+005D (]),
-/// U+005E (^), U+007C (|)
+/// Forbidden host code point (spec line 307)
 pub fn isForbiddenHostCodePoint(cp: u21) bool {
     return switch (cp) {
         0x0000, 0x0009, 0x000A, 0x000D, 0x0020, '#', '/', ':', '<', '>', '?', '@', '[', '\\', ']', '^', '|' => true,
-        else => false,
-    };
-}
-
-/// Forbidden domain code point (WHATWG URL spec)
-/// A forbidden host code point, a C0 control (U+0000-U+001F), U+0025 (%), or U+007F DELETE.
-/// Used for validating domain hosts in special-scheme URLs (http, https, etc.)
-pub fn isForbiddenDomainCodePoint(cp: u21) bool {
-    // C0 control range (0x00-0x1F) - includes NULL, TAB, LF, CR already in forbidden host
-    if (cp <= 0x001F) return true;
-    // U+007F DELETE
-    if (cp == 0x007F) return true;
-    // U+0025 (%) - percent sign
-    if (cp == '%') return true;
-    // Check remaining forbidden host code points (SPACE and punctuation)
-    return switch (cp) {
-        0x0020, '#', '/', ':', '<', '>', '?', '@', '[', '\\', ']', '^', '|' => true,
         else => false,
     };
 }

@@ -779,6 +779,10 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
+    // Debug: Log the engine context being used
+    const source_preview = if (source.len > 50) source[0..50] else source;
+    std.debug.print("runClassicScript: engine_ctx={*}, source preview: {s}...\n", .{ engine_ctx, source_preview });
+
     // Compile the script using the engine interface
     const compileScript = engine.compileScript orelse {
         return;
@@ -822,21 +826,9 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
-    const script_result = runScript(engine_ctx, script) catch |err| {
-        std.debug.print("runClassicScript: runScript error: {}\n", .{err});
+    const script_result = runScript(engine_ctx, script) catch {
         return;
     };
-
-    // script_result intentionally unused - side effects are what matters
-
-    // Run microtask checkpoint after script execution
-    // This is critical for Promise-based APIs like promise_test in testharness.js
-    // which use Promise.resolve().then() to chain test execution.
-    // Per HTML spec: https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint
-    const v8_ffi = @import("v8").ffi;
-    if (v8_ffi.v8_Isolate_GetCurrent()) |current_isolate| {
-        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(current_isolate);
-    }
 
     if (script_result == null) {
         // Script threw an uncaught exception

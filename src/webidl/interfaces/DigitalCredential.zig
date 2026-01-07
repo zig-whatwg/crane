@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Credential = @import("Credential.zig").Credential;
+const Credential = @import("interfaces").Credential;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 

@@ -240,12 +240,7 @@ pub fn writeImports(
     // Import base type if present
     if (base_type) |base| {
         if (getImportModuleWithFallback(base, type_registry, "interfaces")) |module| {
-            // Use direct peer imports for interface types to avoid fat-module dependency
-            if (std.mem.eql(u8, module, "interfaces")) {
-                try writer.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ base, base, base });
-            } else {
-                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ base, module, base });
-            }
+            try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ base, module, base });
             try imported.put(base, {});
         }
     }
@@ -253,13 +248,8 @@ pub fn writeImports(
     // Import mixin types
     for (mixins) |mixin| {
         if (!imported.contains(mixin)) {
-            if (getImportModuleWithFallback(mixin, type_registry, "mixins")) |module| {
-                // Use direct peer imports for interface types to avoid fat-module dependency
-                if (std.mem.eql(u8, module, "interfaces")) {
-                    try writer.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ mixin, mixin, mixin });
-                } else {
-                    try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
-                }
+            if (getImportModuleWithFallback(mixin, type_registry, "interfaces")) |module| {
+                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin, module, mixin });
                 try imported.put(mixin, {});
             }
         }
@@ -307,12 +297,7 @@ pub fn writeImports(
 
             // Try to get the import module - skip if type is not registered
             if (getImportModuleWithFallback(ref, type_registry, "interfaces")) |module| {
-                // Use direct peer imports for interface types to avoid fat-module dependency
-                if (std.mem.eql(u8, module, "interfaces")) {
-                    try writer.print("const {s} = @import(\"{s}.zig\").{s};\n", .{ ref, ref, ref });
-                } else {
-                    try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ ref, module, ref });
-                }
+                try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ ref, module, ref });
                 try imported.put(ref, {});
             }
             // If module is null, the type is not in the registry - skip it silently
@@ -3088,16 +3073,7 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("        \n");
             try writer.writeAll("        // Use JavaScript [[Set]] semantics to set the forwarded property\n");
             try writer.writeAll("        // This respects prototype chain and user-defined setters\n");
-            // Check if the getter returns JSValue vs *Instance
-            // If the return type contains "JSValue", use setPropertyOnJSValue; otherwise use setPropertyOnInstance
-            const is_jsvalue_return = std.mem.indexOf(u8, return_type, "JSValue") != null;
-            if (is_jsvalue_return) {
-                try writer.writeAll("        // Note: target is a JSValue (from [SameObject] caching), not *Instance\n");
-                try writer.print("        try runtime.setPropertyOnJSValue(target, instance, \"{s}\", value);\n", .{forwarded_property});
-            } else {
-                try writer.writeAll("        // Note: target is a *Instance, use setPropertyOnInstance\n");
-                try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
-            }
+            try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
             try writer.writeAll("    }\n\n");
         } else if (is_replaceable) {
             // [Replaceable] setter - creates an own property on the object
@@ -3488,8 +3464,11 @@ fn writeEscapedInterfaceParamName(writer: anytype, name: []const u8, idl_type: t
     if (isInterfaceReservedName(name)) {
         try writer.print("{s}_data", .{name});
     } else if (parameterShadowsType(name, idl_type)) {
-        // Just append _param suffix, preserve original case
-        try writer.print("{s}_param", .{name});
+        // Convert to snake_case and append _param suffix
+        // For now, simple approach: lowercase first char + _param
+        var buf: [256]u8 = undefined;
+        const lower_name = std.ascii.lowerString(&buf, name);
+        try writer.print("{s}_param", .{lower_name});
     } else if (isKeyword(name)) {
         try writer.print("@\"{s}\"", .{name});
     } else {
@@ -3757,8 +3736,8 @@ test "writeImports includes base type" {
 
     // Should import impl from "impls" module
     try testing.expect(std.mem.indexOf(u8, output, "const NodeImpl = @import(\"impls\").Node;") != null);
-    // Should import base type as direct peer import (breaks circular dependency)
-    try testing.expect(std.mem.indexOf(u8, output, "const EventTarget = @import(\"EventTarget.zig\").EventTarget;") != null);
+    // Should import base type from "interfaces" module
+    try testing.expect(std.mem.indexOf(u8, output, "const EventTarget = @import(\"interfaces\").EventTarget;") != null);
 }
 
 test "writeImports includes mixins" {
@@ -3774,9 +3753,9 @@ test "writeImports includes mixins" {
 
     // Should import impl from "impls" module
     try testing.expect(std.mem.indexOf(u8, output, "const ElementImpl = @import(\"impls\").Element;") != null);
-    // Should import both mixins from "mixins" module
-    try testing.expect(std.mem.indexOf(u8, output, "const ParentNode = @import(\"mixins\").ParentNode;") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "const ChildNode = @import(\"mixins\").ChildNode;") != null);
+    // Should import both mixins from "interfaces" module
+    try testing.expect(std.mem.indexOf(u8, output, "const ParentNode = @import(\"interfaces\").ParentNode;") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "const ChildNode = @import(\"interfaces\").ChildNode;") != null);
 }
 
 test "writeImports includes both base and mixins" {
@@ -3809,9 +3788,9 @@ test "writeImports includes referenced interfaces" {
 
     const output = buffer.items;
 
-    // Should import referenced interfaces as direct peer imports (breaks circular dependency)
-    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"Node.zig\").Node;") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "const Document = @import(\"Document.zig\").Document;") != null);
+    // Should import referenced interfaces from "interfaces" module
+    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"interfaces\").Node;") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "const Document = @import(\"interfaces\").Document;") != null);
 }
 
 test "writeImports avoids duplicate imports" {
@@ -3846,8 +3825,8 @@ test "writeImports avoids duplicate imports" {
     try testing.expectEqual(@as(usize, 1), count_eventtarget);
     try testing.expectEqual(@as(usize, 1), count_parentnode);
 
-    // Node should be imported (not duplicate) - uses peer imports for interfaces
-    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"Node.zig\").Node;") != null);
+    // Node should be imported (not duplicate)
+    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"interfaces\").Node;") != null);
 }
 
 test "writeInterfaceStruct generates struct declaration" {

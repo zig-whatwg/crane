@@ -90,23 +90,6 @@ pub const BlobURLStore = @import("blob_url_store.zig").BlobURLStore;
 pub const BlobURLEntry = @import("blob_url_store.zig").BlobURLEntry;
 
 // ============================================================================
-// Global Blob URL Store Access
-// ============================================================================
-
-const blob_url_store_mod = @import("blob_url_store.zig");
-
-/// Set the global blob URL store.
-/// Should be called by the browser/runtime initialization.
-pub const setGlobalBlobURLStore = blob_url_store_mod.setGlobal;
-
-/// Get the global blob URL store.
-/// Returns null if not initialized.
-pub const getGlobalBlobURLStore = blob_url_store_mod.getGlobal;
-
-/// Clear the global blob URL store reference.
-pub const clearGlobalBlobURLStore = blob_url_store_mod.clearGlobal;
-
-// ============================================================================
 // Algorithms
 // ============================================================================
 

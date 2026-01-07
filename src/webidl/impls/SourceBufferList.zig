@@ -70,10 +70,3 @@ pub fn set_onremovesourcebuffer(instance: *runtime.Instance, value: typedefs.Eve
     _ = value;
     return error.NotImplemented;
 }
-
-
-pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
-}

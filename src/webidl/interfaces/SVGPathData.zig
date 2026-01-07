@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const SVGPathDataSettings = @import("dictionaries").SVGPathDataSettings;
-const SVGPathSegment = @import("SVGPathSegment.zig").SVGPathSegment;
+const SVGPathSegment = @import("interfaces").SVGPathSegment;
 
 pub const SVGPathData = struct {
     pub const Meta = struct {

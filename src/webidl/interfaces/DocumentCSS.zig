@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DocumentStyle = @import("DocumentStyle.zig").DocumentStyle;
-const Element = @import("Element.zig").Element;
-const StyleSheetList = @import("StyleSheetList.zig").StyleSheetList;
-const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
+const DocumentStyle = @import("interfaces").DocumentStyle;
+const Element = @import("interfaces").Element;
+const StyleSheetList = @import("interfaces").StyleSheetList;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const DOMString = @import("typedefs").DOMString;
 
 pub const DocumentCSS = struct {

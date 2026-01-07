@@ -16,7 +16,6 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const certificate_trust = @import("certificate_trust.zig");
 
 // =============================================================================
 // Network Request/Response Types
@@ -72,9 +71,6 @@ pub const CertVerifyOptions = struct {
     client_cert_path: ?[]const u8 = null,
     /// Path to client private key (for mutual TLS)
     client_key_path: ?[]const u8 = null,
-    /// Certificate trust store for per-browser trusted certificates
-    /// When set, certificates in this store are trusted in addition to system certs
-    trust_store: ?*const certificate_trust.CertificateTrustStore = null,
 };
 
 /// Network request configuration.
@@ -103,13 +99,6 @@ pub const NetworkRequest = struct {
     cert_options: CertVerifyOptions = .{},
     /// Enable verbose logging (for debugging)
     verbose: bool = false,
-
-    /// Optional callback to check if request should be aborted.
-    /// Called periodically during data transfer. Return true to abort.
-    /// This enables integration with AbortSignal for in-flight request cancellation.
-    abort_check: ?*const fn (?*anyopaque) bool = null,
-    /// User data passed to abort_check callback
-    abort_check_data: ?*anyopaque = null,
 
     pub const Header = struct {
         name: []const u8,
