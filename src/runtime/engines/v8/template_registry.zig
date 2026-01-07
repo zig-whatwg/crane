@@ -56,17 +56,20 @@ const interface_catalog = @import("interface_catalog.zig");
 const InterfaceIndex = interface_catalog.InterfaceIndex;
 const INTERFACE_COUNT = interface_catalog.valid_interface_count;
 
-/// Entry in the template registry - now per-isolate
-const TemplateEntry = struct {
-    template: *v8.FunctionTemplate,
-    isolate: *v8.Isolate,
-};
+/// Per-isolate template array type
+/// Each isolate gets its own array of template pointers, avoiding cross-isolate overwrites.
+const PerIsolateTemplates = [INTERFACE_COUNT]?*v8.FunctionTemplate;
 
-/// Index-based template registry
-/// Uses InterfaceIndex for O(1) lookup instead of name-based O(n) search.
-/// Each slot corresponds to an interface index from interface_catalog.
-var templates_by_index: [INTERFACE_COUNT]?TemplateEntry = [_]?TemplateEntry{null} ** INTERFACE_COUNT;
+/// Per-isolate template registry
+/// Maps isolate pointer -> array of template pointers for that isolate.
+/// This ensures worker isolates don't overwrite main thread templates.
+var templates_by_isolate: std.AutoHashMapUnmanaged(*v8.Isolate, *PerIsolateTemplates) = .{};
+var registry_allocator: ?std.mem.Allocator = null;
 var initialized: bool = false;
+
+/// Mutex for thread-safe access to the per-isolate template map
+/// Workers run on separate threads and may register templates concurrently.
+var registry_mutex: std.Thread.Mutex = .{};
 
 /// Snapshot mode flag - when true, templates are NOT cached
 ///
@@ -107,7 +110,37 @@ fn ensureInitialized() void {
     }
 }
 
-/// Clear all registered templates
+/// Clear all registered templates for a specific isolate
+///
+/// Called when disposing an isolate. Only clears templates for that isolate,
+/// not affecting other isolates (e.g., main thread vs worker).
+///
+/// Also increments the cache_generation counter, which invalidates all
+/// per-interface static caches in V8Interface(T).
+pub fn clearForIsolate(isolate: *v8.Isolate) void {
+    std.log.warn("[clearForIsolate] CALLED for isolate={*}", .{isolate});
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+
+    if (templates_by_isolate.get(isolate)) |templates| {
+        // Dispose V8 FunctionTemplate handles
+        for (templates) |maybe_template| {
+            if (maybe_template) |template| {
+                v8.v8_FunctionTemplate_Dispose(template);
+            }
+        }
+        // Free the per-isolate array
+        if (registry_allocator) |alloc| {
+            alloc.destroy(templates);
+        }
+        _ = templates_by_isolate.remove(isolate);
+    }
+
+    // Increment generation to invalidate per-interface static caches
+    cache_generation +%= 1;
+}
+
+/// Clear all registered templates (for all isolates)
 ///
 /// MUST be called before disposing an isolate and creating a new one.
 /// V8 FunctionTemplates are bound to a specific isolate and cannot be reused
@@ -122,14 +155,25 @@ fn ensureInitialized() void {
 /// 3. The generation counter ensures we detect isolate disposal even if
 ///    the new isolate has the same address
 pub fn clear() void {
-    // Dispose V8 FunctionTemplate handles before clearing entries
-    // V8 Global handles must be explicitly disposed to release resources
-    for (&templates_by_index) |*entry| {
-        if (entry.*) |e| {
-            v8.v8_FunctionTemplate_Dispose(e.template);
+    std.log.warn("[clear] CALLED - clearing ALL templates for ALL isolates!", .{});
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+
+    // Dispose all templates for all isolates
+    var iter = templates_by_isolate.iterator();
+    while (iter.next()) |entry| {
+        const templates = entry.value_ptr.*;
+        for (templates) |maybe_template| {
+            if (maybe_template) |template| {
+                v8.v8_FunctionTemplate_Dispose(template);
+            }
         }
-        entry.* = null;
+        // Free the per-isolate array
+        if (registry_allocator) |alloc| {
+            alloc.destroy(templates);
+        }
     }
+    templates_by_isolate.clearRetainingCapacity();
     // Increment generation to invalidate all per-interface static caches
     cache_generation +%= 1;
     // Clear the async iterator template cache in C++ layer
@@ -181,7 +225,10 @@ pub fn register(
 ) void {
     // In snapshot mode, don't cache templates - they're not needed for snapshot creation
     // and would cause V8 to complain about Global handles
-    if (snapshot_mode) return;
+    if (snapshot_mode) {
+        std.log.info("[template_registry.register] SKIPPED (snapshot_mode) '{s}'", .{interface_name});
+        return;
+    }
 
     ensureInitialized();
 
@@ -193,13 +240,41 @@ pub fn register(
         return;
     }
 
-    // Store at indexed position - overwrites any existing entry for this interface
-    // Note: If a different isolate had a template here, it gets replaced.
-    // This is correct because we check isolate match in getTemplate().
-    templates_by_index[idx] = .{
-        .template = template,
-        .isolate = isolate,
+    // Get or create per-isolate template array
+    const templates = getOrCreateTemplatesForIsolate(isolate) orelse {
+        std.log.err("[template_registry.register] Failed to allocate templates for isolate", .{});
+        return;
     };
+
+    // Store template at indexed position for THIS isolate
+    templates[idx] = template;
+}
+
+/// Get or create the per-isolate template array
+fn getOrCreateTemplatesForIsolate(isolate: *v8.Isolate) ?*PerIsolateTemplates {
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+
+    // Check if we already have templates for this isolate
+    if (templates_by_isolate.get(isolate)) |existing| {
+        return existing;
+    }
+
+    // Need to allocate new template array for this isolate
+    const alloc = registry_allocator orelse std.heap.page_allocator;
+    registry_allocator = alloc;
+
+    const templates = alloc.create(PerIsolateTemplates) catch {
+        return null;
+    };
+    templates.* = [_]?*v8.FunctionTemplate{null} ** INTERFACE_COUNT;
+
+    templates_by_isolate.put(alloc, isolate, templates) catch {
+        alloc.destroy(templates);
+        return null;
+    };
+
+    return templates;
 }
 
 /// Register a FunctionTemplate by interface index (O(1) direct access)
@@ -216,10 +291,8 @@ pub fn registerByIndex(
         return;
     }
 
-    templates_by_index[idx] = .{
-        .template = template,
-        .isolate = isolate,
-    };
+    const templates = getOrCreateTemplatesForIsolate(isolate) orelse return;
+    templates[idx] = template;
 }
 
 /// Get a registered FunctionTemplate by interface name
@@ -244,18 +317,23 @@ pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
     // O(1) index lookup using runtime StaticStringMap
     const idx = interface_catalog.indexOfByNameRuntime(interface_name);
     if (idx == interface_catalog.INVALID_INDEX) {
+        std.log.warn("[getTemplate] Interface '{s}' not in catalog", .{interface_name});
         return null;
     }
 
-    // O(1) array access
-    if (templates_by_index[idx]) |entry| {
-        // CRITICAL: Verify isolate matches!
-        // Templates are isolate-specific and cannot be used across isolates.
-        if (entry.isolate != current_isolate) {
-            return null;
-        }
-        return entry.template;
+    // Get templates for current isolate
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+
+    const templates = templates_by_isolate.get(current_isolate.?) orelse {
+        std.log.warn("[getTemplate] No templates registered for current isolate={*}", .{current_isolate});
+        return null;
+    };
+
+    if (templates[idx]) |template| {
+        return template;
     }
+    std.log.warn("[getTemplate] No template registered for '{s}' at index {d}", .{ interface_name, idx });
     return null;
 }
 
@@ -268,11 +346,11 @@ pub fn getTemplateByIndex(idx: InterfaceIndex) ?*v8.FunctionTemplate {
 
     if (idx >= INTERFACE_COUNT) return null;
 
-    if (templates_by_index[idx]) |entry| {
-        if (entry.isolate != current_isolate) return null;
-        return entry.template;
-    }
-    return null;
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+
+    const templates = templates_by_isolate.get(current_isolate.?) orelse return null;
+    return templates[idx];
 }
 
 /// Wrap a Zig runtime.Instance into a V8 Object with the correct prototype
@@ -338,6 +416,7 @@ pub fn wrapInstanceAsV8Object(
     const template = getTemplate(interface_name) orelse {
         // Template not registered - this shouldn't happen for core interfaces
         // but can happen for interfaces not yet implemented
+        std.debug.print("[WRAP] Template not found for {s}\n", .{interface_name});
         return error.TemplateNotRegistered;
     };
 
@@ -375,24 +454,136 @@ pub fn wrapInstanceAsV8Object(
     }
 
     // ========================================
-    // SET PROTOTYPE: Use FunctionTemplate's prototype, NOT Constructor.prototype from global
+    // SET PROTOTYPE: Prefer global.Constructor.prototype over template's prototype
     // ========================================
-    // When loading from a V8 snapshot, Constructor.prototype from the global may not have
-    // the accessor properties registered. This is because accessor properties are registered
-    // on FunctionTemplate's PrototypeTemplate, but only the Constructor function itself
-    // gets serialized into the snapshot.
+    // For snapshot-restored contexts, global.Constructor.prototype IS the actual
+    // prototype object that has accessors reinstalled. The template's prototype
+    // is a DIFFERENT object and doesn't have the accessors.
     //
-    // Solution: Use v8_FunctionTemplate_GetFunction() to get a function from the runtime
-    // template, then get its .prototype property. This prototype WILL have the accessor
-    // properties because it's created from the runtime template.
-    const func = v8.v8_FunctionTemplate_GetFunction(template, context);
-    if (func) |constructor_func| {
-        const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
-        if (prototype_str) |proto_name| {
-            const prototype_value = v8.v8_Object_Get(@ptrCast(constructor_func), context, @ptrCast(proto_name));
-            if (prototype_value) |proto_val| {
-                if (v8.v8_Value_IsObject(proto_val)) {
-                    _ = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
+    // We try global.Constructor.prototype first, falling back to template if not found.
+    const global = v8.v8_Context_Global(context);
+    const prototype_set = blk: {
+        if (global) |g| {
+            const constructor_name = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len));
+            if (constructor_name) |cname| {
+                const constructor_value = v8.v8_Object_Get(g, context, @ptrCast(cname));
+                if (constructor_value) |cval| {
+                    if (v8.v8_Value_IsObject(cval)) {
+                        const constructor_obj: *v8.Object = @ptrCast(cval);
+                        const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+                        if (prototype_str) |proto_name| {
+                            const prototype_value = v8.v8_Object_Get(constructor_obj, context, @ptrCast(proto_name));
+                            if (prototype_value) |proto_val| {
+                                if (v8.v8_Value_IsObject(proto_val)) {
+                                    _ = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
+                                    // Detect context type
+                                    const ctx_type: []const u8 = ctx_blk: {
+                                        const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse break :ctx_blk "unknown";
+                                        if (v8.v8_Object_Get(g, context, @ptrCast(window_key))) |_| {
+                                            break :ctx_blk "MAIN";
+                                        }
+                                        break :ctx_blk "WORKER";
+                                    };
+                                    std.debug.print("[WRAP-{s}] {s}: prototype set from global, proto_addr={*}, context={*}\n", .{ ctx_type, interface_name, proto_val, context });
+
+                                    // VERIFICATION: Check if object's actual prototype matches what we set
+                                    if (v8.v8_Object_GetPrototype(v8_object)) |actual_proto| {
+                                        const same_obj = v8.v8_Value_StrictEquals(actual_proto, proto_val);
+                                        std.debug.print("[WRAP-VERIFY] {s}: SetPrototype worked? actual_proto={*}, same_as_set={}\n", .{ interface_name, actual_proto, same_obj });
+
+                                        // Re-fetch global.Constructor.prototype to verify it's still the same
+                                        const constructor_name2 = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len));
+                                        if (constructor_name2) |cname2| {
+                                            const constructor_value2 = v8.v8_Object_Get(g, context, @ptrCast(cname2));
+                                            if (constructor_value2) |cval2| {
+                                                if (v8.v8_Value_IsObject(cval2)) {
+                                                    const constructor_obj2: *v8.Object = @ptrCast(cval2);
+                                                    const prototype_str2 = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+                                                    if (prototype_str2) |proto_name2| {
+                                                        const prototype_value2 = v8.v8_Object_Get(constructor_obj2, context, @ptrCast(proto_name2));
+                                                        if (prototype_value2) |proto_val2| {
+                                                            const refetch_same = v8.v8_Value_StrictEquals(proto_val, proto_val2);
+                                                            const actual_matches_refetch = v8.v8_Value_StrictEquals(actual_proto, proto_val2);
+                                                            std.debug.print("[WRAP-VERIFY] {s}: refetch_proto={*}, original==refetch={}, actual==refetch={}\n", .{ interface_name, proto_val2, refetch_same, actual_matches_refetch });
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // For MessageEvent, check if "data" accessor exists on prototype
+                                        if (std.mem.eql(u8, interface_name, "MessageEvent")) {
+                                            const proto_obj: *v8.Object = @ptrCast(proto_val);
+                                            const data_key = v8.v8_String_NewFromUtf8(isolate, "data", 4);
+                                            if (data_key) |dk| {
+                                                const has_data = v8.v8_Object_HasOwnProperty(proto_obj, context, @ptrCast(dk));
+                                                std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent.prototype hasOwnProperty('data')={}\n", .{has_data});
+
+                                                // Also check GetOwnPropertyDescriptor
+                                                if (v8.v8_Object_GetOwnPropertyDescriptor(proto_obj, context, @ptrCast(dk))) |desc| {
+                                                    const is_undefined = v8.v8_Value_IsUndefined(desc);
+                                                    const is_object = v8.v8_Value_IsObject(desc);
+                                                    std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent.prototype.data descriptor: is_undefined={}, is_object={}\n", .{ is_undefined, is_object });
+
+                                                    // Check if descriptor has "get" vs "value" property
+                                                    if (is_object) {
+                                                        const desc_obj: *v8.Object = @ptrCast(desc);
+                                                        const get_key = v8.v8_String_NewFromUtf8(isolate, "get", 3);
+                                                        const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5);
+                                                        if (get_key) |gk| {
+                                                            const has_get = v8.v8_Object_HasOwnProperty(desc_obj, context, @ptrCast(gk));
+                                                            std.debug.print("[WRAP-ACCESSOR-CHECK] descriptor has 'get'={} (ACCESSOR)\n", .{has_get});
+                                                            if (has_get) {
+                                                                if (v8.v8_Object_Get(desc_obj, context, @ptrCast(gk))) |get_val| {
+                                                                    const get_is_func = v8.v8_Value_IsFunction(get_val);
+                                                                    const get_is_undef = v8.v8_Value_IsUndefined(get_val);
+                                                                    std.debug.print("[WRAP-ACCESSOR-CHECK] 'get' value: is_function={}, is_undefined={}\n", .{ get_is_func, get_is_undef });
+                                                                }
+                                                            }
+                                                        }
+                                                        if (value_key) |vk| {
+                                                            const has_value = v8.v8_Object_HasOwnProperty(desc_obj, context, @ptrCast(vk));
+                                                            std.debug.print("[WRAP-ACCESSOR-CHECK] descriptor has 'value'={} (DATA PROPERTY - BAD!)\n", .{has_value});
+                                                        }
+                                                    }
+                                                } else {
+                                                    std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent.prototype.data GetOwnPropertyDescriptor returned null\n", .{});
+                                                }
+
+                                                // CRITICAL: Check if the INSTANCE has own "data" property (shadowing)
+                                                const instance_has_data = v8.v8_Object_HasOwnProperty(v8_object, context, @ptrCast(dk));
+                                                std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent INSTANCE hasOwnProperty('data')={} (SHADOWING if true!)\n", .{instance_has_data});
+                                            }
+                                        }
+                                    }
+
+                                    break :blk true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        break :blk false;
+    };
+
+    // Fallback to template's prototype if global.Constructor.prototype not available
+    if (!prototype_set) {
+        const func = v8.v8_FunctionTemplate_GetFunction(template, context);
+        if (func) |constructor_func| {
+            const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+            if (prototype_str) |proto_name| {
+                const prototype_value = v8.v8_Object_Get(@ptrCast(constructor_func), context, @ptrCast(proto_name));
+                if (prototype_value) |proto_val| {
+                    if (v8.v8_Value_IsObject(proto_val)) {
+                        _ = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
+                        std.debug.print("[WRAP-FALLBACK] {s}: prototype set from template, proto_addr={*}, context={*}\n", .{ interface_name, proto_val, context });
+                    } else {
+                        std.debug.print("[WRAP] {s}: prototype is not an object!\n", .{interface_name});
+                    }
+                } else {
+                    std.debug.print("[WRAP] {s}: prototype_value is null!\n", .{interface_name});
                 }
             }
         }
@@ -568,18 +759,15 @@ test "template_registry count stability" {
     // This verifies that templates are shared, not duplicated per context
     ensureInitialized();
 
-    // Count registered templates by index
-    var initial_count: usize = 0;
-    for (templates_by_index) |entry| {
-        if (entry.template != null) initial_count += 1;
-    }
+    // With per-isolate storage, we just verify the map is accessible
+    // Count is per-isolate now, not global
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+
+    const initial_count = templates_by_isolate.count();
 
     // The count should remain stable regardless of how many times we query
-    // (templates are only registered once per isolate, not per context)
-    var query_count: usize = 0;
-    for (templates_by_index) |entry| {
-        if (entry.template != null) query_count += 1;
-    }
+    const query_count = templates_by_isolate.count();
 
     try std.testing.expectEqual(initial_count, query_count);
 }

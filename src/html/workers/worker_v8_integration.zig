@@ -218,18 +218,8 @@ pub const WorkerIsolateData = struct {
         ;
         try self.executeScript(close_script);
 
-        // Set up MessageEvent constructor for dispatching messages
-        const messageevent_script =
-            \\globalThis.MessageEvent = function(type, init) {
-            \\  this.type = type;
-            \\  this.data = init ? init.data : undefined;
-            \\  this.origin = init ? init.origin : '';
-            \\  this.lastEventId = init ? init.lastEventId : '';
-            \\  this.source = init ? init.source : null;
-            \\  this.ports = init ? init.ports : [];
-            \\};
-        ;
-        try self.executeScript(messageevent_script);
+        // NOTE: MessageEvent is registered as a native interface via hydrateWorkerContext()
+        // Do NOT create a JS stub here - it would shadow the native accessor properties
 
         // Set up importScripts stub
         // For threaded workers, this is a stub - proper implementation would

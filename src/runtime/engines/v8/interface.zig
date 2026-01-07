@@ -949,12 +949,44 @@ pub fn V8Interface(comptime Interface: type) type {
             // Skip interfaces without eager properties
             if (eager_properties.len == 0) return;
 
+            // Detect context type by checking if global has "Window" (main browser) or "DedicatedWorkerGlobalScope" (worker)
+            const context_type: []const u8 = blk: {
+                const global = v8.v8_Context_Global(context) orelse break :blk "unknown";
+                const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse break :blk "unknown";
+                if (v8.v8_Object_Get(global, context, @ptrCast(window_key))) |_| {
+                    break :blk "MAIN";
+                }
+                break :blk "WORKER";
+            };
+            std.debug.print("[REINSTALL-{s}] {s}: reinstalling {d} accessor callbacks, context={*}...\n", .{ context_type, interface_name, eager_properties.len, context });
+
             // CRITICAL: Get the prototype from the TEMPLATE, not from global.Constructor.prototype
-            // Instances created via wrapInstanceAsV8Object use the template's prototype,
             // which is different from global.Constructor.prototype after snapshot loading.
+            //
+            // CORRECTION: For snapshot-restored contexts, we MUST use global.Constructor.prototype
+            // because that's what instances in the snapshot use. Fresh templates create NEW
+            // prototype objects that are NOT the same as what's in the snapshot.
             const tpl_registry = @import("template_registry.zig");
             const prototype_obj: *v8.Object = blk: {
-                // Try to get template from registry first
+                // For snapshot contexts, prefer global.Constructor.prototype (what instances actually use)
+                const global = v8.v8_Context_Global(context) orelse break :blk null;
+                const constructor_name = v8.v8_String_NewFromUtf8(
+                    isolate,
+                    interface_name.ptr,
+                    @intCast(interface_name.len),
+                ) orelse break :blk null;
+                const constructor_value = v8.v8_Object_Get(global, context, @ptrCast(constructor_name)) orelse break :blk null;
+                if (v8.v8_Value_IsObject(constructor_value)) {
+                    const constructor_obj: *v8.Object = @ptrCast(constructor_value);
+                    const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse break :blk null;
+                    const prototype_value = v8.v8_Object_Get(constructor_obj, context, @ptrCast(prototype_key)) orelse break :blk null;
+                    if (v8.v8_Value_IsObject(prototype_value)) {
+                        const proto_obj: *v8.Object = @ptrCast(prototype_value);
+                        break :blk proto_obj;
+                    }
+                }
+
+                // Fallback to template registry if global constructor not found
                 if (tpl_registry.getTemplate(interface_name)) |template| {
                     // Get the function from the template (same as wrapInstanceAsV8Object does)
                     if (v8.v8_FunctionTemplate_GetFunction(template, context)) |func| {
@@ -966,22 +998,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                     }
                 }
-                // Fallback to global constructor's prototype if template not found
-                const global = v8.v8_Context_Global(context) orelse break :blk null;
-                const constructor_name = v8.v8_String_NewFromUtf8(
-                    isolate,
-                    interface_name.ptr,
-                    @intCast(interface_name.len),
-                ) orelse break :blk null;
-                const constructor_value = v8.v8_Object_Get(global, context, @ptrCast(constructor_name)) orelse break :blk null;
-                if (!v8.v8_Value_IsObject(constructor_value)) break :blk null;
-                const constructor_obj: *v8.Object = @ptrCast(constructor_value);
-                const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse break :blk null;
-                const prototype_value = v8.v8_Object_Get(constructor_obj, context, @ptrCast(prototype_key)) orelse break :blk null;
-                if (!v8.v8_Value_IsObject(prototype_value)) break :blk null;
-                const proto_obj: *v8.Object = @ptrCast(prototype_value);
-                break :blk proto_obj;
-            } orelse return;
+                break :blk null;
+            } orelse {
+                std.debug.print("[REINSTALL] {s}: FAILED to get prototype object!\n", .{interface_name});
+                return;
+            };
+
+            std.debug.print("[REINSTALL-{s}] {s}: got prototype at {*}, installing accessors...\n", .{ context_type, interface_name, prototype_obj });
 
             // Re-install accessor callbacks on the prototype
             inline for (eager_properties) |prop| {
@@ -994,6 +1017,9 @@ pub fn V8Interface(comptime Interface: type) type {
                     prop_name.ptr,
                     @intCast(prop_name.len),
                 )) |prop_name_str| {
+                    // Delete existing accessor first to ensure clean reinstall
+                    _ = v8.v8_Object_Delete(prototype_obj, context, @ptrCast(prop_name_str));
+
                     // Use PropertyGetterCallback to generate the getter callback
                     const getter_cb: v8.FunctionCallback = PropertyGetterCallback(interface_name, getter_name).callback;
 
@@ -1017,13 +1043,16 @@ pub fn V8Interface(comptime Interface: type) type {
                         null;
 
                     // Re-install accessor property on the prototype
-                    _ = v8.v8_Object_SetAccessorProperty(
+                    const success = v8.v8_Object_SetAccessorProperty(
                         prototype_obj,
                         context,
                         prop_name_str,
                         getter_cb,
                         setter_cb,
                     );
+                    if (!success) {
+                        std.debug.print("[REINSTALL] {s}.{s}: SetAccessorProperty FAILED!\n", .{ interface_name, prop_name });
+                    }
                 }
             }
         }
@@ -1772,18 +1801,12 @@ pub fn V8Interface(comptime Interface: type) type {
         fn PropertyGetterCallback(comptime iface_name: []const u8, comptime getter_name: []const u8) type {
             return struct {
                 pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-                    // UNCONDITIONAL DEBUG - remove after fixing MessageEvent.data issue
-                    if (comptime std.mem.eql(u8, iface_name, "MessageEvent") and std.mem.eql(u8, getter_name, "get_data")) {
-                        std.debug.print("!!! PropertyGetterCallback INVOKED for MessageEvent.get_data !!!\n", .{});
-                    }
                     // Use compile-time debug logging to avoid runtime overhead
                     // This is called on every property access, so must be zero-cost when disabled
                     debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ iface_name, getter_name });
 
-                    // MessageEvent investigation logging - always print for MessageEvent
-                    if (comptime std.mem.eql(u8, iface_name, "MessageEvent")) {
-                        std.log.warn("[PropertyGetterCallback] ENTRY for MessageEvent.{s}", .{getter_name});
-                    }
+                    // TEMP: Runtime debug to trace if V8 is calling us
+                    std.debug.print("[PROP-GET] {s}.{s} called\n", .{ iface_name, getter_name });
 
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
@@ -2050,12 +2073,10 @@ pub fn V8Interface(comptime Interface: type) type {
                                 std.mem.eql(u8, getter_name, "get_window") or
                                 std.mem.eql(u8, getter_name, "get_frames"))
                             {
-                                std.debug.print("[SELF-FIX] Window.{s} accessor called - returning This()\n", .{getter_name});
                                 // Return info.This() - the actual receiver object
                                 // For a property access on the global, this is the global proxy
                                 // that JS uses for variable resolution
                                 const global_this = info.getThis();
-                                std.debug.print("[SELF-FIX] Got This() object, setting return value\n", .{});
                                 info.setReturnValue(@ptrCast(global_this));
                                 return;
                             }
@@ -3906,17 +3927,16 @@ pub fn V8Interface(comptime Interface: type) type {
                     },
                     .handle => |h| blk: {
                         // Handle scope determines how to convert:
-                        // - Global handles are already Global<Value>* and can be returned directly
-                        //   (setReturnValue expects Global pointers from v8_String_NewFromUtf8, etc.)
-                        // - Local handles need to be persisted to Global for setReturnValue to work
+                        // - Global handles are Global<Value>* and must be dereferenced via v8_Global_Get
+                        //   to obtain the actual Local<Value> that can be used in V8 APIs
+                        // - Local handles can be returned directly (they're already Local<Value>*)
                         if (h.handle_scope == .global) {
-                            // Already a Global<Value>* - return directly
-                            break :blk @ptrCast(h.ptr);
+                            // Global<Value>* - must dereference to get Local<Value>*
+                            const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
+                            break :blk if (local) |l| @ptrCast(l) else v8.v8_Undefined(isolate);
                         } else {
-                            // Local handle - need to persist to Global for safe return
-                            // Use v8_Value_Persist to convert Local to Global
-                            const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
-                            break :blk if (global) |g| @ptrCast(g) else v8.v8_Undefined(isolate);
+                            // Local handle - can be returned directly
+                            break :blk @ptrCast(h.ptr);
                         }
                     },
                     .instance => |i| blk: {
@@ -4810,20 +4830,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (actual_len <= 0) return .kNo;
             const prop_name = prop_buf[0..@intCast(actual_len)];
 
-            // DEBUG: Log all property accesses on CSSStyleDeclaration
-            const is_css_debug = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
-            if (is_css_debug) {
-                std.debug.print("[namedPropertyGetter] CSSStyleDeclaration access: '{s}'\n", .{prop_name});
-            }
-
             // WebIDL named property visibility algorithm step 1:
             // If P is NOT a supported property name, do not intercept.
             // This ensures that properties like __proto__, toString, etc. fall through
             // to the prototype chain instead of being incorrectly intercepted.
             if (!isSupportedPropertyName(instance, prop_name)) {
-                if (is_css_debug and std.mem.eql(u8, prop_name, "display")) {
-                    std.debug.print("[namedPropertyGetter] 'display' NOT in supported names!\n", .{});
-                }
                 return .kNo;
             }
 
@@ -5049,15 +5060,8 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Check if prop_name is in the list of supported property names
-            const is_css = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
-            if (is_css and std.mem.eql(u8, prop_name, "display")) {
-                std.debug.print("[isSupportedPropertyName] Checking 'display', names.len={d}\n", .{names.len});
-            }
             for (names) |supported_name| {
                 if (std.mem.eql(u8, supported_name.asSlice(), prop_name)) {
-                    if (is_css and std.mem.eql(u8, prop_name, "display")) {
-                        std.debug.print("[isSupportedPropertyName] FOUND 'display'\n", .{});
-                    }
                     return true;
                 }
             }

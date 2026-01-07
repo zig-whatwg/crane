@@ -191,7 +191,27 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    return state.own.data;
+    const data = state.own.data;
+    // Debug: log what we're returning
+    switch (data) {
+        .handle => |h| {
+            std.debug.print("[ME-GET-DATA] returning handle: ptr={*}, scope={s}, needs_disposal={}\n", .{
+                h.ptr,
+                if (h.handle_scope == .global) "global" else "local",
+                h.needs_disposal,
+            });
+        },
+        .undefined => {
+            std.debug.print("[ME-GET-DATA] returning undefined\n", .{});
+        },
+        .null => {
+            std.debug.print("[ME-GET-DATA] returning null\n", .{});
+        },
+        else => {
+            std.debug.print("[ME-GET-DATA] returning other type\n", .{});
+        },
+    }
+    return data;
 }
 
 /// Getter for origin
@@ -293,7 +313,8 @@ pub fn createTextMessageEvent(
 
     // Store the text data as a DOMString (copy for ownership)
     const text_string = try allocator.dupe(u8, text_data);
-    state.own.data = @ptrCast(text_string.ptr);
+    // Create a proper JSValue.string instead of invalid @ptrCast
+    state.own.data = .{ .string = .{ .data = text_string, .owned = true } };
 
     // Set origin (copy for ownership)
     state.own.origin = try allocator.dupe(u8, origin);
@@ -339,7 +360,9 @@ pub fn createBinaryMessageEvent(
 
     // For binary data, the actual conversion to Blob/ArrayBuffer
     // happens in the JS binding layer based on binaryType (MessageEvent fields in state.own)
-    state.own.data = @ptrCast(binary_data.ptr);
+    // Create a proper JSValue.string for binary data (will be converted to ArrayBuffer/Blob by caller)
+    const binary_copy = if (owns_data) binary_data else try allocator.dupe(u8, binary_data);
+    state.own.data = .{ .string = .{ .data = binary_copy, .owned = true } };
 
     // Set origin (copy for ownership)
     state.own.origin = try allocator.dupe(u8, origin_str);
