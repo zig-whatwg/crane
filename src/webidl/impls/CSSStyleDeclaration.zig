@@ -458,13 +458,10 @@ fn isBlockElement(tag_name: []const u8) bool {
 /// Example: style.backgroundColor -> getPropertyValue("background-color")
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?runtime.DOMString {
     const prop_name = name.asSlice();
-    std.debug.print("[call_namedItem] CALLED with prop_name={s}\n", .{prop_name});
 
     const internal = getInternal(instance) orelse {
-        std.debug.print("[call_namedItem] getInternal returned null for {s}\n", .{prop_name});
         return null;
     };
-    std.debug.print("[call_namedItem] getInternal succeeded, is_computed={}\n", .{internal.is_computed});
 
     // Convert camelCase to kebab-case
     var kebab_buf: [256]u8 = undefined;

@@ -3757,14 +3757,12 @@ bool v8_Object_SetAccessorProperty(
         setter_func = setter_tpl->GetFunction(ctx).ToLocalChecked();
     }
     
-    // Create accessor property descriptor
-    // PropertyDescriptor(Local<Value> get, Local<Value> set) creates an accessor descriptor
     PropertyDescriptor desc(
         getter ? Local<Value>(getter_func) : Local<Value>(),
         setter ? Local<Value>(setter_func) : Local<Value>()
     );
-    desc.set_enumerable(true);  // WebIDL default
-    desc.set_configurable(true); // WebIDL default
+    desc.set_enumerable(true);
+    desc.set_configurable(true);
     
     // Define the property on the object
     return obj->DefineProperty(ctx, key.As<Name>(), desc).FromMaybe(false);

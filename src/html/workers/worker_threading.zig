@@ -40,15 +40,14 @@ const Condition = std.Thread.Condition;
 const platform = @import("platform");
 const EventWakeup = platform.EventWakeup;
 
-// Debug logging - disabled for worker threading to avoid compilation issues
-// across different build configurations. Enable manually if needed.
+// Debug logging for worker threading - uses stderr for visibility
+// This is enabled for debugging WPT worker test timeouts
 const debug = struct {
     pub inline fn print(comptime fmt: []const u8, args: anytype) void {
-        _ = fmt;
-        _ = args;
-        // Intentionally empty - logging disabled for performance
-        // To enable: uncomment the line below
-        // std.debug.print("[html] " ++ fmt, args);
+        const stderr = std.fs.File.stderr();
+        var buf: [1024]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[WORKER_THREAD] " ++ fmt, args) catch "[WORKER_THREAD] (format error)\n";
+        stderr.writeAll(msg) catch {};
     }
 };
 
@@ -159,14 +158,17 @@ pub const ThreadSafeMessageQueue = struct {
     ///
     /// Returns error if the queue is closed or out of memory.
     pub fn enqueue(self: *Self, message: *SerializedMessage) !void {
+        debug.print("enqueue() called, message.data.type={d}\n", .{@intFromEnum(message.data.type)});
         self.mutex.lock();
         defer self.mutex.unlock();
 
         if (self.closed) {
+            debug.print("enqueue() FAILED: queue is closed\n", .{});
             return WorkerError.WorkerClosing;
         }
 
         try self.queue.append(self.allocator, message);
+        debug.print("enqueue() message added, queue.len={d}\n", .{self.queue.items.len});
 
         // Signal any waiting readers (for blocking dequeue)
         self.condition.signal();
@@ -174,6 +176,7 @@ pub const ThreadSafeMessageQueue = struct {
         // Signal the wakeup primitive to wake up the main thread's event loop
         // This enables immediate delivery instead of relying on polling
         if (self.wakeup) |wakeup| {
+            debug.print("enqueue() signaling wakeup\n", .{});
             wakeup.signal();
         }
     }
@@ -189,7 +192,9 @@ pub const ThreadSafeMessageQueue = struct {
             return null;
         }
 
-        return self.queue.orderedRemove(0);
+        const msg = self.queue.orderedRemove(0);
+        debug.print("tryDequeue() returning message, remaining={d}\n", .{self.queue.items.len});
+        return msg;
     }
 
     /// Dequeue a message (thread-safe, blocking)
@@ -408,6 +413,11 @@ pub const WorkerThreadRunner = struct {
     /// Signature: fn(*anyopaque, *SerializedMessage) anyerror!void
     dispatch_message_fn: ?DispatchMessageFn,
 
+    /// Callback to run V8 microtask checkpoint
+    /// Signature: fn(*anyopaque) void
+    /// This is needed because html_core cannot import v8 directly
+    microtask_checkpoint_fn: ?MicrotaskCheckpointFn,
+
     /// Callback context for V8 operations
     callback_context: ?*anyopaque,
 
@@ -418,6 +428,7 @@ pub const WorkerThreadRunner = struct {
     pub const DisposeIsolateFn = *const fn (*anyopaque) void;
     pub const ExecuteScriptFn = *const fn (*anyopaque, []const u8, []const u8) anyerror!void;
     pub const DispatchMessageFn = *const fn (*anyopaque, *ThreadSafeMessageQueue.SerializedMessage) anyerror!void;
+    pub const MicrotaskCheckpointFn = *const fn (*anyopaque) void;
 
     pub fn init(
         allocator: Allocator,
@@ -431,6 +442,7 @@ pub const WorkerThreadRunner = struct {
             .dispose_isolate_fn = null,
             .execute_script_fn = null,
             .dispatch_message_fn = null,
+            .microtask_checkpoint_fn = null,
             .callback_context = null,
         };
         return runner;
@@ -459,12 +471,14 @@ pub const WorkerThreadRunner = struct {
         dispose_isolate: DisposeIsolateFn,
         execute_script: ExecuteScriptFn,
         dispatch_message: ?DispatchMessageFn,
+        microtask_checkpoint: ?MicrotaskCheckpointFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
         self.dispose_isolate_fn = dispose_isolate;
         self.execute_script_fn = execute_script;
         self.dispatch_message_fn = dispatch_message;
+        self.microtask_checkpoint_fn = microtask_checkpoint;
         self.callback_context = context;
     }
 
@@ -473,13 +487,17 @@ pub const WorkerThreadRunner = struct {
     /// Creates a new OS thread and starts the worker's execution.
     /// Returns immediately; use thread_state to monitor progress.
     pub fn spawn(self: *Self) !void {
+        debug.print("spawn() called, script_url={s}\n", .{self.thread_state.script_url});
+
         // Transition from pending to starting
         if (!self.thread_state.transitionState(
             WorkerThreadState.STATE_PENDING,
             WorkerThreadState.STATE_STARTING,
         )) {
+            debug.print("spawn() FAILED: state transition failed (not pending)\n", .{});
             return WorkerError.WorkerNotRunning;
         }
+        debug.print("spawn() state transitioned to STARTING\n", .{});
 
         // Create EventWakeup for efficient worker thread waiting
         // This replaces busy-polling with event-driven waiting
@@ -495,11 +513,13 @@ pub const WorkerThreadRunner = struct {
         self.thread_state.inbox.setWakeup(wakeup);
 
         // Spawn the worker thread
+        debug.print("spawn() about to call Thread.spawn()...\n", .{});
         self.thread_state.thread = try Thread.spawn(
             .{},
             workerThreadMain,
             .{self},
         );
+        debug.print("spawn() Thread.spawn() completed, worker thread created\n", .{});
     }
 
     /// Wait for the worker thread to finish
@@ -616,8 +636,29 @@ pub const WorkerThreadRunner = struct {
                 }
             }
 
-            // Run V8 microtasks here (if V8 integration available)
-            // TODO: Add microtask checkpoint callback
+            // Run V8 microtask checkpoint
+            // This is critical for:
+            // 1. Promise resolution (microtasks)
+            // 2. setTimeout/setInterval execution (event loop timers)
+            // 3. Async/await continuations
+            //
+            // Note: We use a callback because html_core cannot import v8 directly.
+            // The callback is provided by worker_v8_context.zig which has V8 access.
+            // The callback implementation handles HandleScope creation internally.
+            if (self.microtask_checkpoint_fn) |checkpoint_fn| {
+                if (isolate) |iso| {
+                    checkpoint_fn(iso);
+                }
+            }
+
+            // Spin the worker's event loop to process timers and tasks
+            // This handles setTimeout, setInterval, and queued tasks
+            if (self.thread_state.worker_ptr) |worker_ptr| {
+                const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
+                dedicated_worker.spin() catch |err| {
+                    debug.print("[WorkerThread] event_loop.spin error: {s}\n", .{@errorName(err)});
+                };
+            }
 
             // Wait for messages or termination signal using EventWakeup
             // This is efficient - no busy-polling, just event-driven waiting
@@ -638,14 +679,22 @@ pub const WorkerThreadRunner = struct {
 
     /// Handle an incoming message from the main thread
     fn handleIncomingMessage(self: *Self, isolate: ?*anyopaque, msg: *ThreadSafeMessageQueue.SerializedMessage) void {
+        debug.print("[WorkerThread] handleIncomingMessage() called, msg.data.type={s}\n", .{@tagName(msg.data.type)});
         // Dispatch message to worker's onmessage handler via V8 callback
         if (self.dispatch_message_fn) |dispatch_fn| {
             if (isolate) |iso| {
+                debug.print("[WorkerThread] handleIncomingMessage() dispatching to V8...\n", .{});
                 dispatch_fn(iso, msg) catch |err| {
                     // Log error but continue processing other messages
                     std.log.err("Failed to dispatch message to worker: {}", .{err});
+                    debug.print("[WorkerThread] handleIncomingMessage() dispatch FAILED: {s}\n", .{@errorName(err)});
                 };
+                debug.print("[WorkerThread] handleIncomingMessage() dispatch complete\n", .{});
+            } else {
+                debug.print("[WorkerThread] handleIncomingMessage() no isolate, skipping dispatch\n", .{});
             }
+        } else {
+            debug.print("[WorkerThread] handleIncomingMessage() no dispatch_fn, skipping\n", .{});
         }
     }
 
@@ -677,6 +726,7 @@ pub const ThreadedWorkerManager = struct {
     dispose_isolate_fn: ?WorkerThreadRunner.DisposeIsolateFn,
     execute_script_fn: ?WorkerThreadRunner.ExecuteScriptFn,
     dispatch_message_fn: ?WorkerThreadRunner.DispatchMessageFn,
+    microtask_checkpoint_fn: ?WorkerThreadRunner.MicrotaskCheckpointFn,
     callback_context: ?*anyopaque,
 
     const Self = @This();
@@ -690,6 +740,7 @@ pub const ThreadedWorkerManager = struct {
             .dispose_isolate_fn = null,
             .execute_script_fn = null,
             .dispatch_message_fn = null,
+            .microtask_checkpoint_fn = null,
             .callback_context = null,
         };
     }
@@ -715,12 +766,14 @@ pub const ThreadedWorkerManager = struct {
         dispose_isolate: WorkerThreadRunner.DisposeIsolateFn,
         execute_script: WorkerThreadRunner.ExecuteScriptFn,
         dispatch_message: ?WorkerThreadRunner.DispatchMessageFn,
+        microtask_checkpoint: ?WorkerThreadRunner.MicrotaskCheckpointFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
         self.dispose_isolate_fn = dispose_isolate;
         self.execute_script_fn = execute_script;
         self.dispatch_message_fn = dispatch_message;
+        self.microtask_checkpoint_fn = microtask_checkpoint;
         self.callback_context = context;
     }
 
@@ -755,6 +808,7 @@ pub const ThreadedWorkerManager = struct {
                 self.dispose_isolate_fn.?,
                 self.execute_script_fn.?,
                 self.dispatch_message_fn,
+                self.microtask_checkpoint_fn,
                 self.callback_context,
             );
         }

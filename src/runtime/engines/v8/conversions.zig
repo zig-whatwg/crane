@@ -1754,17 +1754,17 @@ pub fn toV8Value(
                 }
 
                 // Handle scope determines how to convert:
-                // - Global handles are already Global<Value>* and can be returned directly
-                //   (setReturnValue expects Global pointers from v8_String_NewFromUtf8, etc.)
-                // - Local handles need to be persisted to Global for setReturnValue to work
+                // - Global handles are Global<Value>* and must be dereferenced via v8_Global_Get
+                //   to obtain the actual Local<Value> that can be used in V8 APIs
+                // - Local handles can be returned directly (they're already Local<Value>*)
                 if (h.handle_scope == .global) {
-                    // Already a Global<Value>* - return directly
-                    break :blk @ptrCast(h.ptr);
+                    // Global<Value>* - must dereference to get Local<Value>*
+                    // v8_Global_Get returns the underlying value from the global handle
+                    const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
+                    break :blk if (local) |l| @ptrCast(l) else toV8Undefined(isolate);
                 } else {
-                    // Local handle - need to persist to Global for safe return
-                    // Use v8_Value_Persist to convert Local to Global
-                    const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
-                    break :blk if (global) |g| @ptrCast(g) else toV8Undefined(isolate);
+                    // Local handle - can be returned directly
+                    break :blk @ptrCast(h.ptr);
                 }
             },
             .instance => |i| instanceToV8(isolate, @ptrCast(@alignCast(i))),

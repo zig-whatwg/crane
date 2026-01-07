@@ -589,7 +589,6 @@ pub fn registerNamespacesGeneric(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
-    std.debug.print("[registerNamespacesGeneric] RUNTIME: Registering namespaces...\n", .{});
     @setEvalBranchQuota(50_000_000);
     const ns_decls = @typeInfo(namespaces_mod).@"struct".decls;
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
@@ -920,6 +919,7 @@ pub fn reinstallAllAccessorCallbacks(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
+    std.debug.print("[REINSTALL-ALL] reinstallAllAccessorCallbacks called, isolate={*}, context={*}\n", .{ isolate, context });
     @setEvalBranchQuota(200_000);
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
 

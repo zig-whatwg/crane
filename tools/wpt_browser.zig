@@ -124,6 +124,10 @@ const WptBrowser = struct {
 };
 
 pub fn main() !void {
+    // ABSOLUTE FIRST OUTPUT - before anything else
+    // std.debug.print is guaranteed to flush immediately
+    std.debug.print("[WPT_BROWSER] === PROCESS STARTED ===\n", .{});
+
     const stderr = std.fs.File.stderr();
     stderr.writeAll("[WPT_BROWSER] main() starting\n") catch {};
 

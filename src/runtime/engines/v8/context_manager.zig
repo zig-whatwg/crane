@@ -588,7 +588,23 @@ pub fn hydrateContextFromSnapshot(
     v8_ctx: *v8.Context,
     scope: helpers.GlobalScope,
 ) void {
-    iface_bindings_mod.installForScope(isolate, v8_ctx, scope);
+    std.debug.print("[HYDRATE-SNAPSHOT] hydrateContextFromSnapshot called, context={*}, scope={s}\n", .{ v8_ctx, @tagName(scope) });
+
+    // Use inline for to convert runtime scope to comptime for installForScope
+    inline for (std.meta.fields(helpers.GlobalScope)) |field| {
+        if (scope == @field(helpers.GlobalScope, field.name)) {
+            const comptime_scope: helpers.GlobalScope = @field(helpers.GlobalScope, field.name);
+            iface_bindings_mod.installForScope(isolate, v8_ctx, comptime_scope);
+
+            // CRITICAL: Reinstall accessor callbacks on the new context's prototypes.
+            // V8 snapshots serialize JS objects but accessor callback pointers become
+            // stale after snapshot load. We must reinstall them on each new context.
+            std.debug.print("[HYDRATE-SNAPSHOT] Calling reinstallAllAccessorCallbacks for context={*}...\n", .{v8_ctx});
+            iface_bindings_mod.reinstallAllAccessorCallbacks(isolate, v8_ctx);
+            std.debug.print("[HYDRATE-SNAPSHOT] reinstallAllAccessorCallbacks complete for context={*}\n", .{v8_ctx});
+            return;
+        }
+    }
 }
 
 /// Create a new context for a specific global scope kind (BSCOPE-05)
@@ -2301,6 +2317,7 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // 5. Reinstall accessor callbacks on prototype objects
     // V8 snapshots serialize JS objects but accessor callback pointers become
     // stale after loading. This re-installs them.
+    std.debug.print("[HYDRATE-WINDOW] Calling reinstallAllAccessorCallbacks for context={*}...\\n", .{v8_ctx});
     interface_bindings.reinstallAllAccessorCallbacks(isolate, v8_ctx);
 
     // 5b. Reinstall method callbacks on prototype objects
@@ -2418,6 +2435,8 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
     const v8_ctx = options.context;
     const allocator = options.allocator;
 
+    std.debug.print("[HYDRATE-WORKER] hydrateWorkerContext called, isolate={*}, context={*}\n", .{ isolate, v8_ctx });
+
     // 1. Initialize context manager (if not already initialized)
     init(allocator) catch |err| {
         if (err != error.AlreadyInitialized) {
@@ -2429,13 +2448,18 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
     const runtime_ctx = try getOrCreate(v8_ctx, allocator);
 
     // 3. Populate Zig-side template registry (interfaces already in snapshot)
+    std.debug.print("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\n", .{});
     interface_bindings.registerAllTemplatesOnly(isolate);
 
     // 4. Reinstall accessor callbacks on prototype objects
+    std.debug.print("[HYDRATE-WORKER] Calling reinstallAllAccessorCallbacks...\n", .{});
     interface_bindings.reinstallAllAccessorCallbacks(isolate, v8_ctx);
 
     // 4b. Reinstall method callbacks on prototype objects
+    std.debug.print("[HYDRATE-WORKER] Calling reinstallAllMethodCallbacks...\n", .{});
     interface_bindings.reinstallAllMethodCallbacks(isolate, v8_ctx);
+
+    std.debug.print("[HYDRATE-WORKER] hydrateWorkerContext complete\n", .{});
 
     // 5. Set up basic worker globals
     const global_obj = v8.v8_Context_Global(v8_ctx) orelse {

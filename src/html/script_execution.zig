@@ -779,39 +779,6 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
-    // Debug: Log the engine context being used
-    const source_preview = if (source.len > 100) source[0..100] else source;
-    std.debug.print("runClassicScript: engine_ctx={*}, source (len={d}): [{s}]\n", .{ engine_ctx, source.len, source_preview });
-
-    // DEBUG: Check if console is accessible
-    const v8 = @import("v8");
-    const ctx_ptr: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-    const isolate = v8.ffi.v8_Isolate_GetCurrent();
-    if (isolate) |iso| {
-        const global = v8.ffi.v8_Context_Global(ctx_ptr);
-        if (global) |g| {
-            const console_key = v8.ffi.v8_String_NewFromUtf8(iso, "console", 7);
-            if (console_key) |ck| {
-                const console_val = v8.ffi.v8_Object_Get(g, ctx_ptr, @ptrCast(ck));
-                if (console_val) |cv| {
-                    std.debug.print("runClassicScript: console value found: {*}\n", .{cv});
-                    // Check if it has 'log' method
-                    const log_key = v8.ffi.v8_String_NewFromUtf8(iso, "log", 3);
-                    if (log_key) |lk| {
-                        const log_val = v8.ffi.v8_Object_Get(@ptrCast(cv), ctx_ptr, @ptrCast(lk));
-                        if (log_val) |lv| {
-                            std.debug.print("runClassicScript: console.log found: {*}\n", .{lv});
-                        } else {
-                            std.debug.print("runClassicScript: console.log NOT found!\n", .{});
-                        }
-                    }
-                } else {
-                    std.debug.print("runClassicScript: console NOT found on global!\n", .{});
-                }
-            }
-        }
-    }
-
     // Compile the script using the engine interface
     const compileScript = engine.compileScript orelse {
         return;
@@ -852,18 +819,15 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
 
     // Run the script using the engine interface
     const runScript = engine.runScript orelse {
-        std.debug.print("runClassicScript: no runScript function\n", .{});
         return;
     };
-
-    std.debug.print("runClassicScript: about to run script on engine_ctx={*}\n", .{engine_ctx});
 
     const script_result = runScript(engine_ctx, script) catch |err| {
         std.debug.print("runClassicScript: runScript error: {}\n", .{err});
         return;
     };
 
-    std.debug.print("runClassicScript: script ran, result={?}\n", .{script_result});
+    // script_result intentionally unused - side effects are what matters
 
     // Run microtask checkpoint after script execution
     // This is critical for Promise-based APIs like promise_test in testharness.js

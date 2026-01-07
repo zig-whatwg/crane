@@ -497,6 +497,13 @@ pub const Context = struct {
                 std.debug.print("Warning: Snapshot context at index {} failed, falling back to fresh context\n", .{@intFromEnum(snapshot_index)});
                 return self.createV8ContextFresh();
             };
+
+            // CRITICAL: Re-register templates in the template registry
+            // The snapshot restores the global object with interface constructors,
+            // but the template registry is empty at runtime. We need to call
+            // hydrateContextFromSnapshot to re-register templates so that
+            // wrapInstanceAsV8Object() can find them for types like MessageEvent.
+            context_manager.hydrateContextFromSnapshot(self.isolate, v8_ctx, snapshot_index.toHelperScope());
         } else {
             // SLOW PATH: Create fresh context without snapshot
             return self.createV8ContextFresh();

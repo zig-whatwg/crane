@@ -2308,8 +2308,8 @@ test "generateInterface includes base type in imports" {
     const content = try file.readToEndAlloc(allocator, 10 * 1024);
     defer allocator.free(content);
 
-    // Should import base type from "interfaces" module
-    try testing.expect(std.mem.indexOf(u8, content, "const EventTarget = @import(\"interfaces\").EventTarget;") != null);
+    // Should import base type using peer imports (to avoid fat-module dependency)
+    try testing.expect(std.mem.indexOf(u8, content, "const EventTarget = @import(\"EventTarget.zig\").EventTarget;") != null);
 }
 
 test "generateInterface includes lifecycle functions" {

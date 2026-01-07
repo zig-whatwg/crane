@@ -3846,8 +3846,8 @@ test "writeImports avoids duplicate imports" {
     try testing.expectEqual(@as(usize, 1), count_eventtarget);
     try testing.expectEqual(@as(usize, 1), count_parentnode);
 
-    // Node should be imported (not duplicate)
-    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"interfaces\").Node;") != null);
+    // Node should be imported (not duplicate) - uses peer imports for interfaces
+    try testing.expect(std.mem.indexOf(u8, output, "const Node = @import(\"Node.zig\").Node;") != null);
 }
 
 test "writeInterfaceStruct generates struct declaration" {

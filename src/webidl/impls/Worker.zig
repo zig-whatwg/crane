@@ -76,6 +76,16 @@ const WorkerThreadState = workers.WorkerThreadState;
 
 pub const State = Worker.State;
 
+// Debug logging for worker lifecycle - uses stderr for visibility
+const wdebug = struct {
+    pub inline fn print(comptime fmt: []const u8, args: anytype) void {
+        const stderr = std.fs.File.stderr();
+        var buf: [1024]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[WORKER_IMPL] " ++ fmt, args) catch "[WORKER_IMPL] (format error)\n";
+        stderr.writeAll(msg) catch {};
+    }
+};
+
 pub const ImplError = error{
     NotImplemented,
     WorkerCreationFailed,
@@ -223,6 +233,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// This is called when the interface is constructed from JavaScript:
 /// new Worker(scriptURL, options)
 pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
+    wdebug.print("call_constructor() ENTRY - scriptURL={s}\n", .{scriptURL.asSlice()});
 
     // NOTE: We rely on the persistent HandleScope from BrowserContext.
     // Creating a local HandleScope here and disposing it at the end of the constructor
@@ -301,7 +312,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
 
     // Try to create the DedicatedWorker using the global timer backend
     // The timer backend is portable (uses std.time) and works on all platforms
+    wdebug.print("call_constructor() getting timer backend...\n", .{});
     if (platform.getDefaultTimerBackend(ctx.allocator)) |timer_backend| {
+        wdebug.print("call_constructor() creating DedicatedWorker...\n", .{});
         const dedicated_worker = DedicatedWorker.init(
             ctx.allocator,
             timer_backend,
@@ -313,9 +326,11 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             },
         ) catch |err| {
             // Log error but don't fail - worker will be in "not started" state
+            wdebug.print("call_constructor() FAILED to create DedicatedWorker: {s}\n", .{@errorName(err)});
             std.log.warn("Failed to create DedicatedWorker: {}", .{err});
             return instance;
         };
+        wdebug.print("call_constructor() DedicatedWorker created\n", .{});
         internal_state.dedicated_worker = dedicated_worker;
 
         // Store reference to Worker instance for message callbacks
@@ -364,12 +379,14 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // Fetch the worker script FIRST to get the resolved URL
         // Per HTML Standard § 10.2.5 "Run a worker": resolve URL before creating context
         // For WPT tests, scripts are fetched from the WPT server or resolved as data: URLs
+        wdebug.print("call_constructor() fetching worker script from {s}...\n", .{url_copy});
         const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
             .worker_type = worker_type,
             .origin = document_origin,
         }) catch |err| {
             // Log error but don't fail construction - worker enters error state
             // Per spec, errors during script fetch should fire an error event
+            wdebug.print("call_constructor() FAILED to fetch script: {s}\n", .{@errorName(err)});
             std.log.warn("Failed to fetch worker script: {}", .{err});
             // Free the document_origin before returning (it was allocated by Document.get_URL)
             if (document_origin) |origin| {
@@ -377,6 +394,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             }
             return instance;
         };
+        wdebug.print("call_constructor() script fetched, len={d}\n", .{fetched_script.source.len});
 
         // Free the document_origin now that fetching is complete (it was allocated by Document.get_URL)
         if (document_origin) |origin| {
@@ -425,18 +443,22 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // 3. The current script finishes
         // 4. The event loop runs the scheduled task
         if (ctx.timer) |timer| {
+            wdebug.print("call_constructor() scheduling executeWorkerScriptCallback via setTimeout(0)\n", .{});
             _ = timer.setTimeout(0, executeWorkerScriptCallback, instance);
+            wdebug.print("call_constructor() setTimeout scheduled\n", .{});
         } else {
             // No timer available - fall back to synchronous execution
             // WARNING: This may cause crashes due to HandleScope issues
             std.log.warn("Worker: no timer available, executing script synchronously (may crash)", .{});
             _ = executeWorkerScriptSync(internal_state);
         }
-    } else |_| {
+    } else |err| {
         // Timer backend initialization failed - worker remains in "not started" state
+        wdebug.print("call_constructor() FAILED: no timer backend: {s}\n", .{@errorName(err)});
         std.log.warn("TimerBackend not available, worker will not start", .{});
     }
 
+    wdebug.print("call_constructor() returning instance\n", .{});
     return instance;
 }
 
@@ -575,10 +597,14 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
 /// This is the correct approach - V8 isolate creation happens ON THE WORKER THREAD,
 /// completely avoiding HandleScope corruption on the main thread.
 fn spawnWorkerThread(internal: *InternalState) !void {
+    wdebug.print("spawnWorkerThread() called\n", .{});
+
     const script_url = internal.pending_script_url orelse internal.script_url;
     const script = internal.pending_script orelse return error.NoScript;
+    wdebug.print("spawnWorkerThread() script_url={s}\n", .{script_url});
 
     // Create thread state with worker configuration
+    wdebug.print("spawnWorkerThread() creating WorkerThreadState...\n", .{});
     const thread_state = try WorkerThreadState.init(
         internal.allocator,
         script_url,
@@ -587,6 +613,7 @@ fn spawnWorkerThread(internal: *InternalState) !void {
             .name = internal.name,
         },
     );
+    wdebug.print("spawnWorkerThread() WorkerThreadState created\n", .{});
 
     // Initialize global wakeup for efficient main thread notification
     // All workers share this wakeup - when any worker posts a message,
@@ -609,16 +636,19 @@ fn spawnWorkerThread(internal: *InternalState) !void {
     }
 
     // Create the thread runner
+    wdebug.print("spawnWorkerThread() creating WorkerThreadRunner...\n", .{});
     var runner = try WorkerThreadRunner.init(internal.allocator, thread_state);
 
     // Set up V8 callbacks - these run ON THE WORKER THREAD
     // Use WorkerV8Context-based callbacks which have proper WebIDL interface
     // registration (XMLHttpRequest, etc.) instead of raw V8 FFI
+    wdebug.print("spawnWorkerThread() setting callbacks...\n", .{});
     runner.setCallbacks(
         createIsolateCallback(),
         disposeIsolateCallback(),
         executeScriptCallback(),
         dispatchMessageCallback(),
+        microtaskCheckpointCallback(),
         null, // No callback context needed
     );
 
@@ -626,7 +656,9 @@ fn spawnWorkerThread(internal: *InternalState) !void {
     internal.thread_runner = runner;
 
     // Spawn the worker thread - V8 isolate is created ON THE WORKER THREAD
+    wdebug.print("spawnWorkerThread() calling runner.spawn()...\n", .{});
     try runner.spawn();
+    wdebug.print("spawnWorkerThread() runner.spawn() returned successfully\n", .{});
 
     // Send the script to the worker thread for execution
     // The worker thread will execute it after creating its V8 context
@@ -636,6 +668,7 @@ fn spawnWorkerThread(internal: *InternalState) !void {
     // Using the main thread's allocator (internal.allocator) from the worker thread
     // would corrupt the allocator's internal state and cause Bus errors.
     // page_allocator is thread-safe (it just maps/unmaps memory pages).
+    wdebug.print("spawnWorkerThread() serializing script for worker...\n", .{});
     const cross_thread_allocator = std.heap.page_allocator;
 
     const js_value = structured_clone.JSValue{ .string = script };
@@ -660,9 +693,11 @@ fn spawnWorkerThread(internal: *InternalState) !void {
     cross_thread_allocator.destroy(serialized);
 
     thread_state.inbox.enqueue(msg) catch {
+        wdebug.print("spawnWorkerThread() FAILED to enqueue script message\n", .{});
         msg.deinit();
         return;
     };
+    wdebug.print("spawnWorkerThread() script message enqueued to worker inbox\n", .{});
 
     // Free the pending script now that we've sent it
     if (internal.pending_script) |s| {
@@ -812,8 +847,10 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 /// This is called by DedicatedWorker when a message arrives from the worker
 /// on the outside_port (worker → main thread direction).
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
+    wdebug.print("handleMessageFromWorkerCallback() called\n", .{});
     // Get the Worker instance from user_data stored in DedicatedWorker
     const user_data = dedicated_worker.getUserData() orelse {
+        wdebug.print("handleMessageFromWorkerCallback() no user_data, returning\n", .{});
         // Note: We do NOT call msg.deinit() here because dispatchMessages()
         // has a defer that handles cleanup after this callback returns.
         return;
@@ -823,7 +860,9 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
     // Dispatch the message event to onmessage handler
     // Note: We do NOT call msg.deinit() - dispatchMessages() owns the message
     // and cleans it up via defer after this callback returns.
+    wdebug.print("handleMessageFromWorkerCallback() dispatching to onmessage\n", .{});
     dispatchMessageEvent(instance, msg);
+    wdebug.print("handleMessageFromWorkerCallback() dispatch complete\n", .{});
 }
 
 /// Dispatch a MessageEvent to the Worker's message handlers using EventTarget.dispatchEvent
@@ -1705,6 +1744,18 @@ pub fn dispatchMessageCallback() workers.WorkerThreadRunner.DispatchMessageFn {
     return dispatchMessageWithInterfaces;
 }
 
+/// Callback to perform V8 microtask checkpoint
+/// This is called from the worker loop to process Promises and async/await continuations
+fn microtaskCheckpointWithInterfaces(isolate_data: *anyopaque) void {
+    const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
+    worker_ctx.performMicrotaskCheckpoint();
+}
+
+/// Get the microtask checkpoint callback function pointer
+pub fn microtaskCheckpointCallback() workers.WorkerThreadRunner.MicrotaskCheckpointFn {
+    return microtaskCheckpointWithInterfaces;
+}
+
 /// Get the global worker wakeup primitive.
 /// Returns null if no workers have been created yet or wakeup initialization failed.
 /// Used by Browser.runEventLoop to wait efficiently for worker messages.
@@ -1716,10 +1767,14 @@ pub fn getGlobalWorkerWakeup() ?*workers.ThreadedWorkerRegistry.EventWakeup {
 /// This should be called from the main thread's event loop to deliver
 /// messages that workers have posted via postMessage().
 pub fn flushPendingWorkerMessages() void {
+    wdebug.print("flushPendingWorkerMessages() called\n", .{});
 
     // First, poll threaded workers' outboxes for cross-thread messages.
     // This is the primary path for workers running on separate OS threads.
-    _ = workers.ThreadedWorkerRegistry.pollAndDispatch();
+    const dispatched_threaded = workers.ThreadedWorkerRegistry.pollAndDispatch();
+    if (dispatched_threaded) {
+        wdebug.print("flushPendingWorkerMessages() dispatched threaded worker messages\n", .{});
+    }
 
     // Then, flush any messages still in the thread-local pending_messages list.
     // This handles same-thread workers (tests, single-threaded mode).
@@ -1727,5 +1782,8 @@ pub fn flushPendingWorkerMessages() void {
 
     // Finally, poll all registered worker ports and dispatch queued messages.
     // Messages may have been transferred to port queues by worker thread cleanup.
-    _ = workers.message_channel.WorkerPortRegistry.pollAndDispatch();
+    const dispatched_ports = workers.message_channel.WorkerPortRegistry.pollAndDispatch();
+    if (dispatched_ports) {
+        wdebug.print("flushPendingWorkerMessages() dispatched port messages\n", .{});
+    }
 }

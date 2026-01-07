@@ -58,8 +58,6 @@ pub fn initializeNamespaces(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
-    std.debug.print("[initializeNamespaces] Starting namespace registration...\n", .{});
-
     // Use comptime reflection to register ALL namespaces automatically
     const ns_decls = @typeInfo(namespaces).@"struct".decls;
 
@@ -68,19 +66,15 @@ pub fn initializeNamespaces(
 
         // Only bind types that have Meta (actual namespaces)
         if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
-            std.debug.print("[initializeNamespaces] Registering namespace: {s}\n", .{decl.name});
             // Use V8Namespace to create object with all methods bound
             const NamespaceBinding = V8Namespace(NamespaceType);
             NamespaceBinding.registerGlobal(isolate, context, decl.name);
         }
     }
 
-    std.debug.print("[initializeNamespaces] Registering Intl namespace\n", .{});
     // Register Intl namespace (pure Zig i18n - replaces ICU)
     // This is special because it's not a WebIDL namespace
     intl_binding.registerGlobal(isolate, context);
-
-    std.debug.print("[initializeNamespaces] Namespace registration complete\n", .{});
 }
 
 /// Create a new V8 context with all WebIDL bindings

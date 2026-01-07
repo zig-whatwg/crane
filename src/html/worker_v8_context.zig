@@ -235,15 +235,19 @@ pub const WorkerV8Context = struct {
 
         // Hydrate worker context if using snapshot (reinstalls callbacks)
         if (used_snapshot) {
+            std.debug.print("[WorkerV8Context] Hydrating worker context...\n", .{});
             _ = try context_manager.hydrateWorkerContext(.{
                 .isolate = isolate,
                 .context = context,
                 .allocator = allocator,
             });
+            std.debug.print("[WorkerV8Context] Worker context hydrated\n", .{});
         }
 
         // Set up basic worker globals (self, globalThis)
+        std.debug.print("[WorkerV8Context] Setting up worker globals...\n", .{});
         try self.setupWorkerGlobals();
+        std.debug.print("[WorkerV8Context] Worker globals set up\n", .{});
 
         // Only register interfaces if we didn't use the snapshot
         // (snapshot already has all interfaces pre-registered)
@@ -824,6 +828,24 @@ pub const WorkerV8Context = struct {
         }
 
         // Run microtasks after module execution
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+    }
+
+    /// Public method to perform V8 microtask checkpoint
+    /// Called from the worker loop to process Promises and async/await continuations
+    ///
+    /// Spec: HTML Standard § 8.1.6.3 Perform a microtask checkpoint
+    /// https://html.spec.whatwg.org/#perform-a-microtask-checkpoint
+    ///
+    /// This processes:
+    /// - Promise.then/catch/finally callbacks
+    /// - queueMicrotask() callbacks
+    /// - async/await continuations
+    pub fn performMicrotaskCheckpoint(self: *Self) void {
+        // Create HandleScope for any V8 handles created during microtask execution
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        defer if (handle_scope) |hs| v8.ffi.v8_HandleScope_Dispose(hs);
+
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
     }
 };

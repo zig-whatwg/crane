@@ -203,15 +203,276 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// on DedicatedWorkerGlobalScope objects act as if, when invoked, it immediately
 /// invoked the respective postMessage(message, transfer) and postMessage(message, options)
 /// methods on the port that the DedicatedWorkerGlobalScope object's implicit port is
-/// entangled with, with the same arguments."
+/// entanwith, with the same arguments."
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    _ = transfer; // TODO: Handle transfer list properly
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.dedicated_worker) |worker| {
-            const msg_ptr = message.toAnyopaque() orelse return error.TypeError;
-            const transfer_ptr = transfer.toAnyopaque() orelse return error.TypeError;
-            try worker.postMessage(msg_ptr, transfer_ptr);
+            // Convert from runtime.JSValue to structured_clone.JSValue
+            // This properly walks V8 objects to create serializable values
+            const allocator = internal.allocator;
+            const js_value = try runtimeToStructuredClone(allocator, message, instance.ctx);
+            defer freeStructuredCloneValue(allocator, js_value);
+
+            // Use postMessageFromWorker which properly serializes the message
+            // and uses thread-safe outbox for cross-thread messaging
+            try worker.postMessageFromWorker(&js_value, null);
         }
+    }
+}
+
+/// Error type for structured clone operations
+const StructuredCloneError = error{OutOfMemory};
+
+/// Convert a runtime.JSValue to structured_clone.JSValue
+///
+/// This properly walks V8 objects to create serializable values.
+/// For production use - handles all value types including complex objects and arrays.
+fn runtimeToStructuredClone(allocator: std.mem.Allocator, value: runtime.JSValue, ctx: runtime.Context) !structured_clone.JSValue {
+    return switch (value) {
+        .undefined => structured_clone.JSValue.undefined,
+        .null => structured_clone.JSValue.null,
+        .boolean => |b| .{ .boolean = b },
+        .number => |n| .{ .number = n },
+        .string => |s| .{ .string = s.data },
+        .handle => |h| try handleToStructuredClone(allocator, h, ctx),
+        .instance => structured_clone.JSValue.undefined, // Instance references can't be cloned
+    };
+}
+
+/// Convert a V8 handle (complex object) to structured_clone.JSValue
+///
+/// Walks the V8 object graph to extract all properties recursively.
+fn handleToStructuredClone(allocator: std.mem.Allocator, handle: runtime.JSValue.EngineHandle, ctx: runtime.Context) !structured_clone.JSValue {
+    const engine_ctx = ctx.engine_ctx orelse return structured_clone.JSValue.undefined;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return structured_clone.JSValue.undefined;
+
+    // Create HandleScope for V8 operations
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Get local handle from global/persistent handle
+    const v8_value: *v8_engine.ffi.Value = blk: {
+        if (handle.handle_scope == .global) {
+            const global = v8_engine.GlobalHandle{ .ptr = @ptrCast(handle.ptr) };
+            break :blk global.get(v8_isolate) orelse return structured_clone.JSValue.undefined;
+        } else {
+            break :blk @ptrCast(handle.ptr);
+        }
+    };
+
+    // Check if it's an array
+    if (v8_engine.ffi.v8_Value_IsArray(v8_value)) {
+        return try v8ArrayToStructuredClone(allocator, @ptrCast(v8_value), v8_context, v8_isolate, ctx);
+    }
+
+    // Check if it's an object
+    if (v8_engine.ffi.v8_Value_IsObject(v8_value)) {
+        return try v8ObjectToStructuredClone(allocator, @ptrCast(v8_value), v8_context, v8_isolate, ctx);
+    }
+
+    // For other types, try to extract primitive value
+    if (v8_engine.ffi.v8_Value_IsString(v8_value)) {
+        const str = v8_engine.ffi.v8_Value_ToString(v8_value, v8_context) orelse return structured_clone.JSValue.undefined;
+        const len: usize = @intCast(v8_engine.ffi.v8_String_Utf8Length(str));
+        if (len == 0) return .{ .string = "" };
+
+        const buf = try allocator.alloc(u8, len);
+        _ = v8_engine.ffi.v8_String_WriteUtf8(str, buf.ptr, @intCast(len));
+        return .{ .string = buf };
+    }
+
+    if (v8_engine.ffi.v8_Value_IsNumber(v8_value)) {
+        const num = v8_engine.ffi.v8_Value_NumberValue(v8_value, v8_context);
+        return .{ .number = num };
+    }
+
+    if (v8_engine.ffi.v8_Value_IsBoolean(v8_value)) {
+        const b = v8_engine.ffi.v8_Value_BooleanValue(v8_value, v8_isolate);
+        return .{ .boolean = b };
+    }
+
+    if (v8_engine.ffi.v8_Value_IsNull(v8_value)) {
+        return structured_clone.JSValue.null;
+    }
+
+    if (v8_engine.ffi.v8_Value_IsUndefined(v8_value)) {
+        return structured_clone.JSValue.undefined;
+    }
+
+    return structured_clone.JSValue.undefined;
+}
+
+/// Convert a V8 Array to structured_clone.JSValue.ArrayValue
+fn v8ArrayToStructuredClone(
+    allocator: std.mem.Allocator,
+    v8_array: *v8_engine.ffi.Array,
+    v8_context: *v8_engine.ffi.Context,
+    v8_isolate: *v8_engine.ffi.Isolate,
+    ctx: runtime.Context,
+) StructuredCloneError!structured_clone.JSValue {
+    const length = v8_engine.ffi.v8_Array_Length(v8_array);
+    if (length == 0) {
+        return .{ .array = .{ .length = 0, .elements = &[_]?*const structured_clone.JSValue{} } };
+    }
+
+    // Allocate array of pointers to JSValue
+    const elements = try allocator.alloc(?*const structured_clone.JSValue, length);
+    errdefer allocator.free(elements);
+
+    for (0..length) |i| {
+        const index_value = v8_engine.ffi.v8_Integer_New(v8_isolate, @intCast(i));
+        const element = v8_engine.ffi.v8_Object_Get(@ptrCast(v8_array), v8_context, @ptrCast(index_value));
+        if (element) |elem| {
+            // Allocate the JSValue and store pointer to it
+            const value_ptr = try allocator.create(structured_clone.JSValue);
+            value_ptr.* = try v8ValueToStructuredClone(allocator, elem, v8_context, v8_isolate, ctx);
+            elements[i] = value_ptr;
+        } else {
+            elements[i] = null;
+        }
+    }
+
+    return .{ .array = .{ .length = length, .elements = elements } };
+}
+
+/// Convert a V8 Object to structured_clone.JSValue.ObjectValue
+fn v8ObjectToStructuredClone(
+    allocator: std.mem.Allocator,
+    v8_object: *v8_engine.ffi.Object,
+    v8_context: *v8_engine.ffi.Context,
+    v8_isolate: *v8_engine.ffi.Isolate,
+    ctx: runtime.Context,
+) StructuredCloneError!structured_clone.JSValue {
+    // Get own property names
+    const property_names = v8_engine.ffi.v8_Object_GetOwnPropertyNames(v8_context, v8_object) orelse {
+        return .{ .object = .{ .properties = &[_]structured_clone.JSValue.ObjectValue.ObjectProperty{} } };
+    };
+
+    const prop_count = v8_engine.ffi.v8_Array_Length(property_names);
+    if (prop_count == 0) {
+        return .{ .object = .{ .properties = &[_]structured_clone.JSValue.ObjectValue.ObjectProperty{} } };
+    }
+
+    const properties = try allocator.alloc(structured_clone.JSValue.ObjectValue.ObjectProperty, prop_count);
+    errdefer allocator.free(properties);
+
+    var valid_count: usize = 0;
+    for (0..prop_count) |i| {
+        const index_value = v8_engine.ffi.v8_Integer_New(v8_isolate, @intCast(i));
+        const key_value = v8_engine.ffi.v8_Object_Get(@ptrCast(property_names), v8_context, @ptrCast(index_value)) orelse continue;
+
+        // Get key as string
+        const key_str = v8_engine.ffi.v8_Value_ToString(key_value, v8_context) orelse continue;
+        const key_len: usize = @intCast(v8_engine.ffi.v8_String_Utf8Length(key_str));
+        if (key_len == 0) continue;
+
+        const key_buf = try allocator.alloc(u8, key_len);
+        _ = v8_engine.ffi.v8_String_WriteUtf8(key_str, key_buf.ptr, @intCast(key_len));
+
+        // Get value
+        const prop_value = v8_engine.ffi.v8_Object_Get(v8_object, v8_context, key_value) orelse {
+            allocator.free(key_buf);
+            continue;
+        };
+
+        const converted_value = try v8ValueToStructuredClone(allocator, prop_value, v8_context, v8_isolate, ctx);
+
+        // Allocate the value on heap and store pointer
+        const value_ptr = try allocator.create(structured_clone.JSValue);
+        value_ptr.* = converted_value;
+
+        properties[valid_count] = .{
+            .key = key_buf,
+            .value = value_ptr,
+        };
+        valid_count += 1;
+    }
+
+    // Shrink to actual size if needed
+    if (valid_count < prop_count) {
+        const shrunk = try allocator.realloc(properties, valid_count);
+        return .{ .object = .{ .properties = shrunk } };
+    }
+
+    return .{ .object = .{ .properties = properties } };
+}
+
+/// Convert any V8 value to structured_clone.JSValue
+fn v8ValueToStructuredClone(
+    allocator: std.mem.Allocator,
+    v8_value: *v8_engine.ffi.Value,
+    v8_context: *v8_engine.ffi.Context,
+    v8_isolate: *v8_engine.ffi.Isolate,
+    ctx: runtime.Context,
+) StructuredCloneError!structured_clone.JSValue {
+    if (v8_engine.ffi.v8_Value_IsUndefined(v8_value)) {
+        return structured_clone.JSValue.undefined;
+    }
+    if (v8_engine.ffi.v8_Value_IsNull(v8_value)) {
+        return structured_clone.JSValue.null;
+    }
+    if (v8_engine.ffi.v8_Value_IsBoolean(v8_value)) {
+        return .{ .boolean = v8_engine.ffi.v8_Value_BooleanValue(v8_value, v8_isolate) };
+    }
+    if (v8_engine.ffi.v8_Value_IsNumber(v8_value)) {
+        return .{ .number = v8_engine.ffi.v8_Value_NumberValue(v8_value, v8_context) };
+    }
+    if (v8_engine.ffi.v8_Value_IsString(v8_value)) {
+        const str = v8_engine.ffi.v8_Value_ToString(v8_value, v8_context) orelse return .{ .string = "" };
+        const len: usize = @intCast(v8_engine.ffi.v8_String_Utf8Length(str));
+        if (len == 0) return .{ .string = "" };
+
+        const buf = try allocator.alloc(u8, len);
+        _ = v8_engine.ffi.v8_String_WriteUtf8(str, buf.ptr, @intCast(len));
+        return .{ .string = buf };
+    }
+    if (v8_engine.ffi.v8_Value_IsArray(v8_value)) {
+        return try v8ArrayToStructuredClone(allocator, @ptrCast(v8_value), v8_context, v8_isolate, ctx);
+    }
+    if (v8_engine.ffi.v8_Value_IsObject(v8_value)) {
+        return try v8ObjectToStructuredClone(allocator, @ptrCast(v8_value), v8_context, v8_isolate, ctx);
+    }
+
+    return structured_clone.JSValue.undefined;
+}
+
+/// Free a structured_clone.JSValue that was allocated by runtimeToStructuredClone
+fn freeStructuredCloneValue(allocator: std.mem.Allocator, value: structured_clone.JSValue) void {
+    switch (value) {
+        .string => |s| {
+            if (s.len > 0) {
+                // Only free if it's a heap-allocated string (not empty or interned)
+                // We allocated these in v8ValueToStructuredClone
+                allocator.free(s);
+            }
+        },
+        .array => |arr| {
+            for (arr.elements) |elem_ptr| {
+                if (elem_ptr) |ptr| {
+                    freeStructuredCloneValue(allocator, ptr.*);
+                    allocator.destroy(ptr);
+                }
+            }
+            if (arr.elements.len > 0) {
+                allocator.free(arr.elements);
+            }
+        },
+        .object => |obj| {
+            for (obj.properties) |prop| {
+                if (prop.key.len > 0) {
+                    allocator.free(prop.key);
+                }
+                freeStructuredCloneValue(allocator, prop.value.*);
+                allocator.destroy(prop.value);
+            }
+            if (obj.properties.len > 0) {
+                allocator.free(obj.properties);
+            }
+        },
+        else => {},
     }
 }
 

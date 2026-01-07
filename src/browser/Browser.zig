@@ -71,6 +71,16 @@ const Context = context_mod.Context;
 const storage_mod = @import("storage/Storage.zig");
 const Storage = storage_mod.Storage;
 
+// Debug logging for browser event loop - uses stderr for visibility
+const bdebug = struct {
+    pub inline fn print(comptime fmt: []const u8, args: anytype) void {
+        const stderr = std.fs.File.stderr();
+        var buf: [1024]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[BROWSER] " ++ fmt, args) catch "[BROWSER] (format error)\n";
+        stderr.writeAll(msg) catch {};
+    }
+};
+
 /// Default snapshot file paths to check (in order of priority)
 /// IMPORTANT: zig-out/bin/ is checked FIRST because it contains the freshly
 /// generated snapshot from `zig build`. The root whatwg_snapshot.bin is a
@@ -539,13 +549,23 @@ pub const Browser = struct {
     /// - Main thread wakes immediately instead of polling at 1ms intervals
     /// - Falls back to short sleep if no wakeup is available
     pub fn runEventLoop(self: *Browser, timeout_ms: u64) !void {
+        bdebug.print("runEventLoop() started, timeout_ms={d}\n", .{timeout_ms});
         const event_loop = self.event_loop orelse return error.NotInitialized;
         const isolate = self.isolate orelse return error.NotInitialized;
         const start_time = std.time.milliTimestamp();
 
         var iteration: u32 = 0;
+        var last_log_iteration: u32 = 0;
         while (true) {
             iteration += 1;
+
+            // Log every 1000 iterations or first iteration
+            if (iteration == 1 or iteration - last_log_iteration >= 1000) {
+                const now = std.time.milliTimestamp();
+                const elapsed: u64 = @intCast(now - start_time);
+                bdebug.print("runEventLoop() iteration={d}, elapsed={d}ms\n", .{ iteration, elapsed });
+                last_log_iteration = iteration;
+            }
 
             // Run one iteration
             _ = event_loop.eventLoop().runOnce();
@@ -568,6 +588,7 @@ pub const Browser = struct {
             const now = std.time.milliTimestamp();
             const elapsed: u64 = @intCast(now - start_time);
             if (elapsed > timeout_ms) {
+                bdebug.print("runEventLoop() TIMEOUT after {d} iterations, {d}ms\n", .{ iteration, elapsed });
                 return;
             }
 

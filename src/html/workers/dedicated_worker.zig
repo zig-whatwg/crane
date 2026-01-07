@@ -8,6 +8,16 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// Debug logging for worker messaging - uses stderr for visibility
+const dwdebug = struct {
+    pub inline fn print(comptime fmt: []const u8, args: anytype) void {
+        const stderr = std.fs.File.stderr();
+        var buf: [1024]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[DEDICATED_WORKER] " ++ fmt, args) catch "[DEDICATED_WORKER] (format error)\n";
+        stderr.writeAll(msg) catch {};
+    }
+};
+
 const types = @import("types.zig");
 const WorkerData = types.WorkerData;
 const WorkerState = types.WorkerState;
@@ -146,17 +156,23 @@ pub const ThreadedWorkerRegistry = struct {
         defer mutex.unlock();
 
         var dispatched_any = false;
+        var worker_count: usize = 0;
         var iter = workers.valueIterator();
         while (iter.next()) |worker_ptr| {
+            worker_count += 1;
             const worker = worker_ptr.*;
             if (worker.thread_state) |ts| {
                 // Poll the thread-safe outbox for messages from the worker thread
+                var msg_count: usize = 0;
                 while (ts.outbox.tryDequeue()) |msg| {
+                    msg_count += 1;
                     dispatched_any = true;
+                    dwdebug.print("pollAndDispatch() dequeued message #{d} from worker\n", .{msg_count});
 
                     // Deserialize the message and queue it to the outside port
                     // The outside port's message handler will fire the message event
                     const serialized = worker.allocator.create(SerializedValue) catch {
+                        dwdebug.print("pollAndDispatch() FAILED to allocate SerializedValue\n", .{});
                         msg.deinit();
                         continue;
                     };
@@ -167,6 +183,7 @@ pub const ThreadedWorkerRegistry = struct {
                         serialized,
                         null,
                     ) catch {
+                        dwdebug.print("pollAndDispatch() FAILED to create QueuedMessage\n", .{});
                         msg.allocator.destroy(msg);
                         continue;
                     };
@@ -176,6 +193,7 @@ pub const ThreadedWorkerRegistry = struct {
                         worker.port_pair.outside_port.allocator,
                         queued_msg,
                     ) catch {
+                        dwdebug.print("pollAndDispatch() FAILED to append to message_queue\n", .{});
                         queued_msg.deinit();
                         msg.allocator.destroy(msg);
                         continue;
@@ -185,7 +203,12 @@ pub const ThreadedWorkerRegistry = struct {
                     msg.allocator.destroy(msg);
 
                     // Dispatch the message immediately
+                    dwdebug.print("pollAndDispatch() dispatching message to outside port\n", .{});
                     worker.port_pair.outside_port.dispatchMessages();
+                    dwdebug.print("pollAndDispatch() dispatch complete\n", .{});
+                }
+                if (msg_count > 0) {
+                    dwdebug.print("pollAndDispatch() processed {d} messages from worker\n", .{msg_count});
                 }
             }
         }
@@ -693,8 +716,10 @@ pub const DedicatedWorker = struct {
     /// When running same-thread (tests, single-threaded mode), this uses the
     /// thread-local pending_messages queue as a workaround for V8 HandleScope issues.
     pub fn postMessageFromWorker(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
+        dwdebug.print("postMessageFromWorker() called\n", .{});
         _ = transfer;
         if (self.agent.isClosing() or self.agent.isTerminated()) {
+            dwdebug.print("postMessageFromWorker() skipped - worker closing/terminated\n", .{});
             return;
         }
 
@@ -713,6 +738,7 @@ pub const DedicatedWorker = struct {
         // If we have a thread state, use the thread-safe outbox for cross-thread messaging.
         // This is the correct path when running on a separate OS thread.
         if (self.thread_state) |ts| {
+            dwdebug.print("postMessageFromWorker() using thread-safe outbox\n", .{});
             // Create a SerializedMessage for the thread-safe queue
             // Use page_allocator for the wrapper too, ensuring consistency
             const thread_msg = std.heap.page_allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
@@ -740,6 +766,7 @@ pub const DedicatedWorker = struct {
             // Enqueue to the thread-safe outbox - main thread will poll this
             // The outbox has a wakeup that will signal the main thread immediately
             ts.outbox.enqueue(thread_msg) catch |err| {
+                dwdebug.print("postMessageFromWorker() FAILED to enqueue: {s}\n", .{@errorName(err)});
                 // thread_msg.deinit() frees both the internal data AND the thread_msg struct
                 thread_msg.deinit();
                 return switch (err) {
@@ -747,6 +774,7 @@ pub const DedicatedWorker = struct {
                     else => error.OutOfMemory,
                 };
             };
+            dwdebug.print("postMessageFromWorker() message enqueued to outbox successfully\n", .{});
             return;
         }
 

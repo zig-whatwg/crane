@@ -372,17 +372,6 @@ fn fetchScriptViaHttp(
     };
     defer request.deinit();
 
-    // Debug: Check if trust_store is being passed
-    if (trust_store) |ts| {
-        if (ts.getCaBundlePath()) |path| {
-            std.debug.print("[DEBUG] fetchScriptViaHttp: trust_store has CA path: {s}\n", .{path});
-        } else {
-            std.debug.print("[DEBUG] fetchScriptViaHttp: trust_store exists but getCaBundlePath() is null\n", .{});
-        }
-    } else {
-        std.debug.print("[DEBUG] fetchScriptViaHttp: trust_store is NULL!\n", .{});
-    }
-
     const result = fetch.algorithms.fetch_algorithm.fetch(allocator, request, .{ .trust_store = trust_store }) catch |err| {
         std.debug.print("HTTP fetch error for script {s}: {}\n", .{ url, err });
         return null;
