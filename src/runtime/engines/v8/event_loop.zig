@@ -102,6 +102,19 @@ const EventLoop = event_loop_mod.EventLoop;
 const Microtask = event_loop_mod.Microtask;
 const Task = event_loop_mod.Task;
 
+/// Generic interface for any pollable resource (network, file I/O, etc.)
+/// This abstraction allows the event loop to poll external managers without
+/// creating circular dependencies (e.g., event_loop -> fetch -> streams -> event_loop).
+pub const Pollable = struct {
+    ptr: *anyopaque,
+    poll_fn: *const fn (ptr: *anyopaque) bool,
+
+    /// Poll the resource for work. Returns true if any work was done.
+    pub fn poll(self: Pollable) bool {
+        return self.poll_fn(self.ptr);
+    }
+};
+
 /// V8 Event Loop Implementation
 ///
 /// Wraps V8's native microtask queue and libuv timer loop to provide
@@ -141,10 +154,19 @@ pub const V8EventLoop = struct {
     /// Used for exponential backoff to prevent CPU spinning
     empty_poll_count: u32,
 
+    /// Optional external pollable resources (e.g., AsyncCurlManager for HTTP)
+    /// When set, runOnce() will poll these for completed work
+    external_pollable: ?Pollable,
+
+    /// Optional worker port pollable for message passing from workers
+    /// When set, runOnce() will poll worker message ports and dispatch messages
+    worker_port_pollable: ?Pollable,
+
     const Self = @This();
 
     /// Backoff configuration
-    const BACKOFF_THRESHOLD: u32 = 10; // Start backoff after 10 empty polls
+    /// DIAGNOSTIC: Temporarily disabled by setting threshold very high
+    const BACKOFF_THRESHOLD: u32 = 10000; // Start backoff after 10000 empty polls (effectively disabled)
     const MAX_BACKOFF_MS: u64 = 100; // Cap at 100ms
 
     /// Initialize a new V8 event loop with timer support
@@ -174,6 +196,8 @@ pub const V8EventLoop = struct {
             .timer_manager = timer_mgr,
             .frozen = false,
             .empty_poll_count = 0,
+            .external_pollable = null,
+            .worker_port_pollable = null,
         };
     }
 
@@ -190,7 +214,45 @@ pub const V8EventLoop = struct {
             .timer_manager = null,
             .frozen = false,
             .empty_poll_count = 0,
+            .external_pollable = null,
+            .worker_port_pollable = null,
         };
+    }
+
+    /// Set a worker port pollable for dispatching worker messages
+    ///
+    /// When set, runOnce() will poll this to dispatch pending worker messages.
+    /// This integrates worker message passing into the browser's event loop.
+    pub fn setWorkerPortPollable(self: *Self, pollable: ?Pollable) void {
+        self.worker_port_pollable = pollable;
+    }
+
+    /// Get the worker port pollable
+    pub fn getWorkerPortPollable(self: *Self) ?Pollable {
+        return self.worker_port_pollable;
+    }
+
+    /// Set an external pollable resource (e.g., AsyncCurlManager for HTTP)
+    ///
+    /// When set, runOnce() will poll this resource for completed work.
+    /// The event loop does NOT own the resource - caller is responsible
+    /// for its lifetime and cleanup.
+    ///
+    /// Example usage with AsyncCurlManager:
+    /// ```zig
+    /// const curl_mgr = try AsyncCurlManager.init(allocator);
+    /// event_loop.setExternalPollable(.{
+    ///     .ptr = curl_mgr,
+    ///     .poll_fn = @ptrCast(&AsyncCurlManager.poll),
+    /// });
+    /// ```
+    pub fn setExternalPollable(self: *Self, pollable: ?Pollable) void {
+        self.external_pollable = pollable;
+    }
+
+    /// Get the external pollable resource
+    pub fn getExternalPollable(self: *Self) ?Pollable {
+        return self.external_pollable;
     }
 
     /// Free all resources
@@ -393,7 +455,25 @@ pub const V8EventLoop = struct {
             }
         }
 
-        // Step 2: Run all pending microtasks (including any queued by timer callbacks)
+        // Step 1b: Poll external resources (e.g., async HTTP)
+        // This processes fetch() responses that have arrived
+        if (self.external_pollable) |pollable| {
+            const external_work = pollable.poll();
+            if (external_work) {
+                did_work = true;
+            }
+        }
+
+        // Step 1c: Poll worker message ports
+        // This dispatches messages from workers to the main thread
+        if (self.worker_port_pollable) |pollable| {
+            const worker_work = pollable.poll();
+            if (worker_work) {
+                did_work = true;
+            }
+        }
+
+        // Step 2: Run all pending microtasks (including any queued by timer/http callbacks)
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
         // V8 doesn't tell us if microtasks ran, but we assume they might have
@@ -421,7 +501,17 @@ pub const V8EventLoop = struct {
                 const exponent = self.empty_poll_count - BACKOFF_THRESHOLD;
                 const backoff_ms: u64 = @min(MAX_BACKOFF_MS, @as(u64, 1) << @min(exponent, 6));
                 const ns_per_ms: u64 = 1_000_000;
+
+                // DIAGNOSTIC: Print self address and some key fields before sleep
+                std.fs.File.stderr().writeAll("") catch {}; // Flush stderr
+
+                std.fs.File.stderr().writeAll("") catch {}; // Flush stderr
+
                 std.Thread.sleep(backoff_ms * ns_per_ms);
+
+                std.fs.File.stderr().writeAll("") catch {}; // Flush stderr
+
+                // DIAGNOSTIC: Check if self is still valid after sleep
             }
         }
 

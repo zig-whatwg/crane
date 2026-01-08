@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ResizeObserverCallback = @import("callbacks").ResizeObserverCallback;
-const Element = @import("interfaces").Element;
+const Element = @import("Element.zig").Element;
 const ResizeObserverOptions = @import("dictionaries").ResizeObserverOptions;
 
 pub const ResizeObserver = struct {

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMStringMap = @import("interfaces").DOMStringMap;
+const DOMStringMap = @import("DOMStringMap.zig").DOMStringMap;
 const DOMString = @import("typedefs").DOMString;
 const FocusOptions = @import("dictionaries").FocusOptions;
 

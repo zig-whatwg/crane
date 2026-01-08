@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const WebTransportSendOptions = @import("dictionaries").WebTransportSendOptions;
-const WebTransportDatagramsWritable = @import("interfaces").WebTransportDatagramsWritable;
-const ReadableStream = @import("interfaces").ReadableStream;
+const WebTransportDatagramsWritable = @import("WebTransportDatagramsWritable.zig").WebTransportDatagramsWritable;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 
 pub const WebTransportDatagramDuplexStream = struct {
     pub const Meta = struct {

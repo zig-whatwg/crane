@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
-const XRSpace = @import("interfaces").XRSpace;
+const XRSpace = @import("XRSpace.zig").XRSpace;
 
 pub const XRAnchor = struct {
     pub const Meta = struct {

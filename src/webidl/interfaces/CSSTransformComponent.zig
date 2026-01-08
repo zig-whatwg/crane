@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSTransformComponent = struct {

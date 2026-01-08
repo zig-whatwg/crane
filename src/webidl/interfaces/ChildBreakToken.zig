@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const BreakType = @import("enums").BreakType;
-const LayoutChild = @import("interfaces").LayoutChild;
+const LayoutChild = @import("LayoutChild.zig").LayoutChild;
 
 pub const ChildBreakToken = struct {
     pub const Meta = struct {

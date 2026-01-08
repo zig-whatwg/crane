@@ -123,6 +123,9 @@ pub const CallbackWrapper = callback_wrapper_mod.CallbackWrapper;
 pub const EventListenerCallback = callback_wrapper_mod.EventListenerCallback;
 pub const createCallbackFromV8Value = callback_wrapper_mod.createFromV8Value;
 
+/// Callback Wrapper Registry for tracking and cleanup
+pub const callback_registry = @import("callback_registry.zig");
+
 /// V8 Wrapper Identity Cache - Maintains 1:1 mapping between instances and V8 wrappers
 pub const wrapper_cache_mod = @import("wrapper_cache.zig");
 pub const WrapperCache = wrapper_cache_mod.WrapperCache;
@@ -235,6 +238,10 @@ pub const snapshot_loader = @import("snapshot_loader.zig");
 pub const initializeV8FromSnapshot = snapshot_loader.initializeV8;
 pub const SnapshotInitResult = snapshot_loader.InitResult;
 pub const SnapshotInitOptions = snapshot_loader.InitOptions;
+
+/// Snapshot context indices for multi-context snapshots
+pub const snapshot_context_index = @import("snapshot_context_index.zig");
+pub const SnapshotContextIndex = snapshot_context_index.SnapshotContextIndex;
 /// Initialize V8 platform with proper flags for snapshot support
 /// MUST be used instead of ffi.v8_Platform_Initialize() when using snapshots
 pub const initializePlatformForSnapshots = snapshot_loader.initializePlatformForSnapshots;
@@ -255,6 +262,10 @@ pub const FrozenContextManager = frozen_context_manager.FrozenContextManager;
 pub const FrozenContext = frozen_context_manager.FrozenContext;
 pub const FrozenTimer = frozen_context_manager.FrozenTimer;
 
+/// Promise Rejection Tracking (for unhandledrejection/rejectionhandled events)
+pub const promise_rejection = @import("promise_rejection.zig");
+pub const PromiseRejectionTracker = promise_rejection.PromiseRejectionTracker;
+
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
 pub const Context = ffi.Context;
@@ -271,6 +282,10 @@ pub const FunctionCallbackInfo = ffi.FunctionCallbackInfo;
 
 /// WindowProperties exotic object implementation
 pub const window_properties = @import("window_properties.zig");
+
+/// Global Constructor Handler for lazy interface installation
+/// Intercepts property access on global object to install constructors on-demand
+pub const global_constructor_handler = @import("global_constructor_handler.zig");
 
 test "v8 module compiles" {
     const testing = @import("std").testing;

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CanvasFillRule = @import("enums").CanvasFillRule;
-const Path2D = @import("interfaces").Path2D;
+const Path2D = @import("Path2D.zig").Path2D;
 
 pub const CanvasDrawPath = struct {
     pub const Meta = struct {

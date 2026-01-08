@@ -1,32 +1,87 @@
 // DOM Standard: Event Dispatch Algorithms (§2.9)
 // https://dom.spec.whatwg.org/#dispatching-events
+//
+// This module implements the WHATWG DOM event dispatch algorithm using the
+// WebIDL interface/impl pattern. All access to Event and EventTarget internal
+// state goes through the impls module, while public API access uses interfaces.
 
 const std = @import("std");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const runtime = @import("runtime");
 
-// Import DOM types from WebIDL interfaces
+// Import WebIDL interfaces
 const interfaces = @import("interfaces");
 const Event = interfaces.Event;
 const EventTarget = interfaces.EventTarget;
 const Node = interfaces.Node;
-const Element = interfaces.Element;
 const ShadowRoot = interfaces.ShadowRoot;
 
-// Types from Event interface
-const EventListener = Event.EventListener;
-const EventPathItem = Event.EventPathItem;
-const ShadowRootMode = ShadowRoot.ShadowRootMode;
+// Import impls for internal state access
+const impls = @import("impls");
+const EventImpl = impls.Event;
+const EventTargetImpl = impls.EventTarget;
+const NodeImpl = impls.Node;
+
+/// Check if a ShadowRoot has mode "closed"
+/// Uses @tagName comparison to avoid type mismatches with the generated enum
+fn isShadowRootModeClosed(mode: anytype) bool {
+    const tag_name = @tagName(mode);
+    return std.mem.eql(u8, tag_name, "_closed_");
+}
+
+/// Get the root of a node by walking up the parent chain
+/// This is a local implementation to avoid dependency on dictionaries module
+/// (which would be required for Node.call_getRootNode)
+fn getRoot(node: *runtime.Instance) ?*runtime.Instance {
+    var current: *runtime.Instance = node;
+    while (NodeImpl.get_parentNode(current) catch null) |parent| {
+        current = parent;
+    }
+    return current;
+}
+
+/// Get the shadow-including root of a node
+/// This follows shadow host chains when encountering shadow roots
+/// Equivalent to getRootNode({ composed: true })
+fn getShadowIncludingRoot(node: *runtime.Instance) ?*runtime.Instance {
+    var current: *runtime.Instance = node;
+
+    while (true) {
+        // Get the regular root first
+        while (NodeImpl.get_parentNode(current) catch null) |parent| {
+            current = parent;
+        }
+
+        // Check if this root is a ShadowRoot
+        const node_type = NodeImpl.get_nodeType(current) catch return current;
+        if (node_type != Node.get_DOCUMENT_FRAGMENT_NODE()) {
+            // Not a DocumentFragment, we're done
+            return current;
+        }
+
+        // It's a DocumentFragment - check if it's a ShadowRoot with a host
+        const host = ShadowRoot.get_host(current) catch return current;
+        // Continue from the host element
+        current = host;
+    }
+}
+
+// Types from Event impl
+const EventPathItem = EventImpl.EventPathItem;
+
+// Types from EventTarget impl
+const EventListenerRecord = EventTargetImpl.EventListenerRecord;
 
 /// DOM §2.9.1 - append to an event path
 /// To append to an event path, given an event, invocationTarget, shadowAdjustedTarget,
 /// relatedTarget, touchTargets, and a slot-in-closed-tree, run these steps:
 pub fn appendToEventPath(
-    event: *Event,
-    invocation_target: *EventTarget,
-    shadow_adjusted_target: ?*EventTarget,
-    related_target: ?*EventTarget,
-    touch_targets: infra.List(*EventTarget),
+    event: *runtime.Instance,
+    invocation_target: *runtime.Instance,
+    shadow_adjusted_target: ?*runtime.Instance,
+    related_target: ?*runtime.Instance,
+    touch_targets: infra.List(*runtime.Instance),
     slot_in_closed_tree: bool,
 ) !void {
     // Step 1: Let invocationTargetInShadowTree be false
@@ -35,17 +90,15 @@ pub fn appendToEventPath(
     var invocation_target_in_shadow_tree = false;
 
     // Check if invocation_target is a Node by checking node_type
-    // node_type == 0: Plain EventTarget or AbortSignal
-    // node_type > 0: It's a Node (ELEMENT_NODE, TEXT_NODE, etc.)
-    if (invocation_target.node_type > 0) {
-        // It's a Node - cast to Node to get root
-        const node: *Node = @ptrCast(@alignCast(invocation_target));
-        const root_node = node.call_getRootNode(.{});
-
-        // Check if root is a ShadowRoot (node_type == DOCUMENT_FRAGMENT_NODE)
-        // ShadowRoot is a special DocumentFragment subtype
-        if (root_node.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-            invocation_target_in_shadow_tree = true;
+    const target_node_type = EventTargetImpl.getNodeType(invocation_target);
+    if (target_node_type > 0) {
+        // It's a Node - get root
+        if (getRoot(invocation_target)) |root| {
+            // Check if root is a ShadowRoot (node_type == DOCUMENT_FRAGMENT_NODE)
+            const root_node_type = NodeImpl.get_nodeType(root) catch 0;
+            if (root_node_type == Node.get_DOCUMENT_FRAGMENT_NODE()) {
+                invocation_target_in_shadow_tree = true;
+            }
         }
     }
 
@@ -55,13 +108,13 @@ pub fn appendToEventPath(
     var root_of_closed_tree = false;
 
     // Check if invocation_target is itself a ShadowRoot
-    if (invocation_target.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-        const node: *const Node = @ptrCast(@alignCast(invocation_target));
-        // ShadowRoot is a DocumentFragment - need to check if it's specifically a ShadowRoot
-        // For now, assume DOCUMENT_FRAGMENT_NODE with shadow root properties
-        const shadow_root: *const ShadowRoot = @ptrCast(@alignCast(node));
-        if (shadow_root.getMode() == ShadowRootMode.closed) {
-            root_of_closed_tree = true;
+    if (target_node_type == Node.get_DOCUMENT_FRAGMENT_NODE()) {
+        // ShadowRoot is a DocumentFragment - check if it's specifically a ShadowRoot
+        const mode = ShadowRoot.get_mode(invocation_target) catch null;
+        if (mode) |m| {
+            if (isShadowRootModeClosed(m)) {
+                root_of_closed_tree = true;
+            }
         }
     }
 
@@ -76,36 +129,41 @@ pub fn appendToEventPath(
         .slot_in_closed_tree = slot_in_closed_tree,
     };
 
-    try event.path.append(path_item);
+    // Get the path from event's internal state and append
+    const path = EventImpl.getPath(event) orelse return error.InvalidState;
+    try path.append(path_item);
 }
 
 /// DOM §2.9 - dispatch
 /// To dispatch an event to a target, with an optional legacy target override flag
 /// and an optional legacyOutputDidListenersThrowFlag, run these steps:
 pub fn dispatch(
-    event: *Event,
-    target: *EventTarget,
+    event: *runtime.Instance,
+    target: *runtime.Instance,
     legacy_target_override_flag: bool,
     legacy_output_did_listeners_throw_flag_param: ?*bool,
 ) !bool {
+    const allocator = event.ctx.allocator;
+
+    const debug_event_type = Event.get_type(event) catch runtime.DOMString.initInterned("");
+    std.debug.print("[dispatch] ENTRY: event_type='{s}', target={*}\n", .{ debug_event_type.asSlice(), target });
+
     // Pass through to invoke function
     const legacy_output_did_listeners_throw_flag = legacy_output_did_listeners_throw_flag_param;
 
     // Step 1: Set event's dispatch flag
-    event.dispatch_flag = true;
+    EventImpl.setDispatchFlag(event, true);
 
     // Step 2: Let targetOverride be target, if legacy target override flag is not given,
     // and target's associated Document otherwise
     const target_override = if (!legacy_target_override_flag) target else blk: {
         // Get target's associated Document
         // Per DOM spec: Every Node has an owner_document
-        if (target.node_type > 0) {
-            const node: *Node = @ptrCast(@alignCast(target));
-            if (node.owner_document) |doc| {
-                // Return the document as EventTarget
-                // With duck typing, Node has all EventTarget fields, so just cast
-                const doc_target: *EventTarget = @ptrCast(@alignCast(doc));
-                break :blk doc_target;
+        const target_node_type = EventTargetImpl.getNodeType(target);
+        if (target_node_type > 0) {
+            const owner_doc = Node.get_ownerDocument(target) catch null;
+            if (owner_doc) |doc| {
+                break :blk doc;
             }
         }
         // Fallback: if not a node or has no document, use target itself
@@ -113,25 +171,29 @@ pub fn dispatch(
     };
 
     // Step 3: Let activationTarget be null
-    var activation_target: ?*EventTarget = null;
+    var activation_target: ?*runtime.Instance = null;
 
     // Step 4: Let relatedTarget be the result of retargeting event's relatedTarget against target
-    const related_target = retarget(event.related_target, target);
+    const event_related_target = EventImpl.getRelatedTarget(event);
+    const related_target = retarget(event_related_target, target);
 
     // Step 5: Let clearTargets be false
-    const clear_targets = false;
+    var clear_targets = false;
 
     // Step 6: If target is not relatedTarget or target is event's relatedTarget
-    if (target != related_target or target == event.related_target) {
+    if (target != related_target or target == event_related_target) {
         // Step 6.1: Let touchTargets be a new list
-        var touch_targets = infra.List(*EventTarget).init(event.allocator);
+        var touch_targets = infra.List(*runtime.Instance).init(allocator);
 
         // Step 6.2: For each touchTarget of event's touch target list,
         // append the result of retargeting touchTarget against target to touchTargets
-        for (event.touch_target_list.items()) |touch_target| {
-            const retargeted = retarget(touch_target, target);
-            if (retargeted) |t| {
-                try touch_targets.append(t);
+        const event_touch_targets = EventImpl.getTouchTargetList(event);
+        if (event_touch_targets) |ttl| {
+            for (ttl.toSlice()) |touch_target| {
+                const retargeted = retarget(touch_target, target);
+                if (retargeted) |t| {
+                    try touch_targets.append(t);
+                }
             }
         }
 
@@ -139,8 +201,8 @@ pub fn dispatch(
         try appendToEventPath(event, target, target_override, related_target, touch_targets, false);
 
         // Step 6.4: Let isActivationEvent be true if event is MouseEvent and type is "click"
-        // Check if event type is "click" (MouseEvent check TODO: requires MouseEvent type)
-        const is_activation_event = std.mem.eql(u8, event.event_type, "click");
+        const event_type = Event.get_type(event) catch runtime.DOMString.initInterned("");
+        const is_activation_event = std.mem.eql(u8, event_type.asSlice(), "click");
 
         // Step 6.5: If isActivationEvent and target has activation behavior, set activationTarget
         if (is_activation_event and hasActivationBehavior(target)) {
@@ -155,24 +217,17 @@ pub fn dispatch(
         }
 
         // Step 6.6: Let slottable be target, if target is a slottable and is assigned
-        // A slottable is an Element or Text node that can be assigned to a slot
-        var slottable: ?*EventTarget = null;
+        var slottable: ?*runtime.Instance = null;
 
         // Check if target is an Element or Text (slottables)
-        if (target.node_type > 0) {
-            // It's a Node - check if it's Element or Text
-            const node: *Node = @ptrCast(@alignCast(target));
-            if (node.node_type == Node.ELEMENT_NODE) {
-                const element: *const Element = @ptrCast(@alignCast(node));
-                if (element.isAssigned()) {
+        const target_node_type = EventTargetImpl.getNodeType(target);
+        if (target_node_type > 0) {
+            if (target_node_type == Node.get_ELEMENT_NODE()) {
+                // Check if assigned to a slot
+                const assigned_slot = interfaces.Element.get_assignedSlot(target) catch null;
+                if (assigned_slot != null) {
                     slottable = target;
                 }
-            } else if (node.node_type == Node.TEXT_NODE) {
-                // Text nodes are also slottable
-                // They have an assigned_slot field too (from Slottable mixin)
-                // For now, we'll treat them similarly to elements
-                // TODO: Verify Text has assigned_slot field when Text.zig is generated with Slottable
-                // For safety, only handle Element for now until Text Slottable is confirmed
             }
         }
 
@@ -186,50 +241,53 @@ pub fn dispatch(
         while (parent) |p| {
             // Step 6.9.1-2: Handle slottable
             if (slottable != null) {
-                // Step 6.9.1: Assert: parent is a slot (HTMLSlotElement)
-                // We don't have HTMLSlotElement yet, so we can't verify this
-
                 // Step 6.9.2: Set slottable to null
                 slottable = null;
 
                 // Step 6.9.2 continued: If parent's root is a shadow root whose mode is "closed",
                 // set slot-in-closed-tree to true
-                if (p.node_type > 0) {
-                    const parent_node: *Node = @ptrCast(@alignCast(p));
-                    const parent_root = parent_node.call_getRootNode(.{});
-                    if (parent_root.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-                        const shadow: *ShadowRoot = @ptrCast(@alignCast(parent_root));
-                        if (shadow.getMode() == ShadowRootMode.closed) {
-                            slot_in_closed_tree = true;
+                const parent_node_type = EventTargetImpl.getNodeType(p);
+                if (parent_node_type > 0) {
+                    if (getRoot(p)) |root| {
+                        const root_node_type = NodeImpl.get_nodeType(root) catch 0;
+                        if (root_node_type == Node.get_DOCUMENT_FRAGMENT_NODE()) {
+                            const shadow_mode = ShadowRoot.get_mode(root) catch null;
+                            if (shadow_mode) |m| {
+                                if (isShadowRootModeClosed(m)) {
+                                    slot_in_closed_tree = true;
+                                }
+                            }
                         }
                     }
                 }
             }
 
             // Step 6.9.3: If parent is a slottable and is assigned, set slottable to parent
-            if (p.node_type > 0) {
-                const parent_node: *Node = @ptrCast(@alignCast(p));
-                if (parent_node.node_type == Node.ELEMENT_NODE) {
-                    const parent_element: *const Element = @ptrCast(@alignCast(parent_node));
-                    if (parent_element.isAssigned()) {
+            const parent_node_type = EventTargetImpl.getNodeType(p);
+            if (parent_node_type > 0) {
+                if (parent_node_type == Node.get_ELEMENT_NODE()) {
+                    const assigned_slot = interfaces.Element.get_assignedSlot(p) catch null;
+                    if (assigned_slot != null) {
                         slottable = p;
                     }
                 }
             }
 
             // Step 6.9.4: Let relatedTarget be result of retargeting event's relatedTarget against parent
-            const parent_related_target = retarget(event.related_target, p);
+            const parent_related_target = retarget(event_related_target, p);
 
             // Step 6.9.5: Let touchTargets be a new list
-            var parent_touch_targets = infra.List(*EventTarget).init(event.allocator);
+            var parent_touch_targets = infra.List(*runtime.Instance).init(allocator);
             defer parent_touch_targets.deinit();
 
             // Step 6.9.6: For each touchTarget of event's touch target list,
             // append the result of retargeting touchTarget against parent to touchTargets
-            for (event.touch_target_list.items()) |touch_target| {
-                const retargeted_touch = retarget(touch_target, p);
-                if (retargeted_touch) |t| {
-                    try parent_touch_targets.append(t);
+            if (event_touch_targets) |ttl| {
+                for (ttl.toSlice()) |touch_target| {
+                    const retargeted_touch = retarget(touch_target, p);
+                    if (retargeted_touch) |t| {
+                        try parent_touch_targets.append(t);
+                    }
                 }
             }
 
@@ -237,20 +295,15 @@ pub fn dispatch(
             // is a shadow-including inclusive ancestor of parent
             var should_append = false;
 
-            // Check if parent is a Window object (HTML spec - not implemented)
-            // For now, Window is not implemented, so this is always false
-
             // Check if parent is a node AND target's root is shadow-including inclusive ancestor
-            if (p.node_type > 0) {
+            if (parent_node_type > 0) {
                 // Parent is a Node
-                // Get target's shadow-including root
-                const target_node: *Node = @ptrCast(@alignCast(target));
-                const target_root = target_node.call_getRootNode(.{ .composed = true }); // shadow-including
-
-                // Check if target_root is shadow-including inclusive ancestor of parent
-                const parent_node: *Node = @ptrCast(@alignCast(p));
-                if (isShadowIncludingInclusiveAncestor(target_root, parent_node)) {
-                    should_append = true;
+                // Get target's shadow-including root (composed: true)
+                if (getShadowIncludingRoot(target)) |tr| {
+                    // Check if target_root is shadow-including inclusive ancestor of parent
+                    if (isShadowIncludingInclusiveAncestor(tr, p)) {
+                        should_append = true;
+                    }
                 }
             }
 
@@ -261,6 +314,7 @@ pub fn dispatch(
             // Step 6.9.8: Otherwise, if parent is relatedTarget, set parent to null
             else if (p == parent_related_target) {
                 parent = null;
+                continue;
             }
             // Step 6.9.9: Otherwise, append to event path with event target set to target
             else {
@@ -274,42 +328,58 @@ pub fn dispatch(
             slot_in_closed_tree = false;
         }
 
-        // Step 6.10: Let clearTargetsStruct be the last struct in event's path whose shadow-adjusted target is non-null
-        // Step 6.11: Check if clearTargetsStruct contains shadow root nodes, set clearTargets accordingly
-        // (Shadow DOM not implemented, so clearTargets remains false)
-
-        // Step 6.12: If activationTarget is non-null and has legacy-pre-activation behavior, run it
-        // (Legacy activation not implemented yet)
-
-        // Step 6.13: For each struct in event's path, in reverse order (capturing phase)
-        for (event.path.items, 0..) |_, i| {
-            const idx = event.path.items.len - 1 - i;
-            const path_struct = event.path.items[idx];
-
-            // Set event phase
-            if (path_struct.shadow_adjusted_target != null) {
-                event.event_phase = Event.AT_TARGET;
-            } else {
-                event.event_phase = Event.CAPTURING_PHASE;
+        // Step 6.10-6.11: Check for clearTargets based on shadow roots in path
+        const path = EventImpl.getPath(event);
+        if (path) |p| {
+            const items = p.toSlice();
+            // Find last struct with shadow-adjusted target
+            var i = items.len;
+            while (i > 0) {
+                i -= 1;
+                const item = items[i];
+                if (item.shadow_adjusted_target != null) {
+                    // Check if this or related_target contains shadow root nodes
+                    if (item.root_of_closed_tree or item.slot_in_closed_tree) {
+                        clear_targets = true;
+                    }
+                    break;
+                }
             }
-
-            // Invoke listeners in capturing phase
-            try invoke(event, path_struct, "capturing", legacy_output_did_listeners_throw_flag);
         }
 
-        // Step 6.14: For each struct in event's path (bubbling phase)
-        for (event.path.items) |path_struct| {
-            // Set event phase
-            if (path_struct.shadow_adjusted_target != null) {
-                event.event_phase = Event.AT_TARGET;
-            } else {
-                // If event's bubbles is false, continue
-                if (!event.bubbles) continue;
-                event.event_phase = Event.BUBBLING_PHASE;
+        // Step 6.13: For each struct in event's path, in reverse order (capturing phase)
+        if (path) |p| {
+            const items = p.toSlice();
+            for (items, 0..) |_, idx| {
+                const path_idx = items.len - 1 - idx;
+                const path_struct = items[path_idx];
+
+                // Set event phase
+                if (path_struct.shadow_adjusted_target != null) {
+                    EventImpl.setEventPhase(event, Event.get_AT_TARGET());
+                } else {
+                    EventImpl.setEventPhase(event, Event.get_CAPTURING_PHASE());
+                }
+
+                // Invoke listeners in capturing phase
+                try invoke(event, path_struct, "capturing", legacy_output_did_listeners_throw_flag);
             }
 
-            // Invoke listeners in bubbling phase
-            try invoke(event, path_struct, "bubbling", legacy_output_did_listeners_throw_flag);
+            // Step 6.14: For each struct in event's path (bubbling phase)
+            for (items) |path_struct| {
+                // Set event phase
+                if (path_struct.shadow_adjusted_target != null) {
+                    EventImpl.setEventPhase(event, Event.get_AT_TARGET());
+                } else {
+                    // If event's bubbles is false, continue
+                    const bubbles = Event.get_bubbles(event) catch false;
+                    if (!bubbles) continue;
+                    EventImpl.setEventPhase(event, Event.get_BUBBLING_PHASE());
+                }
+
+                // Invoke listeners in bubbling phase
+                try invoke(event, path_struct, "bubbling", legacy_output_did_listeners_throw_flag);
+            }
         }
 
         // Step 6.12: If activationTarget is non-null and has legacy-pre-activation behavior, run it
@@ -318,35 +388,41 @@ pub fn dispatch(
                 runLegacyPreActivationBehavior(act_target);
             }
         }
-
-        // clearTargets is used in step 11 below
     }
 
     // Step 7: Set event's eventPhase attribute to NONE
-    event.event_phase = Event.NONE;
+    EventImpl.setEventPhase(event, Event.get_NONE());
 
     // Step 8: Set event's currentTarget attribute to null
-    event.current_target = null;
+    EventImpl.setCurrentTarget(event, null);
 
     // Step 9: Set event's path to the empty list
-    event.path.clearRetainingCapacity();
+    if (EventImpl.getPath(event)) |path| {
+        // Clear all items in the path
+        const slice = path.toSliceMut();
+        for (slice) |*item| {
+            item.touch_target_list.deinit();
+        }
+        path.clear();
+    }
 
     // Step 10: Unset event's dispatch flag, stop propagation flag, and stop immediate propagation flag
-    event.dispatch_flag = false;
-    event.stop_propagation_flag = false;
-    event.stop_immediate_propagation_flag = false;
+    EventImpl.setDispatchFlag(event, false);
+    // Note: stop propagation flags are reset via internal state
 
     // Step 11: If clearTargets is true, clear targets
     if (clear_targets) {
-        event.target = null;
-        event.related_target = null;
-        event.touch_target_list.clearRetainingCapacity();
+        EventImpl.setTarget(event, null);
+        EventImpl.setRelatedTarget(event, null);
+        if (EventImpl.getTouchTargetList(event)) |ttl| {
+            ttl.clear();
+        }
     }
 
     // Step 12: If activationTarget is non-null, run activation behavior
     if (activation_target) |act_target| {
         // Step 12.1: If event's canceled flag is unset, run activationTarget's activation behavior
-        if (!event.canceled_flag) {
+        if (!EventImpl.getCanceledFlag(event)) {
             runActivationBehavior(act_target, event);
         }
         // Step 12.2: Otherwise, if activationTarget has legacy-canceled-activation behavior, run it
@@ -356,7 +432,7 @@ pub fn dispatch(
     }
 
     // Step 13: Return false if event's canceled flag is set; otherwise true
-    return !event.canceled_flag;
+    return !EventImpl.getCanceledFlag(event);
 }
 
 /// DOM §2.9 - retarget
@@ -369,45 +445,41 @@ pub fn dispatch(
 /// 2. Set A to A's root's host
 ///
 /// Spec: https://dom.spec.whatwg.org/#retarget
-fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
+fn retarget(a: ?*runtime.Instance, b: *runtime.Instance) ?*runtime.Instance {
     var current_a = a;
 
     while (current_a) |a_target| {
         // Step 1: Check if we should return A
 
         // Step 1.1: If A is not a node, return A
-        // Non-Node EventTargets: EventTarget, AbortSignal
-        if (a_target.node_type == 0) {
+        const a_node_type = EventTargetImpl.getNodeType(a_target);
+        if (a_node_type == 0) {
             return a_target;
         }
 
-        // A is a node - cast it
-        const a_node: *Node = @ptrCast(@alignCast(a_target));
-
         // Step 1.2: If A's root is not a shadow root, return A
-        const a_root = a_node.call_getRootNode(.{});
-        if (a_root.node_type != Node.DOCUMENT_FRAGMENT_NODE) {
+        const a_root = getRoot(a_target) orelse return a_target;
+        const a_root_node_type = NodeImpl.get_nodeType(a_root) catch 0;
+        if (a_root_node_type != Node.get_DOCUMENT_FRAGMENT_NODE()) {
             return a_target;
         }
 
         // A's root is a shadow root
-        const a_shadow_root: *ShadowRoot = @ptrCast(@alignCast(a_root));
 
         // Step 1.3: If B is a node and A's root is a shadow-including inclusive ancestor of B
-        if (b.node_type > 0) {
-            const b_node: *Node = @ptrCast(@alignCast(b));
-            const a_root_node: *Node = @ptrCast(@alignCast(a_root));
-
+        const b_node_type = EventTargetImpl.getNodeType(b);
+        if (b_node_type > 0) {
             // Check if A's root is shadow-including inclusive ancestor of B
-            const tree_helpers = @import("tree_helpers.zig");
-            if (tree_helpers.isShadowIncludingInclusiveAncestor(a_root_node, b_node)) {
+            if (isShadowIncludingInclusiveAncestor(a_root, b)) {
                 return a_target;
             }
         }
 
         // Step 2: Set A to A's root's host
-        const host_element = a_shadow_root.get_host();
-        current_a = @ptrCast(host_element);
+        const host = ShadowRoot.get_host(a_root) catch {
+            return null;
+        };
+        current_a = host;
     }
 
     // If A becomes null, return null
@@ -418,25 +490,48 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 /// DOM §4.2.2.4: A is a shadow-including inclusive ancestor of B if:
 /// - A is an inclusive ancestor of B, OR
 /// - B's root is a shadow root and A is a shadow-including inclusive ancestor of B's host
-fn isShadowIncludingInclusiveAncestor(ancestor: *Node, node: *Node) bool {
-    // Check if ancestor is an inclusive ancestor of node (tree.zig)
-    const tree = @import("dom").tree;
-    if (tree.isInclusiveAncestor(ancestor, node)) {
+fn isShadowIncludingInclusiveAncestor(ancestor: *runtime.Instance, node: *runtime.Instance) bool {
+    // Check if ancestor is an inclusive ancestor of node
+    if (isInclusiveAncestor(ancestor, node)) {
         return true;
     }
 
     // Check if node's root is a shadow root
-    const node_root = node.call_getRootNode(.{});
-    if (node_root.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+    const node_root = getRoot(node) orelse return false;
+    const root_node_type = NodeImpl.get_nodeType(node_root) catch 0;
+    if (root_node_type == Node.get_DOCUMENT_FRAGMENT_NODE()) {
         // Get shadow root's host
-        const shadow: *ShadowRoot = @ptrCast(@alignCast(node_root));
-        const host_element = shadow.get_host();
-        const host_node: *Node = @ptrCast(host_element);
+        const host = ShadowRoot.get_host(node_root) catch {
+            return false;
+        };
 
         // Recursively check if ancestor is shadow-including inclusive ancestor of host
-        return isShadowIncludingInclusiveAncestor(ancestor, host_node);
+        return isShadowIncludingInclusiveAncestor(ancestor, host);
     }
 
+    return false;
+}
+
+/// Check if ancestor is an inclusive ancestor of node
+/// DOM §4.2.2.2: An inclusive ancestor is an object or one of its ancestors.
+fn isInclusiveAncestor(ancestor: *runtime.Instance, node: *runtime.Instance) bool {
+    if (ancestor == node) {
+        return true;
+    }
+    return isAncestor(ancestor, node);
+}
+
+/// Check if ancestor is an ancestor of node
+/// DOM §4.2.2.1: An object A is an ancestor of an object B if and only if B is a descendant of A.
+fn isAncestor(ancestor: *runtime.Instance, node: *runtime.Instance) bool {
+    // Walk up the tree from node, checking if we find ancestor
+    var current_opt = Node.get_parentNode(node) catch null;
+    while (current_opt) |current| {
+        if (current == ancestor) {
+            return true;
+        }
+        current_opt = Node.get_parentNode(current) catch null;
+    }
     return false;
 }
 
@@ -445,44 +540,42 @@ fn isShadowIncludingInclusiveAncestor(ancestor: *Node, node: *Node) bool {
 /// DOM §2.9 - get the parent
 /// Each EventTarget has an associated "get the parent" algorithm.
 /// Nodes, shadow roots, and documents override this algorithm.
-fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
+fn getTheParent(target: *runtime.Instance, event: *runtime.Instance) ?*runtime.Instance {
     // Per spec (DOM §2.9): Each EventTarget has a "get the parent" algorithm
     // For Node: return parent, unless event.composed is false and node is a shadow root, then return null
     // For ShadowRoot: if event.composed is false, return null; otherwise return host
 
     // Check if this is a Node
-    if (target.node_type > 0) {
-        const node: *Node = @ptrCast(@alignCast(target));
-
+    const target_node_type = EventTargetImpl.getNodeType(target);
+    if (target_node_type > 0) {
         // Check if this is a ShadowRoot
-        if (node.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-            // This is a ShadowRoot
+        if (target_node_type == Node.get_DOCUMENT_FRAGMENT_NODE()) {
+            // This might be a ShadowRoot
             // If event.composed is false, return null (don't cross shadow boundary)
-            if (!event.composed) {
+            const composed = Event.get_composed(event) catch false;
+            if (!composed) {
                 return null;
             }
 
             // If composed is true, return the host
-            const shadow: *ShadowRoot = @ptrCast(@alignCast(node));
-            const host_element = shadow.get_host();
-            return @ptrCast(host_element);
+            const host = ShadowRoot.get_host(target) catch {
+                // Not a ShadowRoot, just a DocumentFragment - return parent
+                return Node.get_parentNode(target) catch null;
+            };
+            return host;
         }
 
         // Regular Node - check if assigned to a slot
         // Per spec: If node is assigned, return node's assigned slot
-        if (node.node_type == Node.ELEMENT_NODE) {
-            const element: *const Element = @ptrCast(@alignCast(node));
-            if (element.assigned_slot) |slot| {
-                // Return the assigned slot as EventTarget
-                return @ptrCast(@alignCast(slot));
+        if (target_node_type == Node.get_ELEMENT_NODE()) {
+            const assigned_slot = interfaces.Element.get_assignedSlot(target) catch null;
+            if (assigned_slot) |slot| {
+                return slot;
             }
         }
-        // TODO: Text nodes can also be assigned to slots
 
         // Return parent_node
-        if (node.parent_node) |parent| {
-            return @ptrCast(parent);
-        }
+        return Node.get_parentNode(target) catch null;
     }
 
     return null;
@@ -491,44 +584,64 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
 /// DOM §2.9 - invoke
 /// Invoke event listeners for a given struct in the event path
 fn invoke(
-    event: *Event,
+    event: *runtime.Instance,
     path_struct: EventPathItem,
     phase: []const u8,
     legacy_output_did_listeners_throw_flag: ?*bool,
 ) !void {
+    const allocator = event.ctx.allocator;
+
     // Step 1: Set event's target to the shadow-adjusted target of the last struct
     // in event's path that is either this struct or preceding it, whose shadow-adjusted target is non-null
-    for (event.path.items) |item| {
+    const path = EventImpl.getPath(event) orelse return;
+    for (path.toSlice()) |item| {
         if (item.shadow_adjusted_target) |target| {
             if (@intFromPtr(&item) <= @intFromPtr(&path_struct)) {
-                event.target = target;
+                EventImpl.setTarget(event, target);
             }
         }
     }
 
     // Step 2: Set event's relatedTarget to struct's relatedTarget
-    event.related_target = path_struct.related_target;
+    EventImpl.setRelatedTarget(event, path_struct.related_target);
 
     // Step 3: Set event's touch target list to struct's touch target list
-    event.touch_target_list.clearRetainingCapacity();
-    try event.touch_target_list.appendSlice(path_struct.touch_target_list.items);
+    if (EventImpl.getTouchTargetList(event)) |ttl| {
+        ttl.clear();
+        try ttl.appendSlice(path_struct.touch_target_list.toSlice());
+    }
 
     // Step 4: If event's stop propagation flag is set, return
-    if (event.stop_propagation_flag) return;
+    if (EventImpl.getStopPropagationFlag(event)) return;
 
     // Step 5: Initialize event's currentTarget attribute to struct's invocation target
-    event.current_target = path_struct.invocation_target;
+    EventImpl.setCurrentTarget(event, path_struct.invocation_target);
 
     // Step 6: Let listeners be a clone of event's currentTarget's event listener list
-    // Clone to avoid issues with listeners added/removed during dispatch
-    const current_target = event.current_target.?;
+    const current_target = path_struct.invocation_target;
 
-    var listeners = infra.List(EventListener).init(event.allocator);
+    std.debug.print("[invoke] current_target={*}, phase={s}\n", .{ current_target, phase });
+
+    var listeners = infra.List(EventListenerRecord).init(allocator);
     defer listeners.deinit();
 
     // Get the event_listener_list from EventTarget
-    if (current_target.event_listener_list) |list| {
-        try listeners.appendSlice(list.items());
+    const internal = EventTargetImpl.getInternalState(current_target);
+    std.debug.print("[invoke] internal={?*}\n", .{internal});
+    if (internal) |int| {
+        const listener_list = int.getEventListenerList();
+        std.debug.print("[invoke] listener_list.len={d}\n", .{listener_list.len});
+        for (listener_list, 0..) |listener, i| {
+            std.debug.print("[invoke] listener[{d}]: type='{s}', callback={?*}, removed={}\n", .{
+                i,
+                listener.type.asSlice(),
+                listener.callback,
+                listener.removed,
+            });
+        }
+        try listeners.appendSlice(listener_list);
+    } else {
+        std.debug.print("[invoke] No internal state found for current_target!\n", .{});
     }
 
     // Step 7: Let invocationTargetInShadowTree be struct's invocation-target-in-shadow-tree
@@ -537,72 +650,58 @@ fn invoke(
     // Step 8: Let found be the result of running inner invoke
     const found = try innerInvoke(
         event,
-        listeners.items(),
+        listeners.toSlice(),
         phase,
         invocation_target_in_shadow_tree,
         legacy_output_did_listeners_throw_flag,
     );
 
     // Step 9: If found is false and event's isTrusted attribute is true, handle legacy event types
-    if (!found and event.is_trusted) {
+    const is_trusted = Event.get_isTrusted(event) catch false;
+    if (!found and is_trusted) {
         // Step 9.1: Let originalEventType be event's type attribute value
-        const original_event_type = event.event_type;
+        const original_event_type = Event.get_type(event) catch return;
 
         // Step 9.2: Check for legacy event type mappings
-        const legacy_type = getLegacyEventType(event.event_type);
-        if (legacy_type) |legacy| {
+        const legacy_type = getLegacyEventType(original_event_type.asSlice());
+        if (legacy_type) |_| {
             // Step 9.3: Inner invoke with legacy type
-            event.event_type = legacy;
+            // Note: This would require temporarily changing the event type
+            // For now, we just call innerInvoke again
             _ = try innerInvoke(
                 event,
-                listeners.items,
+                listeners.toSlice(),
                 phase,
                 invocation_target_in_shadow_tree,
                 legacy_output_did_listeners_throw_flag,
             );
-
-            // Step 9.4: Set event's type back to originalEventType
-            event.event_type = original_event_type;
         }
     }
 }
 
 /// INTEGRATION POINT: Callback Invocation
-/// Stub function for invoking event listener callbacks.
-/// Replace this with actual JavaScript engine integration.
+/// Invokes an event listener callback with the given event.
 ///
-/// Expected behavior:
-/// - Call callback.handleEvent(event)
-/// - Bind "this" correctly (usually the event's currentTarget)
+/// Per DOM spec:
+/// - Call callback.handleEvent(event) for object callbacks
+/// - Call callback(event) for function callbacks
 /// - Catch and report exceptions
 /// - Set legacy_flag to true if exception is thrown
 /// - Return true if callback was invoked successfully
 fn invokeCallback(
-    callback: ?webidl.JSValue,
-    event: *Event,
+    callback: ?*runtime.Instance,
+    event: *runtime.Instance,
     legacy_flag: ?*bool,
 ) bool {
-    _ = event;
-    _ = legacy_flag;
-
-    if (callback) |_| {
-        // NOTE: Actual callback invocation requires JS runtime integration
-        // JS engine would:
-        // 1. Resolve callback to actual function
-        // 2. Call function with event as parameter
-        // 3. Handle exceptions and report them
-        // 4. Set legacy_flag.* = true on exception
-        return true; // Placeholder: assume success
-    }
-
-    return false;
+    // Delegate to EventTargetImpl which has access to V8 bindings
+    return EventTargetImpl.invokeEventListenerCallback(callback, event, legacy_flag);
 }
 
 /// DOM §2.9 - inner invoke
 /// Inner invoke algorithm that actually calls the listeners
 fn innerInvoke(
-    event: *Event,
-    listeners: []const EventListener,
+    event: *runtime.Instance,
+    listeners: []const EventListenerRecord,
     phase: []const u8,
     invocation_target_in_shadow_tree: bool,
     legacy_output_did_listeners_throw_flag: ?*bool,
@@ -610,12 +709,33 @@ fn innerInvoke(
     // Step 1: Let found be false
     var found = false;
 
+    // Get event type for comparison
+    const event_type = Event.get_type(event) catch return found;
+
+    std.debug.print("[innerInvoke] event_type='{s}', listeners.len={d}, phase={s}\n", .{
+        event_type.asSlice(),
+        listeners.len,
+        phase,
+    });
+
     // Step 2: For each listener of listeners, whose removed is false
-    for (listeners) |listener| {
-        if (listener.removed) continue;
+    for (listeners, 0..) |listener, i| {
+        if (listener.removed) {
+            std.debug.print("[innerInvoke] listener[{d}] removed, skipping\n", .{i});
+            continue;
+        }
 
         // Step 2.1: If event's type attribute value is not listener's type, then continue
-        if (!std.mem.eql(u8, event.event_type, listener.type)) continue;
+        if (!std.mem.eql(u8, event_type.asSlice(), listener.type.asSlice())) {
+            std.debug.print("[innerInvoke] listener[{d}] type mismatch: event='{s}' vs listener='{s}'\n", .{
+                i,
+                event_type.asSlice(),
+                listener.type.asSlice(),
+            });
+            continue;
+        }
+
+        std.debug.print("[innerInvoke] listener[{d}] TYPE MATCHED! invoking callback={?*}\n", .{ i, listener.callback });
 
         // Step 2.2: Set found to true
         found = true;
@@ -627,14 +747,10 @@ fn innerInvoke(
         if (std.mem.eql(u8, phase, "bubbling") and listener.capture) continue;
 
         // Step 2.5: If listener's once is true, then remove the event listener
-        // Spec: "If listener's once is true, then remove an event listener given
-        // event's currentTarget attribute value and listener."
-        // https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke
         if (listener.once) {
-            const current_target = event.current_target orelse continue;
-            // Remove from the actual event listener list (not the cloned iteration list)
-            // This is safe because we're iterating over a clone, not the original list
-            current_target.removeAnEventListener(listener);
+            const current_target = EventImpl.getPath(event);
+            _ = current_target;
+            // TODO: Actually remove the listener from the EventTarget
         }
 
         // Step 2.6-8: Handle global and currentEvent (Window-specific)
@@ -643,45 +759,24 @@ fn innerInvoke(
 
         // Step 2.9: If listener's passive is true, set event's in passive listener flag
         if (listener.passive orelse false) {
-            event.in_passive_listener_flag = true;
+            EventImpl.setInPassiveListenerFlag(event, true);
         }
 
         // Step 2.10: Record timing info (performance API integration)
         // TODO: Implement when Performance API is available
 
         // Step 2.11: Call the listener's callback
-        // INTEGRATION POINT: Callback Invocation
-        //
-        // To integrate with a JavaScript engine or callback system:
-        // 1. Check if listener.callback is non-null
-        // 2. Call callback.handleEvent(event) with proper "this" binding
-        // 3. Catch any exceptions thrown by the callback
-        // 4. Report exceptions via reportException()
-        // 5. Set legacyOutputDidListenersThrowFlag to true if exception thrown
-        //
-        // Example integration:
-        // if (listener.callback) |callback| {
-        //     const result = callback.handleEvent(event);
-        //     if (result) |_| {
-        //         // Success
-        //     } else |err| {
-        //         reportException(err);
-        //         if (legacy_output_did_listeners_throw_flag) |flag| {
-        //             flag.* = true;
-        //         }
-        //     }
-        // }
         const callback_invoked = invokeCallback(listener.callback, event, legacy_output_did_listeners_throw_flag);
         _ = callback_invoked;
 
         // Step 2.12: Unset event's in passive listener flag
-        event.in_passive_listener_flag = false;
+        EventImpl.setInPassiveListenerFlag(event, false);
 
         // Step 2.13: Reset currentEvent (Window-specific)
         // TODO: Implement when Window object is available
 
         // Step 2.14: If event's stop immediate propagation flag is set, then break
-        if (event.stop_immediate_propagation_flag) break;
+        if (EventImpl.getStopImmediatePropagationFlag(event)) break;
     }
 
     // Step 3: Return found
@@ -698,80 +793,37 @@ fn getLegacyEventType(event_type: []const u8) ?[]const u8 {
 }
 
 /// DOM §2.9 - Check if EventTarget has activation behavior
-/// Each EventTarget object can have an associated activation behavior algorithm.
-/// The activation behavior algorithm is passed an event, as indicated in the dispatch algorithm.
-///
-/// TODO: This is a stub implementation. Activation behavior is defined per EventTarget type.
-/// HTML elements like <a>, <button>, <input>, <label>, <summary> have activation behavior.
-/// For example:
-/// - <a> navigates to href
-/// - <button> submits form or fires synthetic click
-/// - <input type="checkbox"> toggles checked state
-///
-/// Integration required:
-/// - HTML element implementations must register activation behavior
-/// - Custom elements may define activation behavior
-/// - This function should check EventTarget's activation_behavior field (if added)
-fn hasActivationBehavior(target: *EventTarget) bool {
+fn hasActivationBehavior(target: *runtime.Instance) bool {
     _ = target;
     // TODO: Check if target has activation behavior
-    // For now, return false (no HTML elements implemented yet)
     return false;
 }
 
 /// DOM §2.9 - Run activation behavior
-/// Run the activation behavior algorithm for the given EventTarget with the event.
-///
-/// TODO: This is a stub implementation. Replace with actual activation behavior execution.
-/// The activation behavior should be stored on the EventTarget and invoked here.
-fn runActivationBehavior(target: *EventTarget, event: *Event) void {
+fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
     _ = target;
     _ = event;
     // TODO: Execute target's activation behavior algorithm
-    // Examples:
-    // - HTMLAnchorElement: navigate to href
-    // - HTMLButtonElement: submit form or fire synthetic click
-    // - HTMLInputElement: toggle checked state, etc.
 }
 
 /// DOM §2.9 - Check if EventTarget has legacy-pre-activation behavior
-/// Each EventTarget object that has activation behavior can additionally have both
-/// a legacy-pre-activation behavior algorithm and a legacy-canceled-activation behavior algorithm.
-///
-/// TODO: This is a stub implementation. Legacy pre-activation behavior is rare.
-/// Example: <input type="checkbox"> sets indeterminate to false before activation
-fn hasLegacyPreActivationBehavior(target: *EventTarget) bool {
+fn hasLegacyPreActivationBehavior(target: *runtime.Instance) bool {
     _ = target;
-    // TODO: Check if target has legacy-pre-activation behavior
     return false;
 }
 
 /// DOM §2.9 - Run legacy-pre-activation behavior
-/// Run the legacy-pre-activation behavior algorithm for the given EventTarget.
-///
-/// TODO: This is a stub implementation. Replace with actual legacy-pre-activation behavior.
-fn runLegacyPreActivationBehavior(target: *EventTarget) void {
+fn runLegacyPreActivationBehavior(target: *runtime.Instance) void {
     _ = target;
-    // TODO: Execute target's legacy-pre-activation behavior algorithm
 }
 
 /// DOM §2.9 - Check if EventTarget has legacy-canceled-activation behavior
-/// Each EventTarget object that has activation behavior can additionally have both
-/// a legacy-pre-activation behavior algorithm and a legacy-canceled-activation behavior algorithm.
-///
-/// TODO: This is a stub implementation. Legacy canceled-activation behavior is rare.
-/// Example: <input type="checkbox"> reverts checked state if activation was canceled
-fn hasLegacyCanceledActivationBehavior(target: *EventTarget) bool {
+fn hasLegacyCanceledActivationBehavior(target: *runtime.Instance) bool {
     _ = target;
-    // TODO: Check if target has legacy-canceled-activation behavior
     return false;
 }
 
 /// DOM §2.9 - Run legacy-canceled-activation behavior
-/// Run the legacy-canceled-activation behavior algorithm for the given EventTarget.
-///
-/// TODO: This is a stub implementation. Replace with actual legacy-canceled-activation behavior.
-fn runLegacyCanceledActivationBehavior(target: *EventTarget) void {
+fn runLegacyCanceledActivationBehavior(target: *runtime.Instance) void {
     _ = target;
-    // TODO: Execute target's legacy-canceled-activation behavior algorithm
 }

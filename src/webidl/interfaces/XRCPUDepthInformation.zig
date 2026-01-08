@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRDepthInformation = @import("interfaces").XRDepthInformation;
-const XRRigidTransform = @import("interfaces").XRRigidTransform;
+const XRDepthInformation = @import("XRDepthInformation.zig").XRDepthInformation;
+const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
 
 pub const XRCPUDepthInformation = struct {
     pub const Meta = struct {

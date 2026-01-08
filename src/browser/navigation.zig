@@ -22,8 +22,12 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const v8 = @import("v8");
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const webidl = @import("webidl");
+const dictionaries = @import("dictionaries");
 
 const html_parser = @import("html").parser;
+const certificate_trust = @import("fetch").network.certificate_trust;
 
 /// Navigation result containing parsed content info
 pub const NavigationResult = struct {
@@ -59,6 +63,8 @@ pub const NavigationOptions = struct {
     follow_redirects: bool = true,
     /// Maximum redirects to follow
     max_redirects: u8 = 20,
+    /// Certificate trust store for HTTPS (for WPT self-signed certs)
+    trust_store: ?*const certificate_trust.CertificateTrustStore = null,
 
     pub const Header = struct {
         name: []const u8,
@@ -272,8 +278,6 @@ fn fetchHttpUrl(
     url: []const u8,
     options: NavigationOptions,
 ) NavigationError!NavigationResult {
-    _ = options;
-
     // For HTTP URLs, we need to use libcurl which is set up in the full build.
     // In the browser module context, we'll use the fetch module via imports.
     // For standalone testing, return a stub indicating HTTP is not available.
@@ -286,8 +290,10 @@ fn fetchHttpUrl(
     var request = InternalRequest.init(allocator, url) catch return NavigationError.OutOfMemory;
     defer request.deinit();
 
-    // Perform fetch using the fetch algorithms
-    var result = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| {
+    // Perform fetch using the fetch algorithms, passing through certificate trust store
+    var result = fetch_mod.algorithms.fetch(allocator, request, .{
+        .trust_store = options.trust_store,
+    }) catch |err| {
         return switch (err) {
             error.NetworkError => NavigationError.NetworkError,
             error.AbortError => NavigationError.Timeout,
@@ -423,56 +429,54 @@ fn executeScriptElement(
 
 /// Fire DOMContentLoaded event
 pub fn fireDOMContentLoaded(
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
+    _: std.mem.Allocator,
+    document_instance: *runtime.Instance,
 ) void {
-    // Execute JavaScript to dispatch DOMContentLoaded
-    const script =
-        \\(function() {
-        \\  if (typeof document !== 'undefined' && document.dispatchEvent) {
-        \\    var event = new Event('DOMContentLoaded', { bubbles: true, cancelable: false });
-        \\    document.dispatchEvent(event);
-        \\  }
-        \\})();
-    ;
+    // Fire DOMContentLoaded event directly from Zig (not through JavaScript)
+    // Per HTML spec, DOMContentLoaded fires on document, bubbles, not cancelable
+    // Use call_constructor to properly initialize internal state (including path for dispatch)
+    const event_type = runtime.DOMString.initInterned("DOMContentLoaded");
+    const event_init = dictionaries.EventInit{
+        .bubbles = true,
+        .cancelable = false,
+        .composed = false,
+    };
+    const event = interfaces.Event.call_constructor(document_instance.ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch |err| {
+        std.debug.print("[fireDOMContentLoaded] Failed to create event: {}\n", .{err});
+        return;
+    };
+    defer interfaces.Event.deinit(event);
 
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse return;
-    const compiled = v8.ffi.v8_Script_Compile(context, source_str) orelse return;
-    _ = v8.ffi.v8_Script_Run(context, compiled);
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    _ = interfaces.EventTarget.call_dispatchEvent(document_instance, event) catch |err| {
+        std.debug.print("[fireDOMContentLoaded] Failed to dispatch event: {}\n", .{err});
+        return;
+    };
 }
 
 /// Fire load event
 pub fn fireLoad(
-    isolate: *v8.ffi.Isolate,
-    context: *v8.ffi.Context,
+    _: std.mem.Allocator,
+    window_instance: *runtime.Instance,
 ) void {
-    // Execute JavaScript to dispatch load event AND invoke window.onload IDL attribute
-    // The dispatchEvent triggers addEventListener callbacks, but the IDL attribute
-    // (window.onload = fn) needs to be invoked separately per HTML spec.
-    const script =
-        \\(function() {
-        \\  if (typeof window !== 'undefined') {
-        \\    var event = new Event('load', { bubbles: false, cancelable: false });
-        \\    if (window.dispatchEvent) {
-        \\      window.dispatchEvent(event);
-        \\    }
-        \\    // Also invoke window.onload IDL attribute if set
-        \\    if (typeof window.onload === 'function') {
-        \\      try { 
-        \\        window.onload(event);
-        \\      } catch(e) { 
-        \\        console.error('Error in onload:', e);
-        \\      }
-        \\    }
-        \\  }
-        \\})();
-    ;
+    // Fire load event directly from Zig (not through JavaScript)
+    // Per HTML spec, load fires on window, does not bubble, not cancelable
+    // Use call_constructor to properly initialize internal state (including path for dispatch)
+    const event_type = runtime.DOMString.initInterned("load");
+    const event_init = dictionaries.EventInit{
+        .bubbles = false,
+        .cancelable = false,
+        .composed = false,
+    };
+    const event = interfaces.Event.call_constructor(window_instance.ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch |err| {
+        std.debug.print("[fireLoad] Failed to create event: {}\n", .{err});
+        return;
+    };
+    defer interfaces.Event.deinit(event);
 
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, script.ptr, @intCast(script.len)) orelse return;
-    const compiled = v8.ffi.v8_Script_Compile(context, source_str) orelse return;
-    _ = v8.ffi.v8_Script_Run(context, compiled);
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    _ = interfaces.EventTarget.call_dispatchEvent(window_instance, event) catch |err| {
+        std.debug.print("[fireLoad] Failed to dispatch event: {}\n", .{err});
+        return;
+    };
 }
 
 // =============================================================================

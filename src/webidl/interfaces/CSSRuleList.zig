@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("interfaces").CSSRule;
+const CSSRule = @import("CSSRule.zig").CSSRule;
 
 pub const CSSRuleList = struct {
     pub const Meta = struct {

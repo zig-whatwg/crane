@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMException = @import("interfaces").DOMException;
+const DOMException = @import("DOMException.zig").DOMException;
 const DOMString = @import("typedefs").DOMString;
 
 pub const OverconstrainedError = struct {
