@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MLTensor = @import("interfaces").MLTensor;
+const MLTensor = @import("MLTensor.zig").MLTensor;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const MLNamedTensors = @import("typedefs").MLNamedTensors;
 const MLOpSupportLimits = @import("dictionaries").MLOpSupportLimits;
 const MLTensorDescriptor = @import("dictionaries").MLTensorDescriptor;
-const MLGraph = @import("interfaces").MLGraph;
+const MLGraph = @import("MLGraph.zig").MLGraph;
 const MLOperandDescriptor = @import("dictionaries").MLOperandDescriptor;
 const MLContextLostInfo = @import("dictionaries").MLContextLostInfo;
 

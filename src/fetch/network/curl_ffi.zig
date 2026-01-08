@@ -168,6 +168,8 @@ pub const CURLOPT_SSLCERT = c.CURLOPT_SSLCERT;
 pub const CURLOPT_SSLKEY = c.CURLOPT_SSLKEY;
 /// SSL version to use
 pub const CURLOPT_SSLVERSION = c.CURLOPT_SSLVERSION;
+/// Enable/disable SSL session-ID caching (0 = disable, 1 = enable)
+pub const CURLOPT_SSL_SESSIONID_CACHE = c.CURLOPT_SSL_SESSIONID_CACHE;
 
 // Proxy options
 /// Proxy URL
@@ -192,6 +194,12 @@ pub const CURLOPT_VERBOSE = c.CURLOPT_VERBOSE;
 pub const CURLOPT_DEBUGFUNCTION = c.CURLOPT_DEBUGFUNCTION;
 /// User data for debug callback
 pub const CURLOPT_DEBUGDATA = c.CURLOPT_DEBUGDATA;
+
+// Connection options
+/// Force a new connection (don't reuse cached)
+pub const CURLOPT_FRESH_CONNECT = c.CURLOPT_FRESH_CONNECT;
+/// Close connection after use (don't pool)
+pub const CURLOPT_FORBID_REUSE = c.CURLOPT_FORBID_REUSE;
 
 // Progress/abort
 /// Disable progress meter

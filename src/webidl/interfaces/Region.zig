@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
-const Range = @import("interfaces").Range;
+const Range = @import("Range.zig").Range;
 
 pub const Region = struct {
     pub const Meta = struct {

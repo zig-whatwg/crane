@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const PermissionState = @import("enums").PermissionState;
-const PushSubscription = @import("interfaces").PushSubscription;
+const PushSubscription = @import("PushSubscription.zig").PushSubscription;
 const PushSubscriptionOptionsInit = @import("dictionaries").PushSubscriptionOptionsInit;
 const DOMString = @import("typedefs").DOMString;
 

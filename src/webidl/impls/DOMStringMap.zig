@@ -150,7 +150,7 @@ fn toHyphenated(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
 /// Named property getter - WebIDL getter DOMString (DOMString name)
 /// Per HTML spec §2.4.2.4: Returns the value of the data-* attribute with the given camelCase name.
 /// Note: Per WebIDL spec, this is only called when the property exists (interceptor checks first).
-pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) !runtime.DOMString {
+pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.DOMString {
     const internal = getInternalState(instance) orelse return error.InvalidState;
     const ElementImpl = @import("Element.zig");
 
@@ -169,7 +169,7 @@ pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) !runtim
 
 /// Named property setter - WebIDL setter void (DOMString name, DOMString value)
 /// Per HTML spec §2.4.2.4: Sets the data-* attribute with the given camelCase name.
-pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) !void {
+pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
     const internal = getInternalState(instance) orelse return error.InvalidState;
     const ElementImpl = @import("Element.zig");
 
@@ -185,7 +185,7 @@ pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: 
 
 /// Named property deleter - WebIDL deleter void (DOMString name)
 /// Per HTML spec §2.4.2.4: Removes the data-* attribute with the given camelCase name.
-pub fn call_deleter(instance: *runtime.Instance, name: runtime.DOMString) !void {
+pub fn call_deleter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
     const internal = getInternalState(instance) orelse return error.InvalidState;
     const ElementImpl = @import("Element.zig");
 

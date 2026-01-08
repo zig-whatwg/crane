@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HandwritingStroke = @import("interfaces").HandwritingStroke;
+const HandwritingStroke = @import("HandwritingStroke.zig").HandwritingStroke;
 
 pub const HandwritingDrawing = struct {
     pub const Meta = struct {

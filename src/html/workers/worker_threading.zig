@@ -37,6 +37,20 @@ const Thread = std.Thread;
 const Mutex = std.Thread.Mutex;
 const Condition = std.Thread.Condition;
 
+const platform = @import("platform");
+const EventWakeup = platform.EventWakeup;
+
+// Debug logging for worker threading - uses stderr for visibility
+// This is enabled for debugging WPT worker test timeouts
+const debug = struct {
+    pub inline fn print(comptime fmt: []const u8, args: anytype) void {
+        const stderr = std.fs.File.stderr();
+        var buf: [1024]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[WORKER_THREAD] " ++ fmt, args) catch "[WORKER_THREAD] (format error)\n";
+        stderr.writeAll(msg) catch {};
+    }
+};
+
 const types = @import("types.zig");
 const WorkerType = types.WorkerType;
 const WorkerState = types.WorkerState;
@@ -67,6 +81,10 @@ pub const ThreadSafeMessageQueue = struct {
 
     /// Allocator for internal allocations
     allocator: Allocator,
+
+    /// Optional wakeup primitive to signal when messages are enqueued
+    /// This allows the main thread to be woken up immediately instead of polling
+    wakeup: ?*EventWakeup,
 
     const Self = @This();
 
@@ -108,12 +126,21 @@ pub const ThreadSafeMessageQueue = struct {
 
     pub fn init(allocator: Allocator) Self {
         return .{
-            .queue = std.ArrayList(*SerializedMessage).init(allocator),
+            .queue = .{},
             .mutex = .{},
             .condition = .{},
             .closed = false,
             .allocator = allocator,
+            .wakeup = null,
         };
+    }
+
+    /// Set the wakeup primitive for this queue
+    /// When a message is enqueued, the wakeup will be signaled
+    pub fn setWakeup(self: *Self, wakeup: *EventWakeup) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.wakeup = wakeup;
     }
 
     pub fn deinit(self: *Self) void {
@@ -124,24 +151,34 @@ pub const ThreadSafeMessageQueue = struct {
         for (self.queue.items) |msg| {
             msg.deinit();
         }
-        self.queue.deinit();
+        self.queue.deinit(self.allocator);
     }
 
     /// Enqueue a message (thread-safe)
     ///
     /// Returns error if the queue is closed or out of memory.
     pub fn enqueue(self: *Self, message: *SerializedMessage) !void {
+        debug.print("enqueue() called, message.data.type={d}\n", .{@intFromEnum(message.data.type)});
         self.mutex.lock();
         defer self.mutex.unlock();
 
         if (self.closed) {
+            debug.print("enqueue() FAILED: queue is closed\n", .{});
             return WorkerError.WorkerClosing;
         }
 
-        try self.queue.append(message);
+        try self.queue.append(self.allocator, message);
+        debug.print("enqueue() message added, queue.len={d}\n", .{self.queue.items.len});
 
-        // Signal any waiting readers
+        // Signal any waiting readers (for blocking dequeue)
         self.condition.signal();
+
+        // Signal the wakeup primitive to wake up the main thread's event loop
+        // This enables immediate delivery instead of relying on polling
+        if (self.wakeup) |wakeup| {
+            debug.print("enqueue() signaling wakeup\n", .{});
+            wakeup.signal();
+        }
     }
 
     /// Dequeue a message (thread-safe, non-blocking)
@@ -155,7 +192,9 @@ pub const ThreadSafeMessageQueue = struct {
             return null;
         }
 
-        return self.queue.orderedRemove(0);
+        const msg = self.queue.orderedRemove(0);
+        debug.print("tryDequeue() returning message, remaining={d}\n", .{self.queue.items.len});
+        return msg;
     }
 
     /// Dequeue a message (thread-safe, blocking)
@@ -229,6 +268,18 @@ pub const WorkerThreadState = struct {
     /// Allocator
     allocator: Allocator,
 
+    /// Opaque pointer to DedicatedWorker (or other worker type)
+    /// Used by callbacks to access worker-specific functionality
+    worker_ptr: ?*anyopaque,
+
+    /// EventWakeup for waking up the main thread when messages are posted
+    /// This is shared with outbox.wakeup so messages trigger immediate delivery
+    wakeup: ?*EventWakeup,
+
+    /// EventWakeup for waking up the worker thread when messages arrive or termination requested
+    /// This enables efficient event-driven waiting instead of polling
+    worker_wakeup: ?*EventWakeup,
+
     const Self = @This();
 
     /// State values for atomic operations
@@ -266,6 +317,9 @@ pub const WorkerThreadState = struct {
             .thread = null,
             .error_message = null,
             .allocator = allocator,
+            .worker_ptr = null,
+            .wakeup = null,
+            .worker_wakeup = null,
         };
 
         return state;
@@ -280,6 +334,11 @@ pub const WorkerThreadState = struct {
         }
         if (self.error_message) |msg| {
             self.allocator.free(msg);
+        }
+        // Clean up worker wakeup if allocated
+        if (self.worker_wakeup) |wakeup| {
+            wakeup.deinit();
+            self.allocator.destroy(wakeup);
         }
         self.allocator.destroy(self);
     }
@@ -319,6 +378,12 @@ pub const WorkerThreadState = struct {
 
         // Close message queues to unblock any waiting threads
         self.inbox.close();
+
+        // Signal the worker wakeup to immediately wake the worker thread
+        // This ensures the worker exits promptly instead of waiting for a timeout
+        if (self.worker_wakeup) |wakeup| {
+            wakeup.signal();
+        }
     }
 };
 
@@ -344,6 +409,15 @@ pub const WorkerThreadRunner = struct {
     /// Signature: fn(*anyopaque, []const u8, []const u8) anyerror!void
     execute_script_fn: ?ExecuteScriptFn,
 
+    /// Callback to dispatch a message to the worker's onmessage handler
+    /// Signature: fn(*anyopaque, *SerializedMessage) anyerror!void
+    dispatch_message_fn: ?DispatchMessageFn,
+
+    /// Callback to run V8 microtask checkpoint
+    /// Signature: fn(*anyopaque) void
+    /// This is needed because html_core cannot import v8 directly
+    microtask_checkpoint_fn: ?MicrotaskCheckpointFn,
+
     /// Callback context for V8 operations
     callback_context: ?*anyopaque,
 
@@ -353,6 +427,8 @@ pub const WorkerThreadRunner = struct {
     pub const CreateIsolateFn = *const fn (*WorkerThreadState, Allocator) anyerror!*anyopaque;
     pub const DisposeIsolateFn = *const fn (*anyopaque) void;
     pub const ExecuteScriptFn = *const fn (*anyopaque, []const u8, []const u8) anyerror!void;
+    pub const DispatchMessageFn = *const fn (*anyopaque, *ThreadSafeMessageQueue.SerializedMessage) anyerror!void;
+    pub const MicrotaskCheckpointFn = *const fn (*anyopaque) void;
 
     pub fn init(
         allocator: Allocator,
@@ -365,12 +441,26 @@ pub const WorkerThreadRunner = struct {
             .create_isolate_fn = null,
             .dispose_isolate_fn = null,
             .execute_script_fn = null,
+            .dispatch_message_fn = null,
+            .microtask_checkpoint_fn = null,
             .callback_context = null,
         };
         return runner;
     }
 
     pub fn deinit(self: *Self) void {
+        // Join the thread if still running
+        if (self.thread_state.thread) |thread| {
+            // Request termination if not already terminated
+            self.thread_state.requestTermination();
+            thread.join();
+            self.thread_state.thread = null;
+        }
+
+        // Clean up thread state
+        self.thread_state.deinit();
+
+        // Clean up self
         self.allocator.destroy(self);
     }
 
@@ -380,11 +470,15 @@ pub const WorkerThreadRunner = struct {
         create_isolate: CreateIsolateFn,
         dispose_isolate: DisposeIsolateFn,
         execute_script: ExecuteScriptFn,
+        dispatch_message: ?DispatchMessageFn,
+        microtask_checkpoint: ?MicrotaskCheckpointFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
         self.dispose_isolate_fn = dispose_isolate;
         self.execute_script_fn = execute_script;
+        self.dispatch_message_fn = dispatch_message;
+        self.microtask_checkpoint_fn = microtask_checkpoint;
         self.callback_context = context;
     }
 
@@ -393,20 +487,39 @@ pub const WorkerThreadRunner = struct {
     /// Creates a new OS thread and starts the worker's execution.
     /// Returns immediately; use thread_state to monitor progress.
     pub fn spawn(self: *Self) !void {
+        debug.print("spawn() called, script_url={s}\n", .{self.thread_state.script_url});
+
         // Transition from pending to starting
         if (!self.thread_state.transitionState(
             WorkerThreadState.STATE_PENDING,
             WorkerThreadState.STATE_STARTING,
         )) {
+            debug.print("spawn() FAILED: state transition failed (not pending)\n", .{});
             return WorkerError.WorkerNotRunning;
         }
+        debug.print("spawn() state transitioned to STARTING\n", .{});
+
+        // Create EventWakeup for efficient worker thread waiting
+        // This replaces busy-polling with event-driven waiting
+        const wakeup = try self.allocator.create(EventWakeup);
+        errdefer self.allocator.destroy(wakeup);
+        wakeup.* = EventWakeup.init() catch |err| {
+            self.allocator.destroy(wakeup);
+            return err;
+        };
+        self.thread_state.worker_wakeup = wakeup;
+
+        // Set the wakeup on the inbox so message enqueues wake the worker
+        self.thread_state.inbox.setWakeup(wakeup);
 
         // Spawn the worker thread
+        debug.print("spawn() about to call Thread.spawn()...\n", .{});
         self.thread_state.thread = try Thread.spawn(
             .{},
             workerThreadMain,
             .{self},
         );
+        debug.print("spawn() Thread.spawn() completed, worker thread created\n", .{});
     }
 
     /// Wait for the worker thread to finish
@@ -419,9 +532,28 @@ pub const WorkerThreadRunner = struct {
 
     /// The main function that runs on the worker thread
     fn workerThreadMain(self: *Self) void {
+        debug.print("[WorkerThread] workerThreadMain starting\n", .{});
         var v8_isolate: ?*anyopaque = null;
 
+        // Import DedicatedWorker for cleanup
+        const DedicatedWorker = @import("dedicated_worker.zig").DedicatedWorker;
+
         defer {
+            debug.print("[WorkerThread] workerThreadMain defer cleanup\n", .{});
+
+            // Clean up the DedicatedWorker's port pair message queues
+            // This prevents memory leaks from messages queued but never consumed
+            if (self.thread_state.worker_ptr) |worker_ptr| {
+                const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
+
+                // IMPORTANT: Only cleanup inside_port messages (worker's incoming queue)
+                // DO NOT cleanup outside_port - those messages are for the main thread!
+                // The main thread will poll the outbox and dispatch them.
+                dedicated_worker.port_pair.cleanupInsidePortMessages();
+
+                debug.print("[WorkerThread] Cleaned up inside port messages (outside port preserved for main thread)\n", .{});
+            }
+
             // Clean up V8 isolate if created
             if (v8_isolate) |isolate| {
                 if (self.dispose_isolate_fn) |dispose| {
@@ -434,12 +566,17 @@ pub const WorkerThreadRunner = struct {
         }
 
         // Create V8 isolate for this worker thread
+        debug.print("[WorkerThread] Creating V8 isolate...\n", .{});
         if (self.create_isolate_fn) |create| {
             v8_isolate = create(self.thread_state, self.allocator) catch |err| {
                 self.setError("Failed to create V8 isolate: {s}", .{@errorName(err)});
                 self.thread_state.state.store(WorkerThreadState.STATE_ERROR, .release);
+                debug.print("[WorkerThread] Failed to create isolate: {s}\n", .{@errorName(err)});
                 return;
             };
+            debug.print("[WorkerThread] V8 isolate created successfully\n", .{});
+        } else {
+            debug.print("[WorkerThread] No create_isolate_fn set!\n", .{});
         }
 
         // Transition to running
@@ -447,42 +584,118 @@ pub const WorkerThreadRunner = struct {
             WorkerThreadState.STATE_STARTING,
             WorkerThreadState.STATE_RUNNING,
         )) {
+            debug.print("[WorkerThread] Failed to transition to RUNNING\n", .{});
             return; // Worker was terminated during startup
         }
+        debug.print("[WorkerThread] Transitioned to RUNNING, entering event loop\n", .{});
 
         // Run the worker event loop
         self.runWorkerLoop(v8_isolate);
+        debug.print("[WorkerThread] Event loop exited\n", .{});
     }
 
     /// Worker event loop - processes messages and runs microtasks
     fn runWorkerLoop(self: *Self, isolate: ?*anyopaque) void {
+        // Import DedicatedWorker to check its closing state
+        const DedicatedWorker = @import("dedicated_worker.zig").DedicatedWorker;
+
+        var loop_count: u32 = 0;
         while (self.thread_state.isRunning()) {
+            loop_count += 1;
+            if (loop_count == 1 or loop_count % 1000 == 0) {
+                debug.print("[WorkerThread] runWorkerLoop iteration {d}\n", .{loop_count});
+            }
+
+            // Check if the DedicatedWorker has been closed (e.g., via done() or close())
+            // This bridges the gap between the WorkerAgent state and the thread state
+            if (self.thread_state.worker_ptr) |worker_ptr| {
+                const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
+                if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
+                    debug.print("[WorkerThread] DedicatedWorker is closing/terminated, exiting loop\n", .{});
+                    // Worker has been closed, exit the loop
+                    self.thread_state.requestTermination();
+                    break;
+                }
+            }
+
             // Process incoming messages (non-blocking)
             while (self.thread_state.inbox.tryDequeue()) |msg| {
-                defer msg.deinit();
-
-                // Process the message
+                debug.print("[WorkerThread] Dequeued message, dispatching...\n", .{});
+                // Note: handleIncomingMessage takes ownership of the message
+                // and is responsible for calling msg.deinit() via the dispatch callback
                 self.handleIncomingMessage(isolate, msg);
             }
 
-            // Run V8 microtasks here (if V8 integration available)
-            // TODO: Add microtask checkpoint callback
+            // Check again after processing messages (worker script may have called close())
+            if (self.thread_state.worker_ptr) |worker_ptr| {
+                const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
+                if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
+                    debug.print("[WorkerThread] DedicatedWorker closed after message processing, exiting\n", .{});
+                    self.thread_state.requestTermination();
+                    break;
+                }
+            }
 
-            // Small sleep to avoid busy-waiting
-            // In a production system, this would use proper event notification
-            std.time.sleep(1_000_000); // 1ms
+            // Run V8 microtask checkpoint
+            // This is critical for:
+            // 1. Promise resolution (microtasks)
+            // 2. setTimeout/setInterval execution (event loop timers)
+            // 3. Async/await continuations
+            //
+            // Note: We use a callback because html_core cannot import v8 directly.
+            // The callback is provided by worker_v8_context.zig which has V8 access.
+            // The callback implementation handles HandleScope creation internally.
+            if (self.microtask_checkpoint_fn) |checkpoint_fn| {
+                if (isolate) |iso| {
+                    checkpoint_fn(iso);
+                }
+            }
+
+            // Spin the worker's event loop to process timers and tasks
+            // This handles setTimeout, setInterval, and queued tasks
+            if (self.thread_state.worker_ptr) |worker_ptr| {
+                const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
+                dedicated_worker.spin() catch |err| {
+                    debug.print("[WorkerThread] event_loop.spin error: {s}\n", .{@errorName(err)});
+                };
+            }
+
+            // Wait for messages or termination signal using EventWakeup
+            // This is efficient - no busy-polling, just event-driven waiting
+            // The wakeup is signaled when:
+            // - A message is enqueued to the inbox (via inbox.setWakeup)
+            // - Termination is requested (via requestTermination signaling worker_wakeup)
+            if (self.thread_state.worker_wakeup) |wakeup| {
+                // Wait with 100ms timeout as a fallback for edge cases
+                // (e.g., worker script calling close() without message)
+                _ = wakeup.wait(100) catch {};
+            } else {
+                // Fallback if no wakeup configured (shouldn't happen in normal use)
+                std.Thread.sleep(1_000_000); // 1ms
+            }
         }
+        debug.print("[WorkerThread] runWorkerLoop exited after {d} iterations\n", .{loop_count});
     }
 
     /// Handle an incoming message from the main thread
     fn handleIncomingMessage(self: *Self, isolate: ?*anyopaque, msg: *ThreadSafeMessageQueue.SerializedMessage) void {
-        _ = self;
-        _ = isolate;
-        _ = msg;
-        // TODO: Dispatch message event to WorkerGlobalScope
-        // 1. Deserialize the message
-        // 2. Create MessageEvent
-        // 3. Dispatch to 'onmessage' handler
+        debug.print("[WorkerThread] handleIncomingMessage() called, msg.data.type={s}\n", .{@tagName(msg.data.type)});
+        // Dispatch message to worker's onmessage handler via V8 callback
+        if (self.dispatch_message_fn) |dispatch_fn| {
+            if (isolate) |iso| {
+                debug.print("[WorkerThread] handleIncomingMessage() dispatching to V8...\n", .{});
+                dispatch_fn(iso, msg) catch |err| {
+                    // Log error but continue processing other messages
+                    std.log.err("Failed to dispatch message to worker: {}", .{err});
+                    debug.print("[WorkerThread] handleIncomingMessage() dispatch FAILED: {s}\n", .{@errorName(err)});
+                };
+                debug.print("[WorkerThread] handleIncomingMessage() dispatch complete\n", .{});
+            } else {
+                debug.print("[WorkerThread] handleIncomingMessage() no isolate, skipping dispatch\n", .{});
+            }
+        } else {
+            debug.print("[WorkerThread] handleIncomingMessage() no dispatch_fn, skipping\n", .{});
+        }
     }
 
     /// Set error message (thread-safe via mutex)
@@ -512,6 +725,8 @@ pub const ThreadedWorkerManager = struct {
     create_isolate_fn: ?WorkerThreadRunner.CreateIsolateFn,
     dispose_isolate_fn: ?WorkerThreadRunner.DisposeIsolateFn,
     execute_script_fn: ?WorkerThreadRunner.ExecuteScriptFn,
+    dispatch_message_fn: ?WorkerThreadRunner.DispatchMessageFn,
+    microtask_checkpoint_fn: ?WorkerThreadRunner.MicrotaskCheckpointFn,
     callback_context: ?*anyopaque,
 
     const Self = @This();
@@ -524,6 +739,8 @@ pub const ThreadedWorkerManager = struct {
             .create_isolate_fn = null,
             .dispose_isolate_fn = null,
             .execute_script_fn = null,
+            .dispatch_message_fn = null,
+            .microtask_checkpoint_fn = null,
             .callback_context = null,
         };
     }
@@ -548,11 +765,15 @@ pub const ThreadedWorkerManager = struct {
         create_isolate: WorkerThreadRunner.CreateIsolateFn,
         dispose_isolate: WorkerThreadRunner.DisposeIsolateFn,
         execute_script: WorkerThreadRunner.ExecuteScriptFn,
+        dispatch_message: ?WorkerThreadRunner.DispatchMessageFn,
+        microtask_checkpoint: ?WorkerThreadRunner.MicrotaskCheckpointFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
         self.dispose_isolate_fn = dispose_isolate;
         self.execute_script_fn = execute_script;
+        self.dispatch_message_fn = dispatch_message;
+        self.microtask_checkpoint_fn = microtask_checkpoint;
         self.callback_context = context;
     }
 
@@ -586,6 +807,8 @@ pub const ThreadedWorkerManager = struct {
                 create,
                 self.dispose_isolate_fn.?,
                 self.execute_script_fn.?,
+                self.dispatch_message_fn,
+                self.microtask_checkpoint_fn,
                 self.callback_context,
             );
         }

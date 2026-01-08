@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const NDEFRecord = @import("interfaces").NDEFRecord;
+const NDEFRecord = @import("NDEFRecord.zig").NDEFRecord;
 const NDEFMessageInit = @import("dictionaries").NDEFMessageInit;
 
 pub const NDEFMessage = struct {

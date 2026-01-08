@@ -51,3 +51,10 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
     _ = callback;
     return error.NotImplemented;
 }
+
+
+pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = index;
+    return error.NotImplemented;
+}

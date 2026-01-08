@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
-const WebGLTimerQueryEXT = @import("interfaces").WebGLTimerQueryEXT;
+const WebGLTimerQueryEXT = @import("WebGLTimerQueryEXT.zig").WebGLTimerQueryEXT;
 
 pub const EXT_disjoint_timer_query = struct {
     pub const Meta = struct {

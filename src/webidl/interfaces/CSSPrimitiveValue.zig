@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSValue = @import("interfaces").CSSValue;
-const Counter = @import("interfaces").Counter;
-const Rect = @import("interfaces").Rect;
-const RGBColor = @import("interfaces").RGBColor;
+const CSSValue = @import("CSSValue.zig").CSSValue;
+const Counter = @import("Counter.zig").Counter;
+const Rect = @import("Rect.zig").Rect;
+const RGBColor = @import("RGBColor.zig").RGBColor;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSPrimitiveValue = struct {

@@ -127,30 +127,9 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const html_string = string.asSlice();
 
-    // Get the DOMParser's relevant global object's document URL
-    // Per spec: "URL is this's relevant global object's associated Document's URL"
-    // Track whether we allocated the URL so we can free it later
-    var allocated_url: ?[]const u8 = null;
-    defer if (allocated_url) |url| internal.allocator.free(url);
-
-    const realm_url: []const u8 = blk: {
-        // Get the realm from the context (instance.ctx is already ContextData pointer)
-        const realm = instance.ctx.realm orelse break :blk "about:blank";
-
-        // Get the global object (Window) from the realm - cast from *anyopaque
-        const window_ptr = realm.global_object orelse break :blk "about:blank";
-        const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-
-        // Get the Window's document
-        const Window = interfaces.Window;
-        const doc = Window.get_document(window_instance) catch break :blk "about:blank";
-
-        // Get the document's URL (returns allocated []const u8)
-        const url = interfaces.Document.get_URL(doc) catch break :blk "about:blank";
-        std.debug.print("DOMParser: inherited realm URL: {s}\n", .{url});
-        allocated_url = url; // Track for cleanup
-        break :blk url;
-    };
+    // TODO: Per spec, URL should be "this's relevant global object's associated Document's URL"
+    // Currently Window interface doesn't have document attribute, so we use about:blank
+    const realm_url: []const u8 = "about:blank";
 
     return switch (@"type") {
         ._text_html_ => {

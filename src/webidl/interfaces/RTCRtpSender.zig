@@ -12,12 +12,12 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCSetParameterOptions = @import("dictionaries").RTCSetParameterOptions;
-const MediaStream = @import("interfaces").MediaStream;
+const MediaStream = @import("MediaStream.zig").MediaStream;
 const RTCRtpSendParameters = @import("dictionaries").RTCRtpSendParameters;
-const RTCStatsReport = @import("interfaces").RTCStatsReport;
-const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
-const RTCDTMFSender = @import("interfaces").RTCDTMFSender;
-const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const RTCStatsReport = @import("RTCStatsReport.zig").RTCStatsReport;
+const RTCDtlsTransport = @import("RTCDtlsTransport.zig").RTCDtlsTransport;
+const RTCDTMFSender = @import("RTCDTMFSender.zig").RTCDTMFSender;
+const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
 const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
 const DOMString = @import("typedefs").DOMString;
 
