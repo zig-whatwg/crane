@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const EventInit = @import("dictionaries").EventInit;
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const RTCPeerConnectionIceEventInit = @import("dictionaries").RTCPeerConnectionIceEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const RTCIceCandidate = @import("interfaces").RTCIceCandidate;
+const RTCIceCandidate = @import("RTCIceCandidate.zig").RTCIceCandidate;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 

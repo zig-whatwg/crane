@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ChildBreakToken = @import("interfaces").ChildBreakToken;
+const ChildBreakToken = @import("ChildBreakToken.zig").ChildBreakToken;
 
 pub const LayoutFragment = struct {
     pub const Meta = struct {

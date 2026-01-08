@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ReadableStream = @import("interfaces").ReadableStream;
-const WritableStream = @import("interfaces").WritableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const WritableStream = @import("WritableStream.zig").WritableStream;
 
 pub const GenericTransformStream = struct {
     pub const Meta = struct {

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ReadableStreamGenericReader = @import("mixins").ReadableStreamGenericReader;
-const ReadableStream = @import("interfaces").ReadableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 const ReadableStreamReadResult = @import("dictionaries").ReadableStreamReadResult;
 
 pub const ReadableStreamDefaultReader = struct {

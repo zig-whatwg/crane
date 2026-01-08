@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Attr = @import("interfaces").Attr;
+const Attr = @import("Attr.zig").Attr;
 const DOMString = @import("typedefs").DOMString;
 
 pub const NamedNodeMap = struct {

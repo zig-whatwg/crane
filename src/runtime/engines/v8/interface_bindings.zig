@@ -28,9 +28,12 @@ const std = @import("std");
 const v8 = @import("ffi.zig");
 const V8Interface = @import("interface.zig").V8Interface;
 pub const V8Namespace = @import("namespace.zig").V8Namespace;
+const webidl = @import("webidl");
+const helpers = webidl.helpers;
 
 // Import generated interfaces
 const interfaces = @import("interfaces");
+const interface_catalog = @import("interface_catalog.zig");
 
 // ============================================================================
 // Centralized Skip List
@@ -267,6 +270,64 @@ pub fn registerAllTemplatesOnly(
     }
 }
 
+/// Install interfaces filtered by scope exposure
+///
+/// This function registers only the interfaces that are exposed in the given
+/// GlobalScopeKind. Uses the [Exposed] WebIDL extended attribute to determine
+/// which interfaces should be available in each scope.
+///
+/// For example:
+/// - Window scope: Document, HTMLElement, etc.
+/// - Worker scope: WorkerGlobalScope, MessagePort, etc.
+/// - ServiceWorker scope: ServiceWorkerGlobalScope, Cache, etc.
+///
+/// This is the exposure-driven interface installation from BSCOPE-03.
+pub fn installForScope(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    comptime scope: helpers.GlobalScope,
+) void {
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const global = v8.v8_Context_Global(context) orelse return;
+
+    inline for (iface_decls) |decl| {
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            const has_legacy_namespace = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "extended_attributes")) {
+                    const ext_attrs = Meta.extended_attributes;
+                    for (ext_attrs) |attr| {
+                        if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
+                            break :blk true;
+                        }
+                    }
+                }
+                break :blk false;
+            };
+            if (has_legacy_namespace) continue;
+
+            if (comptime helpers.isExposedIn(InterfaceType, scope)) {
+                const Binding = V8Interface(InterfaceType);
+                Binding.registerGlobalFast(isolate, context, global, decl.name);
+            }
+        }
+    }
+}
+
 /// Initialize ALL V8 interface bindings
 ///
 /// This is the **main entry point** for V8 interface binding setup.
@@ -311,7 +372,21 @@ pub fn initializeBindings(
     // e.g., HTMLDocument is an alias for Document per HTML spec
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: WindowProperties insertion is deferred.
+    // Step 7: SKIP namespace registration during snapshot creation!
+    //
+    // Namespaces (console, CSS, WebAssembly, etc.) contain function callbacks
+    // with memory addresses specific to the snapshot creator binary.
+    // These callbacks cannot be invoked at runtime because they point to
+    // different addresses in the runtime binary.
+    //
+    // Instead, namespaces are registered at runtime via registerNamespacesGeneric()
+    // in browser/Context.zig, which uses the runtime binary's callback addresses.
+    //
+    // NOTE: We still need to register namespace external references so V8 knows
+    // about them during snapshot creation for interface method callbacks that
+    // might reference namespace types.
+
+    // Step 8: WindowProperties insertion is deferred.
     // WindowProperties must be inserted AFTER the Window instance is created and bound
     // to the global's internal field. This is done in context_manager.zig after Window.init().
     // See createChildContext() for the call to window_properties.insertIntoPrototypeChain().
@@ -367,7 +442,99 @@ pub fn initializeBindingsWithGlobalTemplate(
     // e.g., HTMLDocument is an alias for Document per HTML spec
     registerLegacyInterfaceAliases(isolate, context);
 
-    // Step 7: WindowProperties insertion is deferred (same as initializeBindings)
+    // Step 7: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
+    // (See comment in initializeBindings for explanation)
+
+    // Step 8: WindowProperties insertion is deferred (same as initializeBindings)
+}
+
+/// Initialize bindings for a specific scope context (used by snapshot generator)
+///
+/// This is the SCOPE-FILTERED path for context initialization. Only interfaces
+/// that are exposed to the given scope are registered on the global object.
+///
+/// This enables proper scope isolation:
+/// - Window context gets Document, Window-specific APIs
+/// - DedicatedWorker context gets WorkerGlobalScope, but NOT Document
+/// - ServiceWorker context gets ServiceWorkerGlobalScope, clients, etc.
+/// - AudioWorklet context gets AudioWorkletGlobalScope, but NOT DOM APIs
+///
+/// Per WebIDL spec, the [Exposed] extended attribute controls which global
+/// scopes an interface is available in.
+pub fn initializeBindingsForScope(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    comptime scope: helpers.GlobalScope,
+) void {
+    // Step 1: Register only interfaces exposed to this scope
+    installForScope(isolate, context, scope);
+
+    // Step 2: Set up constructor inheritance chain
+    // This sets Element.__proto__ = Node, etc. on the constructor functions
+    setupConstructorInheritance(isolate, context);
+
+    // Step 3: Register legacy factory functions
+    // These are separate constructors that create instances of other interfaces
+    // e.g., Image creates HTMLImageElement, Audio creates HTMLAudioElement
+    registerLegacyFactoryFunctions(isolate, context);
+
+    // Step 4: Register Intl namespace (pure Zig i18n - replaces ICU)
+    const intl_binding = @import("intl_binding.zig");
+    intl_binding.registerGlobal(isolate, context);
+
+    // Step 5: Register toLocaleString methods on built-in prototypes
+    intl_binding.registerToLocaleStringMethods(isolate, context);
+
+    // Step 6: Register legacy interface aliases
+    // These are historical aliases that map to other interfaces
+    // e.g., HTMLDocument is an alias for Document per HTML spec
+    registerLegacyInterfaceAliases(isolate, context);
+
+    // Step 7: SKIP namespace registration - done at runtime via registerNamespacesGeneric()
+    // (See comment in initializeBindings for explanation)
+
+    // Step 8: WindowProperties insertion is deferred (same as initializeBindings)
+}
+
+/// Initialize only core DOM interface bindings for a scope.
+///
+/// This is the Chromium-style minimal snapshot architecture where only 6 core
+/// interfaces are included in the V8 snapshot:
+/// - EventTarget (base for all event dispatchers)
+/// - Node (base for DOM tree)
+/// - Element (base for elements)
+/// - Document (the document)
+/// - Window (the global object)
+///
+/// All other interfaces are created on-demand when first accessed via
+/// `createTemplateOnDemand()`.
+pub fn initializeCoreBindingsForScope(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    comptime scope: helpers.GlobalScope,
+) void {
+    _ = scope; // Core interfaces are always registered regardless of scope
+
+    // Get the global object from context
+    const global = v8.v8_Context_Global(context) orelse {
+        std.debug.print("[CORE-BINDINGS] Failed to get global object from context\n", .{});
+        return;
+    };
+
+    // Register only the 5 core DOM interfaces
+    // These form the essential prototype chain that must exist in the snapshot
+    EventTarget.registerGlobalFast(isolate, context, global, "EventTarget");
+    Node.registerGlobalFast(isolate, context, global, "Node");
+    Element.registerGlobalFast(isolate, context, global, "Element");
+    Document.registerGlobalFast(isolate, context, global, "Document");
+    Window.registerGlobalFast(isolate, context, global, "Window");
+
+    // NOTE: Constructor inheritance is already set up through V8Interface.createTemplate()
+    // which calls v8_FunctionTemplate_Inherit() to establish the prototype chain at the
+    // FunctionTemplate level. No additional setup needed here.
+
+    // Register HTMLDocument as alias for Document (legacy compatibility)
+    registerLegacyInterfaceAliases(isolate, context);
 }
 
 /// Register legacy interface aliases
@@ -375,7 +542,7 @@ pub fn initializeBindingsWithGlobalTemplate(
 /// Per HTML spec, some interfaces have historical aliases that should be
 /// available on the global object. For example:
 /// - HTMLDocument is an alias for Document
-fn registerLegacyInterfaceAliases(
+pub fn registerLegacyInterfaceAliases(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
@@ -402,7 +569,7 @@ fn registerLegacyInterfaceAliases(
 /// - Image creates HTMLImageElement instances
 /// - Audio creates HTMLAudioElement instances
 /// - Option creates HTMLOptionElement instances
-fn registerLegacyFactoryFunctions(
+pub fn registerLegacyFactoryFunctions(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
@@ -778,5 +945,142 @@ test "EventTarget binding has methods" {
 
     try testing.expect(has_addEventListener);
     try testing.expect(has_removeEventListener);
+
     try testing.expect(has_dispatchEvent);
+}
+
+/// Reinstall accessor callbacks on ALL interface prototypes
+///
+/// This is used after loading from a V8 snapshot. V8 snapshots serialize JavaScript
+/// objects but native callback pointers become stale. This function re-installs
+/// accessor callbacks (getters/setters) on all interface prototypes so properties
+/// work correctly.
+///
+/// Must be called after registerAllTemplatesOnly() and before using the context.
+pub fn reinstallAllAccessorCallbacks(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    std.debug.print("[REINSTALL-ALL] reinstallAllAccessorCallbacks called, isolate={*}, context={*}\n", .{ isolate, context });
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        // Skip problematic interfaces using centralized skip list
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        // Only bind types that have Meta (actual interfaces)
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            // Skip mixin interfaces
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            const Binding = V8Interface(InterfaceType);
+            Binding.reinstallAccessorCallbacksOnPrototype(isolate, context);
+        }
+    }
+}
+
+/// Reinstall method callbacks on ALL interface prototypes
+///
+/// This is used after loading from a V8 snapshot. V8 snapshots serialize JavaScript
+/// objects but native callback pointers become stale. This function re-installs
+/// method callbacks on all interface prototypes so methods work correctly.
+///
+/// Must be called after registerAllTemplatesOnly() and before using the context.
+pub fn reinstallAllMethodCallbacks(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    @setEvalBranchQuota(200_000);
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        // Skip problematic interfaces using centralized skip list
+        if (comptime shouldSkipInterface(decl.name)) continue;
+
+        const InterfaceType = @field(interfaces, decl.name);
+
+        // Only bind types that have Meta (actual interfaces)
+        if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+            // Skip mixin interfaces
+            const is_mixin = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "is_mixin")) {
+                    break :blk Meta.is_mixin;
+                }
+                break :blk false;
+            };
+            if (is_mixin) continue;
+
+            const Binding = V8Interface(InterfaceType);
+            Binding.reinstallMethodCallbacksOnPrototype(isolate, context);
+        }
+    }
+}
+
+// ============================================================================
+// ON-DEMAND TEMPLATE CREATION
+// ============================================================================
+// These functions support creating templates at runtime for interfaces that
+// were not included in the V8 snapshot. This is part of the Chromium-style
+// minimal snapshot architecture where only core DOM interfaces are snapshotted,
+// and other interfaces are created on-demand.
+
+/// Create a template on-demand by interface name.
+///
+/// This is called when wrapInstanceAsV8Object() needs a template that doesn't
+/// exist in the template registry. Instead of failing, we create the template
+/// fresh with all accessors correctly installed.
+///
+/// Uses inline for to match interface name at runtime and create the appropriate template.
+pub fn createTemplateOnDemandByName(
+    interface_name: []const u8,
+    isolate: *v8.Isolate,
+) ?*v8.FunctionTemplate {
+    @setEvalBranchQuota(10_000_000);
+    const template_registry = @import("template_registry.zig");
+    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (iface_decls) |decl| {
+        const InterfaceType = @field(interfaces, decl.name);
+
+        // Skip non-interface types
+        if (@typeInfo(InterfaceType) != .@"struct") continue;
+        if (!@hasDecl(InterfaceType, "Meta")) continue;
+
+        const meta = InterfaceType.Meta;
+
+        // Skip mixins
+        if (@hasDecl(InterfaceType.Meta, "is_mixin")) {
+            if (meta.is_mixin) continue;
+        }
+
+        // Check if this is the interface we're looking for
+        if (std.mem.eql(u8, decl.name, interface_name)) {
+            // Skip problematic interfaces
+            if (shouldSkipInterface(decl.name)) {
+                return null;
+            }
+
+            // Create the template
+            const Binding = V8Interface(InterfaceType);
+            const template = Binding.createTemplate(isolate);
+
+            // Register it in the template registry for future use
+            template_registry.register(interface_name, template, isolate);
+
+            return template;
+        }
+    }
+
+    return null;
 }

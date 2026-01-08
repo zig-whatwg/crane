@@ -55,7 +55,7 @@ pub fn call_constructor(ctx: runtime.Context, originalFrame: *runtime.Instance, 
 }
 
 /// Getter for type
-pub fn get_type(instance: *runtime.Instance) anyerror!enums.RTCEncodedVideoFrameType {
+pub fn get_type(instance: *runtime.Instance) anyerror!enums.EncodedVideoChunkType {
     _ = instance;
     return error.NotImplemented;
 }

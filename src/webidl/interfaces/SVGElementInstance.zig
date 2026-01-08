@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SVGUseElement = @import("interfaces").SVGUseElement;
-const SVGElement = @import("interfaces").SVGElement;
+const SVGUseElement = @import("SVGUseElement.zig").SVGUseElement;
+const SVGElement = @import("SVGElement.zig").SVGElement;
 
 pub const SVGElementInstance = struct {
     pub const Meta = struct {

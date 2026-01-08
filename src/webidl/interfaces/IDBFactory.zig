@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const IDBOpenDBRequest = @import("interfaces").IDBOpenDBRequest;
+const IDBOpenDBRequest = @import("IDBOpenDBRequest.zig").IDBOpenDBRequest;
 const DOMString = @import("typedefs").DOMString;
 
 pub const IDBFactory = struct {

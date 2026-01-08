@@ -9,7 +9,7 @@
 //! - Free list is maintained across all slabs for O(1) allocation
 //! - Slabs are never freed (retained for lifetime of program)
 //!
-//! Thread safety: Single-threaded (no locks)
+//! Thread safety: Thread-safe via mutex (supports worker threads)
 
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
@@ -77,6 +77,9 @@ pub const SlabAllocator = struct {
     total_allocated: usize,
     total_freed: usize,
 
+    /// Mutex for thread-safe access from worker threads
+    mutex: std.Thread.Mutex,
+
     /// Global instance
     var global: ?SlabAllocator = null;
 
@@ -89,6 +92,7 @@ pub const SlabAllocator = struct {
             .total_slabs = 0,
             .total_allocated = 0,
             .total_freed = 0,
+            .mutex = .{},
         };
     }
 
@@ -127,8 +131,16 @@ pub const SlabAllocator = struct {
         }
     }
 
-    /// Allocate an Instance with the given vtable
+    /// Allocate an Instance with the given vtable (thread-safe)
     pub fn alloc(self: *SlabAllocator, vtable: *const VTable) !*Instance {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        return self.allocLocked(vtable);
+    }
+
+    /// Internal allocation without lock (caller must hold mutex)
+    fn allocLocked(self: *SlabAllocator, vtable: *const VTable) !*Instance {
         // Try to get a slot from the free list
         if (self.free_list) |slot| {
             // Remove from free list
@@ -176,8 +188,11 @@ pub const SlabAllocator = struct {
         return inst;
     }
 
-    /// Free an Instance (return slot to free list)
+    /// Free an Instance (return slot to free list) (thread-safe)
     pub fn free(self: *SlabAllocator, inst: *Instance) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         const slot: *Slot = @ptrCast(inst);
 
         // Add to free list

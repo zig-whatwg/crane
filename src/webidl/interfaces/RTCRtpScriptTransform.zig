@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Worker = @import("interfaces").Worker;
+const Worker = @import("Worker.zig").Worker;
 
 pub const RTCRtpScriptTransform = struct {
     pub const Meta = struct {

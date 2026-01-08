@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const LockManager = @import("interfaces").LockManager;
+const LockManager = @import("LockManager.zig").LockManager;
 
 pub const NavigatorLocks = struct {
     pub const Meta = struct {

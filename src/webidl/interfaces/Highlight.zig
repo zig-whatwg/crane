@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const HighlightType = @import("enums").HighlightType;
-const AbstractRange = @import("interfaces").AbstractRange;
+const AbstractRange = @import("AbstractRange.zig").AbstractRange;
 
 pub const Highlight = struct {
     pub const Meta = struct {

@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("interfaces").Node;
-const NodeFilter = @import("interfaces").NodeFilter;
+const Node = @import("Node.zig").Node;
+const NodeFilter = @import("NodeFilter.zig").NodeFilter;
 
 pub const NodeIterator = struct {
     pub const Meta = struct {

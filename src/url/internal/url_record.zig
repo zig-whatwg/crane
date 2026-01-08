@@ -62,13 +62,17 @@ pub const URLRecord = struct {
     /// Path (spec line 811) - URL path (opaque or segments)
     path: Path,
 
-    /// Query offset/length (spec line 815) - null if query_len == 0
+    /// Query offset/length (spec line 815)
     query_start: u32,
     query_len: u32,
+    /// Whether URL has a query component (distinguishes null from empty string "")
+    has_query: bool,
 
-    /// Fragment offset/length (spec line 817) - null if fragment_len == 0
+    /// Fragment offset/length (spec line 817)
     fragment_start: u32,
     fragment_len: u32,
+    /// Whether URL has a fragment component (distinguishes null from empty string "")
+    has_fragment: bool,
 
     /// Blob URL entry (spec line 819) - null or a blob URL entry
     /// Used for blob: URLs to cache the object and origin
@@ -92,14 +96,16 @@ pub const URLRecord = struct {
     }
 
     /// Get query string (spec line 815) - null if no query
+    /// Note: Empty string "" is valid (URL has "?" with nothing after)
     pub fn query(self: *const URLRecord) ?[]const u8 {
-        if (self.query_len == 0) return null;
+        if (!self.has_query) return null;
         return self.buffer[self.query_start .. self.query_start + self.query_len];
     }
 
     /// Get fragment string (spec line 817) - null if no fragment
+    /// Note: Empty string "" is valid (URL has "#" with nothing after)
     pub fn fragment(self: *const URLRecord) ?[]const u8 {
-        if (self.fragment_len == 0) return null;
+        if (!self.has_fragment) return null;
         return self.buffer[self.fragment_start .. self.fragment_start + self.fragment_len];
     }
 
@@ -189,6 +195,7 @@ pub const URLRecord = struct {
         self.allocator.free(self.buffer);
         self.buffer = new_buffer;
         self.query_len = new_query_len;
+        self.has_query = new_query != null;
     }
 
     /// Free URL record resources

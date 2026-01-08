@@ -7,7 +7,9 @@
 const std = @import("std");
 
 const ServiceWorker = @import("../service_worker.zig").ServiceWorker;
-const ServiceWorkerGlobalScope = @import("../global/service_worker_global_scope.zig").ServiceWorkerGlobalScope;
+// NOTE: ServiceWorkerGlobalScope import intentionally removed to break circular dependency.
+// Termination logic uses callbacks in TerminateContext for GlobalScope interactions.
+// See: whatwg-u8d3g (Refactor ServiceWorker to Break Circular Dependency)
 const ServiceWorkerState = @import("../types.zig").ServiceWorkerState;
 
 /// Result of the terminate algorithm.

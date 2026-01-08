@@ -27,8 +27,11 @@ pub const InternalState = struct {
     /// Cached StorageManager instance (singleton per Navigator)
     storage_manager: ?*runtime.Instance = null,
 
+    /// Cached ServiceWorkerContainer instance (singleton per Navigator)
+    service_worker_container: ?*runtime.Instance = null,
+
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // StorageManager cleanup handled by GC
+        // Cleanup handled by GC
         _ = self;
         _ = allocator;
     }
@@ -213,9 +216,21 @@ pub fn get_managed(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for serviceWorker
+/// Returns the ServiceWorkerContainer for this navigator
 pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.NotImplemented;
+
+    // Return cached ServiceWorkerContainer if it exists
+    if (internal.service_worker_container) |container| {
+        return container;
+    }
+
+    // Create a new ServiceWorkerContainer for this navigator
+    const ServiceWorkerContainer = interfaces.ServiceWorkerContainer;
+    const container = try ServiceWorkerContainer.init(internal.allocator, instance.ctx);
+    internal.service_worker_container = container;
+    return container;
 }
 
 /// Getter for ink

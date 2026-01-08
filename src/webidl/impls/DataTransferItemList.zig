@@ -65,3 +65,10 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     _ = instance;
     return error.NotImplemented;
 }
+
+
+pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = index;
+    return error.NotImplemented;
+}

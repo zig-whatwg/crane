@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const MLContextOptions = @import("dictionaries").MLContextOptions;
-const MLContext = @import("interfaces").MLContext;
-const GPUDevice = @import("interfaces").GPUDevice;
+const MLContext = @import("MLContext.zig").MLContext;
+const GPUDevice = @import("GPUDevice.zig").GPUDevice;
 
 pub const ML = struct {
     pub const Meta = struct {

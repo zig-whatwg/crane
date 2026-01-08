@@ -95,18 +95,30 @@ fn utf8ToUtf16Unicode(allocator: Allocator, utf8: []const u8) !String {
     try result.ensureCapacity(utf8.len);
     errdefer result.deinit();
 
+    // U+FFFD REPLACEMENT CHARACTER - used for invalid UTF-8 sequences
+    const replacement_char: u16 = 0xFFFD;
+
     var i: usize = 0;
     while (i < utf8.len) {
         const len = std.unicode.utf8ByteSequenceLength(utf8[i]) catch {
-            return InfraError.InvalidUtf8;
+            // Invalid start byte - replace with U+FFFD and skip one byte
+            try result.append(replacement_char);
+            i += 1;
+            continue;
         };
 
         if (i + len > utf8.len) {
-            return InfraError.InvalidUtf8;
+            // Incomplete sequence at end - replace with U+FFFD and skip one byte
+            try result.append(replacement_char);
+            i += 1;
+            continue;
         }
 
         const codepoint = std.unicode.utf8Decode(utf8[i .. i + len]) catch {
-            return InfraError.InvalidUtf8;
+            // Invalid sequence - replace with U+FFFD and skip the invalid start byte
+            try result.append(replacement_char);
+            i += 1;
+            continue;
         };
 
         if (codepoint <= 0xFFFF) {
@@ -117,7 +129,10 @@ fn utf8ToUtf16Unicode(allocator: Allocator, utf8: []const u8) !String {
             try result.append(high);
             try result.append(low);
         } else {
-            return InfraError.InvalidUtf8;
+            // Code point out of range - replace with U+FFFD
+            try result.append(replacement_char);
+            i += len;
+            continue;
         }
 
         i += len;
