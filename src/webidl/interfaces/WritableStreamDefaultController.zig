@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AbortSignal = @import("AbortSignal.zig").AbortSignal;
+const AbortSignal = @import("interfaces").AbortSignal;
 
 pub const WritableStreamDefaultController = struct {
     pub const Meta = struct {

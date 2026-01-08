@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const Event = @import("interfaces").Event;
+const EventTarget = @import("interfaces").EventTarget;
 const SpeechSynthesisEventInit = @import("dictionaries").SpeechSynthesisEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const SpeechSynthesisUtterance = @import("SpeechSynthesisUtterance.zig").SpeechSynthesisUtterance;
+const SpeechSynthesisUtterance = @import("interfaces").SpeechSynthesisUtterance;
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechSynthesisEvent = struct {

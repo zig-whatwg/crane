@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CredentialCreationOptions = @import("dictionaries").CredentialCreationOptions;
-const Credential = @import("Credential.zig").Credential;
+const Credential = @import("interfaces").Credential;
 const CredentialRequestOptions = @import("dictionaries").CredentialRequestOptions;
 
 pub const CredentialsContainer = struct {

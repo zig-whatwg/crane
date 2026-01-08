@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemDirectoryEntry = @import("FileSystemDirectoryEntry.zig").FileSystemDirectoryEntry;
+const FileSystemDirectoryEntry = @import("interfaces").FileSystemDirectoryEntry;
 const USVString = @import("typedefs").USVString;
 
 pub const FileSystem = struct {

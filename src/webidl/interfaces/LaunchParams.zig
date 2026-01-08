@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
-const FileSystemHandle = @import("FileSystemHandle.zig").FileSystemHandle;
+const FileSystemHandle = @import("interfaces").FileSystemHandle;
 
 pub const LaunchParams = struct {
     pub const Meta = struct {

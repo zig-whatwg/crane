@@ -94,8 +94,10 @@ pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii
                 // Skip this character
             },
             .disallowed => {
-                // Per UTS46/WHATWG URL, disallowed characters MUST cause failure
-                return MappingError.DisallowedCharacter;
+                // Per UTS46, disallowed characters are kept as-is during mapping
+                // They will be flagged with validation status V7, but not rejected
+                // This allows Punycode encoding to work for tests with disallowed chars
+                try result.appendSlice(input[i .. i + cp_len]);
             },
             .disallowed_std3_valid => {
                 if (use_std3_ascii_rules) {

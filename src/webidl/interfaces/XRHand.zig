@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRJointSpace = @import("XRJointSpace.zig").XRJointSpace;
+const XRJointSpace = @import("interfaces").XRJointSpace;
 const XRHandJoint = @import("enums").XRHandJoint;
 
 pub const XRHand = struct {

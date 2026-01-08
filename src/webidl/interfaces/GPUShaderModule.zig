@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUObjectBase = @import("mixins").GPUObjectBase;
-const GPUCompilationInfo = @import("GPUCompilationInfo.zig").GPUCompilationInfo;
+const GPUCompilationInfo = @import("interfaces").GPUCompilationInfo;
 const USVString = @import("typedefs").USVString;
 
 pub const GPUShaderModule = struct {

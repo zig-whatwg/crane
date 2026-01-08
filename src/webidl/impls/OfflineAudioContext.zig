@@ -8,7 +8,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const OfflineAudioContext = interfaces.OfflineAudioContext;
-const BaseAudioContextImpl = @import("BaseAudioContext.zig");
 
 pub const State = OfflineAudioContext.State;
 
@@ -16,12 +15,11 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for OfflineAudioContext
-pub const InternalState = struct {
-    number_of_channels: u32,
-    length: u32,
-    oncomplete: ?typedefs.EventHandler,
-};
+/// Internal state for implementation-specific data
+/// Implementations can replace this with a real struct containing:
+/// - Private data not exposed via WebIDL attributes
+/// - Cached computations, buffers, etc.
+pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -31,59 +29,47 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up BaseAudioContext internal state (includes AudioWorklet)
-    BaseAudioContextImpl.deinit(instance);
+    // TODO: Clean up your instance resources here
+    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// Constructor implementation
+/// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, args: interfaces.OfflineAudioContext.ConstructorArgs) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &OfflineAudioContext.vtable, ctx);
     errdefer deinit(instance);
 
-    // Extract constructor parameters
-    const number_of_channels: u32, const length: u32, const sample_rate: f32 = switch (args) {
-        .unsigned_long_unsigned_long_float => |a| .{ a.numberOfChannels, a.length, a.sampleRate },
-        .OfflineAudioContextOptions => |opts| .{
-            opts.numberOfChannels orelse 2,
-            opts.length,
-            opts.sampleRate,
-        },
-    };
-
-    // Initialize BaseAudioContext internal state with the sample rate
-    _ = try BaseAudioContextImpl.getOrCreateInternalState(instance, ctx.getAllocator(), sample_rate);
-
-    // Store OfflineAudioContext-specific state in the flattened state
-    const state = instance.getState(State);
-    state.own.length = length;
-    state.own.oncomplete = null;
-    _ = number_of_channels; // Used for audio processing, stored in parent
+    _ = args;
+    // TODO: Implement constructor logic for each overload
+    // Use: switch (args) { .VariantName => |variant_args| { ... } }
 
     return instance;
 }
 
 /// Getter for length
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    const state = instance.getState(State);
-    return state.own.length;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for oncomplete
 pub fn get_oncomplete(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.oncomplete orelse null;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Setter for oncomplete
 pub fn set_oncomplete(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    state.own.oncomplete = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Operation: suspend

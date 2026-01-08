@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRInputSource = @import("XRInputSource.zig").XRInputSource;
+const XRInputSource = @import("interfaces").XRInputSource;
 
 pub const XRInputSourceArray = struct {
     pub const Meta = struct {

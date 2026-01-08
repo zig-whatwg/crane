@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const USVString = @import("typedefs").USVString;
-const CSSUnparsedValue = @import("CSSUnparsedValue.zig").CSSUnparsedValue;
+const CSSUnparsedValue = @import("interfaces").CSSUnparsedValue;
 
 pub const CSSVariableReferenceValue = struct {
     pub const Meta = struct {

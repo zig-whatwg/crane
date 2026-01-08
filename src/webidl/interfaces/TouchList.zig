@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Touch = @import("Touch.zig").Touch;
+const Touch = @import("interfaces").Touch;
 
 pub const TouchList = struct {
     pub const Meta = struct {

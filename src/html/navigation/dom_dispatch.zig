@@ -212,6 +212,11 @@ fn dispatchEventToWindow(
         // Find and call all registered handlers for this event type
         try registry.dispatchEvent(allocator, event_type, options);
     }
+
+    // Log for debugging (can be removed in production)
+    if (@import("builtin").mode == .Debug) {
+        std.debug.print("Navigation event dispatched: {s}\n", .{event_type});
+    }
 }
 
 /// Dispatch a cancelable event to a Window

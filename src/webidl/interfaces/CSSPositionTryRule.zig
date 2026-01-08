@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("CSSRule.zig").CSSRule;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSRule = @import("interfaces").CSSRule;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
-const CSSPositionTryDescriptors = @import("CSSPositionTryDescriptors.zig").CSSPositionTryDescriptors;
+const CSSPositionTryDescriptors = @import("interfaces").CSSPositionTryDescriptors;
 
 pub const CSSPositionTryRule = struct {
     pub const Meta = struct {
@@ -136,7 +136,6 @@ pub const CSSPositionTryRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

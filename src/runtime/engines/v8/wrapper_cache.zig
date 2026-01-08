@@ -105,12 +105,6 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     if (data) |entry_ptr| {
         const entry: *CacheEntry = @ptrCast(@alignCast(entry_ptr));
 
-        // CRITICAL: Set thread-local flag to indicate we're in a GC weak callback.
-        // This prevents markAsCleanedUp from calling v8_Global_ClearWeak on the
-        // handle that's currently being processed by V8's GC (which would segfault).
-        in_gc_weak_callback = true;
-        defer in_gc_weak_callback = false;
-
         // Step 1: Check if context teardown is in progress
         // If the CleanupCoordinator is handling teardown, skip GC-driven cleanup
         // to prevent race conditions and double-free issues
@@ -148,11 +142,6 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         entry.cache.allocator.destroy(entry);
     }
 }
-
-/// Thread-local flag to track if we're inside a GC weak callback.
-/// When true, we must NOT call v8_Global_ClearWeak() because the handle
-/// is already being processed by V8's GC.
-threadlocal var in_gc_weak_callback: bool = false;
 
 /// V8 Wrapper Identity Cache
 ///
@@ -381,11 +370,6 @@ pub const WrapperCache = struct {
     /// JavaScript execution context. The handle will be disposed during
     /// wrapper_cache.deinit().
     ///
-    /// IMPORTANT: If we're inside a GC weak callback (in_gc_weak_callback == true),
-    /// we must NOT call v8_Global_ClearWeak() because the handle is already being
-    /// processed by V8's GC. Calling ClearWeak on an already-weak-processing handle
-    /// causes a segfault.
-    ///
     /// ## Parameters
     /// - instance: The Zig instance that has been cleaned up
     ///
@@ -397,12 +381,8 @@ pub const WrapperCache = struct {
         if (self.is_tearing_down) return false;
 
         if (self.cache.get(instance)) |entry| {
-            // Only clear weak callback if we're NOT inside a GC weak callback.
-            // If we're in a weak callback, the handle is already being processed
-            // by V8's GC and calling ClearWeak would segfault.
-            if (!in_gc_weak_callback) {
-                v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
-            }
+            // Clear weak callback to prevent it from firing
+            v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
             // Mark as already cleaned - deinit will skip onObjectFreed
             entry.instance_already_cleaned = true;
             return true;

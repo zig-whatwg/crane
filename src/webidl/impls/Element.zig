@@ -417,30 +417,6 @@ pub const InternalState = struct {
 const utils = @import("webidl").utils;
 const Registry = utils.InstanceRegistry(InternalState);
 
-// Fallback storage for local_name when Registry lookup fails
-// This provides a workaround for cases where the element is created but
-// the Registry doesn't have the internal state (e.g., during HTML parsing)
-var local_name_fallback: ?std.AutoHashMap(usize, []const u8) = null;
-
-fn ensureLocalNameFallback() *std.AutoHashMap(usize, []const u8) {
-    if (local_name_fallback == null) {
-        local_name_fallback = std.AutoHashMap(usize, []const u8).init(std.heap.page_allocator);
-    }
-    return &local_name_fallback.?;
-}
-
-/// Get local_name from fallback storage (used when Registry lookup fails)
-pub fn getLocalNameFromFallback(instance: *runtime.Instance) ?[]const u8 {
-    const fallback = ensureLocalNameFallback();
-    return fallback.get(@intFromPtr(instance));
-}
-
-/// Store local_name in fallback storage
-fn setLocalNameInFallback(instance: *runtime.Instance, local_name: []const u8) void {
-    const fallback = ensureLocalNameFallback();
-    fallback.put(@intFromPtr(instance), local_name) catch {};
-}
-
 /// Get the internal state from an instance
 /// Made public for use by Document's getElementById, getElementsByTagName, etc.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -547,25 +523,14 @@ pub fn setPrefix(instance: *runtime.Instance, prefix: ?[]const u8) !void {
 /// Used by Document.createElement and Document.createElementNS
 /// Uses tag name interning for common HTML elements to avoid allocation.
 pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
-    // Try to use interned tag name for common HTML elements
-    const html_core = @import("html_core");
-    const interned_name = html_core.internTagName(local_name);
-
-    // Always store in fallback for cases where Registry lookup might fail later
-    // This ensures getDefaultDisplay can always get the local_name
-    if (interned_name) |interned| {
-        setLocalNameInFallback(instance, interned);
-    } else {
-        setLocalNameInFallback(instance, local_name);
-    }
-
-    // Try to set in internal state if available
-    const internal = getInternal(instance) orelse return; // Don't error, fallback is set
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Free existing local name
     internal.local_name.deinit(internal.allocator);
 
-    if (interned_name) |interned| {
+    // Try to use interned tag name for common HTML elements
+    const html_core = @import("html_core");
+    if (html_core.internTagName(local_name)) |interned| {
         // Use interned static string - no allocation needed
         internal.local_name = runtime.DOMString.initInterned(interned);
     } else {

@@ -33,16 +33,6 @@ pub const InternalState = struct {
     cookie_store: ?*runtime.Instance,
     /// The oncookiechange event handler
     oncookiechange_handler: ?*const anyopaque,
-    /// The oninstall event handler
-    oninstall_handler: ?typedefs.EventHandler,
-    /// The onactivate event handler
-    onactivate_handler: ?typedefs.EventHandler,
-    /// The onfetch event handler
-    onfetch_handler: ?typedefs.EventHandler,
-    /// The onmessage event handler
-    onmessage_handler: ?typedefs.EventHandler,
-    /// The onmessageerror event handler
-    onmessageerror_handler: ?typedefs.EventHandler,
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
 
@@ -58,11 +48,6 @@ pub const InternalState = struct {
             .is_secure_context = is_secure_context,
             .cookie_store = null,
             .oncookiechange_handler = null,
-            .oninstall_handler = null,
-            .onactivate_handler = null,
-            .onfetch_handler = null,
-            .onmessage_handler = null,
-            .onmessageerror_handler = null,
             .allocator = allocator,
         };
 
@@ -127,38 +112,33 @@ pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance
 }
 
 /// Getter for oninstall
-/// Returns the event handler for the install event
 pub fn get_oninstall(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternalState(instance) orelse return null;
-    return if (internal.oninstall_handler) |handler| handler else null;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for onactivate
-/// Returns the event handler for the activate event
 pub fn get_onactivate(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternalState(instance) orelse return null;
-    return if (internal.onactivate_handler) |handler| handler else null;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for onfetch
-/// Returns the event handler for the fetch event
 pub fn get_onfetch(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternalState(instance) orelse return null;
-    return if (internal.onfetch_handler) |handler| handler else null;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for onmessage
-/// Returns the event handler for the message event
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternalState(instance) orelse return null;
-    return if (internal.onmessage_handler) |handler| handler else null;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for onmessageerror
-/// Returns the event handler for the messageerror event
 pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternalState(instance) orelse return null;
-    return if (internal.onmessageerror_handler) |handler| handler else null;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for onperiodicsync
@@ -287,38 +267,38 @@ pub fn get_onnotificationclose(instance: *runtime.Instance) anyerror!typedefs.Ev
 }
 
 /// Setter for oninstall
-/// Sets the event handler for the install event
 pub fn set_oninstall(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-    internal.oninstall_handler = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for onactivate
-/// Sets the event handler for the activate event
 pub fn set_onactivate(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-    internal.onactivate_handler = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for onfetch
-/// Sets the event handler for the fetch event
 pub fn set_onfetch(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-    internal.onfetch_handler = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for onmessage
-/// Sets the event handler for the message event
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-    internal.onmessage_handler = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for onmessageerror
-/// Sets the event handler for the messageerror event
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.NotImplemented;
-    internal.onmessageerror_handler = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for onperiodicsync

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SourceBuffer = @import("SourceBuffer.zig").SourceBuffer;
+const SourceBuffer = @import("interfaces").SourceBuffer;
 const DOMString = @import("typedefs").DOMString;
 
 pub const AudioTrack = struct {

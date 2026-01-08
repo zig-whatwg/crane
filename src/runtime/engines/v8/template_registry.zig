@@ -3,20 +3,6 @@
 //! Runtime registry for V8 FunctionTemplates, enabling dynamic wrapping
 //! of Zig instances into properly typed V8 objects.
 //!
-//! ## BSCOPE-04 Audit: Isolate-Level Template Sharing
-//!
-//! Templates are ISOLATE-scoped, NOT context-scoped. This is critical for:
-//! - Memory efficiency: N interfaces = N templates (not N*contexts)
-//! - Performance: Templates created once per isolate lifetime
-//! - Correctness: All contexts share the same prototype chains
-//!
-//! Guarantees verified by audit (BSCOPE-04):
-//! 1. `templates_by_index` is a global array, shared across all contexts
-//! 2. `getTemplate()` checks isolate match before returning cached template
-//! 3. `clear()` invalidates all templates when isolate is disposed
-//! 4. `cache_generation` provides staleness detection for isolate reuse
-//! 5. `V8Interface(T).createTemplate()` implements getOrCreate pattern
-//!
 //! ## Problem Solved
 //!
 //! When a Zig method returns `*runtime.Instance` (e.g., Document.createElement
@@ -50,26 +36,22 @@ const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const dom_type_info = @import("dom_type_info.zig");
-const interface_catalog = @import("interface_catalog.zig");
 
-/// Use interface_catalog's count for array sizing
-const InterfaceIndex = interface_catalog.InterfaceIndex;
-const INTERFACE_COUNT = interface_catalog.valid_interface_count;
+/// Maximum number of interface templates that can be registered
+const MAX_TEMPLATES = 2048; // Need to support all WebIDL interfaces (~1100)
 
-/// Per-isolate template array type
-/// Each isolate gets its own array of template pointers, avoiding cross-isolate overwrites.
-const PerIsolateTemplates = [INTERFACE_COUNT]?*v8.FunctionTemplate;
+/// Entry in the template registry
+const TemplateEntry = struct {
+    name: []const u8,
+    template: *v8.FunctionTemplate,
+    isolate: *v8.Isolate,
+};
 
-/// Per-isolate template registry
-/// Maps isolate pointer -> array of template pointers for that isolate.
-/// This ensures worker isolates don't overwrite main thread templates.
-var templates_by_isolate: std.AutoHashMapUnmanaged(*v8.Isolate, *PerIsolateTemplates) = .{};
-var registry_allocator: ?std.mem.Allocator = null;
+/// Global template registry
+/// Maps interface names to their FunctionTemplates
+var templates: [MAX_TEMPLATES]?TemplateEntry = [_]?TemplateEntry{null} ** MAX_TEMPLATES;
+var template_count: usize = 0;
 var initialized: bool = false;
-
-/// Mutex for thread-safe access to the per-isolate template map
-/// Workers run on separate threads and may register templates concurrently.
-var registry_mutex: std.Thread.Mutex = .{};
 
 /// Snapshot mode flag - when true, templates are NOT cached
 ///
@@ -110,37 +92,7 @@ fn ensureInitialized() void {
     }
 }
 
-/// Clear all registered templates for a specific isolate
-///
-/// Called when disposing an isolate. Only clears templates for that isolate,
-/// not affecting other isolates (e.g., main thread vs worker).
-///
-/// Also increments the cache_generation counter, which invalidates all
-/// per-interface static caches in V8Interface(T).
-pub fn clearForIsolate(isolate: *v8.Isolate) void {
-    std.log.warn("[clearForIsolate] CALLED for isolate={*}", .{isolate});
-    registry_mutex.lock();
-    defer registry_mutex.unlock();
-
-    if (templates_by_isolate.get(isolate)) |templates| {
-        // Dispose V8 FunctionTemplate handles
-        for (templates) |maybe_template| {
-            if (maybe_template) |template| {
-                v8.v8_FunctionTemplate_Dispose(template);
-            }
-        }
-        // Free the per-isolate array
-        if (registry_allocator) |alloc| {
-            alloc.destroy(templates);
-        }
-        _ = templates_by_isolate.remove(isolate);
-    }
-
-    // Increment generation to invalidate per-interface static caches
-    cache_generation +%= 1;
-}
-
-/// Clear all registered templates (for all isolates)
+/// Clear all registered templates
 ///
 /// MUST be called before disposing an isolate and creating a new one.
 /// V8 FunctionTemplates are bound to a specific isolate and cannot be reused
@@ -155,25 +107,15 @@ pub fn clearForIsolate(isolate: *v8.Isolate) void {
 /// 3. The generation counter ensures we detect isolate disposal even if
 ///    the new isolate has the same address
 pub fn clear() void {
-    std.log.warn("[clear] CALLED - clearing ALL templates for ALL isolates!", .{});
-    registry_mutex.lock();
-    defer registry_mutex.unlock();
-
-    // Dispose all templates for all isolates
-    var iter = templates_by_isolate.iterator();
-    while (iter.next()) |entry| {
-        const templates = entry.value_ptr.*;
-        for (templates) |maybe_template| {
-            if (maybe_template) |template| {
-                v8.v8_FunctionTemplate_Dispose(template);
-            }
+    // Dispose V8 FunctionTemplate handles before clearing entries
+    // V8 Global handles must be explicitly disposed to release resources
+    for (&templates) |*entry| {
+        if (entry.*) |e| {
+            v8.v8_FunctionTemplate_Dispose(e.template);
         }
-        // Free the per-isolate array
-        if (registry_allocator) |alloc| {
-            alloc.destroy(templates);
-        }
+        entry.* = null;
     }
-    templates_by_isolate.clearRetainingCapacity();
+    template_count = 0;
     // Increment generation to invalidate all per-interface static caches
     cache_generation +%= 1;
     // Clear the async iterator template cache in C++ layer
@@ -206,18 +148,6 @@ pub fn clear() void {
 /// **Snapshot Mode**: When `snapshot_mode` is true, templates are NOT registered.
 /// This prevents storing Global handles that would cause V8's
 /// "CheckGlobalAndEternalHandles failed" error during snapshot creation.
-/// Register a FunctionTemplate for an interface in a specific isolate.
-///
-/// **IMPORTANT**: Templates are keyed by (name, isolate) pair, NOT just name.
-/// This allows each isolate (main, worker1, worker2, etc.) to have its own
-/// set of templates without interfering with each other.
-///
-/// Called by V8Interface.registerGlobal after creating the template.
-/// This allows later wrapping of instances via wrapInstanceAsV8Object.
-///
-/// **Snapshot Mode**: When `snapshot_mode` is true, templates are NOT registered.
-/// This prevents storing Global handles that would cause V8's
-/// "CheckGlobalAndEternalHandles failed" error during snapshot creation.
 pub fn register(
     interface_name: []const u8,
     template: *v8.FunctionTemplate,
@@ -225,135 +155,46 @@ pub fn register(
 ) void {
     // In snapshot mode, don't cache templates - they're not needed for snapshot creation
     // and would cause V8 to complain about Global handles
-    if (snapshot_mode) {
-        std.log.info("[template_registry.register] SKIPPED (snapshot_mode) '{s}'", .{interface_name});
-        return;
-    }
-
-    ensureInitialized();
-
-    // O(1) index lookup using runtime StaticStringMap
-    const idx = interface_catalog.indexOfByNameRuntime(interface_name);
-    if (idx == interface_catalog.INVALID_INDEX) {
-        // Interface not in catalog - this can happen for dynamically created interfaces
-        std.log.warn("[template_registry.register] Interface '{s}' not in catalog", .{interface_name});
-        return;
-    }
-
-    // Get or create per-isolate template array
-    const templates = getOrCreateTemplatesForIsolate(isolate) orelse {
-        std.log.err("[template_registry.register] Failed to allocate templates for isolate", .{});
-        return;
-    };
-
-    // Store template at indexed position for THIS isolate
-    templates[idx] = template;
-}
-
-/// Get or create the per-isolate template array
-fn getOrCreateTemplatesForIsolate(isolate: *v8.Isolate) ?*PerIsolateTemplates {
-    registry_mutex.lock();
-    defer registry_mutex.unlock();
-
-    // Check if we already have templates for this isolate
-    if (templates_by_isolate.get(isolate)) |existing| {
-        return existing;
-    }
-
-    // Need to allocate new template array for this isolate
-    const alloc = registry_allocator orelse std.heap.page_allocator;
-    registry_allocator = alloc;
-
-    const templates = alloc.create(PerIsolateTemplates) catch {
-        return null;
-    };
-    templates.* = [_]?*v8.FunctionTemplate{null} ** INTERFACE_COUNT;
-
-    templates_by_isolate.put(alloc, isolate, templates) catch {
-        alloc.destroy(templates);
-        return null;
-    };
-
-    return templates;
-}
-
-/// Register a FunctionTemplate by interface index (O(1) direct access)
-pub fn registerByIndex(
-    idx: InterfaceIndex,
-    template: *v8.FunctionTemplate,
-    isolate: *v8.Isolate,
-) void {
     if (snapshot_mode) return;
+
     ensureInitialized();
 
-    if (idx >= INTERFACE_COUNT) {
-        std.log.err("[template_registry.registerByIndex] Index {d} out of bounds", .{idx});
-        return;
+    // Check if already registered (avoid duplicates on re-registration)
+    for (&templates) |*entry| {
+        if (entry.*) |*e| {
+            if (std.mem.eql(u8, e.name, interface_name)) {
+                // Update existing entry
+                e.template = template;
+                e.isolate = isolate;
+                return;
+            }
+        }
     }
 
-    const templates = getOrCreateTemplatesForIsolate(isolate) orelse return;
-    templates[idx] = template;
+    // Add new entry
+    if (template_count < MAX_TEMPLATES) {
+        templates[template_count] = .{
+            .name = interface_name,
+            .template = template,
+            .isolate = isolate,
+        };
+        template_count += 1;
+    }
 }
 
 /// Get a registered FunctionTemplate by interface name
-/// Get a registered FunctionTemplate by interface name for a specific isolate.
-///
-/// **IMPORTANT**: V8 templates are isolate-specific. A template created in one
-/// isolate cannot be used in another. This function checks the current isolate
-/// and only returns a template if it was registered for that same isolate.
-///
-/// For worker isolates, this will correctly return null, signaling that
-/// templates need to be re-registered for the worker's isolate.
 pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
-    // Debug: Log entry for MessageEvent
-    if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-        std.debug.print("[GET-TEMPLATE-ENTRY] getTemplate('MessageEvent') called\n", .{});
-    }
-
     ensureInitialized();
 
-    // Get the current isolate to verify template compatibility
-    const current_isolate = v8.v8_Isolate_GetCurrent();
-    if (current_isolate == null) {
-        std.log.warn("[getTemplate] No current isolate!", .{});
-        return null;
-    }
-
-    // O(1) index lookup using runtime StaticStringMap
-    const idx = interface_catalog.indexOfByNameRuntime(interface_name);
-    if (idx == interface_catalog.INVALID_INDEX) {
-        std.log.warn("[getTemplate] Interface '{s}' not in catalog", .{interface_name});
-        return null;
-    }
-
-    // Get templates for current isolate
-    registry_mutex.lock();
-    defer registry_mutex.unlock();
-
-    const templates = templates_by_isolate.get(current_isolate.?) orelse {
-        return null;
-    };
-
-    if (templates[idx]) |template| {
-        return template;
+    // Only iterate over registered templates, not the full array
+    for (templates[0..template_count]) |entry| {
+        if (entry) |e| {
+            if (std.mem.eql(u8, e.name, interface_name)) {
+                return e.template;
+            }
+        }
     }
     return null;
-}
-
-/// Get a registered FunctionTemplate by interface index (O(1) direct access)
-pub fn getTemplateByIndex(idx: InterfaceIndex) ?*v8.FunctionTemplate {
-    ensureInitialized();
-
-    const current_isolate = v8.v8_Isolate_GetCurrent();
-    if (current_isolate == null) return null;
-
-    if (idx >= INTERFACE_COUNT) return null;
-
-    registry_mutex.lock();
-    defer registry_mutex.unlock();
-
-    const templates = templates_by_isolate.get(current_isolate.?) orelse return null;
-    return templates[idx];
 }
 
 /// Wrap a Zig runtime.Instance into a V8 Object with the correct prototype
@@ -379,7 +220,6 @@ pub fn wrapInstanceAsV8Object(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !*v8.Object {
-
     // ========================================
     // SPECIAL CASE: Window instances with bound V8 global
     // ========================================
@@ -406,14 +246,7 @@ pub fn wrapInstanceAsV8Object(
 
             // Cache hit? Return existing wrapper (same V8 object)
             if (cache.get(instance)) |cached_wrapper| {
-                if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-                    std.debug.print("[WRAPPER-CACHE-HIT] MessageEvent: Returning cached wrapper, bypassing getTemplate\n", .{});
-                }
                 return cached_wrapper;
-            } else {
-                if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-                    std.debug.print("[WRAPPER-CACHE-MISS] MessageEvent: No cached wrapper, will call getTemplate\n", .{});
-                }
             }
         }
     }
@@ -423,59 +256,10 @@ pub fn wrapInstanceAsV8Object(
     // ========================================
 
     // Look up the FunctionTemplate for this interface
-    // Check if we're in a worker context BEFORE getting template
-    // Workers need fresh templates because snapshot templates have disconnected callbacks
-    //
-    // IMPORTANT: We check if the GLOBAL OBJECT IS an instance of DedicatedWorkerGlobalScope,
-    // NOT whether the constructor exists. The constructor exists on both main thread and workers,
-    // but only workers have the global object BE a DedicatedWorkerGlobalScope instance.
-    //
-    // Detection: Workers have 'postMessage' on global but NO 'document'.
-    // Window has both 'postMessage' (via WindowPostMessage mixin) AND 'document'.
-    const global_for_check = v8.v8_Context_Global(context);
-    const is_worker_context = blk: {
-        if (global_for_check) |g| {
-            // Check if global has 'postMessage' as own property - workers have this, Window doesn't
-            // This is more reliable than checking constructor existence
-            const postmsg_key = v8.v8_String_NewFromUtf8(isolate, "postMessage", 11) orelse break :blk false;
-            if (v8.v8_Object_HasOwnProperty(g, context, @ptrCast(postmsg_key))) {
-                // Also verify it's NOT a Window by checking for 'document' (Window has it, workers don't)
-                const doc_key = v8.v8_String_NewFromUtf8(isolate, "document", 8) orelse break :blk true;
-                if (v8.v8_Object_HasOwnProperty(g, context, @ptrCast(doc_key))) {
-                    // Has both postMessage AND document - this is Window, not worker
-                    break :blk false;
-                }
-                break :blk true; // Has postMessage but no document - this is a worker
-            }
-        }
-        break :blk false;
-    };
-
-    // For workers, ALWAYS create fresh templates - snapshot templates have disconnected callbacks
-    // For main context, use cached templates from snapshot
-    var created_on_demand = false;
-    const template: *v8.FunctionTemplate = if (is_worker_context) fresh_blk: {
-        // Worker context - force fresh template creation
-        const interface_bindings = @import("interface_bindings.zig");
-        created_on_demand = true;
-        std.debug.print("[WRAP-WORKER] {s}: forcing fresh template creation for worker\n", .{interface_name});
-        break :fresh_blk interface_bindings.createTemplateOnDemandByName(interface_name, isolate) orelse fallback: {
-            std.debug.print("[WRAP-WORKER] {s}: fresh template creation failed, falling back to cache\n", .{interface_name});
-            break :fallback getTemplate(interface_name) orelse {
-                std.debug.print("[WRAP-WORKER] {s}: no cached template either\n", .{interface_name});
-                return error.TemplateNotRegistered;
-            };
-        };
-    } else cache_blk: {
-        // Main context - use cached template, create on-demand if not found
-        break :cache_blk getTemplate(interface_name) orelse on_demand: {
-            const interface_bindings = @import("interface_bindings.zig");
-            created_on_demand = true;
-            break :on_demand interface_bindings.createTemplateOnDemandByName(interface_name, isolate) orelse {
-                std.debug.print("[WRAP] Template not found for {s} (on-demand creation failed)\n", .{interface_name});
-                return error.TemplateNotRegistered;
-            };
-        };
+    const template = getTemplate(interface_name) orelse {
+        // Template not registered - this shouldn't happen for core interfaces
+        // but can happen for interfaces not yet implemented
+        return error.TemplateNotRegistered;
     };
 
     // Get the InstanceTemplate and create a new object
@@ -488,11 +272,6 @@ pub fn wrapInstanceAsV8Object(
         return error.ObjectCreationFailed;
     };
 
-    // ========================================
-    // SET INTERNAL FIELDS IMMEDIATELY after object creation
-    // ========================================
-    // CRITICAL: Must set internal fields BEFORE setting prototype, because
-    // prototype setup can trigger accessor callbacks that need the instance pointer.
     // Store the Zig instance in internal field 0
     v8.v8_Object_SetAlignedPointerInInternalField(
         v8_object,
@@ -501,187 +280,13 @@ pub fn wrapInstanceAsV8Object(
     );
 
     // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
-    // Use comptime-generated registry which has ALL interfaces, not the manual dom_type_info
-    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
-    if (wrapper_type_info_registry.getWrapperTypeInfoByName(interface_name)) |type_info| {
+    if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(
             v8_object,
             1,
             @ptrCast(@constCast(type_info)),
         );
     }
-
-    // ========================================
-    // SET PROTOTYPE: Handle differently based on template source
-    // ========================================
-    // For SNAPSHOT-RESTORED templates: Use global.Constructor.prototype because
-    // it has accessors reinstalled via the snapshot restoration process.
-    //
-    // For ON-DEMAND templates: DO NOT override the prototype! The template was
-    // just created with fresh accessors, and global.Constructor.prototype might
-    // be from the snapshot with disconnected/broken callbacks.
-    //
-    // This fixes the issue where MessageEvent.data returns undefined in workers:
-    // the on-demand created template has working accessors, but we were overwriting
-    // its prototype with one from the snapshot that had disconnected callbacks.
-    // Note: is_worker_context was already computed above (line ~429)
-    const global = v8.v8_Context_Global(context);
-
-    std.debug.print("[WRAP-DEBUG] {s}: created_on_demand={}, is_worker_context={}\n", .{ interface_name, created_on_demand, is_worker_context });
-
-    // For on-demand/worker templates: Get prototype from FunctionTemplate and set it on object
-    // CRITICAL: ObjectTemplate::NewInstance() does NOT automatically create prototype chains!
-    // We must explicitly set the prototype from the FunctionTemplate.
-    // See v8_wrapper.cpp comment: "ObjectTemplate::NewInstance() doesn't automatically link
-    // to the FunctionTemplate's prototype"
-    if (created_on_demand or is_worker_context) {
-        std.debug.print("[WRAP-WORKER-PROTO] {s}: setting prototype from FunctionTemplate (worker={}, on_demand={})\\n", .{ interface_name, is_worker_context, created_on_demand });
-
-        // Get the prototype object from the FunctionTemplate
-        // This prototype has WORKING accessors because the template was just created
-        // with fresh callbacks that are properly registered in external_references
-        const proto_from_template = v8.v8_FunctionTemplate_GetPrototypeObject(template, context);
-        if (proto_from_template) |proto_obj| {
-            const success = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(proto_obj));
-            std.debug.print("[WRAP-WORKER-PROTO] {s}: SetPrototype from template result={}, proto_addr={*}\\n", .{ interface_name, success, proto_obj });
-
-            // Verify the prototype was set correctly
-            if (v8.v8_Object_GetPrototype(v8_object)) |actual_proto| {
-                const same = v8.v8_Value_StrictEquals(actual_proto, @ptrCast(proto_obj));
-                std.debug.print("[WRAP-WORKER-PROTO-VERIFY] {s}: actual_proto={*}, matches_set={}\\n", .{ interface_name, actual_proto, same });
-            }
-        } else {
-            std.debug.print("[WRAP-WORKER-PROTO] {s}: WARNING - GetPrototypeObject returned null!\\n", .{interface_name});
-        }
-    } else {
-        // For snapshot-restored templates in main context, use global.Constructor.prototype
-        const prototype_set = blk: {
-            if (global) |g| {
-                const constructor_name = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len));
-                if (constructor_name) |cname| {
-                    const constructor_value = v8.v8_Object_Get(g, context, @ptrCast(cname));
-                    if (constructor_value) |cval| {
-                        if (v8.v8_Value_IsObject(cval)) {
-                            const constructor_obj: *v8.Object = @ptrCast(cval);
-                            const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
-                            if (prototype_str) |proto_name| {
-                                const prototype_value = v8.v8_Object_Get(constructor_obj, context, @ptrCast(proto_name));
-                                if (prototype_value) |proto_val| {
-                                    if (v8.v8_Value_IsObject(proto_val)) {
-                                        _ = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
-                                        // Detect context type
-                                        const ctx_type: []const u8 = ctx_blk: {
-                                            const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6) orelse break :ctx_blk "unknown";
-                                            if (v8.v8_Object_Get(g, context, @ptrCast(window_key))) |_| {
-                                                break :ctx_blk "MAIN";
-                                            }
-                                            break :ctx_blk "WORKER";
-                                        };
-                                        std.debug.print("[WRAP-{s}] {s}: prototype set from global, proto_addr={*}, context={*}\n", .{ ctx_type, interface_name, proto_val, context });
-
-                                        // VERIFICATION: Check if object's actual prototype matches what we set
-                                        if (v8.v8_Object_GetPrototype(v8_object)) |actual_proto| {
-                                            const same_obj = v8.v8_Value_StrictEquals(actual_proto, proto_val);
-                                            std.debug.print("[WRAP-VERIFY] {s}: SetPrototype worked? actual_proto={*}, same_as_set={}\n", .{ interface_name, actual_proto, same_obj });
-
-                                            // Re-fetch global.Constructor.prototype to verify it's still the same
-                                            const constructor_name2 = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len));
-                                            if (constructor_name2) |cname2| {
-                                                const constructor_value2 = v8.v8_Object_Get(g, context, @ptrCast(cname2));
-                                                if (constructor_value2) |cval2| {
-                                                    if (v8.v8_Value_IsObject(cval2)) {
-                                                        const constructor_obj2: *v8.Object = @ptrCast(cval2);
-                                                        const prototype_str2 = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
-                                                        if (prototype_str2) |proto_name2| {
-                                                            const prototype_value2 = v8.v8_Object_Get(constructor_obj2, context, @ptrCast(proto_name2));
-                                                            if (prototype_value2) |proto_val2| {
-                                                                const refetch_same = v8.v8_Value_StrictEquals(proto_val, proto_val2);
-                                                                const actual_matches_refetch = v8.v8_Value_StrictEquals(actual_proto, proto_val2);
-                                                                std.debug.print("[WRAP-VERIFY] {s}: refetch_proto={*}, original==refetch={}, actual==refetch={}\n", .{ interface_name, proto_val2, refetch_same, actual_matches_refetch });
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // For MessageEvent, check if "data" accessor exists on prototype
-                                            if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-                                                const proto_obj: *v8.Object = @ptrCast(proto_val);
-                                                const data_key = v8.v8_String_NewFromUtf8(isolate, "data", 4);
-                                                if (data_key) |dk| {
-                                                    const has_data = v8.v8_Object_HasOwnProperty(proto_obj, context, @ptrCast(dk));
-                                                    std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent.prototype hasOwnProperty('data')={}\n", .{has_data});
-
-                                                    // Also check GetOwnPropertyDescriptor
-                                                    if (v8.v8_Object_GetOwnPropertyDescriptor(proto_obj, context, @ptrCast(dk))) |desc| {
-                                                        const is_undefined = v8.v8_Value_IsUndefined(desc);
-                                                        const is_object = v8.v8_Value_IsObject(desc);
-                                                        std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent.prototype.data descriptor: is_undefined={}, is_object={}\n", .{ is_undefined, is_object });
-
-                                                        // Check if descriptor has "get" vs "value" property
-                                                        if (is_object) {
-                                                            const desc_obj: *v8.Object = @ptrCast(desc);
-                                                            const get_key = v8.v8_String_NewFromUtf8(isolate, "get", 3);
-                                                            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5);
-                                                            if (get_key) |gk| {
-                                                                const has_get = v8.v8_Object_HasOwnProperty(desc_obj, context, @ptrCast(gk));
-                                                                std.debug.print("[WRAP-ACCESSOR-CHECK] descriptor has 'get'={} (ACCESSOR)\n", .{has_get});
-                                                                if (has_get) {
-                                                                    if (v8.v8_Object_Get(desc_obj, context, @ptrCast(gk))) |get_val| {
-                                                                        const get_is_func = v8.v8_Value_IsFunction(get_val);
-                                                                        const get_is_undef = v8.v8_Value_IsUndefined(get_val);
-                                                                        std.debug.print("[WRAP-ACCESSOR-CHECK] 'get' value: is_function={}, is_undefined={}\n", .{ get_is_func, get_is_undef });
-                                                                    }
-                                                                }
-                                                            }
-                                                            if (value_key) |vk| {
-                                                                const has_value = v8.v8_Object_HasOwnProperty(desc_obj, context, @ptrCast(vk));
-                                                                std.debug.print("[WRAP-ACCESSOR-CHECK] descriptor has 'value'={} (DATA PROPERTY - BAD!)\n", .{has_value});
-                                                            }
-                                                        }
-                                                    } else {
-                                                        std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent.prototype.data GetOwnPropertyDescriptor returned null\n", .{});
-                                                    }
-
-                                                    // CRITICAL: Check if the INSTANCE has own "data" property (shadowing)
-                                                    const instance_has_data = v8.v8_Object_HasOwnProperty(v8_object, context, @ptrCast(dk));
-                                                    std.debug.print("[WRAP-ACCESSOR-CHECK] MessageEvent INSTANCE hasOwnProperty('data')={} (SHADOWING if true!)\n", .{instance_has_data});
-                                                }
-                                            }
-                                        }
-
-                                        break :blk true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            break :blk false;
-        };
-
-        // Fallback to template's prototype if global.Constructor.prototype not available
-        if (!prototype_set) {
-            const func = v8.v8_FunctionTemplate_GetFunction(template, context);
-            if (func) |constructor_func| {
-                const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
-                if (prototype_str) |proto_name| {
-                    const prototype_value = v8.v8_Object_Get(@ptrCast(constructor_func), context, @ptrCast(proto_name));
-                    if (prototype_value) |proto_val| {
-                        if (v8.v8_Value_IsObject(proto_val)) {
-                            _ = v8.v8_Object_SetPrototype(v8_object, context, proto_val);
-                            std.debug.print("[WRAP-FALLBACK] {s}: prototype set from template, proto_addr={*}, context={*}\n", .{ interface_name, proto_val, context });
-                        } else {
-                            std.debug.print("[WRAP] {s}: prototype is not an object!\n", .{interface_name});
-                        }
-                    } else {
-                        std.debug.print("[WRAP] {s}: prototype_value is null!\n", .{interface_name});
-                    }
-                }
-            }
-        }
-    } // Close else block for !created_on_demand
 
     // For legacy platform objects, wrap in a Proxy to ensure correct
     // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
@@ -708,57 +313,369 @@ pub fn wrapInstanceAsV8Object(
     return final_object;
 }
 
-/// Comptime-generated vtable lookup using inline for loop.
-/// Automatically discovers all interfaces at compile time by iterating over
-/// the interfaces module's declarations, eliminating manual maintenance.
-pub const VtableLookup = struct {
-    const interfaces = @import("interfaces");
-
-    /// Look up the interface name for a given vtable pointer.
-    /// Uses comptime inline for to generate efficient comparison code.
-    pub fn lookup(vtable_ptr: *const anyopaque) []const u8 {
-        // Need high branch quota to handle ~1100 interfaces
-        @setEvalBranchQuota(200000);
-
-        const decls = @typeInfo(interfaces).@"struct".decls;
-
-        inline for (decls) |decl| {
-            const T = @field(interfaces, decl.name);
-            // Check if this is actually a type (not a value or function)
-            if (@typeInfo(@TypeOf(T)) == .type) {
-                // Check if it has both vtable and Meta declarations
-                if (@hasDecl(T, "vtable") and @hasDecl(T, "Meta")) {
-                    const meta = T.Meta;
-                    // Exclude mixins - they don't have instantiable vtables
-                    const is_mixin = if (@hasDecl(meta, "is_mixin")) meta.is_mixin else false;
-                    if (!is_mixin) {
-                        // Compare vtable pointer addresses
-                        if (vtable_ptr == @as(*const anyopaque, @ptrCast(&T.vtable))) {
-                            return meta.name;
-                        }
-                    }
-                }
-            }
-        }
-        // Default to "Object" for unknown vtables
-        return "Object";
-    }
-};
-
 /// Get the interface name from an Instance
 ///
 /// This looks at the instance's vtable to determine which interface it belongs to.
-/// Uses comptime-generated VtableLookup to compare vtable addresses against all
-/// known interface vtables automatically.
+/// Compares vtable addresses against known vtables to identify the interface.
 pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
+    // Import generated interfaces to get their vtables
+    const interfaces = @import("interfaces");
+
     // Safety check: validate instance pointer before dereferencing vtable
     if (@intFromPtr(instance) < 0x1000) {
         // Invalid pointer - return generic name
         return "Object";
     }
 
-    // Use comptime-generated lookup
-    return VtableLookup.lookup(@ptrCast(instance.vtable));
+    // Get the instance's vtable address
+    const inst_vtable = instance.vtable;
+
+    // Compare against known vtable addresses
+    // NOTE: This compares pointer addresses, which works because vtables are comptime constants
+
+    // Check NodeList first (most common for querySelectorAll)
+    if (inst_vtable == &interfaces.NodeList.vtable) {
+        return "NodeList";
+    }
+
+    // Check specific HTML element types (before generic Element check)
+    // These must be checked BEFORE HTMLElement and Element since subclasses
+    // have different vtables than their parents
+    if (inst_vtable == &interfaces.HTMLDivElement.vtable) return "HTMLDivElement";
+    if (inst_vtable == &interfaces.HTMLSpanElement.vtable) return "HTMLSpanElement";
+    if (inst_vtable == &interfaces.HTMLParagraphElement.vtable) return "HTMLParagraphElement";
+    if (inst_vtable == &interfaces.HTMLAnchorElement.vtable) return "HTMLAnchorElement";
+    if (inst_vtable == &interfaces.HTMLImageElement.vtable) return "HTMLImageElement";
+    if (inst_vtable == &interfaces.HTMLInputElement.vtable) return "HTMLInputElement";
+    if (inst_vtable == &interfaces.HTMLButtonElement.vtable) return "HTMLButtonElement";
+    if (inst_vtable == &interfaces.HTMLFormElement.vtable) return "HTMLFormElement";
+    if (inst_vtable == &interfaces.HTMLScriptElement.vtable) return "HTMLScriptElement";
+    if (inst_vtable == &interfaces.HTMLStyleElement.vtable) return "HTMLStyleElement";
+    if (inst_vtable == &interfaces.HTMLLinkElement.vtable) return "HTMLLinkElement";
+    if (inst_vtable == &interfaces.HTMLIFrameElement.vtable) return "HTMLIFrameElement";
+    if (inst_vtable == &interfaces.HTMLHtmlElement.vtable) return "HTMLHtmlElement";
+    if (inst_vtable == &interfaces.HTMLHeadElement.vtable) return "HTMLHeadElement";
+    if (inst_vtable == &interfaces.HTMLBodyElement.vtable) return "HTMLBodyElement";
+    if (inst_vtable == &interfaces.HTMLTitleElement.vtable) return "HTMLTitleElement";
+    if (inst_vtable == &interfaces.HTMLMetaElement.vtable) return "HTMLMetaElement";
+    if (inst_vtable == &interfaces.HTMLBaseElement.vtable) return "HTMLBaseElement";
+    if (inst_vtable == &interfaces.HTMLHeadingElement.vtable) return "HTMLHeadingElement";
+    if (inst_vtable == &interfaces.HTMLBRElement.vtable) return "HTMLBRElement";
+    if (inst_vtable == &interfaces.HTMLHRElement.vtable) return "HTMLHRElement";
+    if (inst_vtable == &interfaces.HTMLPreElement.vtable) return "HTMLPreElement";
+    if (inst_vtable == &interfaces.HTMLQuoteElement.vtable) return "HTMLQuoteElement";
+    if (inst_vtable == &interfaces.HTMLOListElement.vtable) return "HTMLOListElement";
+    if (inst_vtable == &interfaces.HTMLUListElement.vtable) return "HTMLUListElement";
+    if (inst_vtable == &interfaces.HTMLLIElement.vtable) return "HTMLLIElement";
+    if (inst_vtable == &interfaces.HTMLDListElement.vtable) return "HTMLDListElement";
+    if (inst_vtable == &interfaces.HTMLMenuElement.vtable) return "HTMLMenuElement";
+    if (inst_vtable == &interfaces.HTMLTableElement.vtable) return "HTMLTableElement";
+    if (inst_vtable == &interfaces.HTMLTableCaptionElement.vtable) return "HTMLTableCaptionElement";
+    if (inst_vtable == &interfaces.HTMLTableColElement.vtable) return "HTMLTableColElement";
+    if (inst_vtable == &interfaces.HTMLTableSectionElement.vtable) return "HTMLTableSectionElement";
+    if (inst_vtable == &interfaces.HTMLTableRowElement.vtable) return "HTMLTableRowElement";
+    if (inst_vtable == &interfaces.HTMLTableCellElement.vtable) return "HTMLTableCellElement";
+    if (inst_vtable == &interfaces.HTMLLabelElement.vtable) return "HTMLLabelElement";
+    if (inst_vtable == &interfaces.HTMLSelectElement.vtable) return "HTMLSelectElement";
+    if (inst_vtable == &interfaces.HTMLDataListElement.vtable) return "HTMLDataListElement";
+    if (inst_vtable == &interfaces.HTMLOptGroupElement.vtable) return "HTMLOptGroupElement";
+    if (inst_vtable == &interfaces.HTMLOptionElement.vtable) return "HTMLOptionElement";
+    if (inst_vtable == &interfaces.HTMLTextAreaElement.vtable) return "HTMLTextAreaElement";
+    if (inst_vtable == &interfaces.HTMLOutputElement.vtable) return "HTMLOutputElement";
+    if (inst_vtable == &interfaces.HTMLProgressElement.vtable) return "HTMLProgressElement";
+    if (inst_vtable == &interfaces.HTMLMeterElement.vtable) return "HTMLMeterElement";
+    if (inst_vtable == &interfaces.HTMLFieldSetElement.vtable) return "HTMLFieldSetElement";
+    if (inst_vtable == &interfaces.HTMLLegendElement.vtable) return "HTMLLegendElement";
+    if (inst_vtable == &interfaces.HTMLEmbedElement.vtable) return "HTMLEmbedElement";
+    if (inst_vtable == &interfaces.HTMLObjectElement.vtable) return "HTMLObjectElement";
+    if (inst_vtable == &interfaces.HTMLParamElement.vtable) return "HTMLParamElement";
+    if (inst_vtable == &interfaces.HTMLVideoElement.vtable) return "HTMLVideoElement";
+    if (inst_vtable == &interfaces.HTMLAudioElement.vtable) return "HTMLAudioElement";
+    if (inst_vtable == &interfaces.HTMLSourceElement.vtable) return "HTMLSourceElement";
+    if (inst_vtable == &interfaces.HTMLTrackElement.vtable) return "HTMLTrackElement";
+    if (inst_vtable == &interfaces.HTMLCanvasElement.vtable) return "HTMLCanvasElement";
+    if (inst_vtable == &interfaces.CanvasRenderingContext2D.vtable) return "CanvasRenderingContext2D";
+    if (inst_vtable == &interfaces.HTMLMapElement.vtable) return "HTMLMapElement";
+    if (inst_vtable == &interfaces.HTMLAreaElement.vtable) return "HTMLAreaElement";
+    if (inst_vtable == &interfaces.HTMLTemplateElement.vtable) return "HTMLTemplateElement";
+    if (inst_vtable == &interfaces.HTMLSlotElement.vtable) return "HTMLSlotElement";
+    if (inst_vtable == &interfaces.HTMLDialogElement.vtable) return "HTMLDialogElement";
+    if (inst_vtable == &interfaces.HTMLDetailsElement.vtable) return "HTMLDetailsElement";
+    if (inst_vtable == &interfaces.HTMLDataElement.vtable) return "HTMLDataElement";
+    if (inst_vtable == &interfaces.HTMLTimeElement.vtable) return "HTMLTimeElement";
+    if (inst_vtable == &interfaces.HTMLModElement.vtable) return "HTMLModElement";
+    if (inst_vtable == &interfaces.HTMLPictureElement.vtable) return "HTMLPictureElement";
+    if (inst_vtable == &interfaces.HTMLMediaElement.vtable) return "HTMLMediaElement";
+    if (inst_vtable == &interfaces.HTMLUnknownElement.vtable) return "HTMLUnknownElement";
+
+    // Check Element and subclasses (generic fallbacks)
+    if (inst_vtable == &interfaces.Element.vtable) {
+        return "Element";
+    }
+
+    if (inst_vtable == &interfaces.HTMLElement.vtable) {
+        return "HTMLElement";
+    }
+
+    // Check Document
+    if (inst_vtable == &interfaces.Document.vtable) {
+        return "Document";
+    }
+
+    // Check other common types
+    if (inst_vtable == &interfaces.Text.vtable) {
+        return "Text";
+    }
+
+    if (inst_vtable == &interfaces.Comment.vtable) {
+        return "Comment";
+    }
+
+    if (inst_vtable == &interfaces.DocumentFragment.vtable) {
+        return "DocumentFragment";
+    }
+
+    if (inst_vtable == &interfaces.Attr.vtable) {
+        return "Attr";
+    }
+
+    if (inst_vtable == &interfaces.CharacterData.vtable) {
+        return "CharacterData";
+    }
+
+    if (inst_vtable == &interfaces.ProcessingInstruction.vtable) {
+        return "ProcessingInstruction";
+    }
+
+    if (inst_vtable == &interfaces.CDATASection.vtable) {
+        return "CDATASection";
+    }
+
+    if (inst_vtable == &interfaces.DocumentType.vtable) {
+        return "DocumentType";
+    }
+
+    if (inst_vtable == &interfaces.ShadowRoot.vtable) {
+        return "ShadowRoot";
+    }
+
+    if (inst_vtable == &interfaces.Range.vtable) {
+        return "Range";
+    }
+
+    if (inst_vtable == &interfaces.StaticRange.vtable) {
+        return "StaticRange";
+    }
+
+    if (inst_vtable == &interfaces.TreeWalker.vtable) {
+        return "TreeWalker";
+    }
+
+    if (inst_vtable == &interfaces.NodeIterator.vtable) {
+        return "NodeIterator";
+    }
+
+    if (inst_vtable == &interfaces.DOMTokenList.vtable) {
+        return "DOMTokenList";
+    }
+
+    if (inst_vtable == &interfaces.HTMLCollection.vtable) {
+        return "HTMLCollection";
+    }
+
+    if (inst_vtable == &interfaces.NamedNodeMap.vtable) {
+        return "NamedNodeMap";
+    }
+
+    if (inst_vtable == &interfaces.DOMImplementation.vtable) {
+        return "DOMImplementation";
+    }
+
+    // DOM Events and AbortController/AbortSignal
+    if (inst_vtable == &interfaces.AbortController.vtable) {
+        return "AbortController";
+    }
+
+    if (inst_vtable == &interfaces.AbortSignal.vtable) {
+        return "AbortSignal";
+    }
+
+    if (inst_vtable == &interfaces.Event.vtable) {
+        return "Event";
+    }
+
+    if (inst_vtable == &interfaces.EventTarget.vtable) {
+        return "EventTarget";
+    }
+
+    // Web Storage types
+    if (inst_vtable == &interfaces.Storage.vtable) {
+        return "Storage";
+    }
+
+    // IndexedDB types
+    if (inst_vtable == &interfaces.IDBKeyRange.vtable) {
+        return "IDBKeyRange";
+    }
+
+    if (inst_vtable == &interfaces.IDBFactory.vtable) {
+        return "IDBFactory";
+    }
+
+    if (inst_vtable == &interfaces.IDBDatabase.vtable) {
+        return "IDBDatabase";
+    }
+
+    if (inst_vtable == &interfaces.IDBObjectStore.vtable) {
+        return "IDBObjectStore";
+    }
+
+    if (inst_vtable == &interfaces.IDBIndex.vtable) {
+        return "IDBIndex";
+    }
+
+    if (inst_vtable == &interfaces.IDBRequest.vtable) {
+        return "IDBRequest";
+    }
+
+    if (inst_vtable == &interfaces.IDBOpenDBRequest.vtable) {
+        return "IDBOpenDBRequest";
+    }
+
+    if (inst_vtable == &interfaces.IDBTransaction.vtable) {
+        return "IDBTransaction";
+    }
+
+    if (inst_vtable == &interfaces.IDBCursor.vtable) {
+        return "IDBCursor";
+    }
+
+    if (inst_vtable == &interfaces.IDBCursorWithValue.vtable) {
+        return "IDBCursorWithValue";
+    }
+
+    // Fetch types
+    if (inst_vtable == &interfaces.Headers.vtable) {
+        return "Headers";
+    }
+
+    if (inst_vtable == &interfaces.Request.vtable) {
+        return "Request";
+    }
+
+    if (inst_vtable == &interfaces.Response.vtable) {
+        return "Response";
+    }
+
+    if (inst_vtable == &interfaces.Blob.vtable) {
+        return "Blob";
+    }
+
+    if (inst_vtable == &interfaces.File.vtable) {
+        return "File";
+    }
+
+    if (inst_vtable == &interfaces.FormData.vtable) {
+        return "FormData";
+    }
+
+    // Streams types
+    if (inst_vtable == &interfaces.ReadableStream.vtable) {
+        return "ReadableStream";
+    }
+
+    if (inst_vtable == &interfaces.ReadableStreamDefaultReader.vtable) {
+        return "ReadableStreamDefaultReader";
+    }
+
+    if (inst_vtable == &interfaces.ReadableStreamDefaultController.vtable) {
+        return "ReadableStreamDefaultController";
+    }
+
+    if (inst_vtable == &interfaces.WritableStream.vtable) {
+        return "WritableStream";
+    }
+
+    if (inst_vtable == &interfaces.WritableStreamDefaultWriter.vtable) {
+        return "WritableStreamDefaultWriter";
+    }
+
+    if (inst_vtable == &interfaces.WritableStreamDefaultController.vtable) {
+        return "WritableStreamDefaultController";
+    }
+
+    if (inst_vtable == &interfaces.TransformStream.vtable) {
+        return "TransformStream";
+    }
+
+    if (inst_vtable == &interfaces.TransformStreamDefaultController.vtable) {
+        return "TransformStreamDefaultController";
+    }
+
+    // XHR types
+    if (inst_vtable == &interfaces.XMLHttpRequest.vtable) {
+        return "XMLHttpRequest";
+    }
+
+    if (inst_vtable == &interfaces.XMLHttpRequestUpload.vtable) {
+        return "XMLHttpRequestUpload";
+    }
+
+    if (inst_vtable == &interfaces.XMLHttpRequestEventTarget.vtable) {
+        return "XMLHttpRequestEventTarget";
+    }
+
+    // Progress events
+    if (inst_vtable == &interfaces.ProgressEvent.vtable) {
+        return "ProgressEvent";
+    }
+
+    // URL types
+    if (inst_vtable == &interfaces.URL.vtable) {
+        return "URL";
+    }
+
+    if (inst_vtable == &interfaces.URLSearchParams.vtable) {
+        return "URLSearchParams";
+    }
+
+    // CSSOM types
+    if (inst_vtable == &interfaces.CSSStyleDeclaration.vtable) {
+        return "CSSStyleDeclaration";
+    }
+
+    // Geometry types (CSSOM View)
+    if (inst_vtable == &interfaces.DOMRect.vtable) {
+        return "DOMRect";
+    }
+
+    if (inst_vtable == &interfaces.DOMRectReadOnly.vtable) {
+        return "DOMRectReadOnly";
+    }
+
+    if (inst_vtable == &interfaces.DOMRectList.vtable) {
+        return "DOMRectList";
+    }
+
+    if (inst_vtable == &interfaces.DOMPoint.vtable) {
+        return "DOMPoint";
+    }
+
+    if (inst_vtable == &interfaces.DOMPointReadOnly.vtable) {
+        return "DOMPointReadOnly";
+    }
+
+    if (inst_vtable == &interfaces.DOMQuad.vtable) {
+        return "DOMQuad";
+    }
+
+    // Window - critical for cross-realm support
+    if (inst_vtable == &interfaces.Window.vtable) {
+        return "Window";
+    }
+
+    // Default to "Element" for unknown types (backwards compat)
+    return "Element";
 }
 
 // ============================================================================
@@ -829,39 +746,4 @@ test "template_registry basic operations" {
     // Verify initial state
     const template = getTemplate("NonExistent");
     try std.testing.expectEqual(@as(?*v8.FunctionTemplate, null), template);
-}
-
-test "template_registry isolate-level sharing" {
-    // BSCOPE-04: Verify templates are isolate-scoped, not context-scoped
-    // Templates should be shared across all contexts within the same isolate
-    ensureInitialized();
-
-    // Verify cache_generation starts at 0
-    try std.testing.expectEqual(@as(u32, 0), cache_generation);
-
-    // After clear(), generation should increment
-    clear();
-    try std.testing.expectEqual(@as(u32, 1), cache_generation);
-
-    // Multiple clears increment generation (used for staleness detection)
-    clear();
-    try std.testing.expectEqual(@as(u32, 2), cache_generation);
-}
-
-test "template_registry count stability" {
-    // BSCOPE-04: Template count should not grow with number of contexts
-    // This verifies that templates are shared, not duplicated per context
-    ensureInitialized();
-
-    // With per-isolate storage, we just verify the map is accessible
-    // Count is per-isolate now, not global
-    registry_mutex.lock();
-    defer registry_mutex.unlock();
-
-    const initial_count = templates_by_isolate.count();
-
-    // The count should remain stable regardless of how many times we query
-    const query_count = templates_by_isolate.count();
-
-    try std.testing.expectEqual(initial_count, query_count);
 }

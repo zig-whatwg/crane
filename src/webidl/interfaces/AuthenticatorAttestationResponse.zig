@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AuthenticatorResponse = @import("AuthenticatorResponse.zig").AuthenticatorResponse;
+const AuthenticatorResponse = @import("interfaces").AuthenticatorResponse;
 const COSEAlgorithmIdentifier = @import("typedefs").COSEAlgorithmIdentifier;
 const DOMString = @import("typedefs").DOMString;
 

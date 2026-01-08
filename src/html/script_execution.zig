@@ -755,7 +755,6 @@ pub fn executeScriptElement(
 /// Run a classic script
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 fn runClassicScript(script_element: *runtime.Instance) !void {
-    std.debug.print("[SCRIPT_EXEC] runClassicScript called\n", .{});
     const result = HTMLScriptElementImpl.getResult(script_element);
     const source = switch (result) {
         .script => |s| s.source_text,
@@ -780,13 +779,16 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
+    // Debug: Log the engine context being used
+    const source_preview = if (source.len > 50) source[0..50] else source;
+    std.debug.print("runClassicScript: engine_ctx={*}, source preview: {s}...\n", .{ engine_ctx, source_preview });
+
     // Compile the script using the engine interface
     const compileScript = engine.compileScript orelse {
         return;
     };
 
     const script = compileScript(engine_ctx, source, source_url) catch {
-        std.debug.print("[SCRIPT_EXEC] Script compile error for: {s}\n", .{source_url orelse "(inline)"});
         return;
     } orelse {
         // Compilation failed - fire error event at script element
@@ -824,21 +826,9 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
-    const script_result = runScript(engine_ctx, script) catch |err| {
-        std.debug.print("[SCRIPT_EXEC] runScript error for {s}: {}\n", .{ source_url orelse "(inline)", err });
+    const script_result = runScript(engine_ctx, script) catch {
         return;
     };
-
-    std.debug.print("[SCRIPT_EXEC] Script executed successfully: {s}\n", .{source_url orelse "(inline)"});
-
-    // Run microtask checkpoint after script execution
-    // This is critical for Promise-based APIs like promise_test in testharness.js
-    // which use Promise.resolve().then() to chain test execution.
-    // Per HTML spec: https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint
-    const v8_ffi = @import("v8").ffi;
-    if (v8_ffi.v8_Isolate_GetCurrent()) |current_isolate| {
-        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(current_isolate);
-    }
 
     if (script_result == null) {
         // Script threw an uncaught exception

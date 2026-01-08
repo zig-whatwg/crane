@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemDirectoryHandle = @import("FileSystemDirectoryHandle.zig").FileSystemDirectoryHandle;
+const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const StorageEstimate = @import("dictionaries").StorageEstimate;
 
 pub const StorageManager = struct {

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("Element.zig").Element;
+const Element = @import("interfaces").Element;
 const DOMString = @import("typedefs").DOMString;
 
 pub const NonElementParentNode = struct {

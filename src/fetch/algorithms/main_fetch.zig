@@ -203,8 +203,7 @@ pub fn mainFetch(
     // Dispatch based on scheme
     if (scheme_fetch.isHttpScheme(scheme)) {
         // HTTP(S) requests go through HTTP fetch
-        // Pass trust_store from params for HTTPS certificate validation
-        response = http_fetch.httpFetch(allocator, params, .{ .trust_store = params.trust_store }) catch |err| switch (err) {
+        response = http_fetch.httpFetch(allocator, params, .{}) catch |err| switch (err) {
             http_fetch.HttpFetchError.OutOfMemory => return MainFetchError.OutOfMemory,
             http_fetch.HttpFetchError.NetworkError,
             http_fetch.HttpFetchError.CorsError,

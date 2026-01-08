@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
-const SubtleCrypto = @import("SubtleCrypto.zig").SubtleCrypto;
+const SubtleCrypto = @import("interfaces").SubtleCrypto;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Crypto = struct {
