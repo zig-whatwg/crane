@@ -66,6 +66,25 @@ pub fn main() !void {
 
     const stdout = std.fs.File.stdout();
 
+    // Check for --multi-context flag (BSCOPE-10 test mode)
+    var args = std.process.args();
+    _ = args.skip(); // skip program name
+    var multi_context_mode = false;
+    var snapshot_path: []const u8 = "whatwg_snapshot.bin";
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--multi-context")) {
+            multi_context_mode = true;
+        } else if (std.mem.startsWith(u8, arg, "--snapshot=")) {
+            snapshot_path = arg[11..];
+        }
+    }
+
+    if (multi_context_mode) {
+        try testMultiContextSnapshot(snapshot_path);
+        return;
+    }
+
     try stdout.writeAll("=================================================\n");
     try stdout.writeAll("Minimal V8 Snapshot Test - Isolating Failure Point\n");
     try stdout.writeAll("=================================================\n\n");
@@ -403,4 +422,121 @@ fn loadMinimalSnapshot(allocator: std.mem.Allocator, data: [*]const u8, size: us
     };
 
     return .{ .isolate = isolate, .context = context, .err = null };
+}
+
+/// BSCOPE-10: Test loading all 9 scope-specific contexts from production snapshot
+/// with real timing measurements. Validates p95 < 5ms requirement.
+pub fn testMultiContextSnapshot(snapshot_path: []const u8) !void {
+    const stdout = std.fs.File.stdout();
+    var buf: [4096]u8 = undefined;
+
+    stdout.writeAll("\n=== BSCOPE-10: Multi-Context Snapshot Performance Test ===\n") catch {};
+
+    // Read snapshot file
+    const snapshot_data = std.fs.cwd().readFileAlloc(
+        std.heap.page_allocator,
+        snapshot_path,
+        100 * 1024 * 1024, // 100MB max
+    ) catch |err| {
+        const err_msg = std.fmt.bufPrint(&buf, "Failed to read snapshot file '{s}': {}\n", .{ snapshot_path, err }) catch "Error reading snapshot\n";
+        std.fs.File.stderr().writeAll(err_msg) catch {};
+        return err;
+    };
+    defer std.heap.page_allocator.free(snapshot_data);
+
+    const size_msg = std.fmt.bufPrint(&buf, "Snapshot size: {} bytes\n", .{snapshot_data.len}) catch "Size unknown\n";
+    stdout.writeAll(size_msg) catch {};
+
+    // Create isolate from snapshot using the direct API
+    const isolate = v8.ffi.v8_Isolate_NewFromSnapshot(
+        snapshot_data.ptr,
+        @intCast(snapshot_data.len),
+        null, // No external references for this test
+    ) orelse {
+        std.fs.File.stderr().writeAll("Failed to create isolate from snapshot\n") catch {};
+        return error.IsolateCreationFailed;
+    };
+    defer v8.ffi.v8_Isolate_Dispose(isolate);
+
+    v8.ffi.v8_Isolate_Enter(isolate);
+    defer v8.ffi.v8_Isolate_Exit(isolate);
+
+    // Scope names for logging
+    const scope_names = [_][]const u8{
+        "Window",
+        "DedicatedWorkerGlobalScope",
+        "SharedWorkerGlobalScope",
+        "ServiceWorkerGlobalScope",
+        "AudioWorkletGlobalScope",
+        "PaintWorkletGlobalScope",
+        "AnimationWorkletGlobalScope",
+        "LayoutWorkletGlobalScope",
+        "SharedStorageWorkletGlobalScope",
+    };
+
+    // Timing measurements (in nanoseconds)
+    var timings: [9]u64 = undefined;
+    var success_count: usize = 0;
+
+    stdout.writeAll("\nLoading contexts from snapshot indices 0-8:\n") catch {};
+
+    for (0..9) |idx| {
+        var timer = std.time.Timer.start() catch {
+            const timer_err = std.fmt.bufPrint(&buf, "  [{d}] Timer start failed\n", .{idx}) catch "Timer error\n";
+            std.fs.File.stderr().writeAll(timer_err) catch {};
+            timings[idx] = 0;
+            continue;
+        };
+
+        const context = v8.ffi.v8_Context_NewFromSnapshotAt(isolate, @intCast(idx));
+
+        const elapsed_ns = timer.read();
+        timings[idx] = elapsed_ns;
+
+        if (context) |ctx| {
+            success_count += 1;
+            const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000.0;
+            const success_msg = std.fmt.bufPrint(&buf, "  [{d}] {s}: {d:.3}ms OK\n", .{ idx, scope_names[idx], elapsed_ms }) catch "OK\n";
+            stdout.writeAll(success_msg) catch {};
+            v8.ffi.v8_Context_Dispose(ctx);
+        } else {
+            const fail_msg = std.fmt.bufPrint(&buf, "  [{d}] {s}: FAILED\n", .{ idx, scope_names[idx] }) catch "FAILED\n";
+            std.fs.File.stderr().writeAll(fail_msg) catch {};
+        }
+    }
+
+    // Calculate statistics
+    var sorted_timings: [9]u64 = timings;
+    std.mem.sort(u64, &sorted_timings, {}, std.sort.asc(u64));
+
+    const p50_ns = sorted_timings[4]; // median
+    const p95_ns = sorted_timings[8]; // 95th percentile (last element for 9 samples)
+    const p50_ms = @as(f64, @floatFromInt(p50_ns)) / 1_000_000.0;
+    const p95_ms = @as(f64, @floatFromInt(p95_ns)) / 1_000_000.0;
+
+    stdout.writeAll("\n=== Results ===\n") catch {};
+    const count_msg = std.fmt.bufPrint(&buf, "Contexts loaded: {d}/9\n", .{success_count}) catch "Count unknown\n";
+    stdout.writeAll(count_msg) catch {};
+    const p50_msg = std.fmt.bufPrint(&buf, "p50 latency: {d:.3}ms\n", .{p50_ms}) catch "p50 unknown\n";
+    stdout.writeAll(p50_msg) catch {};
+    const p95_msg = std.fmt.bufPrint(&buf, "p95 latency: {d:.3}ms\n", .{p95_ms}) catch "p95 unknown\n";
+    stdout.writeAll(p95_msg) catch {};
+
+    // BSCOPE-10 requirement: p95 < 5ms
+    const p95_threshold_ms: f64 = 5.0;
+    if (p95_ms < p95_threshold_ms) {
+        const pass_msg = std.fmt.bufPrint(&buf, "p95 < {d}ms: PASS\n", .{p95_threshold_ms}) catch "PASS\n";
+        stdout.writeAll(pass_msg) catch {};
+    } else {
+        const fail_msg = std.fmt.bufPrint(&buf, "p95 < {d}ms: FAIL (actual: {d:.3}ms)\n", .{ p95_threshold_ms, p95_ms }) catch "FAIL\n";
+        std.fs.File.stderr().writeAll(fail_msg) catch {};
+        return error.PerformanceThresholdExceeded;
+    }
+
+    if (success_count < 9) {
+        std.fs.File.stderr().writeAll("Not all contexts loaded successfully\n") catch {};
+        return error.ContextLoadFailed;
+    }
+
+    std.fs.File.stdout().writeAll("\nBSCOPE-10: All tests passed!\n") catch {};
 }

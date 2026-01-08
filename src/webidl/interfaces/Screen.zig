@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ScreenOrientation = @import("interfaces").ScreenOrientation;
+const ScreenOrientation = @import("ScreenOrientation.zig").ScreenOrientation;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const Screen = struct {

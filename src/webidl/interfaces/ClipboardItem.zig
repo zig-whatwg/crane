@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ClipboardItemOptions = @import("dictionaries").ClipboardItemOptions;
 const PresentationStyle = @import("enums").PresentationStyle;
-const Blob = @import("interfaces").Blob;
+const Blob = @import("Blob.zig").Blob;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ClipboardItem = struct {

@@ -41,6 +41,7 @@ const mapping = @import("mapping.zig");
 const bidi = @import("bidi.zig");
 const context = @import("context.zig");
 const idna_validation = @import("validation.zig");
+const unicode_data = @import("unicode_data.zig");
 
 // Re-export submodules for external use
 pub const validation_mod = validation;
@@ -91,9 +92,10 @@ fn processLabelToASCII(
     label: []const u8,
     be_strict: bool,
 ) ![]u8 {
-    // Empty label
+    // Empty labels are valid - domains like "." and ".." produce empty labels
+    // when split by '.', and these are valid per the URL spec
     if (label.len == 0) {
-        return IDNAError.InvalidDomain;
+        return try allocator.dupe(u8, "");
     }
 
     // Note: Domain-level mapping has already been done in domainToASCII
@@ -111,9 +113,71 @@ fn processLabelToASCII(
     {
         // Try to decode the Punycode
         const punycode_part = normalized[4..];
-        const decoded = punycode.decode(allocator, punycode_part) catch null;
 
-        if (decoded) |dec| {
+        // Per UTS46, invalid punycode in xn-- labels MUST fail validation
+        const dec = punycode.decode(allocator, punycode_part) catch {
+            return IDNAError.PunycodeError;
+        };
+
+        {
+            defer allocator.free(dec);
+
+            // Per UTS46, xn-- that decodes to empty string is invalid
+            if (dec.len == 0) {
+                return IDNAError.PunycodeError;
+            }
+
+            // UTS46 Validity check 1: decoded result must be NFC normalized
+            // If the decoded string doesn't equal its NFC normalization, the punycode is invalid
+            const nfc_dec = normalization.normalize(allocator, dec) catch {
+                return IDNAError.PunycodeError;
+            };
+            defer allocator.free(nfc_dec);
+
+            if (!std.mem.eql(u8, dec, nfc_dec)) {
+                return IDNAError.PunycodeError;
+            }
+
+            // UTS46 Validity check 2: decoded result must not contain disallowed or mapped characters
+            // Per UTS46 section 4.1, a valid A-label must decode to a U-label where all characters
+            // are already in canonical form (valid status). If decoded punycode contains:
+            // - disallowed: obviously invalid
+            // - mapped: indicates non-canonical encoding (e.g., U+3253 CIRCLED NUMBER TWENTY THREE
+            //   maps to "23", so xn--pokxncvks is invalid because it encodes non-canonical chars)
+            // - ignored: would have been removed during proper encoding
+            // - deviation: depends on transitional mode, but browsers use non-transitional
+            var dec_i: usize = 0;
+            while (dec_i < dec.len) {
+                const cp_len = std.unicode.utf8ByteSequenceLength(dec[dec_i]) catch {
+                    return IDNAError.PunycodeError;
+                };
+                if (dec_i + cp_len > dec.len) {
+                    return IDNAError.PunycodeError;
+                }
+                const cp = std.unicode.utf8Decode(dec[dec_i..][0..cp_len]) catch {
+                    return IDNAError.PunycodeError;
+                };
+                const lookup = unicode_data.lookupIdnaStatus(cp);
+                // Only .valid and .deviation are acceptable in decoded punycode
+                // (.deviation is allowed in non-transitional mode which browsers use)
+                if (lookup.status == .disallowed or lookup.status == .mapped or lookup.status == .ignored) {
+                    return IDNAError.PunycodeError;
+                }
+                dec_i += cp_len;
+            }
+
+            // UTS46 Validity check 3: re-encode and compare (round-trip verification)
+            // This catches invalid punycode that decodes but doesn't re-encode to the same value
+            const reencoded = punycode.encode(allocator, nfc_dec) catch {
+                return IDNAError.PunycodeError;
+            };
+            defer allocator.free(reencoded);
+
+            // Compare re-encoded with original punycode part (case-insensitive)
+            if (!std.ascii.eqlIgnoreCase(reencoded, punycode_part)) {
+                return IDNAError.PunycodeError;
+            }
+
             // Successfully decoded - now check if the decoded result is pure ASCII
             var decoded_is_ascii = true;
             for (dec) |byte| {
@@ -125,29 +189,16 @@ fn processLabelToASCII(
 
             if (decoded_is_ascii) {
                 // Decoded result is pure ASCII (e.g., xn--ASCII- -> ascii)
-                // Special case: xn--- decodes to empty string - keep xn--- as-is
-                if (dec.len == 0) {
-                    allocator.free(dec);
-                    // Validate and return the xn-- form for empty decoded result
-                    idna_validation.validateLabel(normalized, be_strict) catch {
-                        return IDNAError.ValidationError;
-                    };
-                    return try allocator.dupe(u8, normalized);
-                }
-
                 // Validate and return the decoded ASCII form (not the xn-- form)
-                // Note: Punycode decode already returns lowercase ASCII
                 idna_validation.validateLabel(dec, be_strict) catch {
-                    allocator.free(dec);
                     return IDNAError.ValidationError;
                 };
 
                 // Return the decoded ASCII (ownership transferred)
-                return dec;
+                return try allocator.dupe(u8, dec);
             } else {
                 // Decoded result contains non-ASCII (e.g., xn--u-ccb -> u\u0308)
                 // Keep the xn-- form and validate it
-                defer allocator.free(dec);
 
                 // Validate the decoded form for bidi/context rules
                 if (be_strict) {
@@ -167,7 +218,6 @@ fn processLabelToASCII(
                 return try allocator.dupe(u8, normalized);
             }
         }
-        // If decode failed, continue to normal processing (re-encode the label)
     }
 
     // Step 3: Check if label is pure ASCII
@@ -256,10 +306,27 @@ pub fn domainToASCII(
         labels.deinit();
     }
 
+    // Special case: dot-only domains like "." and ".."
+    // These should pass through as-is without IDNA processing
+    var all_dots = true;
+    for (domain_mapped) |c| {
+        if (c != '.') {
+            all_dots = false;
+            break;
+        }
+    }
+    if (all_dots and domain_mapped.len > 0) {
+        return try allocator.dupe(u8, domain_mapped);
+    }
+
     var iter = std.mem.splitScalar(u8, domain_mapped, '.');
     while (iter.next()) |label| {
-        // Skip trailing empty label (trailing dot)
+        // Skip trailing empty label (trailing dot like "example.com.")
+        // But we keep ALL labels for domains with content
         if (label.len == 0 and iter.peek() == null) {
+            // This is a trailing empty label - add it to preserve trailing dots
+            const processed = try allocator.dupe(u8, "");
+            try labels.append(processed);
             continue;
         }
 
@@ -281,8 +348,8 @@ pub fn domainToASCII(
 
     const final_domain = try result.toOwnedSlice();
 
-    // Step 3: Validate final domain
-    // Check for empty string
+    // Reject truly empty domains (e.g., domain was only ignored characters like soft hyphen)
+    // Note: Domains like "." and ".." are NOT empty - they produce "." and ".." respectively
     if (final_domain.len == 0) {
         allocator.free(final_domain);
         return IDNAError.InvalidDomain;
@@ -303,6 +370,11 @@ fn processLabelToUnicode(
     label: []const u8,
     be_strict: bool,
 ) ![]u8 {
+    // Empty labels are valid - domains like "." and ".." produce empty labels
+    if (label.len == 0) {
+        return try allocator.dupe(u8, "");
+    }
+
     // Check if label starts with "xn--" (Punycode)
     if (std.mem.startsWith(u8, label, "xn--") or
         std.mem.startsWith(u8, label, "XN--") or
@@ -391,6 +463,19 @@ pub fn domainToUnicode(
     };
     defer allocator.free(domain_mapped);
 
+    // Special case: dot-only domains like "." and ".."
+    // These should pass through as-is without IDNA processing
+    var all_dots = true;
+    for (domain_mapped) |c| {
+        if (c != '.') {
+            all_dots = false;
+            break;
+        }
+    }
+    if (all_dots and domain_mapped.len > 0) {
+        return try allocator.dupe(u8, domain_mapped);
+    }
+
     // Step 1: Split mapped domain into labels
     var labels = infra.List([]const u8).init(allocator);
     defer {
@@ -402,11 +487,6 @@ pub fn domainToUnicode(
 
     var iter = std.mem.splitScalar(u8, domain_mapped, '.');
     while (iter.next()) |label| {
-        // Skip trailing empty label (trailing dot)
-        if (label.len == 0 and iter.peek() == null) {
-            continue;
-        }
-
         // Process each label
         const processed = try processLabelToUnicode(allocator, label, be_strict);
         try labels.append(processed);

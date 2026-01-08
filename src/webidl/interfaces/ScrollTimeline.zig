@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AnimationTimeline = @import("interfaces").AnimationTimeline;
-const Element = @import("interfaces").Element;
-const AnimationEffect = @import("interfaces").AnimationEffect;
+const AnimationTimeline = @import("AnimationTimeline.zig").AnimationTimeline;
+const Element = @import("Element.zig").Element;
+const AnimationEffect = @import("AnimationEffect.zig").AnimationEffect;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const Animation = @import("interfaces").Animation;
+const Animation = @import("Animation.zig").Animation;
 const ScrollTimelineOptions = @import("dictionaries").ScrollTimelineOptions;
 const ScrollAxis = @import("enums").ScrollAxis;
 

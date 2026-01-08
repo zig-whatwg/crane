@@ -14,7 +14,7 @@ const MediaSessionPlaybackState = @import("enums").MediaSessionPlaybackState;
 const MediaPositionState = @import("dictionaries").MediaPositionState;
 const MediaSessionActionHandler = @import("callbacks").MediaSessionActionHandler;
 const MediaSessionAction = @import("enums").MediaSessionAction;
-const MediaMetadata = @import("interfaces").MediaMetadata;
+const MediaMetadata = @import("MediaMetadata.zig").MediaMetadata;
 
 pub const MediaSession = struct {
     pub const Meta = struct {

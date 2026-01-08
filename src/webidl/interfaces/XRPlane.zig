@@ -12,9 +12,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const XRPlaneOrientation = @import("enums").XRPlaneOrientation;
-const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
+const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
 const DOMString = @import("typedefs").DOMString;
-const XRSpace = @import("interfaces").XRSpace;
+const XRSpace = @import("XRSpace.zig").XRSpace;
 
 pub const XRPlane = struct {
     pub const Meta = struct {
@@ -24,7 +24,12 @@ pub const XRPlane = struct {
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = null;
         pub const MixinTypes = &.{};
-        pub const extended_attributes = .{};
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        };
+        
+        /// Global contexts where this interface is exposed
+        pub const exposed_in = .{ .Window = true };
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{

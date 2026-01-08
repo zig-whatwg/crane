@@ -84,3 +84,10 @@ pub fn call_appendRule(instance: *runtime.Instance, rule: typedefs.CSSOMString) 
     _ = rule;
     return error.NotImplemented;
 }
+
+
+pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    _ = instance;
+    _ = index;
+    return error.NotImplemented;
+}

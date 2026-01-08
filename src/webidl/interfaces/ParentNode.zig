@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const Node = @import("interfaces").Node;
-const NodeList = @import("interfaces").NodeList;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const Element = @import("Element.zig").Element;
+const Node = @import("Node.zig").Node;
+const NodeList = @import("NodeList.zig").NodeList;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ParentNode = struct {

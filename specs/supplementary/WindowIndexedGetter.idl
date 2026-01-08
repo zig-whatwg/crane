@@ -1,0 +1,10 @@
+// Supplementary partial interface to add indexed getter to Window
+// Per HTML spec, WindowProxy provides indexed access to child browsing contexts.
+// Since we implement WindowProxy behavior directly on Window, we add the
+// indexed getter here.
+//
+// See: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-window-object
+
+partial interface Window {
+  getter WindowProxy? item(unsigned long index);
+};

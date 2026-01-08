@@ -26,6 +26,35 @@
 const std = @import("std");
 const BlobData = @import("blob_internals.zig").BlobData;
 
+// ============================================================================
+// Global Blob URL Store Singleton
+// ============================================================================
+
+/// Thread-local global blob URL store instance.
+/// Used by URL.createObjectURL(), URL.revokeObjectURL(), and worker blob: URL resolution.
+///
+/// Per spec, each origin should have its own store. We use a single store
+/// with origin validation in the resolve() method.
+var global_store: ?*BlobURLStore = null;
+
+/// Set the global blob URL store.
+/// Should be called by the browser/runtime initialization.
+pub fn setGlobal(store: *BlobURLStore) void {
+    global_store = store;
+}
+
+/// Get the global blob URL store.
+/// Returns null if not initialized.
+pub fn getGlobal() ?*BlobURLStore {
+    return global_store;
+}
+
+/// Clear the global blob URL store reference.
+/// Does NOT deinit the store - caller is responsible for cleanup.
+pub fn clearGlobal() void {
+    global_store = null;
+}
+
 /// Entry in the blob URL store.
 pub const BlobURLEntry = struct {
     /// The blob data (owned reference)

@@ -59,7 +59,7 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance (creates the instance)
+/// Initialize instance (creates the instance with standard 4-arg pattern)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -68,13 +68,25 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
 
-    // Initialize internal state with default scope
-    const internal = try InternalState.init(allocator, "/", true);
+    // Initialize internal state with defaults (will be configured later)
+    const internal = try InternalState.init(allocator, "/", false);
 
     const state = instance.getState(StateType);
     state.own._internal = internal;
 
     return instance;
+}
+
+/// Configure the registration with scope and security context
+/// Called after init to set the actual scope URL and security context
+pub fn configure(instance: *runtime.Instance, scope_url: []const u8, is_secure_context: bool) !void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        // Free old scope and set new one
+        internal.allocator.free(internal.scope_url);
+        internal.scope_url = try internal.allocator.dupe(u8, scope_url);
+        internal.is_secure_context = is_secure_context;
+    }
 }
 
 /// Deinitialize instance

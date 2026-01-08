@@ -14,6 +14,37 @@ const config_mod = @import("config.zig");
 const overload = @import("overload.zig");
 const CodegenConfig = config_mod.CodegenConfig;
 
+/// Helper to scan a directory for all .zig files (excluding root.zig)
+/// Returns a list of names (without .zig extension)
+fn scanDirectoryForZigFiles(allocator: std.mem.Allocator, dir_path: []const u8) !std.ArrayListUnmanaged([]const u8) {
+    var names: std.ArrayListUnmanaged([]const u8) = .{};
+    errdefer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
+
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Warning: Could not open directory {s}: {}\n", .{ dir_path, err });
+        return names;
+    };
+    defer dir.close();
+
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
+        if (std.mem.eql(u8, entry.name, "root.zig")) continue;
+
+        // Extract name from filename (remove .zig extension)
+        const name = entry.name[0 .. entry.name.len - 4];
+        try names.append(allocator, try allocator.dupe(u8, name));
+    }
+
+    return names;
+}
+
 /// Escape a name if it's a Zig keyword (e.g., "type" -> "@\"type\"")
 fn escapeIfKeyword(name: []const u8) []const u8 {
     if (isZigKeyword(name)) {
@@ -265,14 +296,55 @@ fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types
     try ops.appendSlice(allocator, unique.items);
 }
 
-/// Generate root.zig file that exports all interfaces
+/// Generate root.zig file that exports all interfaces by scanning the directory
+/// Only includes interfaces that have corresponding impl files
 pub fn generateInterfacesRoot(
     allocator: std.mem.Allocator,
     interfaces_path: []const u8,
-    interface_names: []const []const u8,
+    impls_path: []const u8,
+    _: []const []const u8, // interface_names - ignored, we scan the directory instead
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ interfaces_path, "root.zig" });
     defer allocator.free(root_path);
+
+    // Scan directory for all .zig files (excluding root.zig)
+    var interface_names_list: std.ArrayListUnmanaged([]const u8) = .{};
+    defer {
+        for (interface_names_list.items) |name| {
+            allocator.free(name);
+        }
+        interface_names_list.deinit(allocator);
+    }
+
+    var dir = std.fs.cwd().openDir(interfaces_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Warning: Could not open interfaces directory {s}: {}\n", .{ interfaces_path, err });
+        return;
+    };
+    defer dir.close();
+
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
+        if (std.mem.eql(u8, entry.name, "root.zig")) continue;
+
+        // Extract interface name from filename (remove .zig extension)
+        const name = entry.name[0 .. entry.name.len - 4];
+
+        // Only include interfaces that have corresponding impl files
+        const impl_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{name});
+        defer allocator.free(impl_filename);
+        const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
+        defer allocator.free(impl_path);
+
+        // Check if impl file exists
+        std.fs.cwd().access(impl_path, .{}) catch {
+            // No corresponding impl, skip this interface
+            continue;
+        };
+
+        try interface_names_list.append(allocator, try allocator.dupe(u8, name));
+    }
 
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
@@ -288,31 +360,38 @@ pub fn generateInterfacesRoot(
     try w.writeAll("\n");
 
     // Sort interface names for deterministic output
-    const sorted_names = try allocator.dupe([]const u8, interface_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    std.mem.sort([]const u8, interface_names_list.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
     // Export all interfaces
-    for (sorted_names) |name| {
+    for (interface_names_list.items) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
     try w.flush();
 }
 
-/// Generate root.zig file that exports all implementations
+/// Generate root.zig file that exports all implementations by scanning the directory
 pub fn generateImplsRoot(
     allocator: std.mem.Allocator,
     impls_path: []const u8,
-    interface_names: []const []const u8,
-    namespace_names: []const []const u8,
+    _: []const []const u8, // interface_names - ignored, we scan the directory
+    _: []const []const u8, // namespace_names - ignored, we scan the directory
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ impls_path, "root.zig" });
     defer allocator.free(root_path);
+
+    // Scan directory for all .zig files
+    var names = try scanDirectoryForZigFiles(allocator, impls_path);
+    defer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
 
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
@@ -327,71 +406,40 @@ pub fn generateImplsRoot(
     try w.writeAll("//! This file is AUTO-GENERATED and will be overwritten.\n");
     try w.writeAll("\n");
 
-    // Sort interface names for deterministic output
-    const sorted_names = try allocator.dupe([]const u8, interface_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    // Sort names for deterministic output
+    std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
-    // Export all interface implementations
-    for (sorted_names) |name| {
-        // Check if implementation file exists
-        const impl_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{name});
-        defer allocator.free(impl_filename);
-
-        const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
-        defer allocator.free(impl_path);
-
-        std.fs.cwd().access(impl_path, .{}) catch {
-            // File doesn't exist - export a stub that will fail at compile time
-            try w.print("pub const {s} = @compileError(\"Implementation for {s} not found. Create {s}/{s}.zig\");\n", .{ name, name, impls_path, name });
-            continue;
-        };
-
+    // Export all implementations
+    for (names.items) |name| {
         // File exists - import it as namespace (impl files don't have struct types)
         try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
     }
 
-    // Export all namespace implementations
-    const sorted_ns_names = try allocator.dupe([]const u8, namespace_names);
-    defer allocator.free(sorted_ns_names);
-    std.mem.sort([]const u8, sorted_ns_names, {}, struct {
-        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-            return std.mem.lessThan(u8, a, b);
-        }
-    }.lessThan);
-
-    for (sorted_ns_names) |name| {
-        const impl_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{name});
-        defer allocator.free(impl_filename);
-
-        const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
-        defer allocator.free(impl_path);
-
-        std.fs.cwd().access(impl_path, .{}) catch {
-            // File doesn't exist - skip it
-            continue;
-        };
-
-        // File exists - import it (namespaces use same naming as interfaces)
-        try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
-    }
-
     try w.flush();
 }
 
-/// Generate root.zig file that exports all typedefs
+/// Generate root.zig file that exports all typedefs by scanning the directory
 pub fn generateTypedefsRoot(
     allocator: std.mem.Allocator,
     typedefs_path: []const u8,
-    typedef_names: []const []const u8,
+    _: []const []const u8, // typedef_names - ignored, we scan the directory
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ typedefs_path, "root.zig" });
     defer allocator.free(root_path);
 
+    // Scan directory for all .zig files
+    var names = try scanDirectoryForZigFiles(allocator, typedefs_path);
+    defer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
+
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
 
@@ -401,30 +449,37 @@ pub fn generateTypedefsRoot(
 
     try w.writeAll("//! Auto-generated\n");
 
-    const sorted_names = try allocator.dupe([]const u8, typedef_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
-    for (sorted_names) |name| {
+    for (names.items) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
     try w.flush();
 }
 
-/// Generate root.zig file that exports all dictionaries
+/// Generate root.zig file that exports all dictionaries by scanning the directory
 pub fn generateDictionariesRoot(
     allocator: std.mem.Allocator,
     dictionaries_path: []const u8,
-    dictionary_names: []const []const u8,
+    _: []const []const u8, // dictionary_names - ignored, we scan the directory
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ dictionaries_path, "root.zig" });
     defer allocator.free(root_path);
 
+    // Scan directory for all .zig files
+    var names = try scanDirectoryForZigFiles(allocator, dictionaries_path);
+    defer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
+
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
 
@@ -434,30 +489,37 @@ pub fn generateDictionariesRoot(
 
     try w.writeAll("//! Auto-generated\n");
 
-    const sorted_names = try allocator.dupe([]const u8, dictionary_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
-    for (sorted_names) |name| {
+    for (names.items) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
     try w.flush();
 }
 
-/// Generate root.zig file that exports all enums
+/// Generate root.zig file that exports all enums by scanning the directory
 pub fn generateEnumsRoot(
     allocator: std.mem.Allocator,
     enums_path: []const u8,
-    enum_names: []const []const u8,
+    _: []const []const u8, // enum_names - ignored, we scan the directory
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ enums_path, "root.zig" });
     defer allocator.free(root_path);
 
+    // Scan directory for all .zig files
+    var names = try scanDirectoryForZigFiles(allocator, enums_path);
+    defer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
+
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
 
@@ -467,30 +529,37 @@ pub fn generateEnumsRoot(
 
     try w.writeAll("//! Auto-generated\n");
 
-    const sorted_names = try allocator.dupe([]const u8, enum_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
-    for (sorted_names) |name| {
+    for (names.items) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
     try w.flush();
 }
 
-/// Generate root.zig file that exports all callbacks
+/// Generate root.zig file that exports all callbacks by scanning the directory
 pub fn generateCallbacksRoot(
     allocator: std.mem.Allocator,
     callbacks_path: []const u8,
-    callback_names: []const []const u8,
+    _: []const []const u8, // callback_names - ignored, we scan the directory
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ callbacks_path, "root.zig" });
     defer allocator.free(root_path);
 
+    // Scan directory for all .zig files
+    var names = try scanDirectoryForZigFiles(allocator, callbacks_path);
+    defer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
+
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
 
@@ -500,30 +569,37 @@ pub fn generateCallbacksRoot(
 
     try w.writeAll("//! Auto-generated\n");
 
-    const sorted_names = try allocator.dupe([]const u8, callback_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
-    for (sorted_names) |name| {
+    for (names.items) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
     try w.flush();
 }
 
-/// Generate root.zig file that exports all namespaces
+/// Generate root.zig file that exports all namespaces by scanning the directory
 pub fn generateNamespacesRoot(
     allocator: std.mem.Allocator,
     namespaces_path: []const u8,
-    namespace_names: []const []const u8,
+    _: []const []const u8, // namespace_names - ignored, we scan the directory
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ namespaces_path, "root.zig" });
     defer allocator.free(root_path);
 
+    // Scan directory for all .zig files
+    var names = try scanDirectoryForZigFiles(allocator, namespaces_path);
+    defer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
+
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
 
@@ -533,26 +609,24 @@ pub fn generateNamespacesRoot(
 
     try w.writeAll("//! Auto-generated\n");
 
-    const sorted_names = try allocator.dupe([]const u8, namespace_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
-    for (sorted_names) |name| {
+    for (names.items) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
     try w.flush();
 }
 
-/// Generate root.zig file that exports all mixins
+/// Generate root.zig file that exports all mixins by scanning the directory
 pub fn generateMixinsRoot(
     allocator: std.mem.Allocator,
     mixins_path: []const u8,
-    mixin_names: []const []const u8,
+    _: []const []const u8, // mixin_names - ignored, we scan the directory
 ) !void {
     const root_path = try std.fs.path.join(allocator, &.{ mixins_path, "root.zig" });
     defer allocator.free(root_path);
@@ -563,6 +637,15 @@ pub fn generateMixinsRoot(
         else => return err,
     };
 
+    // Scan directory for all .zig files
+    var names = try scanDirectoryForZigFiles(allocator, mixins_path);
+    defer {
+        for (names.items) |name| {
+            allocator.free(name);
+        }
+        names.deinit(allocator);
+    }
+
     const root_file = try std.fs.cwd().createFile(root_path, .{});
     defer root_file.close();
 
@@ -572,15 +655,13 @@ pub fn generateMixinsRoot(
 
     try w.writeAll("//! Auto-generated root file for all WebIDL mixins\n\n");
 
-    const sorted_names = try allocator.dupe([]const u8, mixin_names);
-    defer allocator.free(sorted_names);
-    std.mem.sort([]const u8, sorted_names, {}, struct {
+    std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
 
-    for (sorted_names) |name| {
+    for (names.items) |name| {
         try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
     }
 
@@ -594,10 +675,14 @@ pub fn generateMixin(
     mixin: @import("ir.zig").Interface,
     type_registry: *const @import("ir.zig").TypeRegistry,
 ) !void {
+    // Use arena allocator for all temporary allocations to prevent memory leaks
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
     const mixin_name = mixin.name;
 
-    const file_path = try std.fs.path.join(allocator, &.{ mixins_path, try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name}) });
-    defer allocator.free(file_path);
+    const file_path = try std.fs.path.join(arena_alloc, &.{ mixins_path, try std.fmt.allocPrint(arena_alloc, "{s}.zig", .{mixin_name}) });
 
     // Ensure the mixins directory exists
     std.fs.cwd().makePath(mixins_path) catch |err| switch (err) {
@@ -638,19 +723,19 @@ pub fn generateMixin(
 
     // Collect operations and attributes from members
     var all_ops = std.ArrayList(types.Operation).empty;
-    defer all_ops.deinit(allocator);
+    // No defer needed - arena handles cleanup
 
     var all_attrs = std.ArrayList(types.Attribute).empty;
-    defer all_attrs.deinit(allocator);
+    // No defer needed - arena handles cleanup
 
     for (mixin.members.items) |member| {
         if (member.asOperation()) |op| {
             if (op.name != null) {
-                try all_ops.append(allocator, op);
+                try all_ops.append(arena_alloc, op);
             }
         }
         if (member.asAttribute()) |attr| {
-            try all_attrs.append(allocator, attr);
+            try all_attrs.append(arena_alloc, attr);
         }
     }
 
@@ -676,14 +761,14 @@ pub fn generateMixin(
     }
 
     // Group operations by name to detect overloads
-    const overload_sets = try overload.groupOperationsByName(allocator, all_ops.items);
-    defer overload.freeOverloadSets(allocator, overload_sets);
+    const overload_sets = try overload.groupOperationsByName(arena_alloc, all_ops.items);
+    // No defer needed - arena handles cleanup
 
     // Generate operation delegates (with overload support)
     for (overload_sets) |set| {
         if (set.isOverloaded()) {
             // Multiple overloads - generate tagged union and dispatch function
-            try writeMixinOverloadedOperation(allocator, w, mixin_name, set, type_registry);
+            try writeMixinOverloadedOperation(arena_alloc, w, mixin_name, set, type_registry);
         } else {
             // Single operation - generate normal delegate function
             const op = set.operations[0];
@@ -2122,7 +2207,8 @@ pub fn generateFromFile(
 
     // Generate root.zig files
     if (try cfg.getInterfacesPath()) |interfaces_path| {
-        try generateInterfacesRoot(allocator, interfaces_path, interface_names.items);
+        const impls_path = try cfg.getImplsPath() orelse interfaces_path;
+        try generateInterfacesRoot(allocator, interfaces_path, impls_path, interface_names.items);
     }
 
     if (try cfg.getImplsPath()) |impls_path| {
@@ -2222,8 +2308,8 @@ test "generateInterface includes base type in imports" {
     const content = try file.readToEndAlloc(allocator, 10 * 1024);
     defer allocator.free(content);
 
-    // Should import base type from "interfaces" module
-    try testing.expect(std.mem.indexOf(u8, content, "const EventTarget = @import(\"interfaces\").EventTarget;") != null);
+    // Should import base type using peer imports (to avoid fat-module dependency)
+    try testing.expect(std.mem.indexOf(u8, content, "const EventTarget = @import(\"EventTarget.zig\").EventTarget;") != null);
 }
 
 test "generateInterface includes lifecycle functions" {
@@ -2720,15 +2806,18 @@ pub fn generateTypedef(
     typedefs_path: []const u8,
     ir: *const ir_mod.IR,
 ) !void {
+    // Use arena allocator for all temporary allocations in this function
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
     // Create typedefs directory
     try std.fs.cwd().makePath(typedefs_path);
 
     // Create typedef file
-    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{typedef.name});
-    defer allocator.free(output_filename);
+    const output_filename = try std.fmt.allocPrint(arena_alloc, "{s}.zig", .{typedef.name});
 
-    const output_path = try std.fs.path.join(allocator, &.{ typedefs_path, output_filename });
-    defer allocator.free(output_path);
+    const output_path = try std.fs.path.join(arena_alloc, &.{ typedefs_path, output_filename });
 
     const output_file = try std.fs.cwd().createFile(output_path, .{});
     defer output_file.close();
@@ -2806,7 +2895,7 @@ pub fn generateTypedef(
             defer allocator.free(variant_name);
 
             try w.print("    {s}: ", .{variant_name});
-            try writeTypeForTypedefWithRegistry(allocator, w, union_type, typedefs_path, &ir.type_registry);
+            try writeTypeForTypedefWithRegistry(arena_alloc, w, union_type, typedefs_path, &ir.type_registry);
             try w.writeAll(",\n");
         }
 
@@ -2820,7 +2909,7 @@ pub fn generateTypedef(
             try w.writeAll("?");
         }
 
-        try writeTypeForTypedefWithRegistry(allocator, w, typedef.idlType, typedefs_path, &ir.type_registry);
+        try writeTypeForTypedefWithRegistry(arena_alloc, w, typedef.idlType, typedefs_path, &ir.type_registry);
         try w.writeAll(";\n");
     }
 
@@ -2896,15 +2985,21 @@ pub fn generateDictionary(
     dictionaries_path: []const u8,
     ir: *const ir_mod.IR,
 ) !void {
+    // Use arena allocator to prevent memory leaks from temporary allocations
+    // in parseInlineType and writeDictionaryMemberType
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_alloc = arena.allocator();
+
     // Create dictionaries directory
     try std.fs.cwd().makePath(dictionaries_path);
 
     // Create dictionary file
-    const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{dictionary.name});
-    defer allocator.free(output_filename);
+    const output_filename = try std.fmt.allocPrint(arena_alloc, "{s}.zig", .{dictionary.name});
+    // No defer needed - arena handles cleanup
 
-    const output_path = try std.fs.path.join(allocator, &.{ dictionaries_path, output_filename });
-    defer allocator.free(output_path);
+    const output_path = try std.fs.path.join(arena_alloc, &.{ dictionaries_path, output_filename });
+    // No defer needed - arena handles cleanup
 
     const output_file = try std.fs.cwd().createFile(output_path, .{});
     defer output_file.close();
@@ -2995,7 +3090,7 @@ pub fn generateDictionary(
             try w.writeAll("?");
         }
 
-        try writeDictionaryMemberType(allocator, w, member.idlType, &ir.type_registry);
+        try writeDictionaryMemberType(arena_alloc, w, member.idlType, &ir.type_registry);
 
         // Default value
         if (!is_required) {

@@ -15,9 +15,9 @@ const SharedStorageWorkletOptions = @import("dictionaries").SharedStorageWorklet
 const SharedStorageResponse = @import("typedefs").SharedStorageResponse;
 const SharedStorageSetMethodOptions = @import("dictionaries").SharedStorageSetMethodOptions;
 const SharedStorageModifierMethodOptions = @import("dictionaries").SharedStorageModifierMethodOptions;
-const SharedStorageModifierMethod = @import("interfaces").SharedStorageModifierMethod;
+const SharedStorageModifierMethod = @import("SharedStorageModifierMethod.zig").SharedStorageModifierMethod;
 const SharedStorageUrlWithMetadata = @import("dictionaries").SharedStorageUrlWithMetadata;
-const SharedStorageWorklet = @import("interfaces").SharedStorageWorklet;
+const SharedStorageWorklet = @import("SharedStorageWorklet.zig").SharedStorageWorklet;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 

@@ -4,5 +4,7 @@
 
 pub const PredefinedColorSpace = enum {
     _srgb_,
+    _srgb_linear_,
     _display_p3_,
+    _display_p3_linear_,
 };

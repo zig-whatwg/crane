@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCollection = @import("interfaces").HTMLCollection;
-const Element = @import("interfaces").Element;
-const HTMLElement = @import("interfaces").HTMLElement;
-const HTMLOptionElement = @import("interfaces").HTMLOptionElement;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
+const Element = @import("Element.zig").Element;
+const HTMLElement = @import("HTMLElement.zig").HTMLElement;
+const HTMLOptionElement = @import("HTMLOptionElement.zig").HTMLOptionElement;
 const DOMString = @import("typedefs").DOMString;
-const HTMLOptGroupElement = @import("interfaces").HTMLOptGroupElement;
+const HTMLOptGroupElement = @import("HTMLOptGroupElement.zig").HTMLOptGroupElement;
 
 pub const HTMLOptionsCollection = struct {
     pub const Meta = struct {

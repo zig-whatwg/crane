@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const MediaMetadataInit = @import("dictionaries").MediaMetadataInit;
-const ChapterInformation = @import("interfaces").ChapterInformation;
+const ChapterInformation = @import("ChapterInformation.zig").ChapterInformation;
 const DOMString = @import("typedefs").DOMString;
 
 pub const MediaMetadata = struct {

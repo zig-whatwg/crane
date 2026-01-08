@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const BaseAudioContext = @import("interfaces").BaseAudioContext;
+const BaseAudioContext = @import("BaseAudioContext.zig").BaseAudioContext;
 const PeriodicWaveOptions = @import("dictionaries").PeriodicWaveOptions;
 
 pub const PeriodicWave = struct {
