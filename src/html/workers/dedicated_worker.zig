@@ -8,16 +8,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-// Debug logging for worker messaging - uses stderr for visibility
-const dwdebug = struct {
-    pub inline fn print(comptime fmt: []const u8, args: anytype) void {
-        const stderr = std.fs.File.stderr();
-        var buf: [1024]u8 = undefined;
-        const msg = std.fmt.bufPrint(&buf, "[DEDICATED_WORKER] " ++ fmt, args) catch "[DEDICATED_WORKER] (format error)\n";
-        stderr.writeAll(msg) catch {};
-    }
-};
-
 const types = @import("types.zig");
 const WorkerData = types.WorkerData;
 const WorkerState = types.WorkerState;
@@ -44,10 +34,6 @@ const WorkerScriptFetchOptions = script_fetch.WorkerScriptFetchOptions;
 const FetchedScript = script_fetch.FetchedScript;
 const WorkerScriptError = script_fetch.WorkerScriptError;
 
-// Import threading infrastructure for cross-thread message passing
-const worker_threading = @import("worker_threading.zig");
-const WorkerThreadState = worker_threading.WorkerThreadState;
-
 // Message channel for postMessage communication
 const message_channel = @import("message_channel.zig");
 const WorkerPortPair = message_channel.WorkerPortPair;
@@ -61,239 +47,6 @@ const JSValue = message_channel.JSValue;
 // Note: message_channel.zig has its own serialize/deserialize wrappers
 const serializeForPostMessage = message_channel.serializeForPostMessage;
 const deserializeFromPostMessage = message_channel.deserializeFromPostMessage;
-
-// ============================================================================
-// Global Threaded Worker Registry
-// ============================================================================
-// This registry tracks workers running on separate OS threads. The main thread
-// polls this registry to receive messages from worker threads via their
-// thread-safe outbox queues.
-
-/// Global registry of threaded workers that need message polling
-pub const ThreadedWorkerRegistry = struct {
-    pub const EventWakeup = platform_mod.EventWakeup;
-
-    var workers: std.AutoHashMapUnmanaged(usize, *DedicatedWorker) = .{};
-    var mutex: std.Thread.Mutex = .{};
-    var registry_allocator: ?Allocator = null;
-    var next_id: usize = 1;
-
-    /// Global wakeup shared by all workers - signals when any worker posts a message
-    /// This allows the main thread to wait efficiently instead of polling
-    pub var global_wakeup: ?*EventWakeup = null;
-
-    /// Initialize the registry with an allocator
-    pub fn init(allocator: Allocator) void {
-        mutex.lock();
-        defer mutex.unlock();
-        if (registry_allocator == null) {
-            registry_allocator = allocator;
-        }
-    }
-
-    /// Get or create the global wakeup primitive
-    /// All worker outboxes share this wakeup so any message wakes the main thread
-    pub fn getOrCreateGlobalWakeup(allocator: Allocator) !*EventWakeup {
-        mutex.lock();
-        defer mutex.unlock();
-
-        if (global_wakeup) |w| return w;
-
-        const w = try allocator.create(EventWakeup);
-        errdefer allocator.destroy(w);
-        w.* = try EventWakeup.init();
-        global_wakeup = w;
-        return w;
-    }
-
-    /// Register a worker with a thread state for message polling
-    pub fn register(worker: *DedicatedWorker) void {
-        mutex.lock();
-        defer mutex.unlock();
-        // Use the worker's allocator if registry not initialized
-        const alloc = registry_allocator orelse blk: {
-            registry_allocator = worker.allocator;
-            break :blk worker.allocator;
-        };
-        const id = next_id;
-        next_id += 1;
-        workers.put(alloc, id, worker) catch {};
-
-        // Wire up the global wakeup to this worker's outbox if available
-        // This ensures any message from any worker wakes the main thread
-        if (worker.thread_state) |ts| {
-            if (global_wakeup) |w| {
-                ts.outbox.setWakeup(w);
-                ts.wakeup = w;
-            }
-        }
-    }
-
-    /// Unregister a worker (called when worker is terminated/destroyed)
-    pub fn unregister(worker: *DedicatedWorker) void {
-        mutex.lock();
-        defer mutex.unlock();
-
-        // Find and remove the worker by value
-        var to_remove: ?usize = null;
-        var iter = workers.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.* == worker) {
-                to_remove = entry.key_ptr.*;
-                break;
-            }
-        }
-        if (to_remove) |id| {
-            _ = workers.remove(id);
-        } else {}
-    }
-
-    /// Poll all registered workers' outboxes and dispatch messages to their outside ports.
-    /// This is called from the main thread's event loop.
-    /// Returns true if any messages were dispatched.
-    pub fn pollAndDispatch() bool {
-        mutex.lock();
-        defer mutex.unlock();
-
-        var dispatched_any = false;
-        var worker_count: usize = 0;
-        var iter = workers.valueIterator();
-        while (iter.next()) |worker_ptr| {
-            worker_count += 1;
-            const worker = worker_ptr.*;
-            if (worker.thread_state) |ts| {
-                // Poll the thread-safe outbox for messages from the worker thread
-                var msg_count: usize = 0;
-                while (ts.outbox.tryDequeue()) |msg| {
-                    msg_count += 1;
-                    dispatched_any = true;
-                    dwdebug.print("pollAndDispatch() dequeued message #{d} from worker\n", .{msg_count});
-
-                    // Deserialize the message and queue it to the outside port
-                    // The outside port's message handler will fire the message event
-                    const serialized = worker.allocator.create(SerializedValue) catch {
-                        dwdebug.print("pollAndDispatch() FAILED to allocate SerializedValue\n", .{});
-                        msg.deinit();
-                        continue;
-                    };
-                    serialized.* = msg.data;
-
-                    const queued_msg = message_channel.QueuedMessage.init(
-                        worker.allocator,
-                        serialized,
-                        null,
-                    ) catch {
-                        dwdebug.print("pollAndDispatch() FAILED to create QueuedMessage\n", .{});
-                        msg.allocator.destroy(msg);
-                        continue;
-                    };
-
-                    // Queue to outside port for dispatch
-                    worker.port_pair.outside_port.message_queue.append(
-                        worker.port_pair.outside_port.allocator,
-                        queued_msg,
-                    ) catch {
-                        dwdebug.print("pollAndDispatch() FAILED to append to message_queue\n", .{});
-                        queued_msg.deinit();
-                        msg.allocator.destroy(msg);
-                        continue;
-                    };
-
-                    // Free the SerializedMessage wrapper (data ownership transferred)
-                    msg.allocator.destroy(msg);
-
-                    // Dispatch the message immediately
-                    dwdebug.print("pollAndDispatch() dispatching message to outside port\n", .{});
-                    worker.port_pair.outside_port.dispatchMessages();
-                    dwdebug.print("pollAndDispatch() dispatch complete\n", .{});
-                }
-                if (msg_count > 0) {
-                    dwdebug.print("pollAndDispatch() processed {d} messages from worker\n", .{msg_count});
-                }
-            }
-        }
-        return dispatched_any;
-    }
-
-    /// Terminate all workers without destroying the registry.
-    /// Called during navigation to clean up workers from the previous context.
-    /// Workers will be unregistered as they terminate.
-    ///
-    /// CRITICAL: This function MUST join all worker threads before returning.
-    /// Otherwise, worker threads may still be running when the context is destroyed,
-    /// leading to use-after-free crashes (Bus error at address 0x3a0048448).
-    pub fn terminateAllWorkers() void {
-
-        // First pass: collect thread handles and request termination
-        // We need to do this outside the mutex to avoid deadlock when joining
-        var threads_to_join: [32]?std.Thread = [_]?std.Thread{null} ** 32;
-        var thread_count: usize = 0;
-        var worker_count: usize = 0;
-
-        {
-            mutex.lock();
-            defer mutex.unlock();
-
-            var iter = workers.valueIterator();
-            while (iter.next()) |worker_ptr| {
-                worker_count += 1;
-                const worker = worker_ptr.*;
-
-                // Terminate the worker agent (stops event loop, closes ports)
-                worker.agent.terminate();
-
-                // Request termination on the thread state (signals thread to exit)
-                if (worker.thread_state) |ts| {
-                    ts.requestTermination();
-
-                    // Collect thread handle for joining
-                    if (ts.thread) |thread| {
-                        if (thread_count < threads_to_join.len) {
-                            threads_to_join[thread_count] = thread;
-                            thread_count += 1;
-                        }
-                        // Clear the thread handle to prevent double-join
-                        ts.thread = null;
-                    } else {}
-                } else {}
-            }
-        }
-
-        // Second pass: join all worker threads (outside mutex to avoid deadlock)
-        // This ensures all worker threads have fully exited before we return
-        for (threads_to_join[0..thread_count]) |maybe_thread| {
-            if (maybe_thread) |thread| {
-                thread.join();
-            }
-        }
-
-        // Final pass: clear the workers map
-        {
-            mutex.lock();
-            defer mutex.unlock();
-            workers.clearRetainingCapacity();
-        }
-    }
-
-    /// Cleanup the registry
-    pub fn deinit() void {
-        mutex.lock();
-        defer mutex.unlock();
-        if (registry_allocator) |alloc| {
-            workers.deinit(alloc);
-            workers = .{};
-
-            // Clean up global wakeup
-            if (global_wakeup) |w| {
-                w.deinit();
-                alloc.destroy(w);
-                global_wakeup = null;
-            }
-
-            registry_allocator = null;
-        }
-    }
-};
 
 /// Dedicated Worker implementation.
 ///
@@ -329,25 +82,9 @@ pub const DedicatedWorker = struct {
     /// This is set by the WebIDL layer to dispatch MessageEvents
     on_inside_message: ?*const fn (*DedicatedWorker, *QueuedMessage) void = null,
 
-    /// User data for the INSIDE (worker thread) message handler.
-    /// Used by DedicatedWorkerGlobalScope.setupMessageHandlerDirect() to store
-    /// callback data for handling messages inside the worker.
+    /// User data for callbacks (e.g., reference to WebIDL Worker instance)
+    /// This allows callbacks to access the higher-level Worker object.
     user_data: ?*anyopaque = null,
-
-    /// User data for the OUTSIDE (main thread) message handler.
-    /// Used by Worker.call_constructor() to store InternalState* for handling
-    /// messages that the worker sends back to the main thread.
-    outside_user_data: ?*anyopaque = null,
-
-    /// Cleanup function for outside_user_data. Called during deinit() to properly
-    /// destroy the user_data. This avoids circular module dependencies by
-    /// letting the caller provide the cleanup logic.
-    outside_user_data_cleanup_fn: ?*const fn (*anyopaque) void = null,
-
-    /// Thread state for cross-thread message passing (set when running on separate thread)
-    /// When a worker runs on a separate OS thread, this points to the shared WorkerThreadState
-    /// which contains thread-safe inbox/outbox queues for message passing.
-    thread_state: ?*WorkerThreadState = null,
 
     /// Create a new dedicated worker.
     ///
@@ -407,24 +144,11 @@ pub const DedicatedWorker = struct {
     }
 
     /// Internal handler for messages arriving on the outside port (from worker)
-    ///
-    /// Spec: HTML Standard § 10.2.3
-    /// "When a message is received on the outside port, the user agent must
-    /// queue a global task on the messaging task source to fire a message
-    /// event at the Worker object."
     fn handleOutsidePortMessage(port: *WorkerPort, msg: *QueuedMessage, context: ?*anyopaque) void {
-        std.log.info("[DedicatedWorker] handleOutsidePortMessage() CALLED", .{});
-        std.log.info("[DedicatedWorker]   port: {*}", .{port});
-        std.log.info("[DedicatedWorker]   msg: {*}", .{msg});
-        std.log.info("[DedicatedWorker]   context: {?*}", .{context});
+        _ = port;
         const self: *DedicatedWorker = @ptrCast(@alignCast(context));
-        std.log.info("[DedicatedWorker]   self (DedicatedWorker): {*}", .{self});
         if (self.on_message) |handler| {
-            std.log.info("[DedicatedWorker]   Invoking on_message handler...", .{});
             handler(self, msg);
-            std.log.info("[DedicatedWorker]   on_message handler complete", .{});
-        } else {
-            std.log.warn("[DedicatedWorker]   NO on_message handler set!", .{});
         }
     }
 
@@ -441,18 +165,10 @@ pub const DedicatedWorker = struct {
     /// Note: The actual MessageEvent creation and dispatch is done by the
     /// on_inside_message callback, which is set by the WebIDL layer.
     fn handleInsidePortMessage(port: *WorkerPort, msg: *QueuedMessage, context: ?*anyopaque) void {
-        std.log.info("[DedicatedWorker] handleInsidePortMessage() CALLED", .{});
-        std.log.info("[DedicatedWorker]   port: {*}", .{port});
-        std.log.info("[DedicatedWorker]   msg: {*}", .{msg});
-        std.log.info("[DedicatedWorker]   context: {?*}", .{context});
+        _ = port;
         const self: *DedicatedWorker = @ptrCast(@alignCast(context));
-        std.log.info("[DedicatedWorker]   self (DedicatedWorker): {*}", .{self});
         if (self.on_inside_message) |handler| {
-            std.log.info("[DedicatedWorker]   Invoking on_inside_message handler...", .{});
             handler(self, msg);
-            std.log.info("[DedicatedWorker]   on_inside_message handler complete", .{});
-        } else {
-            std.log.warn("[DedicatedWorker]   NO on_inside_message handler set!", .{});
         }
     }
 
@@ -461,33 +177,13 @@ pub const DedicatedWorker = struct {
     /// This enables message reception from the main thread. The WebIDL layer
     /// should call this with a handler that creates and dispatches MessageEvents.
     pub fn setInsideMessageHandler(self: *DedicatedWorker, handler: *const fn (*DedicatedWorker, *QueuedMessage) void) void {
-        std.log.info("[DedicatedWorker] setInsideMessageHandler() called", .{});
-        std.log.info("[DedicatedWorker]   self: {*}", .{self});
-        std.log.info("[DedicatedWorker]   handler: {*}", .{handler});
         self.on_inside_message = handler;
         // Now set up the inside port callback
-        std.log.info("[DedicatedWorker]   Setting inside_port.setOnMessage...", .{});
         self.port_pair.inside_port.setOnMessage(handleInsidePortMessage, self);
-        std.log.info("[DedicatedWorker]   inside_port callback set", .{});
     }
 
     /// Clean up resources.
     pub fn deinit(self: *DedicatedWorker) void {
-        // Unregister from the threaded worker registry if we were registered
-        if (self.thread_state != null) {
-            ThreadedWorkerRegistry.unregister(self);
-        }
-
-        // Clean up outside_user_data using the registered cleanup function (if any).
-        // This is used by Worker.InternalState to clean up when the DedicatedWorker
-        // is destroyed. We use a callback to avoid circular module dependencies.
-        if (self.outside_user_data_cleanup_fn) |cleanup_fn| {
-            if (self.outside_user_data) |user_data_ptr| {
-                cleanup_fn(user_data_ptr);
-                self.outside_user_data = null;
-            }
-        }
-
         // Clean up port pair (handles disentangling)
         self.port_pair.deinit();
 
@@ -685,24 +381,33 @@ pub const DedicatedWorker = struct {
     ///
     /// Note: This overload accepts opaque pointers for compatibility with WebIDL.
     /// The `message` parameter should be a V8 value handle that will be serialized.
-    pub fn postMessage(self: *DedicatedWorker, message: ?*anyopaque, transfer: ?*anyopaque) !void {
-        _ = transfer; // TODO: Handle transferables
+    /// For now, this creates a minimal serialized value; full V8 integration pending.
+    pub fn postMessage(self: *DedicatedWorker, message: *const anyopaque, transfer: *const anyopaque) !void {
+        _ = transfer;
+        _ = message;
 
         // Spec step 1: If closing flag is true, return
         if (self.agent.isClosing() or self.agent.isTerminated()) {
             return;
         }
 
-        // Note: This method receives a raw V8 value pointer. The caller (Worker.call_postMessage)
-        // is responsible for serializing it to JSValue before calling postMessageTyped.
-        // This method is kept for API compatibility but should not be called directly
-        // with raw V8 values - use postMessageTyped instead.
-        _ = message;
-        _ = transfer;
+        // TODO: Full V8 integration - convert message to JSValue and serialize
+        // For now, create a minimal serialized undefined value (using correct structured clone format)
+        const serialized = try self.allocator.create(SerializedValue);
+        errdefer self.allocator.destroy(serialized);
 
-        // For now, post undefined - callers should use postMessageTyped with proper JSValue
-        const js_value = JSValue{ .undefined = {} };
-        try self.postMessageTyped(&js_value, null);
+        serialized.* = .{
+            .type = .primitive,
+            .allocator = self.allocator,
+            .data = .{ .primitive = .{ .undefined = {} } },
+        };
+
+        // Post to the outside port → arrives at entangled inside port (worker side)
+        self.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+            serialized.deinit();
+            self.allocator.destroy(serialized);
+            return err;
+        };
     }
 
     /// Post a message to the worker with typed JSValue.
@@ -756,91 +461,31 @@ pub const DedicatedWorker = struct {
     /// This is the reverse direction: worker → main thread.
     /// Called by WorkerGlobalScope.postMessage().
     ///
-    /// When running on a separate OS thread (thread_state is set), this uses the
-    /// thread-safe outbox queue for cross-thread message passing. The main thread
-    /// polls this queue via flushPendingWorkerMessages().
-    ///
-    /// When running same-thread (tests, single-threaded mode), this uses the
-    /// thread-local pending_messages queue as a workaround for V8 HandleScope issues.
+    /// NOTE: This function defers the actual append to outside_port.message_queue
+    /// because doing so while inside a worker V8 callback causes a crash.
+    /// Call `flushPendingMessages()` after exiting the worker isolate.
     pub fn postMessageFromWorker(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
-        dwdebug.print("postMessageFromWorker() called\n", .{});
         _ = transfer;
         if (self.agent.isClosing() or self.agent.isTerminated()) {
-            dwdebug.print("postMessageFromWorker() skipped - worker closing/terminated\n", .{});
             return;
         }
 
-        // CRITICAL: For cross-thread messaging, we MUST use a thread-safe allocator.
-        // The worker's allocator (self.allocator) may not be safe to use from the main thread.
-        // The page allocator is inherently thread-safe (it just maps/unmaps memory pages).
-        // Using it ensures that when the main thread calls deinit() on the serialized data,
-        // the memory can be safely freed without cross-thread allocator issues.
-        const cross_thread_allocator = if (self.thread_state != null)
-            std.heap.page_allocator
-        else
-            self.allocator; // Same-thread mode can use the worker's allocator
+        const serialized = try serializeForPostMessage(self.allocator, message);
 
-        const serialized = try serializeForPostMessage(cross_thread_allocator, message);
-
-        // If we have a thread state, use the thread-safe outbox for cross-thread messaging.
-        // This is the correct path when running on a separate OS thread.
-        if (self.thread_state) |ts| {
-            dwdebug.print("postMessageFromWorker() using thread-safe outbox\n", .{});
-            // Create a SerializedMessage for the thread-safe queue
-            // Use page_allocator for the wrapper too, ensuring consistency
-            const thread_msg = std.heap.page_allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
-                // Clean up serialized on allocation failure
-                var mutable = @constCast(serialized);
-                mutable.deinit();
-                std.heap.page_allocator.destroy(mutable);
-                return error.OutOfMemory;
-            };
-
-            // Copy the serialized value into thread_msg (shallow copy - internal pointers shared)
-            // Note: serialized.allocator is already page_allocator from serializeForPostMessage above
-            thread_msg.* = .{
-                .data = serialized.*,
-                .transfers = null,
-                .allocator = std.heap.page_allocator, // Use page_allocator for thread-safety
-            };
-
-            // Free ONLY the original serialized pointer container (not the internal data).
-            // The internal data is now owned by thread_msg.data via the shallow copy above.
-            // DO NOT call serialized.deinit() - that would free the internal data that
-            // thread_msg now references.
-            std.heap.page_allocator.destroy(serialized);
-
-            // Enqueue to the thread-safe outbox - main thread will poll this
-            // The outbox has a wakeup that will signal the main thread immediately
-            ts.outbox.enqueue(thread_msg) catch |err| {
-                dwdebug.print("postMessageFromWorker() FAILED to enqueue: {s}\n", .{@errorName(err)});
-                // thread_msg.deinit() frees both the internal data AND the thread_msg struct
-                thread_msg.deinit();
-                return switch (err) {
-                    error.WorkerClosing => error.OutOfMemory, // Map to existing error type
-                    else => error.OutOfMemory,
-                };
-            };
-            dwdebug.print("postMessageFromWorker() message enqueued to outbox successfully\n", .{});
-            return;
-        }
-
-        // Fallback: same-thread mode (tests, single-threaded execution)
-        // Use thread-local pending_messages as workaround for V8 HandleScope crash
-        // QueuedMessage.init takes ownership of the serialized pointer
         const msg = message_channel.QueuedMessage.init(self.allocator, serialized, null) catch {
-            // Clean up serialized on allocation failure
             var mutable = @constCast(serialized);
             mutable.deinit();
             self.allocator.destroy(mutable);
             return error.OutOfMemory;
         };
 
+        // WORKAROUND: Queue the message for later processing instead of appending directly
+        // to outside_port.message_queue. Appending while inside the worker V8 callback
+        // causes "Cannot create a handle without a HandleScope" crash AFTER returning.
         pending_messages.append(std.heap.page_allocator, .{
             .port = self.port_pair.outside_port,
             .msg = msg,
         }) catch {
-            // msg.deinit() handles freeing both msg and its internal serialized data
             msg.deinit();
             return error.OutOfMemory;
         };
@@ -855,18 +500,14 @@ pub const DedicatedWorker = struct {
         });
     }
 
-    /// Flush pending messages to their target ports and dispatch them.
+    /// Flush pending messages to their target ports.
     /// This should be called AFTER exiting the worker isolate.
     ///
     /// Messages are queued during worker script execution via appendPendingMessage()
     /// because appending directly to the port's message_queue while inside a V8
     /// callback causes HandleScope issues. This function appends the queued messages
-    /// to their target ports and dispatches them to fire message events.
+    /// to their target ports so processQueuedMessages() can deliver them.
     pub fn flushPendingMessages() void {
-        // First, collect all ports that will receive messages
-        var ports_to_dispatch: [16]*message_channel.WorkerPort = undefined;
-        var port_count: usize = 0;
-
         for (pending_messages.items) |pending| {
             // Append message to the port's message queue
             // This is safe now because we're back in the main isolate's context
@@ -875,50 +516,6 @@ pub const DedicatedWorker = struct {
                 pending.msg.deinit();
                 continue;
             };
-
-            // Track this port for dispatch (avoid duplicates)
-            var already_tracked = false;
-            for (ports_to_dispatch[0..port_count]) |p| {
-                if (p == pending.port) {
-                    already_tracked = true;
-                    break;
-                }
-            }
-            if (!already_tracked and port_count < ports_to_dispatch.len) {
-                ports_to_dispatch[port_count] = pending.port;
-                port_count += 1;
-            }
-        }
-        pending_messages.clearRetainingCapacity();
-
-        // Now dispatch messages on all ports that received messages
-        for (ports_to_dispatch[0..port_count]) |port| {
-            port.dispatchMessages();
-        }
-    }
-
-    /// Transfer pending messages to port queues without dispatching.
-    /// This is safe to call from the worker thread - it only queues messages.
-    /// The main thread's event loop will dispatch them later.
-    pub fn transferPendingMessagesToQueues() void {
-        for (pending_messages.items) |pending| {
-            // Append message to the port's message queue
-            // The main thread will dispatch these when it runs the event loop
-            pending.port.message_queue.append(pending.port.allocator, pending.msg) catch {
-                // Clean up message if append fails
-                pending.msg.deinit();
-                continue;
-            };
-        }
-        pending_messages.clearRetainingCapacity();
-    }
-
-    /// Clear all pending messages without flushing them.
-    /// This should be called when a worker terminates to prevent memory leaks.
-    /// Messages that were queued but not yet flushed will be cleaned up.
-    pub fn clearPendingMessages() void {
-        for (pending_messages.items) |pending| {
-            pending.msg.deinit();
         }
         pending_messages.clearRetainingCapacity();
     }
@@ -941,24 +538,6 @@ pub const DedicatedWorker = struct {
     /// Get user data for callbacks.
     pub fn getUserData(self: *DedicatedWorker) ?*anyopaque {
         return self.user_data;
-    }
-
-    /// Set the thread state for cross-thread message passing.
-    ///
-    /// This should be called when the worker is spawned on a separate OS thread.
-    /// The thread state contains thread-safe message queues for communication
-    /// between the worker thread and main thread.
-    pub fn setThreadState(self: *DedicatedWorker, state: *WorkerThreadState) void {
-        self.thread_state = state;
-        // Also set the reverse pointer so the thread can access the worker
-        state.worker_ptr = self;
-        // Register with the global registry so main thread can poll our outbox
-        ThreadedWorkerRegistry.register(self);
-    }
-
-    /// Get the thread state (if running on a separate thread).
-    pub fn getThreadState(self: *DedicatedWorker) ?*WorkerThreadState {
-        return self.thread_state;
     }
 
     /// Enable message dispatch on the outside port.
@@ -989,16 +568,14 @@ pub const DedicatedWorker = struct {
     /// queue a global task..."
     pub fn processQueuedMessages(self: *DedicatedWorker) void {
         // Dispatch all messages queued on the outside port
-        // The DedicatedWorker.on_message handler will invoke the Worker's onmessage
+        // The outside port's on_message handler will invoke the Worker's onmessage
         const outside_port = self.port_pair.outside_port;
 
         while (outside_port.message_queue.items.len > 0) {
             const msg = outside_port.message_queue.orderedRemove(0);
 
-            // Use DedicatedWorker.on_message (set via setOnMessage), not WorkerPort.on_message
-            // The Worker.zig sets this via dedicated_worker.setOnMessage(handleMessageFromWorkerCallback)
-            if (self.on_message) |handler| {
-                handler(self, msg);
+            if (outside_port.on_message) |handler| {
+                handler(outside_port, msg, outside_port.on_message_context);
             }
             // Clean up message after handler returns
             msg.deinit();
