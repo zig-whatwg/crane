@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RdfGraph = @import("RdfGraph.zig").RdfGraph;
+const RdfGraph = @import("interfaces").RdfGraph;
 const USVString = @import("typedefs").USVString;
 
 pub const RdfDataset = struct {

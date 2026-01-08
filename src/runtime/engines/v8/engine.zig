@@ -215,16 +215,6 @@ fn v8ResolvePromise(
 }
 
 /// Reject a V8 Promise with an error
-///
-/// CRITICAL: The error object MUST be created in the promise's context (realm),
-/// not in whatever context happens to be current. This is essential for cross-realm
-/// scenarios like:
-///   - fetch() called from iframe that rejects when async callback completes
-///   - Promise created in one realm, rejected from callback in another realm
-///
-/// Per WebIDL spec, the TypeError (or other error) must come from the promise's
-/// realm so that `error instanceof TypeError` works correctly even in cross-realm
-/// scenarios.
 fn v8RejectPromise(
     engine_ctx: *anyopaque,
     promise_handle: *anyopaque,
@@ -242,17 +232,14 @@ fn v8RejectPromise(
     ) orelse return EngineError.OperationFailed;
 
     // Create appropriate Error object based on error type
-    // CRITICAL: Use context-aware exception functions to create the error
-    // in the promise's realm, not the current realm. This ensures the error
-    // is an instance of the promise realm's TypeError/Error constructor.
     const err_obj = switch (err) {
-        error.SyntaxError => ffi.v8_Exception_SyntaxErrorInContext(handle.context, err_str) orelse
+        error.SyntaxError => ffi.v8_Exception_SyntaxError(err_str) orelse
             return EngineError.OperationFailed,
-        error.TypeError => ffi.v8_Exception_TypeErrorInContext(handle.context, err_str) orelse
+        error.TypeError => ffi.v8_Exception_TypeError(err_str) orelse
             return EngineError.OperationFailed,
-        error.RangeError => ffi.v8_Exception_RangeErrorInContext(handle.context, err_str) orelse
+        error.RangeError => ffi.v8_Exception_RangeError(err_str) orelse
             return EngineError.OperationFailed,
-        else => ffi.v8_Exception_ErrorInContext(handle.context, err_str) orelse
+        else => ffi.v8_Exception_Error(err_str) orelse
             return EngineError.OperationFailed,
     };
 

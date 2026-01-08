@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Font = @import("Font.zig").Font;
-const Baseline = @import("Baseline.zig").Baseline;
+const Font = @import("interfaces").Font;
+const Baseline = @import("interfaces").Baseline;
 
 pub const FontMetrics = struct {
     pub const Meta = struct {

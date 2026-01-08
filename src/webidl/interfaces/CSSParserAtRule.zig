@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSParserRule = @import("CSSParserRule.zig").CSSParserRule;
+const CSSParserRule = @import("interfaces").CSSParserRule;
 const CSSToken = @import("typedefs").CSSToken;
-const CSSParserValue = @import("CSSParserValue.zig").CSSParserValue;
+const CSSParserValue = @import("interfaces").CSSParserValue;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSParserAtRule = struct {

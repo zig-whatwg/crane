@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PermissionStatus = @import("PermissionStatus.zig").PermissionStatus;
+const PermissionStatus = @import("interfaces").PermissionStatus;
 
 pub const Permissions = struct {
     pub const Meta = struct {

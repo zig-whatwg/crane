@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceEntry = @import("PerformanceEntry.zig").PerformanceEntry;
+const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const PaintTimingMixin = @import("mixins").PaintTimingMixin;
-const Element = @import("Element.zig").Element;
+const Element = @import("interfaces").Element;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
 

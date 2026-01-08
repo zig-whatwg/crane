@@ -8,7 +8,6 @@ const enums = @import("enums");
 
 pub const XRLayerInit = struct {
     space: *runtime.Instance,
-    textureType: ?enums.XRTextureType = null,
     colorFormat: ?typedefs.GLenum = null,
     depthFormat: ?typedefs.GLenum = null,
     mipLevels: ?u32 = null,

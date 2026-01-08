@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemHandle = @import("FileSystemHandle.zig").FileSystemHandle;
+const FileSystemHandle = @import("interfaces").FileSystemHandle;
 const FunctionStringCallback = @import("callbacks").FunctionStringCallback;
-const FileSystemEntry = @import("FileSystemEntry.zig").FileSystemEntry;
-const File = @import("File.zig").File;
+const FileSystemEntry = @import("interfaces").FileSystemEntry;
+const File = @import("interfaces").File;
 const DOMString = @import("typedefs").DOMString;
 
 pub const DataTransferItem = struct {

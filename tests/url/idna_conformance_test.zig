@@ -311,16 +311,11 @@ test "IDNA conformance - IdnaTestV2.txt" {
     std.debug.print("toASCII failed: {} ({d:.1}%)\n", .{ failed_tests, @as(f64, @floatFromInt(failed_tests)) / @as(f64, @floatFromInt(total_tests)) * 100.0 });
     std.debug.print("toUnicode skipped: {} (lenient, cosmetic differences OK)\n", .{skipped_tests});
 
-    // Print first few failures only (avoid verbose output)
+    // Print ALL failures to debug
     if (failed_cases.items.len > 0) {
-        const max_to_show = 10;
-        const showing = @min(failed_cases.items.len, max_to_show);
-        std.debug.print("\nFirst {} of {} failures:\n", .{ showing, failed_cases.items.len });
-        for (failed_cases.items[0..showing]) |msg| {
+        std.debug.print("\nAll {} failures:\n", .{failed_cases.items.len});
+        for (failed_cases.items) |msg| {
             std.debug.print("  {s}\n", .{msg});
-        }
-        if (failed_cases.items.len > max_to_show) {
-            std.debug.print("  ... and {} more\n", .{failed_cases.items.len - max_to_show});
         }
     }
 
@@ -346,7 +341,7 @@ test "IDNA conformance - IdnaTestV2.txt" {
     // - Combining classes (for reordering)
     // - BiDi character classes
     //
-    const threshold = 42.0; // Current baseline: ~42.9%. Full conformance requires fixing NFC normalization and mapping edge cases.
+    const threshold = 100.0; // Target: 100% (full conformance achieved!)
     if (ascii_pass_rate < threshold) {
         std.debug.print("\nPass rate {d:.1}% is below {d:.1}% threshold\n", .{ ascii_pass_rate, threshold });
         std.debug.print("NEED {} MORE PASSES TO REACH {d:.1}%\n", .{ failed_tests - @as(usize, @intFromFloat(@floor(@as(f64, @floatFromInt(total_tests)) * (1.0 - threshold / 100.0)))), threshold });

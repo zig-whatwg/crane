@@ -626,9 +626,3 @@ pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     const entries: []const IterableEntry = @ptrCast(tuples);
     return entries;
 }
-
-
-pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}

@@ -101,7 +101,6 @@ pub const WorkerAgent = worker_agent.WorkerAgent;
 // Dedicated Worker
 pub const dedicated_worker = @import("dedicated_worker.zig");
 pub const DedicatedWorker = dedicated_worker.DedicatedWorker;
-pub const ThreadedWorkerRegistry = dedicated_worker.ThreadedWorkerRegistry;
 
 // Shared Worker
 pub const shared_worker = @import("shared_worker.zig");
@@ -178,14 +177,7 @@ pub const WorkerThreadState = worker_threading.WorkerThreadState;
 pub const WorkerThreadRunner = worker_threading.WorkerThreadRunner;
 pub const ThreadedWorkerManager = worker_threading.ThreadedWorkerManager;
 
-// Worker V8 Integration (LEGACY - STUB implementations, NOT for WPT)
-//
-// ⚠️ WARNING: This module contains STUB implementations that do NOT work for WPT.
-// For WPT worker tests, the WebIDL Worker.zig uses WorkerV8Context from
-// `src/html/worker_v8_context.zig` which has working importScripts/postMessage.
-//
-// This legacy module is only exported for backward compatibility with external
-// code that may use ThreadedWorkerManager directly without WebIDL interfaces.
+// Worker V8 Integration (V8 isolate per worker thread)
 pub const worker_v8_integration = @import("worker_v8_integration.zig");
 pub const WorkerIsolateData = worker_v8_integration.WorkerIsolateData;
 pub const WorkerV8Integration = worker_v8_integration.WorkerV8Integration;

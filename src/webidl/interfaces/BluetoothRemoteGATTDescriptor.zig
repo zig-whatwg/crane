@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const BluetoothRemoteGATTCharacteristic = @import("BluetoothRemoteGATTCharacteristic.zig").BluetoothRemoteGATTCharacteristic;
+const BluetoothRemoteGATTCharacteristic = @import("interfaces").BluetoothRemoteGATTCharacteristic;
 const UUID = @import("typedefs").UUID;
 const BufferSource = @import("typedefs").BufferSource;
 

@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const InterestGroupScriptRunnerGlobalScope = @import("InterestGroupScriptRunnerGlobalScope.zig").InterestGroupScriptRunnerGlobalScope;
-const ProtectedAudienceUtilities = @import("ProtectedAudienceUtilities.zig").ProtectedAudienceUtilities;
+const InterestGroupScriptRunnerGlobalScope = @import("interfaces").InterestGroupScriptRunnerGlobalScope;
+const ProtectedAudienceUtilities = @import("interfaces").ProtectedAudienceUtilities;
 const USVString = @import("typedefs").USVString;
-const PrivateAggregation = @import("PrivateAggregation.zig").PrivateAggregation;
+const PrivateAggregation = @import("interfaces").PrivateAggregation;
 const DOMString = @import("typedefs").DOMString;
 
 pub const InterestGroupReportingScriptRunnerGlobalScope = struct {

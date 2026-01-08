@@ -16,7 +16,7 @@ const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 const ReadableStreamIteratorOptions = @import("dictionaries").ReadableStreamIteratorOptions;
 const ReadableStreamReader = @import("typedefs").ReadableStreamReader;
-const WritableStream = @import("WritableStream.zig").WritableStream;
+const WritableStream = @import("interfaces").WritableStream;
 
 pub const ReadableStream = struct {
     pub const Meta = struct {

@@ -95,7 +95,7 @@ test "context creation benchmark: Browser.init() time" {
 
         var browser = Browser.init(allocator, .{
             .persist_storage = false, // Use memory-only storage
-            // Use snapshots for production-realistic measurement (BSCOPE-24 requirement)
+            .snapshot_path = "", // Disable snapshots for consistent measurement
         }) catch |err| {
             if (err == error.V8InitFailed) {
                 std.debug.print("V8 not available in test environment, skipping benchmark\n", .{});
@@ -125,10 +125,10 @@ test "context creation benchmark: Browser.init() time" {
 
     // Browser.init() includes V8 platform init, isolate creation, and GlobalTemplateRegistry
     // This is expected to be slower (one-time cost per browser)
-    // Target: < 1500ms (generous threshold for CI variability; typical is 300-900ms)
-    std.debug.print("  Target: < 1500ms\n", .{});
+    // Target: < 200ms (generous, actual is often 40-100ms)
+    std.debug.print("  Target: < 200ms\n", .{});
 
-    try std.testing.expect(result.avgMs() < 1500.0);
+    try std.testing.expect(result.avgMs() < 200.0);
 }
 
 // ============================================================================
@@ -143,7 +143,7 @@ test "context creation benchmark: Context.init() time (per-navigation)" {
     // First, initialize the browser (one-time cost)
     var browser = Browser.init(allocator, .{
         .persist_storage = false,
-        // Use snapshots for production-realistic measurement for consistent measurement
+        .snapshot_path = "", // Disable snapshots for consistent measurement
     }) catch |err| {
         if (err == error.V8InitFailed) {
             std.debug.print("V8 not available in test environment, skipping benchmark\n", .{});
@@ -209,7 +209,7 @@ test "context creation benchmark: Rapid context switching" {
 
     var browser = Browser.init(allocator, .{
         .persist_storage = false,
-        // Use snapshots for production-realistic measurement
+        .snapshot_path = "", // Disable snapshots
     }) catch |err| {
         if (err == error.V8InitFailed) {
             std.debug.print("V8 not available in test environment, skipping benchmark\n", .{});
@@ -275,7 +275,7 @@ test "context creation benchmark: Snapshot performance comparison" {
     const no_snapshot_start = std.time.nanoTimestamp();
     var browser_no_snap = Browser.init(allocator, .{
         .persist_storage = false,
-        // Without snapshot for comparison baseline
+        .snapshot_path = "", // Explicitly disable
     }) catch |err| {
         if (err == error.V8InitFailed) {
             std.debug.print("V8 not available, skipping\n", .{});
