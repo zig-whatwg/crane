@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("CSSRule.zig").CSSRule;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSRule = @import("interfaces").CSSRule;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
-const MediaList = @import("MediaList.zig").MediaList;
+const MediaList = @import("interfaces").MediaList;
 
 pub const CSSImportRule = struct {
     pub const Meta = struct {
@@ -150,7 +150,6 @@ pub const CSSImportRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "mediaText", value);
     }
 

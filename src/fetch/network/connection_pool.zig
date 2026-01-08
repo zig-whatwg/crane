@@ -367,23 +367,15 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
         _ = curl.easy_setopt(handle, curl.CURLOPT_MAXREDIRS, @as(c_long, @intCast(request.max_redirects)));
     }
 
-    // TLS options - proper certificate verification with trust store support
+    // TLS options
     _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYPEER, @as(c_long, if (request.cert_options.verify_peer) 1 else 0));
     _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYHOST, @as(c_long, if (request.cert_options.verify_host) 2 else 0));
 
-    // Use custom CA bundle if trust store or ca_bundle_path is configured
-    if (request.cert_options.trust_store) |trust_store| {
-        if (trust_store.getCaBundlePath()) |ca_path| {
-            const ca_z = try ctx.allocator.dupeZ(u8, ca_path);
-            defer ctx.allocator.free(ca_z);
-            _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
-        }
-    } else if (request.cert_options.ca_bundle_path) |ca_path| {
+    if (request.cert_options.ca_bundle_path) |ca_path| {
         const ca_z = try ctx.allocator.dupeZ(u8, ca_path);
         defer ctx.allocator.free(ca_z);
         _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
     }
-    // If neither trust_store nor ca_bundle_path is set, curl uses system CA store
 
     // Proxy
     if (request.proxy) |proxy| {

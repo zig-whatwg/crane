@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const MediaStreamTrackProcessorInit = @import("dictionaries").MediaStreamTrackProcessorInit;
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
 
 pub const MediaStreamTrackProcessor = struct {
     pub const Meta = struct {

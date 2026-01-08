@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Document = @import("Document.zig").Document;
+const Document = @import("interfaces").Document;
 
 pub const GetSVGDocument = struct {
     pub const Meta = struct {

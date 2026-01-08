@@ -1630,7 +1630,6 @@ pub const TreeBuilder = struct {
     }
 
     fn handleScriptStartTag(self: *TreeBuilder, tag: TagToken) !void {
-        std.debug.print("[TREE_BUILDER] handleScriptStartTag called! Transitioning to text mode\n", .{});
         // Insert script element
         _ = try self.insertHtmlElement(tag);
         self.tokenizer.state = .script_data;
@@ -2070,12 +2069,9 @@ pub const TreeBuilder = struct {
                     // - Increment script nesting level
                     // - Prepare the script element
                     // - Decrement script nesting level
-                    std.debug.print("[TREE_BUILDER] </script> seen, scripting_enabled={}\n", .{self.scripting_enabled});
                     if (self.scripting_enabled) {
                         if (script_element) |script| {
-                            std.debug.print("[TREE_BUILDER] Have script element, callback={}\n", .{self.script_execution_callback != null});
                             if (self.script_execution_callback) |callback| {
-                                std.debug.print("[TREE_BUILDER] Invoking script callback!\n", .{});
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
                                 if (self.script_nesting_level > 0) {

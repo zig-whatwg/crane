@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const USBInterface = @import("USBInterface.zig").USBInterface;
-const USBEndpoint = @import("USBEndpoint.zig").USBEndpoint;
+const USBInterface = @import("interfaces").USBInterface;
+const USBEndpoint = @import("interfaces").USBEndpoint;
 const DOMString = @import("typedefs").DOMString;
 
 pub const USBAlternateInterface = struct {

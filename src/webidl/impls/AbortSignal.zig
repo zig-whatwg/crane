@@ -24,13 +24,6 @@ pub const ImplError = error{
     AbortError,
 };
 
-/// Abort algorithm callback - called when signal aborts
-/// The callback receives user data and should set an atomic flag or similar
-pub const AbortCallback = struct {
-    callback: *const fn (data: ?*anyopaque) void,
-    data: ?*anyopaque,
-};
-
 /// Internal state for AbortSignal
 ///
 /// Spec: https://dom.spec.whatwg.org/#abortsignal
@@ -47,15 +40,9 @@ pub const InternalState = struct {
     /// [[onabort]]: Event handler for abort event (stub for now)
     onabort: ?typedefs.EventHandler,
 
-    /// Timer ID for timeout signals (used for cancellation)
-    timer_id: ?runtime.timer.TimerId = null,
-
-    /// [[abort algorithms]]: List of callbacks to run when signal aborts
-    /// Spec: https://dom.spec.whatwg.org/#abortsignal-abort-algorithms
-    abort_algorithms: std.ArrayListUnmanaged(AbortCallback) = .{},
-
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        self.abort_algorithms.deinit(allocator);
+        // reason JSValue disposal - if it's an owned handle, it needs disposal
+        // For now, the engine manages the JSValue lifecycle
         allocator.destroy(self);
     }
 };
@@ -79,8 +66,6 @@ pub fn init(
     internal.aborted = false;
     internal.reason = runtime.JSValue.jsUndefined;
     internal.onabort = null;
-    internal.timer_id = null;
-    internal.abort_algorithms = .{};
 
     return instance;
 }
@@ -143,110 +128,25 @@ pub fn call_static__any(instance: *runtime.Instance, signals: runtime.JSValue) a
 
 /// Static operation: abort(reason)
 ///
-/// Spec: § 3.3.2 "The abort(reason) static method steps are:"
-/// 1. Let signal be a new AbortSignal object.
-/// 2. Set signal's abort reason to reason if it is given; otherwise to a new "AbortError" DOMException.
-/// 3. Return signal.
-///
-/// Note: This creates a pre-aborted signal. The abort event is NOT fired because
-/// the signal was never in a non-aborted state.
+/// Spec: § 3.3.2 "Returns an immediately aborted signal"
+/// Static methods use call_static_<name> convention
 pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    const ctx = instance.ctx;
-    const allocator = ctx.allocator;
-
-    // 1. Let signal be a new AbortSignal object
-    const signal = try init(allocator, State, &interfaces.AbortSignal.vtable, ctx);
-    errdefer deinit(signal);
-
-    const state = signal.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Set aborted to true (pre-aborted signal)
-    internal.aborted = true;
-
-    // 2. Set signal's abort reason to reason if given; otherwise to a new "AbortError" DOMException
-    if (reason.was_passed and !reason.value.isUndefined()) {
-        internal.reason = reason.value;
-    } else {
-        // Create AbortError DOMException as default reason
-        const abort_error = try createAbortError(ctx);
-        internal.reason = runtime.JSValue.fromInstance(abort_error);
-    }
-
-    // 3. Return signal
-    return signal;
+    _ = instance;
+    _ = reason;
+    // Static method that creates a new AbortSignal and immediately aborts it
+    // Requires access to allocator from static context
+    return error.NotImplemented;
 }
 
 /// Static operation: timeout(milliseconds)
 ///
-/// Spec: § 3.3.2 "The timeout(milliseconds) static method steps are:"
-/// 1. Let signal be a new AbortSignal object.
-/// 2. Let global be signal's relevant global object.
-/// 3. Run steps after a timeout given global, "AbortSignal-timeout", milliseconds, and the following step:
-///    - Queue a global task on the timer task source given global to signal abort given signal
-///      and a new "TimeoutError" DOMException.
-/// 4. Return signal.
+/// Spec: § 3.3.2 "Returns a signal that will abort after the given milliseconds"
+/// Static methods use call_static_<name> convention
 pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
-    const ctx = instance.ctx;
-    const allocator = ctx.allocator;
-
-    // Step 1: Let signal be a new AbortSignal object
-    const signal = try init(allocator, State, &interfaces.AbortSignal.vtable, ctx);
-    errdefer deinit(signal);
-
-    // Step 2-3: Get timer interface and schedule timeout
-    const timer = ctx.getTimer() catch {
-        // No timer support - return signal that will never abort
-        // This is a fallback for environments without timer support
-        return signal;
-    };
-
-    // Create callback context that will be passed to the timer
-    const callback_ctx = try allocator.create(TimeoutCallbackContext);
-    errdefer allocator.destroy(callback_ctx);
-
-    callback_ctx.* = .{
-        .signal = signal,
-        .allocator = allocator,
-    };
-
-    // Schedule the timer - when it fires, it will abort the signal with TimeoutError
-    const timer_id = timer.setTimeout(milliseconds, timeoutTimerCallback, callback_ctx);
-
-    // Store timer ID in internal state for potential cancellation
-    const state = signal.getState(State);
-    if (state.own._internal) |internal| {
-        internal.timer_id = timer_id;
-    }
-
-    // Step 4: Return signal
-    return signal;
-}
-
-/// Context passed to timeout timer callback
-const TimeoutCallbackContext = struct {
-    signal: *runtime.Instance,
-    allocator: std.mem.Allocator,
-};
-
-/// Timer callback for AbortSignal.timeout()
-/// Called when the timeout expires - aborts the signal with TimeoutError
-fn timeoutTimerCallback(user_data: ?*anyopaque) void {
-    const callback_ctx: *TimeoutCallbackContext = @ptrCast(@alignCast(user_data orelse return));
-    defer callback_ctx.allocator.destroy(callback_ctx);
-
-    const signal = callback_ctx.signal;
-    const ctx = signal.ctx;
-
-    // Create TimeoutError DOMException as the abort reason
-    const timeout_error = createTimeoutError(ctx) catch {
-        // If we can't create the error, abort with undefined reason
-        signalAbort(signal, runtime.JSValue.jsUndefined) catch {};
-        return;
-    };
-
-    // Signal abort with TimeoutError
-    signalAbort(signal, runtime.JSValue.fromInstance(timeout_error)) catch {};
+    _ = instance;
+    _ = milliseconds;
+    // Requires timer/scheduling infrastructure
+    return error.NotImplemented;
 }
 
 /// Operation: throwIfAborted
@@ -265,112 +165,34 @@ pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
 // Internal Helper Functions (for AbortController)
 // ============================================================================
 
-/// Create an AbortError DOMException
-/// Per DOM spec: "AbortError" indicates the operation was aborted
-fn createAbortError(ctx: runtime.Context) !*runtime.Instance {
-    return try interfaces.DOMException.call_constructor(
-        ctx,
-        webidl.Opt(runtime.DOMString).passed(try runtime.DOMString.initDupe(ctx.allocator, "The operation was aborted.")),
-        webidl.Opt(runtime.DOMString).passed(try runtime.DOMString.initDupe(ctx.allocator, "AbortError")),
-    );
-}
-
-/// Create a TimeoutError DOMException
-/// Per DOM spec: "TimeoutError" indicates the operation timed out
-fn createTimeoutError(ctx: runtime.Context) !*runtime.Instance {
-    return try interfaces.DOMException.call_constructor(
-        ctx,
-        webidl.Opt(runtime.DOMString).passed(try runtime.DOMString.initDupe(ctx.allocator, "The operation timed out.")),
-        webidl.Opt(runtime.DOMString).passed(try runtime.DOMString.initDupe(ctx.allocator, "TimeoutError")),
-    );
-}
-
 /// Signal abort - called by AbortController.abort()
 ///
 /// Spec: § 3.3 "To signal abort on an AbortSignal signal, given an optional reason"
-/// Algorithm:
-/// 1. If signal is aborted, then return.
-/// 2. Set signal's abort reason to reason if it is given; otherwise to a new "AbortError" DOMException.
-/// 3. Let dependentSignalsToAbort be a new list.
-/// 4. For each dependentSignal of signal's dependent signals: ... (TODO: dependent signals)
-/// 5. Run the abort steps for signal.
-/// 6. For each dependentSignal of dependentSignalsToAbort: run the abort steps for dependentSignal.
-///
-/// "Run the abort steps" for a signal:
-/// 1. For each algorithm of signal's abort algorithms: run algorithm.
-/// 2. Empty signal's abort algorithms.
-/// 3. Fire an event named "abort" at signal.
+/// Per DOM spec, reason is typed as `any` which maps to runtime.JSValue
 pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplError!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    const ctx = instance.ctx;
 
-    // Step 1: If signal is aborted, then return.
+    // If already aborted, do nothing
     if (internal.aborted) {
         return;
     }
 
-    // Step 2: Set signal's abort reason to reason if given; otherwise to a new "AbortError" DOMException.
+    // Set aborted to true
     internal.aborted = true;
 
+    // Set reason (or default to AbortError DOMException if not provided)
+    // Per spec: "If reason is not given, then set reason to a new 'AbortError' DOMException."
     if (reason.isUndefined()) {
-        // Create an AbortError DOMException as default reason
-        const abort_error = createAbortError(ctx) catch {
-            // If we can't create the DOMException, use undefined as fallback
-            internal.reason = runtime.JSValue.jsUndefined;
-            return;
-        };
-        internal.reason = runtime.JSValue.fromInstance(abort_error);
+        // TODO: Create an AbortError DOMException when DOMException is implemented
+        // For now, just use undefined as a placeholder
+        internal.reason = runtime.JSValue.jsUndefined;
     } else {
         internal.reason = reason;
     }
 
-    // Steps 3-4: TODO: Handle dependent signals (for AbortSignal.any())
-
-    // Step 5: Run the abort steps for signal
-    // Event firing is best-effort - errors are silently ignored
-    runAbortSteps(instance) catch {};
-
-    // Step 6: TODO: Run abort steps for dependent signals
-}
-
-/// Run the abort steps for an AbortSignal
-/// Spec: § 3.3 "run the abort steps"
-/// 1. For each algorithm of signal's abort algorithms: run algorithm.
-/// 2. Empty signal's abort algorithms.
-/// 3. Fire an event named "abort" at signal.
-fn runAbortSteps(instance: *runtime.Instance) !void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Steps 1-2: Run and empty abort algorithms
-    for (internal.abort_algorithms.items) |algo| {
-        algo.callback(algo.data);
-    }
-    internal.abort_algorithms.clearRetainingCapacity();
-
-    // Step 3: Fire an event named "abort" at signal
-    try fireAbortEvent(instance);
-}
-
-/// Fire the "abort" event at the signal
-/// Per DOM spec, this is a simple event (not bubbling, not cancelable)
-fn fireAbortEvent(instance: *runtime.Instance) !void {
-    const ctx = instance.ctx;
-
-    // Create "abort" event with default EventInit (bubbles=false, cancelable=false)
-    var event_type = try runtime.DOMString.initDupe(ctx.allocator, "abort");
-    defer event_type.deinit(ctx.allocator);
-
-    const event = try interfaces.Event.call_constructor(
-        ctx,
-        event_type,
-        webidl.Opt(dictionaries.EventInit).notPassed(), // Use defaults
-    );
-    defer interfaces.Event.deinit(event); // Clean up event after dispatch
-
-    // Dispatch the event to this signal (AbortSignal inherits from EventTarget)
-    _ = try interfaces.EventTarget.call_dispatchEvent(instance, event);
+    // Fire abort event (requires DOM event infrastructure)
+    // For now, just set the flag - event firing would happen here
 }
 
 pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
@@ -389,41 +211,4 @@ pub fn call__any(instance: *runtime.Instance, signals: runtime.JSValue) anyerror
     _ = instance;
     _ = signals;
     return error.NotImplemented;
-}
-
-/// Add an abort algorithm to the signal
-/// Spec: https://dom.spec.whatwg.org/#abortsignal-add
-/// The callback will be invoked when the signal aborts.
-/// Returns true if added, false if signal was already aborted.
-pub fn addAbortAlgorithm(instance: *runtime.Instance, callback: *const fn (?*anyopaque) void, data: ?*anyopaque) !bool {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // If already aborted, don't add - caller should handle immediately
-    if (internal.aborted) {
-        return false;
-    }
-
-    try internal.abort_algorithms.append(internal.allocator, .{
-        .callback = callback,
-        .data = data,
-    });
-    return true;
-}
-
-/// Remove an abort algorithm from the signal
-/// Spec: https://dom.spec.whatwg.org/#abortsignal-remove
-pub fn removeAbortAlgorithm(instance: *runtime.Instance, callback: *const fn (?*anyopaque) void, data: ?*anyopaque) !void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    var i: usize = 0;
-    while (i < internal.abort_algorithms.items.len) {
-        const algo = internal.abort_algorithms.items[i];
-        if (algo.callback == callback and algo.data == data) {
-            _ = internal.abort_algorithms.swapRemove(i);
-            return;
-        }
-        i += 1;
-    }
 }

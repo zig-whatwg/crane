@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMPointInit = @import("dictionaries").DOMPointInit;
-const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XRRayDirectionInit = @import("dictionaries").XRRayDirectionInit;
-const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
+const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 
 pub const XRRay = struct {
     pub const Meta = struct {

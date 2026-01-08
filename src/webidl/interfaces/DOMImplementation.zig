@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Document = @import("Document.zig").Document;
-const DocumentType = @import("DocumentType.zig").DocumentType;
-const XMLDocument = @import("XMLDocument.zig").XMLDocument;
+const Document = @import("interfaces").Document;
+const DocumentType = @import("interfaces").DocumentType;
+const XMLDocument = @import("interfaces").XMLDocument;
 const DOMString = @import("typedefs").DOMString;
 
 pub const DOMImplementation = struct {

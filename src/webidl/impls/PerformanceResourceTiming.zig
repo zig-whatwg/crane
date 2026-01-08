@@ -194,24 +194,3 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceR
     _ = instance;
     return error.NotImplemented;
 }
-
-
-pub fn get_workerFinalRouterSource(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-pub fn get_workerRouterEvaluationStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-pub fn get_workerMatchedRouterSource(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-pub fn get_workerCacheLookupStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    _ = instance;
-    return error.NotImplemented;
-}

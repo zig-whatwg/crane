@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ReadableStreamGenericReader = @import("mixins").ReadableStreamGenericReader;
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
 const ReadableStreamBYOBReaderReadOptions = @import("dictionaries").ReadableStreamBYOBReaderReadOptions;
 const ReadableStreamReadResult = @import("dictionaries").ReadableStreamReadResult;
 

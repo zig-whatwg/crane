@@ -83,59 +83,10 @@ fn printConsoleValues(ctx: runtime.Context, data: []const runtime.JSValue) void 
     std.debug.print("\n", .{});
 }
 
-const WPT_RESULT_PREFIX = "CRANE_WPT_RESULT:";
-
-fn isWptResult(data: []const runtime.JSValue) bool {
-    if (data.len == 0) return false;
-    return switch (data[0]) {
-        .string => |s| std.mem.startsWith(u8, s.data, WPT_RESULT_PREFIX),
-        else => false,
-    };
-}
-
-fn outputWptResult(data: []const runtime.JSValue) void {
-    const stdout_file = std.fs.File.stdout();
-    for (data, 0..) |value, i| {
-        if (i > 0) stdout_file.writeAll(" ") catch {};
-        switch (value) {
-            .undefined => stdout_file.writeAll("undefined") catch {},
-            .null => stdout_file.writeAll("null") catch {},
-            .boolean => |b| {
-                var buf: [8]u8 = undefined;
-                const s = std.fmt.bufPrint(&buf, "{}", .{b}) catch "?";
-                stdout_file.writeAll(s) catch {};
-            },
-            .number => |n| {
-                if (std.math.isNan(n)) {
-                    stdout_file.writeAll("NaN") catch {};
-                } else if (std.math.isInf(n)) {
-                    if (n > 0) {
-                        stdout_file.writeAll("Infinity") catch {};
-                    } else {
-                        stdout_file.writeAll("-Infinity") catch {};
-                    }
-                } else {
-                    var buf: [64]u8 = undefined;
-                    const s = std.fmt.bufPrint(&buf, "{d}", .{n}) catch "?";
-                    stdout_file.writeAll(s) catch {};
-                }
-            },
-            .string => |s| stdout_file.writeAll(s.data) catch {},
-            .handle => stdout_file.writeAll("[object]") catch {},
-            .instance => stdout_file.writeAll("[instance]") catch {},
-        }
-    }
-    stdout_file.writeAll("\n") catch {};
-}
-
 /// console.log(data...)
 ///
 /// WHATWG Console Standard: Logger("log", data)
 pub fn call_log(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    if (isWptResult(data)) {
-        outputWptResult(data);
-        return;
-    }
     printConsoleValues(ctx, data);
 }
 

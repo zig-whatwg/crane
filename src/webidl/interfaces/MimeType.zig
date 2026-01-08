@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
-const Plugin = @import("Plugin.zig").Plugin;
+const Plugin = @import("interfaces").Plugin;
 
 pub const MimeType = struct {
     pub const Meta = struct {

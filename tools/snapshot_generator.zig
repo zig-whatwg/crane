@@ -50,12 +50,6 @@ const context_manager = v8.context_manager;
 // Import interface bindings for registration
 const interface_bindings = v8.interface_bindings;
 
-// Import global constructor handler for lazy interface installation
-const global_constructor_handler = v8.global_constructor_handler;
-
-// Import snapshot context index for multi-context snapshot generation
-const SnapshotContextIndex = v8.SnapshotContextIndex;
-
 /// Default output file for the snapshot blob
 const DEFAULT_OUTPUT_PATH = "whatwg_snapshot.bin";
 
@@ -160,13 +154,7 @@ pub fn main() !void {
         context_manager.windowIndexedPropertyEnumerator,
         null, // descriptor - not needed
     );
-
-    // Set named property handler for lazy global constructor installation
-    // When JavaScript accesses `window.MessageEvent` (or any non-core interface),
-    // this handler creates the template on-demand and installs the constructor.
-    // Uses kNonMasking flag so it only fires for properties that don't exist yet.
-    global_constructor_handler.installOnGlobalTemplate(global_template);
-    log(allocator, "  Global template configured: 2 internal fields, immutable proto, indexed handlers, lazy constructors\\n", .{});
+    log(allocator, "  Global template configured: 2 internal fields, immutable proto, indexed handlers\\n", .{});
 
     // Step 5b: Create default context with global template
     log(allocator, "  5b: Creating default context with global template...\\n", .{});
@@ -181,10 +169,9 @@ pub fn main() !void {
     log(allocator, "  5c: Entering default context and registering interfaces...\\n", .{});
     v8.ffi.v8_Context_Enter(default_context);
 
-    // Register only core DOM interfaces in default context (Chromium-style minimal snapshot)
-    // Non-core interfaces are created on-demand via createTemplateOnDemand()
-    interface_bindings.initializeCoreBindingsForScope(isolate, default_context, .Window);
-    log(allocator, "  5d: Core DOM interfaces registered in default context (minimal snapshot)\\n", .{});
+    // Register ALL WebIDL interfaces in this context
+    interface_bindings.initializeBindings(isolate, default_context);
+    log(allocator, "  5d: WebIDL interfaces registered in default context\\n", .{});
 
     // Exit context before adding to snapshot
     v8.ffi.v8_Context_Exit(default_context);
@@ -193,59 +180,36 @@ pub fn main() !void {
     v8.ffi.v8_SnapshotCreator_SetDefaultContext(creator, default_context);
     log(allocator, "  Default context with interfaces set\\n", .{});
 
-    // Step 5e: Create indexed contexts - one per implemented scope kind
-    // Each scope kind (window, dedicated_worker, etc.) gets its own context with
-    // only the interfaces exposed to that scope. Contexts are added at indices
-    // matching SnapshotContextIndex enum values for deterministic restoration.
-    log(allocator, "  5e: Creating indexed contexts for each scope kind...\\n", .{});
+    // Step 5e: Create indexed context (at index 0) with the same global template
+    // This is the context that will be restored via Context::FromSnapshot(isolate, 0)
+    log(allocator, "  5e: Creating indexed context with global template...\\n", .{});
+    const indexed_context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse {
+        log(allocator, "  ERROR: Failed to create indexed context\\n", .{});
+        v8.ffi.v8_Isolate_Exit(isolate);
+        v8.ffi.v8_SnapshotCreator_Dispose(creator);
+        return error.ContextFailed;
+    };
 
-    // Create a context for each implemented scope kind
-    // Use inline for to make scope_index comptime-known (required by initializeBindingsForScope)
-    inline for (SnapshotContextIndex.implemented) |scope_index| {
-        const helper_scope = comptime scope_index.toHelperScope();
-        const scope_name = scope_index.globalInterfaceName();
+    // Enter context and register all interfaces
+    log(allocator, "  5f: Entering indexed context and registering interfaces...\\n", .{});
+    v8.ffi.v8_Context_Enter(indexed_context);
 
-        log(allocator, "    Creating context for {s} (index {d})...\\n", .{ scope_name, @intFromEnum(scope_index) });
+    // Register ALL WebIDL interfaces in this context too
+    interface_bindings.initializeBindings(isolate, indexed_context);
+    log(allocator, "  5g: WebIDL interfaces registered in indexed context\\n", .{});
 
-        // Create context with the global template
-        const scope_context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse {
-            log(allocator, "    ERROR: Failed to create context for {s}\\n", .{scope_name});
-            v8.ffi.v8_Isolate_Exit(isolate);
-            v8.ffi.v8_SnapshotCreator_Dispose(creator);
-            return error.ContextFailed;
-        };
+    // Exit context before adding to snapshot
+    v8.ffi.v8_Context_Exit(indexed_context);
 
-        // Enter context and register scope-specific interfaces
-        v8.ffi.v8_Context_Enter(scope_context);
-
-        // Register only core DOM interfaces for this scope (Chromium-style minimal snapshot)
-        // Non-core interfaces are created on-demand via createTemplateOnDemand()
-        interface_bindings.initializeCoreBindingsForScope(isolate, scope_context, helper_scope);
-
-        // Exit context before adding to snapshot
-        v8.ffi.v8_Context_Exit(scope_context);
-
-        // Add context at the index matching the scope kind
-        // V8's AddContext returns the actual index assigned
-        const assigned_index = v8.ffi.v8_SnapshotCreator_AddContext(creator, scope_context);
-        const expected_index = @intFromEnum(scope_index);
-
-        if (assigned_index == std.math.maxInt(usize)) {
-            log(allocator, "    ERROR: Failed to add context for {s}\\n", .{scope_name});
-            v8.ffi.v8_Isolate_Exit(isolate);
-            v8.ffi.v8_SnapshotCreator_Dispose(creator);
-            return error.ContextFailed;
-        }
-
-        // Verify deterministic index assignment
-        if (assigned_index != expected_index) {
-            log(allocator, "    WARNING: Context index mismatch for {s}: expected {d}, got {d}\\n", .{ scope_name, expected_index, assigned_index });
-        }
-
-        log(allocator, "    {s} context added at index {d}\\n", .{ scope_name, assigned_index });
+    // Add indexed context at index 0 - this is what Context::FromSnapshot(isolate, 0) retrieves
+    const context_index = v8.ffi.v8_SnapshotCreator_AddContext(creator, indexed_context);
+    if (context_index == std.math.maxInt(usize)) {
+        log(allocator, "  ERROR: Failed to add indexed context\\n", .{});
+        v8.ffi.v8_Isolate_Exit(isolate);
+        v8.ffi.v8_SnapshotCreator_Dispose(creator);
+        return error.ContextFailed;
     }
-
-    log(allocator, "  Created {d} scope-specific contexts\\n\\n", .{SnapshotContextIndex.implemented.len});
+    log(allocator, "  Indexed context with interfaces added at index {d}\\n\\n", .{context_index});
 
     // Step 6: Create the snapshot blob
     log(allocator, "Step 6: Creating snapshot blob...\\n", .{});
@@ -315,14 +279,11 @@ pub fn main() !void {
         blob_size,
         @as(f64, @floatFromInt(blob_size)) / 1024.0,
     });
-    log(allocator, "\\nThis snapshot contains V8 builtins AND scope-specific WebIDL interfaces!\\n", .{});
-    log(allocator, "Contains {d} contexts (one per implemented scope kind):\\n", .{SnapshotContextIndex.implemented.len});
-    for (SnapshotContextIndex.implemented) |scope_index| {
-        log(allocator, "  - {s} (index {d})\\n", .{ scope_index.globalInterfaceName(), @intFromEnum(scope_index) });
-    }
+    log(allocator, "\\nThis snapshot contains V8 builtins AND WebIDL interfaces!\\n", .{});
+    log(allocator, "All interfaces are pre-registered - no runtime registration needed.\\n", .{});
     log(allocator, "\\nTo use this snapshot at runtime:\\n", .{});
     log(allocator, "  1. Load the blob from file\\n", .{});
     log(allocator, "  2. Create isolate with v8_Isolate_NewFromSnapshot(data, size, ext_refs)\\n", .{});
-    log(allocator, "  3. Restore context with v8_Context_FromSnapshot(isolate, scope_index)\\n", .{});
-    log(allocator, "  4. Only interfaces for that scope are available - scope-specific!\\n", .{});
+    log(allocator, "  3. Restore context with v8_Context_NewFromSnapshot(isolate)\\n", .{});
+    log(allocator, "  4. Interfaces are already available - no initializeBindings() needed!\\n", .{});
 }

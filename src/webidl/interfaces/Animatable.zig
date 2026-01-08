@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Animation = @import("Animation.zig").Animation;
+const Animation = @import("interfaces").Animation;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 

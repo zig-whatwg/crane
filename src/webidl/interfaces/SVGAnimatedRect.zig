@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMRect = @import("DOMRect.zig").DOMRect;
-const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
+const DOMRect = @import("interfaces").DOMRect;
+const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 
 pub const SVGAnimatedRect = struct {
     pub const Meta = struct {
