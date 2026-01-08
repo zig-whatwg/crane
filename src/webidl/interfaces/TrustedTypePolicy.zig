@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
-const TrustedScript = @import("TrustedScript.zig").TrustedScript;
-const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
+const TrustedHTML = @import("interfaces").TrustedHTML;
+const TrustedScript = @import("interfaces").TrustedScript;
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const DOMString = @import("typedefs").DOMString;
 
 pub const TrustedTypePolicy = struct {

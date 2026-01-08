@@ -17,7 +17,6 @@ const HTMLAnchorElement = interfaces.HTMLAnchorElement;
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
 const DOMTokenListImpl = @import("DOMTokenList.zig");
-const HTMLHyperlinkElementUtilsImpl = @import("HTMLHyperlinkElementUtils.zig");
 
 pub const State = HTMLAnchorElement.State;
 
@@ -225,69 +224,69 @@ pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVStrin
 }
 
 /// Getter for href
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_href(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for origin
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_origin(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for protocol
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_protocol(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for username
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_username(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for password
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_password(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for host
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_host(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for hostname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_hostname(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for port
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_port(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for pathname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_pathname(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for search
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_search(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for hash
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_hash(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Setter for target
@@ -404,61 +403,71 @@ pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString)
 }
 
 /// Setter for href
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for protocol
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_protocol(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for username
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_username(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for password
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_password(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for host
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_host(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for hostname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_hostname(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for port
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_port(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for pathname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_pathname(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for search
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_search(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for hash
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_hash(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }

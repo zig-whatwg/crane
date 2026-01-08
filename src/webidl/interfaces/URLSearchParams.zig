@@ -156,7 +156,7 @@ pub const URLSearchParams = struct {
         return try URLSearchParamsImpl.call_forEach(instance, callback);
     }
 
-    pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
         return try URLSearchParamsImpl.call_stringifier(instance);
     }
 

@@ -1346,9 +1346,3 @@ pub fn containsNode(instance: *runtime.Instance, node: *runtime.Instance) !bool 
     // TODO: Implement proper boundary comparison
     return false;
 }
-
-
-pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}

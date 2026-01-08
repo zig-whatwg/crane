@@ -184,15 +184,6 @@ pub const LibcurlBackend = struct {
         response_headers: std.ArrayList(NetworkResponse.Header),
         raw_headers: std.ArrayList(u8),
         aborted: *std.atomic.Value(bool),
-        // Strings that must survive until after curl request completes
-        // (libcurl does NOT copy strings - it stores pointers)
-        ca_path_z: ?[:0]u8 = null,
-        url_z: ?[:0]u8 = null,
-        method_z: ?[:0]u8 = null,
-        proxy_z: ?[:0]u8 = null,
-        userpwd_z: ?[:0]u8 = null,
-        no_proxy_z: ?[:0]u8 = null,
-        header_list: ?*curl.curl_slist = null,
 
         fn init(allocator: Allocator, aborted: *std.atomic.Value(bool)) CallbackContext {
             return .{
@@ -201,13 +192,6 @@ pub const LibcurlBackend = struct {
                 .response_headers = .empty,
                 .raw_headers = .empty,
                 .aborted = aborted,
-                .ca_path_z = null,
-                .url_z = null,
-                .method_z = null,
-                .proxy_z = null,
-                .userpwd_z = null,
-                .no_proxy_z = null,
-                .header_list = null,
             };
         }
 
@@ -219,15 +203,6 @@ pub const LibcurlBackend = struct {
             }
             self.response_headers.deinit(self.allocator);
             self.raw_headers.deinit(self.allocator);
-            // Free curl strings that were allocated for request lifetime
-            if (self.ca_path_z) |z| self.allocator.free(z);
-            if (self.url_z) |z| self.allocator.free(z);
-            if (self.method_z) |z| self.allocator.free(z);
-            if (self.proxy_z) |z| self.allocator.free(z);
-            if (self.userpwd_z) |z| self.allocator.free(z);
-            if (self.no_proxy_z) |z| self.allocator.free(z);
-            // Free curl header list
-            if (self.header_list) |list| curl.slist_free_all(list);
         }
     };
 
@@ -268,18 +243,9 @@ pub const LibcurlBackend = struct {
         }
 
         // Check for errors
-        // Special handling for CURLE_RECV_ERROR (56): WPT server responses often have no
-        // Content-Length header, so curl waits for connection close to detect end of response.
-        // With mbedTLS, the connection close can trigger error 56 even after all data is received.
-        // Treat error 56 as success if we received response headers (indicating a valid response).
         if (result != curl.CURLE_OK) {
-            if (result == curl.CURLE_RECV_ERROR and ctx.raw_headers.items.len > 0) {
-                // We received headers, so the response is likely complete despite the recv error
-                // (WPT server sends responses without Content-Length, causing mbedTLS recv error on close)
-            } else {
-                ctx.deinit();
-                return curl_error.mapCurlError(result);
-            }
+            ctx.deinit();
+            return curl_error.mapCurlError(result);
         }
 
         // Parse headers from raw header data
@@ -369,16 +335,8 @@ pub const LibcurlBackend = struct {
         else
             null;
 
-        // Clean up remaining context resources (raw_headers, url_z, method_z, etc.)
-        // Note: response_headers and response_body ownership was transferred above
+        // Clean up remaining context resources
         ctx.raw_headers.deinit(allocator);
-        if (ctx.url_z) |z| allocator.free(z);
-        if (ctx.method_z) |z| allocator.free(z);
-        if (ctx.proxy_z) |z| allocator.free(z);
-        if (ctx.userpwd_z) |z| allocator.free(z);
-        if (ctx.no_proxy_z) |z| allocator.free(z);
-        if (ctx.ca_path_z) |z| allocator.free(z);
-        if (ctx.header_list) |list| curl.slist_free_all(list);
 
         return NetworkResponse{
             .allocator = allocator,
@@ -404,14 +362,15 @@ pub const LibcurlBackend = struct {
 
     fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *CallbackContext) !void {
         // URL (must be null-terminated)
-        // NOTE: libcurl does NOT copy strings - pointers must remain valid until easy_perform completes
-        ctx.url_z = try ctx.allocator.dupeZ(u8, request.url);
-        _ = curl.easy_setopt(handle, curl.CURLOPT_URL, ctx.url_z.?.ptr);
+        const url_z = try ctx.allocator.dupeZ(u8, request.url);
+        defer ctx.allocator.free(url_z);
+        _ = curl.easy_setopt(handle, curl.CURLOPT_URL, url_z.ptr);
 
         // Method
         if (!std.mem.eql(u8, request.method, "GET")) {
-            ctx.method_z = try ctx.allocator.dupeZ(u8, request.method);
-            _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
+            const method_z = try ctx.allocator.dupeZ(u8, request.method);
+            defer ctx.allocator.free(method_z);
+            _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, method_z.ptr);
         }
 
         // Request body
@@ -421,25 +380,29 @@ pub const LibcurlBackend = struct {
         }
 
         // Headers
-        // NOTE: curl_slist_append copies strings internally, so we can free header_str/header_z after append
         var header_list: ?*curl.curl_slist = null;
         for (request.headers) |header| {
             // Format: "Name: Value" - allocate then convert to null-terminated
             const header_str = try std.fmt.allocPrint(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
             defer ctx.allocator.free(header_str);
-            // Create null-terminated copy for curl - slist_append copies this
+            // Create null-terminated copy for curl
             const header_z = try ctx.allocator.dupeZ(u8, header_str);
             defer ctx.allocator.free(header_z);
             header_list = curl.slist_append(header_list, header_z.ptr);
         }
         if (header_list != null) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, header_list);
-            ctx.header_list = header_list; // Store for cleanup in deinit
         }
+        // Note: header_list is freed by curl on cleanup
 
-        // HTTP version - force HTTP/1.0 for servers without Content-Length
-        // HTTP/1.0 expects connection close as end-of-response signal
-        _ = curl.easy_setopt(handle, curl.CURLOPT_HTTP_VERSION, curl.CURL_HTTP_VERSION_1_0);
+        // HTTP version
+        const curl_http_version: c_long = switch (request.http_version) {
+            .http_1_0 => curl.CURL_HTTP_VERSION_1_0,
+            .http_1_1 => curl.CURL_HTTP_VERSION_1_1,
+            .http_2 => curl.CURL_HTTP_VERSION_2_0,
+            .http_3 => curl.CURL_HTTP_VERSION_3,
+        };
+        _ = curl.easy_setopt(handle, curl.CURLOPT_HTTP_VERSION, curl_http_version);
 
         // Timeouts
         if (request.connect_timeout_ms > 0) {
@@ -455,34 +418,21 @@ pub const LibcurlBackend = struct {
             _ = curl.easy_setopt(handle, curl.CURLOPT_MAXREDIRS, @as(c_long, @intCast(request.max_redirects)));
         }
 
-        // TLS options - proper certificate verification with trust store support
+        // TLS options
         _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYPEER, @as(c_long, if (request.cert_options.verify_peer) 1 else 0));
         _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYHOST, @as(c_long, if (request.cert_options.verify_host) 2 else 0));
 
-        // Note: Connection options removed - let curl manage connections normally.
-        // WPT server responses may lack Content-Length, relying on connection close.
-
-        // Use custom CA bundle if trust store or ca_bundle_path is configured
-        // NOTE: CA path must remain valid until after curl request completes, so we store
-        // it in the CallbackContext and free it in deinit() - NOT with defer!
-        if (request.cert_options.trust_store) |trust_store| {
-            if (trust_store.getCaBundlePath()) |ca_path| {
-                const ca_z = try ctx.allocator.dupeZ(u8, ca_path);
-                ctx.ca_path_z = ca_z; // Store for later cleanup
-                _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
-            }
-        } else if (request.cert_options.ca_bundle_path) |ca_path| {
+        if (request.cert_options.ca_bundle_path) |ca_path| {
             const ca_z = try ctx.allocator.dupeZ(u8, ca_path);
-            ctx.ca_path_z = ca_z; // Store for later cleanup
+            defer ctx.allocator.free(ca_z);
             _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
         }
-        // If neither trust_store nor ca_bundle_path is set, curl uses system CA store
 
         // Proxy
-        // NOTE: libcurl does NOT copy strings - pointers must remain valid until easy_perform completes
         if (request.proxy) |proxy| {
-            ctx.proxy_z = try ctx.allocator.dupeZ(u8, proxy.url);
-            _ = curl.easy_setopt(handle, curl.CURLOPT_PROXY, ctx.proxy_z.?.ptr);
+            const proxy_z = try ctx.allocator.dupeZ(u8, proxy.url);
+            defer ctx.allocator.free(proxy_z);
+            _ = curl.easy_setopt(handle, curl.CURLOPT_PROXY, proxy_z.ptr);
 
             if (proxy.username != null and proxy.password != null) {
                 const userpwd = try std.fmt.allocPrint(ctx.allocator, "{s}:{s}", .{
@@ -490,14 +440,16 @@ pub const LibcurlBackend = struct {
                     proxy.password.?,
                 });
                 defer ctx.allocator.free(userpwd);
-                // Store for lifetime of request
-                ctx.userpwd_z = try ctx.allocator.dupeZ(u8, userpwd);
-                _ = curl.easy_setopt(handle, curl.CURLOPT_PROXYUSERPWD, ctx.userpwd_z.?.ptr);
+                // Create null-terminated copy for curl
+                const userpwd_z = try ctx.allocator.dupeZ(u8, userpwd);
+                defer ctx.allocator.free(userpwd_z);
+                _ = curl.easy_setopt(handle, curl.CURLOPT_PROXYUSERPWD, userpwd_z.ptr);
             }
 
             if (proxy.no_proxy) |no_proxy| {
-                ctx.no_proxy_z = try ctx.allocator.dupeZ(u8, no_proxy);
-                _ = curl.easy_setopt(handle, curl.CURLOPT_NOPROXY, ctx.no_proxy_z.?.ptr);
+                const no_proxy_z = try ctx.allocator.dupeZ(u8, no_proxy);
+                defer ctx.allocator.free(no_proxy_z);
+                _ = curl.easy_setopt(handle, curl.CURLOPT_NOPROXY, no_proxy_z.ptr);
             }
         }
 

@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const RTCRtpCodec = @import("dictionaries").RTCRtpCodec;
-const RTCRtpSender = @import("RTCRtpSender.zig").RTCRtpSender;
-const RTCRtpReceiver = @import("RTCRtpReceiver.zig").RTCRtpReceiver;
+const RTCRtpSender = @import("interfaces").RTCRtpSender;
+const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
 const RTCRtpTransceiverDirection = @import("enums").RTCRtpTransceiverDirection;
 const DOMString = @import("typedefs").DOMString;
 

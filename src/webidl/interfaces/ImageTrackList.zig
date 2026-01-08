@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ImageTrack = @import("ImageTrack.zig").ImageTrack;
+const ImageTrack = @import("interfaces").ImageTrack;
 
 pub const ImageTrackList = struct {
     pub const Meta = struct {

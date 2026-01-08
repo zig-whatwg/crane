@@ -41,12 +41,6 @@ const script_execution = @import("script_execution.zig");
 const impls = @import("impls");
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const DocumentImpl = impls.Document;
-const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
-const WindowImpl = impls.Window;
-
-// V8 context manager for getting Window from V8 context
-const v8 = @import("v8");
-const context_manager = v8.context_manager;
 
 // DOM internals for document_element setting
 const dom = @import("dom");
@@ -86,10 +80,6 @@ pub const ParserScriptContext = struct {
     /// Optional script loader for external scripts.
     script_loader_fn: ?ScriptLoaderFn = null,
     script_loader_ctx: ?*anyopaque = null,
-
-    /// Certificate trust store for HTTPS script fetching.
-    /// Required for fetching scripts from HTTPS URLs with custom/self-signed certificates.
-    trust_store: ?*const fetch.network.CertificateTrustStore = null,
 
     /// Create a new parser script context.
     pub fn init(
@@ -146,7 +136,7 @@ pub const ParserScriptContext = struct {
         defer if (resolved_url.ptr != url.ptr) self.allocator.free(resolved_url);
 
         // Default: HTTP fetch like a real browser
-        return fetchScriptViaHttp(self.allocator, resolved_url, self.trust_store);
+        return fetchScriptViaHttp(self.allocator, resolved_url);
     }
 
     /// Get the DOM element for a TreeNode (if it has been converted).
@@ -168,18 +158,12 @@ pub const ParserScriptContext = struct {
 /// 3. Check if it's an external script (queue for loading) or inline (execute)
 /// 4. Execute inline script via V8
 pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) void {
-    std.debug.print("[PARSER_SCRIPT_CALLBACK] Called!\n", .{});
-    const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse {
-        std.debug.print("[PARSER_SCRIPT_CALLBACK] ERROR: context is null\n", .{});
-        return;
-    }));
+    const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse return));
 
     // Check if scripting is enabled
     if (!ctx.scripting_enabled) {
-        std.debug.print("[PARSER_SCRIPT_CALLBACK] Scripting disabled, returning\n", .{});
         return;
     }
-    std.debug.print("[PARSER_SCRIPT_CALLBACK] Scripting enabled, proceeding\n", .{});
 
     // Step 1: Get DOM HTMLScriptElement from tree node via adapter
     const script_element = ctx.getDomElement(script_tree_node) orelse {
@@ -200,10 +184,12 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
         HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
         HTMLScriptElementImpl.setFromExternalFile(script_element, true);
 
+
         // Try to load the external script
         if (ctx.loadExternalScript(src_url)) |external_content| {
             // Free the loaded content when we're done (cacheSourceText duplicates it)
             defer ctx.allocator.free(external_content);
+
 
             // Successfully loaded - execute the external script content
             if (external_content.len == 0) {
@@ -365,25 +351,13 @@ fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8)
 ///
 /// This is the default behavior when no custom script loader is provided.
 /// It uses the Fetch API to retrieve scripts from URLs.
-fn fetchScriptViaHttp(
-    allocator: Allocator,
-    url: []const u8,
-    trust_store: ?*const fetch.network.CertificateTrustStore,
-) ?[]const u8 {
-    // Use the fetch module to retrieve the script
-    // Create a request so we can pass fetch options including trust_store
-    const request = fetch.internal.InternalRequest.init(allocator, url) catch {
-        std.debug.print("Failed to create request for script {s}\n", .{url});
-        return null;
-    };
-    defer request.deinit();
+fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
 
-    const result = fetch.algorithms.fetch_algorithm.fetch(allocator, request, .{ .trust_store = trust_store }) catch |err| {
+    // Use the fetch module to retrieve the script
+    const response = fetch.fetchSimple(allocator, url) catch |err| {
         std.debug.print("HTTP fetch error for script {s}: {}\n", .{ url, err });
         return null;
     };
-    const response = result.response;
-    // Note: timing_info is const, no need to deinit
     defer response.deinit();
 
     // Check for successful response (2xx status)
@@ -499,64 +473,21 @@ pub const DomTreeAdapter = struct {
     /// Called when a child is appended to a parent during parsing.
     /// Updates the DOM tree structure.
     /// When appending <html> to document, also sets document.documentElement.
-    /// When appending <iframe> elements, triggers their insertion steps.
     pub fn onChildAppended(self: *DomTreeAdapter, parent: *TreeNode, child: *TreeNode) !void {
         const parent_dom = self.node_map.get(parent) orelse return;
         const child_dom = self.node_map.get(child) orelse return;
 
         _ = interfaces.Node.call_appendChild(parent_dom, child_dom) catch {};
 
-        // Handle element-specific insertion steps
-        if (child.node_type == .element) {
+        // CRITICAL: If appending <html> to document, set documentElement
+        // Per DOM spec, documentElement is the first Element child of the Document
+        if (parent.node_type == .document and child.node_type == .element) {
             if (child.local_name) |name| {
-                // CRITICAL: If appending <html> to document, set documentElement
-                // Per DOM spec, documentElement is the first Element child of the Document
-                if (parent.node_type == .document and
-                    std.mem.eql(u8, name, "html") and child.namespace == .html)
-                {
+                if (std.mem.eql(u8, name, "html") and child.namespace == .html) {
                     document_internals.setDocumentElement(self.document, child_dom);
-                }
-
-                // CRITICAL: If appending <iframe>, trigger the iframe's insertion steps
-                // Per HTML Standard §4.8.5, when an iframe is inserted into a document,
-                // a nested browsing context must be created and navigation triggered.
-                if (std.mem.eql(u8, name, "iframe") and child.namespace == .html) {
-                    self.handleIframeInsertion(child_dom);
                 }
             }
         }
-    }
-
-    /// Handle iframe-specific insertion steps.
-    /// Per HTML Standard §4.8.5, when an iframe is inserted into a document:
-    /// 1. Create a nested browsing context as a child of the parent
-    /// 2. Navigate to the initial content (srcdoc > src > about:blank)
-    fn handleIframeInsertion(self: *DomTreeAdapter, iframe_element: *runtime.Instance) void {
-        // Get the iframe's internal state to access the integration
-        const internal = HTMLIFrameElementImpl.getInternal(iframe_element) orelse return;
-
-        // Get the parent document's browsing context via the V8 context manager.
-        // The runtime.Context holds an engine_ctx (V8 context) which we can use
-        // to look up the associated Window and its browsing context.
-        const engine_ctx = self.ctx.engine_ctx orelse return;
-        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
-
-        // Get the Window associated with this V8 context
-        const window = context_manager.getWindowForContext(v8_ctx) orelse return;
-        const window_internal = WindowImpl.getInternal(window) orelse return;
-        const parent_bc = window_internal.browsing_context;
-
-        // Create the origin for the iframe (inherits from container document)
-        // For srcdoc and same-origin src, the origin is inherited
-        const container_origin = parent_bc.getOrigin();
-
-        // Trigger the iframe's insertion steps via integration
-        // This creates the browsing context and navigates to initial content
-        internal.integration.onInsertedIntoDocument(parent_bc, container_origin) catch {
-            // Insertion failed - iframe will not have a browsing context
-            // This is recoverable - accessing contentWindow will return null
-            return;
-        };
     }
 
     /// Called when a node's text content changes during parsing.

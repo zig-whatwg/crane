@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const BluetoothManufacturerDataFilter = @import("BluetoothManufacturerDataFilter.zig").BluetoothManufacturerDataFilter;
+const BluetoothManufacturerDataFilter = @import("interfaces").BluetoothManufacturerDataFilter;
 const BluetoothLEScanFilterInit = @import("dictionaries").BluetoothLEScanFilterInit;
 const UUID = @import("typedefs").UUID;
 const DOMString = @import("typedefs").DOMString;
-const BluetoothServiceDataFilter = @import("BluetoothServiceDataFilter.zig").BluetoothServiceDataFilter;
+const BluetoothServiceDataFilter = @import("interfaces").BluetoothServiceDataFilter;
 
 pub const BluetoothLEScanFilter = struct {
     pub const Meta = struct {

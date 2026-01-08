@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const CSSOMString = @import("typedefs").CSSOMString;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const FontFaceSetLoadEventInit = @import("dictionaries").FontFaceSetLoadEventInit;
-const FontFace = @import("FontFace.zig").FontFace;
+const FontFace = @import("interfaces").FontFace;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
 

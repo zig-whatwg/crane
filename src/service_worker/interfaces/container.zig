@@ -49,9 +49,6 @@ const RegistrationMap = registration_map_mod.RegistrationMap;
 const client_mod = @import("../client.zig");
 const Client = client_mod.Client;
 
-// Fetch interception integration
-const fetch_interceptor_impl = @import("../integration/fetch_interceptor_impl.zig");
-
 /// ServiceWorkerContainer WebIDL interface.
 ///
 /// The main interface for interacting with service workers from a client.
@@ -92,19 +89,11 @@ pub const ServiceWorkerContainer = struct {
     // =========================================================================
 
     /// Create a ServiceWorkerContainer for a client.
-    ///
-    /// This also ensures the service worker fetch interceptor is registered
-    /// with the fetch module's interception registry, enabling SW-controlled
-    /// fetches to be intercepted.
     pub fn init(
         allocator: Allocator,
         client: *Client,
         registration_map: *RegistrationMap,
     ) !*Self {
-        // Ensure the fetch interceptor is registered (lazy initialization)
-        // This enables service worker fetch interception when SWs are used
-        fetch_interceptor_impl.ensureRegistered(allocator, registration_map);
-
         const self = try allocator.create(Self);
         self.* = .{
             .allocator = allocator,
