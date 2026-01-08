@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const DOMString = @import("typedefs").DOMString;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const AudioBuffer = @import("AudioBuffer.zig").AudioBuffer;
+const AudioBuffer = @import("interfaces").AudioBuffer;
 const EventInit = @import("dictionaries").EventInit;
 const AudioProcessingEventInit = @import("dictionaries").AudioProcessingEventInit;
 

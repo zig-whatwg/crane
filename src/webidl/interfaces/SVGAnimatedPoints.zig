@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SVGPointList = @import("SVGPointList.zig").SVGPointList;
+const SVGPointList = @import("interfaces").SVGPointList;
 
 pub const SVGAnimatedPoints = struct {
     pub const Meta = struct {

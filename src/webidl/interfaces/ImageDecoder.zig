@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ImageDecodeOptions = @import("dictionaries").ImageDecodeOptions;
 const ImageDecoderInit = @import("dictionaries").ImageDecoderInit;
-const ImageTrackList = @import("ImageTrackList.zig").ImageTrackList;
+const ImageTrackList = @import("interfaces").ImageTrackList;
 const ImageDecodeResult = @import("dictionaries").ImageDecodeResult;
 const DOMString = @import("typedefs").DOMString;
 

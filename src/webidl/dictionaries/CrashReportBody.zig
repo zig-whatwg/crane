@@ -14,5 +14,5 @@ pub const CrashReportBody = struct {
     reason: ?runtime.DOMString = null,
     stack: ?runtime.DOMString = null,
     is_top_level: ?bool = null,
-    visibility_state: ?enums.DocumentVisibilityState = null,
+    page_visibility: ?enums.DocumentVisibilityState = null,
 };

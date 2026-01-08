@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RdfTriple = @import("RdfTriple.zig").RdfTriple;
+const RdfTriple = @import("interfaces").RdfTriple;
 
 pub const RdfGraph = struct {
     pub const Meta = struct {

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WritableStreamDefaultWriter = @import("WritableStreamDefaultWriter.zig").WritableStreamDefaultWriter;
+const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 
 pub const WritableStream = struct {

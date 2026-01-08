@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WorkletAnimationEffect = @import("WorkletAnimationEffect.zig").WorkletAnimationEffect;
+const WorkletAnimationEffect = @import("interfaces").WorkletAnimationEffect;
 
 pub const WorkletGroupEffect = struct {
     pub const Meta = struct {

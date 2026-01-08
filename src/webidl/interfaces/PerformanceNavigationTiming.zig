@@ -10,13 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceResourceTiming = @import("PerformanceResourceTiming.zig").PerformanceResourceTiming;
+const PerformanceResourceTiming = @import("interfaces").PerformanceResourceTiming;
 const ByteString = @import("typedefs").ByteString;
-const NotRestoredReasons = @import("NotRestoredReasons.zig").NotRestoredReasons;
-const PerformanceServerTiming = @import("PerformanceServerTiming.zig").PerformanceServerTiming;
+const NotRestoredReasons = @import("interfaces").NotRestoredReasons;
+const PerformanceServerTiming = @import("interfaces").PerformanceServerTiming;
 const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const PerformanceTimingConfidence = @import("PerformanceTimingConfidence.zig").PerformanceTimingConfidence;
 const NavigationTimingType = @import("enums").NavigationTimingType;
 const DOMString = @import("typedefs").DOMString;
 
@@ -50,7 +49,6 @@ pub const PerformanceNavigationTiming = struct {
             .{ "redirectCount", "get_redirectCount", null },
             .{ "criticalCHRestart", "get_criticalCHRestart", null },
             .{ "notRestoredReasons", "get_notRestoredReasons", null },
-            .{ "confidence", "get_confidence", null },
             .{ "activationStart", "get_activationStart", null },
         };
         
@@ -82,7 +80,6 @@ pub const PerformanceNavigationTiming = struct {
             .{ "redirectCount", "get_redirectCount", null },
             .{ "criticalCHRestart", "get_criticalCHRestart", null },
             .{ "notRestoredReasons", "get_notRestoredReasons", null },
-            .{ "confidence", "get_confidence", null },
             .{ "activationStart", "get_activationStart", null },
         };
         
@@ -109,7 +106,6 @@ pub const PerformanceNavigationTiming = struct {
             redirectCount: u16 = undefined,
             criticalCHRestart: typedefs.DOMHighResTimeStamp = undefined,
             notRestoredReasons: ?*runtime.Instance = null,
-            confidence: *runtime.Instance = undefined,
             activationStart: typedefs.DOMHighResTimeStamp = undefined,
             _internal: ?*PerformanceNavigationTimingImpl.InternalState = null,
         },
@@ -145,10 +141,6 @@ pub const PerformanceNavigationTiming = struct {
         firstInterimResponseStart: DOMHighResTimeStamp,
         responseStart: DOMHighResTimeStamp,
         responseEnd: DOMHighResTimeStamp,
-        workerRouterEvaluationStart: DOMHighResTimeStamp,
-        workerCacheLookupStart: DOMHighResTimeStamp,
-        workerMatchedRouterSource: runtime.DOMString,
-        workerFinalRouterSource: runtime.DOMString,
         transferSize: u64,
         encodedBodySize: u64,
         decodedBodySize: u64,
@@ -169,14 +161,12 @@ pub const PerformanceNavigationTiming = struct {
         redirectCount: u16,
         criticalCHRestart: DOMHighResTimeStamp,
         notRestoredReasons: *runtime.Instance,
-        confidence: *runtime.Instance,
         activationStart: DOMHighResTimeStamp,
     };
 
     const delegates = .{
 
         .get_activationStart = &get_activationStart,
-        .get_confidence = &get_confidence,
         .get_criticalCHRestart = &get_criticalCHRestart,
         .get_domComplete = &get_domComplete,
         .get_domContentLoadedEventEnd = &get_domContentLoadedEventEnd,
@@ -263,10 +253,6 @@ pub const PerformanceNavigationTiming = struct {
 
     pub fn get_notRestoredReasons(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PerformanceNavigationTimingImpl.get_notRestoredReasons(instance);
-    }
-
-    pub fn get_confidence(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try PerformanceNavigationTimingImpl.get_confidence(instance);
     }
 
     pub fn get_activationStart(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {

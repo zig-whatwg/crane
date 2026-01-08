@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Plugin = @import("Plugin.zig").Plugin;
+const Plugin = @import("interfaces").Plugin;
 const DOMString = @import("typedefs").DOMString;
 
 pub const PluginArray = struct {

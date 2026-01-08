@@ -62,17 +62,11 @@ pub fn mapCurlError(code: curl.CURLcode) NetworkError {
         return NetworkError.TooManyRedirects;
     }
 
-    // Invalid URL - only for actual URL format issues
-    if (code == curl.CURLE_URL_MALFORMAT) {
+    // Invalid URL
+    if (code == curl.CURLE_URL_MALFORMAT or
+        code == curl.CURLE_BAD_FUNCTION_ARGUMENT)
+    {
         return NetworkError.InvalidUrl;
-    }
-
-    // Bad function argument - curl received an invalid parameter
-    // This is a configuration/setup error, not necessarily URL-related.
-    // Could be: NULL pointer, invalid option value, malformed header, etc.
-    // Map to ProtocolError since it's a request construction issue.
-    if (code == curl.CURLE_BAD_FUNCTION_ARGUMENT) {
-        return NetworkError.ProtocolError;
     }
 
     // Aborted by User
@@ -258,16 +252,6 @@ test "mapCurlError - protocol and memory errors" {
     try std.testing.expectEqual(
         NetworkError.OutOfMemory,
         mapCurlError(curl.CURLE_OUT_OF_MEMORY),
-    );
-}
-
-test "mapCurlError - bad function argument maps to protocol error" {
-    // CURLE_BAD_FUNCTION_ARGUMENT should map to ProtocolError, not InvalidUrl
-    // This error happens when curl receives invalid parameters (NULL pointers,
-    // bad option values, etc.) which is a configuration issue, not URL format.
-    try std.testing.expectEqual(
-        NetworkError.ProtocolError,
-        mapCurlError(curl.CURLE_BAD_FUNCTION_ARGUMENT),
     );
 }
 

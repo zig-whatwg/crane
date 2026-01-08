@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AnimationNodeList = @import("AnimationNodeList.zig").AnimationNodeList;
-const AnimationEffect = @import("AnimationEffect.zig").AnimationEffect;
+const AnimationNodeList = @import("interfaces").AnimationNodeList;
+const AnimationEffect = @import("interfaces").AnimationEffect;
 const EffectTiming = @import("dictionaries").EffectTiming;
 
 pub const GroupEffect = struct {

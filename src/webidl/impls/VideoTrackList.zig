@@ -96,10 +96,3 @@ pub fn call_getTrackById(instance: *runtime.Instance, id: runtime.DOMString) any
     _ = id;
     return null;
 }
-
-
-pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
-}

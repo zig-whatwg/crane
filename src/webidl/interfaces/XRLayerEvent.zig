@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const XRLayerEventInit = @import("dictionaries").XRLayerEventInit;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const XRLayer = @import("XRLayer.zig").XRLayer;
+const XRLayer = @import("interfaces").XRLayer;
 const DOMString = @import("typedefs").DOMString;
 
 pub const XRLayerEvent = struct {

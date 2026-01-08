@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCanvasElement = @import("HTMLCanvasElement.zig").HTMLCanvasElement;
-const OffscreenCanvas = @import("OffscreenCanvas.zig").OffscreenCanvas;
-const ImageBitmap = @import("ImageBitmap.zig").ImageBitmap;
+const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
+const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
+const ImageBitmap = @import("interfaces").ImageBitmap;
 
 pub const ImageBitmapRenderingContext = struct {
     pub const Meta = struct {

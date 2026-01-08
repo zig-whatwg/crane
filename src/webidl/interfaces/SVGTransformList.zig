@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const SVGTransform = @import("SVGTransform.zig").SVGTransform;
+const SVGTransform = @import("interfaces").SVGTransform;
 
 pub const SVGTransformList = struct {
     pub const Meta = struct {
