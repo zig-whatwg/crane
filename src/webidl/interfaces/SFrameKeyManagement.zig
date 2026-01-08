@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const EventHandler = @import("typedefs").EventHandler;
-const CryptoKey = @import("interfaces").CryptoKey;
+const CryptoKey = @import("CryptoKey.zig").CryptoKey;
 
 pub const SFrameKeyManagement = struct {
     pub const Meta = struct {

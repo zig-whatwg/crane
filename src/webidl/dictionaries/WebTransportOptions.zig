@@ -15,5 +15,5 @@ pub const WebTransportOptions = struct {
     anticipatedConcurrentIncomingUnidirectionalStreams: ?u16 = null,
     anticipatedConcurrentIncomingBidirectionalStreams: ?u16 = null,
     protocols: ?[]const runtime.DOMString = null,
-    datagramsReadableMode: ?enums.DatagramsReadableMode = null,
+    datagramsReadableType: ?enums.ReadableStreamType = null,
 };

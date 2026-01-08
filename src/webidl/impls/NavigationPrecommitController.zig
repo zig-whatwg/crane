@@ -47,3 +47,10 @@ pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, option
     _ = options;
     return error.NotImplemented;
 }
+
+
+pub fn call_addHandler(instance: *runtime.Instance, handler: callbacks.NavigationInterceptHandler) anyerror!void {
+    _ = instance;
+    _ = handler;
+    return error.NotImplemented;
+}

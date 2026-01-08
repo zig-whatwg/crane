@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SVGNumber = @import("interfaces").SVGNumber;
+const SVGNumber = @import("SVGNumber.zig").SVGNumber;
 
 pub const SVGNumberList = struct {
     pub const Meta = struct {

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMRect = @import("interfaces").DOMRect;
+const DOMRect = @import("DOMRect.zig").DOMRect;
 
 pub const DOMRectList = struct {
     pub const Meta = struct {

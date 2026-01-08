@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ExceptionOptions = @import("dictionaries").ExceptionOptions;
-const Tag = @import("interfaces").Tag;
+const Tag = @import("Tag.zig").Tag;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Exception = struct {

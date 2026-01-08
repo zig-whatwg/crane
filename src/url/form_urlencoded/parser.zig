@@ -116,14 +116,48 @@ fn replacePlus(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return result;
 }
 
-/// Validate UTF-8 and duplicate string
+/// Sanitize UTF-8 by replacing invalid sequences with U+FFFD and duplicate string
+/// Per the URL spec, invalid UTF-8 should be replaced with U+FFFD (replacement character)
 fn validateUtf8AndDupe(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    // Validate it's valid UTF-8
-    if (!std.unicode.utf8ValidateSlice(bytes)) {
-        return error.InvalidUtf8;
+    // If valid UTF-8, just duplicate
+    if (std.unicode.utf8ValidateSlice(bytes)) {
+        return try allocator.dupe(u8, bytes);
     }
 
-    return try allocator.dupe(u8, bytes);
+    // Invalid UTF-8 - replace invalid sequences with U+FFFD
+    // U+FFFD in UTF-8 is: 0xEF 0xBF 0xBD (3 bytes)
+    var result: std.ArrayList(u8) = .{};
+    errdefer result.deinit(allocator);
+
+    var i: usize = 0;
+    while (i < bytes.len) {
+        const len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
+            // Invalid start byte - replace with U+FFFD
+            try result.appendSlice(allocator, &[_]u8{ 0xEF, 0xBF, 0xBD });
+            i += 1;
+            continue;
+        };
+
+        if (i + len > bytes.len) {
+            // Incomplete sequence at end - replace with U+FFFD
+            try result.appendSlice(allocator, &[_]u8{ 0xEF, 0xBF, 0xBD });
+            i += 1;
+            continue;
+        }
+
+        _ = std.unicode.utf8Decode(bytes[i .. i + len]) catch {
+            // Invalid sequence - replace with U+FFFD
+            try result.appendSlice(allocator, &[_]u8{ 0xEF, 0xBF, 0xBD });
+            i += 1;
+            continue;
+        };
+
+        // Valid sequence - copy it
+        try result.appendSlice(allocator, bytes[i .. i + len]);
+        i += len;
+    }
+
+    return try result.toOwnedSlice(allocator);
 }
 
 /// application/x-www-form-urlencoded string parser (spec line 1729)

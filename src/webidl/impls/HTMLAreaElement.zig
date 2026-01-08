@@ -16,6 +16,7 @@ const HTMLAreaElement = interfaces.HTMLAreaElement;
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
 const DOMTokenListImpl = @import("DOMTokenList.zig");
+const HTMLHyperlinkElementUtilsImpl = @import("HTMLHyperlinkElementUtils.zig");
 
 pub const State = HTMLAreaElement.State;
 
@@ -184,70 +185,59 @@ pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVStrin
     return error.NotImplemented;
 }
 
-/// Getter for href
+/// Getter for href - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_href(instance);
 }
 
-/// Getter for origin
+/// Getter for origin - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_origin(instance);
 }
 
-/// Getter for protocol
+/// Getter for protocol - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_protocol(instance);
 }
 
-/// Getter for username
+/// Getter for username - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_username(instance);
 }
 
-/// Getter for password
+/// Getter for password - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_password(instance);
 }
 
-/// Getter for host
+/// Getter for host - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_host(instance);
 }
 
-/// Getter for hostname
+/// Getter for hostname - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_hostname(instance);
 }
 
-/// Getter for port
+/// Getter for port - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_port(instance);
 }
 
-/// Getter for pathname
+/// Getter for pathname - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_pathname(instance);
 }
 
-/// Getter for search
+/// Getter for search - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_search(instance);
 }
 
-/// Getter for hash
+/// Getter for hash - delegate to HTMLHyperlinkElementUtils mixin
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    return HTMLHyperlinkElementUtilsImpl.get_hash(instance);
 }
 
 /// Setter for alt

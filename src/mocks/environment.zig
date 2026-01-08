@@ -297,7 +297,8 @@ fn generateId(allocator: Allocator) ![]const u8 {
     // Use random bytes for unique ID.
     var buf: [16]u8 = undefined;
     std.crypto.random.bytes(&buf);
-    return try std.fmt.allocPrint(allocator, "{}", .{std.fmt.fmtSliceHexLower(&buf)});
+    const hex = std.fmt.bytesToHex(buf, .lower);
+    return try std.fmt.allocPrint(allocator, "{s}", .{hex[0..]});
 }
 
 /// Parse origin from a URL string.

@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
+const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValue;
 const USVString = @import("typedefs").USVString;
 
 pub const StylePropertyMap = struct {
