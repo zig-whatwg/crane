@@ -10,6 +10,11 @@ const core_interfaces = std.StaticStringMap(void).initComptime(.{
     .{ "Document", {} },
     .{ "HTMLDocument", {} },
     .{ "Window", {} },
+    // Worker must NOT use lazy getter - it needs fresh constructor callbacks
+    // to work properly after snapshot restore. The lazy getter would return
+    // a cached template with stale callback pointers.
+    .{ "Worker", {} },
+    .{ "MessageEvent", {} },
 });
 
 fn isLazyInstallableInterface(name: []const u8) bool {
@@ -67,6 +72,11 @@ pub fn installLazyConstructorsOnGlobal(context: *v8.Context) void {
                     lazyConstructorGetter,
                     null,
                 );
+            }
+        } else {
+            // Debug: Verify core interfaces are being skipped
+            if (std.mem.eql(u8, iface_name, "Worker")) {
+                std.debug.print("[LAZY] Skipping Worker - it's in core_interfaces\n", .{});
             }
         }
     }

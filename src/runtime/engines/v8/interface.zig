@@ -547,8 +547,18 @@ pub fn V8Interface(comptime Interface: type) type {
             global_name: []const u8,
         ) void {
             @setEvalBranchQuota(10000); // Raise branch limit for multiple inline loops
+
+            // Debug: Track when Worker constructor is being reinstalled
+            if (std.mem.eql(u8, global_name, "Worker")) {
+                std.debug.print("[REINSTALL] Creating fresh Worker template and installing on global\n", .{});
+            }
+
             const template = createTemplate(isolate);
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
+
+            if (std.mem.eql(u8, global_name, "Worker")) {
+                std.debug.print("[REINSTALL] Worker template={?}, constructor={?}\n", .{ template, constructor });
+            }
 
             // Register template in template_registry for wrapInstanceAsV8Object()
             template_registry.register(global_name, template, isolate);
@@ -563,7 +573,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // - writable: true
             // - enumerable: false (not in for...in loops or Object.keys)
             // - configurable: true
-            _ = v8.v8_Object_DefineProperty(
+            const success = v8.v8_Object_DefineProperty(
                 global,
                 context,
                 @ptrCast(key_str),
@@ -572,6 +582,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 false, // enumerable = false (per WebIDL spec)
                 true, // configurable = true
             );
+
+            if (std.mem.eql(u8, global_name, "Worker")) {
+                std.debug.print("[REINSTALL] Worker DefineProperty success={}\n", .{success});
+            }
 
             // NOTE: V8 LIMITATION - Constructor Property Enumeration Order
             //
@@ -1096,8 +1110,44 @@ pub fn V8Interface(comptime Interface: type) type {
         ///    Handles edge cases where isolate-local storage fails
         ///
         /// The generation counter is retained as a safety net even with isolate-local storage.
+        ///
+        /// IMPORTANT: For constructable interfaces, we MUST ensure callbacks are fresh.
+        /// After snapshot restore, templates in cache may have stale callback pointers.
         pub fn createTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
-            @setEvalBranchQuota(20000); // Raise for nested inline loops
+            // Force fresh creation for constructable interfaces to ensure callbacks work
+            // This is critical after snapshot restore - cached templates have stale callbacks
+            if (has_constructor) {
+                return createTemplateFresh(isolate);
+            }
+            return createTemplateCached(isolate);
+        }
+
+        /// Create a fresh template, bypassing all caches
+        fn createTemplateFresh(isolate: *v8.Isolate) *v8.FunctionTemplate {
+            @setEvalBranchQuota(20000);
+            const isolate_alloc = @import("isolate_allocator.zig");
+            const isolate_templates = @import("isolate_templates.zig");
+
+            if (std.mem.eql(u8, interface_name, "Worker")) {
+                std.debug.print("[TEMPLATE] Creating FRESH Worker template (bypassing cache)\n", .{});
+            }
+
+            // Create the template
+            const template = createTemplateCore(isolate);
+
+            // Still cache it for future use within this session
+            if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
+                if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
+                    storage.put(interface_name, template) catch {};
+                }
+            }
+
+            return template;
+        }
+
+        /// Create a template with caching
+        fn createTemplateCached(isolate: *v8.Isolate) *v8.FunctionTemplate {
+            @setEvalBranchQuota(20000);
             const isolate_templates = @import("isolate_templates.zig");
             const isolate_alloc = @import("isolate_allocator.zig");
 
@@ -1129,8 +1179,23 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            return createTemplateCore(isolate);
+        }
+
+        /// Core template creation logic
+        fn createTemplateCore(isolate: *v8.Isolate) *v8.FunctionTemplate {
+            @setEvalBranchQuota(20000);
+            const isolate_templates = @import("isolate_templates.zig");
+            const isolate_alloc = @import("isolate_allocator.zig");
+
             // Create function template - only with constructor callback if interface is constructible
             const ctor_callback: ?v8.FunctionCallback = if (has_constructor) constructorCallback else nonConstructorCallback;
+
+            // Debug: Verify callback pointer for Worker
+            if (std.mem.eql(u8, interface_name, "Worker")) {
+                std.debug.print("[TEMPLATE] Creating Worker FunctionTemplate with callback={?}\n", .{ctor_callback});
+            }
+
             const template = v8.v8_FunctionTemplate_New(
                 isolate,
                 ctor_callback,
@@ -1309,6 +1374,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
                 // This makes the getter/setter appear in Object.getOwnPropertyDescriptor
+                if (std.mem.eql(u8, interface_name, "MessageEvent")) {
+                    std.debug.print("[ME-REG] Registering accessor '{s}' with getter_cb={?*}\n", .{ prop_name, getter_cb });
+                }
                 v8.v8_ObjectTemplate_SetAccessorProperty(
                     proto_tmpl,
                     prop_name_str,
@@ -2297,6 +2365,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         v8_context,
                         method_context, // Use method's realm for return value
                     ) catch |err| {
+                        // ExceptionPending means an exception was already rethrown during conversion
+                        if (err == conv.ConversionError.ExceptionPending) {
+                            return;
+                        }
                         // Throw proper DOMException for WebIDL errors
                         conv.throwWebIDLErrorFromContext(isolate, method_context, @errorName(err));
                         return;
@@ -3092,6 +3164,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // Note: Arguments are parsed from current_context (caller's values), but
             // the runtime ctx uses constructor_context (constructor's realm)
             const instance = callConstructorWithArgs(info, allocator, ctx, current_context, isolate) catch |err| {
+                // ExceptionPending means an exception was already rethrown during conversion
+                // (e.g., from toString() throwing) - don't throw a second error
+                if (err == conv.ConversionError.ExceptionPending) {
+                    return;
+                }
                 // Throw appropriate error type based on error name
                 // Use throwWebIDLError which properly creates DOMException for WebIDL errors
                 const function_ctx = info.getFunctionCreationContext() orelse current_context;
@@ -3644,6 +3721,9 @@ pub fn V8Interface(comptime Interface: type) type {
             // Call getter (handle error union)
             const result: PayloadType = if (return_type_info == .error_union)
                 zig_getter(instance) catch |err| {
+                    if (err == conv.ConversionError.ExceptionPending) {
+                        return;
+                    }
                     const this_obj = info.getThis();
                     const creation_ctx = v8.v8_Object_GetPrototypeCreationContext(this_obj) orelse v8.v8_Isolate_GetCurrentContext(isolate).?;
                     conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
@@ -4050,6 +4130,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Call the item() method
             const result = Interface.call_item(instance, index) catch |err| {
+                if (err == conv.ConversionError.ExceptionPending) {
+                    return .kNo;
+                }
                 const creation_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse v8_context;
                 conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
                 return .kNo;
@@ -5180,6 +5263,10 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Convert V8 value to the expected Zig type
             const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, v8_value) catch |err| {
+                // ExceptionPending means an exception was already rethrown
+                if (err == conv.ConversionError.ExceptionPending) {
+                    return .kYes;
+                }
                 if (info.shouldThrowOnError()) {
                     conv.throwWebIDLError(isolate, @errorName(err));
                 }
@@ -6545,6 +6632,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     // enum value, the setter should be a no-op (silently return without error).
                     // https://webidl.spec.whatwg.org/#idl-enums
                     const zig_value = convertV8ToZig(ValueType, allocator, isolate_inner, context, new_value_v8) catch |err| {
+                        // ExceptionPending means an exception was already rethrown
+                        if (err == conv.ConversionError.ExceptionPending) {
+                            return;
+                        }
                         // For enum types, silently ignore invalid values (no-op)
                         if (@typeInfo(ValueType) == .@"enum" and err == error.TypeError) {
                             // Return undefined without calling setter - this is spec-compliant behavior
@@ -6885,6 +6976,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         v8_context,
                         v8_context, // return_context: same as caller context for indexed callbacks
                     ) catch |err| {
+                        if (err == conv.ConversionError.ExceptionPending) {
+                            return;
+                        }
                         conv.throwWebIDLErrorFromContext(isolate, v8_context, @errorName(err));
                         return;
                     };

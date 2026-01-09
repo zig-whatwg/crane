@@ -27,6 +27,7 @@ const webidl = @import("webidl");
 const dictionaries = @import("dictionaries");
 
 const html_parser = @import("html").parser;
+const parser_script_execution = @import("html").parser_script_execution;
 const certificate_trust = @import("fetch").network.certificate_trust;
 
 /// Navigation result containing parsed content info
@@ -278,6 +279,8 @@ fn fetchHttpUrl(
     url: []const u8,
     options: NavigationOptions,
 ) NavigationError!NavigationResult {
+    std.debug.print("[FETCH_HTTP] Fetching URL: {s}\n", .{url});
+
     // For HTTP URLs, we need to use libcurl which is set up in the full build.
     // In the browser module context, we'll use the fetch module via imports.
     // For standalone testing, return a stub indicating HTTP is not available.
@@ -294,6 +297,7 @@ fn fetchHttpUrl(
     var result = fetch_mod.algorithms.fetch(allocator, request, .{
         .trust_store = options.trust_store,
     }) catch |err| {
+        std.debug.print("[FETCH_HTTP] Fetch error: {}\n", .{err});
         return switch (err) {
             error.NetworkError => NavigationError.NetworkError,
             error.AbortError => NavigationError.Timeout,
@@ -305,11 +309,17 @@ fn fetchHttpUrl(
     const response = result.response;
     defer response.deinit();
 
+    std.debug.print("[FETCH_HTTP] Response status: {d}, has_body: {}\n", .{ response.status, response.body != null });
+
     // Extract body
     const body = if (response.body) |b| blk: {
         const data = b.getBytes();
+        std.debug.print("[FETCH_HTTP] Body bytes: {d}\n", .{data.len});
         break :blk try allocator.dupe(u8, data);
-    } else try allocator.dupe(u8, "");
+    } else blk: {
+        std.debug.print("[FETCH_HTTP] No body in response\n", .{});
+        break :blk try allocator.dupe(u8, "");
+    };
     errdefer allocator.free(body);
 
     // Extract content type
@@ -346,6 +356,13 @@ pub fn parseHtml(
     // Create tree builder
     var tree_builder = try html_parser.TreeBuilder.init(allocator);
     errdefer tree_builder.deinit();
+
+    // Set up script execution callback for during-parse script execution
+    // This is critical for proper script execution order per HTML spec
+    tree_builder.setScriptExecutionCallback(
+        parser_script_execution.parserScriptCallback,
+        null, // context - not needed for this callback
+    );
 
     // Process tokens
     while (tokenizer.next()) |token| {

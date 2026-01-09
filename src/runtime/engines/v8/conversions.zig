@@ -59,6 +59,10 @@ pub const ConversionError = error{
 
     /// Failed to create a V8 Global handle for persistent storage
     GlobalHandleCreationFailed,
+
+    /// A JavaScript exception is already pending in V8 (rethrown from conversion)
+    /// When this error is returned, the caller should NOT throw another exception
+    ExceptionPending,
 };
 
 // ============================================================================
@@ -730,9 +734,18 @@ pub fn fromV8Value(
             if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
                 return ConversionError.TypeError;
             }
-            // Use ToString coercion for everything else (numbers, booleans, objects, etc.)
-            // This matches browser behavior where formData.append('key', 123) stores "123"
-            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+            // Use safe ToString that captures exceptions from toString() methods
+            // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
+            const result = v8.v8_Value_ToString_Safe(value, context);
+            defer v8.v8_FreeToStringResult(result);
+
+            // If toString() threw an exception, rethrow it and signal caller not to throw again
+            if (result.exception) |exc| {
+                v8.v8_Isolate_ThrowException(isolate, exc);
+                return ConversionError.ExceptionPending;
+            }
+
+            const string = result.value orelse return ConversionError.TypeError;
             const length = v8.v8_String_Utf8Length(string);
             if (length < 0) return ConversionError.StringError;
             if (length == 0) return &[_]u8{};
@@ -763,10 +776,18 @@ pub fn fromV8Value(
         if (v8.v8_Value_IsSymbol(value)) {
             return ConversionError.TypeError;
         }
-        // Use ToString coercion for everything else (null, undefined, numbers, booleans, objects, etc.)
-        // The value parameter must be a Global<Value>* - interceptor callbacks should persist raw
-        // pointers to Global handles before calling fromV8Value.
-        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        // Use safe ToString that captures exceptions from toString() methods
+        // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
+        const result = v8.v8_Value_ToString_Safe(value, context);
+        defer v8.v8_FreeToStringResult(result);
+
+        // If toString() threw an exception, rethrow it and signal caller not to throw again
+        if (result.exception) |exc| {
+            v8.v8_Isolate_ThrowException(isolate, exc);
+            return ConversionError.ExceptionPending;
+        }
+
+        const string = result.value orelse return ConversionError.TypeError;
         return try fromV8String(allocator, isolate, context, string);
     }
 

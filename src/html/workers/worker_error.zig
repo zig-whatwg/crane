@@ -53,6 +53,10 @@ pub const WorkerErrorEvent = struct {
     /// Allocator for cleanup
     allocator: Allocator,
 
+    /// User context passed through from WorkerErrorHandler
+    /// This allows the callback to access worker-specific data (e.g., InternalState)
+    context: ?*anyopaque = null,
+
     /// Create a new worker error event
     pub fn init(
         allocator: Allocator,
@@ -168,7 +172,13 @@ pub const WorkerErrorHandler = struct {
     ///
     /// Spec: HTML Standard § 10.2.5 step 11.1
     /// "Queue a task to fire an event named error at worker."
+    ///
+    /// The handler's context is passed to the event so the callback can
+    /// access worker-specific data (e.g., InternalState for dispatching ErrorEvent).
     pub fn fireError(self: *const WorkerErrorHandler, event: *WorkerErrorEvent) void {
+        // Pass handler context to event so callback can access it
+        event.context = self.context;
+
         if (self.on_error) |handler| {
             handler(event);
         }

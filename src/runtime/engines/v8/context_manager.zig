@@ -2314,8 +2314,8 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
         runtime_ctx.setNetworkManager(nm);
     }
 
-    // 4. Populate Zig-side template registry (interfaces already in snapshot)
-    interface_bindings.registerAllTemplatesOnly(isolate);
+    // 4. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
+    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx);
 
     // 5. Reinstall accessor callbacks after snapshot restore.
     // NOTE: The optimization from whatwg-8oip3 that skipped this was WRONG.
@@ -2448,9 +2448,9 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
     // 2. Register context with context manager
     const runtime_ctx = try getOrCreate(v8_ctx, allocator);
 
-    // 3. Populate Zig-side template registry (interfaces already in snapshot)
-    std.debug.print("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\n", .{});
-    interface_bindings.registerAllTemplatesOnly(isolate);
+    // 3. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
+    std.debug.print("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\\n", .{});
+    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx);
 
     // 4. Install lazy constructors on global object
     // V8 snapshots don't preserve lazy data properties on the global proxy.

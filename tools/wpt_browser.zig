@@ -4,7 +4,8 @@ const Context = @import("browser").Context;
 
 /// Embed the V8 snapshot at compile time to ensure it's always available
 /// regardless of working directory when the binary runs
-const embedded_snapshot = @embedFile("whatwg_snapshot.bin");
+/// TEMPORARILY DISABLED FOR DEBUGGING - testing if Worker callback works without snapshot
+const embedded_snapshot: ?[]const u8 = null; // @embedFile("whatwg_snapshot.bin");
 
 const WptBrowser = struct {
     allocator: std.mem.Allocator,

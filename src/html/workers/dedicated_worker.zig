@@ -117,7 +117,9 @@ pub const ThreadedWorkerRegistry = struct {
         };
         const id = next_id;
         next_id += 1;
-        workers.put(alloc, id, worker) catch {};
+        workers.put(alloc, id, worker) catch {
+            return;
+        };
 
         // Wire up the global wakeup to this worker's outbox if available
         // This ensures any message from any worker wakes the main thread
@@ -151,67 +153,97 @@ pub const ThreadedWorkerRegistry = struct {
     /// Poll all registered workers' outboxes and dispatch messages to their outside ports.
     /// This is called from the main thread's event loop.
     /// Returns true if any messages were dispatched.
+    ///
+    /// IMPORTANT: This function collects messages under the lock, then releases the lock
+    /// before dispatching to avoid deadlock. If a handler creates a new Worker, it would
+    /// deadlock if we held the mutex during dispatch.
     pub fn pollAndDispatch() bool {
-        mutex.lock();
-        defer mutex.unlock();
+        // Temporary storage for collected messages
+        // We collect under lock, then dispatch without lock to avoid deadlock
+        const MessageToDispatch = struct {
+            worker: *DedicatedWorker,
+            queued_msg: *message_channel.QueuedMessage,
+        };
 
-        var dispatched_any = false;
-        var worker_count: usize = 0;
-        var iter = workers.valueIterator();
-        while (iter.next()) |worker_ptr| {
-            worker_count += 1;
-            const worker = worker_ptr.*;
-            if (worker.thread_state) |ts| {
-                // Poll the thread-safe outbox for messages from the worker thread
-                var msg_count: usize = 0;
-                while (ts.outbox.tryDequeue()) |msg| {
-                    msg_count += 1;
-                    dispatched_any = true;
-                    dwdebug.print("pollAndDispatch() dequeued message #{d} from worker\n", .{msg_count});
+        var messages_to_dispatch: [256]MessageToDispatch = undefined;
+        var message_count: usize = 0;
 
-                    // Create a QueuedMessage to pass to the handler
-                    // Note: We call worker.on_message directly, NOT outside_port.on_message
-                    // because the outside_port.on_message is never set - only DedicatedWorker.on_message
-                    // is configured via setOnMessage() in Worker.call_constructor()
-                    const serialized = worker.allocator.create(SerializedValue) catch {
-                        dwdebug.print("pollAndDispatch() FAILED to allocate SerializedValue\n", .{});
-                        msg.deinit();
-                        continue;
-                    };
-                    serialized.* = msg.data;
+        // Phase 1: Collect messages under lock
+        {
+            mutex.lock();
+            defer mutex.unlock();
 
-                    const queued_msg = message_channel.QueuedMessage.init(
-                        worker.allocator,
-                        serialized,
-                        null,
-                    ) catch {
-                        dwdebug.print("pollAndDispatch() FAILED to create QueuedMessage\n", .{});
-                        worker.allocator.destroy(serialized);
+            dwdebug.print("pollAndDispatch() iterating {d} registered workers\n", .{workers.count()});
+            var iter = workers.valueIterator();
+            while (iter.next()) |worker_ptr| {
+                const worker = worker_ptr.*;
+                const ts_ptr: usize = if (worker.thread_state) |ts| @intFromPtr(ts) else 0;
+                dwdebug.print("pollAndDispatch() checking worker, thread_state={x}\n", .{ts_ptr});
+                if (worker.thread_state) |ts| {
+                    dwdebug.print("pollAndDispatch() worker has thread_state, outbox ptr={*}\n", .{&ts.outbox});
+                    // Poll the thread-safe outbox for messages from the worker thread
+                    while (ts.outbox.tryDequeue()) |msg| {
+                        if (message_count >= messages_to_dispatch.len) {
+                            dwdebug.print("pollAndDispatch() WARNING: message buffer full, dropping message\n", .{});
+                            msg.deinit();
+                            continue;
+                        }
+
+                        dwdebug.print("pollAndDispatch() dequeued message #{d} from worker\n", .{message_count + 1});
+
+                        // Create a QueuedMessage to pass to the handler
+                        const serialized = worker.allocator.create(SerializedValue) catch {
+                            dwdebug.print("pollAndDispatch() FAILED to allocate SerializedValue\n", .{});
+                            msg.deinit();
+                            continue;
+                        };
+                        serialized.* = msg.data;
+
+                        const queued_msg = message_channel.QueuedMessage.init(
+                            worker.allocator,
+                            serialized,
+                            null,
+                        ) catch {
+                            dwdebug.print("pollAndDispatch() FAILED to create QueuedMessage\n", .{});
+                            worker.allocator.destroy(serialized);
+                            msg.allocator.destroy(msg);
+                            continue;
+                        };
+
+                        // Free the SerializedMessage wrapper (data ownership transferred to queued_msg)
                         msg.allocator.destroy(msg);
-                        continue;
-                    };
 
-                    // Free the SerializedMessage wrapper (data ownership transferred to queued_msg)
-                    msg.allocator.destroy(msg);
-
-                    // Dispatch the message using the DedicatedWorker's on_message handler
-                    dwdebug.print("pollAndDispatch() dispatching message via DedicatedWorker.on_message\n", .{});
-                    if (worker.on_message) |handler| {
-                        handler(worker, queued_msg);
-                        dwdebug.print("pollAndDispatch() handler called successfully\n", .{});
-                    } else {
-                        dwdebug.print("pollAndDispatch() WARNING: no on_message handler set!\n", .{});
-                        // Clean up if no handler
-                        queued_msg.deinit();
+                        // Store for dispatch after releasing lock
+                        messages_to_dispatch[message_count] = .{
+                            .worker = worker,
+                            .queued_msg = queued_msg,
+                        };
+                        message_count += 1;
                     }
-                    dwdebug.print("pollAndDispatch() dispatch complete\n", .{});
-                }
-                if (msg_count > 0) {
-                    dwdebug.print("pollAndDispatch() processed {d} messages from worker\n", .{msg_count});
                 }
             }
         }
-        return dispatched_any;
+        // Lock is now released
+
+        // Phase 2: Dispatch messages without holding lock (prevents deadlock)
+        for (messages_to_dispatch[0..message_count]) |item| {
+            dwdebug.print("pollAndDispatch() dispatching message via DedicatedWorker.on_message\n", .{});
+            if (item.worker.on_message) |handler| {
+                handler(item.worker, item.queued_msg);
+                dwdebug.print("pollAndDispatch() handler called successfully\n", .{});
+            } else {
+                dwdebug.print("pollAndDispatch() WARNING: no on_message handler set!\n", .{});
+                // Clean up if no handler
+                item.queued_msg.deinit();
+            }
+            dwdebug.print("pollAndDispatch() dispatch complete\n", .{});
+        }
+
+        if (message_count > 0) {
+            dwdebug.print("pollAndDispatch() processed {d} messages total\n", .{message_count});
+        }
+
+        return message_count > 0;
     }
 
     /// Terminate all workers without destroying the registry.
@@ -811,6 +843,7 @@ pub const DedicatedWorker = struct {
 
             // Enqueue to the thread-safe outbox - main thread will poll this
             // The outbox has a wakeup that will signal the main thread immediately
+            dwdebug.print("postMessageFromWorker() enqueuing to outbox at {*}\n", .{&ts.outbox});
             ts.outbox.enqueue(thread_msg) catch |err| {
                 dwdebug.print("postMessageFromWorker() FAILED to enqueue: {s}\n", .{@errorName(err)});
                 // thread_msg.deinit() frees both the internal data AND the thread_msg struct
@@ -948,6 +981,7 @@ pub const DedicatedWorker = struct {
     /// The thread state contains thread-safe message queues for communication
     /// between the worker thread and main thread.
     pub fn setThreadState(self: *DedicatedWorker, state: *WorkerThreadState) void {
+        dwdebug.print("setThreadState() self={*}, state={*}, state.outbox={*}\n", .{ self, state, &state.outbox });
         self.thread_state = state;
         // Also set the reverse pointer so the thread can access the worker
         state.worker_ptr = self;

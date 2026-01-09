@@ -226,23 +226,29 @@ pub fn registerAllInterfaces(
     }
 }
 
-/// Register ALL WebIDL interface templates WITHOUT attaching to global
+/// Register ALL WebIDL interface templates AND reinstall constructors on global
 ///
-/// This is used when loading from a V8 snapshot. The snapshot already contains
-/// all interface constructors on the global object, but the Zig-side template
-/// registry is empty. This function populates the registry so that
-/// wrapInstanceAsV8Object() can wrap instances with the correct prototype.
+/// This is used when loading from a V8 snapshot. The snapshot contains
+/// interface constructors on the global object, but their callback pointers
+/// are STALE (point to addresses from snapshot creation time, not runtime).
 ///
-/// Unlike registerAllInterfaces(), this:
-/// - Creates templates and registers them in template_registry
-/// - Does NOT attach constructors to the global object (already there from snapshot)
-/// - Does NOT set up constructor inheritance (already in snapshot)
+/// This function:
+/// - Creates fresh templates with working callbacks
+/// - Registers them in template_registry for wrapInstanceAsV8Object()
+/// - REINSTALLS constructors on the global object to replace stale snapshot versions
+///
+/// The reinstallation is critical: without it, calling `new Worker()` from JS
+/// would invoke a stale callback pointer, never reaching our Zig code.
 pub fn registerAllTemplatesOnly(
     isolate: *v8.Isolate,
+    context: *v8.Context,
 ) void {
     @setEvalBranchQuota(200_000);
     const template_registry = @import("template_registry.zig");
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
+
+    // Get global object for reinstalling constructors
+    const global = v8.v8_Context_Global(context) orelse return;
 
     inline for (iface_decls) |decl| {
         // Skip problematic interfaces using centralized skip list
@@ -262,10 +268,29 @@ pub fn registerAllTemplatesOnly(
             };
             if (is_mixin) continue;
 
-            // Create template and register it (without attaching to global)
+            // Skip LegacyNamespace interfaces (they're namespaced, not on global)
+            const has_legacy_namespace = comptime blk: {
+                const Meta = InterfaceType.Meta;
+                if (@hasDecl(Meta, "extended_attributes")) {
+                    const ext_attrs = Meta.extended_attributes;
+                    for (ext_attrs) |attr| {
+                        if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
+                            break :blk true;
+                        }
+                    }
+                }
+                break :blk false;
+            };
+            if (has_legacy_namespace) continue;
+
+            // Create template with fresh callbacks and register it
             const Binding = V8Interface(InterfaceType);
             const template = Binding.createTemplate(isolate);
             template_registry.register(decl.name, template, isolate);
+
+            // CRITICAL: Reinstall constructor on global to replace stale snapshot version
+            // This ensures `new Worker()` etc. invoke our Zig callbacks, not stale pointers
+            Binding.registerGlobalFast(isolate, context, global, decl.name);
         }
     }
 }
@@ -1020,4 +1045,50 @@ pub fn createTemplateOnDemandByName(
     }
 
     return null;
+}
+
+/// Register accessor properties directly on a prototype object by interface name.
+///
+/// This is needed because V8's ObjectTemplate::SetAccessorProperty() does not transfer
+/// accessors to objects created via InstanceTemplate->NewInstance() when the prototype
+/// is manually set via SetPrototype(). The accessors are registered on the template
+/// but never appear on the materialized prototype.
+///
+/// This function looks up the interface by name and calls registerPropertiesAsOwnOnObject
+/// to install accessors directly on the prototype object.
+///
+/// @param isolate The V8 isolate
+/// @param context The V8 context
+/// @param interface_name The name of the interface (e.g., "MessageEvent")
+/// @param prototype_object The prototype object to install accessors on
+/// @return true if the interface was found and accessors were registered
+pub fn registerPropertiesOnPrototypeByName(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    interface_name: []const u8,
+    prototype_object: *v8.Object,
+) bool {
+    @setEvalBranchQuota(200000);
+
+    const decls = @typeInfo(interfaces).@"struct".decls;
+
+    inline for (decls) |decl| {
+        const T = @field(interfaces, decl.name);
+        if (@typeInfo(@TypeOf(T)) == .type) {
+            if (@hasDecl(T, "Meta")) {
+                const meta = T.Meta;
+                const is_mixin = if (@hasDecl(meta, "is_mixin")) meta.is_mixin else false;
+                if (!is_mixin) {
+                    if (std.mem.eql(u8, meta.name, interface_name)) {
+                        // Found the interface - register its properties on the prototype
+                        const Binding = V8Interface(T);
+                        Binding.registerPropertiesAsOwnOnObject(isolate, context, prototype_object);
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
 }

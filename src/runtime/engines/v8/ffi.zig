@@ -955,6 +955,15 @@ pub const V8ModuleEvaluateResult = extern struct {
     error_info: ?*V8ErrorInfo,
 };
 
+/// Result of safe ToString conversion (WebIDL § 3.2.1 compliant)
+pub const V8ToStringResult = extern struct {
+    value: ?*String,
+    exception: ?*Value,
+};
+
+pub extern fn v8_Value_ToString_Safe(value: *Value, context: *Context) *V8ToStringResult;
+pub extern fn v8_FreeToStringResult(result: ?*V8ToStringResult) void;
+
 /// Compile a script with TryCatch error handling
 /// Returns both the compiled script (on success) and detailed error info (on failure).
 /// Caller must free the result with v8_FreeScriptCompileResult.

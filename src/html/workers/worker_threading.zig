@@ -158,7 +158,8 @@ pub const ThreadSafeMessageQueue = struct {
     ///
     /// Returns error if the queue is closed or out of memory.
     pub fn enqueue(self: *Self, message: *SerializedMessage) !void {
-        debug.print("enqueue() called, message.data.type={d}\n", .{@intFromEnum(message.data.type)});
+        const thread_id = std.Thread.getCurrentId();
+        debug.print("enqueue() called, self={*}, thread={d}\n", .{ self, thread_id });
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -187,6 +188,9 @@ pub const ThreadSafeMessageQueue = struct {
     pub fn tryDequeue(self: *Self) ?*SerializedMessage {
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        const thread_id = std.Thread.getCurrentId();
+        debug.print("tryDequeue() self={*}, queue.items.len={d}, thread={d}\n", .{ self, self.queue.items.len, thread_id });
 
         if (self.queue.items.len == 0) {
             return null;
@@ -280,6 +284,10 @@ pub const WorkerThreadState = struct {
     /// This enables efficient event-driven waiting instead of polling
     worker_wakeup: ?*EventWakeup,
 
+    /// Document origin URL for resolving relative imports in data:/blob: workers
+    /// This is the creating document's URL, passed through from Worker constructor
+    document_origin: ?[]const u8,
+
     const Self = @This();
 
     /// State values for atomic operations
@@ -320,6 +328,7 @@ pub const WorkerThreadState = struct {
             .worker_ptr = null,
             .wakeup = null,
             .worker_wakeup = null,
+            .document_origin = null, // Set later via setDocumentOrigin()
         };
 
         return state;
@@ -334,6 +343,9 @@ pub const WorkerThreadState = struct {
         }
         if (self.error_message) |msg| {
             self.allocator.free(msg);
+        }
+        if (self.document_origin) |origin| {
+            self.allocator.free(origin);
         }
         // Clean up worker wakeup if allocated
         if (self.worker_wakeup) |wakeup| {
@@ -358,6 +370,16 @@ pub const WorkerThreadState = struct {
     /// Atomically transition state
     pub fn transitionState(self: *Self, expected: u8, new: u8) bool {
         return self.state.cmpxchgStrong(expected, new, .acq_rel, .acquire) == null;
+    }
+
+    /// Set the document origin for resolving relative imports in data:/blob: workers
+    /// This should be called after init() with the creating document's URL
+    pub fn setDocumentOrigin(self: *Self, origin: []const u8) !void {
+        // Free existing if set
+        if (self.document_origin) |old| {
+            self.allocator.free(old);
+        }
+        self.document_origin = try self.allocator.dupe(u8, origin);
     }
 
     /// Check if worker is running
@@ -619,6 +641,7 @@ pub const WorkerThreadRunner = struct {
             }
 
             // Process incoming messages (non-blocking)
+            debug.print("[WorkerThread] About to tryDequeue, thread_state={*}, inbox={*}\n", .{ self.thread_state, &self.thread_state.inbox });
             while (self.thread_state.inbox.tryDequeue()) |msg| {
                 debug.print("[WorkerThread] Dequeued message, dispatching...\n", .{});
                 // Note: handleIncomingMessage takes ownership of the message

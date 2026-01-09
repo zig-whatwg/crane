@@ -562,9 +562,9 @@ pub const Context = struct {
 
         // SNAPSHOT MODE: The snapshot contains V8 builtins AND WebIDL interfaces.
         // Interfaces are pre-registered in the snapshot with proper external references.
-        // We only need to populate the Zig-side template registry so that
-        // wrapInstanceAsV8Object() can wrap Document, Navigator, etc. with correct prototypes.
-        v8.interface_bindings.registerAllTemplatesOnly(self.isolate);
+        // We populate the Zig-side template registry AND reinstall constructors with fresh
+        // callbacks to replace stale snapshot callback pointers.
+        v8.interface_bindings.registerAllTemplatesOnly(self.isolate, v8_ctx);
 
         // Register namespaces (console, WebAssembly, etc.) which are NOT included in the snapshot.
         v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
@@ -1520,6 +1520,12 @@ pub const Context = struct {
     /// Handle HTML response - parse with full HTML parser including script execution
     /// The final_url parameter is the actual URL after redirects (with full scheme)
     fn handleHtmlResponse(self: *Context, html_content: []const u8, final_url: []const u8, v8_ctx: *v8.ffi.Context) !void {
+        std.debug.print("[HTML_RESPONSE] Received {d} bytes of HTML content\n", .{html_content.len});
+        if (html_content.len > 0) {
+            const preview_len = @min(html_content.len, 200);
+            std.debug.print("[HTML_RESPONSE] Preview: {s}\n", .{html_content[0..preview_len]});
+        }
+
         // Get runtime context for HTMLParser
         const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
             std.debug.print("Failed to get runtime context: {}\n", .{err});

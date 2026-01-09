@@ -462,12 +462,14 @@ fn handleScriptScheduling(
                     }
 
                     // Step 36.3: Immediately execute the script element
+                    std.debug.print("[INLINE_SCRIPT] Executing parser-inserted inline classic script\n", .{});
                     _ = executeScriptElement(allocator, script_element) catch {
                         // Script errors are handled internally
                     };
                     return true;
                 } else {
                     // Non-parser-inserted inline classic script - execute immediately
+                    std.debug.print("[INLINE_SCRIPT] Executing non-parser-inserted inline classic script\n", .{});
                     _ = executeScriptElement(allocator, script_element) catch {};
                     return true;
                 }
@@ -664,8 +666,11 @@ pub fn executeScriptElement(
     allocator: std.mem.Allocator,
     script_element: *runtime.Instance,
 ) ScriptExecutionError!void {
+    std.debug.print("[EXEC_SCRIPT] executeScriptElement called\n", .{});
+
     // Step 1: Let document be el's node document
     const node_document = getNodeDocument(script_element) orelse {
+        std.debug.print("[EXEC_SCRIPT] No node document - returning InvalidScriptElement\n", .{});
         return ScriptExecutionError.InvalidScriptElement;
     };
 
@@ -761,6 +766,10 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         .script => |s| s.source_text,
         else => HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return,
     };
+
+    // Debug: Show script source (first 200 chars)
+    const preview_len = @min(source.len, 200);
+    std.debug.print("[SCRIPT_EXEC] Source preview ({d} bytes): {s}\n", .{ source.len, source[0..preview_len] });
 
     // Get source URL for error messages
     const source_url: ?[]const u8 = switch (result) {

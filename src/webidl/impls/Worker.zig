@@ -46,6 +46,7 @@ const RequestCredentials = workers.RequestCredentials;
 const QueuedMessage = workers.message_channel.QueuedMessage;
 const JSValue = workers.message_channel.JSValue;
 const WorkerContext = workers.WorkerContext;
+const worker_error = workers.worker_error;
 
 // Import html module for WorkerV8Context (has interface access, unlike html_core)
 const html_full = @import("html");
@@ -440,6 +441,15 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // and we dispatch to the onmessage handler.
         dedicated_worker.setOnMessage(handleMessageFromWorkerCallback);
 
+        // Set up error handler to receive errors from worker thread
+        // When the worker script fails or throws, we dispatch an ErrorEvent
+        // Per HTML Standard § 10.2.5 "Runtime script errors in workers"
+        dedicated_worker.setErrorHandler(.{
+            .on_error = handleErrorFromWorkerCallback,
+            .on_rejection = null, // TODO: handle promise rejections
+            .context = @ptrCast(internal_state),
+        });
+
         // Enable message dispatch on outside port
         // Messages are queued until start() is called
         dedicated_worker.startMessageQueue();
@@ -721,7 +731,13 @@ fn spawnWorkerThread(internal: *InternalState) !void {
             .name = internal.name,
         },
     );
-    wdebug.print("spawnWorkerThread() WorkerThreadState created\n", .{});
+    wdebug.print("spawnWorkerThread() WorkerThreadState created at {*}, inbox at {*}\n", .{ thread_state, &thread_state.inbox });
+
+    // Set document origin for resolving relative imports in data:/blob: workers
+    // This is the creating document's URL, which data:/blob: workers need as a base
+    if (internal.document_origin) |origin| {
+        try thread_state.setDocumentOrigin(origin);
+    }
 
     // Initialize global wakeup for efficient main thread notification
     // All workers share this wakeup - when any worker posts a message,
@@ -839,6 +855,7 @@ fn executeSyncFallback(internal: *InternalState, instance: *runtime.Instance) vo
             internal.allocator,
             script_url,
             internal.worker_type,
+            internal.document_origin, // Pass document origin as base URL for data:/blob: workers
         ) catch |err| {
             std.log.warn("Worker: Failed to create V8 context: {}", .{err});
             return;
@@ -972,6 +989,80 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
     wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() dispatching to onmessage\n", .{});
     dispatchMessageEventDirect(internal, msg);
     wdebug.print("handleMessageFromWorkerCallback() dispatch complete\n", .{});
+}
+
+/// Handle errors from the worker thread
+///
+/// Spec: HTML Standard § 10.2.5 "Runtime script errors in workers"
+/// https://html.spec.whatwg.org/#runtime-script-errors-2
+///
+/// When a worker script throws an error that is not caught:
+/// 1. Create an ErrorEvent with error details (message, filename, lineno, colno)
+/// 2. Dispatch the event at the Worker object on the main thread
+/// 3. If not prevented, propagate to the Window's error handler
+///
+/// This is called by DedicatedWorker when an error occurs in the worker thread.
+/// The InternalState is passed via error_event.context, which was set by
+/// WorkerErrorHandler.fireError() from the handler's context field.
+fn handleErrorFromWorkerCallback(error_event: *worker_error.WorkerErrorEvent) void {
+    wdebug.print("[WORKER_IMPL] handleErrorFromWorkerCallback() called\n", .{});
+    wdebug.print("[WORKER_IMPL]   message: {s}\n", .{error_event.message});
+    wdebug.print("[WORKER_IMPL]   filename: {s}\n", .{error_event.filename});
+    wdebug.print("[WORKER_IMPL]   lineno: {d}, colno: {d}\n", .{ error_event.lineno, error_event.colno });
+
+    // Get the InternalState from context (set by WorkerErrorHandler.fireError)
+    const context = error_event.context orelse {
+        wdebug.print("[WORKER_IMPL] handleErrorFromWorkerCallback() context is null\n", .{});
+        return;
+    };
+    const internal: *InternalState = @ptrCast(@alignCast(context));
+
+    // Get isolate for V8 operations
+    const isolate = internal.isolate orelse {
+        wdebug.print("[WORKER_IMPL] handleErrorFromWorkerCallback() isolate is null\n", .{});
+        return;
+    };
+
+    // Verify ctx is available (required by dispatchErrorEvent internally)
+    if (internal.ctx == null) {
+        wdebug.print("[WORKER_IMPL] handleErrorFromWorkerCallback() ctx is null\n", .{});
+        return;
+    }
+
+    const instance = internal.worker_instance orelse {
+        wdebug.print("[WORKER_IMPL] handleErrorFromWorkerCallback() worker_instance is null\n", .{});
+        return;
+    };
+
+    // Enter isolate if needed
+    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
+    const need_enter_isolate = (current_isolate == null) or (current_isolate != isolate);
+    if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Enter(isolate);
+    }
+    defer if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Exit(isolate);
+    };
+
+    // Create HandleScope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
+        wdebug.print("[WORKER_IMPL] handleErrorFromWorkerCallback() failed to create HandleScope\n", .{});
+        return;
+    };
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Dispatch ErrorEvent on the Worker object
+    // Note: dispatchErrorEvent gets context internally via getInternal(instance)
+    dispatchErrorEvent(
+        instance,
+        error_event.message,
+        error_event.filename,
+        error_event.lineno,
+        error_event.colno,
+        error_event.error_value,
+    );
+
+    wdebug.print("[WORKER_IMPL] handleErrorFromWorkerCallback() complete\n", .{});
 }
 
 /// Dispatch a MessageEvent to the Worker's message handlers using EventTarget.dispatchEvent
@@ -1845,6 +1936,7 @@ fn createIsolateWithInterfaces(thread_state: *workers.WorkerThreadState, allocat
         allocator,
         thread_state.script_url,
         thread_state.worker_type,
+        thread_state.document_origin, // Pass document origin as base URL for data:/blob: workers
     );
     wdebug.print("  WorkerV8Context created: {*}\n", .{worker_ctx});
 
@@ -1896,6 +1988,12 @@ fn executeScriptWithInterfaces(isolate_data: *anyopaque, script: []const u8, sou
 }
 
 /// Callback to dispatch a message to the WorkerV8Context
+///
+/// Per HTML spec, the first message to a worker is the script to execute.
+/// Subsequent messages are postMessage data that should be dispatched as MessageEvents.
+///
+/// Spec: HTML Standard § 10.2.5 Processing model
+/// https://html.spec.whatwg.org/#run-a-worker
 fn dispatchMessageWithInterfaces(isolate_data: *anyopaque, msg: *workers.ThreadSafeMessageQueue.SerializedMessage) anyerror!void {
     wdebug.print("\n=== [WORKER THREAD] dispatchMessageWithInterfaces() START ===\n", .{});
     wdebug.print("  isolate_data ptr: {*}\n", .{isolate_data});
@@ -1904,29 +2002,161 @@ fn dispatchMessageWithInterfaces(isolate_data: *anyopaque, msg: *workers.ThreadS
 
     const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
 
-    // Deserialize and dispatch as MessageEvent
-    // For now, if this is the initial script message, execute it as script
-    if (msg.data.type == .string_object) {
-        const script = msg.data.data.string_object;
-        wdebug.print("  Executing as script (string_object), len: {d}\n", .{script.len});
-        _ = try worker_ctx.executeScript(script);
-    } else if (msg.data.type == .primitive) {
-        // Check if it's a string primitive
-        if (msg.data.data.primitive == .string) {
-            const script = msg.data.data.primitive.string;
-            wdebug.print("  Executing as script (primitive.string), len: {d}\n", .{script.len});
+    // Check if this is the initial script message or a postMessage
+    if (!worker_ctx.script_executed) {
+        // First message: execute as script
+        wdebug.print("  First message - executing as script\n", .{});
+
+        if (msg.data.type == .string_object) {
+            const script = msg.data.data.string_object;
+            wdebug.print("  Executing as script (string_object), len: {d}\n", .{script.len});
             _ = try worker_ctx.executeScript(script);
+        } else if (msg.data.type == .primitive) {
+            if (msg.data.data.primitive == .string) {
+                const script = msg.data.data.primitive.string;
+                wdebug.print("  Executing as script (primitive.string), len: {d}\n", .{script.len});
+                _ = try worker_ctx.executeScript(script);
+            } else {
+                wdebug.print("  ERROR: First message is non-string primitive: {s}\n", .{@tagName(msg.data.data.primitive)});
+            }
         } else {
-            wdebug.print("  Non-string primitive, type: {s}\n", .{@tagName(msg.data.data.primitive)});
+            wdebug.print("  ERROR: First message has unexpected type\n", .{});
         }
+
+        // Mark script as executed - subsequent messages are postMessage data
+        worker_ctx.script_executed = true;
     } else {
-        wdebug.print("  Unhandled message data type\n", .{});
+        // Subsequent messages: dispatch as MessageEvent
+        wdebug.print("  Subsequent message - dispatching as MessageEvent\n", .{});
+
+        // Convert the serialized data to a JavaScript value and dispatch
+        // Since worker global scope is set up via JavaScript, we dispatch using JS
+        try dispatchMessageEventViaJS(worker_ctx, msg);
     }
-    // TODO: Handle actual postMessage data as MessageEvent
 
     // Clean up the message
     msg.deinit();
     wdebug.print("=== [WORKER THREAD] dispatchMessageWithInterfaces() END ===\n\n", .{});
+}
+
+/// Dispatch a message as a MessageEvent via JavaScript
+///
+/// This creates a MessageEvent with the message data and dispatches it to the
+/// worker's global scope, invoking both addEventListener handlers and the
+/// legacy onmessage handler.
+///
+/// Spec: HTML Standard § 9.4.2 Posting messages
+/// https://html.spec.whatwg.org/#posting-messages
+fn dispatchMessageEventViaJS(worker_ctx: *WorkerV8Context, msg: *workers.ThreadSafeMessageQueue.SerializedMessage) !void {
+    // Convert the message data to a JavaScript literal for embedding in script
+    var js_data_buf: [8192]u8 = undefined;
+    var js_data_len: usize = 0;
+
+    if (msg.data.type == .string_object) {
+        // String data - escape for JavaScript string literal
+        const str = msg.data.data.string_object;
+        js_data_len = try formatJSStringLiteral(str, &js_data_buf);
+    } else if (msg.data.type == .primitive) {
+        switch (msg.data.data.primitive) {
+            .string => |str| {
+                js_data_len = try formatJSStringLiteral(str, &js_data_buf);
+            },
+            .number => |num| {
+                js_data_len = (std.fmt.bufPrint(&js_data_buf, "{d}", .{num}) catch return error.BufferTooSmall).len;
+            },
+            .boolean => |b| {
+                const s = if (b) "true" else "false";
+                @memcpy(js_data_buf[0..s.len], s);
+                js_data_len = s.len;
+            },
+            .null => {
+                const s = "null";
+                @memcpy(js_data_buf[0..s.len], s);
+                js_data_len = s.len;
+            },
+            .undefined => {
+                const s = "undefined";
+                @memcpy(js_data_buf[0..s.len], s);
+                js_data_len = s.len;
+            },
+            else => {
+                // For other primitives, use null as fallback
+                const s = "null";
+                @memcpy(js_data_buf[0..s.len], s);
+                js_data_len = s.len;
+            },
+        }
+    } else {
+        // For complex types, serialize to null for now
+        // TODO: Full structured clone deserialization
+        const s = "null";
+        @memcpy(js_data_buf[0..s.len], s);
+        js_data_len = s.len;
+    }
+
+    const js_data = js_data_buf[0..js_data_len];
+
+    // Build JavaScript to create and dispatch MessageEvent
+    // Using a script buffer large enough for the template + data
+    var script_buf: [16384]u8 = undefined;
+    const script = std.fmt.bufPrint(&script_buf,
+        \\(function() {{
+        \\  var data = {s};
+        \\  var event = new MessageEvent('message', {{ data: data }});
+        \\  // Dispatch to addEventListener handlers
+        \\  self.dispatchEvent(event);
+        \\  // Also invoke legacy onmessage handler if set
+        \\  if (typeof self.onmessage === 'function') {{
+        \\    self.onmessage(event);
+        \\  }}
+        \\}})();
+    , .{js_data}) catch return error.BufferTooSmall;
+
+    wdebug.print("  Dispatching MessageEvent with data type: {s}\n", .{@tagName(msg.data.type)});
+    _ = try worker_ctx.executeScript(script);
+}
+
+/// Format a string as a JavaScript string literal with proper escaping
+fn formatJSStringLiteral(str: []const u8, buf: []u8) !usize {
+    var pos: usize = 0;
+
+    // Opening quote
+    if (pos >= buf.len) return error.BufferTooSmall;
+    buf[pos] = '"';
+    pos += 1;
+
+    for (str) |c| {
+        const escaped = switch (c) {
+            '"' => "\\\"",
+            '\\' => "\\\\",
+            '\n' => "\\n",
+            '\r' => "\\r",
+            '\t' => "\\t",
+            else => null,
+        };
+
+        if (escaped) |esc| {
+            if (pos + esc.len > buf.len) return error.BufferTooSmall;
+            @memcpy(buf[pos..][0..esc.len], esc);
+            pos += esc.len;
+        } else if (c < 0x20) {
+            // Control characters - use \xNN format
+            if (pos + 4 > buf.len) return error.BufferTooSmall;
+            _ = std.fmt.bufPrint(buf[pos..][0..4], "\\x{X:0>2}", .{c}) catch return error.BufferTooSmall;
+            pos += 4;
+        } else {
+            if (pos >= buf.len) return error.BufferTooSmall;
+            buf[pos] = c;
+            pos += 1;
+        }
+    }
+
+    // Closing quote
+    if (pos >= buf.len) return error.BufferTooSmall;
+    buf[pos] = '"';
+    pos += 1;
+
+    return pos;
 }
 
 /// Get the create isolate callback function pointer

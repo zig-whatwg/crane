@@ -296,6 +296,16 @@ struct V8ModuleEvaluateResult {
     V8ErrorInfo* error;          // nullptr if evaluation succeeded
 };
 
+/// Result structure for safe ToString conversion
+/// 
+/// Per WebIDL § 3.2.1, when converting a value to DOMString/USVString:
+/// - If the value's toString() method throws, the exception MUST propagate
+/// - We capture the exception so the caller can rethrow it
+struct V8ToStringResult {
+    Global<String>* value;       // nullptr if conversion failed
+    Global<Value>* exception;    // The thrown exception value (nullptr if success)
+};
+
 /// Compile a script with TryCatch error handling
 ///
 /// Returns both the compiled script (on success) and error details (on failure).
@@ -1276,6 +1286,42 @@ Global<String>* v8_Value_ToString_Local(void* value_ptr, Global<Context>* contex
     
     Local<String> str = maybe_str.ToLocalChecked();
     return trackHandle(new Global<String>(isolate, str));
+}
+
+V8ToStringResult* v8_Value_ToString_Safe(Global<Value>* value, Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    
+    V8ToStringResult* result = new V8ToStringResult();
+    result->value = nullptr;
+    result->exception = nullptr;
+    
+    Local<Context> ctx = context->Get(isolate);
+    Local<Value> val = value->Get(isolate);
+    
+    TryCatch try_catch(isolate);
+    
+    MaybeLocal<String> maybe_str = val->ToString(ctx);
+    
+    if (try_catch.HasCaught()) {
+        Local<Value> exception = try_catch.Exception();
+        result->exception = trackHandle(new Global<Value>(isolate, exception));
+        return result;
+    }
+    
+    if (maybe_str.IsEmpty()) {
+        return result;
+    }
+    
+    Local<String> str = maybe_str.ToLocalChecked();
+    result->value = trackHandle(new Global<String>(isolate, str));
+    return result;
+}
+
+void v8_FreeToStringResult(V8ToStringResult* result) {
+    if (result) {
+        delete result;
+    }
 }
 
 bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {

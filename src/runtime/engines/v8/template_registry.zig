@@ -467,14 +467,15 @@ pub fn wrapInstanceAsV8Object(
             };
         };
     } else cache_blk: {
-        // Main context - use cached template, create on-demand if not found
-        break :cache_blk getTemplate(interface_name) orelse on_demand: {
-            const interface_bindings = @import("interface_bindings.zig");
-            created_on_demand = true;
-            break :on_demand interface_bindings.createTemplateOnDemandByName(interface_name, isolate) orelse {
-                std.debug.print("[WRAP] Template not found for {s} (on-demand creation failed)\n", .{interface_name});
-                return error.TemplateNotRegistered;
-            };
+        // CRITICAL FIX: Always create fresh templates to ensure accessor callbacks work.
+        // Snapshot-restored templates have disconnected accessor callbacks that return undefined.
+        // See: MessageEvent.data was returning undefined because snapshot template accessors
+        // pointed to nowhere after snapshot restore.
+        const interface_bindings = @import("interface_bindings.zig");
+        created_on_demand = true;
+        break :cache_blk interface_bindings.createTemplateOnDemandByName(interface_name, isolate) orelse {
+            std.debug.print("[WRAP] Template not found for {s} (on-demand creation failed)\n", .{interface_name});
+            return error.TemplateNotRegistered;
         };
     };
 
@@ -486,7 +487,17 @@ pub fn wrapInstanceAsV8Object(
     // per context during "installation", then NewInstance() automatically inherits.
     //
     // Without this, V8 falls back to Object.prototype and accessors don't work!
-    _ = v8.v8_FunctionTemplate_GetFunction(template, context);
+    const constructor_func = v8.v8_FunctionTemplate_GetFunction(template, context);
+
+    // Debug: Log for MessageEvent specifically
+    if (std.mem.eql(u8, interface_name, "MessageEvent")) {
+        std.debug.print("[WRAP-ME] MessageEvent: template={*}, created_on_demand={}, is_worker={}\n", .{ template, created_on_demand, is_worker_context });
+        if (constructor_func) |func| {
+            std.debug.print("[WRAP-ME] MessageEvent: GetFunction succeeded, func={*}\n", .{func});
+        } else {
+            std.debug.print("[WRAP-ME] MessageEvent: GetFunction returned NULL!\n", .{});
+        }
+    }
 
     // Get the InstanceTemplate and create a new object
     // IMPORTANT: Use InstanceTemplate()->NewInstance(), NOT Function::NewInstance()
@@ -539,6 +550,49 @@ pub fn wrapInstanceAsV8Object(
     // NewInstance(), V8 automatically sets up the prototype chain (Chromium pattern).
     // The manual prototype workaround has been removed - see Oracle consultation
     // for the proper fix explanation.
+
+    // ========================================
+    // MANUALLY SET PROTOTYPE to Constructor.prototype
+    // ========================================
+    // ObjectTemplate::NewInstance() creates objects with Object.prototype,
+    // NOT the constructor's prototype. We must manually set it.
+    //
+    // GetFunction() (called at line 489) materializes the constructor in this
+    // context, making Constructor.prototype available. Now we set it.
+    if (constructor_func) |func| {
+        // Get Constructor.prototype
+        const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+        if (prototype_str) |proto_key| {
+            const prototype_value = v8.v8_Object_Get(
+                @ptrCast(func), // Function is an Object
+                context,
+                @ptrCast(proto_key), // Cast String to Value
+            );
+            if (prototype_value) |proto| {
+                // Only set if it's an object (not undefined/null)
+                if (v8.v8_Value_IsObject(proto)) {
+                    _ = v8.v8_Object_SetPrototype(v8_object, context, proto);
+
+                    // CRITICAL: Install accessor properties directly on the prototype.
+                    // V8's ObjectTemplate::SetAccessorProperty() does NOT transfer accessors
+                    // to objects created via InstanceTemplate->NewInstance() when we manually
+                    // set the prototype. We must install them directly on the prototype object.
+                    const proto_object: *v8.Object = @ptrCast(proto);
+                    const ib = @import("interface_bindings.zig");
+                    _ = ib.registerPropertiesOnPrototypeByName(
+                        isolate,
+                        context,
+                        interface_name,
+                        proto_object,
+                    );
+
+                    if (std.mem.eql(u8, interface_name, "MessageEvent")) {
+                        std.debug.print("[WRAP-ME] MessageEvent: Set prototype to Constructor.prototype\\n", .{});
+                    }
+                }
+            }
+        }
+    }
 
     // For legacy platform objects, wrap in a Proxy to ensure correct
     // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.

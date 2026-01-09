@@ -143,6 +143,12 @@ pub const WorkerV8Context = struct {
     /// Script URL for error messages and import.meta.url
     script_url: []const u8,
 
+    /// Document base URL for resolving relative imports
+    /// This is the creating document's URL, used when script_url is data: or blob:
+    /// Per HTML Standard, relative URLs in workers should resolve against the
+    /// document that created the worker, not the worker's script URL.
+    document_base_url: ?[]const u8 = null,
+
     /// Worker type (classic or module)
     worker_type: WorkerType,
 
@@ -176,6 +182,7 @@ pub const WorkerV8Context = struct {
         allocator: Allocator,
         script_url: []const u8,
         worker_type: WorkerType,
+        document_base_url: ?[]const u8,
     ) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
@@ -183,6 +190,13 @@ pub const WorkerV8Context = struct {
         // Copy script URL
         const url_copy = try allocator.dupe(u8, script_url);
         errdefer allocator.free(url_copy);
+
+        // Copy document base URL if provided (for data:/blob: workers)
+        const base_url_copy: ?[]const u8 = if (document_base_url) |base|
+            try allocator.dupe(u8, base)
+        else
+            null;
+        errdefer if (base_url_copy) |b| allocator.free(b);
 
         // Try to create isolate from snapshot (thread-safe, uses already-registered refs)
         // This gives us all WebIDL interfaces pre-registered
@@ -231,6 +245,7 @@ pub const WorkerV8Context = struct {
             .isolate = isolate,
             .context = context,
             .script_url = url_copy,
+            .document_base_url = base_url_copy,
             .worker_type = worker_type,
             .allocator = allocator,
         };
@@ -902,7 +917,15 @@ pub const WorkerV8Context = struct {
     /// - Promise.then/catch/finally callbacks
     /// - queueMicrotask() callbacks
     /// - async/await continuations
+    ///
+    /// IMPORTANT: V8 requires the isolate to be entered before any API calls.
+    /// The worker's init() exits the isolate after setup (line 284), so we must
+    /// re-enter it here before calling V8 APIs.
     pub fn performMicrotaskCheckpoint(self: *Self) void {
+        // Enter the isolate - required for all V8 API calls
+        v8.ffi.v8_Isolate_Enter(self.isolate);
+        defer v8.ffi.v8_Isolate_Exit(self.isolate);
+
         // Create HandleScope for any V8 handles created during microtask execution
         const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
         defer if (handle_scope) |hs| v8.ffi.v8_HandleScope_Dispose(hs);
@@ -943,8 +966,17 @@ fn compileAndRunModuleCallback(
 }
 
 /// Run microtask checkpoint
+///
+/// IMPORTANT: V8 requires the isolate to be entered before any API calls.
+/// The worker's init() exits the isolate after setup, so we must
+/// re-enter it here before calling V8 APIs.
 fn runMicrotasksCallback(engine_ctx: *EngineContext) void {
     const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
+
+    // Enter the isolate - required for all V8 API calls
+    v8.ffi.v8_Isolate_Enter(self.isolate);
+    defer v8.ffi.v8_Isolate_Exit(self.isolate);
+
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 }
 
@@ -1095,25 +1127,74 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
         // Fetch the script
         // Per HTML Standard § 10.2.4.2 importScripts(urls):
         // "For each url of urls: Let urlRecord be the result of parsing url with worker global scope's url"
-        // The worker's script_url is the base for resolving relative URLs
+        //
+        // For data: or blob: workers, we use document_base_url as the base for resolving
+        // relative URLs, since data:/blob: URLs cannot be used as bases.
+        const base_url = blk: {
+            // Check if script_url starts with "data:" or "blob:"
+            if (std.mem.startsWith(u8, self.script_url, "data:") or
+                std.mem.startsWith(u8, self.script_url, "blob:"))
+            {
+                // Use document base URL if available
+                break :blk self.document_base_url orelse self.script_url;
+            }
+            break :blk self.script_url;
+        };
+
         var fetched_script = script_fetch.fetchWorkerScript(self.allocator, url, .{
             .is_import_scripts = true,
             .worker_type = .classic,
-            .origin = self.script_url, // Base URL for relative path resolution
+            .origin = base_url, // Base URL for relative path resolution
         }) catch |err| {
             std.log.warn("importScripts: failed to fetch '{s}': {}", .{ url, err });
-            // Per spec, throw NetworkError on fetch failure
-            // For now, just continue to next script
-            continue;
+            // Per HTML Standard § 10.2.4.2 step 6.2:
+            // "If the fetching attempt fails, throw a "NetworkError" DOMException"
+            const error_msg = std.fmt.allocPrint(self.allocator, "Failed to fetch script '{s}'", .{url}) catch {
+                // Fallback: throw generic error
+                throwNetworkError(isolate, v8_context, "Failed to fetch script");
+                return;
+            };
+            defer self.allocator.free(error_msg);
+            throwNetworkError(isolate, v8_context, error_msg);
+            return;
         };
         defer fetched_script.deinit();
 
         // Execute the script synchronously
         _ = self.executeScript(fetched_script.source) catch |err| {
             std.log.warn("importScripts: failed to execute '{s}': {}", .{ url, err });
-            continue;
+            // Per HTML Standard, script execution errors should also throw
+            const error_msg = std.fmt.allocPrint(self.allocator, "Failed to execute script '{s}'", .{url}) catch {
+                throwNetworkError(isolate, v8_context, "Failed to execute script");
+                return;
+            };
+            defer self.allocator.free(error_msg);
+            throwNetworkError(isolate, v8_context, error_msg);
+            return;
         };
     }
+}
+
+/// Helper to throw a NetworkError DOMException in V8
+///
+/// Per HTML Standard § 10.2.4.2 importScripts(urls):
+/// "If the fetching attempt fails, throw a 'NetworkError' DOMException"
+fn throwNetworkError(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, message: []const u8) void {
+    // Create error message string
+    const v8_message = v8.ffi.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse {
+        // Fallback: throw generic error
+        const generic = v8.ffi.v8_String_NewFromUtf8(isolate, "NetworkError", 12) orelse return;
+        const exception = v8.ffi.v8_Exception_Error(generic) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, exception);
+        return;
+    };
+
+    // Create a proper DOMException-like error
+    // For now, we create a standard Error with the message
+    // TODO: Create actual DOMException when DOMException interface is fully wired up
+    _ = context;
+    const exception = v8.ffi.v8_Exception_Error(v8_message) orelse return;
+    v8.ffi.v8_Isolate_ThrowException(isolate, exception);
 }
 
 /// V8 callback for done() - signals test completion (WPT testharness)

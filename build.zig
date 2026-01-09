@@ -2839,13 +2839,25 @@ pub fn build(b: *std.Build) void {
         \\# Kill any existing WPT server processes
         \\pkill -9 -f wptserve 2>/dev/null || true
         \\pkill -9 -f "wpt serve" 2>/dev/null || true
+        \\pkill -9 -f "wpt run" 2>/dev/null || true
+        \\
+        \\# Kill any processes using WPT ports
+        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do
+        \\    lsof -ti:$port | xargs kill -9 2>/dev/null || true
+        \\done
         \\
         \\# Wait for ports to be released
-        \\sleep 1
+        \\sleep 2
         \\
-        \\# Check if port 8000 is still in use
-        \\if lsof -i :8000 >/dev/null 2>&1; then
-        \\    echo "ERROR: Port 8000 still in use after cleanup"
+        \\# Check if any WPT ports are still in use
+        \\PORTS_IN_USE=""
+        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do
+        \\    if lsof -i :$port >/dev/null 2>&1; then
+        \\        PORTS_IN_USE="$PORTS_IN_USE $port"
+        \\    fi
+        \\done
+        \\if [ -n "$PORTS_IN_USE" ]; then
+        \\    echo "ERROR: Ports still in use after cleanup:$PORTS_IN_USE"
         \\    exit 1
         \\fi
         \\
@@ -2855,7 +2867,7 @@ pub fn build(b: *std.Build) void {
         \\FILTER="${WPT_FILTER:-url/url-tojson.any.html}"
         \\
         \\# Run WPT with cleanup trap
-        \\trap 'pkill -9 -f wptserve 2>/dev/null || true; pkill -9 -f "wpt serve" 2>/dev/null || true' EXIT
+        \\trap 'pkill -9 -f wptserve 2>/dev/null || true; pkill -9 -f "wpt serve" 2>/dev/null || true; for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do lsof -ti:$port | xargs kill -9 2>/dev/null || true; done' EXIT
         \\
         \\./wpt run crane \
         \\    --binary "$WPT_BROWSER_PATH" \
