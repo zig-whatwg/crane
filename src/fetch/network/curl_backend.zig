@@ -437,9 +437,15 @@ pub const LibcurlBackend = struct {
             ctx.header_list = header_list; // Store for cleanup in deinit
         }
 
-        // HTTP version - force HTTP/1.0 for servers without Content-Length
-        // HTTP/1.0 expects connection close as end-of-response signal
-        _ = curl.easy_setopt(handle, curl.CURLOPT_HTTP_VERSION, curl.CURL_HTTP_VERSION_1_0);
+        // HTTP version - respect the request's specified version
+        // Default is http_1_1 which handles chunked encoding properly
+        const curl_http_version: c_long = switch (request.http_version) {
+            .http_1_0 => curl.CURL_HTTP_VERSION_1_0,
+            .http_1_1 => curl.CURL_HTTP_VERSION_1_1,
+            .http_2 => curl.CURL_HTTP_VERSION_2_0,
+            .http_3 => curl.CURL_HTTP_VERSION_3,
+        };
+        _ = curl.easy_setopt(handle, curl.CURLOPT_HTTP_VERSION, curl_http_version);
 
         // Timeouts
         if (request.connect_timeout_ms > 0) {

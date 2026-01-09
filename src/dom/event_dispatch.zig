@@ -689,7 +689,7 @@ fn invoke(
 /// - Set legacy_flag to true if exception is thrown
 /// - Return true if callback was invoked successfully
 fn invokeCallback(
-    callback: ?*runtime.Instance,
+    callback: ?*runtime.CallbackWrapper,
     event: *runtime.Instance,
     legacy_flag: ?*bool,
 ) bool {
