@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("CSSRule.zig").CSSRule;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSRule = @import("interfaces").CSSRule;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
-const CSSFontFaceDescriptors = @import("CSSFontFaceDescriptors.zig").CSSFontFaceDescriptors;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const CSSFontFaceDescriptors = @import("interfaces").CSSFontFaceDescriptors;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSFontFaceRule = struct {
@@ -129,7 +129,6 @@ pub const CSSFontFaceRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

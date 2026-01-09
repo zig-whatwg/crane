@@ -456,7 +456,6 @@ pub const EngineInterface = struct {
     ///
     /// Arguments:
     ///   - callback_wrapper: Wrapper from createCallbackWrapper
-    callbacksEqual: ?*const fn (cb1: *anyopaque, cb2: *anyopaque) bool,
     destroyCallbackWrapper: ?*const fn (
         callback_wrapper: *anyopaque,
     ) void,
@@ -911,7 +910,6 @@ pub const stub_engine: EngineInterface = .{
     .destroyEventLoop = null,
     .createCallbackWrapper = null,
     .invokeCallback = null,
-    .callbacksEqual = null,
     .destroyCallbackWrapper = null,
     .requestGarbageCollection = stubRequestGarbageCollection,
     .scheduleOnMainThread = stubScheduleOnMainThread,

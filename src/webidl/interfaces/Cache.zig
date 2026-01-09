@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CacheQueryOptions = @import("dictionaries").CacheQueryOptions;
 const RequestInfo = @import("typedefs").RequestInfo;
-const Response = @import("Response.zig").Response;
+const Response = @import("interfaces").Response;
 
 pub const Cache = struct {
     pub const Meta = struct {

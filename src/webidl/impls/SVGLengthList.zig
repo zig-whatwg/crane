@@ -100,11 +100,3 @@ pub fn call_appendItem(instance: *runtime.Instance, newItem: *runtime.Instance) 
     _ = newItem;
     return error.NotImplemented;
 }
-
-
-pub fn call_setter(instance: *runtime.Instance, index: u32, newItem: *runtime.Instance) anyerror!void {
-    _ = instance;
-    _ = index;
-    _ = newItem;
-    return error.NotImplemented;
-}

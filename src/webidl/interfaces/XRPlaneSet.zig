@@ -19,12 +19,7 @@ pub const XRPlaneSet = struct {
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = null;
         pub const MixinTypes = &.{};
-        pub const extended_attributes = .{
-            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
-        };
-        
-        /// Global contexts where this interface is exposed
-        pub const exposed_in = .{ .Window = true };
+        pub const extended_attributes = .{};
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{

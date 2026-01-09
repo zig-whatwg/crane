@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AudioParam = @import("AudioParam.zig").AudioParam;
+const AudioParam = @import("interfaces").AudioParam;
 
 pub const AudioListener = struct {
     pub const Meta = struct {

@@ -1,8 +1,0 @@
-// Supplementary IDL for FontFaceSet setlike members
-// The main IDL has "setlike<FontFace>" but codegen doesn't generate these members
-// This explicitly adds the size property that setlike should provide
-
-partial interface FontFaceSet {
-  // From setlike<FontFace>
-  readonly attribute unsigned long size;
-};

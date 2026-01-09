@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WebTransportReceiveStream = @import("WebTransportReceiveStream.zig").WebTransportReceiveStream;
-const WebTransportSendStream = @import("WebTransportSendStream.zig").WebTransportSendStream;
+const WebTransportReceiveStream = @import("interfaces").WebTransportReceiveStream;
+const WebTransportSendStream = @import("interfaces").WebTransportSendStream;
 
 pub const WebTransportBidirectionalStream = struct {
     pub const Meta = struct {

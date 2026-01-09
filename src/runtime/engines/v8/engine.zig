@@ -101,7 +101,6 @@ pub const v8_engine_interface: EngineInterface = .{
     .destroyEventLoop = v8DestroyEventLoop,
     .createCallbackWrapper = v8CreateCallbackWrapper,
     .invokeCallback = v8InvokeCallback,
-    .callbacksEqual = v8CallbacksEqual,
     .destroyCallbackWrapper = v8DestroyCallbackWrapper,
     .requestGarbageCollection = v8RequestGarbageCollection,
     .scheduleOnMainThread = v8ScheduleOnMainThread,
@@ -216,16 +215,6 @@ fn v8ResolvePromise(
 }
 
 /// Reject a V8 Promise with an error
-///
-/// CRITICAL: The error object MUST be created in the promise's context (realm),
-/// not in whatever context happens to be current. This is essential for cross-realm
-/// scenarios like:
-///   - fetch() called from iframe that rejects when async callback completes
-///   - Promise created in one realm, rejected from callback in another realm
-///
-/// Per WebIDL spec, the TypeError (or other error) must come from the promise's
-/// realm so that `error instanceof TypeError` works correctly even in cross-realm
-/// scenarios.
 fn v8RejectPromise(
     engine_ctx: *anyopaque,
     promise_handle: *anyopaque,
@@ -243,17 +232,14 @@ fn v8RejectPromise(
     ) orelse return EngineError.OperationFailed;
 
     // Create appropriate Error object based on error type
-    // CRITICAL: Use context-aware exception functions to create the error
-    // in the promise's realm, not the current realm. This ensures the error
-    // is an instance of the promise realm's TypeError/Error constructor.
     const err_obj = switch (err) {
-        error.SyntaxError => ffi.v8_Exception_SyntaxErrorInContext(handle.context, err_str) orelse
+        error.SyntaxError => ffi.v8_Exception_SyntaxError(err_str) orelse
             return EngineError.OperationFailed,
-        error.TypeError => ffi.v8_Exception_TypeErrorInContext(handle.context, err_str) orelse
+        error.TypeError => ffi.v8_Exception_TypeError(err_str) orelse
             return EngineError.OperationFailed,
-        error.RangeError => ffi.v8_Exception_RangeErrorInContext(handle.context, err_str) orelse
+        error.RangeError => ffi.v8_Exception_RangeError(err_str) orelse
             return EngineError.OperationFailed,
-        else => ffi.v8_Exception_ErrorInContext(handle.context, err_str) orelse
+        else => ffi.v8_Exception_Error(err_str) orelse
             return EngineError.OperationFailed,
     };
 
@@ -686,29 +672,7 @@ fn v8InvokeCallback(
     return null;
 }
 
-/// Compare two V8 callback wrappers
-fn v8CallbacksEqual(
-    callback_wrapper1: *anyopaque,
-    callback_wrapper2: *anyopaque,
-) bool {
-    const w1: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper1));
-    const w2: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper2));
-
-    if (w1.callback_function_global) |g1| {
-        if (w2.callback_function_global) |g2| {
-            return ffi.v8_Value_StrictEquals(g1.ptr, g2.ptr);
-        }
-    }
-
-    if (w1.callback_object_global) |g1| {
-        if (w2.callback_object_global) |g2| {
-            return ffi.v8_Value_StrictEquals(g1.ptr, g2.ptr);
-        }
-    }
-
-    return false;
-}
-
+/// Destroy a V8 callback wrapper
 fn v8DestroyCallbackWrapper(
     callback_wrapper: *anyopaque,
 ) void {

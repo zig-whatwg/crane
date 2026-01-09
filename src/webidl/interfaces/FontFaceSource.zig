@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FontFaceSet = @import("FontFaceSet.zig").FontFaceSet;
+const FontFaceSet = @import("interfaces").FontFaceSet;
 
 pub const FontFaceSource = struct {
     pub const Meta = struct {

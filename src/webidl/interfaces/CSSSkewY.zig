@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSTransformComponent = @import("CSSTransformComponent.zig").CSSTransformComponent;
-const CSSNumericValue = @import("CSSNumericValue.zig").CSSNumericValue;
-const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
+const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
+const CSSNumericValue = @import("interfaces").CSSNumericValue;
+const DOMMatrix = @import("interfaces").DOMMatrix;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSSkewY = struct {

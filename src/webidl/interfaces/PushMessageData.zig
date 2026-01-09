@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Blob = @import("Blob.zig").Blob;
+const Blob = @import("interfaces").Blob;
 const USVString = @import("typedefs").USVString;
 
 pub const PushMessageData = struct {

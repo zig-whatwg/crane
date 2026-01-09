@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WorkletGlobalScope = @import("WorkletGlobalScope.zig").WorkletGlobalScope;
+const WorkletGlobalScope = @import("interfaces").WorkletGlobalScope;
 const AudioWorkletProcessorConstructor = @import("callbacks").AudioWorkletProcessorConstructor;
-const MessagePort = @import("MessagePort.zig").MessagePort;
+const MessagePort = @import("interfaces").MessagePort;
 const DOMString = @import("typedefs").DOMString;
 
 pub const AudioWorkletGlobalScope = struct {

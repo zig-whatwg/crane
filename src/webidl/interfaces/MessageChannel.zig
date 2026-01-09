@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MessagePort = @import("MessagePort.zig").MessagePort;
+const MessagePort = @import("interfaces").MessagePort;
 
 pub const MessageChannel = struct {
     pub const Meta = struct {

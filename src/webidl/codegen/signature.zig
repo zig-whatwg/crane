@@ -106,8 +106,9 @@ pub fn writeEscapedParamName(writer: anytype, name: []const u8, idl_type: types.
 
     // Check for type shadowing (e.g., RestrictionTarget param of type RestrictionTarget)
     if (parameterShadowsType(name, idl_type)) {
-        // Just append _param suffix, preserve original case
-        try writer.print("{s}_param", .{name});
+        var buf: [256]u8 = undefined;
+        const lower_name = std.ascii.lowerString(&buf, name);
+        try writer.print("{s}_param", .{lower_name});
         return;
     }
 

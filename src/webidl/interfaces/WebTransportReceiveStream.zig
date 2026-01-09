@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
 const ReadableWritablePair = @import("dictionaries").ReadableWritablePair;
 const ReadableStreamGetReaderOptions = @import("dictionaries").ReadableStreamGetReaderOptions;
 const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
@@ -18,7 +18,7 @@ const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 const ReadableStreamIteratorOptions = @import("dictionaries").ReadableStreamIteratorOptions;
 const ReadableStreamReader = @import("typedefs").ReadableStreamReader;
 const WebTransportReceiveStreamStats = @import("dictionaries").WebTransportReceiveStreamStats;
-const WritableStream = @import("WritableStream.zig").WritableStream;
+const WritableStream = @import("interfaces").WritableStream;
 
 pub const WebTransportReceiveStream = struct {
     pub const Meta = struct {

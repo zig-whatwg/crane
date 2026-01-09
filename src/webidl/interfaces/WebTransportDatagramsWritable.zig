@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WritableStream = @import("WritableStream.zig").WritableStream;
-const WritableStreamDefaultWriter = @import("WritableStreamDefaultWriter.zig").WritableStreamDefaultWriter;
-const WebTransportSendGroup = @import("WebTransportSendGroup.zig").WebTransportSendGroup;
+const WritableStream = @import("interfaces").WritableStream;
+const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
+const WebTransportSendGroup = @import("interfaces").WebTransportSendGroup;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 
 pub const WebTransportDatagramsWritable = struct {

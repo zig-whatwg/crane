@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ImageDataSettings = @import("dictionaries").ImageDataSettings;
-const ImageData = @import("ImageData.zig").ImageData;
+const ImageData = @import("interfaces").ImageData;
 
 pub const CanvasImageData = struct {
     pub const Meta = struct {

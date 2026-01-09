@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("Node.zig").Node;
-const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
+const Node = @import("interfaces").Node;
+const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 
 pub const LayoutShiftAttribution = struct {
     pub const Meta = struct {

@@ -69,14 +69,10 @@ pub fn get_target(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Setter for href
-/// Spec: HTMLBaseElement.href is a reflected content attribute
-/// https://html.spec.whatwg.org/multipage/semantics.html#dom-base-href
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    // HTMLBaseElement.href reflects the "href" content attribute
-    // Use Element's setAttribute to set it
-    // Note: runtime.USVString is []const u8
-    const ElementImpl = @import("Element.zig");
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("href"), runtime.DOMString.initInterned(value));
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for target

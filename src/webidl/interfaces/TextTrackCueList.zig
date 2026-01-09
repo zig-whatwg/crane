@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const TextTrackCue = @import("TextTrackCue.zig").TextTrackCue;
+const TextTrackCue = @import("interfaces").TextTrackCue;
 const DOMString = @import("typedefs").DOMString;
 
 pub const TextTrackCueList = struct {

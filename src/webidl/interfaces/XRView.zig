@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRViewGeometry = @import("mixins").XRViewGeometry;
-const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XREye = @import("enums").XREye;
-const XRCamera = @import("XRCamera.zig").XRCamera;
+const XRCamera = @import("interfaces").XRCamera;
 
 pub const XRView = struct {
     pub const Meta = struct {
