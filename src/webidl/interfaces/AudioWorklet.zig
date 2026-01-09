@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Worklet = @import("interfaces").Worklet;
-const MessagePort = @import("interfaces").MessagePort;
+const Worklet = @import("Worklet.zig").Worklet;
+const MessagePort = @import("MessagePort.zig").MessagePort;
 const USVString = @import("typedefs").USVString;
 const WorkletOptions = @import("dictionaries").WorkletOptions;
 

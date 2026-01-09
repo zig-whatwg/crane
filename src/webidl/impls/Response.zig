@@ -200,6 +200,58 @@ pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyIni
     return instance;
 }
 
+// === Helper Functions ===
+
+/// Create a Response instance wrapping an existing InternalResponse
+/// Used by Window.fetch() to wrap the result from the fetch algorithm
+pub fn initWithInternalResponse(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    response: *InternalResponse,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, State, &Response.vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
+
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .allocator = allocator,
+        .response = response,
+        .headers_cache = null,
+    };
+
+    const state = instance.getState(State);
+    state.own._internal = internal;
+
+    return instance;
+}
+
+/// Create a Response instance from a NetworkResponse (from async curl manager).
+/// Takes ownership of network_response data and frees it after copying.
+pub fn initWithNetworkResponse(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    network_response: fetch.network.NetworkResponse,
+) !*runtime.Instance {
+    // Convert NetworkResponse to InternalResponse (copies data)
+    const internal_response = InternalResponse.initFromNetworkResponse(allocator, network_response) catch |err| {
+        // On error, we still need to free the network response
+        var mutable_response = network_response;
+        mutable_response.deinit();
+        return err;
+    };
+    errdefer internal_response.deinit();
+
+    // Free the NetworkResponse now that data has been copied to InternalResponse
+    // The headers, body, and other allocated fields are freed here
+    var mutable_response = network_response;
+    mutable_response.deinit();
+
+    // Use the existing initWithInternalResponse
+    return initWithInternalResponse(allocator, ctx, internal_response);
+}
+
 // === Static Methods ===
 // Static methods use call_static_<name> convention
 

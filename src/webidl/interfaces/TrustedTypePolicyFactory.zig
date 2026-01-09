@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const TrustedTypePolicyOptions = @import("dictionaries").TrustedTypePolicyOptions;
-const TrustedHTML = @import("interfaces").TrustedHTML;
-const TrustedScript = @import("interfaces").TrustedScript;
-const TrustedTypePolicy = @import("interfaces").TrustedTypePolicy;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
+const TrustedScript = @import("TrustedScript.zig").TrustedScript;
+const TrustedTypePolicy = @import("TrustedTypePolicy.zig").TrustedTypePolicy;
 const DOMString = @import("typedefs").DOMString;
 
 pub const TrustedTypePolicyFactory = struct {

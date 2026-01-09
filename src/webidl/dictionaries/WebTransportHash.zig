@@ -6,6 +6,6 @@ const runtime = @import("runtime");
 const typedefs = @import("typedefs");
 
 pub const WebTransportHash = struct {
-    algorithm: ?runtime.DOMString = null,
-    value: ?typedefs.BufferSource = null,
+    algorithm: runtime.DOMString,
+    value: typedefs.BufferSource,
 };

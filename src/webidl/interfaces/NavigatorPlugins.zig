@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MimeTypeArray = @import("interfaces").MimeTypeArray;
-const PluginArray = @import("interfaces").PluginArray;
+const MimeTypeArray = @import("MimeTypeArray.zig").MimeTypeArray;
+const PluginArray = @import("PluginArray.zig").PluginArray;
 
 pub const NavigatorPlugins = struct {
     pub const Meta = struct {

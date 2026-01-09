@@ -18,7 +18,7 @@ const BufferSource = @import("typedefs").BufferSource;
 const JsonWebKey = @import("dictionaries").JsonWebKey;
 const EncapsulatedKey = @import("dictionaries").EncapsulatedKey;
 const DOMString = @import("typedefs").DOMString;
-const CryptoKey = @import("interfaces").CryptoKey;
+const CryptoKey = @import("CryptoKey.zig").CryptoKey;
 
 pub const SubtleCrypto = struct {
     pub const Meta = struct {

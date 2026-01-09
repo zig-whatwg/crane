@@ -703,6 +703,8 @@ pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsFunction(value: *Value) bool;
 pub extern fn v8_Value_IsArray(value: *Value) bool;
+pub extern fn v8_Value_IsArrayBuffer(value: *Value) bool;
+pub extern fn v8_Value_IsArrayBufferView(value: *Value) bool;
 
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
@@ -802,6 +804,17 @@ pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototy
 /// Set the prototype using the newer V2 API that works properly with global objects
 pub extern fn v8_Object_SetPrototypeV2(object: *Object, context: *Context, prototype: *Value) bool;
 pub extern fn v8_Object_GetPrototype(object: *Object) ?*Value;
+
+pub const AccessorNameGetterCallback = *const fn (property: *Name, info: *const PropertyCallbackInfo) callconv(.c) void;
+
+pub extern fn v8_Object_SetLazyDataProperty(
+    object: *Object,
+    context: *Context,
+    name: *Name,
+    getter: AccessorNameGetterCallback,
+    data: ?*Value,
+) void;
+
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
 pub extern fn v8_Object_GetPropertyWithSymbol(context: *Context, obj: *Object, symbol: *Symbol) ?*Value;
@@ -941,6 +954,15 @@ pub const V8ModuleEvaluateResult = extern struct {
     /// Error information (null if evaluation succeeded)
     error_info: ?*V8ErrorInfo,
 };
+
+/// Result of safe ToString conversion (WebIDL § 3.2.1 compliant)
+pub const V8ToStringResult = extern struct {
+    value: ?*String,
+    exception: ?*Value,
+};
+
+pub extern fn v8_Value_ToString_Safe(value: *Value, context: *Context) *V8ToStringResult;
+pub extern fn v8_FreeToStringResult(result: ?*V8ToStringResult) void;
 
 /// Compile a script with TryCatch error handling
 /// Returns both the compiled script (on success) and detailed error info (on failure).
@@ -1250,6 +1272,15 @@ pub extern fn v8_Object_GetCreationContext_Raw(obj_ptr: *const anyopaque) ?*Cont
 /// This enters the context before creating the error, ensuring the
 /// TypeError constructor comes from the correct realm.
 pub extern fn v8_Exception_TypeErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create RangeError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_RangeErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create SyntaxError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_SyntaxErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create Error in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_ErrorInContext(context: *Context, message: *String) ?*Value;
 
 /// Get the creation context of an object's prototype.
 /// This walks up the prototype chain to find the context where the method/property
@@ -1697,6 +1728,61 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;
 
 // ============================================================================
+// Promise Rejection Tracking
+// ============================================================================
+
+/// Promise reject event types (from V8 PromiseRejectEvent enum)
+pub const PromiseRejectEvent = enum(c_int) {
+    /// Promise rejected, no handler attached
+    kPromiseRejectWithNoHandler = 0,
+    /// Handler added to previously-rejected promise (rejectionhandled event)
+    kPromiseHandlerAddedAfterReject = 1,
+    /// Promise rejected after already resolved (usually ignored)
+    kPromiseRejectAfterResolved = 2,
+    /// Promise resolved after already resolved (usually ignored)
+    kPromiseResolveAfterResolved = 3,
+};
+
+/// Callback type for promise rejection events
+///
+/// Called when a promise is rejected without a handler, or when
+/// a handler is added to a previously-rejected promise.
+///
+/// Parameters:
+///   - user_data: Opaque pointer passed to SetPromiseRejectCallback
+///   - event_type: Type of promise rejection event (see PromiseRejectEvent)
+///   - promise: Global handle to the rejected promise
+///   - value: Global handle to the rejection reason (may be null)
+pub const PromiseRejectEventCallback = *const fn (
+    user_data: ?*anyopaque,
+    event_type: c_int,
+    promise: ?*anyopaque,
+    value: ?*anyopaque,
+) callconv(.c) void;
+
+/// Set the promise rejection callback for an isolate
+///
+/// This enables tracking of unhandled promise rejections for the
+/// "unhandledrejection" and "rejectionhandled" events (HTML § 8.1.4.7).
+///
+/// The callback will be invoked when:
+/// - A promise is rejected with no handler attached (kPromiseRejectWithNoHandler)
+/// - A handler is added to a previously-rejected promise (kPromiseHandlerAddedAfterReject)
+///
+/// Arguments:
+///   isolate: The V8 isolate to configure
+///   user_data: Opaque pointer passed to callback
+///   callback: Function to call on promise rejection events
+pub extern fn v8_Isolate_SetPromiseRejectCallback(
+    isolate: *Isolate,
+    user_data: ?*anyopaque,
+    callback: PromiseRejectEventCallback,
+) void;
+
+/// Clear the promise rejection callback for an isolate
+pub extern fn v8_Isolate_ClearPromiseRejectCallback(isolate: *Isolate) void;
+
+// ============================================================================
 // External - Wrap C pointers for storage in V8
 // ============================================================================
 
@@ -2125,6 +2211,33 @@ pub extern fn v8_Context_NewFromSnapshot(isolate: *Isolate) ?*Context;
 /// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
 /// @return New context (fresh, not from snapshot state)
 pub extern fn v8_Context_NewFromSnapshotDefault(isolate: *Isolate) ?*Context;
+
+/// Create a context from a specific indexed context in the snapshot
+///
+/// During snapshot creation, multiple contexts can be added via AddContext().
+/// Each context is assigned an index (0, 1, 2, ...). This function restores
+/// the context at the specified index.
+///
+/// Use this for multi-context snapshots where different scope types
+/// (Window, Worker, ServiceWorker, etc.) have different pre-registered interfaces.
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @param context_index - Index of the context to restore (0-based)
+/// @return Context at that index, or null if index is out of range
+pub extern fn v8_Context_NewFromSnapshotAt(isolate: *Isolate, context_index: usize) ?*Context;
+
+/// Get the number of indexed contexts stored in the snapshot
+///
+/// Returns the count of contexts that were added via AddContext() during
+/// snapshot creation. Valid indices are 0 to (count - 1).
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @return Number of indexed contexts in the snapshot
+pub extern fn v8_Snapshot_GetContextCount(
+    snapshot_data: [*]const u8,
+    snapshot_size: c_int,
+) usize;
 
 /// Check if a snapshot blob is valid
 ///

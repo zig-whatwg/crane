@@ -277,6 +277,11 @@ pub const InternalRequest = struct {
     /// Service workers mode
     service_workers_mode: ServiceWorkersMode = .all,
 
+    /// Skip service worker interception (reentrancy protection)
+    /// Set to true for fetches initiated by service workers themselves,
+    /// or for navigation preload fetches that should bypass SW.
+    skip_service_worker_interception: bool = false,
+
     /// Initiator
     initiator: Initiator = .empty,
 

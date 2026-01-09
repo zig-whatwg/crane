@@ -79,13 +79,13 @@ pub const CallbackWrapper = struct {
         context: *v8.Context,
         func: *v8.Function,
     ) !*CallbackWrapper {
-        // IMPORTANT: In our architecture, values from FunctionCallbackInfo_GetArgument
-        // are ALREADY Global<Value>* handles (heap-allocated by the C++ side).
-        // We should NOT call v8_Value_ToGlobal on them, as that function expects
-        // a raw Local<Value> internal pointer, not a Global<Value>*.
-        //
-        // Instead, we just wrap the existing Global pointer.
-        const global = GlobalHandle{ .ptr = @ptrCast(func) };
+        // Convert Local<Function> to Global<Value> for persistence across HandleScope boundaries.
+        // This is critical for event listeners: when JS calls addEventListener(type, callback),
+        // the callback argument is a Local<Value> that becomes invalid when the HandleScope ends.
+        // We MUST create a proper Global handle to keep the function alive.
+        const global = GlobalHandle.create(isolate, @ptrCast(func)) orelse {
+            return error.GlobalHandleCreationFailed;
+        };
 
         // Use the provided context where this callback was created/intended to run
         const current_ctx = context;

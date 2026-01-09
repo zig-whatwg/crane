@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RTCEncodedVideoFrameOptions = @import("dictionaries").RTCEncodedVideoFrameOptions;
+const EncodedVideoChunkType = @import("enums").EncodedVideoChunkType;
 const RTCEncodedVideoFrameMetadata = @import("dictionaries").RTCEncodedVideoFrameMetadata;
-const RTCEncodedVideoFrameType = @import("enums").RTCEncodedVideoFrameType;
+const RTCEncodedVideoFrameOptions = @import("dictionaries").RTCEncodedVideoFrameOptions;
 
 pub const RTCEncodedVideoFrame = struct {
     pub const Meta = struct {
@@ -70,7 +70,7 @@ pub const RTCEncodedVideoFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"type": enums.RTCEncodedVideoFrameType = undefined,
+            @"type": enums.EncodedVideoChunkType = undefined,
             data: runtime.ArrayBuffer = undefined,
             _internal: ?*RTCEncodedVideoFrameImpl.InternalState = null,
         },
@@ -118,7 +118,7 @@ pub const RTCEncodedVideoFrame = struct {
         return try RTCEncodedVideoFrameImpl.call_constructor(ctx, originalFrame, options);
     }
 
-    pub fn get_type(instance: *runtime.Instance) anyerror!RTCEncodedVideoFrameType {
+    pub fn get_type(instance: *runtime.Instance) anyerror!EncodedVideoChunkType {
         return try RTCEncodedVideoFrameImpl.get_type(instance);
     }
 

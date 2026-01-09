@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WorkletGlobalScope = @import("interfaces").WorkletGlobalScope;
+const WorkletGlobalScope = @import("WorkletGlobalScope.zig").WorkletGlobalScope;
 const Function = @import("callbacks").Function;
-const SharedStorageWorkletNavigator = @import("interfaces").SharedStorageWorkletNavigator;
+const SharedStorageWorkletNavigator = @import("SharedStorageWorkletNavigator.zig").SharedStorageWorkletNavigator;
 const DOMString = @import("typedefs").DOMString;
-const SharedStorage = @import("interfaces").SharedStorage;
-const PrivateAggregation = @import("interfaces").PrivateAggregation;
+const SharedStorage = @import("SharedStorage.zig").SharedStorage;
+const PrivateAggregation = @import("PrivateAggregation.zig").PrivateAggregation;
 
 pub const SharedStorageWorkletGlobalScope = struct {
     pub const Meta = struct {

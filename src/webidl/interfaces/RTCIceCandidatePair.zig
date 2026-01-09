@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RTCIceCandidate = @import("interfaces").RTCIceCandidate;
+const RTCIceCandidate = @import("RTCIceCandidate.zig").RTCIceCandidate;
 
 pub const RTCIceCandidatePair = struct {
     pub const Meta = struct {

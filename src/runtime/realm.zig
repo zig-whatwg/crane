@@ -64,6 +64,258 @@ pub const ContextType = enum {
     }
 };
 
+/// Unified global scope kind for all execution contexts
+///
+/// This enum provides a single source of truth for all global scope types
+/// defined by WHATWG specifications. It covers:
+/// - Window (HTML Standard)
+/// - Workers (HTML Standard): DedicatedWorker, SharedWorker, ServiceWorker
+/// - Worklets (various specs): Audio, Paint, Animation, Layout, SharedStorage
+/// - ShadowRealm (TC39 Stage 3)
+///
+/// ## Specification References
+/// - HTML §8.1.5: Realms, settings objects, and global objects
+/// - HTML §10.2: Workers
+/// - CSS Painting API §4: Paint Worklet
+/// - CSS Animation Worklet API §4: Animation Worklet
+/// - CSS Layout API §4: Layout Worklet
+/// - Web Audio API §4: AudioWorklet
+/// - Shared Storage API: SharedStorageWorklet
+/// - TC39 ShadowRealm Proposal
+///
+/// ## Usage
+///
+/// ```zig
+/// const scope = GlobalScopeKind.window;
+/// std.debug.print("Scope: {s}\n", .{scope.name()});
+/// std.debug.print("Implemented: {}\n", .{scope.isImplemented()});
+/// ```
+pub const GlobalScopeKind = enum {
+    // ========================================================================
+    // Window Context (HTML Standard)
+    // ========================================================================
+
+    /// Browser window context (global = Window)
+    /// The primary execution context for web pages.
+    /// Most APIs are exposed here, including full DOM access.
+    window,
+
+    // ========================================================================
+    // Worker Contexts (HTML Standard §10.2)
+    // ========================================================================
+
+    /// Dedicated Web Worker (global = DedicatedWorkerGlobalScope)
+    /// Runs scripts in background threads, one-to-one with creator.
+    /// No DOM access, subset of APIs.
+    dedicated_worker,
+
+    /// Shared Web Worker (global = SharedWorkerGlobalScope)
+    /// Shared across multiple contexts (windows, iframes, workers).
+    /// Communication via MessagePort.
+    shared_worker,
+
+    /// Service Worker (global = ServiceWorkerGlobalScope)
+    /// Background worker for offline support, caching, push notifications.
+    /// Intercepts network requests via fetch event.
+    service_worker,
+
+    // ========================================================================
+    // Worklet Contexts (Various Specifications)
+    // ========================================================================
+
+    /// Audio Worklet (global = AudioWorkletGlobalScope)
+    /// Web Audio API - custom audio processing in real-time thread.
+    /// https://webaudio.github.io/web-audio-api/#audioworklet
+    audio_worklet,
+
+    /// Paint Worklet (global = PaintWorkletGlobalScope)
+    /// CSS Painting API - custom CSS image painting.
+    /// https://drafts.css-houdini.org/css-paint-api/
+    paint_worklet,
+
+    /// Animation Worklet (global = AnimationWorkletGlobalScope)
+    /// CSS Animation Worklet API - custom animation effects.
+    /// https://drafts.css-houdini.org/css-animationworklet/
+    animation_worklet,
+
+    /// Layout Worklet (global = LayoutWorkletGlobalScope)
+    /// CSS Layout API - custom layout algorithms.
+    /// https://drafts.css-houdini.org/css-layout-api/
+    layout_worklet,
+
+    /// Shared Storage Worklet (global = SharedStorageWorkletGlobalScope)
+    /// Shared Storage API - cross-site storage with privacy protections.
+    /// https://wicg.github.io/shared-storage/
+    shared_storage_worklet,
+
+    // ========================================================================
+    // ShadowRealm Context (TC39 Stage 3)
+    // ========================================================================
+
+    /// ShadowRealm (global = ShadowRealm)
+    /// TC39 Stage 3 proposal for isolated JavaScript execution.
+    /// https://github.com/tc39/proposal-shadowrealm
+    shadow_realm,
+
+    // ========================================================================
+    // Testing/Internal
+    // ========================================================================
+
+    /// Unknown/unspecified context (for testing only)
+    /// Should not be used in production code.
+    unknown,
+
+    /// Get human-readable name matching WHATWG specification names
+    pub fn name(self: GlobalScopeKind) []const u8 {
+        return switch (self) {
+            .window => "Window",
+            .dedicated_worker => "DedicatedWorkerGlobalScope",
+            .shared_worker => "SharedWorkerGlobalScope",
+            .service_worker => "ServiceWorkerGlobalScope",
+            .audio_worklet => "AudioWorkletGlobalScope",
+            .paint_worklet => "PaintWorkletGlobalScope",
+            .animation_worklet => "AnimationWorkletGlobalScope",
+            .layout_worklet => "LayoutWorkletGlobalScope",
+            .shared_storage_worklet => "SharedStorageWorkletGlobalScope",
+            .shadow_realm => "ShadowRealm",
+            .unknown => "Unknown",
+        };
+    }
+
+    /// Get short name for WPT and logging
+    pub fn shortName(self: GlobalScopeKind) []const u8 {
+        return switch (self) {
+            .window => "window",
+            .dedicated_worker => "worker",
+            .shared_worker => "sharedworker",
+            .service_worker => "serviceworker",
+            .audio_worklet => "audioworklet",
+            .paint_worklet => "paintworklet",
+            .animation_worklet => "animationworklet",
+            .layout_worklet => "layoutworklet",
+            .shared_storage_worklet => "sharedstorageworklet",
+            .shadow_realm => "shadowrealm",
+            .unknown => "unknown",
+        };
+    }
+
+    /// Check if this scope kind is currently implemented
+    ///
+    /// Returns true only for scopes with full implementation.
+    /// Use this to skip tests for unimplemented contexts.
+    pub fn isImplemented(self: GlobalScopeKind) bool {
+        return switch (self) {
+            // Fully implemented
+            .window => true,
+            .dedicated_worker => true,
+            .shared_worker => true,
+            .service_worker => true,
+
+            // Worklets implemented (BSCOPE-17)
+            // Note: SharedStorageWorklet is NOT implemented (all APIs return NotImplemented)
+            .audio_worklet => true,
+            .paint_worklet => true,
+            .animation_worklet => true,
+            .layout_worklet => true,
+            .shared_storage_worklet => false,
+
+            // ShadowRealm (TC39 Stage 3 - V8 built-in)
+            .shadow_realm => true,
+            .unknown => false,
+        };
+    }
+
+    /// Check if this is any Worker context
+    pub fn isWorker(self: GlobalScopeKind) bool {
+        return switch (self) {
+            .dedicated_worker, .shared_worker, .service_worker => true,
+            else => false,
+        };
+    }
+
+    /// Check if this is any Worklet context
+    pub fn isWorklet(self: GlobalScopeKind) bool {
+        return switch (self) {
+            .audio_worklet,
+            .paint_worklet,
+            .animation_worklet,
+            .layout_worklet,
+            .shared_storage_worklet,
+            => true,
+            else => false,
+        };
+    }
+
+    /// Check if this is a ShadowRealm context
+    pub fn isShadowRealm(self: GlobalScopeKind) bool {
+        return self == .shadow_realm;
+    }
+
+    /// Convert to legacy ContextType for backward compatibility
+    ///
+    /// Note: This loses information for specific worklet types.
+    /// New code should use GlobalScopeKind directly.
+    pub fn toContextType(self: GlobalScopeKind) ContextType {
+        return switch (self) {
+            .window => .window,
+            .dedicated_worker => .dedicated_worker,
+            .shared_worker => .shared_worker,
+            .service_worker => .service_worker,
+            .audio_worklet,
+            .paint_worklet,
+            .animation_worklet,
+            .layout_worklet,
+            .shared_storage_worklet,
+            => .worklet,
+            .shadow_realm => .shadow_realm,
+            .unknown => .unknown,
+        };
+    }
+
+    /// Create from legacy ContextType
+    ///
+    /// Note: Converts generic .worklet to .audio_worklet as default.
+    /// This is lossy - specific worklet type is unknown.
+    pub fn fromContextType(ctx: ContextType) GlobalScopeKind {
+        return switch (ctx) {
+            .window => .window,
+            .dedicated_worker => .dedicated_worker,
+            .shared_worker => .shared_worker,
+            .service_worker => .service_worker,
+            .worklet => .audio_worklet, // Default to audio_worklet
+            .shadow_realm => .shadow_realm,
+            .unknown => .unknown,
+        };
+    }
+
+    /// Parse from WPT global string
+    ///
+    /// Handles WPT-specific format including ShadowRealm variants.
+    /// See: https://web-platform-tests.org/writing-tests/testharness.html
+    pub fn fromWptGlobalString(str: []const u8) ?GlobalScopeKind {
+        // Standard contexts
+        if (std.mem.eql(u8, str, "window")) return .window;
+        if (std.mem.eql(u8, str, "worker")) return .dedicated_worker;
+        if (std.mem.eql(u8, str, "dedicatedworker")) return .dedicated_worker;
+        if (std.mem.eql(u8, str, "sharedworker")) return .shared_worker;
+        if (std.mem.eql(u8, str, "serviceworker")) return .service_worker;
+
+        // Worklets
+        if (std.mem.eql(u8, str, "audioworklet")) return .audio_worklet;
+        if (std.mem.eql(u8, str, "paintworklet")) return .paint_worklet;
+        if (std.mem.eql(u8, str, "animationworklet")) return .animation_worklet;
+        if (std.mem.eql(u8, str, "layoutworklet")) return .layout_worklet;
+        if (std.mem.eql(u8, str, "sharedstorageworklet")) return .shared_storage_worklet;
+
+        // ShadowRealm (including nested variants)
+        // WPT uses: shadowrealm, shadowrealm-in-window, shadowrealm-in-dedicatedworker, etc.
+        if (std.mem.eql(u8, str, "shadowrealm")) return .shadow_realm;
+        if (std.mem.startsWith(u8, str, "shadowrealm-in-")) return .shadow_realm;
+
+        return null;
+    }
+};
+
 /// WebIDL [Exposed] attribute values
 ///
 /// Maps to WebIDL extended attribute:
@@ -747,4 +999,168 @@ test "Realm - contextName returns correct name" {
     const service = try Realm.init(allocator, .{ .context_type = .service_worker });
     defer service.deinit();
     try std.testing.expectEqualStrings("ServiceWorkerGlobalScope", service.contextName());
+}
+
+// ============================================================================
+// GlobalScopeKind Tests
+// ============================================================================
+
+test "GlobalScopeKind - name returns WHATWG spec names" {
+    try std.testing.expectEqualStrings("Window", GlobalScopeKind.window.name());
+    try std.testing.expectEqualStrings("DedicatedWorkerGlobalScope", GlobalScopeKind.dedicated_worker.name());
+    try std.testing.expectEqualStrings("SharedWorkerGlobalScope", GlobalScopeKind.shared_worker.name());
+    try std.testing.expectEqualStrings("ServiceWorkerGlobalScope", GlobalScopeKind.service_worker.name());
+    try std.testing.expectEqualStrings("AudioWorkletGlobalScope", GlobalScopeKind.audio_worklet.name());
+    try std.testing.expectEqualStrings("PaintWorkletGlobalScope", GlobalScopeKind.paint_worklet.name());
+    try std.testing.expectEqualStrings("AnimationWorkletGlobalScope", GlobalScopeKind.animation_worklet.name());
+    try std.testing.expectEqualStrings("LayoutWorkletGlobalScope", GlobalScopeKind.layout_worklet.name());
+    try std.testing.expectEqualStrings("SharedStorageWorkletGlobalScope", GlobalScopeKind.shared_storage_worklet.name());
+    try std.testing.expectEqualStrings("ShadowRealm", GlobalScopeKind.shadow_realm.name());
+    try std.testing.expectEqualStrings("Unknown", GlobalScopeKind.unknown.name());
+}
+
+test "GlobalScopeKind - shortName returns WPT-compatible names" {
+    try std.testing.expectEqualStrings("window", GlobalScopeKind.window.shortName());
+    try std.testing.expectEqualStrings("worker", GlobalScopeKind.dedicated_worker.shortName());
+    try std.testing.expectEqualStrings("sharedworker", GlobalScopeKind.shared_worker.shortName());
+    try std.testing.expectEqualStrings("serviceworker", GlobalScopeKind.service_worker.shortName());
+    try std.testing.expectEqualStrings("audioworklet", GlobalScopeKind.audio_worklet.shortName());
+    try std.testing.expectEqualStrings("paintworklet", GlobalScopeKind.paint_worklet.shortName());
+    try std.testing.expectEqualStrings("animationworklet", GlobalScopeKind.animation_worklet.shortName());
+    try std.testing.expectEqualStrings("layoutworklet", GlobalScopeKind.layout_worklet.shortName());
+    try std.testing.expectEqualStrings("sharedstorageworklet", GlobalScopeKind.shared_storage_worklet.shortName());
+    try std.testing.expectEqualStrings("shadowrealm", GlobalScopeKind.shadow_realm.shortName());
+    try std.testing.expectEqualStrings("unknown", GlobalScopeKind.unknown.shortName());
+}
+
+test "GlobalScopeKind - isImplemented reflects current status" {
+    // Implemented contexts
+    try std.testing.expect(GlobalScopeKind.window.isImplemented());
+    try std.testing.expect(GlobalScopeKind.dedicated_worker.isImplemented());
+
+    // SharedWorker now implemented (BSCOPE-11)
+    try std.testing.expect(GlobalScopeKind.shared_worker.isImplemented());
+
+    // ServiceWorker implemented (BSCOPE-15/16)
+    try std.testing.expect(GlobalScopeKind.service_worker.isImplemented());
+
+    // Worklets implemented (BSCOPE-17)
+    // Note: SharedStorageWorklet is NOT implemented (all APIs return NotImplemented)
+    try std.testing.expect(GlobalScopeKind.audio_worklet.isImplemented());
+    try std.testing.expect(GlobalScopeKind.paint_worklet.isImplemented());
+    try std.testing.expect(GlobalScopeKind.animation_worklet.isImplemented());
+    try std.testing.expect(GlobalScopeKind.layout_worklet.isImplemented());
+    try std.testing.expect(!GlobalScopeKind.shared_storage_worklet.isImplemented());
+
+    // ShadowRealm implemented (BSCOPE-21 - TC39 Stage 3, V8 built-in)
+    try std.testing.expect(GlobalScopeKind.shadow_realm.isImplemented());
+
+    // Unknown is not implemented
+    try std.testing.expect(!GlobalScopeKind.unknown.isImplemented());
+}
+
+test "GlobalScopeKind - isWorker" {
+    // Workers
+    try std.testing.expect(GlobalScopeKind.dedicated_worker.isWorker());
+    try std.testing.expect(GlobalScopeKind.shared_worker.isWorker());
+    try std.testing.expect(GlobalScopeKind.service_worker.isWorker());
+
+    // Not workers
+    try std.testing.expect(!GlobalScopeKind.window.isWorker());
+    try std.testing.expect(!GlobalScopeKind.audio_worklet.isWorker());
+    try std.testing.expect(!GlobalScopeKind.shadow_realm.isWorker());
+    try std.testing.expect(!GlobalScopeKind.unknown.isWorker());
+}
+
+test "GlobalScopeKind - isWorklet" {
+    // Worklets
+    try std.testing.expect(GlobalScopeKind.audio_worklet.isWorklet());
+    try std.testing.expect(GlobalScopeKind.paint_worklet.isWorklet());
+    try std.testing.expect(GlobalScopeKind.animation_worklet.isWorklet());
+    try std.testing.expect(GlobalScopeKind.layout_worklet.isWorklet());
+    try std.testing.expect(GlobalScopeKind.shared_storage_worklet.isWorklet());
+
+    // Not worklets
+    try std.testing.expect(!GlobalScopeKind.window.isWorklet());
+    try std.testing.expect(!GlobalScopeKind.dedicated_worker.isWorklet());
+    try std.testing.expect(!GlobalScopeKind.shadow_realm.isWorklet());
+    try std.testing.expect(!GlobalScopeKind.unknown.isWorklet());
+}
+
+test "GlobalScopeKind - isShadowRealm" {
+    try std.testing.expect(GlobalScopeKind.shadow_realm.isShadowRealm());
+
+    try std.testing.expect(!GlobalScopeKind.window.isShadowRealm());
+    try std.testing.expect(!GlobalScopeKind.dedicated_worker.isShadowRealm());
+    try std.testing.expect(!GlobalScopeKind.audio_worklet.isShadowRealm());
+    try std.testing.expect(!GlobalScopeKind.unknown.isShadowRealm());
+}
+
+test "GlobalScopeKind - toContextType conversion" {
+    try std.testing.expectEqual(ContextType.window, GlobalScopeKind.window.toContextType());
+    try std.testing.expectEqual(ContextType.dedicated_worker, GlobalScopeKind.dedicated_worker.toContextType());
+    try std.testing.expectEqual(ContextType.shared_worker, GlobalScopeKind.shared_worker.toContextType());
+    try std.testing.expectEqual(ContextType.service_worker, GlobalScopeKind.service_worker.toContextType());
+
+    // All worklets map to generic worklet
+    try std.testing.expectEqual(ContextType.worklet, GlobalScopeKind.audio_worklet.toContextType());
+    try std.testing.expectEqual(ContextType.worklet, GlobalScopeKind.paint_worklet.toContextType());
+    try std.testing.expectEqual(ContextType.worklet, GlobalScopeKind.animation_worklet.toContextType());
+    try std.testing.expectEqual(ContextType.worklet, GlobalScopeKind.layout_worklet.toContextType());
+    try std.testing.expectEqual(ContextType.worklet, GlobalScopeKind.shared_storage_worklet.toContextType());
+
+    // ShadowRealm maps to shadow_realm context type
+    try std.testing.expectEqual(ContextType.shadow_realm, GlobalScopeKind.shadow_realm.toContextType());
+    try std.testing.expectEqual(ContextType.unknown, GlobalScopeKind.unknown.toContextType());
+}
+
+test "GlobalScopeKind - fromContextType conversion" {
+    try std.testing.expectEqual(GlobalScopeKind.window, GlobalScopeKind.fromContextType(.window));
+    try std.testing.expectEqual(GlobalScopeKind.dedicated_worker, GlobalScopeKind.fromContextType(.dedicated_worker));
+    try std.testing.expectEqual(GlobalScopeKind.shared_worker, GlobalScopeKind.fromContextType(.shared_worker));
+    try std.testing.expectEqual(GlobalScopeKind.service_worker, GlobalScopeKind.fromContextType(.service_worker));
+
+    // Generic worklet defaults to audio_worklet
+    try std.testing.expectEqual(GlobalScopeKind.audio_worklet, GlobalScopeKind.fromContextType(.worklet));
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromContextType(.shadow_realm));
+    try std.testing.expectEqual(GlobalScopeKind.unknown, GlobalScopeKind.fromContextType(.unknown));
+}
+
+test "GlobalScopeKind - fromWptGlobalString standard contexts" {
+    // Window
+    try std.testing.expectEqual(GlobalScopeKind.window, GlobalScopeKind.fromWptGlobalString("window").?);
+
+    // Workers (both forms)
+    try std.testing.expectEqual(GlobalScopeKind.dedicated_worker, GlobalScopeKind.fromWptGlobalString("worker").?);
+    try std.testing.expectEqual(GlobalScopeKind.dedicated_worker, GlobalScopeKind.fromWptGlobalString("dedicatedworker").?);
+    try std.testing.expectEqual(GlobalScopeKind.shared_worker, GlobalScopeKind.fromWptGlobalString("sharedworker").?);
+    try std.testing.expectEqual(GlobalScopeKind.service_worker, GlobalScopeKind.fromWptGlobalString("serviceworker").?);
+}
+
+test "GlobalScopeKind - fromWptGlobalString worklets" {
+    try std.testing.expectEqual(GlobalScopeKind.audio_worklet, GlobalScopeKind.fromWptGlobalString("audioworklet").?);
+    try std.testing.expectEqual(GlobalScopeKind.paint_worklet, GlobalScopeKind.fromWptGlobalString("paintworklet").?);
+    try std.testing.expectEqual(GlobalScopeKind.animation_worklet, GlobalScopeKind.fromWptGlobalString("animationworklet").?);
+    try std.testing.expectEqual(GlobalScopeKind.layout_worklet, GlobalScopeKind.fromWptGlobalString("layoutworklet").?);
+    try std.testing.expectEqual(GlobalScopeKind.shared_storage_worklet, GlobalScopeKind.fromWptGlobalString("sharedstorageworklet").?);
+}
+
+test "GlobalScopeKind - fromWptGlobalString shadowrealm" {
+    // Base shadowrealm
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromWptGlobalString("shadowrealm").?);
+
+    // Nested variants all map to shadow_realm
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromWptGlobalString("shadowrealm-in-window").?);
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromWptGlobalString("shadowrealm-in-dedicatedworker").?);
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromWptGlobalString("shadowrealm-in-sharedworker").?);
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromWptGlobalString("shadowrealm-in-shadowrealm").?);
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromWptGlobalString("shadowrealm-in-audioworklet").?);
+    try std.testing.expectEqual(GlobalScopeKind.shadow_realm, GlobalScopeKind.fromWptGlobalString("shadowrealm-in-serviceworker").?);
+}
+
+test "GlobalScopeKind - fromWptGlobalString invalid returns null" {
+    try std.testing.expectEqual(@as(?GlobalScopeKind, null), GlobalScopeKind.fromWptGlobalString("invalid"));
+    try std.testing.expectEqual(@as(?GlobalScopeKind, null), GlobalScopeKind.fromWptGlobalString(""));
+    try std.testing.expectEqual(@as(?GlobalScopeKind, null), GlobalScopeKind.fromWptGlobalString("Window")); // case-sensitive
+    try std.testing.expectEqual(@as(?GlobalScopeKind, null), GlobalScopeKind.fromWptGlobalString("WORKER"));
 }

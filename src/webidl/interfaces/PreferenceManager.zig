@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PreferenceObject = @import("interfaces").PreferenceObject;
+const PreferenceObject = @import("PreferenceObject.zig").PreferenceObject;
 
 pub const PreferenceManager = struct {
     pub const Meta = struct {

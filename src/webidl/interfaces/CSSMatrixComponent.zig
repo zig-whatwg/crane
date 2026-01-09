@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
-const DOMMatrixReadOnly = @import("interfaces").DOMMatrixReadOnly;
+const CSSTransformComponent = @import("CSSTransformComponent.zig").CSSTransformComponent;
+const DOMMatrixReadOnly = @import("DOMMatrixReadOnly.zig").DOMMatrixReadOnly;
 const CSSMatrixComponentOptions = @import("dictionaries").CSSMatrixComponentOptions;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSMatrixComponent = struct {

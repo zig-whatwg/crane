@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
+const CSSTransformComponent = @import("CSSTransformComponent.zig").CSSTransformComponent;
 const CSSPerspectiveValue = @import("typedefs").CSSPerspectiveValue;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSPerspective = struct {

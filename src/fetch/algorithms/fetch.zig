@@ -26,6 +26,7 @@ const FetchTimingInfo = fetch_timing.FetchTimingInfo;
 const main_fetch = @import("main_fetch.zig");
 const scheme_fetch = @import("scheme_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
+const certificate_trust = @import("../network/certificate_trust.zig");
 
 /// Error types for fetch.
 pub const FetchError = error{
@@ -56,6 +57,8 @@ pub const FetchOptions = struct {
     use_cors: bool = false,
     /// Cross-origin isolated capability
     cross_origin_isolated_capability: bool = false,
+    /// Certificate trust store for HTTPS (e.g., for WPT self-signed certs)
+    trust_store: ?*const certificate_trust.CertificateTrustStore = null,
 };
 
 /// Execute the top-level fetch algorithm.
@@ -104,6 +107,8 @@ pub fn fetch(
     if (options.process_response) |callback| {
         params.process_response = callback;
     }
+    // Pass certificate trust store for HTTPS validation
+    params.trust_store = options.trust_store;
 
     // Step 13: Dispatch based on URL scheme
     const url_str = request.currentUrl();

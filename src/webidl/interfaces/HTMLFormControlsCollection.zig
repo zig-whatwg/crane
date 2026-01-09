@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCollection = @import("interfaces").HTMLCollection;
-const Element = @import("interfaces").Element;
-const RadioNodeList = @import("interfaces").RadioNodeList;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
+const Element = @import("Element.zig").Element;
+const RadioNodeList = @import("RadioNodeList.zig").RadioNodeList;
 const DOMString = @import("typedefs").DOMString;
 
 pub const HTMLFormControlsCollection = struct {
