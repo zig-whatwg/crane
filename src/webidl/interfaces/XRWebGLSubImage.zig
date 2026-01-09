@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRSubImage = @import("interfaces").XRSubImage;
-const XRViewport = @import("interfaces").XRViewport;
-const WebGLTexture = @import("interfaces").WebGLTexture;
+const XRSubImage = @import("XRSubImage.zig").XRSubImage;
+const XRViewport = @import("XRViewport.zig").XRViewport;
+const WebGLTexture = @import("WebGLTexture.zig").WebGLTexture;
 
 pub const XRWebGLSubImage = struct {
     pub const Meta = struct {

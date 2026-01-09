@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 
 pub const CanvasTransform = struct {
     pub const Meta = struct {

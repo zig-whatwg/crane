@@ -9,6 +9,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const BaseAudioContext = interfaces.BaseAudioContext;
+const AudioWorklet = interfaces.AudioWorklet;
 
 pub const State = BaseAudioContext.State;
 
@@ -16,11 +17,58 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Internal state for BaseAudioContext
+/// Stores the audio context properties and associated worklet
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    sample_rate: f32,
+    current_time: f64,
+    render_quantum_size: u32,
+    state: enums.AudioContextState,
+    audio_worklet: ?*runtime.Instance,
+
+    pub fn init(allocator: std.mem.Allocator, sample_rate: f32) InternalState {
+        return .{
+            .allocator = allocator,
+            .sample_rate = sample_rate,
+            .current_time = 0.0,
+            .render_quantum_size = 128, // Standard render quantum size
+            .state = ._suspended_,
+            .audio_worklet = null,
+        };
+    }
+
+    pub fn deinit(self: *InternalState) void {
+        // AudioWorklet instance is managed by GC, no need to free here
+        self.audio_worklet = null;
+    }
+};
+
+/// Global registry for BaseAudioContext internal state
+var internal_state_map: std.AutoHashMapUnmanaged(*runtime.Instance, *InternalState) = .{};
+var map_allocator: ?std.mem.Allocator = null;
+
+/// Get or create internal state for an instance
+pub fn getOrCreateInternalState(instance: *runtime.Instance, ctx_allocator: std.mem.Allocator, sample_rate: f32) !*InternalState {
+    const allocator = ctx_allocator;
+    if (map_allocator == null) {
+        map_allocator = allocator;
+    }
+
+    if (internal_state_map.get(instance)) |state| {
+        return state;
+    }
+
+    const state = try allocator.create(InternalState);
+    state.* = InternalState.init(allocator, sample_rate);
+    try internal_state_map.put(allocator, instance, state);
+    return state;
+}
+
+/// Get internal state for an instance
+fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    return internal_state_map.get(instance);
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,14 +78,15 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    if (internal_state_map.fetchRemove(instance)) |kv| {
+        kv.value.deinit();
+        kv.value.allocator.destroy(kv.value);
+    }
 }
 
 /// Getter for destination
@@ -48,14 +97,18 @@ pub fn get_destination(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for sampleRate
 pub fn get_sampleRate(instance: *runtime.Instance) anyerror!f32 {
-    _ = instance;
-    return error.NotImplemented;
+    if (getInternalState(instance)) |internal| {
+        return internal.sample_rate;
+    }
+    return 44100.0; // Default sample rate
 }
 
 /// Getter for currentTime
 pub fn get_currentTime(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    if (getInternalState(instance)) |internal| {
+        return internal.current_time;
+    }
+    return 0.0;
 }
 
 /// Getter for listener
@@ -66,20 +119,37 @@ pub fn get_listener(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for state
 pub fn get_state(instance: *runtime.Instance) anyerror!enums.AudioContextState {
-    _ = instance;
-    return error.NotImplemented;
+    if (getInternalState(instance)) |internal| {
+        return internal.state;
+    }
+    return ._suspended_;
 }
 
 /// Getter for renderQuantumSize
 pub fn get_renderQuantumSize(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    if (getInternalState(instance)) |internal| {
+        return internal.render_quantum_size;
+    }
+    return 128; // Standard render quantum size
 }
 
 /// Getter for audioWorklet
+/// Returns the AudioWorklet associated with this audio context
 pub fn get_audioWorklet(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // Get or create internal state with default sample rate
+    const allocator = instance.ctx.getAllocator();
+    const internal = try getOrCreateInternalState(instance, allocator, 44100.0);
+
+    // Lazily create AudioWorklet on first access
+    if (internal.audio_worklet) |worklet| {
+        return worklet;
+    }
+
+    // Create a new AudioWorklet instance
+    const worklet = try AudioWorklet.init(allocator, instance.ctx);
+    internal.audio_worklet = worklet;
+
+    return worklet;
 }
 
 /// Getter for onstatechange

@@ -1,39 +1,36 @@
-//! Worker V8 Integration
+//! Worker V8 Integration (LEGACY - DO NOT USE FOR WPT)
+//!
+//! ⚠️ DEPRECATED: This module contains STUB implementations that are NOT suitable
+//! for WPT tests or production use. For WPT worker tests, use WorkerV8Context
+//! from `src/html/worker_v8_context.zig` instead.
+//!
+//! ## Why This Exists
+//!
+//! This module was an early threading infrastructure attempt that has STUB
+//! implementations of:
+//! - importScripts() - just logs, doesn't fetch
+//! - postMessage() - just logs, doesn't send
+//! - close() - just logs, doesn't terminate
+//!
+//! ## What To Use Instead
+//!
+//! For WPT tests and production workers, use the callbacks in Worker.zig:
+//! - `createIsolateWithInterfaces()` → Uses WorkerV8Context.init()
+//! - `executeScriptWithInterfaces()` → Uses WorkerV8Context.executeScript()
+//! - `dispatchMessageWithInterfaces()` → Real message dispatch
+//!
+//! The WebIDL Worker constructor already uses the correct path via
+//! `Worker.zig:spawnWorkerThread()` which sets up WorkerV8Context-based
+//! callbacks.
+//!
+//! ## Legacy Usage (Thread Runner only)
+//!
+//! This module is ONLY for the low-level ThreadedWorkerManager when
+//! external code needs raw V8 isolate management without WebIDL interfaces.
+//! This is NOT used by WPT.
 //!
 //! Spec: HTML Standard § 10.2.5 Processing model
 //! https://html.spec.whatwg.org/#run-a-worker
-//!
-//! This module integrates the worker threading infrastructure with V8:
-//! - Creates isolated V8 contexts per worker thread
-//! - Sets up WorkerGlobalScope bindings
-//! - Handles import.meta.url for module workers
-//! - Manages per-isolate memory allocation
-//!
-//! ## V8 Isolate Per Worker
-//!
-//! Each worker thread gets its own V8 Isolate, providing:
-//! - Complete memory isolation (no shared heap)
-//! - Independent garbage collection
-//! - Thread-safe script execution
-//! - No data races between JavaScript contexts
-//!
-//! ## Usage
-//!
-//! ```zig
-//! const v8_worker = @import("worker_v8_integration.zig");
-//!
-//! // Create V8 integration for worker manager
-//! var integration = try v8_worker.WorkerV8Integration.init(allocator);
-//! defer integration.deinit();
-//!
-//! // Wire up to worker manager
-//! manager.setV8Callbacks(
-//!     integration.createIsolateCallback(),
-//!     integration.disposeIsolateCallback(),
-//!     integration.executeScriptCallback(),
-//!     integration.getContext(),
-//! );
-//! ```
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -96,6 +93,9 @@ pub const WorkerIsolateData = struct {
     /// Allocator for per-isolate allocations
     allocator: Allocator,
 
+    /// Whether the initial script has been executed
+    script_executed: bool = false,
+
     const Self = @This();
 
     /// Create a new V8 isolate and context for a worker
@@ -139,7 +139,98 @@ pub const WorkerIsolateData = struct {
             .allocator = allocator,
         };
 
+        // Set up worker global scope (console, self, GLOBAL, etc.)
+        try data.setupWorkerGlobals();
+
         return data;
+    }
+
+    /// Set up worker global scope with essential APIs
+    fn setupWorkerGlobals(self: *Self) !void {
+        // CRITICAL: Set up 'self' as alias for globalThis FIRST
+        // This must come before any script that references 'self'
+        const self_script =
+            \\self = globalThis;
+        ;
+        try self.executeScript(self_script);
+
+        // Set up GLOBAL object for WPT tests (testharness.js detection)
+        const global_script =
+            \\self.GLOBAL = {
+            \\  isWindow: function() { return false; },
+            \\  isWorker: function() { return true; },
+            \\  isShadowRealm: function() { return false; },
+            \\};
+        ;
+        try self.executeScript(global_script);
+
+        // Set up DedicatedWorkerGlobalScope constructor
+        const worker_scope_script =
+            \\(function() {
+            \\  function DedicatedWorkerGlobalScope() {}
+            \\  globalThis.DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
+            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, Object.getPrototypeOf(globalThis));
+            \\  Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+            \\  function WorkerGlobalScope() {}
+            \\  globalThis.WorkerGlobalScope = WorkerGlobalScope;
+            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, WorkerGlobalScope.prototype);
+            \\})();
+        ;
+        try self.executeScript(worker_scope_script);
+
+        // Set up console object (no-op implementation)
+        const console_script =
+            \\(function() {
+            \\  function consoleNoop() {}
+            \\  globalThis.console = {
+            \\    log: consoleNoop, warn: consoleNoop, error: consoleNoop,
+            \\    info: consoleNoop, debug: consoleNoop, trace: consoleNoop,
+            \\    dir: consoleNoop, table: consoleNoop, assert: consoleNoop,
+            \\    clear: consoleNoop, count: consoleNoop, countReset: consoleNoop,
+            \\    group: consoleNoop, groupCollapsed: consoleNoop, groupEnd: consoleNoop,
+            \\    time: consoleNoop, timeLog: consoleNoop, timeEnd: consoleNoop,
+            \\  };
+            \\})();
+        ;
+        try self.executeScript(console_script);
+
+        // Set up postMessage (stub for now - messages go to outbox)
+        const postmessage_script =
+            \\globalThis.postMessage = function(message) {
+            \\  // TODO: Wire up to thread-safe outbox queue
+            \\  console.log('[Worker] postMessage called:', message);
+            \\};
+        ;
+        try self.executeScript(postmessage_script);
+
+        // Set up onmessage handler property
+        const onmessage_script =
+            \\globalThis.onmessage = null;
+        ;
+        try self.executeScript(onmessage_script);
+
+        // Set up close() stub
+        const close_script =
+            \\globalThis.close = function() {
+            \\  // TODO: Wire up to terminate worker thread
+            \\  console.log('[Worker] close() called');
+            \\};
+        ;
+        try self.executeScript(close_script);
+
+        // NOTE: MessageEvent is registered as a native interface via hydrateWorkerContext()
+        // Do NOT create a JS stub here - it would shadow the native accessor properties
+
+        // Set up importScripts stub
+        // For threaded workers, this is a stub - proper implementation would
+        // need to synchronously fetch and execute external scripts
+        const importscripts_script =
+            \\globalThis.importScripts = function(...urls) {
+            \\  // TODO: Implement proper script fetching
+            \\  console.log('[Worker] importScripts called with:', urls);
+            \\};
+        ;
+        try self.executeScript(importscripts_script);
     }
 
     /// Clean up V8 isolate and context
@@ -177,6 +268,56 @@ pub const WorkerIsolateData = struct {
         _ = v8_Script_Run(self.context, script) orelse {
             return error.V8ExecutionFailed;
         };
+    }
+
+    /// Dispatch a message to the worker's onmessage handler
+    /// The first message is treated as the initial script to execute.
+    /// Subsequent messages are dispatched as MessageEvents to onmessage.
+    pub fn dispatchMessage(self: *Self, msg: *const worker_threading.ThreadSafeMessageQueue.SerializedMessage) anyerror!void {
+        // Extract the string data from the message
+        const data_str = switch (msg.data.type) {
+            .primitive => blk: {
+                switch (msg.data.data.primitive) {
+                    .string => |s| break :blk s,
+                    .undefined => break :blk "undefined",
+                    .null => break :blk "null",
+                    .boolean => |b| break :blk if (b) "true" else "false",
+                    else => {
+                        std.log.warn("Unsupported primitive type in message", .{});
+                        return;
+                    },
+                }
+            },
+            else => {
+                std.log.warn("Unsupported message type: {}", .{msg.data.type});
+                return;
+            },
+        };
+
+        // First message is the worker script to execute
+        if (!self.script_executed) {
+            self.script_executed = true;
+            try self.executeScript(data_str);
+            return;
+        }
+
+        // Subsequent messages are dispatched to onmessage handler
+        // Create JavaScript to dispatch the message as a MessageEvent
+        var dispatch_script_buf: [4096]u8 = undefined;
+        const dispatch_script = std.fmt.bufPrint(&dispatch_script_buf,
+            \\(function() {{
+            \\  if (typeof onmessage === 'function') {{
+            \\    var data = {s};
+            \\    var event = new MessageEvent('message', {{ data: data }});
+            \\    onmessage(event);
+            \\  }}
+            \\}})();
+        , .{data_str}) catch {
+            return error.V8StringCreationFailed;
+        };
+
+        // Execute the dispatch script
+        try self.executeScript(dispatch_script);
     }
 };
 
@@ -231,22 +372,33 @@ pub const WorkerV8Integration = struct {
         try isolate_data.executeScript(source);
     }
 
-    /// Get function pointer for createIsolate callback
-    pub fn createIsolateCallback(self: *const Self) worker_threading.WorkerThreadRunner.CreateIsolateFn {
-        _ = self;
+    /// Callback to dispatch a message to the worker's onmessage handler
+    pub fn dispatchMessage(
+        isolate_data_ptr: *anyopaque,
+        msg: *worker_threading.ThreadSafeMessageQueue.SerializedMessage,
+    ) anyerror!void {
+        const isolate_data: *WorkerIsolateData = @ptrCast(@alignCast(isolate_data_ptr));
+        try isolate_data.dispatchMessage(msg);
+    }
+
+    /// Get function pointer for createIsolate callback (static - no instance needed)
+    pub fn createIsolateCallback() worker_threading.WorkerThreadRunner.CreateIsolateFn {
         return &createIsolate;
     }
 
-    /// Get function pointer for disposeIsolate callback
-    pub fn disposeIsolateCallback(self: *const Self) worker_threading.WorkerThreadRunner.DisposeIsolateFn {
-        _ = self;
+    /// Get function pointer for disposeIsolate callback (static - no instance needed)
+    pub fn disposeIsolateCallback() worker_threading.WorkerThreadRunner.DisposeIsolateFn {
         return &disposeIsolate;
     }
 
-    /// Get function pointer for executeScript callback
-    pub fn executeScriptCallback(self: *const Self) worker_threading.WorkerThreadRunner.ExecuteScriptFn {
-        _ = self;
+    /// Get function pointer for executeScript callback (static - no instance needed)
+    pub fn executeScriptCallback() worker_threading.WorkerThreadRunner.ExecuteScriptFn {
         return &executeScript;
+    }
+
+    /// Get function pointer for dispatchMessage callback (static - no instance needed)
+    pub fn dispatchMessageCallback() worker_threading.WorkerThreadRunner.DispatchMessageFn {
+        return &dispatchMessage;
     }
 
     /// Get context (self pointer for callback context)
@@ -257,9 +409,10 @@ pub const WorkerV8Integration = struct {
     /// Wire up V8 callbacks to a worker manager
     pub fn wireToManager(self: *Self, manager: *ThreadedWorkerManager) void {
         manager.setV8Callbacks(
-            self.createIsolateCallback(),
-            self.disposeIsolateCallback(),
-            self.executeScriptCallback(),
+            createIsolateCallback(),
+            disposeIsolateCallback(),
+            executeScriptCallback(),
+            dispatchMessageCallback(),
             self.getContext(),
         );
     }

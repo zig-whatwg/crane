@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("interfaces").CSSRule;
+const CSSRule = @import("CSSRule.zig").CSSRule;
 const DOMString = @import("typedefs").DOMString;
-const CSSValue = @import("interfaces").CSSValue;
+const CSSValue = @import("CSSValue.zig").CSSValue;
 
 pub const CSSFontFaceDescriptors = struct {
     pub const Meta = struct {

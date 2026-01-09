@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const DOMRectInit = @import("dictionaries").DOMRectInit;
 
 pub const DOMRect = struct {

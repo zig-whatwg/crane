@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WakeLockSentinel = @import("interfaces").WakeLockSentinel;
+const WakeLockSentinel = @import("WakeLockSentinel.zig").WakeLockSentinel;
 const WakeLockType = @import("enums").WakeLockType;
 
 pub const WakeLock = struct {

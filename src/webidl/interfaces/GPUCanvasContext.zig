@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
-const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
+const HTMLCanvasElement = @import("HTMLCanvasElement.zig").HTMLCanvasElement;
+const OffscreenCanvas = @import("OffscreenCanvas.zig").OffscreenCanvas;
 const GPUCanvasConfiguration = @import("dictionaries").GPUCanvasConfiguration;
-const GPUTexture = @import("interfaces").GPUTexture;
+const GPUTexture = @import("GPUTexture.zig").GPUTexture;
 
 pub const GPUCanvasContext = struct {
     pub const Meta = struct {
