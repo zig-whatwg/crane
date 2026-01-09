@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const USBIsochronousOutTransferPacket = @import("USBIsochronousOutTransferPacket.zig").USBIsochronousOutTransferPacket;
+const USBIsochronousOutTransferPacket = @import("interfaces").USBIsochronousOutTransferPacket;
 
 pub const USBIsochronousOutTransferResult = struct {
     pub const Meta = struct {

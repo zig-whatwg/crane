@@ -40,7 +40,6 @@ pub const network = @import("network/root.zig");
 pub const cache = @import("cache/root.zig");
 pub const algorithms = @import("algorithms/root.zig");
 pub const webidl = @import("webidl/root.zig");
-pub const interception = @import("interception/root.zig");
 
 // Re-export commonly used types
 pub const HeaderList = internal.HeaderList;

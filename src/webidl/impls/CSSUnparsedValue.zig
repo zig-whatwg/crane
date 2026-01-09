@@ -64,17 +64,3 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
     _ = callback;
     return error.NotImplemented;
 }
-
-
-pub fn call_setter(instance: *runtime.Instance, index: u32, val: typedefs.CSSUnparsedSegment) anyerror!void {
-    _ = instance;
-    _ = index;
-    _ = val;
-    return error.NotImplemented;
-}
-
-pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!typedefs.CSSUnparsedSegment {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
-}

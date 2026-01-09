@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRPose = @import("XRPose.zig").XRPose;
-const XRAnchor = @import("XRAnchor.zig").XRAnchor;
-const XRSpace = @import("XRSpace.zig").XRSpace;
+const XRPose = @import("interfaces").XRPose;
+const XRAnchor = @import("interfaces").XRAnchor;
+const XRSpace = @import("interfaces").XRSpace;
 
 pub const XRHitTestResult = struct {
     pub const Meta = struct {

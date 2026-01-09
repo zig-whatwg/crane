@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUObjectBase = @import("mixins").GPUObjectBase;
 const GPUPipelineBase = @import("mixins").GPUPipelineBase;
-const GPUBindGroupLayout = @import("GPUBindGroupLayout.zig").GPUBindGroupLayout;
+const GPUBindGroupLayout = @import("interfaces").GPUBindGroupLayout;
 const USVString = @import("typedefs").USVString;
 
 pub const GPUComputePipeline = struct {

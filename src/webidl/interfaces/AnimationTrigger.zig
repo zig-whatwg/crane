@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AnimationTriggerBehavior = @import("enums").AnimationTriggerBehavior;
 const AnimationTriggerOptions = @import("dictionaries").AnimationTriggerOptions;
-const AnimationTimeline = @import("AnimationTimeline.zig").AnimationTimeline;
+const AnimationTimeline = @import("interfaces").AnimationTimeline;
 
 pub const AnimationTrigger = struct {
     pub const Meta = struct {

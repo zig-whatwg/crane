@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const GPU = @import("GPU.zig").GPU;
+const GPU = @import("interfaces").GPU;
 
 pub const NavigatorGPU = struct {
     pub const Meta = struct {

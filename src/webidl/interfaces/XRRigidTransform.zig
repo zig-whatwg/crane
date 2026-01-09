@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMPointInit = @import("dictionaries").DOMPointInit;
-const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
+const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 
 pub const XRRigidTransform = struct {
     pub const Meta = struct {

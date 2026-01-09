@@ -246,35 +246,18 @@ fn namedPropertyGetter(
 }
 
 /// Named property setter - [[Set]] for WindowProperties
-/// Per WebIDL §3.7.4: [[Set]] on WindowProperties should only intercept
-/// properties that WindowProperties actually owns (named window accessors
-/// like iframe names, embed names, etc.). For all other properties,
-/// we return .kNo to allow normal property assignment on the global object.
+/// Per WebIDL §3.7.4: [[Set]] on WindowProperties ALWAYS throws TypeError
+/// This applies to ALL properties, not just named properties
 fn namedPropertySetter(
-    property: *v8.Name,
+    _: *v8.Name,
     _: *v8.Value,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
 
-    // Get the Window instance to check if this is a supported named property
-    const window_instance = getWindowInstanceFromHolder(info) orelse return .kNo;
-
-    // Get the property name as a string
-    var name_buf: [256]u8 = undefined;
-    const name_str = nameToNative(isolate, property, &name_buf) orelse return .kNo;
-
-    // Check if this property is a named property that WindowProperties manages
-    // (e.g., iframe names, embed names, form element names, etc.)
-    if (WindowImpl.isSupportedPropertyName(window_instance, name_str)) {
-        // This IS a WindowProperties-managed property - reject the set
-        conv.throwTypeError(isolate, "Cannot set property on WindowProperties object");
-        return .kYes;
-    }
-
-    // Not a WindowProperties property - let V8 handle it normally
-    // This allows `window.customProp = value` to work
-    return .kNo;
+    // WindowProperties is immutable - [[Set]] always throws TypeError
+    conv.throwTypeError(isolate, "Cannot set property on WindowProperties object");
+    return .kYes;
 }
 
 /// Named property query - [[HasProperty]] for WindowProperties

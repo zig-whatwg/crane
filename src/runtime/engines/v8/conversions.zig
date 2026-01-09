@@ -27,7 +27,6 @@ const namespace = @import("namespace.zig");
 const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
-const callback_registry = @import("callback_registry.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
@@ -59,10 +58,6 @@ pub const ConversionError = error{
 
     /// Failed to create a V8 Global handle for persistent storage
     GlobalHandleCreationFailed,
-
-    /// A JavaScript exception is already pending in V8 (rethrown from conversion)
-    /// When this error is returned, the caller should NOT throw another exception
-    ExceptionPending,
 };
 
 // ============================================================================
@@ -734,18 +729,9 @@ pub fn fromV8Value(
             if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
                 return ConversionError.TypeError;
             }
-            // Use safe ToString that captures exceptions from toString() methods
-            // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
-            const result = v8.v8_Value_ToString_Safe(value, context);
-            defer v8.v8_FreeToStringResult(result);
-
-            // If toString() threw an exception, rethrow it and signal caller not to throw again
-            if (result.exception) |exc| {
-                v8.v8_Isolate_ThrowException(isolate, exc);
-                return ConversionError.ExceptionPending;
-            }
-
-            const string = result.value orelse return ConversionError.TypeError;
+            // Use ToString coercion for everything else (numbers, booleans, objects, etc.)
+            // This matches browser behavior where formData.append('key', 123) stores "123"
+            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
             const length = v8.v8_String_Utf8Length(string);
             if (length < 0) return ConversionError.StringError;
             if (length == 0) return &[_]u8{};
@@ -776,18 +762,10 @@ pub fn fromV8Value(
         if (v8.v8_Value_IsSymbol(value)) {
             return ConversionError.TypeError;
         }
-        // Use safe ToString that captures exceptions from toString() methods
-        // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
-        const result = v8.v8_Value_ToString_Safe(value, context);
-        defer v8.v8_FreeToStringResult(result);
-
-        // If toString() threw an exception, rethrow it and signal caller not to throw again
-        if (result.exception) |exc| {
-            v8.v8_Isolate_ThrowException(isolate, exc);
-            return ConversionError.ExceptionPending;
-        }
-
-        const string = result.value orelse return ConversionError.TypeError;
+        // Use ToString coercion for everything else (null, undefined, numbers, booleans, objects, etc.)
+        // The value parameter must be a Global<Value>* - interceptor callbacks should persist raw
+        // pointers to Global handles before calling fromV8Value.
+        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
         return try fromV8String(allocator, isolate, context, string);
     }
 
@@ -981,36 +959,15 @@ pub fn fromV8Value(
                 return @unionInit(T, fields[idx].name, converted);
             }
         } else if (v8.v8_Value_IsObject(value)) {
-            // For objects, we need to distinguish between:
-            // 1. Wrapped platform objects (DOM nodes, etc.) - have internal fields
-            // 2. Plain JS objects (dictionaries, String objects, etc.) - no internal fields
-            //
-            // The problem: v8_Object_InternalFieldCount_Raw segfaults on plain objects.
-            // Solution: Try instance conversion, but if it returns an instance with null
-            // internal pointer, treat it as a plain object.
+            // Try *runtime.Instance first (for unions like NodeOrString)
+            // These are wrapped platform objects (DOM nodes, etc.)
             if (instance_idx) |idx| {
                 const FieldType = fields[idx].type;
-                // Try to extract as instance - but first check if we have a string alternative
-                // because strings should take priority over treating them as objects
-                if (string_idx != null and v8.v8_Value_IsString(value)) {
-                    // This is a string, skip instance extraction and let string handling below deal with it
-                } else if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
+                // Try to extract instance from V8 object
+                if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
                     return @unionInit(T, fields[idx].name, converted);
                 } else |_| {
-                    // Instance conversion failed - this might be a native JS object like URL.
-                    // If we have a string variant, try to convert the object to string via toString()
-                    if (string_idx) |str_idx| {
-                        // Call toString() on the object to get a string representation
-                        if (v8.v8_Value_ToString(value, context)) |str_value| {
-                            const StringFieldType = fields[str_idx].type;
-                            if (fromV8Value(StringFieldType, allocator, isolate, context, @ptrCast(str_value))) |str_converted| {
-                                return @unionInit(T, fields[str_idx].name, str_converted);
-                            } else |_| {
-                                // String conversion also failed, fall through
-                            }
-                        }
-                    }
-                    // Fall through to dict_idx
+                    // Not a valid instance - fall through to dict_idx
                 }
             }
             if (dict_idx) |idx| {
@@ -1111,9 +1068,7 @@ pub fn fromV8Value(
 
         const object = @as(*v8.Object, @ptrCast(value));
 
-        // Only accept objects that have valid WrapperTypeInfo - this means they
-        // were created by our WebIDL bindings. Native JS objects (like URL, Date, etc.)
-        // should NOT be converted to *runtime.Instance.
+        // First try to get stored WrapperTypeInfo for validation
         if (interface_mod.getWrapperTypeInfo(object)) |wrapper_info| {
             // We have type info - use type-safe unwrapping
             // For generic *runtime.Instance, we accept any valid wrapped object
@@ -1126,9 +1081,13 @@ pub fn fromV8Value(
             }
         }
 
-        // No valid WrapperTypeInfo - this is a native JS object (URL, Date, etc.),
-        // not a WebIDL-wrapped platform object. Do NOT try to extract instance.
-        return ConversionError.TypeError;
+        // Fall back to legacy extraction (no type info stored)
+        // Get the instance pointer from internal field 0
+        const internal_field = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse {
+            return ConversionError.TypeError;
+        };
+
+        return @ptrCast(@alignCast(internal_field));
     }
 
     // Handle function pointers (callbacks)
@@ -1494,8 +1453,6 @@ pub fn fromV8Value(
             value,
             "handleEvent", // Default method name for callback interfaces
         ) orelse return ConversionError.TypeError;
-        // Register wrapper for cleanup when context is destroyed
-        callback_registry.register(v8_wrapper);
         // Cast to opaque runtime.CallbackWrapper pointer
         // The runtime.CallbackWrapper and v8 CallbackWrapper are layout-compatible for this use
         return @ptrCast(v8_wrapper);
@@ -1513,8 +1470,6 @@ pub fn fromV8Value(
             "handleEvent",
         );
         if (v8_wrapper) |w| {
-            // Register wrapper for cleanup when context is destroyed
-            callback_registry.register(w);
             return @ptrCast(w);
         }
         return null;
@@ -1775,17 +1730,17 @@ pub fn toV8Value(
                 }
 
                 // Handle scope determines how to convert:
-                // - Global handles are Global<Value>* and must be dereferenced via v8_Global_Get
-                //   to obtain the actual Local<Value> that can be used in V8 APIs
-                // - Local handles can be returned directly (they're already Local<Value>*)
+                // - Global handles are already Global<Value>* and can be returned directly
+                //   (setReturnValue expects Global pointers from v8_String_NewFromUtf8, etc.)
+                // - Local handles need to be persisted to Global for setReturnValue to work
                 if (h.handle_scope == .global) {
-                    // Global<Value>* - must dereference to get Local<Value>*
-                    // v8_Global_Get returns the underlying value from the global handle
-                    const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
-                    break :blk if (local) |l| @ptrCast(l) else toV8Undefined(isolate);
-                } else {
-                    // Local handle - can be returned directly
+                    // Already a Global<Value>* - return directly
                     break :blk @ptrCast(h.ptr);
+                } else {
+                    // Local handle - need to persist to Global for safe return
+                    // Use v8_Value_Persist to convert Local to Global
+                    const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
+                    break :blk if (global) |g| @ptrCast(g) else toV8Undefined(isolate);
                 }
             },
             .instance => |i| instanceToV8(isolate, @ptrCast(@alignCast(i))),
@@ -1796,23 +1751,6 @@ pub fn toV8Value(
             .not_passed => toV8Undefined(isolate),
             .passed => |v| try toV8Value(runtime.JSValue, isolate, context, v),
         };
-    }
-
-    // Handle webidl.Opt types (WebIDL optional parameters)
-    // These are structs with was_passed and value fields, used for optional parameters
-    // that need to distinguish between "not passed" and "passed with value"
-    if (@typeInfo(T) == .@"struct") {
-        if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed") and @hasDecl(T, "getValue")) {
-            // This is a webidl.Opt type
-            if (!value.wasPassed()) {
-                // Not passed -> undefined
-                return toV8Undefined(isolate);
-            } else {
-                // Passed -> convert inner value
-                const InnerType = @TypeOf(value.getValue());
-                return try toV8Value(InnerType, isolate, context, value.getValue());
-            }
-        }
     }
 
     // Handle optional types (nullable)

@@ -27,7 +27,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
@@ -249,8 +248,6 @@ pub const ScriptingParseOptions = struct {
     /// parsing so that scripts executing during parsing can access DOM elements via
     /// document.getElementById(), document.querySelector(), etc.
     existing_document: ?*runtime.Instance = null,
-    /// Certificate trust store for HTTPS script fetching (e.g., WPT self-signed certs)
-    trust_store: ?*const @import("fetch").network.CertificateTrustStore = null,
 };
 
 /// Parse an HTML document with scripting support
@@ -334,9 +331,6 @@ pub fn parseHTMLWithScripting(
         &tree_builder,
         options.scripting_enabled,
     );
-
-    // Set trust store for HTTPS script fetching (e.g., WPT self-signed certs)
-    script_context.trust_store = options.trust_store;
 
     // Set base URL for resolving relative script URLs
     script_context.setBaseUrl(options.base_url);
@@ -908,19 +902,16 @@ fn fireDOMContentLoadedEvent(
     ctx: runtime.Context,
     document: *runtime.Instance,
 ) !void {
-    _ = allocator; // ctx.allocator is used by call_constructor
+    // Create the DOMContentLoaded event
+    const event = interfaces.Event.init(allocator, ctx) catch return error.OutOfMemory;
+    errdefer interfaces.Event.deinit(event);
 
-    // Create the DOMContentLoaded event using call_constructor
-    // This properly initializes InternalState (required for dispatch)
+    // Initialize the event with type "DOMContentLoaded"
     // Per spec: bubbles = true, cancelable = false
     const event_type = runtime.DOMString.initInterned("DOMContentLoaded");
-    const event_init = dictionaries.EventInit{
-        .bubbles = true,
-        .cancelable = false,
-        .composed = false,
-    };
-    const event = interfaces.Event.call_constructor(ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch return error.OutOfMemory;
-    defer interfaces.Event.deinit(event);
+    const bubbles = webidl.Opt(bool).passed(true);
+    const cancelable = webidl.Opt(bool).passed(false);
+    interfaces.Event.call_initEvent(event, event_type, bubbles, cancelable) catch return error.InvalidStateError;
 
     // Dispatch the event on the document
     // Document inherits from EventTarget so it can receive events

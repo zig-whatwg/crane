@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRPose = @import("XRPose.zig").XRPose;
-const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
-const XRView = @import("XRView.zig").XRView;
-const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
+const XRPose = @import("interfaces").XRPose;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
+const XRView = @import("interfaces").XRView;
+const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
 
 pub const XRViewerPose = struct {
     pub const Meta = struct {

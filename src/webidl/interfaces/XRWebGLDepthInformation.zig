@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRDepthInformation = @import("XRDepthInformation.zig").XRDepthInformation;
-const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
+const XRDepthInformation = @import("interfaces").XRDepthInformation;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XRTextureType = @import("enums").XRTextureType;
-const WebGLTexture = @import("WebGLTexture.zig").WebGLTexture;
+const WebGLTexture = @import("interfaces").WebGLTexture;
 
 pub const XRWebGLDepthInformation = struct {
     pub const Meta = struct {

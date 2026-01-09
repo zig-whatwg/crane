@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const USBEndpointType = @import("enums").USBEndpointType;
 const USBDirection = @import("enums").USBDirection;
-const USBAlternateInterface = @import("USBAlternateInterface.zig").USBAlternateInterface;
+const USBAlternateInterface = @import("interfaces").USBAlternateInterface;
 
 pub const USBEndpoint = struct {
     pub const Meta = struct {

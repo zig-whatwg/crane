@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("Node.zig").Node;
-const XPathResult = @import("XPathResult.zig").XPathResult;
+const Node = @import("interfaces").Node;
+const XPathResult = @import("interfaces").XPathResult;
 
 pub const XPathExpression = struct {
     pub const Meta = struct {

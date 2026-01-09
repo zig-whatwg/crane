@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DocumentFragment = @import("DocumentFragment.zig").DocumentFragment;
-const Document = @import("Document.zig").Document;
-const Node = @import("Node.zig").Node;
+const DocumentFragment = @import("interfaces").DocumentFragment;
+const Document = @import("interfaces").Document;
+const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
 
 pub const XSLTProcessor = struct {

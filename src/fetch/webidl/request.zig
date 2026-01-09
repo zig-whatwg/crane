@@ -103,21 +103,16 @@ pub const Request = struct {
         errdefer headers_obj.deinit();
 
         // Copy headers from init or input
-        // Per Fetch spec: headers must be in both headers_obj (for JS access) AND
-        // internal.header_list (for the actual fetch operation)
         if (options.headers) |h| {
             switch (h) {
                 .sequence => |seq| {
                     for (seq) |pair| {
                         try headers_obj.append(pair[0], pair[1]);
-                        // Also add to internal request's header list for the fetch operation
-                        try internal.header_list.append(pair[0], pair[1]);
                     }
                 },
                 .headers => |other| {
                     for (other.header_list.entries.items) |entry| {
                         try headers_obj.append(entry.name, entry.value);
-                        try internal.header_list.append(entry.name, entry.value);
                     }
                 },
                 .none => {},
@@ -126,7 +121,6 @@ pub const Request = struct {
             // Copy from input request
             for (input.request.headers_obj.header_list.entries.items) |entry| {
                 try headers_obj.append(entry.name, entry.value);
-                try internal.header_list.append(entry.name, entry.value);
             }
         }
 

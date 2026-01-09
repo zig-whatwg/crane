@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("Node.zig").Node;
-const NodeFilter = @import("NodeFilter.zig").NodeFilter;
+const Node = @import("interfaces").Node;
+const NodeFilter = @import("interfaces").NodeFilter;
 
 pub const TreeWalker = struct {
     pub const Meta = struct {

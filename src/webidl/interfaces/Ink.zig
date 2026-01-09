@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DelegatedInkTrailPresenter = @import("DelegatedInkTrailPresenter.zig").DelegatedInkTrailPresenter;
+const DelegatedInkTrailPresenter = @import("interfaces").DelegatedInkTrailPresenter;
 const InkPresenterParam = @import("dictionaries").InkPresenterParam;
 
 pub const Ink = struct {

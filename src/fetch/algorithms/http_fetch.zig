@@ -29,7 +29,6 @@ const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
 const LibcurlBackend = network.LibcurlBackend;
 const CurlCookieManager = network.curl_cookies.CurlCookieManager;
-const CertificateTrustStore = network.certificate_trust.CertificateTrustStore;
 const cors = @import("../cors/root.zig");
 const PreflightCache = cors.PreflightCache;
 
@@ -57,8 +56,6 @@ pub const HttpFetchOptions = struct {
     cookie_manager: ?*CurlCookieManager = null,
     /// Preflight cache for CORS preflight requests (optional)
     preflight_cache: ?*PreflightCache = null,
-    /// Certificate trust store for HTTPS (e.g., for WPT self-signed certs)
-    trust_store: ?*const CertificateTrustStore = null,
 };
 
 /// Execute the HTTP fetch algorithm.
@@ -84,34 +81,8 @@ pub fn httpFetch(
 
     // Step 3: Service worker handling
     // If request's service-workers mode is "all", handle service worker interception
-    // Uses VTable-based FetchInterceptor pattern to avoid circular dependency:
-    // - fetch owns the contract (interception/fetch_interceptor.zig)
-    // - service_worker implements and registers via Browser.zig at startup
-    // - fetch retrieves from registry without importing service_worker
-    if (request.service_workers_mode == .all and !request.skip_service_worker_interception) {
-        const interception = @import("../interception/root.zig");
-        if (interception.registry.get()) |interceptor| {
-            var ictx = interception.InterceptionContext{
-                .allocator = allocator,
-                .bypass_service_worker = false,
-            };
-
-            switch (interceptor.intercept(allocator, request, &ictx)) {
-                .network_fallback => {
-                    // No service worker interception, proceed to network fetch
-                },
-                .response => |sw_response| {
-                    // Service worker provided a response
-                    return sw_response;
-                },
-                .err => |err| {
-                    // Service worker error - return network error per spec
-                    _ = err;
-                    return try internal_response.networkError(allocator);
-                },
-            }
-        }
-    }
+    // TODO: Implement service worker interception when service worker module is available
+    // For now, skip service worker and proceed directly to network fetch
 
     // Step 4: If response is null, run HTTP-network-or-cache fetch
     if (response == null) {
@@ -304,7 +275,7 @@ pub fn httpNetworkFetch(
     const request = params.request;
 
     // Step 1: Build NetworkRequest from InternalRequest
-    const network_request = buildNetworkRequest(allocator, request, options.trust_store) catch {
+    const network_request = buildNetworkRequest(allocator, request) catch {
         return HttpFetchError.OutOfMemory;
     };
     defer freeNetworkRequest(allocator, network_request);
@@ -381,7 +352,7 @@ pub fn httpNetworkFetch(
 }
 
 /// Build a NetworkRequest from an InternalRequest.
-fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, trust_store: ?*const CertificateTrustStore) !NetworkRequest {
+fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest) !NetworkRequest {
     // Get headers from header list using iterator()
     const header_entries = request.header_list.iterator();
 
@@ -416,7 +387,6 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, trust_st
         .cert_options = .{
             .verify_peer = true,
             .verify_host = true,
-            .trust_store = trust_store,
         },
         .verbose = false,
     };

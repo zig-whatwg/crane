@@ -16,8 +16,6 @@ const response_mod = @import("response.zig");
 const InternalResponse = response_mod.InternalResponse;
 const networkError = response_mod.networkError;
 const abortedNetworkError = response_mod.abortedNetworkError;
-const certificate_trust = @import("../network/certificate_trust.zig");
-pub const CertificateTrustStore = certificate_trust.CertificateTrustStore;
 
 // =============================================================================
 // Task Destination
@@ -162,10 +160,6 @@ pub const FetchParams = struct {
     /// Spec: "A fetch params has an associated preloaded response candidate
     /// (default null), which is null, 'pending', or a response."
     preloaded_response_candidate: PreloadedResponseCandidate = .none,
-
-    /// Certificate trust store for HTTPS (browser extension for WPT self-signed certs).
-    /// Not part of WHATWG spec - used for browser integration.
-    trust_store: ?*const CertificateTrustStore = null,
 
     const Self = @This();
 

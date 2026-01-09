@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const DOMString = @import("typedefs").DOMString;
 
 pub const SVGAnimatedString = struct {

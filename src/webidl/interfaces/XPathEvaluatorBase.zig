@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XPathNSResolver = @import("XPathNSResolver.zig").XPathNSResolver;
-const XPathExpression = @import("XPathExpression.zig").XPathExpression;
-const Node = @import("Node.zig").Node;
-const XPathResult = @import("XPathResult.zig").XPathResult;
+const XPathNSResolver = @import("interfaces").XPathNSResolver;
+const XPathExpression = @import("interfaces").XPathExpression;
+const Node = @import("interfaces").Node;
+const XPathResult = @import("interfaces").XPathResult;
 const DOMString = @import("typedefs").DOMString;
 
 pub const XPathEvaluatorBase = struct {
