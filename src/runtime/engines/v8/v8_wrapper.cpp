@@ -2558,6 +2558,65 @@ bool v8_Set_Add(Global<Value>* set_value, Global<Value>* value) {
 }
 
 // ============================================================================
+// Structured Clone Functions (using V8 ValueSerializer/ValueDeserializer)
+// ============================================================================
+
+// Perform a full structured clone using V8's built-in serialization
+// This handles circular references, Date, RegExp, Map, Set, ArrayBuffer, etc.
+// Returns a new Global<Value>* that is a deep clone of the input
+Global<Value>* v8_Value_StructuredClone(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return nullptr;
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) return nullptr;
+
+    Local<Value> val = value->Get(isolate);
+
+    // Step 1: Serialize the value using V8's ValueSerializer
+    ValueSerializer serializer(isolate);
+    serializer.WriteHeader();
+
+    Maybe<bool> write_result = serializer.WriteValue(ctx, val);
+    if (write_result.IsNothing() || !write_result.FromJust()) {
+        // Serialization failed (e.g., contains functions, symbols, etc.)
+        return nullptr;
+    }
+
+    // Get the serialized data
+    std::pair<uint8_t*, size_t> buffer = serializer.Release();
+    uint8_t* data = buffer.first;
+    size_t size = buffer.second;
+
+    if (data == nullptr || size == 0) {
+        return nullptr;
+    }
+
+    // Step 2: Deserialize back into a new value using V8's ValueDeserializer
+    ValueDeserializer deserializer(isolate, data, size);
+
+    Maybe<bool> header_result = deserializer.ReadHeader(ctx);
+    if (header_result.IsNothing() || !header_result.FromJust()) {
+        free(data);
+        return nullptr;
+    }
+
+    MaybeLocal<Value> result = deserializer.ReadValue(ctx);
+
+    // Free the serialized buffer (serializer.Release() uses malloc)
+    free(data);
+
+    if (result.IsEmpty()) {
+        return nullptr;
+    }
+
+    Local<Value> cloned = result.ToLocalChecked();
+    return trackHandle(new Global<Value>(isolate, cloned));
+}
+
+// ============================================================================
 // Object Functions
 // ============================================================================
 

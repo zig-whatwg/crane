@@ -1022,45 +1022,17 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
                 };
             }
 
-            // For objects, use JSON serialize/deserialize as simplified structured clone
-            // This handles plain objects, arrays, etc. but not all spec-compliant types
-            // h.ptr is a Global<Value>* which v8_JSON_Stringify_ToBuffer expects
-            var json_buffer: [65536]u8 = undefined;
-            const json_len = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
-                v8_context,
-                @ptrCast(h.ptr),
-                &json_buffer,
-                json_buffer.len,
-            );
-
-            if (json_len < 0) {
-                // JSON stringify failed (circular reference, etc.)
-                return error.DataCloneError;
-            }
-
-            if (json_len == 0) {
-                // Empty result (undefined, function, etc.)
-                return runtime.JSValue{ .undefined = {} };
-            }
-
-            // Parse the JSON back into a V8 value
-            const parsed_value = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
-                v8_context,
-                &json_buffer,
-                @intCast(json_len),
-            ) orelse {
+            // For all other objects (plain objects, arrays, etc.), use V8's ValueSerializer
+            // This properly handles circular references, as well as Date, RegExp, Map, Set, ArrayBuffer
+            // Note: We already handled special types above, but V8's serializer handles them too
+            const cloned = v8_engine.ffi.v8_Value_StructuredClone(@ptrCast(h.ptr)) orelse {
+                // Serialization failed (e.g., contains functions, symbols, WeakMap, etc.)
                 return error.DataCloneError;
             };
 
-            // Create a Global handle for the parsed value so it persists
-            const global_handle = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(parsed_value));
-            if (global_handle == null) {
-                return error.DataCloneError;
-            }
-
             return runtime.JSValue{
                 .handle = .{
-                    .ptr = @ptrCast(global_handle),
+                    .ptr = @ptrCast(cloned),
                     .needs_disposal = true,
                     .handle_scope = .global,
                 },

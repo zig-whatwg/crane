@@ -738,6 +738,10 @@ pub extern fn v8_Set_AsArray(value: *Value) ?*Array;
 pub extern fn v8_Set_New(isolate: *Isolate) ?*Value;
 pub extern fn v8_Set_Add(set: *Value, value: *Value) bool;
 
+// Structured Clone (using V8 ValueSerializer/ValueDeserializer)
+// Performs a full structured clone, handling circular references, Date, RegExp, Map, Set, etc.
+pub extern fn v8_Value_StructuredClone(value: *Value) ?*Value;
+
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
