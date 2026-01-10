@@ -742,6 +742,23 @@ pub extern fn v8_Set_Add(set: *Value, value: *Value) bool;
 // Performs a full structured clone, handling circular references, Date, RegExp, Map, Set, etc.
 pub extern fn v8_Value_StructuredClone(value: *Value) ?*Value;
 
+// Structured Clone with Transfer - clones value and transfers ArrayBuffers
+// Per HTML spec StructuredSerializeWithTransfer, this:
+// - Transfers ArrayBuffers from source to clone (original gets detached)
+// - Throws DataCloneError if duplicate ArrayBuffers in transfer list
+// - Throws DataCloneError if transfer list contains non-ArrayBuffer
+// Parameters:
+//   value: The value to clone
+//   transfer_list: Array of Value* (ArrayBuffers) to transfer
+//   transfer_count: Number of items in transfer_list
+//   error_code: Pointer to receive error code (0=success, 1=DataCloneError, 2=other)
+pub extern fn v8_Value_StructuredCloneWithTransfer(
+    value: *Value,
+    transfer_list: [*]*Value,
+    transfer_count: usize,
+    error_code: *c_int,
+) ?*Value;
+
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;

@@ -2616,6 +2616,165 @@ Global<Value>* v8_Value_StructuredClone(Global<Value>* value) {
     return trackHandle(new Global<Value>(isolate, cloned));
 }
 
+// Structured Clone with Transfer - performs structured clone with ArrayBuffer transfer
+// Per HTML spec StructuredSerializeWithTransfer:
+// - Transfers ArrayBuffers from the source to the clone
+// - Detaches the original ArrayBuffers after transfer
+// - Throws DataCloneError if duplicate ArrayBuffers are in transfer list
+//
+// Parameters:
+// - value: The value to clone
+// - transfer_list: Array of Global<Value>* pointing to ArrayBuffers to transfer
+// - transfer_count: Number of items in transfer_list
+//
+// Returns: A new Global<Value>* that is a deep clone with transferred ArrayBuffers,
+//          or nullptr on error (duplicate in transfer list, non-ArrayBuffer in list, etc.)
+//
+// Error handling: Sets *error_code:
+//   0 = success
+//   1 = DataCloneError (duplicate in transfer list or non-transferable)
+//   2 = Other serialization error
+Global<Value>* v8_Value_StructuredCloneWithTransfer(
+    Global<Value>* value,
+    Global<Value>** transfer_list,
+    size_t transfer_count,
+    int* error_code
+) {
+    if (error_code) *error_code = 0;
+
+    if (!value || value->IsEmpty()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    Local<Value> val = value->Get(isolate);
+
+    // Check for duplicates in transfer list using pointer comparison
+    // Per HTML spec step 2.3: If memory[transferable] exists, throw "DataCloneError"
+    std::set<void*> seen_buffers;
+    std::vector<Local<ArrayBuffer>> array_buffers_to_transfer;
+
+    for (size_t i = 0; i < transfer_count; i++) {
+        if (!transfer_list[i] || transfer_list[i]->IsEmpty()) {
+            if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+
+        Local<Value> transfer_val = transfer_list[i]->Get(isolate);
+
+        if (!transfer_val->IsArrayBuffer()) {
+            // Only ArrayBuffer can be transferred (SharedArrayBuffer uses different mechanism)
+            if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+
+        Local<ArrayBuffer> ab = transfer_val.As<ArrayBuffer>();
+
+        // Get the backing store pointer for duplicate detection
+        std::shared_ptr<BackingStore> backing_store = ab->GetBackingStore();
+        void* data_ptr = backing_store ? backing_store->Data() : nullptr;
+
+        // Check for duplicate - same backing store pointer means same buffer
+        if (seen_buffers.find(data_ptr) != seen_buffers.end()) {
+            // Duplicate found - per spec, throw DataCloneError
+            if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+        seen_buffers.insert(data_ptr);
+
+        // Also check if buffer is already detached
+        if (ab->WasDetached()) {
+            if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+
+        array_buffers_to_transfer.push_back(ab);
+    }
+
+    // Step 1: Serialize the value using V8's ValueSerializer
+    ValueSerializer serializer(isolate);
+    serializer.WriteHeader();
+
+    // Register ArrayBuffers for transfer BEFORE writing the value
+    // This tells V8 to replace these ArrayBuffers with transfer IDs during serialization
+    for (size_t i = 0; i < array_buffers_to_transfer.size(); i++) {
+        serializer.TransferArrayBuffer(static_cast<uint32_t>(i), array_buffers_to_transfer[i]);
+    }
+
+    Maybe<bool> write_result = serializer.WriteValue(ctx, val);
+    if (write_result.IsNothing() || !write_result.FromJust()) {
+        // Serialization failed
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // Get the serialized data
+    std::pair<uint8_t*, size_t> buffer = serializer.Release();
+    uint8_t* data = buffer.first;
+    size_t size = buffer.second;
+
+    if (data == nullptr || size == 0) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // Step 2: Deserialize back into a new value
+    ValueDeserializer deserializer(isolate, data, size);
+
+    // Register the same ArrayBuffers for transfer on the deserializer side
+    // V8 will use these as the targets for the transferred data
+    for (size_t i = 0; i < array_buffers_to_transfer.size(); i++) {
+        // Create a new ArrayBuffer to receive the transferred data
+        // V8 will copy the data during deserialization
+        Local<ArrayBuffer> source = array_buffers_to_transfer[i];
+        std::shared_ptr<BackingStore> source_backing = source->GetBackingStore();
+        size_t byte_length = source_backing ? source_backing->ByteLength() : 0;
+
+        // Create new backing store with copied data
+        Local<ArrayBuffer> target = ArrayBuffer::New(isolate, byte_length);
+        if (byte_length > 0 && source_backing && target->GetBackingStore()) {
+            memcpy(target->GetBackingStore()->Data(), source_backing->Data(), byte_length);
+        }
+
+        deserializer.TransferArrayBuffer(static_cast<uint32_t>(i), target);
+    }
+
+    Maybe<bool> header_result = deserializer.ReadHeader(ctx);
+    if (header_result.IsNothing() || !header_result.FromJust()) {
+        free(data);
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    MaybeLocal<Value> result = deserializer.ReadValue(ctx);
+
+    // Free the serialized buffer
+    free(data);
+
+    if (result.IsEmpty()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // Detach the original ArrayBuffers after successful clone
+    // Per HTML spec step 5.4.3: Perform DetachArrayBuffer(transferable)
+    for (auto& ab : array_buffers_to_transfer) {
+        ab->Detach(Local<Value>());
+    }
+
+    Local<Value> cloned = result.ToLocalChecked();
+    return trackHandle(new Global<Value>(isolate, cloned));
+}
+
 // ============================================================================
 // Object Functions
 // ============================================================================

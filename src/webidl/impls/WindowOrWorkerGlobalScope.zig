@@ -821,9 +821,79 @@ fn microtaskTrampoline(data: ?*anyopaque) callconv(.c) void {
 /// Objects are serialized via JSON (simplified implementation).
 /// Symbols and functions throw DataCloneError.
 pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    // Note: transfer option is not yet implemented (would require ArrayBuffer detach support)
-    _ = options;
+    // Check if transfer option is provided
+    // Per HTML spec §2.7.7 StructuredSerializeWithTransfer, when transfer is provided:
+    // - ArrayBuffers in the transfer list are moved (not copied) to the clone
+    // - The original ArrayBuffers are detached after transfer
+    // - Duplicates in the transfer list throw DataCloneError
+    if (options.wasPassed()) {
+        const opts = options.value;
+        if (opts.transfer) |transfer_list| {
+            if (transfer_list.len > 0) {
+                // Build array of Value pointers for FFI call
+                // Need to extract the handle pointers from each JSValue
+                var transfer_ptrs: [256]*v8_engine.ffi.Value = undefined; // Max 256 transferables
+                if (transfer_list.len > 256) {
+                    return error.DataCloneError; // Too many transferables
+                }
 
+                for (transfer_list, 0..) |transfer_val, idx| {
+                    switch (transfer_val) {
+                        .handle => |h| {
+                            transfer_ptrs[idx] = @ptrCast(h.ptr);
+                        },
+                        else => {
+                            // Only handles (V8 objects) can be transferred
+                            return error.DataCloneError;
+                        },
+                    }
+                }
+
+                // Get the value handle for cloning
+                const value_handle = switch (value) {
+                    .handle => |h| @as(*v8_engine.ffi.Value, @ptrCast(h.ptr)),
+                    else => {
+                        // For primitives with transfer, just clone normally (transfer has no effect)
+                        // But for now, fall through to normal handling below
+                        return call_structuredCloneNoTransfer(instance, value);
+                    },
+                };
+
+                // Call V8's structured clone with transfer
+                var error_code: c_int = 0;
+                const cloned = v8_engine.ffi.v8_Value_StructuredCloneWithTransfer(
+                    value_handle,
+                    &transfer_ptrs,
+                    transfer_list.len,
+                    &error_code,
+                );
+
+                if (error_code == 1) {
+                    // DataCloneError - duplicate in transfer list, non-transferable, or already detached
+                    return error.DataCloneError;
+                }
+
+                if (cloned == null) {
+                    return error.DataCloneError;
+                }
+
+                return runtime.JSValue{
+                    .handle = .{
+                        .ptr = @ptrCast(cloned),
+                        .needs_disposal = true,
+                        .handle_scope = .global,
+                    },
+                };
+            }
+        }
+    }
+
+    // No transfer - use standard clone logic
+    return call_structuredCloneNoTransfer(instance, value);
+}
+
+/// Internal helper for structuredClone without transfer
+fn call_structuredCloneNoTransfer(instance: *runtime.Instance, value: runtime.JSValue) anyerror!runtime.JSValue {
     // Handle based on JSValue variant
     switch (value) {
         // Primitives are immutable - return the same value
