@@ -814,11 +814,117 @@ fn microtaskTrampoline(data: ?*anyopaque) callconv(.c) void {
 }
 
 /// Operation: structuredClone
+/// Spec: https://html.spec.whatwg.org/multipage/structured-data.html#dom-structuredclone
+///
+/// Creates a deep copy of the given value using the structured clone algorithm.
+/// Primitives are immutable and can be returned directly.
+/// Objects are serialized via JSON (simplified implementation).
+/// Symbols and functions throw DataCloneError.
 pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = value;
+    // Note: transfer option is not yet implemented (would require ArrayBuffer detach support)
     _ = options;
-    return error.NotImplemented;
+
+    // Handle based on JSValue variant
+    switch (value) {
+        // Primitives are immutable - return the same value
+        .undefined => return runtime.JSValue{ .undefined = {} },
+        .null => return runtime.JSValue{ .null = {} },
+        .boolean => |b| return runtime.JSValue{ .boolean = b },
+        .number => |n| return runtime.JSValue{ .number = n },
+
+        // Strings need to be cloned to ensure independence
+        .string => |s| {
+            if (s.owned and s.data.len > 0) {
+                // Clone the string data
+                const cloned = try instance.ctx.allocator.dupe(u8, s.data);
+                return runtime.JSValue{ .string = .{ .data = cloned, .owned = true } };
+            } else {
+                // Non-owned or empty string - return a new owned copy
+                if (s.data.len > 0) {
+                    const cloned = try instance.ctx.allocator.dupe(u8, s.data);
+                    return runtime.JSValue{ .string = .{ .data = cloned, .owned = true } };
+                } else {
+                    return runtime.JSValue{ .string = .{ .data = "", .owned = false } };
+                }
+            }
+        },
+
+        // Handle (V8 Global) - could be object, function, or symbol
+        .handle => |h| {
+            // Get V8 isolate and context
+            const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+                return error.InvalidStateError;
+            };
+            const v8_context: *v8_engine.ffi.Context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse {
+                return error.InvalidStateError;
+            };
+
+            // Get local value from global handle
+            const v8_value = v8_engine.ffi.v8_Global_Get(isolate, @ptrCast(h.ptr)) orelse {
+                return error.InvalidStateError;
+            };
+
+            if (v8_engine.ffi.v8_Value_IsSymbol(@ptrCast(v8_value))) {
+                // Symbols cannot be cloned - throw DataCloneError
+                return error.DataCloneError;
+            }
+
+            if (v8_engine.ffi.v8_Value_IsFunction(@ptrCast(v8_value))) {
+                // Functions cannot be cloned - throw DataCloneError
+                return error.DataCloneError;
+            }
+
+            // For objects, use JSON serialize/deserialize as simplified structured clone
+            // This handles plain objects, arrays, etc. but not all spec-compliant types
+            var json_buffer: [65536]u8 = undefined;
+            const json_len = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
+                v8_context,
+                @ptrCast(v8_value),
+                &json_buffer,
+                json_buffer.len,
+            );
+
+            if (json_len < 0) {
+                // JSON stringify failed (circular reference, etc.)
+                return error.DataCloneError;
+            }
+
+            if (json_len == 0) {
+                // Empty result (undefined, function, etc.)
+                return runtime.JSValue{ .undefined = {} };
+            }
+
+            // Parse the JSON back into a V8 value
+            const parsed_value = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
+                v8_context,
+                &json_buffer,
+                @intCast(json_len),
+            ) orelse {
+                return error.DataCloneError;
+            };
+
+            // Create a Global handle for the parsed value so it persists
+            const global_handle = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(parsed_value));
+            if (global_handle == null) {
+                return error.DataCloneError;
+            }
+
+            return runtime.JSValue{
+                .handle = .{
+                    .ptr = @ptrCast(global_handle),
+                    .needs_disposal = true,
+                    .handle_scope = .global,
+                },
+            };
+        },
+
+        // Instance (Zig runtime.Instance) - platform objects
+        .instance => {
+            // TODO: Implement platform object cloning for [Serializable] objects
+            // For now, throw DataCloneError as most platform objects aren't cloneable
+            return error.DataCloneError;
+        },
+    }
 }
 
 /// Operation: setTimeout

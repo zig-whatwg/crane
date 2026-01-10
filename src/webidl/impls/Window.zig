@@ -2979,11 +2979,9 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 }
 
 /// Operation: structuredClone
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = value;
-    _ = options;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
 }
 
 /// Operation: close
