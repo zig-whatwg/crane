@@ -2644,3 +2644,46 @@ pub extern fn crane_callback_cleanup_collected() u64;
 ///
 /// @return Number of callbacks pending cleanup
 pub extern fn crane_callback_collected_count() u64;
+
+/// Compare two callbacks by their underlying V8 function objects
+/// Returns true if they reference the same JavaScript function.
+/// This is used by removeEventListener to match callbacks - per DOM spec,
+/// two event listeners are the same if they have the same callback.
+///
+/// @param callback_id1 - First callback ID
+/// @param callback_id2 - Second callback ID
+/// @return true if both callbacks wrap the same JavaScript function
+pub extern fn crane_callback_compare(callback_id1: u64, callback_id2: u64) bool;
+
+// ============================================================================
+// Comparison-Only Function Handles (for removeEventListener)
+// ============================================================================
+//
+// These functions allow creating temporary Global<Function> handles for
+// comparison purposes without registering them with CallbackManager.
+// This is the production-quality approach: removeEventListener doesn't need
+// to create a persistent registration, it just needs to compare the provided
+// function against already-registered listeners.
+
+/// Create a Global<Function> handle without registering with CallbackManager.
+/// This is for comparison purposes only (e.g., removeEventListener).
+/// The caller MUST call crane_release_function_global() to avoid memory leaks.
+///
+/// @param func_global - Pointer to an existing Global<Value> containing a function
+/// @param ctx_global - Pointer to an existing Global<Context>
+/// @return Pointer to a new Global<Function>, or null on failure
+pub extern fn crane_create_function_global(func_global: *anyopaque, ctx_global: *anyopaque) ?*anyopaque;
+
+/// Release a Global<Function> handle created by crane_create_function_global.
+/// This MUST be called to avoid memory leaks.
+///
+/// @param global - Pointer to the Global<Function> to release
+pub extern fn crane_release_function_global(global: ?*anyopaque) void;
+
+/// Compare a registered callback with an unregistered function handle.
+/// This is the core of the comparison-only approach for removeEventListener.
+///
+/// @param callback_id - ID of a registered callback to compare against
+/// @param raw_func - Unregistered Global<Function>* to compare
+/// @return true if the functions are identical (same JS function object)
+pub extern fn crane_callback_matches_raw_function(callback_id: u64, raw_func: *anyopaque) bool;

@@ -47,11 +47,32 @@ const runtime = @import("runtime");
 /// Wrapper for a JavaScript callback (function or object with method)
 ///
 /// Used for WebIDL callback interfaces like EventListener.
-/// Stores an opaque callback ID - the actual V8 Global handles are owned by
-/// the C++ CallbackManager.
+///
+/// ## Two Modes of Operation
+///
+/// 1. **Registered Mode** (callback_id != 0):
+///    - Used by addEventListener to store callbacks that will be invoked later
+///    - The callback is registered with C++ CallbackManager
+///    - CallbackManager owns the Global<Function> handle
+///    - Supports invocation via invoke0/invoke1/invoke
+///
+/// 2. **Comparison-Only Mode** (callback_id == 0, comparison_global != null):
+///    - Used by removeEventListener to compare against registered callbacks
+///    - The callback is NOT registered with CallbackManager
+///    - We own a temporary Global<Function> for comparison
+///    - Does NOT support invocation (use only for equals())
+///    - MUST be cleaned up after use
+///
+/// This design follows Chromium's approach: removeEventListener doesn't need
+/// to create a persistent registration, it just needs to compare.
 pub const CallbackWrapper = struct {
     /// Opaque callback ID - C++ CallbackManager owns the actual V8 handle
+    /// Set to 0 for comparison-only wrappers
     callback_id: u64,
+
+    /// For comparison-only mode: temporary Global<Function>* that we own
+    /// Set to null for registered wrappers
+    comparison_global: ?*anyopaque = null,
 
     /// The V8 isolate this callback belongs to (for creating HandleScopes)
     isolate: *v8.Isolate,
@@ -164,10 +185,64 @@ pub const CallbackWrapper = struct {
         return wrapper;
     }
 
-    /// Clean up the callback wrapper and remove from CallbackManager
+    /// Create a comparison-only wrapper WITHOUT registering with CallbackManager
+    ///
+    /// This is used by removeEventListener to compare against registered callbacks
+    /// without creating unnecessary registrations. The wrapper stores a temporary
+    /// Global<Function> that we own and must clean up.
+    ///
+    /// IMPORTANT: This wrapper:
+    /// - CANNOT be invoked (invoke0/invoke1/invoke will fail)
+    /// - MUST be cleaned up via deinit() after use
+    /// - Is only valid for equals() comparison
+    ///
+    /// CRITICAL: This MUST be called while inside the V8 callback handler where
+    /// `func` and `context` are valid Local handles.
+    pub fn initForComparisonOnly(
+        allocator: std.mem.Allocator,
+        isolate: *v8.Isolate,
+        context: *v8.Context,
+        func: *v8.Function,
+    ) !*CallbackWrapper {
+        // Create a Global<Function> without registering with CallbackManager
+        const comparison_global = v8.crane_create_function_global(
+            @ptrCast(func),
+            @ptrCast(context),
+        );
+
+        if (comparison_global == null) {
+            return error.CallbackCreationFailed;
+        }
+
+        const wrapper = try allocator.create(CallbackWrapper);
+        wrapper.* = .{
+            .callback_id = 0, // Not registered
+            .comparison_global = comparison_global,
+            .isolate = isolate,
+            .allocator = allocator,
+            .is_function = true,
+            .method_name = null,
+        };
+        return wrapper;
+    }
+
+    /// Check if this is a comparison-only wrapper (not registered)
+    pub fn isComparisonOnly(self: *const CallbackWrapper) bool {
+        return self.callback_id == 0 and self.comparison_global != null;
+    }
+
+    /// Clean up the callback wrapper
+    ///
+    /// For registered wrappers: removes from C++ CallbackManager
+    /// For comparison-only wrappers: releases the temporary Global<Function>
     pub fn deinit(self: *CallbackWrapper) void {
-        // Remove from C++ CallbackManager (releases the Global handle)
-        v8.crane_callback_remove(self.callback_id);
+        if (self.callback_id != 0) {
+            // Registered wrapper - remove from C++ CallbackManager
+            v8.crane_callback_remove(self.callback_id);
+        } else if (self.comparison_global) |global| {
+            // Comparison-only wrapper - release the temporary Global
+            v8.crane_release_function_global(global);
+        }
         self.allocator.destroy(self);
     }
 
@@ -239,9 +314,38 @@ pub const CallbackWrapper = struct {
     }
 
     /// Check if two CallbackWrappers represent the same callback
-    /// Used for removeEventListener to match callbacks
+    /// Used for removeEventListener to match callbacks.
+    ///
+    /// Per DOM spec, two event listeners are the same if they have the same callback.
+    /// This uses V8's StrictEquals to compare the underlying JavaScript function objects.
+    ///
+    /// Supports mixed comparisons:
+    /// - Registered vs Registered: uses crane_callback_compare
+    /// - Registered vs Comparison-only: uses crane_callback_matches_raw_function
+    /// - Comparison-only vs Comparison-only: not supported (returns false)
     pub fn equals(self: *const CallbackWrapper, other: *const CallbackWrapper) bool {
-        return self.callback_id == other.callback_id;
+        const self_registered = self.callback_id != 0;
+        const other_registered = other.callback_id != 0;
+
+        if (self_registered and other_registered) {
+            // Both registered - use the standard comparison
+            return v8.crane_callback_compare(self.callback_id, other.callback_id);
+        }
+
+        if (self_registered and other.comparison_global != null) {
+            // Self is registered, other is comparison-only
+            // Compare registered callback against raw function
+            return v8.crane_callback_matches_raw_function(self.callback_id, other.comparison_global.?);
+        }
+
+        if (other_registered and self.comparison_global != null) {
+            // Other is registered, self is comparison-only
+            // Compare registered callback against raw function
+            return v8.crane_callback_matches_raw_function(other.callback_id, self.comparison_global.?);
+        }
+
+        // Both comparison-only or invalid - not supported
+        return false;
     }
 
     /// Get the callback ID (for external comparison if needed)
@@ -288,6 +392,9 @@ pub const CallbackWrapper = struct {
 ///
 /// Handles both function callbacks and object callbacks (with handleEvent method).
 /// Returns null if the value is not a valid callback.
+///
+/// The created wrapper is REGISTERED with CallbackManager - use this for callbacks
+/// that will be stored and invoked later (e.g., addEventListener).
 pub fn createFromV8Value(
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
@@ -309,6 +416,55 @@ pub fn createFromV8Value(
         // Check if object has the required method
         const obj: *v8.Object = @ptrCast(value);
         return try CallbackWrapper.initObject(allocator, isolate, context, obj, method_name);
+    }
+
+    return null;
+}
+
+/// Create a comparison-only CallbackWrapper from a V8 value
+///
+/// This creates a wrapper that is NOT registered with CallbackManager.
+/// Use this for callbacks that are only used for comparison (e.g., removeEventListener).
+///
+/// The caller MUST call deinit() on the returned wrapper to avoid memory leaks.
+/// Only function callbacks are supported (not object callbacks with handleEvent).
+pub fn createForComparisonOnly(
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) !?*CallbackWrapper {
+    if (v8.v8_Value_IsNullOrUndefined(value)) {
+        return null;
+    }
+
+    if (v8.v8_Value_IsFunction(value)) {
+        const func: *v8.Function = @ptrCast(value);
+        return try CallbackWrapper.initForComparisonOnly(allocator, isolate, context, func);
+    }
+
+    // For object callbacks with handleEvent, we need to extract the method
+    // For now, this is not supported in comparison-only mode
+    // (removeEventListener with object callbacks is rare)
+    if (v8.v8_Value_IsObject(value)) {
+        // Get the handleEvent method and create comparison-only wrapper for it
+        const obj: *v8.Object = @ptrCast(value);
+        const method_name = "handleEvent";
+        const name_str = v8.v8_String_NewFromUtf8(
+            isolate,
+            method_name,
+            @intCast(std.mem.len(method_name)),
+        ) orelse return null;
+        defer v8.v8_String_Dispose(name_str);
+
+        const method_value = v8.v8_Object_Get(@ptrCast(obj), context, @ptrCast(name_str)) orelse {
+            return null;
+        };
+
+        if (v8.v8_Value_IsFunction(method_value)) {
+            const method_func: *v8.Function = @ptrCast(method_value);
+            return try CallbackWrapper.initForComparisonOnly(allocator, isolate, context, method_func);
+        }
     }
 
     return null;

@@ -84,19 +84,25 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
 
-    // Dispose the V8 Global handle if state.own.data holds one that we own
+    // Clean up state.own.data based on its variant:
+    // - .handle: Dispose V8 Global handle if needs_disposal is true
+    // - .string: Free owned string buffer
     // This is critical for preventing memory leaks and use-after-free crashes.
-    // The Global handle was created in Worker.dispatchMessageEvent when JSON-parsing
-    // the message data, and stored via runtime.JSValue.fromHandle() which sets needs_disposal = true.
     switch (state.own.data) {
         .handle => |h| {
             if (h.needs_disposal) {
                 v8_engine.ffi.v8_Global_Dispose(@ptrCast(h.ptr));
             }
         },
+        .string => |s| {
+            if (s.owned and s.data.len > 0) {
+                // String data was cloned in constructor - free it
+                instance.ctx.allocator.free(s.data);
+            }
+        },
         else => {
-            // Other JSValue variants (undefined, null, boolean, number, string, instance)
-            // don't require V8 Global handle disposal
+            // Other JSValue variants (undefined, null, boolean, number, instance)
+            // don't require cleanup
         },
     }
 
@@ -158,8 +164,12 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         state.base.own.composed = init_dict.base.composed orelse false;
 
         // MessageEvent-specific properties (in state.own)
-        // Use JSValue.jsUndefined for undefined data
-        state.own.data = init_dict.data orelse runtime.JSValue.jsUndefined;
+        // Clone the data to take ownership - the original will be freed by freeConvertedValue
+        // after the constructor returns, so we must have our own copy
+        state.own.data = if (init_dict.data) |data|
+            try data.clone(ctx.allocator)
+        else
+            runtime.JSValue.jsUndefined;
         state.own.origin = init_dict.origin orelse "";
         state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
         // source and ports require more complex handling
@@ -191,27 +201,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    const data = state.own.data;
-    // Debug: log what we're returning
-    switch (data) {
-        .handle => |h| {
-            std.debug.print("[ME-GET-DATA] returning handle: ptr={*}, scope={s}, needs_disposal={}\n", .{
-                h.ptr,
-                if (h.handle_scope == .global) "global" else "local",
-                h.needs_disposal,
-            });
-        },
-        .undefined => {
-            std.debug.print("[ME-GET-DATA] returning undefined\n", .{});
-        },
-        .null => {
-            std.debug.print("[ME-GET-DATA] returning null\n", .{});
-        },
-        else => {
-            std.debug.print("[ME-GET-DATA] returning other type\n", .{});
-        },
-    }
-    return data;
+    return state.own.data;
 }
 
 /// Getter for origin

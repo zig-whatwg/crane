@@ -498,10 +498,31 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 }
 
 /// Operation: removeEventListener
+///
+/// Per DOM spec, this finds and removes an event listener matching the given
+/// type, callback, and capture flag.
+///
+/// IMPORTANT: The callback parameter is a temporary wrapper created by WebIDL
+/// conversion. After comparison, we MUST clean it up to avoid memory leaks.
+/// This is the production-quality approach matching Chromium's behavior.
 pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
-    const internal = getInternalFromRegistry(instance) orelse return;
+    const internal = getInternalFromRegistry(instance) orelse {
+        // Clean up callback even if we early-return (no internal state)
+        if (callback) |cb_opt| if (cb_opt) |cb| cb.deinit();
+        return;
+    };
     const parsed_options = flattenEventListenerOptions(instance, options);
     const cb_wrapper: ?*CallbackWrapper = if (callback) |cb_opt| cb_opt else null;
+
+    // Use defer to ensure cleanup happens even if removeAnEventListener fails
+    defer {
+        // Clean up the temporary callback wrapper after comparison
+        // This is essential to prevent memory leaks - the callback was created
+        // by WebIDL conversion just for this comparison and is not stored.
+        if (cb_wrapper) |cb| {
+            cb.deinit();
+        }
+    }
 
     const listener = EventListenerRecord{
         .type = @"type",

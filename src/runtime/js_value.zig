@@ -463,6 +463,44 @@ pub const JSValue = union(enum) {
     // Lifecycle
     // ========================================================================
 
+    /// Clone the JSValue, creating an independent copy that owns its own memory.
+    ///
+    /// This is essential when storing a JSValue from a temporary source (like a
+    /// dictionary argument) into persistent storage (like event state). Without
+    /// cloning, the original may be freed while the copy still references it.
+    ///
+    /// ## Memory Ownership
+    /// - `.string` with owned=true: Allocates a new buffer, copies data
+    /// - `.string` with owned=false: Returns a copy pointing to same data (no alloc)
+    /// - `.handle`: Returns a copy (caller must handle V8 Global separately)
+    /// - All other variants: Returns a copy (no allocation needed)
+    ///
+    /// ## Example
+    /// ```zig
+    /// // In a constructor, clone the dictionary value before storing
+    /// state.own.data = try init_dict.data.clone(allocator);
+    /// ```
+    pub fn clone(self: JSValue, allocator: std.mem.Allocator) !JSValue {
+        return switch (self) {
+            .string => |s| blk: {
+                if (s.owned and s.data.len > 0) {
+                    // Owned string - must allocate and copy
+                    const new_buffer = try allocator.alloc(u8, s.data.len);
+                    @memcpy(new_buffer, s.data);
+                    break :blk JSValue{ .string = .{ .data = new_buffer, .owned = true } };
+                } else {
+                    // Non-owned string - just copy the reference
+                    break :blk self;
+                }
+            },
+            // For all other variants, a shallow copy is sufficient
+            // - undefined, null, boolean, number: value types
+            // - handle: pointer to V8 Global (ownership handled separately)
+            // - instance: pointer to Zig Instance (managed by runtime)
+            else => self,
+        };
+    }
+
     /// Check if this value needs engine-side disposal
     pub fn needsDisposal(self: JSValue) bool {
         return switch (self) {

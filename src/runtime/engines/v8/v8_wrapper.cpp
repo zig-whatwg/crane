@@ -498,6 +498,66 @@ public:
         std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
         return collected_ids_.size();
     }
+
+    // Compare two callbacks by their underlying V8 function objects
+    // Returns true if they reference the same JavaScript function
+    bool Compare(uint64_t id1, uint64_t id2) {
+        if (id1 == id2) return true;  // Same ID = definitely same function
+
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto it1 = callbacks_.find(id1);
+        auto it2 = callbacks_.find(id2);
+
+        if (it1 == callbacks_.end() || it2 == callbacks_.end()) {
+            return false;  // One or both callbacks not found
+        }
+
+        if (it1->second.collected || it2->second.collected) {
+            return false;  // One or both callbacks have been GC'd
+        }
+
+        // Create HandleScope for accessing Global handles
+        HandleScope handle_scope(isolate_);
+
+        // Get the function objects from the Global handles
+        Local<Function> func1 = it1->second.function.Get(isolate_);
+        Local<Function> func2 = it2->second.function.Get(isolate_);
+
+        if (func1.IsEmpty() || func2.IsEmpty()) {
+            return false;
+        }
+
+        // Use V8's StrictEquals to compare the function objects
+        // This is the same check Chromium uses for event listener equality
+        return func1->StrictEquals(func2);
+    }
+
+    // Compare a registered callback with a raw (unregistered) function
+    // This is used by removeEventListener to find matching listeners
+    // without creating unnecessary registrations.
+    // NOTE: Caller must hold HandleScope and provide a valid Local<Function>
+    bool MatchesRawFunction(uint64_t id, Local<Function> raw_func) {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto it = callbacks_.find(id);
+        if (it == callbacks_.end()) {
+            return false;  // Callback not found
+        }
+
+        if (it->second.collected) {
+            return false;  // Callback has been GC'd
+        }
+
+        // Get the registered function
+        Local<Function> registered_func = it->second.function.Get(isolate_);
+        if (registered_func.IsEmpty()) {
+            return false;
+        }
+
+        // Use V8's StrictEquals to compare
+        return registered_func->StrictEquals(raw_func);
+    }
 };
 
 // Initialize static members
@@ -935,6 +995,106 @@ uint64_t crane_callback_collected_count() {
     CallbackManager* mgr = CallbackManager::Get();
     if (!mgr) return 0;
     return static_cast<uint64_t>(mgr->CollectedCount());
+}
+
+/// Compare two callbacks by their underlying V8 function objects
+/// Returns true if they reference the same JavaScript function.
+/// This is used by removeEventListener to match callbacks - per DOM spec,
+/// two event listeners are the same if they have the same callback.
+///
+/// @param callback_id1 - First callback ID
+/// @param callback_id2 - Second callback ID
+/// @return true if both callbacks wrap the same JavaScript function
+bool crane_callback_compare(uint64_t callback_id1, uint64_t callback_id2) {
+    CallbackManager* mgr = CallbackManager::Get();
+    if (!mgr) return false;
+    return mgr->Compare(callback_id1, callback_id2);
+}
+
+// ============================================================================
+// Comparison-Only Function Handles (for removeEventListener)
+// ============================================================================
+//
+// These functions allow creating temporary Global<Function> handles for
+// comparison purposes without registering them with CallbackManager.
+// This is the production-quality approach used by Chromium: removeEventListener
+// doesn't need to create a persistent registration, it just needs to compare
+// the provided function against already-registered listeners.
+//
+// Usage:
+//   1. Create a comparison handle: crane_create_function_global()
+//   2. Compare with registered callback: crane_callback_matches_raw_function()
+//   3. Release the handle: crane_release_function_global()
+
+/// Create a Global<Function> handle without registering with CallbackManager
+/// This is for comparison purposes only (e.g., removeEventListener).
+/// The caller MUST call crane_release_function_global() to avoid memory leaks.
+///
+/// @param func_global - Pointer to an existing Global<Value> containing a function
+/// @param ctx_global - Pointer to an existing Global<Context>
+/// @return Pointer to a new Global<Function>, or nullptr on failure
+Global<Function>* crane_create_function_global(void* func_global, void* ctx_global) {
+    if (!func_global || !ctx_global) return nullptr;
+
+    CallbackManager* mgr = CallbackManager::Get();
+    if (!mgr) return nullptr;
+
+    Isolate* isolate = mgr->GetIsolate();
+    if (!isolate) return nullptr;
+
+    HandleScope handle_scope(isolate);
+
+    // Get the function from the Global handle
+    Global<Value>* global_value = static_cast<Global<Value>*>(func_global);
+    Local<Value> func_value = global_value->Get(isolate);
+
+    if (func_value.IsEmpty() || !func_value->IsFunction()) {
+        return nullptr;
+    }
+
+    // Create a new Global<Function> that the caller owns
+    Global<Function>* result = new Global<Function>(isolate, func_value.As<Function>());
+    return result;
+}
+
+/// Release a Global<Function> handle created by crane_create_function_global
+/// This MUST be called to avoid memory leaks.
+///
+/// @param global - Pointer to the Global<Function> to release
+void crane_release_function_global(Global<Function>* global) {
+    if (global) {
+        global->Reset();
+        delete global;
+    }
+}
+
+/// Compare a registered callback with an unregistered function handle
+/// This is the core of the comparison-only approach for removeEventListener.
+///
+/// @param callback_id - ID of a registered callback to compare against
+/// @param raw_func - Unregistered Global<Function>* to compare
+/// @return true if the functions are identical (same JS function object)
+bool crane_callback_matches_raw_function(uint64_t callback_id, Global<Function>* raw_func) {
+    if (!raw_func || raw_func->IsEmpty()) return false;
+
+    CallbackManager* mgr = CallbackManager::Get();
+    if (!mgr) return false;
+
+    Isolate* isolate = mgr->GetIsolate();
+    if (!isolate) return false;
+
+    // Get the registered callback's function
+    // We need to access CallbackManager's internal storage
+    // Use the Compare method logic but with a raw function
+    HandleScope handle_scope(isolate);
+
+    // Get the raw function as a Local
+    Local<Function> raw_local = raw_func->Get(isolate);
+    if (raw_local.IsEmpty()) return false;
+
+    // Compare with the registered callback
+    // This requires CallbackManager to expose the function for a given ID
+    return mgr->MatchesRawFunction(callback_id, raw_local);
 }
 
 // ============================================================================
