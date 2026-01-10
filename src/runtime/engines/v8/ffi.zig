@@ -705,6 +705,12 @@ pub extern fn v8_Value_IsFunction(value: *Value) bool;
 pub extern fn v8_Value_IsArray(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBuffer(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBufferView(value: *Value) bool;
+pub extern fn v8_Value_IsDate(value: *Value) bool;
+
+// Date operations
+pub extern fn v8_Value_IsDate_Local(value_ptr: *anyopaque) bool;
+pub extern fn v8_Date_New(isolate: *Isolate, context: *Context, time: f64) ?*Value;
+pub extern fn v8_Date_ValueOf(date_value: *Value) f64;
 
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;

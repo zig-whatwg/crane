@@ -849,12 +849,10 @@ pub fn fromV8Value(
             return runtime.JSValue{ .string = .{ .data = buffer, .owned = true } };
         }
 
-        // For objects/functions/etc., persist to global handle
-        const global = v8.v8_Value_Persist(isolate, value);
-        if (global) |g| {
-            return runtime.JSValue{ .handle = .{ .ptr = g } };
-        }
-        return runtime.JSValue{ .undefined = {} };
+        // For objects/functions/etc., the value IS already a Global handle
+        // (from v8_FunctionCallbackInfo_GetArgument which creates and tracks a Global)
+        // Just store it directly - no need to persist again
+        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
     }
 
     // Handle unions (for constructor overloading and type unions)

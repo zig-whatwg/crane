@@ -859,27 +859,44 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
                 return error.InvalidStateError;
             };
 
-            // Get local value from global handle
-            const v8_value = v8_engine.ffi.v8_Global_Get(isolate, @ptrCast(h.ptr)) orelse {
-                return error.InvalidStateError;
-            };
-
-            if (v8_engine.ffi.v8_Value_IsSymbol(@ptrCast(v8_value))) {
+            // h.ptr IS a Global<Value>* - use it directly with v8_Value_Is* functions
+            // (they create their own HandleScope and dereference the Global internally)
+            if (v8_engine.ffi.v8_Value_IsSymbol(@ptrCast(h.ptr))) {
                 // Symbols cannot be cloned - throw DataCloneError
                 return error.DataCloneError;
             }
 
-            if (v8_engine.ffi.v8_Value_IsFunction(@ptrCast(v8_value))) {
+            if (v8_engine.ffi.v8_Value_IsFunction(@ptrCast(h.ptr))) {
                 // Functions cannot be cloned - throw DataCloneError
                 return error.DataCloneError;
             }
 
+            // Check for Date objects - per HTML spec §2.7.3 step 11, clone by copying [[DateValue]]
+            if (v8_engine.ffi.v8_Value_IsDate(@ptrCast(h.ptr))) {
+                // Get the timestamp (milliseconds since epoch) from the original Date
+                const timestamp = v8_engine.ffi.v8_Date_ValueOf(@ptrCast(h.ptr));
+
+                // Create a new Date object with the same timestamp
+                const new_date = v8_engine.ffi.v8_Date_New(isolate, v8_context, timestamp) orelse {
+                    return error.DataCloneError;
+                };
+
+                return runtime.JSValue{
+                    .handle = .{
+                        .ptr = @ptrCast(new_date),
+                        .needs_disposal = true,
+                        .handle_scope = .global,
+                    },
+                };
+            }
+
             // For objects, use JSON serialize/deserialize as simplified structured clone
             // This handles plain objects, arrays, etc. but not all spec-compliant types
+            // h.ptr is a Global<Value>* which v8_JSON_Stringify_ToBuffer expects
             var json_buffer: [65536]u8 = undefined;
             const json_len = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
                 v8_context,
-                @ptrCast(v8_value),
+                @ptrCast(h.ptr),
                 &json_buffer,
                 json_buffer.len,
             );

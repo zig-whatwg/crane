@@ -2229,6 +2229,58 @@ Global<Number>* v8_Integer_New(Isolate* isolate, int32_t value) {
 }
 
 // ============================================================================
+// Date Functions
+// ============================================================================
+
+bool v8_Value_IsDate(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsDate();
+}
+
+bool v8_Value_IsDate_Local(void* value_ptr) {
+    if (!value_ptr) return false;
+    // Reconstruct Local<Value> from internal pointer (same pattern as v8_Value_IsFunction_Local)
+    Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
+    return val->IsDate();
+}
+
+// Create a new Date object from a timestamp (milliseconds since epoch)
+// Uses the current context from the isolate (like v8_JSON_Stringify_ToBuffer)
+Global<Value>* v8_Date_New(Isolate* isolate, Context* context_raw, double time) {
+    HandleScope handle_scope(isolate);
+
+    // Get the CURRENT context from the isolate (not the passed context!)
+    // This avoids context mismatch issues when called from within script execution
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) {
+        return nullptr;
+    }
+    Context::Scope context_scope(ctx);
+
+    MaybeLocal<Value> maybe_date = Date::New(ctx, time);
+    if (maybe_date.IsEmpty()) {
+        return nullptr;
+    }
+    Local<Value> date = maybe_date.ToLocalChecked();
+    return trackHandle(new Global<Value>(isolate, date));
+}
+
+// Get the timestamp (milliseconds since epoch) from a Date object
+double v8_Date_ValueOf(Global<Value>* date_value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = date_value->Get(isolate);
+    if (!val->IsDate()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    Local<Date> date = val.As<Date>();
+    return date->ValueOf();
+}
+
+// ============================================================================
 // Object Functions
 // ============================================================================
 
@@ -3409,12 +3461,12 @@ Global<Value>* v8_Boolean_New(Isolate* isolate, bool value) {
 /// @return Global<Value>* that can be safely stored and used with setReturnValue
 Global<Value>* v8_Value_Persist(Isolate* isolate, void* local_ptr) {
     if (!isolate || !local_ptr) return nullptr;
-    
+
     HandleScope handle_scope(isolate);
-    
+
     // Reconstruct Local from internal pointer
     Local<Value> local = *reinterpret_cast<Local<Value>*>(&local_ptr);
-    
+
     // Create and track a Global handle
     return trackHandle(new Global<Value>(isolate, local));
 }
