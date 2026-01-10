@@ -984,6 +984,44 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
                 };
             }
 
+            // Check for Set objects - per HTML spec §2.7.3 step 16
+            // Clone by copying [[SetData]] values
+            if (v8_engine.ffi.v8_Value_IsSet(@ptrCast(h.ptr))) {
+                // Get values as array [value1, value2, ...]
+                const values_array = v8_engine.ffi.v8_Set_AsArray(@ptrCast(h.ptr)) orelse {
+                    return error.DataCloneError;
+                };
+
+                // Create a new empty Set
+                const new_set = v8_engine.ffi.v8_Set_New(isolate) orelse {
+                    return error.DataCloneError;
+                };
+
+                // Get the length of the values array
+                const values_len = v8_engine.ffi.v8_Array_Length(values_array);
+
+                // Iterate through values and add to new Set
+                var i: u32 = 0;
+                while (i < values_len) : (i += 1) {
+                    const value_item = v8_engine.ffi.v8_Array_Get(v8_context, values_array, i) orelse {
+                        return error.DataCloneError;
+                    };
+
+                    // Add the value to the new Set
+                    if (!v8_engine.ffi.v8_Set_Add(new_set, value_item)) {
+                        return error.DataCloneError;
+                    }
+                }
+
+                return runtime.JSValue{
+                    .handle = .{
+                        .ptr = @ptrCast(new_set),
+                        .needs_disposal = true,
+                        .handle_scope = .global,
+                    },
+                };
+            }
+
             // For objects, use JSON serialize/deserialize as simplified structured clone
             // This handles plain objects, arrays, etc. but not all spec-compliant types
             // h.ptr is a Global<Value>* which v8_JSON_Stringify_ToBuffer expects

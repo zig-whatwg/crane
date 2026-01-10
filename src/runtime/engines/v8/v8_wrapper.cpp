@@ -2488,6 +2488,76 @@ bool v8_Map_Set(Global<Value>* map_value, Global<Value>* key, Global<Value>* val
 }
 
 // ============================================================================
+// Set Functions (for structuredClone)
+// ============================================================================
+
+// Check if a value is a Set
+bool v8_Value_IsSet(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsSet();
+}
+
+// Get the size of a Set
+size_t v8_Set_GetSize(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return 0;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    if (!val->IsSet()) {
+        return 0;
+    }
+    Local<Set> set = val.As<Set>();
+    return set->Size();
+}
+
+// Get Set values as an array [value1, value2, ...]
+// Returns a Global<Array>* that must be managed by caller
+Global<Array>* v8_Set_AsArray(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    if (!val->IsSet()) {
+        return nullptr;
+    }
+    Local<Set> set = val.As<Set>();
+    Local<Array> arr = set->AsArray();
+    return trackHandle(new Global<Array>(isolate, arr));
+}
+
+// Create a new empty Set
+Global<Value>* v8_Set_New(Isolate* isolate) {
+    HandleScope handle_scope(isolate);
+    Local<Set> set = Set::New(isolate);
+    return trackHandle(new Global<Value>(isolate, set));
+}
+
+// Add a value to a Set
+// Returns true on success, false on failure
+bool v8_Set_Add(Global<Value>* set_value, Global<Value>* value) {
+    if (!set_value || set_value->IsEmpty()) return false;
+    if (!value || value->IsEmpty()) return false;
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) return false;
+
+    Local<Value> set_val = set_value->Get(isolate);
+    if (!set_val->IsSet()) return false;
+
+    Local<Set> set = set_val.As<Set>();
+    Local<Value> local_value = value->Get(isolate);
+
+    MaybeLocal<Set> result = set->Add(ctx, local_value);
+    return !result.IsEmpty();
+}
+
+// ============================================================================
 // Object Functions
 // ============================================================================
 

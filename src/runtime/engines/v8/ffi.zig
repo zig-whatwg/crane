@@ -731,6 +731,13 @@ pub extern fn v8_Map_AsArray(value: *Value) ?*Array;
 pub extern fn v8_Map_New(isolate: *Isolate) ?*Value;
 pub extern fn v8_Map_Set(map: *Value, key: *Value, value: *Value) bool;
 
+// Set operations (for structuredClone)
+pub extern fn v8_Value_IsSet(value: *Value) bool;
+pub extern fn v8_Set_GetSize(value: *Value) usize;
+pub extern fn v8_Set_AsArray(value: *Value) ?*Array;
+pub extern fn v8_Set_New(isolate: *Isolate) ?*Value;
+pub extern fn v8_Set_Add(set: *Value, value: *Value) bool;
+
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
