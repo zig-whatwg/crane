@@ -759,7 +759,7 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
     }
 
     // Create a new global handle for the callback (to prevent GC)
-    const function_global = v8_engine.ffi.v8_Global_New(isolate, @ptrCast(local_value)) orelse {
+    const function_global = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(local_value)) orelse {
         return error.OutOfMemory;
     };
 
@@ -789,7 +789,7 @@ const MicrotaskCallbackContext = struct {
 
 /// Trampoline function for microtask execution
 /// Called by V8 when the microtask is due to run
-fn microtaskTrampoline(data: ?*anyopaque) callconv(.C) void {
+fn microtaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     const ctx: *MicrotaskCallbackContext = @ptrCast(@alignCast(data orelse return));
     defer {
         // Dispose the global handle and free the context
@@ -808,7 +808,9 @@ fn microtaskTrampoline(data: ?*anyopaque) callconv(.C) void {
 
     // Call the function with no arguments
     const undefined_recv = v8_engine.ffi.v8_Undefined(ctx.v8_isolate);
-    _ = v8_engine.ffi.v8_Function_Call(function, ctx.v8_context, @ptrCast(undefined_recv), 0, null);
+    // For zero-argument calls, we still need a valid pointer (even though argc=0)
+    var dummy_args: [1]*v8_engine.ffi.Value = undefined;
+    _ = v8_engine.ffi.v8_Function_Call(function, ctx.v8_context, @ptrCast(undefined_recv), 0, &dummy_args);
 }
 
 /// Operation: structuredClone

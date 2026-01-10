@@ -2973,10 +2973,9 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
 }
 
 /// Operation: queueMicrotask
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
 }
 
 /// Operation: structuredClone
