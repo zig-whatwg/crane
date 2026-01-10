@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const GPUError = @import("interfaces").GPUError;
+const GPUError = @import("GPUError.zig").GPUError;
 const DOMString = @import("typedefs").DOMString;
 
 pub const GPUInternalError = struct {

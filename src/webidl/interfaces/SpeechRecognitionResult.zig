@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SpeechRecognitionAlternative = @import("interfaces").SpeechRecognitionAlternative;
+const SpeechRecognitionAlternative = @import("SpeechRecognitionAlternative.zig").SpeechRecognitionAlternative;
 
 pub const SpeechRecognitionResult = struct {
     pub const Meta = struct {

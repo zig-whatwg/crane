@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("interfaces").CSSRule;
+const CSSRule = @import("CSSRule.zig").CSSRule;
 const DOMString = @import("typedefs").DOMString;
-const CSSValue = @import("interfaces").CSSValue;
+const CSSValue = @import("CSSValue.zig").CSSValue;
 
 pub const CSSStyleDeclaration = struct {
     pub const Meta = struct {

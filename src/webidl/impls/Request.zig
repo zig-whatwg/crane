@@ -355,7 +355,7 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
 
     // Replace the default request with our configured one
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
     internal.request.deinit(); // Free the default empty request
     internal.request = base_request; // Transfer ownership
 
@@ -418,14 +418,14 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
 /// Get method
 pub fn get_method(instance: *runtime.Instance) anyerror!runtime.ByteString {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
     return internal.request.method;
 }
 
 /// Get URL
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
     // Use accessor method - returns first URL in url_list
     return internal.request.getUrl();
 }
@@ -433,7 +433,7 @@ pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Get headers - creates and caches Headers instance on first access
 pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     // Return cached instance if exists
     if (internal.headers_cache) |headers| {
@@ -458,7 +458,7 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Get destination
 pub fn get_destination(instance: *runtime.Instance) anyerror!enums.RequestDestination {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     // Map internal destination to WebIDL enum
     return switch (internal.request.destination) {
@@ -491,7 +491,7 @@ pub fn get_destination(instance: *runtime.Instance) anyerror!enums.RequestDestin
 /// Get referrer
 pub fn get_referrer(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return switch (internal.request.referrer) {
         .no_referrer => "",
@@ -503,7 +503,7 @@ pub fn get_referrer(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Get referrerPolicy
 pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!enums.ReferrerPolicy {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return switch (internal.request.referrer_policy) {
         .empty => .__,
@@ -521,7 +521,7 @@ pub fn get_referrerPolicy(instance: *runtime.Instance) anyerror!enums.ReferrerPo
 /// Get mode
 pub fn get_mode(instance: *runtime.Instance) anyerror!enums.RequestMode {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return switch (internal.request.mode) {
         .same_origin => ._same_origin_,
@@ -535,7 +535,7 @@ pub fn get_mode(instance: *runtime.Instance) anyerror!enums.RequestMode {
 /// Get credentials
 pub fn get_credentials(instance: *runtime.Instance) anyerror!enums.RequestCredentials {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return switch (internal.request.credentials_mode) {
         .omit => ._omit_,
@@ -547,7 +547,7 @@ pub fn get_credentials(instance: *runtime.Instance) anyerror!enums.RequestCreden
 /// Get cache
 pub fn get_cache(instance: *runtime.Instance) anyerror!enums.RequestCache {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return switch (internal.request.cache_mode) {
         .default => ._default_,
@@ -562,7 +562,7 @@ pub fn get_cache(instance: *runtime.Instance) anyerror!enums.RequestCache {
 /// Get redirect
 pub fn get_redirect(instance: *runtime.Instance) anyerror!enums.RequestRedirect {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return switch (internal.request.redirect_mode) {
         .follow => ._follow_,
@@ -575,7 +575,7 @@ pub fn get_redirect(instance: *runtime.Instance) anyerror!enums.RequestRedirect 
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
 pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     // integrity_metadata is []const u8, convert to DOMString
     if (internal.request.integrity_metadata.len == 0) {
@@ -587,7 +587,7 @@ pub fn get_integrity(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Get keepalive
 pub fn get_keepalive(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return internal.request.keepalive;
 }
@@ -595,7 +595,7 @@ pub fn get_keepalive(instance: *runtime.Instance) anyerror!bool {
 /// Get isReloadNavigation
 pub fn get_isReloadNavigation(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return internal.request.reload_navigation;
 }
@@ -603,7 +603,7 @@ pub fn get_isReloadNavigation(instance: *runtime.Instance) anyerror!bool {
 /// Get isHistoryNavigation
 pub fn get_isHistoryNavigation(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     return internal.request.history_navigation;
 }
@@ -638,7 +638,7 @@ pub fn get_targetAddressSpace(instance: *runtime.Instance) anyerror!enums.IPAddr
 /// stream creation is not possible (e.g., no event loop).
 pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = state.own._internal orelse return error.InvalidState;
 
     // If we already have a cached ReadableStream, return it
     if (state.own.body) |cached_body| {

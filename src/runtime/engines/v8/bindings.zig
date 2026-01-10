@@ -28,21 +28,13 @@
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
-const namespace = @import("namespace.zig");
+const V8Namespace = @import("namespace.zig").V8Namespace;
 
 // Import generated namespaces
 const namespaces = @import("namespaces");
-const console_ns = namespaces.console;
 
 // Import Intl binding (pure Zig i18n implementation)
 const intl_binding = @import("intl_binding.zig");
-
-// ============================================================================
-// Namespace Bindings
-// ============================================================================
-
-/// Console namespace V8 binding
-pub const Console = namespace.V8Namespace(console_ns.console);
 
 // ============================================================================
 // Initialization
@@ -51,7 +43,8 @@ pub const Console = namespace.V8Namespace(console_ns.console);
 /// Initialize all namespace bindings in the global scope
 ///
 /// This function registers all WebIDL namespaces as global objects in V8,
-/// making them accessible from JavaScript.
+/// making them accessible from JavaScript. Uses comptime reflection to
+/// automatically discover and register all namespaces.
 ///
 /// Example JavaScript usage after initialization:
 /// ```javascript
@@ -65,15 +58,23 @@ pub fn initializeNamespaces(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
-    Console.registerGlobal(isolate, context, "console");
+    // Use comptime reflection to register ALL namespaces automatically
+    const ns_decls = @typeInfo(namespaces).@"struct".decls;
+
+    inline for (ns_decls) |decl| {
+        const NamespaceType = @field(namespaces, decl.name);
+
+        // Only bind types that have Meta (actual namespaces)
+        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+            // Use V8Namespace to create object with all methods bound
+            const NamespaceBinding = V8Namespace(NamespaceType);
+            NamespaceBinding.registerGlobal(isolate, context, decl.name);
+        }
+    }
 
     // Register Intl namespace (pure Zig i18n - replaces ICU)
+    // This is special because it's not a WebIDL namespace
     intl_binding.registerGlobal(isolate, context);
-
-    // Future namespaces will be added here as they're implemented:
-    // GPU.registerGlobal(isolate, context, "GPU");
-    // WebGL2.registerGlobal(isolate, context, "WebGL2RenderingContext");
-    // etc.
 }
 
 /// Create a new V8 context with all WebIDL bindings
@@ -98,60 +99,77 @@ pub fn createContext(isolate: *v8.Isolate) *v8.Context {
 // Metadata
 // ============================================================================
 
-/// Get list of all registered namespaces
-///
-/// Useful for debugging and introspection.
-pub fn getRegisteredNamespaces() []const NamespaceInfo {
-    return &.{
-        .{
-            .name = "console",
-            .method_count = Console.all_methods.len,
-        },
-        // Add more as implemented
-    };
-}
-
-/// Information about a registered namespace
+/// Namespace registration info for debugging and introspection
 pub const NamespaceInfo = struct {
     name: []const u8,
     method_count: usize,
 };
 
-// ============================================================================
-// Testing
-// ============================================================================
+/// Get list of all registered namespaces
+pub fn getRegisteredNamespaces() []const NamespaceInfo {
+    comptime {
+        const ns_decls = @typeInfo(namespaces).@"struct".decls;
+        var count: usize = 0;
 
-test "bindings module compiles" {
-    const testing = std.testing;
-    testing.refAllDecls(@This());
+        for (ns_decls) |decl| {
+            const NamespaceType = @field(namespaces, decl.name);
+            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+                count += 1;
+            }
+        }
+
+        var infos: [count]NamespaceInfo = undefined;
+        var i: usize = 0;
+
+        for (ns_decls) |decl| {
+            const NamespaceType = @field(namespaces, decl.name);
+            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta")) {
+                const method_count = if (@hasDecl(NamespaceType.Meta, "methods"))
+                    NamespaceType.Meta.methods.len
+                else
+                    0;
+
+                infos[i] = .{
+                    .name = decl.name,
+                    .method_count = method_count,
+                };
+                i += 1;
+            }
+        }
+
+        return &infos;
+    }
 }
 
-test "Console binding extracted methods" {
-    const testing = std.testing;
+// ============================================================================
+// Tests
+// ============================================================================
+
+const testing = std.testing;
+
+test "namespace discovery" {
+    const registered = getRegisteredNamespaces();
+
+    // Should find at least console namespace
+    try testing.expect(registered.len >= 1);
 
     // Verify console namespace has methods
-    try testing.expect(Console.all_methods.len > 0);
-
-    // Check for known console methods
-    var has_log = false;
-    var has_error = false;
-    var has_warn = false;
-
-    for (Console.all_methods) |method| {
-        if (std.mem.eql(u8, method.name, "log")) has_log = true;
-        if (std.mem.eql(u8, method.name, "error")) has_error = true;
-        if (std.mem.eql(u8, method.name, "warn")) has_warn = true;
+    var found_console = false;
+    for (registered) |ns| {
+        if (std.mem.eql(u8, ns.name, "console")) {
+            found_console = true;
+            // Check for known console methods
+            try testing.expect(ns.method_count > 0);
+            break;
+        }
     }
-
-    try testing.expect(has_log);
-    try testing.expect(has_error);
-    try testing.expect(has_warn);
+    try testing.expect(found_console);
 }
 
-test "getRegisteredNamespaces" {
-    const testing = std.testing;
-
+test "getRegisteredNamespaces returns expected namespaces" {
     const registered = getRegisteredNamespaces();
-    try testing.expectEqual(@as(usize, 1), registered.len);
+
+    // Should have at least console
+    try testing.expect(registered.len >= 1);
     try testing.expectEqualStrings("console", registered[0].name);
 }

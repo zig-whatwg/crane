@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
-const WebGLVertexArrayObjectOES = @import("interfaces").WebGLVertexArrayObjectOES;
+const WebGLVertexArrayObjectOES = @import("WebGLVertexArrayObjectOES.zig").WebGLVertexArrayObjectOES;
 const GLboolean = @import("typedefs").GLboolean;
 
 pub const OES_vertex_array_object = struct {

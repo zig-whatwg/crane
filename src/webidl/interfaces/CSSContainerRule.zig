@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSConditionRule = @import("interfaces").CSSConditionRule;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSConditionRule = @import("CSSConditionRule.zig").CSSConditionRule;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("interfaces").CSSRule;
+const CSSRule = @import("CSSRule.zig").CSSRule;
 const DOMString = @import("typedefs").DOMString;
-const CSSRuleList = @import("interfaces").CSSRuleList;
+const CSSRuleList = @import("CSSRuleList.zig").CSSRuleList;
 
 pub const CSSContainerRule = struct {
     pub const Meta = struct {

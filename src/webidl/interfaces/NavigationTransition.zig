@@ -10,8 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const NavigationDestination = @import("NavigationDestination.zig").NavigationDestination;
 const NavigationType = @import("enums").NavigationType;
-const NavigationHistoryEntry = @import("interfaces").NavigationHistoryEntry;
+const NavigationHistoryEntry = @import("NavigationHistoryEntry.zig").NavigationHistoryEntry;
 
 pub const NavigationTransition = struct {
     pub const Meta = struct {
@@ -32,6 +33,7 @@ pub const NavigationTransition = struct {
         pub const properties = .{
             .{ "navigationType", "get_navigationType", null },
             .{ "from", "get_from", null },
+            .{ "to", "get_to", null },
             .{ "committed", "get_committed", null },
             .{ "finished", "get_finished", null },
         };
@@ -52,6 +54,7 @@ pub const NavigationTransition = struct {
         pub const eager_properties = .{
             .{ "navigationType", "get_navigationType", null },
             .{ "from", "get_from", null },
+            .{ "to", "get_to", null },
             .{ "committed", "get_committed", null },
             .{ "finished", "get_finished", null },
         };
@@ -69,6 +72,7 @@ pub const NavigationTransition = struct {
         struct {
             navigationType: enums.NavigationType = undefined,
             from: *runtime.Instance = undefined,
+            to: *runtime.Instance = undefined,
             committed: runtime.JSValue = undefined,
             finished: runtime.JSValue = undefined,
             _internal: ?*NavigationTransitionImpl.InternalState = null,
@@ -81,6 +85,7 @@ pub const NavigationTransition = struct {
         .get_finished = &get_finished,
         .get_from = &get_from,
         .get_navigationType = &get_navigationType,
+        .get_to = &get_to,
 
         .deinit = &deinit,
     };
@@ -113,6 +118,10 @@ pub const NavigationTransition = struct {
 
     pub fn get_from(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigationTransitionImpl.get_from(instance);
+    }
+
+    pub fn get_to(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try NavigationTransitionImpl.get_to(instance);
     }
 
     pub fn get_committed(instance: *runtime.Instance) anyerror!runtime.JSValue {

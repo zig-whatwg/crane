@@ -13,9 +13,9 @@ const dictionaries = @import("dictionaries");
 const FontFaceLoadStatus = @import("enums").FontFaceLoadStatus;
 const CSSOMString = @import("typedefs").CSSOMString;
 const BufferSource = @import("typedefs").BufferSource;
-const FontFaceVariations = @import("interfaces").FontFaceVariations;
-const FontFacePalettes = @import("interfaces").FontFacePalettes;
-const FontFaceFeatures = @import("interfaces").FontFaceFeatures;
+const FontFaceVariations = @import("FontFaceVariations.zig").FontFaceVariations;
+const FontFacePalettes = @import("FontFacePalettes.zig").FontFacePalettes;
+const FontFaceFeatures = @import("FontFaceFeatures.zig").FontFaceFeatures;
 const FontFaceDescriptors = @import("dictionaries").FontFaceDescriptors;
 
 pub const FontFace = struct {

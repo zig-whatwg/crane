@@ -17,10 +17,51 @@ pub const ImplError = error{
 };
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Per CSS Font Loading spec §4.3, FontFaceSet has:
+/// - [[ReadyPromise]]: Cached promise returned by .ready getter
+/// - [[LoadingFonts]], [[LoadedFonts]], [[FailedFonts]]: Font tracking sets
+pub const InternalState = struct {
+    /// [[ReadyPromise]] slot - cached promise for .ready getter
+    /// Per spec, same promise must be returned on repeated access
+    ready_promise_ptr: ?*anyopaque = null,
+
+    /// Current loading status
+    status: enums.FontFaceSetLoadStatus = ._loaded_,
+
+    pub fn deinit(self: *InternalState) void {
+        // Promise is GC-managed, just clear our reference
+        self.ready_promise_ptr = null;
+    }
+};
+
+/// Registry to store internal state per instance
+var internal_registry: ?std.AutoHashMap(*runtime.Instance, *InternalState) = null;
+
+fn getRegistry(allocator: std.mem.Allocator) *std.AutoHashMap(*runtime.Instance, *InternalState) {
+    if (internal_registry == null) {
+        internal_registry = std.AutoHashMap(*runtime.Instance, *InternalState).init(allocator);
+    }
+    return &internal_registry.?;
+}
+
+fn getInternalState(instance: *runtime.Instance) ?*InternalState {
+    const registry = getRegistry(instance.ctx.allocator);
+    return registry.get(instance);
+}
+
+fn getOrCreateInternalState(instance: *runtime.Instance) !*InternalState {
+    const allocator = instance.ctx.allocator;
+    const registry = getRegistry(allocator);
+
+    if (registry.get(instance)) |state| {
+        return state;
+    }
+
+    const state = try allocator.create(InternalState);
+    state.* = .{};
+    try registry.put(instance, state);
+    return state;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -36,8 +77,14 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // Clean up internal state
+    const allocator = instance.ctx.allocator;
+    if (internal_registry) |*registry| {
+        if (registry.fetchRemove(instance)) |kv| {
+            kv.value.deinit();
+            allocator.destroy(kv.value);
+        }
+    }
 }
 
 /// Getter for onloading
@@ -60,22 +107,82 @@ pub fn get_onloadingerror(instance: *runtime.Instance) anyerror!typedefs.EventHa
 
 /// Getter for ready
 /// Returns a Promise that resolves when the FontFaceSet is done loading fonts.
-/// Stub: Returns undefined as a placeholder for a resolved promise.
-/// Per CSS Font Loading spec §4.3, this should return a Promise<FontFaceSet>.
+/// Per CSS Font Loading spec §4.3:
+/// - Returns Promise<FontFaceSet> stored in [[ReadyPromise]] slot
+/// - Same promise must be returned on repeated access
+/// - Promise resolves with FontFaceSet when status becomes "loaded"
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    // Get the engine interface and context for Promise creation
+    const engine = instance.ctx.engine orelse {
+        // No engine available - this is an error condition
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return error.InvalidState;
+    };
+
+    // Get or create internal state for [[ReadyPromise]] slot
+    const internal = try getOrCreateInternalState(instance);
+
+    // Per spec: return same promise on repeated access
+    if (internal.ready_promise_ptr) |cached_ptr| {
+        return runtime.JSValue.fromPromise(cached_ptr);
+    }
+
+    // Create a new Promise for [[ReadyPromise]] slot
+    const allocator = instance.ctx.allocator;
+    const promise_handle = try engine.createPromise(engine_ctx, allocator);
+
+    // Get the Promise object pointer before resolving (we need to cache it)
+    const promise_ptr = engine.getPromiseObject(promise_handle);
+
+    // Cache the promise in [[ReadyPromise]] slot for future accesses
+    internal.ready_promise_ptr = promise_ptr;
+
+    // Resolve the promise with the FontFaceSet instance (wrapped as JS object)
+    // Per spec: resolves with FontFaceSet when all fonts loaded
+    // Since status is "loaded" (no fonts to load), resolve immediately
+    const resolve_value: ?*const anyopaque = if (engine.wrapInstance) |wrap_fn| blk: {
+        const wrapped = wrap_fn(engine_ctx, instance) catch |err| {
+            // If wrapping fails, reject the promise
+            engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+            if (engine.destroyPromiseHandle) |destroy_fn| {
+                destroy_fn(promise_handle, allocator);
+            }
+            return err;
+        };
+        break :blk @ptrCast(wrapped);
+    } else null;
+
+    // Resolve with the wrapped FontFaceSet instance
+    try engine.resolvePromise(engine_ctx, promise_handle, resolve_value);
+
+    // Clean up the handle (Promise object is GC-managed)
+    if (engine.destroyPromiseHandle) |destroy_fn| {
+        destroy_fn(promise_handle, allocator);
+    }
+
+    return runtime.JSValue.fromPromise(promise_ptr);
+}
+
+/// Getter for size
+/// Returns the number of FontFace objects in the FontFaceSet.
+/// Per CSS Font Loading spec §4.3, FontFaceSet is a setlike interface.
+/// For our minimal implementation, we return 0 (no fonts loaded).
+pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
-    // Stub: Return undefined as placeholder for resolved promise
-    // Real implementation would return a Promise that resolves to this FontFaceSet
-    return .{ .undefined = {} };
+    // No fonts loaded in our minimal implementation
+    return 0;
 }
 
 /// Getter for status
 /// Returns the loading status of the FontFaceSet.
-/// Stub: Returns "loaded" since we don't actually load fonts.
 /// Per CSS Font Loading spec §4.3, this is either "loading" or "loaded".
 pub fn get_status(instance: *runtime.Instance) anyerror!enums.FontFaceSetLoadStatus {
-    _ = instance;
-    // Stub: Return "loaded" since we have no fonts to load
+    if (getInternalState(instance)) |internal| {
+        return internal.status;
+    }
+    // Default to "loaded" if no internal state (no fonts to load)
     return ._loaded_;
 }
 

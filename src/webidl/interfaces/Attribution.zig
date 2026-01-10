@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AttributionImpressionOptions = @import("dictionaries").AttributionImpressionOptions;
 const AttributionConversionResult = @import("dictionaries").AttributionConversionResult;
-const AttributionAggregationServices = @import("interfaces").AttributionAggregationServices;
+const AttributionAggregationServices = @import("AttributionAggregationServices.zig").AttributionAggregationServices;
 const AttributionImpressionResult = @import("dictionaries").AttributionImpressionResult;
 const AttributionConversionOptions = @import("dictionaries").AttributionConversionOptions;
 

@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const PointerEvent = @import("interfaces").PointerEvent;
+const Element = @import("Element.zig").Element;
+const PointerEvent = @import("PointerEvent.zig").PointerEvent;
 const InkTrailStyle = @import("dictionaries").InkTrailStyle;
 
 pub const DelegatedInkTrailPresenter = struct {

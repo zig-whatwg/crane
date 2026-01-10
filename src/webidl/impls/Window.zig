@@ -58,6 +58,12 @@ const storage = @import("storage");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const IDBFactoryBackend = storage.indexeddb.IDBFactory;
 
+// Fetch API support - delegate to WindowOrWorkerGlobalScope mixin
+const fetch_api = @import("fetch");
+const global_fetch = fetch_api.webidl.global_fetch;
+const ResponseImpl = @import("Response.zig");
+const WindowOrWorkerGlobalScopeImpl = @import("WindowOrWorkerGlobalScope.zig");
+
 // Cache Storage types for window.caches
 // TODO: Add service_worker module to impls in build.zig to enable CacheStorage
 // const service_worker_cache = @import("service_worker").cache;
@@ -169,7 +175,9 @@ pub const InternalState = struct {
     cookie_store: ?*runtime.Instance = null,
 
     /// Whether this is a secure context (for SecureContext checks)
-    is_secure_context: bool = true,
+    /// Default to false - Browser Context.zig sets this correctly via setIsSecureContext()
+    /// Secure Contexts spec: https://w3c.github.io/webappsec-secure-contexts/
+    is_secure_context: bool = false,
 
     /// The window's origin string for storage access
     /// Derived from the document's URL
@@ -278,6 +286,31 @@ const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
+}
+
+/// Check if a property name is a "supported property name" per HTML §7.4.
+/// These are names of child browsing contexts (iframes, frames) and named elements
+/// (embed, form, img, object with name attributes that are in the document tree).
+/// Per WebIDL, these named properties are read-only and cannot be set/deleted.
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: []const u8) bool {
+    const internal = getInternal(instance) orelse return false;
+
+    // Check if the name matches a child browsing context name
+    // (e.g., an iframe with name="foo" makes window.foo return that iframe's window)
+    const bc = internal.browsing_context;
+    if (bc.findByTargetName(name)) |_| {
+        return true;
+    }
+
+    // TODO: Also check for named elements in the document:
+    // - embed elements with name attribute
+    // - form elements with name attribute
+    // - img elements with name attribute (that are in a document tree)
+    // - object elements with name attribute
+    // For now, we only check browsing context names.
+    // Full implementation would query the document for these elements.
+
+    return false;
 }
 
 /// Set the Window's origin for storage access.
@@ -639,7 +672,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 ///
 /// This enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
-pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
     const children = internal.browsing_context.children.items;
 
@@ -1676,9 +1709,11 @@ pub fn get_onportalactivate(instance: *runtime.Instance) anyerror!typedefs.Event
 }
 
 /// Getter for origin
+/// Returns the origin of this window's associated Document.
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#dom-origin
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return "null";
+    return internal.origin;
 }
 
 /// Getter for isSecureContext
@@ -2766,11 +2801,24 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 }
 
 /// Operation: fetch
+/// Implements the global fetch() function per WHATWG Fetch Standard.
+/// Spec: https://fetch.spec.whatwg.org/#fetch-method
+///
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation which uses
+/// the async curl manager for non-blocking fetch requests.
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = input;
-    _ = init_data;
-    return error.NotImplemented;
+    // Delegate to the WindowOrWorkerGlobalScope mixin implementation
+    // which uses AsyncCurlManager for true async fetch
+    return WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
+}
+
+// Helper to get promise object and destroy handle to prevent memory leaks
+fn getPromiseAndCleanup(engine: *const runtime.EngineInterface, promise_handle: *anyopaque, allocator: std.mem.Allocator) runtime.JSValue {
+    const promise_obj = engine.getPromiseObject(promise_handle);
+    if (engine.destroyPromiseHandle) |destroy| {
+        destroy(promise_handle, allocator);
+    }
+    return runtime.JSValue.fromHandle(promise_obj);
 }
 
 /// Operation: blur
@@ -3608,4 +3656,10 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     }
 
     return names.toOwnedSlice(allocator);
+}
+
+pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
 }

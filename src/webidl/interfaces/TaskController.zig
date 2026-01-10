@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AbortController = @import("interfaces").AbortController;
+const AbortController = @import("AbortController.zig").AbortController;
 const TaskControllerInit = @import("dictionaries").TaskControllerInit;
 const TaskPriority = @import("enums").TaskPriority;
-const AbortSignal = @import("interfaces").AbortSignal;
+const AbortSignal = @import("AbortSignal.zig").AbortSignal;
 
 pub const TaskController = struct {
     pub const Meta = struct {

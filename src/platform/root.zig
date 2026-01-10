@@ -28,6 +28,10 @@ pub const vtables = @import("vtables.zig");
 pub const exports = @import("exports.zig");
 pub const stub_platform_backend = @import("stub_platform_backend.zig");
 
+// === Event Wakeup (Cross-Thread Signaling) ===
+pub const event_wakeup = @import("event_wakeup.zig");
+pub const EventWakeup = event_wakeup.EventWakeup;
+
 // Unified backend types
 pub const PlatformBackend = platform_backend.PlatformBackend;
 pub const Capability = platform_backend.Capability;

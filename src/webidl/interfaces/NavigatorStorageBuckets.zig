@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const StorageBucketManager = @import("interfaces").StorageBucketManager;
+const StorageBucketManager = @import("StorageBucketManager.zig").StorageBucketManager;
 
 pub const NavigatorStorageBuckets = struct {
     pub const Meta = struct {

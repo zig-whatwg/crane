@@ -9,7 +9,7 @@
 //! - Supports variable-size allocations (Node, Element, Text have different sizes)
 //! - Reset retains capacity for next GC cycle
 //!
-//! Thread safety: Single-threaded (no locks)
+//! Thread safety: Thread-safe via mutex (supports worker threads)
 
 const std = @import("std");
 
@@ -23,6 +23,9 @@ pub const ArenaAllocator = struct {
     total_bytes_allocated: usize,
     total_resets: usize,
 
+    /// Mutex for thread-safe access from worker threads
+    mutex: std.Thread.Mutex,
+
     /// Global instance
     var global: ?ArenaAllocator = null;
 
@@ -33,6 +36,7 @@ pub const ArenaAllocator = struct {
             .total_allocations = 0,
             .total_bytes_allocated = 0,
             .total_resets = 0,
+            .mutex = .{},
         };
     }
 
@@ -66,34 +70,43 @@ pub const ArenaAllocator = struct {
         }
     }
 
-    /// Create (allocate) a single instance of type T
+    /// Create (allocate) a single instance of type T (thread-safe)
     ///
     /// This is the primary allocation method used by generated code:
     ///   const state = try ArenaAllocator.get().create(FullState);
     pub fn create(self: *ArenaAllocator, comptime T: type) !*T {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         const ptr = try self.arena.allocator().create(T);
         self.total_allocations += 1;
         self.total_bytes_allocated += @sizeOf(T);
         return ptr;
     }
 
-    /// Allocate a slice of items
+    /// Allocate a slice of items (thread-safe)
     pub fn alloc(self: *ArenaAllocator, comptime T: type, n: usize) ![]T {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         const slice = try self.arena.allocator().alloc(T, n);
         self.total_allocations += 1;
         self.total_bytes_allocated += @sizeOf(T) * n;
         return slice;
     }
 
-    /// Duplicate a slice
+    /// Duplicate a slice (thread-safe)
     pub fn dupe(self: *ArenaAllocator, comptime T: type, m: []const T) ![]T {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         const slice = try self.arena.allocator().dupe(T, m);
         self.total_allocations += 1;
         self.total_bytes_allocated += @sizeOf(T) * m.len;
         return slice;
     }
 
-    /// Reset the arena (called during GC sweep phase)
+    /// Reset the arena (called during GC sweep phase) (thread-safe)
     ///
     /// Frees all allocated memory but retains capacity for next cycle.
     /// This is much faster than individual frees.
@@ -101,6 +114,9 @@ pub const ArenaAllocator = struct {
     /// Important: Caller must ensure all FullState deinit() functions
     /// have been called before reset to clean up owned resources.
     pub fn reset(self: *ArenaAllocator) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         _ = self.arena.reset(.retain_capacity);
         self.total_resets += 1;
         // Note: We don't reset statistics - they're cumulative

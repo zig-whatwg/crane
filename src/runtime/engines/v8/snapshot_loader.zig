@@ -48,8 +48,39 @@ const intl_binding = @import("intl_binding.zig");
 /// Tracked snapshot data for cleanup
 /// V8 requires snapshot data to remain valid for the isolate's lifetime,
 /// so we track it here and free it when the runtime is deinitialized.
-var tracked_snapshot_data: ?[]u8 = null;
+/// NOTE: Using atomic pointer for thread-safe access from worker threads.
+/// Worker threads need to read snapshot data set by the main browser thread.
+var tracked_snapshot_data_ptr: std.atomic.Value(?[*]u8) = std.atomic.Value(?[*]u8).init(null);
+var tracked_snapshot_data_len: std.atomic.Value(usize) = std.atomic.Value(usize).init(0);
 var tracked_snapshot_allocator: ?std.mem.Allocator = null;
+
+/// Thread-safe getter for snapshot data
+fn getTrackedSnapshotData() ?[]u8 {
+    const ptr = tracked_snapshot_data_ptr.load(.acquire);
+    std.debug.print("[SNAPSHOT] getTrackedSnapshotData: ptr={*}, len={}\n", .{ @as(?*anyopaque, if (ptr) |p| @ptrCast(p) else null), tracked_snapshot_data_len.load(.acquire) });
+    if (ptr) |p| {
+        const len = tracked_snapshot_data_len.load(.acquire);
+        return p[0..len];
+    }
+    return null;
+}
+
+/// Thread-safe setter for snapshot data (only called from main thread during init)
+fn setTrackedSnapshotData(data: ?[]u8) void {
+    if (data) |d| {
+        std.debug.print("[SNAPSHOT] setTrackedSnapshotData: setting ptr={*}, len={}\n", .{ d.ptr, d.len });
+        tracked_snapshot_data_ptr.store(d.ptr, .release);
+        tracked_snapshot_data_len.store(d.len, .release);
+    } else {
+        std.debug.print("[SNAPSHOT] setTrackedSnapshotData: setting null\n", .{});
+        tracked_snapshot_data_ptr.store(null, .release);
+        tracked_snapshot_data_len.store(0, .release);
+    }
+}
+
+/// Track external reference registration for diagnostics
+var last_registered_count: usize = 0;
+var last_registered_hash: u64 = 0;
 
 /// Standard V8 flags for deterministic snapshot creation and loading.
 /// These MUST be set BEFORE v8_Platform_Initialize() is called.
@@ -86,7 +117,12 @@ pub const InitResult = struct {
     used_snapshot: bool,
     /// Startup time in milliseconds (for performance tracking)
     startup_time_ms: i64,
+    /// The context index that was restored (0 if not from indexed snapshot)
+    context_index: usize = 0,
 };
+
+// Import SnapshotContextIndex for scope-based context selection
+const SnapshotContextIndex = @import("snapshot_context_index.zig").SnapshotContextIndex;
 
 /// Options for V8 initialization
 pub const InitOptions = struct {
@@ -96,6 +132,9 @@ pub const InitOptions = struct {
     embedded_snapshot: ?[]const u8 = null,
     /// Whether to log performance information
     log_performance: bool = true,
+    /// Context index to restore from snapshot (default 0 = Window context)
+    /// Use SnapshotContextIndex enum values for type safety.
+    context_index: usize = 0,
 };
 
 /// Error set for snapshot loading
@@ -112,7 +151,82 @@ pub const SnapshotError = error{
     PlatformInitFailed,
     /// Out of memory
     OutOfMemory,
+    /// External references not registered (call initializeV8 first from main thread)
+    ExternalRefsNotRegistered,
 };
+
+/// Create a new V8 isolate from the snapshot for use in worker threads.
+///
+/// IMPORTANT: This function is designed for worker threads and assumes:
+/// 1. The main browser has already called initializeV8() which registered external references
+/// 2. The snapshot has been loaded and cached (tracked_snapshot_data is valid)
+///
+/// Unlike initializeV8(), this function:
+/// - Does NOT re-register external references (uses already-registered ones)
+/// - Does NOT reload the snapshot file (uses cached data)
+/// - IS thread-safe for creating worker isolates
+///
+/// Returns null if:
+/// - External references haven't been registered yet
+/// - Snapshot data isn't available
+/// - Isolate/context creation fails
+pub fn createWorkerIsolateFromSnapshot(context_index: ?usize) ?SnapshotResult {
+    // Check if external references have been registered by the main browser
+    if (!ext_refs.hasRegisteredExternalReferences()) {
+        std.log.err("[snapshot_loader] Worker: External references not registered (main browser must initialize first)", .{});
+        return null;
+    }
+
+    // Get the already-registered external references
+    const refs_ptr = ext_refs.getRuntimeExternalReferencesPtr();
+
+    // Use the cached snapshot data from the main browser's initialization
+    const snapshot_data = getTrackedSnapshotData() orelse {
+        std.log.err("[snapshot_loader] Worker: No snapshot data available (main browser must initialize first)", .{});
+        return null;
+    };
+
+    // Validate the snapshot data
+    std.debug.print("[SNAPSHOT] Worker: validating snapshot data...\n", .{});
+    const validation = validateSnapshotData(snapshot_data);
+    if (!validation.isUsable()) {
+        std.log.err("[snapshot_loader] Worker: Cached snapshot data is invalid: {s}", .{validation.error_message orelse "unknown"});
+        return null;
+    }
+    std.debug.print("[SNAPSHOT] Worker: snapshot validation passed\n", .{});
+
+    // Create a new isolate from the snapshot using already-registered external refs
+    std.debug.print("[SNAPSHOT] Worker: calling v8_Isolate_NewFromSnapshot...\n", .{});
+    const isolate = ffi.v8_Isolate_NewFromSnapshot(
+        snapshot_data.ptr,
+        @intCast(snapshot_data.len),
+        refs_ptr,
+    );
+    std.debug.print("[SNAPSHOT] Worker: v8_Isolate_NewFromSnapshot returned: {?}\n", .{isolate});
+    if (isolate == null) {
+        std.log.err("[snapshot_loader] Worker: Failed to create isolate from snapshot", .{});
+        return null;
+    }
+
+    // Create context from the snapshot at the specified index
+    // Index 0 = Window, 1 = DedicatedWorker, 2 = SharedWorker, 3 = ServiceWorker, etc.
+    std.debug.print("[SNAPSHOT] Worker: calling v8_Context_NewFromSnapshotAt with index={?}...\n", .{context_index});
+    const context = if (context_index) |idx|
+        ffi.v8_Context_NewFromSnapshotAt(isolate.?, idx)
+    else
+        ffi.v8_Context_NewFromSnapshot(isolate.?);
+    std.debug.print("[SNAPSHOT] Worker: v8_Context_NewFromSnapshotAt returned: {?}\n", .{context});
+    if (context == null) {
+        std.log.err("[snapshot_loader] Worker: Failed to create context from snapshot", .{});
+        ffi.v8_Isolate_Dispose(isolate.?);
+        return null;
+    }
+
+    return SnapshotResult{
+        .isolate = isolate.?,
+        .context = context.?,
+    };
+}
 
 /// Initialize V8 from a snapshot if available, otherwise fall back to fresh initialization.
 ///
@@ -127,7 +241,12 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
 
     // Try embedded snapshot first
     if (options.embedded_snapshot) |snapshot_data| {
-        if (try initFromSnapshotData(snapshot_data, options.log_performance)) |result| {
+        if (try initFromSnapshotData(snapshot_data, options.log_performance, options.context_index)) |result| {
+            // Store snapshot data for worker threads to access
+            // Workers need to create their own isolates from the same snapshot
+            setTrackedSnapshotData(@constCast(snapshot_data));
+            std.debug.print("[SNAPSHOT] initializeV8: stored embedded snapshot for workers, len={d}\n", .{snapshot_data.len});
+
             const elapsed = std.time.milliTimestamp() - start_time;
             return .{
                 .isolate = result.isolate,
@@ -141,6 +260,12 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
     // Try loading from file
     if (options.snapshot_path) |path| {
         if (try initFromSnapshotFile(allocator, path, options.log_performance)) |result| {
+            // Note: initFromSnapshotFile allocates and stores snapshot data via tracked_snapshot_data
+            // We need to also set it here for workers - but the data was already allocated
+            // The file-based path stores the data in tracked variables during allocation
+            // So we need to ensure setTrackedSnapshotData is called in initFromSnapshotFile
+            std.debug.print("[SNAPSHOT] initializeV8: loaded from file path={s}\n", .{path});
+
             const elapsed = std.time.milliTimestamp() - start_time;
             return .{
                 .isolate = result.isolate,
@@ -178,10 +303,45 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
 const SnapshotResult = struct {
     isolate: *ffi.Isolate,
     context: *ffi.Context,
+    context_index: usize = 0,
 };
 
+/// Create a context from a specific index in the snapshot.
+///
+/// This is used for multi-context snapshots where different scope types
+/// (Window, Worker, ServiceWorker, etc.) have separate pre-configured contexts.
+///
+/// @param isolate - Isolate created from snapshot
+/// @param index - Context index (from SnapshotContextIndex enum)
+/// @return Context at that index, or null if index is invalid
+pub fn createContextFromSnapshotAt(isolate: *ffi.Isolate, index: SnapshotContextIndex) ?*ffi.Context {
+    return ffi.v8_Context_NewFromSnapshotAt(isolate, @intFromEnum(index));
+}
+
+/// Create a context for a specific scope kind from the snapshot.
+///
+/// This is the high-level API that maps GlobalScopeKind to the appropriate
+/// snapshot context index.
+///
+/// @param isolate - Isolate created from snapshot
+/// @param scope_kind - The global scope kind (Window, DedicatedWorker, etc.)
+/// @return Context for that scope, or null if not available in snapshot
+pub fn createContextForScope(isolate: *ffi.Isolate, scope_kind: anytype) ?*ffi.Context {
+    const index = SnapshotContextIndex.forScopeKind(scope_kind);
+    return createContextFromSnapshotAt(isolate, index);
+}
+
+/// Get the number of indexed contexts available in the snapshot.
+///
+/// @param data - Snapshot data
+/// @return Number of contexts, or 0 if snapshot is invalid
+pub fn getSnapshotContextCount(data: []const u8) usize {
+    if (data.len < 8) return 0;
+    return ffi.v8_Snapshot_GetContextCount(data.ptr, @intCast(data.len));
+}
+
 /// Try to initialize from in-memory snapshot data
-fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResult {
+fn initFromSnapshotData(data: []const u8, log_performance: bool, context_index: usize) !?SnapshotResult {
     // === Snapshot Validation ===
     // Validate snapshot data thoroughly before attempting to load.
     // This helps provide clear error messages and fail fast.
@@ -249,17 +409,23 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
     ffi.v8_Isolate_Enter(isolate);
     errdefer ffi.v8_Isolate_Exit(isolate);
 
-    // Create a context from the snapshot using Context::FromSnapshot(isolate, 0).
+    // Create a context from the snapshot using Context::FromSnapshot(isolate, index).
     // This retrieves the indexed context that was added via AddContext() during
     // snapshot creation. This is the proper way to restore context state from snapshot.
     //
-    // IMPORTANT: The snapshot generator MUST add a context at index 0 using
+    // IMPORTANT: The snapshot generator MUST add contexts using
     // v8_SnapshotCreator_CreateAndAddContext() for this to work.
+    //
+    // Index 0 = Window context (default)
+    // Index 1 = DedicatedWorker context
+    // Index 2 = SharedWorker context
+    // Index 3 = ServiceWorker context
+    // etc. (see SnapshotContextIndex enum)
     //
     // This gives us:
     // - Fast isolate startup (~2ms vs ~40ms) from snapshot's pre-compiled builtins
-    // - Context from the snapshot (currently V8 builtins, will contain WebIDL interfaces later)
-    const context = ffi.v8_Context_NewFromSnapshot(isolate) orelse {
+    // - Context from the snapshot with scope-appropriate WebIDL interfaces
+    const context = ffi.v8_Context_NewFromSnapshotAt(isolate, context_index) orelse {
         if (log_performance) {
             std.log.warn("Failed to create context from snapshot (Context::FromSnapshot failed)", .{});
             std.log.warn("  This usually means no indexed context was added during snapshot creation", .{});
@@ -296,7 +462,7 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool)
     // V8 keeps a reference to the snapshot data for lazy deserialization,
     // so the data must remain valid for the entire lifetime of the isolate.
     // We free it in cleanupSnapshotData() which is called during runtime shutdown.
-    tracked_snapshot_data = snapshot_data;
+    setTrackedSnapshotData(snapshot_data);
     tracked_snapshot_allocator = allocator;
 
     const bytes_read = file.readAll(snapshot_data) catch {
@@ -307,7 +473,7 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool)
         return null;
     }
 
-    return initFromSnapshotData(snapshot_data, false);
+    return initFromSnapshotData(snapshot_data, false, 0); // Default to window context
 }
 
 /// Register all external references for snapshot loading
@@ -322,6 +488,13 @@ pub fn registerExternalReferences() void {
     // Use the centralized external reference registration
     // This ensures the same order at snapshot creation and loading time
     ext_refs.registerAllExternalReferences();
+
+    const count = ext_refs.getExternalReferenceCount();
+    const hash = ext_refs.computeExternalReferenceHash();
+
+    // Store the count and hash for comparison
+    last_registered_count = count;
+    last_registered_hash = hash;
 }
 
 /// Snapshot validation result with detailed diagnostics
@@ -394,11 +567,11 @@ pub fn hasValidSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
 /// V8 requires the snapshot data to remain valid for the isolate's entire lifetime,
 /// so this must only be called after all V8 resources have been cleaned up.
 pub fn cleanupSnapshotData() void {
-    if (tracked_snapshot_data) |data| {
+    if (getTrackedSnapshotData()) |data| {
         if (tracked_snapshot_allocator) |allocator| {
             allocator.free(data);
         }
-        tracked_snapshot_data = null;
+        setTrackedSnapshotData(null);
         tracked_snapshot_allocator = null;
     }
 }

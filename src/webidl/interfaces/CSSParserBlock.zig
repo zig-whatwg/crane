@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSParserValue = @import("interfaces").CSSParserValue;
+const CSSParserValue = @import("CSSParserValue.zig").CSSParserValue;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSParserBlock = struct {

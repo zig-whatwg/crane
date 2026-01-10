@@ -41,6 +41,12 @@ const script_execution = @import("script_execution.zig");
 const impls = @import("impls");
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const DocumentImpl = impls.Document;
+const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
+const WindowImpl = impls.Window;
+
+// V8 context manager for getting Window from V8 context
+const v8 = @import("v8");
+const context_manager = v8.context_manager;
 
 // DOM internals for document_element setting
 const dom = @import("dom");
@@ -81,6 +87,10 @@ pub const ParserScriptContext = struct {
     script_loader_fn: ?ScriptLoaderFn = null,
     script_loader_ctx: ?*anyopaque = null,
 
+    /// Certificate trust store for HTTPS script fetching.
+    /// Required for fetching scripts from HTTPS URLs with custom/self-signed certificates.
+    trust_store: ?*const fetch.network.CertificateTrustStore = null,
+
     /// Create a new parser script context.
     pub fn init(
         allocator: Allocator,
@@ -117,6 +127,7 @@ pub const ParserScriptContext = struct {
     /// falls back to HTTP fetch like a real browser would.
     ///
     /// Relative URLs are resolved against the base URL.
+    /// For file:// URLs, reads directly from the filesystem.
     ///
     /// Returns null if loading fails.
     pub fn loadExternalScript(self: *ParserScriptContext, url: []const u8) ?[]const u8 {
@@ -125,7 +136,7 @@ pub const ParserScriptContext = struct {
             if (loader_fn(self.script_loader_ctx, url)) |content| {
                 return content;
             }
-            // Custom loader returned null - fall through to HTTP fetch
+            // Custom loader returned null - fall through to file/HTTP fetch
         }
 
         // Resolve relative URLs against base URL
@@ -135,8 +146,13 @@ pub const ParserScriptContext = struct {
         };
         defer if (resolved_url.ptr != url.ptr) self.allocator.free(resolved_url);
 
+        // Handle file:// URLs by reading from filesystem
+        if (std.mem.startsWith(u8, resolved_url, "file://")) {
+            return fetchScriptFromFile(self.allocator, resolved_url);
+        }
+
         // Default: HTTP fetch like a real browser
-        return fetchScriptViaHttp(self.allocator, resolved_url);
+        return fetchScriptViaHttp(self.allocator, resolved_url, self.trust_store);
     }
 
     /// Get the DOM element for a TreeNode (if it has been converted).
@@ -158,12 +174,18 @@ pub const ParserScriptContext = struct {
 /// 3. Check if it's an external script (queue for loading) or inline (execute)
 /// 4. Execute inline script via V8
 pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) void {
-    const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse return));
+    std.debug.print("[PARSER_SCRIPT_CALLBACK] Called!\n", .{});
+    const ctx: *ParserScriptContext = @ptrCast(@alignCast(context orelse {
+        std.debug.print("[PARSER_SCRIPT_CALLBACK] ERROR: context is null\n", .{});
+        return;
+    }));
 
     // Check if scripting is enabled
     if (!ctx.scripting_enabled) {
+        std.debug.print("[PARSER_SCRIPT_CALLBACK] Scripting disabled, returning\n", .{});
         return;
     }
+    std.debug.print("[PARSER_SCRIPT_CALLBACK] Scripting enabled, proceeding\n", .{});
 
     // Step 1: Get DOM HTMLScriptElement from tree node via adapter
     const script_element = ctx.getDomElement(script_tree_node) orelse {
@@ -184,12 +206,10 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
         HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
         HTMLScriptElementImpl.setFromExternalFile(script_element, true);
 
-
         // Try to load the external script
         if (ctx.loadExternalScript(src_url)) |external_content| {
             // Free the loaded content when we're done (cacheSourceText duplicates it)
             defer ctx.allocator.free(external_content);
-
 
             // Successfully loaded - execute the external script content
             if (external_content.len == 0) {
@@ -300,16 +320,25 @@ fn clearInsertionPointAfterScript(ctx: *ParserScriptContext) void {
 ///
 /// If the URL is already absolute (starts with http:// or https://), returns it as-is.
 /// If the URL is relative (starts with /), resolves it against the base URL's origin.
-/// Otherwise, resolves it relative to the base URL's path.
+/// Otherwise, resolves it relative to the URL's path.
+///
+/// Special handling for file:// URLs: absolute paths like /resources/... are resolved
+/// by walking up the base URL path to find a directory containing the target resource.
+/// This enables WPT-style paths where /resources/testharness.js resolves to the WPT root.
 fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8) ?[]const u8 {
     // Already absolute URL
-    if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
+    if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://") or std.mem.startsWith(u8, url, "file://")) {
         return url;
     }
 
     // No base URL - can't resolve
     if (base_url.len == 0) {
         return null;
+    }
+
+    // Special handling for file:// URLs with absolute paths
+    if (std.mem.startsWith(u8, base_url, "file://") and std.mem.startsWith(u8, url, "/")) {
+        return resolveFileUrlAbsolutePath(allocator, url, base_url);
     }
 
     // Extract origin from base URL (scheme + host + optional port)
@@ -343,6 +372,105 @@ fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8)
     return std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ origin, dir_path, url }) catch null;
 }
 
+/// Resolve an absolute path (like /resources/testharness.js) against a file:// URL.
+///
+/// For file:// URLs, we walk up the directory tree from the base URL's location
+/// to find a directory that contains the requested resource. This enables
+/// WPT-style test organization where /resources/ refers to the test root's resources dir.
+///
+/// Example:
+///   base_url: file:///Users/foo/tests/wpt/webidl/basic.html
+///   url: /resources/testharness.js
+///   -> walks up to find /Users/foo/tests/wpt/resources/testharness.js
+///   -> returns file:///Users/foo/tests/wpt/resources/testharness.js
+fn resolveFileUrlAbsolutePath(allocator: Allocator, url: []const u8, base_url: []const u8) ?[]const u8 {
+    // Extract filesystem path from file:// URL
+    // file:///path/to/file -> /path/to/file
+    const file_path = base_url[7..]; // Skip "file://"
+
+    // Get directory containing the base file
+    const last_slash = std.mem.lastIndexOf(u8, file_path, "/") orelse return null;
+    var current_dir = file_path[0..last_slash];
+
+    // Walk up directory tree looking for a directory that contains the target resource
+    while (current_dir.len > 0) {
+        // Try to access current_dir + url (e.g., /Users/foo/tests/wpt + /resources/testharness.js)
+        const candidate_path = std.fmt.allocPrint(allocator, "{s}{s}", .{ current_dir, url }) catch return null;
+
+        // Check if this file exists
+        if (std.fs.cwd().access(candidate_path, .{})) |_| {
+            // Found it! Return as file:// URL
+            const result = std.fmt.allocPrint(allocator, "file://{s}", .{candidate_path}) catch {
+                allocator.free(candidate_path);
+                return null;
+            };
+            allocator.free(candidate_path);
+            return result;
+        } else |_| {
+            allocator.free(candidate_path);
+        }
+
+        // Move up one directory
+        if (std.mem.lastIndexOf(u8, current_dir, "/")) |parent_slash| {
+            if (parent_slash == 0) {
+                // We're at root, try one more time with just "/"
+                const root_candidate = std.fmt.allocPrint(allocator, "{s}", .{url}) catch return null;
+                if (std.fs.cwd().access(root_candidate, .{})) |_| {
+                    const result = std.fmt.allocPrint(allocator, "file://{s}", .{root_candidate}) catch {
+                        allocator.free(root_candidate);
+                        return null;
+                    };
+                    allocator.free(root_candidate);
+                    return result;
+                } else |_| {
+                    allocator.free(root_candidate);
+                }
+                break;
+            }
+            current_dir = current_dir[0..parent_slash];
+        } else {
+            break;
+        }
+    }
+
+    // Fallback: just use the absolute path as-is (filesystem root)
+    return std.fmt.allocPrint(allocator, "file://{s}", .{url}) catch null;
+}
+
+// =============================================================================
+// File Script Fetching (for file:// URLs)
+// =============================================================================
+
+/// Fetch a script from the local filesystem via file:// URL.
+///
+/// This handles file:// URLs by extracting the path and reading the file directly.
+fn fetchScriptFromFile(allocator: Allocator, url: []const u8) ?[]const u8 {
+    // Extract filesystem path from file:// URL
+    // file:///path/to/file -> /path/to/file
+    if (!std.mem.startsWith(u8, url, "file://")) {
+        return null;
+    }
+    const file_path = url[7..]; // Skip "file://"
+
+    std.debug.print("[SCRIPT_FETCH] Loading script from file: {s}\n", .{file_path});
+
+    // Open and read the file
+    const file = std.fs.openFileAbsolute(file_path, .{ .mode = .read_only }) catch |err| {
+        std.debug.print("[SCRIPT_FETCH] Failed to open file {s}: {}\n", .{ file_path, err });
+        return null;
+    };
+    defer file.close();
+
+    // Read the entire file content
+    const content = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch |err| { // 10MB max
+        std.debug.print("[SCRIPT_FETCH] Failed to read file {s}: {}\n", .{ file_path, err });
+        return null;
+    };
+
+    std.debug.print("[SCRIPT_FETCH] Successfully loaded {d} bytes from {s}\n", .{ content.len, file_path });
+    return content;
+}
+
 // =============================================================================
 // HTTP Script Fetching (Default Browser Behavior)
 // =============================================================================
@@ -351,13 +479,25 @@ fn resolveScriptUrl(allocator: Allocator, url: []const u8, base_url: []const u8)
 ///
 /// This is the default behavior when no custom script loader is provided.
 /// It uses the Fetch API to retrieve scripts from URLs.
-fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
-
+fn fetchScriptViaHttp(
+    allocator: Allocator,
+    url: []const u8,
+    trust_store: ?*const fetch.network.CertificateTrustStore,
+) ?[]const u8 {
     // Use the fetch module to retrieve the script
-    const response = fetch.fetchSimple(allocator, url) catch |err| {
+    // Create a request so we can pass fetch options including trust_store
+    const request = fetch.internal.InternalRequest.init(allocator, url) catch {
+        std.debug.print("Failed to create request for script {s}\n", .{url});
+        return null;
+    };
+    defer request.deinit();
+
+    const result = fetch.algorithms.fetch_algorithm.fetch(allocator, request, .{ .trust_store = trust_store }) catch |err| {
         std.debug.print("HTTP fetch error for script {s}: {}\n", .{ url, err });
         return null;
     };
+    const response = result.response;
+    // Note: timing_info is const, no need to deinit
     defer response.deinit();
 
     // Check for successful response (2xx status)
@@ -473,21 +613,64 @@ pub const DomTreeAdapter = struct {
     /// Called when a child is appended to a parent during parsing.
     /// Updates the DOM tree structure.
     /// When appending <html> to document, also sets document.documentElement.
+    /// When appending <iframe> elements, triggers their insertion steps.
     pub fn onChildAppended(self: *DomTreeAdapter, parent: *TreeNode, child: *TreeNode) !void {
         const parent_dom = self.node_map.get(parent) orelse return;
         const child_dom = self.node_map.get(child) orelse return;
 
         _ = interfaces.Node.call_appendChild(parent_dom, child_dom) catch {};
 
-        // CRITICAL: If appending <html> to document, set documentElement
-        // Per DOM spec, documentElement is the first Element child of the Document
-        if (parent.node_type == .document and child.node_type == .element) {
+        // Handle element-specific insertion steps
+        if (child.node_type == .element) {
             if (child.local_name) |name| {
-                if (std.mem.eql(u8, name, "html") and child.namespace == .html) {
+                // CRITICAL: If appending <html> to document, set documentElement
+                // Per DOM spec, documentElement is the first Element child of the Document
+                if (parent.node_type == .document and
+                    std.mem.eql(u8, name, "html") and child.namespace == .html)
+                {
                     document_internals.setDocumentElement(self.document, child_dom);
+                }
+
+                // CRITICAL: If appending <iframe>, trigger the iframe's insertion steps
+                // Per HTML Standard §4.8.5, when an iframe is inserted into a document,
+                // a nested browsing context must be created and navigation triggered.
+                if (std.mem.eql(u8, name, "iframe") and child.namespace == .html) {
+                    self.handleIframeInsertion(child_dom);
                 }
             }
         }
+    }
+
+    /// Handle iframe-specific insertion steps.
+    /// Per HTML Standard §4.8.5, when an iframe is inserted into a document:
+    /// 1. Create a nested browsing context as a child of the parent
+    /// 2. Navigate to the initial content (srcdoc > src > about:blank)
+    fn handleIframeInsertion(self: *DomTreeAdapter, iframe_element: *runtime.Instance) void {
+        // Get the iframe's internal state to access the integration
+        const internal = HTMLIFrameElementImpl.getInternal(iframe_element) orelse return;
+
+        // Get the parent document's browsing context via the V8 context manager.
+        // The runtime.Context holds an engine_ctx (V8 context) which we can use
+        // to look up the associated Window and its browsing context.
+        const engine_ctx = self.ctx.engine_ctx orelse return;
+        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+        // Get the Window associated with this V8 context
+        const window = context_manager.getWindowForContext(v8_ctx) orelse return;
+        const window_internal = WindowImpl.getInternal(window) orelse return;
+        const parent_bc = window_internal.browsing_context;
+
+        // Create the origin for the iframe (inherits from container document)
+        // For srcdoc and same-origin src, the origin is inherited
+        const container_origin = parent_bc.getOrigin();
+
+        // Trigger the iframe's insertion steps via integration
+        // This creates the browsing context and navigates to initial content
+        internal.integration.onInsertedIntoDocument(parent_bc, container_origin) catch {
+            // Insertion failed - iframe will not have a browsing context
+            // This is recoverable - accessing contentWindow will return null
+            return;
+        };
     }
 
     /// Called when a node's text content changes during parsing.

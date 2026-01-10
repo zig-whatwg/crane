@@ -44,6 +44,16 @@ pub const ServiceWorkersMode = fetch_intercept.ServiceWorkersMode;
 pub const timing = @import("timing.zig");
 pub const ServiceWorkerTiming = timing.ServiceWorkerTiming;
 
+// Registrar implementation
+pub const registrar_impl = @import("registrar_impl.zig");
+pub const ServiceWorkerRegistrarImpl = registrar_impl.ServiceWorkerRegistrarImpl;
+
+// Fetch interceptor implementation (VTable adapter for fetch module)
+pub const fetch_interceptor_impl = @import("fetch_interceptor_impl.zig");
+pub const ServiceWorkerFetchInterceptor = fetch_interceptor_impl.ServiceWorkerFetchInterceptor;
+pub const ensureFetchInterceptorRegistered = fetch_interceptor_impl.ensureRegistered;
+pub const unregisterFetchInterceptor = fetch_interceptor_impl.unregister;
+
 // =============================================================================
 // Tests
 // =============================================================================
