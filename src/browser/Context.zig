@@ -68,6 +68,12 @@ pub fn getTimerInterface() ?TimerInterface {
 /// This properly cancels libuv timers to prevent handle accumulation
 pub fn clearTimerInterface() void {
     std.debug.print("[clearTimerInterface] CALLED, has_map={}, count={d}\n", .{ timer_contexts != null, if (timer_contexts) |m| m.count() else 0 });
+
+    // CRITICAL: Clean up the global timer registry from WindowOrWorkerGlobalScope first.
+    // This registry tracks setTimeout/setInterval timers from the mixin implementation.
+    // We must cancel these libuv timers BEFORE freeing the callback contexts.
+    impls.WindowOrWorkerGlobalScope.cleanupTimerRegistry(current_timer_interface);
+
     // Clean up any remaining timer contexts (both one-shot and intervals)
     if (timer_contexts) |*map| {
         var iter = map.iterator();

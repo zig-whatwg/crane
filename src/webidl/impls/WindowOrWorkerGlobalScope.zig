@@ -61,8 +61,10 @@ const TimerCallbackContext = struct {
     v8_isolate: *v8_engine.ffi.Isolate,
     /// Allocator for cleanup
     allocator: std.mem.Allocator,
-    /// Timer ID for registry lookup
+    /// Timer ID for registry lookup (returned to JavaScript)
     timer_id: i32,
+    /// Libuv timer ID for cancellation (internal use)
+    libuv_timer_id: u64,
     /// Stored arguments to pass to the callback
     arguments: []runtime.JSValue,
     /// Is this a repeating timer (setInterval) or one-shot (setTimeout)?
@@ -143,6 +145,27 @@ fn getOrCreateTimerRegistry(allocator: std.mem.Allocator) *TimerRegistry {
     return &global_timer_registry.?;
 }
 
+/// Clean up the global timer registry, cancelling all pending timers.
+/// This MUST be called during context/isolate shutdown to prevent use-after-free crashes.
+/// The function cancels all libuv timers BEFORE freeing the callback contexts.
+pub fn cleanupTimerRegistry(timer_interface: ?runtime.TimerInterface) void {
+    if (global_timer_registry) |*registry| {
+        // Iterate through all registered timers
+        var it = registry.timers.iterator();
+        while (it.next()) |entry| {
+            const ctx = entry.value_ptr.*;
+            // FIRST: Cancel the libuv timer to prevent it from firing
+            if (timer_interface) |timer| {
+                timer.clearTimeout(ctx.libuv_timer_id);
+            }
+            // THEN: Free the callback context
+            ctx.deinit();
+        }
+        registry.timers.deinit();
+        global_timer_registry = null;
+    }
+}
+
 /// Trampoline callback invoked by the timer manager.
 /// Extracts the TimerCallbackContext and invokes the stored V8 function.
 fn timerTrampoline(user_data: ?*anyopaque) void {
@@ -208,26 +231,44 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
         &args,
     );
 
+    // CRITICAL: Save values we need BEFORE checking is_interval.
+    // The user callback (v8_Function_Call above) might call clearInterval(),
+    // which frees ctx and makes it invalid. We need these values to check
+    // if we should reschedule.
+    const is_interval = ctx.is_interval;
+    const timer_id = ctx.timer_id;
+    const registry = ctx.registry;
+
     // For one-shot timers (setTimeout), clean up after invocation
-    if (!ctx.is_interval) {
+    if (!is_interval) {
         // Remove from registry and clean up
-        _ = ctx.registry.unregister(ctx.timer_id);
+        _ = registry.unregister(timer_id);
         ctx.deinit();
     } else {
-        // For interval timers, reschedule the next firing
+        // For interval timers, check if clearInterval was called during the callback.
+        // If the timer was cleared, the context was already freed and we must not
+        // access it or reschedule.
+        if (registry.get(timer_id) == null) {
+            // Timer was cleared during callback - context is already freed, do nothing
+            return;
+        }
+
+        // Timer is still active, reschedule the next firing
         // Get the runtime context from the V8 context to access the timer interface
         if (context_manager.get(ctx.v8_context)) |runtime_ctx| {
             if (runtime_ctx.getTimer()) |timer_interface| {
                 // Schedule the next interval firing
-                _ = timer_interface.setTimeout(ctx.interval_ms, timerTrampoline, ctx);
+                // CRITICAL: Update libuv_timer_id so clearInterval can cancel the correct timer
+                const new_libuv_id = timer_interface.setTimeout(ctx.interval_ms, timerTrampoline, ctx);
+                ctx.libuv_timer_id = new_libuv_id;
             } else |_| {
                 // Timer interface not available, clean up
-                _ = ctx.registry.unregister(ctx.timer_id);
+                _ = registry.unregister(timer_id);
                 ctx.deinit();
             }
         } else {
             // Context not found, clean up
-            _ = ctx.registry.unregister(ctx.timer_id);
+            _ = registry.unregister(timer_id);
             ctx.deinit();
         }
     }
@@ -624,6 +665,7 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
                 .v8_isolate = isolate,
                 .allocator = allocator,
                 .timer_id = 0,
+                .libuv_timer_id = 0,
                 .arguments = args_copy,
                 .is_interval = true, // This is an interval timer
                 .interval_ms = timeout_ms,
@@ -641,7 +683,8 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
             if (instance.ctx.getTimer()) |timer_interface| {
                 // For intervals, we need to set up a repeating timer
                 // The timerTrampoline handles rescheduling for intervals
-                _ = timer_interface.setTimeout(timeout_ms, timerTrampoline, timer_ctx);
+                const libuv_id = timer_interface.setTimeout(timeout_ms, timerTrampoline, timer_ctx);
+                timer_ctx.libuv_timer_id = libuv_id;
             } else |_| {
                 _ = registry.unregister(timer_id);
                 timer_ctx.deinit();
@@ -697,9 +740,10 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 
     // Unregister and clean up
     if (registry.unregister(timer_id)) |ctx| {
-        // Get timer interface to cancel the timer
+        // Get timer interface to cancel the timer using the libuv timer ID
+        // (not the registry ID which is what we returned to JS)
         if (instance.ctx.getTimer()) |timer_interface| {
-            timer_interface.clearTimeout(@intCast(timer_id));
+            timer_interface.clearTimeout(ctx.libuv_timer_id);
         } else |_| {}
 
         // Clean up the context
@@ -1206,6 +1250,7 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
                 .v8_isolate = isolate,
                 .allocator = allocator,
                 .timer_id = 0, // Will be set by registry
+                .libuv_timer_id = 0, // Will be set after scheduling
                 .arguments = args_copy,
                 .is_interval = false,
                 .interval_ms = 0,
@@ -1222,6 +1267,7 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
             // Schedule the timer via the platform timer interface
             if (instance.ctx.getTimer()) |timer_interface| {
                 const libuv_id = timer_interface.setTimeout(timeout_ms, timerTrampoline, timer_ctx);
+                timer_ctx.libuv_timer_id = libuv_id; // Store for cancellation
                 std.debug.print("[JS_SETTIMEOUT] Created timer: registry_id={d}, libuv_id={d}, timeout={d}ms\n", .{ timer_id, libuv_id, timeout_ms });
             } else |_| {
                 // No timer interface available - clean up and fail
@@ -1259,10 +1305,11 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 
     // Unregister and clean up
     if (registry.unregister(timer_id)) |ctx| {
-        std.debug.print("[JS_CLEARTIMEOUT] Found timer in registry, cancelling\n", .{});
-        // Get timer interface to cancel the timer
+        std.debug.print("[JS_CLEARTIMEOUT] Found timer in registry, cancelling libuv_id={d}\n", .{ctx.libuv_timer_id});
+        // Get timer interface to cancel the timer using the libuv timer ID
+        // (not the registry ID which is what we returned to JS)
         if (instance.ctx.getTimer()) |timer_interface| {
-            timer_interface.clearTimeout(@intCast(timer_id));
+            timer_interface.clearTimeout(ctx.libuv_timer_id);
         } else |_| {}
 
         // Clean up the context
