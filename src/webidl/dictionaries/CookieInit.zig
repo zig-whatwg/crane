@@ -14,4 +14,5 @@ pub const CookieInit = struct {
     path: ?runtime.USVString = null,
     sameSite: ?enums.CookieSameSite = null,
     partitioned: ?bool = null,
+    maxAge: ?i64 = null,
 };

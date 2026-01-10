@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
+const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
 
 pub const XRLightEstimate = struct {
     pub const Meta = struct {

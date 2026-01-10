@@ -724,6 +724,8 @@ pub const TreeBuilder = struct {
 
     /// Parse the entire document.
     pub fn parse(self: *TreeBuilder) !void {
+        std.debug.print("[TREE_PARSE] Starting parse loop, scripting_enabled={}, callback={?}\n", .{ self.scripting_enabled, self.script_execution_callback });
+        var token_count: usize = 0;
         while (true) {
             const token = try self.tokenizer.nextToken();
             if (token == null) break;
@@ -731,11 +733,25 @@ pub const TreeBuilder = struct {
             var tok = token.?;
             defer tok.deinit();
 
+            token_count += 1;
+            if (tok == .start_tag) {
+                const name = tok.start_tag.getTagName();
+                if (std.mem.eql(u8, name, "script")) {
+                    std.debug.print("[TREE_PARSE] Token #{d}: <script> start tag\n", .{token_count});
+                }
+            } else if (tok == .end_tag) {
+                const name = tok.end_tag.getTagName();
+                if (std.mem.eql(u8, name, "script")) {
+                    std.debug.print("[TREE_PARSE] Token #{d}: </script> end tag\n", .{token_count});
+                }
+            }
+
             try self.processToken(tok);
 
             // Check for EOF
             if (tok == .eof) break;
         }
+        std.debug.print("[TREE_PARSE] Parse complete, processed {d} tokens\n", .{token_count});
     }
 
     /// Process a single token.
@@ -1630,6 +1646,7 @@ pub const TreeBuilder = struct {
     }
 
     fn handleScriptStartTag(self: *TreeBuilder, tag: TagToken) !void {
+        std.debug.print("[TREE_BUILDER] handleScriptStartTag called! Transitioning to text mode\n", .{});
         // Insert script element
         _ = try self.insertHtmlElement(tag);
         self.tokenizer.state = .script_data;
@@ -1925,6 +1942,7 @@ pub const TreeBuilder = struct {
             std.mem.eql(u8, name, "template") or
             std.mem.eql(u8, name, "title"))
         {
+            std.debug.print("[TREE_BUILDER] handleInBodyStartTag: delegating '{s}' to handleInHeadMode\n", .{name});
             try self.handleInHeadMode(Token{ .start_tag = tag });
         } else if (std.mem.eql(u8, name, "body")) {
             self.reportError(.invalid_first_character_of_tag_name);
@@ -2069,9 +2087,12 @@ pub const TreeBuilder = struct {
                     // - Increment script nesting level
                     // - Prepare the script element
                     // - Decrement script nesting level
+                    std.debug.print("[TREE_BUILDER] </script> seen, scripting_enabled={}\n", .{self.scripting_enabled});
                     if (self.scripting_enabled) {
                         if (script_element) |script| {
+                            std.debug.print("[TREE_BUILDER] Have script element, callback={}\n", .{self.script_execution_callback != null});
                             if (self.script_execution_callback) |callback| {
+                                std.debug.print("[TREE_BUILDER] Invoking script callback!\n", .{});
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
                                 if (self.script_nesting_level > 0) {

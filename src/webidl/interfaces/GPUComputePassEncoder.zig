@@ -18,10 +18,10 @@ const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const GPUSize32 = @import("typedefs").GPUSize32;
 const USVString = @import("typedefs").USVString;
-const GPUBuffer = @import("interfaces").GPUBuffer;
-const GPUComputePipeline = @import("interfaces").GPUComputePipeline;
+const GPUBuffer = @import("GPUBuffer.zig").GPUBuffer;
+const GPUComputePipeline = @import("GPUComputePipeline.zig").GPUComputePipeline;
 const GPUSize64 = @import("typedefs").GPUSize64;
-const GPUBindGroup = @import("interfaces").GPUBindGroup;
+const GPUBindGroup = @import("GPUBindGroup.zig").GPUBindGroup;
 
 pub const GPUComputePassEncoder = struct {
     pub const Meta = struct {

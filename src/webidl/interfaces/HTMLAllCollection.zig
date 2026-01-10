@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const Element = @import("Element.zig").Element;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const DOMString = @import("typedefs").DOMString;
 
 pub const HTMLAllCollection = struct {

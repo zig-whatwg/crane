@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AnimationEffect = @import("interfaces").AnimationEffect;
+const AnimationEffect = @import("AnimationEffect.zig").AnimationEffect;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const Animation = @import("interfaces").Animation;
+const Animation = @import("Animation.zig").Animation;
 
 pub const AnimationTimeline = struct {
     pub const Meta = struct {

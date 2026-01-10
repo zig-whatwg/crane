@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
 
 pub const Slottable = struct {
     pub const Meta = struct {

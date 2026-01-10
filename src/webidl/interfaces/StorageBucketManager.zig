@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const StorageBucketOptions = @import("dictionaries").StorageBucketOptions;
-const StorageBucket = @import("interfaces").StorageBucket;
+const StorageBucket = @import("StorageBucket.zig").StorageBucket;
 const DOMString = @import("typedefs").DOMString;
 
 pub const StorageBucketManager = struct {

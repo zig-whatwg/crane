@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Document = @import("interfaces").Document;
-const TrustedHTML = @import("interfaces").TrustedHTML;
+const Document = @import("Document.zig").Document;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
 const DOMString = @import("typedefs").DOMString;
 const DOMParserSupportedType = @import("enums").DOMParserSupportedType;
 

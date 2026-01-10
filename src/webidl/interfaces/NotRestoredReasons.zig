@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const NotRestoredReasonDetails = @import("interfaces").NotRestoredReasonDetails;
+const NotRestoredReasonDetails = @import("NotRestoredReasonDetails.zig").NotRestoredReasonDetails;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 

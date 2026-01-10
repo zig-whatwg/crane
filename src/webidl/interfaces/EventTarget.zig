@@ -12,11 +12,11 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const DOMString = @import("typedefs").DOMString;
-const Observable = @import("interfaces").Observable;
+const Observable = @import("Observable.zig").Observable;
 
 pub const EventTarget = struct {
     pub const Meta = struct {

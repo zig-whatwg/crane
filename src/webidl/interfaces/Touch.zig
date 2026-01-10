@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const TouchInit = @import("dictionaries").TouchInit;
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const TouchType = @import("enums").TouchType;
 
 pub const Touch = struct {

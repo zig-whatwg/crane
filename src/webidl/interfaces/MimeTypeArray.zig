@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MimeType = @import("interfaces").MimeType;
+const MimeType = @import("MimeType.zig").MimeType;
 const DOMString = @import("typedefs").DOMString;
 
 pub const MimeTypeArray = struct {

@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
 const GLint = @import("typedefs").GLint;
 const GLsizei = @import("typedefs").GLsizei;
-const WebGLTexture = @import("interfaces").WebGLTexture;
+const WebGLTexture = @import("WebGLTexture.zig").WebGLTexture;
 
 pub const OVR_multiview2 = struct {
     pub const Meta = struct {

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSPrimitiveValue = @import("interfaces").CSSPrimitiveValue;
+const CSSPrimitiveValue = @import("CSSPrimitiveValue.zig").CSSPrimitiveValue;
 
 pub const Rect = struct {
     pub const Meta = struct {
