@@ -116,13 +116,6 @@ pub const SVGTextContentElement = struct {
             .{ "selectSubString", "call_selectSubString", 2 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "LENGTHADJUST_UNKNOWN", "get_LENGTHADJUST_UNKNOWN" },
-            .{ "LENGTHADJUST_SPACING", "get_LENGTHADJUST_SPACING" },
-            .{ "LENGTHADJUST_SPACINGANDGLYPHS", "get_LENGTHADJUST_SPACINGANDGLYPHS" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getNumberOfChars",
@@ -201,10 +194,7 @@ pub const SVGTextContentElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -240,6 +230,9 @@ pub const SVGTextContentElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

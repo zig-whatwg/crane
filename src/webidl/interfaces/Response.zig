@@ -65,18 +65,8 @@ pub const Response = struct {
             .{ "text", "call_text", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "error", "call_static_error", 0 },
-            .{ "redirect", "call_static_redirect", 1 },
-            .{ "json", "call_static_json", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "error",
-            "redirect",
-            "json",
             "clone",
             "arrayBuffer",
             "blob",
@@ -107,6 +97,12 @@ pub const Response = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "error", "call_static_error", 0 },
+            .{ "redirect", "call_static_redirect", 1 },
+            .{ "json", "call_static_json", 1 },
+        };
         pub const has_constructor = true;
     };
 

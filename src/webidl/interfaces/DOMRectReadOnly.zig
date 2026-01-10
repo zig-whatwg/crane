@@ -48,14 +48,8 @@ pub const DOMRectReadOnly = struct {
             .{ "toJSON", "call_toJSON", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "fromRect", "call_static_fromRect", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "fromRect",
             "toJSON",
         };
         
@@ -79,6 +73,10 @@ pub const DOMRectReadOnly = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "fromRect", "call_static_fromRect", 0 },
+        };
         pub const has_constructor = true;
     };
 

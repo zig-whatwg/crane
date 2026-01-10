@@ -48,18 +48,8 @@ pub const AbortSignal = struct {
             .{ "throwIfAborted", "call_throwIfAborted", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "abort", "call_static_abort", 0 },
-            .{ "timeout", "call_static_timeout", 1 },
-            .{ "_any", "call_static__any", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "abort",
-            "timeout",
-            "_any",
             "throwIfAborted",
         };
         
@@ -82,6 +72,12 @@ pub const AbortSignal = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "abort", "call_static_abort", 0 },
+            .{ "timeout", "call_static_timeout", 1 },
+            .{ "_any", "call_static__any", 1 },
+        };
         pub const has_constructor = false;
     };
 

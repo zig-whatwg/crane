@@ -155,19 +155,6 @@ pub const HTMLMediaElement = struct {
             .{ "captureStream", "call_captureStream", 0 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "NETWORK_EMPTY", "get_NETWORK_EMPTY" },
-            .{ "NETWORK_IDLE", "get_NETWORK_IDLE" },
-            .{ "NETWORK_LOADING", "get_NETWORK_LOADING" },
-            .{ "NETWORK_NO_SOURCE", "get_NETWORK_NO_SOURCE" },
-            .{ "HAVE_NOTHING", "get_HAVE_NOTHING" },
-            .{ "HAVE_METADATA", "get_HAVE_METADATA" },
-            .{ "HAVE_CURRENT_DATA", "get_HAVE_CURRENT_DATA" },
-            .{ "HAVE_FUTURE_DATA", "get_HAVE_FUTURE_DATA" },
-            .{ "HAVE_ENOUGH_DATA", "get_HAVE_ENOUGH_DATA" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "load",
@@ -247,10 +234,7 @@ pub const HTMLMediaElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -320,6 +304,9 @@ pub const HTMLMediaElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

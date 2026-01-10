@@ -67,14 +67,6 @@ pub const Range = struct {
             .{ "toString", "serialize", 0 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "START_TO_START", "get_START_TO_START" },
-            .{ "START_TO_END", "get_START_TO_END" },
-            .{ "END_TO_END", "get_END_TO_END" },
-            .{ "END_TO_START", "get_END_TO_START" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setStart",
@@ -100,7 +92,6 @@ pub const Range = struct {
             "createContextualFragment",
             "getClientRects",
             "getBoundingClientRect",
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -116,6 +107,9 @@ pub const Range = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

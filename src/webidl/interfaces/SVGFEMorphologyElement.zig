@@ -113,13 +113,6 @@ pub const SVGFEMorphologyElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_MORPHOLOGY_OPERATOR_UNKNOWN", "get_SVG_MORPHOLOGY_OPERATOR_UNKNOWN" },
-            .{ "SVG_MORPHOLOGY_OPERATOR_ERODE", "get_SVG_MORPHOLOGY_OPERATOR_ERODE" },
-            .{ "SVG_MORPHOLOGY_OPERATOR_DILATE", "get_SVG_MORPHOLOGY_OPERATOR_DILATE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -189,10 +182,7 @@ pub const SVGFEMorphologyElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -232,6 +222,9 @@ pub const SVGFEMorphologyElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

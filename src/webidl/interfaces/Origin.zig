@@ -37,14 +37,8 @@ pub const Origin = struct {
             .{ "isSameSite", "call_isSameSite", 1 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "from", "call_static_from", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "from",
             "isSameOrigin",
             "isSameSite",
         };
@@ -62,6 +56,10 @@ pub const Origin = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "from", "call_static_from", 1 },
+        };
         pub const has_constructor = true;
     };
 

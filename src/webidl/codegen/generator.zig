@@ -239,6 +239,7 @@ fn deduplicateConstructors(allocator: std.mem.Allocator, constructors: *std.Arra
 }
 
 /// Key for deduplicating operations by name AND static status
+/// Static and instance methods with the same name are NOT deduplicated against each other
 const OperationDedupeKey = struct {
     name: []const u8,
     is_static: bool,
@@ -267,6 +268,10 @@ const OperationDedupeContext = struct {
 /// Deduplicate operations by name AND static status (keep first occurrence)
 /// Static and instance methods with the same name are NOT deduplicated against each other
 /// Operations without names (like stringifiers) are always kept
+///
+/// NOTE: This intentionally collapses overloads to a single operation.
+/// The minimum arity for overloaded methods is computed BEFORE this deduplication
+/// by computeMinimumArities() and passed to writeMetadataWithArities().
 fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types.Operation)) !void {
     if (ops.items.len <= 1) return;
 
@@ -294,6 +299,47 @@ fn deduplicateOperations(allocator: std.mem.Allocator, ops: *std.ArrayList(types
     // Replace original list with deduplicated one
     ops.clearRetainingCapacity();
     try ops.appendSlice(allocator, unique.items);
+}
+
+/// Map of method names to their minimum arity across all overloads
+/// Used to ensure V8 binding layer accepts calls with fewer arguments
+/// when a method has overloads with optional parameters
+pub const MinimumArityMap = std.StringHashMap(usize);
+
+/// Compute the minimum arity for each method name across all overloads
+/// This should be called BEFORE deduplicateOperations to capture all variants
+///
+/// For example, MessagePort.postMessage has two overloads:
+/// - postMessage(any message, sequence<object> transfer) -> arity 2
+/// - postMessage(any message, optional StructuredSerializeOptions options) -> arity 1
+///
+/// The minimum arity is 1, which allows calls like postMessage('hello')
+pub fn computeMinimumArities(allocator: std.mem.Allocator, operations: []const types.Operation) !MinimumArityMap {
+    var arities = MinimumArityMap.init(allocator);
+    errdefer arities.deinit();
+
+    for (operations) |op| {
+        const op_name = op.name orelse continue;
+        if (op.static) continue; // Only track instance methods
+
+        // Count required arguments (non-optional and non-variadic)
+        var arity: usize = 0;
+        for (op.arguments) |arg| {
+            if (!arg.optional and !arg.variadic) {
+                arity += 1;
+            }
+        }
+
+        // Update minimum for this method name
+        const entry = try arities.getOrPut(op_name);
+        if (!entry.found_existing) {
+            entry.value_ptr.* = arity;
+        } else if (arity < entry.value_ptr.*) {
+            entry.value_ptr.* = arity;
+        }
+    }
+
+    return arities;
 }
 
 /// Generate root.zig file that exports all interfaces by scanning the directory
@@ -1923,6 +1969,12 @@ fn generateInterfaceFile(
     // Partial interfaces can cause duplicate attribute definitions (e.g., style from partials)
     try deduplicateAttributes(allocator, &own_attrs);
 
+    // Calculate minimum arities for overloaded methods BEFORE deduplication
+    // This ensures we get the minimum arity across ALL overloads, not just the first one kept
+    // (which is important for V8 binding arity checks - e.g., postMessage('hello') with 1 arg)
+    var min_arities = try computeMinimumArities(allocator, own_ops.items);
+    defer min_arities.deinit();
+
     // Deduplicate own operations BEFORE generating metadata
     // Partial interfaces can cause duplicate operation definitions
     try deduplicateOperations(allocator, &own_ops);
@@ -1932,7 +1984,8 @@ fn generateInterfaceFile(
     try deduplicateConstructors(allocator, &own_constructors);
 
     // Generate metadata with property/method hints for V8 bindings
-    try writer.writeMetadata(
+    // Pass pre-calculated minimum arities so overload arity is correct even after deduplication
+    try writer.writeMetadataWithArities(
         w,
         interface.name,
         null, // spec_url - would come from extended attributes
@@ -1950,6 +2003,7 @@ fn generateInterfaceFile(
         iterable_member, // Iterable declaration if present
         own_attrs.items, // Own attributes (for V8 property registration)
         async_iterable_member, // Async iterable declaration if present
+        min_arities, // Pre-calculated minimum arities for overloaded methods
     );
 
     // NOTE: Deduplication now happens BEFORE writeMetadata (above)

@@ -218,19 +218,6 @@ pub const SVGElement = struct {
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "style", "cssText" },
-        };
-        
-        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
-        /// Getters return undefined, setters silently return
-        pub const lenient_this_attributes = .{
-            "onmouseenter",
-            "onmouseleave",
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "focus", "call_focus", 0 },
@@ -308,10 +295,7 @@ pub const SVGElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -446,16 +430,19 @@ pub const SVGElement = struct {
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "correspondingElement", "get_correspondingElement", null },
             .{ "correspondingUseElement", "get_correspondingUseElement", null },
+            .{ "dataset", "get_dataset", null },
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
+            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "dataset", "get_dataset", null },
-            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -43,20 +43,12 @@ pub const IdentityCredential = struct {
         pub const methods = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "disconnect", "call_static_disconnect", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "disconnect",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -70,6 +62,10 @@ pub const IdentityCredential = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "disconnect", "call_static_disconnect", 1 },
+        };
         pub const has_constructor = false;
     };
 

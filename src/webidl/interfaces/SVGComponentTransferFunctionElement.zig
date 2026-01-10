@@ -108,16 +108,6 @@ pub const SVGComponentTransferFunctionElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_FECOMPONENTTRANSFER_TYPE_UNKNOWN", "get_SVG_FECOMPONENTTRANSFER_TYPE_UNKNOWN" },
-            .{ "SVG_FECOMPONENTTRANSFER_TYPE_IDENTITY", "get_SVG_FECOMPONENTTRANSFER_TYPE_IDENTITY" },
-            .{ "SVG_FECOMPONENTTRANSFER_TYPE_TABLE", "get_SVG_FECOMPONENTTRANSFER_TYPE_TABLE" },
-            .{ "SVG_FECOMPONENTTRANSFER_TYPE_DISCRETE", "get_SVG_FECOMPONENTTRANSFER_TYPE_DISCRETE" },
-            .{ "SVG_FECOMPONENTTRANSFER_TYPE_LINEAR", "get_SVG_FECOMPONENTTRANSFER_TYPE_LINEAR" },
-            .{ "SVG_FECOMPONENTTRANSFER_TYPE_GAMMA", "get_SVG_FECOMPONENTTRANSFER_TYPE_GAMMA" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -187,10 +177,7 @@ pub const SVGComponentTransferFunctionElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -228,6 +215,9 @@ pub const SVGComponentTransferFunctionElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -39,24 +39,8 @@ pub const JsonLdProcessor = struct {
         pub const methods = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "compact", "call_static_compact", 1 },
-            .{ "expand", "call_static_expand", 1 },
-            .{ "flatten", "call_static_flatten", 1 },
-            .{ "fromRdf", "call_static_fromRdf", 1 },
-            .{ "toRdf", "call_static_toRdf", 1 },
-            .{ "frame", "call_static_frame", 2 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "compact",
-            "expand",
-            "flatten",
-            "fromRdf",
-            "toRdf",
-            "frame",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -71,6 +55,15 @@ pub const JsonLdProcessor = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "compact", "call_static_compact", 1 },
+            .{ "expand", "call_static_expand", 1 },
+            .{ "flatten", "call_static_flatten", 1 },
+            .{ "fromRdf", "call_static_fromRdf", 1 },
+            .{ "toRdf", "call_static_toRdf", 1 },
+            .{ "frame", "call_static_frame", 2 },
+        };
         pub const has_constructor = true;
     };
 

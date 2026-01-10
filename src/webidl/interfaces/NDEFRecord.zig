@@ -60,13 +60,16 @@ pub const NDEFRecord = struct {
             .{ "id", "get_id", null },
             .{ "data", "get_data", null },
             .{ "encoding", "get_encoding", null },
+            .{ "lang", "get_lang", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "lang", "get_lang", null },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

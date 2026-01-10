@@ -91,7 +91,7 @@ pub const PaintRenderingContext2D = struct {
             .{ "translate", "call_translate", 2 },
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
-            .{ "setTransform", "call_setTransform", 6 },
+            .{ "setTransform", "call_setTransform", 0 },
             .{ "resetTransform", "call_resetTransform", 0 },
             .{ "createLinearGradient", "call_createLinearGradient", 4 },
             .{ "createRadialGradient", "call_createRadialGradient", 6 },
@@ -189,6 +189,9 @@ pub const PaintRenderingContext2D = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

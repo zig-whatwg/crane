@@ -119,17 +119,6 @@ pub const SVGMarkerElement = struct {
             .{ "setOrientToAngle", "call_setOrientToAngle", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_MARKERUNITS_UNKNOWN", "get_SVG_MARKERUNITS_UNKNOWN" },
-            .{ "SVG_MARKERUNITS_USERSPACEONUSE", "get_SVG_MARKERUNITS_USERSPACEONUSE" },
-            .{ "SVG_MARKERUNITS_STROKEWIDTH", "get_SVG_MARKERUNITS_STROKEWIDTH" },
-            .{ "SVG_MARKER_ORIENT_UNKNOWN", "get_SVG_MARKER_ORIENT_UNKNOWN" },
-            .{ "SVG_MARKER_ORIENT_AUTO", "get_SVG_MARKER_ORIENT_AUTO" },
-            .{ "SVG_MARKER_ORIENT_ANGLE", "get_SVG_MARKER_ORIENT_ANGLE" },
-            .{ "SVG_MARKER_ORIENT_AUTO_START_REVERSE", "get_SVG_MARKER_ORIENT_AUTO_START_REVERSE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setOrientToAuto",
@@ -201,10 +190,7 @@ pub const SVGMarkerElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -245,6 +231,9 @@ pub const SVGMarkerElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

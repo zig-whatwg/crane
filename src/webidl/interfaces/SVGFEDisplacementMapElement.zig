@@ -114,15 +114,6 @@ pub const SVGFEDisplacementMapElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_CHANNEL_UNKNOWN", "get_SVG_CHANNEL_UNKNOWN" },
-            .{ "SVG_CHANNEL_R", "get_SVG_CHANNEL_R" },
-            .{ "SVG_CHANNEL_G", "get_SVG_CHANNEL_G" },
-            .{ "SVG_CHANNEL_B", "get_SVG_CHANNEL_B" },
-            .{ "SVG_CHANNEL_A", "get_SVG_CHANNEL_A" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -192,10 +183,7 @@ pub const SVGFEDisplacementMapElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -236,6 +224,9 @@ pub const SVGFEDisplacementMapElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

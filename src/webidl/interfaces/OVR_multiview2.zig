@@ -43,14 +43,6 @@ pub const OVR_multiview2 = struct {
             .{ "framebufferTextureMultiviewOVR", "call_framebufferTextureMultiviewOVR", 6 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR", "get_FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR" },
-            .{ "FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR", "get_FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR" },
-            .{ "MAX_VIEWS_OVR", "get_MAX_VIEWS_OVR" },
-            .{ "FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR", "get_FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "framebufferTextureMultiviewOVR",
@@ -68,6 +60,9 @@ pub const OVR_multiview2 = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

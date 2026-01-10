@@ -58,22 +58,9 @@ pub const URL = struct {
             .{ "toString", "get_href", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "parse", "call_static_parse", 1 },
-            .{ "canParse", "call_static_canParse", 1 },
-            .{ "createObjectURL", "call_static_createObjectURL", 1 },
-            .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "parse",
-            "canParse",
             "toJSON",
-            "createObjectURL",
-            "revokeObjectURL",
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -100,6 +87,13 @@ pub const URL = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "parse", "call_static_parse", 1 },
+            .{ "canParse", "call_static_canParse", 1 },
+            .{ "createObjectURL", "call_static_createObjectURL", 1 },
+            .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
+        };
         pub const has_constructor = true;
     };
 

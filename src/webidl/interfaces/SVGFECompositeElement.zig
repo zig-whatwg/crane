@@ -116,17 +116,6 @@ pub const SVGFECompositeElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_FECOMPOSITE_OPERATOR_UNKNOWN", "get_SVG_FECOMPOSITE_OPERATOR_UNKNOWN" },
-            .{ "SVG_FECOMPOSITE_OPERATOR_OVER", "get_SVG_FECOMPOSITE_OPERATOR_OVER" },
-            .{ "SVG_FECOMPOSITE_OPERATOR_IN", "get_SVG_FECOMPOSITE_OPERATOR_IN" },
-            .{ "SVG_FECOMPOSITE_OPERATOR_OUT", "get_SVG_FECOMPOSITE_OPERATOR_OUT" },
-            .{ "SVG_FECOMPOSITE_OPERATOR_ATOP", "get_SVG_FECOMPOSITE_OPERATOR_ATOP" },
-            .{ "SVG_FECOMPOSITE_OPERATOR_XOR", "get_SVG_FECOMPOSITE_OPERATOR_XOR" },
-            .{ "SVG_FECOMPOSITE_OPERATOR_ARITHMETIC", "get_SVG_FECOMPOSITE_OPERATOR_ARITHMETIC" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -196,10 +185,7 @@ pub const SVGFECompositeElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -242,6 +228,9 @@ pub const SVGFECompositeElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

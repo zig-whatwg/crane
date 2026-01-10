@@ -200,19 +200,6 @@ pub const MathMLElement = struct {
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "style", "cssText" },
-        };
-        
-        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
-        /// Getters return undefined, setters silently return
-        pub const lenient_this_attributes = .{
-            "onmouseenter",
-            "onmouseleave",
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
@@ -286,10 +273,7 @@ pub const MathMLElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -425,6 +409,9 @@ pub const MathMLElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

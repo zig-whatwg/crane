@@ -59,7 +59,7 @@ pub const Worker = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "terminate", "call_terminate", 0 },
-            .{ "postMessage", "call_postMessage", 2 },
+            .{ "postMessage", "call_postMessage", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -87,6 +87,9 @@ pub const Worker = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

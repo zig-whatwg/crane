@@ -51,14 +51,8 @@ pub const TaskSignal = struct {
         pub const methods = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "_any", "call_static__any", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "_any",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -67,8 +61,6 @@ pub const TaskSignal = struct {
             "removeEventListener",
             "dispatchEvent",
             "when",
-            "abort",
-            "timeout",
             "throwIfAborted",
         };
         
@@ -82,6 +74,10 @@ pub const TaskSignal = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "_any", "call_static__any", 1 },
+        };
         pub const has_constructor = false;
     };
 

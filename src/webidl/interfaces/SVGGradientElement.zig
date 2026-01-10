@@ -107,14 +107,6 @@ pub const SVGGradientElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_SPREADMETHOD_UNKNOWN", "get_SVG_SPREADMETHOD_UNKNOWN" },
-            .{ "SVG_SPREADMETHOD_PAD", "get_SVG_SPREADMETHOD_PAD" },
-            .{ "SVG_SPREADMETHOD_REFLECT", "get_SVG_SPREADMETHOD_REFLECT" },
-            .{ "SVG_SPREADMETHOD_REPEAT", "get_SVG_SPREADMETHOD_REPEAT" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -184,10 +176,7 @@ pub const SVGGradientElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -222,6 +211,9 @@ pub const SVGGradientElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

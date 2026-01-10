@@ -55,35 +55,14 @@ pub const PublicKeyCredential = struct {
             .{ "toJSON", "call_toJSON", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
-            .{ "isUserVerifyingPlatformAuthenticatorAvailable", "call_static_isUserVerifyingPlatformAuthenticatorAvailable", 0 },
-            .{ "getClientCapabilities", "call_static_getClientCapabilities", 0 },
-            .{ "parseCreationOptionsFromJSON", "call_static_parseCreationOptionsFromJSON", 1 },
-            .{ "parseRequestOptionsFromJSON", "call_static_parseRequestOptionsFromJSON", 1 },
-            .{ "signalUnknownCredential", "call_static_signalUnknownCredential", 1 },
-            .{ "signalAllAcceptedCredentials", "call_static_signalAllAcceptedCredentials", 1 },
-            .{ "signalCurrentUserDetails", "call_static_signalCurrentUserDetails", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getClientExtensionResults",
-            "isConditionalMediationAvailable",
             "toJSON",
-            "isUserVerifyingPlatformAuthenticatorAvailable",
-            "getClientCapabilities",
-            "parseCreationOptionsFromJSON",
-            "parseRequestOptionsFromJSON",
-            "signalUnknownCredential",
-            "signalAllAcceptedCredentials",
-            "signalCurrentUserDetails",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "willRequestConditionalCreation",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -97,6 +76,17 @@ pub const PublicKeyCredential = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
+            .{ "isUserVerifyingPlatformAuthenticatorAvailable", "call_static_isUserVerifyingPlatformAuthenticatorAvailable", 0 },
+            .{ "getClientCapabilities", "call_static_getClientCapabilities", 0 },
+            .{ "parseCreationOptionsFromJSON", "call_static_parseCreationOptionsFromJSON", 1 },
+            .{ "parseRequestOptionsFromJSON", "call_static_parseRequestOptionsFromJSON", 1 },
+            .{ "signalUnknownCredential", "call_static_signalUnknownCredential", 1 },
+            .{ "signalAllAcceptedCredentials", "call_static_signalAllAcceptedCredentials", 1 },
+            .{ "signalCurrentUserDetails", "call_static_signalCurrentUserDetails", 1 },
+        };
         pub const has_constructor = false;
     };
 

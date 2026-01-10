@@ -34,7 +34,7 @@ pub const CanvasTransform = struct {
             .{ "translate", "call_translate", 2 },
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
-            .{ "setTransform", "call_setTransform", 6 },
+            .{ "setTransform", "call_setTransform", 0 },
             .{ "resetTransform", "call_resetTransform", 0 },
         };
         
@@ -61,6 +61,9 @@ pub const CanvasTransform = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

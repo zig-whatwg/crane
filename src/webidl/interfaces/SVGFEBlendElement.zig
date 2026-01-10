@@ -111,27 +111,6 @@ pub const SVGFEBlendElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_FEBLEND_MODE_UNKNOWN", "get_SVG_FEBLEND_MODE_UNKNOWN" },
-            .{ "SVG_FEBLEND_MODE_NORMAL", "get_SVG_FEBLEND_MODE_NORMAL" },
-            .{ "SVG_FEBLEND_MODE_MULTIPLY", "get_SVG_FEBLEND_MODE_MULTIPLY" },
-            .{ "SVG_FEBLEND_MODE_SCREEN", "get_SVG_FEBLEND_MODE_SCREEN" },
-            .{ "SVG_FEBLEND_MODE_DARKEN", "get_SVG_FEBLEND_MODE_DARKEN" },
-            .{ "SVG_FEBLEND_MODE_LIGHTEN", "get_SVG_FEBLEND_MODE_LIGHTEN" },
-            .{ "SVG_FEBLEND_MODE_OVERLAY", "get_SVG_FEBLEND_MODE_OVERLAY" },
-            .{ "SVG_FEBLEND_MODE_COLOR_DODGE", "get_SVG_FEBLEND_MODE_COLOR_DODGE" },
-            .{ "SVG_FEBLEND_MODE_COLOR_BURN", "get_SVG_FEBLEND_MODE_COLOR_BURN" },
-            .{ "SVG_FEBLEND_MODE_HARD_LIGHT", "get_SVG_FEBLEND_MODE_HARD_LIGHT" },
-            .{ "SVG_FEBLEND_MODE_SOFT_LIGHT", "get_SVG_FEBLEND_MODE_SOFT_LIGHT" },
-            .{ "SVG_FEBLEND_MODE_DIFFERENCE", "get_SVG_FEBLEND_MODE_DIFFERENCE" },
-            .{ "SVG_FEBLEND_MODE_EXCLUSION", "get_SVG_FEBLEND_MODE_EXCLUSION" },
-            .{ "SVG_FEBLEND_MODE_HUE", "get_SVG_FEBLEND_MODE_HUE" },
-            .{ "SVG_FEBLEND_MODE_SATURATION", "get_SVG_FEBLEND_MODE_SATURATION" },
-            .{ "SVG_FEBLEND_MODE_COLOR", "get_SVG_FEBLEND_MODE_COLOR" },
-            .{ "SVG_FEBLEND_MODE_LUMINOSITY", "get_SVG_FEBLEND_MODE_LUMINOSITY" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -201,10 +180,7 @@ pub const SVGFEBlendElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -243,6 +219,9 @@ pub const SVGFEBlendElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

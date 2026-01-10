@@ -58,8 +58,6 @@ pub const CSSTransformValue = struct {
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "parse",
-            "parseAll",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -72,13 +70,10 @@ pub const CSSTransformValue = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = true;
-        
-        /// Iterable declaration (for Symbol.iterator support)
-        pub const iterable = .{
-            .value_type = "CSSTransformComponent",
-            .key_type = null,
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = true;
     };
 
     pub const State = runtime.FlattenedState(

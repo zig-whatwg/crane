@@ -113,24 +113,12 @@ pub const HTMLScriptElement = struct {
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "blocking", "value" },
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "supports", "call_static_supports", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "supports",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -198,10 +186,7 @@ pub const HTMLScriptElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -252,6 +237,10 @@ pub const HTMLScriptElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "supports", "call_static_supports", 1 },
+        };
         pub const has_constructor = true;
     };
 

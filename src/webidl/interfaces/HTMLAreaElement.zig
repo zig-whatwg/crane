@@ -122,12 +122,6 @@ pub const HTMLAreaElement = struct {
             .{ "hash", "get_hash", "set_hash" },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "relList", "value" },
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toString", "get_href", 0 },
@@ -135,7 +129,6 @@ pub const HTMLAreaElement = struct {
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -203,10 +196,7 @@ pub const HTMLAreaElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -264,6 +254,9 @@ pub const HTMLAreaElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

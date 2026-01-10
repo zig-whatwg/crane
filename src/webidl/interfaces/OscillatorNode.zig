@@ -68,13 +68,6 @@ pub const OscillatorNode = struct {
             "dispatchEvent",
             "when",
             "connect",
-            "connect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
             "disconnect",
             "start",
             "stop",
@@ -91,6 +84,9 @@ pub const OscillatorNode = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

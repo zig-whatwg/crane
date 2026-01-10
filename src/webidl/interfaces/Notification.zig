@@ -77,14 +77,8 @@ pub const Notification = struct {
             .{ "close", "call_close", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "requestPermission", "call_static_requestPermission", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "requestPermission",
             "close",
         };
         
@@ -105,6 +99,8 @@ pub const Notification = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onclose", "get_onclose", "set_onclose" },
             .{ "title", "get_title", null },
+            .{ "dir", "get_dir", null },
+            .{ "lang", "get_lang", null },
             .{ "body", "get_body", null },
             .{ "navigate", "get_navigate", null },
             .{ "tag", "get_tag", null },
@@ -122,10 +118,12 @@ pub const Notification = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "dir", "get_dir", null },
-            .{ "lang", "get_lang", null },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "requestPermission", "call_static_requestPermission", 0 },
+        };
         pub const has_constructor = true;
     };
 

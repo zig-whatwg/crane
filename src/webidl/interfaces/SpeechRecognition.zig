@@ -71,19 +71,11 @@ pub const SpeechRecognition = struct {
             .{ "abort", "call_abort", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "available", "call_static_available", 1 },
-            .{ "install", "call_static_install", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
             "stop",
             "abort",
-            "available",
-            "install",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -97,6 +89,7 @@ pub const SpeechRecognition = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "grammars", "get_grammars", "set_grammars" },
+            .{ "lang", "get_lang", "set_lang" },
             .{ "continuous", "get_continuous", "set_continuous" },
             .{ "interimResults", "get_interimResults", "set_interimResults" },
             .{ "maxAlternatives", "get_maxAlternatives", "set_maxAlternatives" },
@@ -117,9 +110,13 @@ pub const SpeechRecognition = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "available", "call_static_available", 1 },
+            .{ "install", "call_static_install", 1 },
+        };
         pub const has_constructor = true;
     };
 

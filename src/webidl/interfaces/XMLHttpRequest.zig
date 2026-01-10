@@ -77,15 +77,6 @@ pub const XMLHttpRequest = struct {
             .{ "setPrivateToken", "call_setPrivateToken", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "UNSENT", "get_UNSENT" },
-            .{ "OPENED", "get_OPENED" },
-            .{ "HEADERS_RECEIVED", "get_HEADERS_RECEIVED" },
-            .{ "LOADING", "get_LOADING" },
-            .{ "DONE", "get_DONE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
@@ -127,6 +118,9 @@ pub const XMLHttpRequest = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

@@ -62,13 +62,6 @@ pub const MediaStreamAudioSourceNode = struct {
             "dispatchEvent",
             "when",
             "connect",
-            "connect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
             "disconnect",
         };
         
@@ -81,6 +74,9 @@ pub const MediaStreamAudioSourceNode = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

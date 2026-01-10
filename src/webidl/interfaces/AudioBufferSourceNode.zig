@@ -70,13 +70,6 @@ pub const AudioBufferSourceNode = struct {
             "dispatchEvent",
             "when",
             "connect",
-            "connect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
             "disconnect",
             "stop",
         };
@@ -95,6 +88,9 @@ pub const AudioBufferSourceNode = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

@@ -63,14 +63,6 @@ pub const WebSocket = struct {
             .{ "send", "call_send", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "CONNECTING", "get_CONNECTING" },
-            .{ "OPEN", "get_OPEN" },
-            .{ "CLOSING", "get_CLOSING" },
-            .{ "CLOSED", "get_CLOSED" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
@@ -103,6 +95,9 @@ pub const WebSocket = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

@@ -52,14 +52,8 @@ pub const RTCRtpReceiver = struct {
             .{ "getStats", "call_getStats", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "getCapabilities", "call_static_getCapabilities", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "getCapabilities",
             "getParameters",
             "getContributingSources",
             "getSynchronizationSources",
@@ -82,6 +76,10 @@ pub const RTCRtpReceiver = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "getCapabilities", "call_static_getCapabilities", 1 },
+        };
         pub const has_constructor = false;
     };
 

@@ -91,14 +91,10 @@ pub const SharedStorage = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = false;
-        
-        /// Async iterable declaration (for Symbol.asyncIterator support)
-        pub const async_iterable = .{
-            .value_type = "runtime.DOMString",
-            .key_type = "runtime.DOMString",
-            .options_type = null,
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = false;
     };
 
     pub const State = runtime.FlattenedState(

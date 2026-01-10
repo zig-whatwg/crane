@@ -63,13 +63,6 @@ pub const FileReader = struct {
             .{ "abort", "call_abort", 0 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "EMPTY", "get_EMPTY" },
-            .{ "LOADING", "get_LOADING" },
-            .{ "DONE", "get_DONE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "readAsArrayBuffer",
@@ -104,6 +97,9 @@ pub const FileReader = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

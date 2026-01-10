@@ -49,16 +49,8 @@ pub const DOMQuad = struct {
             .{ "toJSON", "call_toJSON", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "fromRect", "call_static_fromRect", 0 },
-            .{ "fromQuad", "call_static_fromQuad", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "fromRect",
-            "fromQuad",
             "getBounds",
             "toJSON",
         };
@@ -79,6 +71,11 @@ pub const DOMQuad = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "fromRect", "call_static_fromRect", 0 },
+            .{ "fromQuad", "call_static_fromQuad", 0 },
+        };
         pub const has_constructor = true;
     };
 

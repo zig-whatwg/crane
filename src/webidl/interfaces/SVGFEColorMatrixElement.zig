@@ -112,15 +112,6 @@ pub const SVGFEColorMatrixElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_FECOLORMATRIX_TYPE_UNKNOWN", "get_SVG_FECOLORMATRIX_TYPE_UNKNOWN" },
-            .{ "SVG_FECOLORMATRIX_TYPE_MATRIX", "get_SVG_FECOLORMATRIX_TYPE_MATRIX" },
-            .{ "SVG_FECOLORMATRIX_TYPE_SATURATE", "get_SVG_FECOLORMATRIX_TYPE_SATURATE" },
-            .{ "SVG_FECOLORMATRIX_TYPE_HUEROTATE", "get_SVG_FECOLORMATRIX_TYPE_HUEROTATE" },
-            .{ "SVG_FECOLORMATRIX_TYPE_LUMINANCETOALPHA", "get_SVG_FECOLORMATRIX_TYPE_LUMINANCETOALPHA" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -190,10 +181,7 @@ pub const SVGFEColorMatrixElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -232,6 +220,9 @@ pub const SVGFEColorMatrixElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -51,14 +51,17 @@ pub const CSSNamespaceRule = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-        };
-        
-        /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
             .{ "namespaceURI", "get_namespaceURI", null },
             .{ "prefix", "get_prefix", null },
         };
         
+        /// Properties to define lazily (rarely accessed) - ONLY own properties
+        pub const lazy_properties = .{
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

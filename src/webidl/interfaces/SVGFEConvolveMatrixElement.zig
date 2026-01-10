@@ -124,14 +124,6 @@ pub const SVGFEConvolveMatrixElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_EDGEMODE_UNKNOWN", "get_SVG_EDGEMODE_UNKNOWN" },
-            .{ "SVG_EDGEMODE_DUPLICATE", "get_SVG_EDGEMODE_DUPLICATE" },
-            .{ "SVG_EDGEMODE_WRAP", "get_SVG_EDGEMODE_WRAP" },
-            .{ "SVG_EDGEMODE_NONE", "get_SVG_EDGEMODE_NONE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -201,10 +193,7 @@ pub const SVGFEConvolveMatrixElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -252,6 +241,9 @@ pub const SVGFEConvolveMatrixElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

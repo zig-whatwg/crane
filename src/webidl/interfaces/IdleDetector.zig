@@ -56,14 +56,8 @@ pub const IdleDetector = struct {
             .{ "start", "call_start", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "requestPermission", "call_static_requestPermission", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "requestPermission",
             "start",
         };
         
@@ -86,6 +80,10 @@ pub const IdleDetector = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "requestPermission", "call_static_requestPermission", 0 },
+        };
         pub const has_constructor = true;
     };
 

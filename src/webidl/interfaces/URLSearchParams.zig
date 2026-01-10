@@ -57,7 +57,6 @@ pub const URLSearchParams = struct {
             "set",
             "sort",
             "forEach",
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -73,13 +72,10 @@ pub const URLSearchParams = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = true;
-        
-        /// Iterable declaration (for Symbol.iterator support)
-        pub const iterable = .{
-            .value_type = "runtime.USVString",
-            .key_type = "runtime.USVString",
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = true;
     };
 
     pub const State = runtime.FlattenedState(

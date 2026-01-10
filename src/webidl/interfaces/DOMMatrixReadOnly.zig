@@ -85,18 +85,8 @@ pub const DOMMatrixReadOnly = struct {
             .{ "toString", "serialize", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "fromMatrix", "call_static_fromMatrix", 0 },
-            .{ "fromFloat32Array", "call_static_fromFloat32Array", 1 },
-            .{ "fromFloat64Array", "call_static_fromFloat64Array", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "fromMatrix",
-            "fromFloat32Array",
-            "fromFloat64Array",
             "translate",
             "scale",
             "scaleNonUniform",
@@ -114,7 +104,6 @@ pub const DOMMatrixReadOnly = struct {
             "toFloat32Array",
             "toFloat64Array",
             "toJSON",
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -153,6 +142,12 @@ pub const DOMMatrixReadOnly = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "fromMatrix", "call_static_fromMatrix", 0 },
+            .{ "fromFloat32Array", "call_static_fromFloat32Array", 1 },
+            .{ "fromFloat64Array", "call_static_fromFloat64Array", 1 },
+        };
         pub const has_constructor = true;
     };
 

@@ -45,17 +45,6 @@ pub const SVGTransform = struct {
             .{ "setSkewY", "call_setSkewY", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_TRANSFORM_UNKNOWN", "get_SVG_TRANSFORM_UNKNOWN" },
-            .{ "SVG_TRANSFORM_MATRIX", "get_SVG_TRANSFORM_MATRIX" },
-            .{ "SVG_TRANSFORM_TRANSLATE", "get_SVG_TRANSFORM_TRANSLATE" },
-            .{ "SVG_TRANSFORM_SCALE", "get_SVG_TRANSFORM_SCALE" },
-            .{ "SVG_TRANSFORM_ROTATE", "get_SVG_TRANSFORM_ROTATE" },
-            .{ "SVG_TRANSFORM_SKEWX", "get_SVG_TRANSFORM_SKEWX" },
-            .{ "SVG_TRANSFORM_SKEWY", "get_SVG_TRANSFORM_SKEWY" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setMatrix",
@@ -81,6 +70,9 @@ pub const SVGTransform = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

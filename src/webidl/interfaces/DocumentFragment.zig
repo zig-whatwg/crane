@@ -111,14 +111,10 @@ pub const DocumentFragment = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = true;
-        
-        /// Members marked with [Unscopable] extended attribute
-        pub const unscopables = .{
-            "prepend",
-            "append",
-            "replaceChildren",
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = true;
     };
 
     pub const State = runtime.FlattenedState(

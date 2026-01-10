@@ -56,9 +56,6 @@ pub const CSSColor = struct {
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "parse",
-            "parseAll",
-            "parse",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -72,6 +69,9 @@ pub const CSSColor = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

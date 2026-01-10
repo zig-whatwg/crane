@@ -59,16 +59,8 @@ pub const Rewriter = struct {
             .{ "destroy", "call_destroy", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "create", "call_static_create", 0 },
-            .{ "availability", "call_static_availability", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "create",
-            "availability",
             "rewrite",
             "rewriteStreaming",
             "measureInputUsage",
@@ -95,6 +87,11 @@ pub const Rewriter = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "create", "call_static_create", 0 },
+            .{ "availability", "call_static_availability", 0 },
+        };
         pub const has_constructor = false;
     };
 

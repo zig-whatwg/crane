@@ -36,26 +36,6 @@ pub const NodeFilter = struct {
             .{ "acceptNode", "call_acceptNode", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "FILTER_ACCEPT", "get_FILTER_ACCEPT" },
-            .{ "FILTER_REJECT", "get_FILTER_REJECT" },
-            .{ "FILTER_SKIP", "get_FILTER_SKIP" },
-            .{ "SHOW_ALL", "get_SHOW_ALL" },
-            .{ "SHOW_ELEMENT", "get_SHOW_ELEMENT" },
-            .{ "SHOW_ATTRIBUTE", "get_SHOW_ATTRIBUTE" },
-            .{ "SHOW_TEXT", "get_SHOW_TEXT" },
-            .{ "SHOW_CDATA_SECTION", "get_SHOW_CDATA_SECTION" },
-            .{ "SHOW_ENTITY_REFERENCE", "get_SHOW_ENTITY_REFERENCE" },
-            .{ "SHOW_ENTITY", "get_SHOW_ENTITY" },
-            .{ "SHOW_PROCESSING_INSTRUCTION", "get_SHOW_PROCESSING_INSTRUCTION" },
-            .{ "SHOW_COMMENT", "get_SHOW_COMMENT" },
-            .{ "SHOW_DOCUMENT", "get_SHOW_DOCUMENT" },
-            .{ "SHOW_DOCUMENT_TYPE", "get_SHOW_DOCUMENT_TYPE" },
-            .{ "SHOW_DOCUMENT_FRAGMENT", "get_SHOW_DOCUMENT_FRAGMENT" },
-            .{ "SHOW_NOTATION", "get_SHOW_NOTATION" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "acceptNode",
@@ -73,6 +53,9 @@ pub const NodeFilter = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

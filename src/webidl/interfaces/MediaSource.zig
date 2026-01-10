@@ -66,11 +66,6 @@ pub const MediaSource = struct {
             .{ "clearLiveSeekableRange", "call_clearLiveSeekableRange", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "addSourceBuffer",
@@ -78,7 +73,6 @@ pub const MediaSource = struct {
             "endOfStream",
             "setLiveSeekableRange",
             "clearLiveSeekableRange",
-            "isTypeSupported",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -106,6 +100,10 @@ pub const MediaSource = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
+        };
         pub const has_constructor = true;
     };
 

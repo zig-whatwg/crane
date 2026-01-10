@@ -49,13 +49,6 @@ pub const WheelEvent = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "DOM_DELTA_PIXEL", "get_DOM_DELTA_PIXEL" },
-            .{ "DOM_DELTA_LINE", "get_DOM_DELTA_LINE" },
-            .{ "DOM_DELTA_PAGE", "get_DOM_DELTA_PAGE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -84,6 +77,9 @@ pub const WheelEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

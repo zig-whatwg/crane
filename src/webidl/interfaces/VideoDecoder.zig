@@ -61,11 +61,6 @@ pub const VideoDecoder = struct {
             .{ "close", "call_close", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "isConfigSupported", "call_static_isConfigSupported", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "configure",
@@ -73,7 +68,6 @@ pub const VideoDecoder = struct {
             "flush",
             "reset",
             "close",
-            "isConfigSupported",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -95,6 +89,10 @@ pub const VideoDecoder = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isConfigSupported", "call_static_isConfigSupported", 1 },
+        };
         pub const has_constructor = true;
     };
 

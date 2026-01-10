@@ -579,35 +579,45 @@ pub fn writeMetadata(
     }
 
     // Generate method hints - ONLY for own operations (not inherited)
-    // Separate static methods from instance methods
     try writer.writeAll("        \n");
     try writer.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods\n");
     try writer.writeAll("        pub const methods = .{\n");
+
+    // Use page allocator for temporary allocations during codegen
+    const method_allocator = std.heap.page_allocator;
+
+    // Track which method names we've already written to avoid duplicates
+    var written_methods = std.StringHashMap(void).init(method_allocator);
+    defer written_methods.deinit();
+
     for (own_operations) |op| {
-        if (op.name) |name| {
-            // Skip static methods - they go in static_methods
-            if (op.static) continue;
+        // Skip static methods - they go in static_methods
+        if (op.static) continue;
 
-            // Include regular operations AND named special operations (like getter item())
-            // Named special operations should be exposed as methods per WebIDL spec
-            const should_include = op.special == null or
-                op.special.? == .getter or
-                op.special.? == .setter;
+        const op_name = op.name orelse continue;
 
-            if (should_include) {
-                // Count required (non-optional and non-variadic) parameters for arity
-                // Variadic arguments (any...) are optional by nature - you can pass 0 or more
-                var arity: usize = 0;
-                for (op.arguments) |arg| {
-                    if (!arg.optional and !arg.variadic) {
-                        arity += 1;
-                    }
+        // Skip if already written
+        if (written_methods.contains(op_name)) continue;
+
+        // Include regular operations AND named special operations (like getter item())
+        // Named special operations should be exposed as methods per WebIDL spec
+        const op_should_include = op.special == null or
+            op.special.? == .getter or
+            op.special.? == .setter;
+
+        if (op_should_include) {
+            // Count required (non-optional and non-variadic) parameters for arity
+            var arity: usize = 0;
+            for (op.arguments) |arg| {
+                if (!arg.optional and !arg.variadic) {
+                    arity += 1;
                 }
-
-                try writer.print("            .{{ \"{s}\", \"call_", .{name});
-                try writeSanitizedName(writer, name);
-                try writer.print("\", {d} }},\n", .{arity});
             }
+
+            try writer.print("            .{{ \"{s}\", \"call_", .{op_name});
+            try writeSanitizedName(writer, op_name);
+            try writer.print("\", {d} }},\n", .{arity});
+            try written_methods.put(op_name, {});
         }
     }
 
@@ -943,6 +953,338 @@ pub fn writeMetadata(
         try writer.writeAll("        };\n");
     }
 
+    try writer.writeAll("    };\n\n");
+}
+
+/// Import for the generator's MinimumArityMap type
+const generator = @import("generator.zig");
+
+/// Write metadata with pre-computed minimum arities for overloaded methods
+///
+/// This variant of writeMetadata uses arities computed BEFORE deduplication,
+/// ensuring that calls like `postMessage('hello')` work correctly when the
+/// method has overloads with different arity requirements.
+///
+/// For example, MessagePort.postMessage has:
+/// - postMessage(any message, sequence<object> transfer) -> arity 2
+/// - postMessage(any message, optional StructuredSerializeOptions options) -> arity 1
+///
+/// The pre-computed minimum arity of 1 allows single-argument calls.
+pub fn writeMetadataWithArities(
+    writer: anytype,
+    interface_name: []const u8,
+    spec_url: ?[]const u8,
+    base_type: ?[]const u8,
+    base_is_interface: bool,
+    mixins: []const []const u8,
+    extended_attrs: []const types.ExtendedAttribute,
+    attributes: []const types.Attribute,
+    all_operations: []const types.Operation,
+    own_operations: []const types.Operation,
+    constants: []const types.Constant,
+    has_constructor: bool,
+    is_mixin: bool,
+    is_callback: bool,
+    iterable: ?types.Iterable,
+    own_attributes: []const types.Attribute,
+    async_iterable: ?types.AsyncIterable,
+    min_arities: generator.MinimumArityMap,
+) !void {
+    _ = attributes; // Unused - we now use own_attributes for properties/lazy_properties
+    _ = async_iterable; // Async iterable handling is in writeMetadata
+
+    try writer.writeAll("    pub const Meta = struct {\n");
+    try writer.print("        pub const name = \"{s}\";\n", .{interface_name});
+    try writer.print("        pub const is_mixin = {};\n", .{is_mixin});
+    try writer.print("        pub const is_callback_interface = {};\n", .{is_callback});
+
+    if (spec_url) |url| {
+        try writer.print("        pub const spec_url = \"{s}\";\n", .{url});
+    } else {
+        try writer.writeAll("        pub const spec_url: ?[]const u8 = null;\n");
+    }
+
+    if (base_type) |base| {
+        if (base_is_interface) {
+            try writer.print("        pub const BaseType = {s}.State;\n", .{base});
+            try writer.print("        pub const ParentInterface = {s};\n", .{base});
+        } else {
+            try writer.print("        pub const BaseType = *{s};\n", .{base});
+        }
+    } else {
+        try writer.writeAll("        pub const BaseType = null;\n");
+    }
+
+    if (mixins.len > 0) {
+        try writer.writeAll("        pub const MixinTypes = &.{\n");
+        for (mixins) |mixin| {
+            try writer.print("            {s},\n", .{mixin});
+        }
+        try writer.writeAll("        };\n");
+    } else {
+        try writer.writeAll("        pub const MixinTypes = &.{};\n");
+    }
+
+    // Write extended attributes
+    if (extended_attrs.len > 0) {
+        try writer.writeAll("        pub const extended_attributes = .{\n");
+        for (extended_attrs) |attr| {
+            try writer.print("            .{{ .name = \"{s}\"", .{attr.name});
+            if (attr.rhs) |rhs| {
+                try writer.writeAll(", .value = ");
+                try writeExtendedAttributeValue(writer, rhs);
+            }
+            try writer.writeAll(" },\n");
+        }
+        try writer.writeAll("        };\n");
+    } else {
+        try writer.writeAll("        pub const extended_attributes = .{};\n");
+    }
+
+    // Extract [Exposed] context information
+    var exposed_attr: ?types.ExtendedAttribute = null;
+    for (extended_attrs) |attr| {
+        if (std.mem.eql(u8, attr.name, "Exposed")) {
+            exposed_attr = attr;
+            break;
+        }
+    }
+
+    if (exposed_attr) |exposed| {
+        try writer.writeAll("        \n");
+        try writer.writeAll("        /// Global contexts where this interface is exposed\n");
+        if (exposed.rhs) |rhs| {
+            switch (rhs) {
+                .identifier => |id| {
+                    if (std.mem.eql(u8, id, "*")) {
+                        try writer.writeAll("        pub const exposed_in_all_contexts = true;\n");
+                    } else {
+                        try writer.print("        pub const exposed_in = .{{ .{s} = true }};\n", .{id});
+                    }
+                },
+                .identifierList => |list| {
+                    try writer.writeAll("        pub const exposed_in = .{\n");
+                    for (list) |id| {
+                        try writer.print("            .{s} = true,\n", .{id});
+                    }
+                    try writer.writeAll("        };\n");
+                },
+                else => {},
+            }
+        }
+    }
+
+    // Generate property hints for V8 bindings - ONLY own properties
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties\n");
+    try writer.writeAll("        pub const properties = .{\n");
+    {
+        const extattr_mod = @import("extattr.zig");
+        for (own_attributes) |attr| {
+            try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
+            try writeSanitizedName(writer, attr.name);
+            const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
+            const has_put_forwards = extattr_mod.getPutForwards(attr.extAttrs) != null;
+            const is_legacy_lenient_setter = extattr_mod.isLegacyLenientSetter(attr.extAttrs);
+            if (!attr.readonly or is_replaceable or has_put_forwards or is_legacy_lenient_setter) {
+                try writer.writeAll("\", \"set_");
+                try writeSanitizedName(writer, attr.name);
+                try writer.writeAll("\" },\n");
+            } else {
+                try writer.writeAll("\", null },\n");
+            }
+        }
+    }
+    try writer.writeAll("        };\n");
+
+    // Generate method hints using PRE-COMPUTED minimum arities
+    // This ensures overloaded methods use the minimum arity across all variants
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods\n");
+    try writer.writeAll("        pub const methods = .{\n");
+
+    // Use page allocator for temporary allocations during codegen
+    const method_allocator = std.heap.page_allocator;
+
+    // Track which method names we've already written to avoid duplicates
+    var written_methods = std.StringHashMap(void).init(method_allocator);
+    defer written_methods.deinit();
+
+    for (own_operations) |op| {
+        // Skip static methods - they go in static_methods
+        if (op.static) continue;
+
+        const op_name = op.name orelse continue;
+
+        // Skip if already written
+        if (written_methods.contains(op_name)) continue;
+
+        // Include regular operations AND named special operations (like getter item())
+        const op_should_include = op.special == null or
+            op.special.? == .getter or
+            op.special.? == .setter;
+
+        if (op_should_include) {
+            // Use pre-computed minimum arity from the arities map
+            // This is computed BEFORE deduplication so it captures all overloads
+            const arity = min_arities.get(op_name) orelse blk: {
+                // Fallback: compute from this operation's arguments
+                var computed_arity: usize = 0;
+                for (op.arguments) |arg| {
+                    if (!arg.optional and !arg.variadic) {
+                        computed_arity += 1;
+                    }
+                }
+                break :blk computed_arity;
+            };
+
+            try writer.print("            .{{ \"{s}\", \"call_", .{op_name});
+            try writeSanitizedName(writer, op_name);
+            try writer.print("\", {d} }},\n", .{arity});
+            try written_methods.put(op_name, {});
+        }
+    }
+
+    // Add forEach method for iterable interfaces (per WebIDL spec)
+    if (iterable != null) {
+        try writer.writeAll("            .{ \"forEach\", \"call_forEach\", 1 },\n");
+    }
+
+    // Add toString method for stringifier interfaces
+    var has_stringifier = false;
+    for (own_operations) |op| {
+        if (op.special) |special| {
+            if (special == .stringifier and op.name == null) {
+                try writer.writeAll("            .{ \"toString\", \"serialize\", 0 },\n");
+                has_stringifier = true;
+                break;
+            }
+        }
+    }
+    // Check for stringifier attribute
+    if (!has_stringifier) {
+        for (own_attributes) |attr| {
+            for (attr.extAttrs) |ext_attr| {
+                if (std.mem.eql(u8, ext_attr.name, "Stringifier")) {
+                    try writer.print("            .{{ \"toString\", \"get_{s}\", 0 }},\n", .{attr.name});
+                    has_stringifier = true;
+                    break;
+                }
+            }
+            if (has_stringifier) break;
+        }
+    }
+
+    try writer.writeAll("        };\n");
+
+    // Generate own_methods list
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// Methods defined/overridden by this interface\n");
+    try writer.writeAll("        pub const own_methods = .{\n");
+    {
+        var written_own_methods = std.StringHashMap(void).init(method_allocator);
+        defer written_own_methods.deinit();
+
+        for (own_operations) |op| {
+            const op_name = op.name orelse continue;
+            if (op.static) continue;
+            if (written_own_methods.contains(op_name)) continue;
+            try writer.print("            \"{s}\",\n", .{op_name});
+            try written_own_methods.put(op_name, {});
+        }
+    }
+    try writer.writeAll("        };\n");
+
+    // Generate inherited_methods list (delegated to call writeMetadata's remaining sections)
+    // For brevity, call the original writeMetadata for the remaining sections
+    // Actually we need to generate all remaining sections here...
+
+    // Generate inherited methods from all_operations that aren't in own_operations
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// Methods inherited from parent/mixins (rely on V8 prototype chain)\n");
+    try writer.writeAll("        pub const inherited_methods = .{\n");
+    {
+        var own_method_names = std.StringHashMap(void).init(method_allocator);
+        defer own_method_names.deinit();
+
+        for (own_operations) |op| {
+            if (op.name) |name| {
+                try own_method_names.put(name, {});
+            }
+        }
+
+        var written_inherited = std.StringHashMap(void).init(method_allocator);
+        defer written_inherited.deinit();
+
+        for (all_operations) |op| {
+            const op_name = op.name orelse continue;
+            if (op.static) continue;
+            if (own_method_names.contains(op_name)) continue;
+            if (written_inherited.contains(op_name)) continue;
+            try writer.print("            \"{s}\",\n", .{op_name});
+            try written_inherited.put(op_name, {});
+        }
+    }
+    try writer.writeAll("        };\n");
+
+    // Generate eager_properties and lazy_properties
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// Properties to define eagerly (frequently accessed) - ONLY own properties\n");
+    try writer.writeAll("        pub const eager_properties = .{\n");
+    {
+        const extattr_mod = @import("extattr.zig");
+        for (own_attributes) |attr| {
+            try writer.print("            .{{ \"{s}\", \"get_", .{attr.name});
+            try writeSanitizedName(writer, attr.name);
+            const is_replaceable = extattr_mod.isReplaceable(attr.extAttrs);
+            const has_put_forwards = extattr_mod.getPutForwards(attr.extAttrs) != null;
+            const is_legacy_lenient_setter = extattr_mod.isLegacyLenientSetter(attr.extAttrs);
+            if (!attr.readonly or is_replaceable or has_put_forwards or is_legacy_lenient_setter) {
+                try writer.writeAll("\", \"set_");
+                try writeSanitizedName(writer, attr.name);
+                try writer.writeAll("\" },\n");
+            } else {
+                try writer.writeAll("\", null },\n");
+            }
+        }
+    }
+    try writer.writeAll("        };\n");
+
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// Properties to define lazily (rarely accessed) - ONLY own properties\n");
+    try writer.writeAll("        pub const lazy_properties = .{\n");
+    try writer.writeAll("        };\n");
+
+    // Generate static_methods
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)\n");
+    try writer.writeAll("        pub const static_methods = .{\n");
+    {
+        var written_static = std.StringHashMap(void).init(method_allocator);
+        defer written_static.deinit();
+
+        for (own_operations) |op| {
+            if (!op.static) continue;
+            const op_name = op.name orelse continue;
+            if (written_static.contains(op_name)) continue;
+
+            var arity: usize = 0;
+            for (op.arguments) |arg| {
+                if (!arg.optional and !arg.variadic) {
+                    arity += 1;
+                }
+            }
+
+            try writer.print("            .{{ \"{s}\", \"call_static_{s}\", {d} }},\n", .{ op_name, op_name, arity });
+            try written_static.put(op_name, {});
+        }
+    }
+    try writer.writeAll("        };\n");
+
+    // Constants are handled separately by writeConstants()
+    _ = constants;
+
+    try writer.print("        pub const has_constructor = {};\n", .{has_constructor});
     try writer.writeAll("    };\n\n");
 }
 
@@ -2930,7 +3272,8 @@ fn writeOverloadedOperation(
 
     try writer.writeAll("    };\n\n");
 
-    // Generate dispatch function
+    // Generate dispatch function that delegates to impl with the full args union
+    // The impl receives the PostMessageArgs (or similar) union and handles dispatch internally
     const cap_name2 = try capitalize(allocator, name);
     defer allocator.free(cap_name2);
     // For nullable return types, return ?T instead of T
@@ -2939,32 +3282,8 @@ fn writeOverloadedOperation(
     } else {
         try writer.print("    pub fn call_{s}(instance: *runtime.Instance, args: {s}Args) anyerror!{s} {{\n", .{ name, cap_name2, return_type });
     }
-    try writer.print("        switch (args) {{\n", .{});
-
-    // Generate case for each variant
-    for (set.operations) |op| {
-        const variant_name = try overload.generateVariantName(allocator, op);
-        defer allocator.free(variant_name);
-
-        if (op.arguments.len == 0) {
-            try writer.print("            .{s} => return try {s}.{s}(instance),\n", .{ variant_name, impl_name, variant_name });
-        } else if (op.arguments.len == 1) {
-            try writer.print("            .{s} => |arg| return try {s}.{s}(instance, arg),\n", .{ variant_name, impl_name, variant_name });
-        } else {
-            try writer.print("            .{s} => |a| return try {s}.{s}(instance", .{ variant_name, impl_name, variant_name });
-            for (op.arguments) |arg| {
-                // Use @"..." syntax for keywords
-                if (isKeyword(arg.name)) {
-                    try writer.print(", a.@\"{s}\"", .{arg.name});
-                } else {
-                    try writer.print(", a.{s}", .{arg.name});
-                }
-            }
-            try writer.writeAll("),\n");
-        }
-    }
-
-    try writer.writeAll("        }\n");
+    // Delegate directly to impl with the full args union - impl handles the switch
+    try writer.print("        return try {s}.call_{s}(instance, args);\n", .{ impl_name, name });
     try writer.writeAll("    }\n\n");
 }
 

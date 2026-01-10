@@ -45,20 +45,6 @@ pub const XPathResult = struct {
             .{ "snapshotItem", "call_snapshotItem", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "ANY_TYPE", "get_ANY_TYPE" },
-            .{ "NUMBER_TYPE", "get_NUMBER_TYPE" },
-            .{ "STRING_TYPE", "get_STRING_TYPE" },
-            .{ "BOOLEAN_TYPE", "get_BOOLEAN_TYPE" },
-            .{ "UNORDERED_NODE_ITERATOR_TYPE", "get_UNORDERED_NODE_ITERATOR_TYPE" },
-            .{ "ORDERED_NODE_ITERATOR_TYPE", "get_ORDERED_NODE_ITERATOR_TYPE" },
-            .{ "UNORDERED_NODE_SNAPSHOT_TYPE", "get_UNORDERED_NODE_SNAPSHOT_TYPE" },
-            .{ "ORDERED_NODE_SNAPSHOT_TYPE", "get_ORDERED_NODE_SNAPSHOT_TYPE" },
-            .{ "ANY_UNORDERED_NODE_TYPE", "get_ANY_UNORDERED_NODE_TYPE" },
-            .{ "FIRST_ORDERED_NODE_TYPE", "get_FIRST_ORDERED_NODE_TYPE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "iterateNext",
@@ -84,6 +70,9 @@ pub const XPathResult = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

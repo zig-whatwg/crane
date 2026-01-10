@@ -57,7 +57,6 @@ pub const DOMTokenList = struct {
             "replace",
             "supports",
             "forEach",
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -74,13 +73,10 @@ pub const DOMTokenList = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = false;
-        
-        /// Iterable declaration (for Symbol.iterator support)
-        pub const iterable = .{
-            .value_type = "runtime.DOMString",
-            .key_type = null,
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = false;
     };
 
     pub const State = runtime.FlattenedState(

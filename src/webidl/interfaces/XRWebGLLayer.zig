@@ -57,15 +57,9 @@ pub const XRWebGLLayer = struct {
             .{ "getViewport", "call_getViewport", 1 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "getNativeFramebufferScaleFactor", "call_static_getNativeFramebufferScaleFactor", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getViewport",
-            "getNativeFramebufferScaleFactor",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -90,6 +84,10 @@ pub const XRWebGLLayer = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "getNativeFramebufferScaleFactor", "call_static_getNativeFramebufferScaleFactor", 1 },
+        };
         pub const has_constructor = true;
     };
 

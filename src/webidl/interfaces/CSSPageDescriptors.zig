@@ -65,12 +65,7 @@ pub const CSSPageDescriptors = struct {
             "getPropertyPriority",
             "setProperty",
             "removeProperty",
-            "getPropertyValue",
             "getPropertyCSSValue",
-            "removeProperty",
-            "getPropertyPriority",
-            "setProperty",
-            "item",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -95,6 +90,9 @@ pub const CSSPageDescriptors = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

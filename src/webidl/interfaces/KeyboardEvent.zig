@@ -57,14 +57,6 @@ pub const KeyboardEvent = struct {
             .{ "initKeyboardEvent", "call_initKeyboardEvent", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "DOM_KEY_LOCATION_STANDARD", "get_DOM_KEY_LOCATION_STANDARD" },
-            .{ "DOM_KEY_LOCATION_LEFT", "get_DOM_KEY_LOCATION_LEFT" },
-            .{ "DOM_KEY_LOCATION_RIGHT", "get_DOM_KEY_LOCATION_RIGHT" },
-            .{ "DOM_KEY_LOCATION_NUMPAD", "get_DOM_KEY_LOCATION_NUMPAD" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getModifierState",
@@ -100,6 +92,9 @@ pub const KeyboardEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

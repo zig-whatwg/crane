@@ -107,14 +107,6 @@ pub const HTMLTrackElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "NONE", "get_NONE" },
-            .{ "LOADING", "get_LOADING" },
-            .{ "LOADED", "get_LOADED" },
-            .{ "ERROR", "get_ERROR" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -184,10 +176,7 @@ pub const HTMLTrackElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -230,6 +219,9 @@ pub const HTMLTrackElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

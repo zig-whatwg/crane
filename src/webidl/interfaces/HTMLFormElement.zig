@@ -112,12 +112,6 @@ pub const HTMLFormElement = struct {
             .{ "length", "get_length", null },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "relList", "value" },
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "submit", "call_submit", 0 },
@@ -201,10 +195,7 @@ pub const HTMLFormElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -253,6 +244,9 @@ pub const HTMLFormElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 
@@ -548,10 +542,7 @@ pub const HTMLFormElement = struct {
     };
 
     pub fn call_getter(instance: *runtime.Instance, args: GetterArgs) anyerror!Element {
-        switch (args) {
-            .unsigned_long => |arg| return try HTMLFormElementImpl.unsigned_long(instance, arg),
-            .string => |arg| return try HTMLFormElementImpl.string(instance, arg),
-        }
+        return try HTMLFormElementImpl.call_getter(instance, args);
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {

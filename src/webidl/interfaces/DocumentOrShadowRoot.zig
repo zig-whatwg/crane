@@ -37,12 +37,6 @@ pub const DocumentOrShadowRoot = struct {
             .{ "activeElement", "get_activeElement", null },
         };
         
-        /// [LegacyLenientSetter] attributes: readonly with no-op setters
-        /// Setters silently do nothing (don't throw, don't modify)
-        pub const lenient_setter_attributes = .{
-            "fullscreenElement",
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getAnimations", "call_getAnimations", 0 },
@@ -72,6 +66,9 @@ pub const DocumentOrShadowRoot = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

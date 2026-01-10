@@ -59,13 +59,10 @@ pub const FontFacePalettes = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = false;
-        
-        /// Iterable declaration (for Symbol.iterator support)
-        pub const iterable = .{
-            .value_type = "FontFacePalette",
-            .key_type = null,
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = false;
     };
 
     pub const State = runtime.FlattenedState(

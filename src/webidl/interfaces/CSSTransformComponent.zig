@@ -47,7 +47,6 @@ pub const CSSTransformComponent = struct {
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toMatrix",
-            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -63,6 +62,9 @@ pub const CSSTransformComponent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

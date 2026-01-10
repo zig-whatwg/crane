@@ -116,11 +116,6 @@ pub const RTCPeerConnection = struct {
             .{ "getIdentityAssertion", "call_getIdentityAssertion", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "generateCertificate", "call_static_generateCertificate", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createOffer",
@@ -132,7 +127,6 @@ pub const RTCPeerConnection = struct {
             "getConfiguration",
             "setConfiguration",
             "close",
-            "generateCertificate",
             "getSenders",
             "getReceivers",
             "getTransceivers",
@@ -185,6 +179,10 @@ pub const RTCPeerConnection = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "generateCertificate", "call_static_generateCertificate", 1 },
+        };
         pub const has_constructor = true;
     };
 

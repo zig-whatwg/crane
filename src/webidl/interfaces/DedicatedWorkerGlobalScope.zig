@@ -75,7 +75,7 @@ pub const DedicatedWorkerGlobalScope = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "postMessage", "call_postMessage", 2 },
+            .{ "postMessage", "call_postMessage", 1 },
             .{ "close", "call_close", 0 },
             .{ "requestAnimationFrame", "call_requestAnimationFrame", 1 },
             .{ "cancelAnimationFrame", "call_cancelAnimationFrame", 1 },
@@ -105,7 +105,6 @@ pub const DedicatedWorkerGlobalScope = struct {
             "clearInterval",
             "queueMicrotask",
             "createImageBitmap",
-            "createImageBitmap",
             "structuredClone",
             "fetch",
         };
@@ -122,6 +121,9 @@ pub const DedicatedWorkerGlobalScope = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

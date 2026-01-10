@@ -100,15 +100,10 @@ pub const DocumentType = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = false;
-        
-        /// Members marked with [Unscopable] extended attribute
-        pub const unscopables = .{
-            "before",
-            "after",
-            "replaceWith",
-            "remove",
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = false;
     };
 
     pub const State = runtime.FlattenedState(

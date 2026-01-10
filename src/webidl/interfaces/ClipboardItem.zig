@@ -42,15 +42,9 @@ pub const ClipboardItem = struct {
             .{ "getType", "call_getType", 1 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "supports", "call_static_supports", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getType",
-            "supports",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -67,6 +61,10 @@ pub const ClipboardItem = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "supports", "call_static_supports", 1 },
+        };
         pub const has_constructor = true;
     };
 

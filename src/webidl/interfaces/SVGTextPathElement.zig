@@ -112,16 +112,6 @@ pub const SVGTextPathElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "TEXTPATH_METHODTYPE_UNKNOWN", "get_TEXTPATH_METHODTYPE_UNKNOWN" },
-            .{ "TEXTPATH_METHODTYPE_ALIGN", "get_TEXTPATH_METHODTYPE_ALIGN" },
-            .{ "TEXTPATH_METHODTYPE_STRETCH", "get_TEXTPATH_METHODTYPE_STRETCH" },
-            .{ "TEXTPATH_SPACINGTYPE_UNKNOWN", "get_TEXTPATH_SPACINGTYPE_UNKNOWN" },
-            .{ "TEXTPATH_SPACINGTYPE_AUTO", "get_TEXTPATH_SPACINGTYPE_AUTO" },
-            .{ "TEXTPATH_SPACINGTYPE_EXACT", "get_TEXTPATH_SPACINGTYPE_EXACT" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -191,10 +181,7 @@ pub const SVGTextPathElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -241,6 +228,9 @@ pub const SVGTextPathElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

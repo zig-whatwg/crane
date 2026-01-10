@@ -68,13 +68,10 @@ pub const StylePropertyMapReadOnly = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = false;
-        
-        /// Iterable declaration (for Symbol.iterator support)
-        pub const iterable = .{
-            .value_type = "runtime.USVString",
-            .key_type = "runtime.sequence(CSSStyleValue)",
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = false;
     };
 
     pub const State = runtime.FlattenedState(

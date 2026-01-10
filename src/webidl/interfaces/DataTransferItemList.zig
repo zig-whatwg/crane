@@ -36,7 +36,7 @@ pub const DataTransferItemList = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "add", "call_add", 2 },
+            .{ "add", "call_add", 1 },
             .{ "remove", "call_remove", 1 },
             .{ "clear", "call_clear", 0 },
         };
@@ -61,6 +61,9 @@ pub const DataTransferItemList = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

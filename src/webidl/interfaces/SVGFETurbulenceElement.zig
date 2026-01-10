@@ -116,16 +116,6 @@ pub const SVGFETurbulenceElement = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_TURBULENCE_TYPE_UNKNOWN", "get_SVG_TURBULENCE_TYPE_UNKNOWN" },
-            .{ "SVG_TURBULENCE_TYPE_FRACTALNOISE", "get_SVG_TURBULENCE_TYPE_FRACTALNOISE" },
-            .{ "SVG_TURBULENCE_TYPE_TURBULENCE", "get_SVG_TURBULENCE_TYPE_TURBULENCE" },
-            .{ "SVG_STITCHTYPE_UNKNOWN", "get_SVG_STITCHTYPE_UNKNOWN" },
-            .{ "SVG_STITCHTYPE_STITCH", "get_SVG_STITCHTYPE_STITCH" },
-            .{ "SVG_STITCHTYPE_NOSTITCH", "get_SVG_STITCHTYPE_NOSTITCH" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -195,10 +185,7 @@ pub const SVGFETurbulenceElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -240,6 +227,9 @@ pub const SVGFETurbulenceElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

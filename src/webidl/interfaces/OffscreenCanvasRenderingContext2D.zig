@@ -130,7 +130,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
             .{ "translate", "call_translate", 2 },
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
-            .{ "setTransform", "call_setTransform", 6 },
+            .{ "setTransform", "call_setTransform", 0 },
             .{ "resetTransform", "call_resetTransform", 0 },
             .{ "createLinearGradient", "call_createLinearGradient", 4 },
             .{ "createRadialGradient", "call_createRadialGradient", 6 },
@@ -149,7 +149,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
             .{ "strokeText", "call_strokeText", 3 },
             .{ "measureText", "call_measureText", 1 },
             .{ "drawImage", "call_drawImage", 3 },
-            .{ "createImageData", "call_createImageData", 2 },
+            .{ "createImageData", "call_createImageData", 1 },
             .{ "getImageData", "call_getImageData", 4 },
             .{ "putImageData", "call_putImageData", 3 },
             .{ "setLineDash", "call_setLineDash", 1 },
@@ -237,6 +237,7 @@ pub const OffscreenCanvasRenderingContext2D = struct {
             .{ "lineJoin", "get_lineJoin", "set_lineJoin" },
             .{ "miterLimit", "get_miterLimit", "set_miterLimit" },
             .{ "lineDashOffset", "get_lineDashOffset", "set_lineDashOffset" },
+            .{ "lang", "get_lang", "set_lang" },
             .{ "font", "get_font", "set_font" },
             .{ "textAlign", "get_textAlign", "set_textAlign" },
             .{ "textBaseline", "get_textBaseline", "set_textBaseline" },
@@ -251,9 +252,11 @@ pub const OffscreenCanvasRenderingContext2D = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

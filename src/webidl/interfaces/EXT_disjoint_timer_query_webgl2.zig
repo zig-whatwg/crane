@@ -41,14 +41,6 @@ pub const EXT_disjoint_timer_query_webgl2 = struct {
             .{ "queryCounterEXT", "call_queryCounterEXT", 2 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "QUERY_COUNTER_BITS_EXT", "get_QUERY_COUNTER_BITS_EXT" },
-            .{ "TIME_ELAPSED_EXT", "get_TIME_ELAPSED_EXT" },
-            .{ "TIMESTAMP_EXT", "get_TIMESTAMP_EXT" },
-            .{ "GPU_DISJOINT_EXT", "get_GPU_DISJOINT_EXT" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "queryCounterEXT",
@@ -66,6 +58,9 @@ pub const EXT_disjoint_timer_query_webgl2 = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

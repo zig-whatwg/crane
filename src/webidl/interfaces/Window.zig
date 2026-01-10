@@ -315,19 +315,6 @@ pub const Window = struct {
             .{ "localStorage", "get_localStorage", null },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "location", "href" },
-        };
-        
-        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
-        /// Getters return undefined, setters silently return
-        pub const lenient_this_attributes = .{
-            "onmouseenter",
-            "onmouseleave",
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
@@ -339,7 +326,7 @@ pub const Window = struct {
             .{ "confirm", "call_confirm", 0 },
             .{ "prompt", "call_prompt", 0 },
             .{ "print", "call_print", 0 },
-            .{ "postMessage", "call_postMessage", 2 },
+            .{ "postMessage", "call_postMessage", 1 },
             .{ "navigate", "call_navigate", 1 },
             .{ "showOpenFilePicker", "call_showOpenFilePicker", 0 },
             .{ "showSaveFilePicker", "call_showSaveFilePicker", 0 },
@@ -640,6 +627,9 @@ pub const Window = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
