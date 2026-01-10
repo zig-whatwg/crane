@@ -77,39 +77,39 @@ pub fn unregister(wrapper: *CallbackWrapper) void {
     }
 }
 
-/// Clean up all registered CallbackWrappers and reset the registry.
+/// Reset the callback registry without freeing wrappers.
 /// Call this when destroying a browser context.
 ///
+/// IMPORTANT: This does NOT call deinit() on wrappers. The actual cleanup
+/// of CallbackWrappers is done by their owners (EventTarget, etc.).
+/// The registry only tracks wrappers for debugging/monitoring purposes.
+///
 /// This method:
-/// 1. Calls deinit() on each registered wrapper (disposes V8 handles, frees memory)
-/// 2. Clears and deallocates the registry
-/// 3. Resets thread-local state to null
+/// 1. Clears and deallocates the registry tracking data
+/// 2. Resets thread-local state to null
+///
+/// The actual V8 Global handles and wrapper memory are freed by:
+/// - EventTarget.deinit() for event listeners
+/// - Other owners for their respective callbacks
 pub fn deinit() void {
     if (registry) |*reg| {
-        // Iterate over all registered wrappers and clean them up
-        var iter = reg.iterator();
-        while (iter.next()) |entry| {
-            const wrapper = entry.key_ptr.*;
-            // deinit disposes V8 Global handles and frees wrapper memory
-            wrapper.deinit();
-        }
-
-        // Clear the registry
+        // Just clear the registry - don't free wrappers
+        // Wrappers are owned by EventTarget and other DOM objects
+        // who will properly clean them up during their deinit
         reg.deinit();
         registry = null;
         registry_allocator = null;
     }
 }
 
-/// Clear all registered wrappers without destroying the registry.
+/// Clear the registry tracking without destroying wrappers.
 /// Use this for test isolation between test runs within the same context.
+///
+/// NOTE: This does NOT free wrappers - they are owned by their respective
+/// DOM objects (EventTarget, etc.) which handle cleanup.
 pub fn clearAll() void {
     if (registry) |*reg| {
-        var iter = reg.iterator();
-        while (iter.next()) |entry| {
-            const wrapper = entry.key_ptr.*;
-            wrapper.deinit();
-        }
+        // Just clear tracking - don't free wrappers
         reg.clearRetainingCapacity();
     }
 }
