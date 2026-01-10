@@ -11,10 +11,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUDeviceDescriptor = @import("dictionaries").GPUDeviceDescriptor;
-const GPUSupportedLimits = @import("GPUSupportedLimits.zig").GPUSupportedLimits;
-const GPUSupportedFeatures = @import("GPUSupportedFeatures.zig").GPUSupportedFeatures;
-const GPUAdapterInfo = @import("GPUAdapterInfo.zig").GPUAdapterInfo;
-const GPUDevice = @import("GPUDevice.zig").GPUDevice;
+const GPUSupportedLimits = @import("interfaces").GPUSupportedLimits;
+const GPUSupportedFeatures = @import("interfaces").GPUSupportedFeatures;
+const GPUAdapterInfo = @import("interfaces").GPUAdapterInfo;
+const GPUDevice = @import("interfaces").GPUDevice;
 
 pub const GPUAdapter = struct {
     pub const Meta = struct {

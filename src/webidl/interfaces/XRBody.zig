@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRBodyJoint = @import("enums").XRBodyJoint;
-const XRBodySpace = @import("XRBodySpace.zig").XRBodySpace;
+const XRBodySpace = @import("interfaces").XRBodySpace;
 
 pub const XRBody = struct {
     pub const Meta = struct {

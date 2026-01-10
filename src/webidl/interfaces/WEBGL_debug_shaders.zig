@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
-const WebGLShader = @import("WebGLShader.zig").WebGLShader;
+const WebGLShader = @import("interfaces").WebGLShader;
 
 pub const WEBGL_debug_shaders = struct {
     pub const Meta = struct {

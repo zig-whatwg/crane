@@ -123,12 +123,6 @@ pub const CallbackWrapper = struct {
     ///
     /// This releases the persistent handle to the JS function/object.
     /// After calling deinit, the wrapper should not be used.
-    pub fn equals(self: *const CallbackWrapper, other: *const CallbackWrapper) bool {
-        if (self.engine != other.engine) return false;
-        const equals_fn = self.engine.callbacksEqual orelse return self.engine_handle == other.engine_handle;
-        return equals_fn(self.engine_handle, other.engine_handle);
-    }
-
     pub fn deinit(self: *CallbackWrapper) void {
         if (self.engine.destroyCallbackWrapper) |destroy_fn| {
             destroy_fn(self.engine_handle);

@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("Element.zig").Element;
-const StyleSheetList = @import("StyleSheetList.zig").StyleSheetList;
-const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
-const Animation = @import("Animation.zig").Animation;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const Element = @import("interfaces").Element;
+const StyleSheetList = @import("interfaces").StyleSheetList;
+const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const Animation = @import("interfaces").Animation;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 
 pub const DocumentOrShadowRoot = struct {
     pub const Meta = struct {

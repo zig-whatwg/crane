@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const PressureSource = @import("enums").PressureSource;
-const PressureRecord = @import("PressureRecord.zig").PressureRecord;
+const PressureRecord = @import("interfaces").PressureRecord;
 const PressureObserverOptions = @import("dictionaries").PressureObserverOptions;
 const PressureUpdateCallback = @import("callbacks").PressureUpdateCallback;
 

@@ -136,370 +136,6 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 }
 
 // ============================================================================
-// CallbackManager: Owns V8 Callback Handles
-// ============================================================================
-//
-// This class manages all V8 callback function handles. It solves the problem
-// of V8 Local handles becoming invalid after HandleScope ends.
-//
-// Key insight: V8 Local<T> is NOT just a T* pointer - it's a handle containing
-// T** that points to a slot in an active HandleScope. When we pass the internal
-// pointer through FFI and try to reconstruct the Local, we create garbage.
-//
-// Solution (adopted from Chromium): All V8 handle management stays in C++.
-// The Zig side works only with opaque callback IDs (uint64_t), never with
-// V8 handles. Callbacks are converted from Local to Global IMMEDIATELY
-// upon registration, before any FFI boundary crossing.
-//
-// Architecture:
-//   Zig DOM Code (opaque IDs only) <-- FFI --> CallbackManager (owns Globals) --> V8
-
-#include <unordered_map>
-#include <unordered_set>
-#include <mutex>
-#include <atomic>
-
-class CallbackManager {
-public:
-    // Stored callback information
-    struct StoredCallback {
-        Global<Function> function;
-        Global<Context> context;
-        Global<Value> receiver;  // 'this' binding
-        bool weak_registered = false;
-        bool collected = false;  // Set to true when weak callback fires
-    };
-
-    // Data passed to weak callback
-    struct WeakCallbackData {
-        uint64_t callback_id;
-        CallbackManager* manager;
-    };
-
-private:
-    std::unordered_map<uint64_t, StoredCallback> callbacks_;
-    std::unordered_set<uint64_t> collected_ids_;  // Track collected callback IDs
-    std::mutex mutex_;  // Thread safety
-    std::atomic<uint64_t> next_id_{1};
-    Isolate* isolate_;
-
-    // Singleton instance
-    static CallbackManager* instance_;
-    static std::mutex instance_mutex_;
-
-    // Static weak callback - called by V8 when function is about to be GC'd
-    static void WeakCallback(const WeakCallbackInfo<WeakCallbackData>& info) {
-        WeakCallbackData* data = info.GetParameter();
-        if (data && data->manager) {
-            data->manager->MarkCollected(data->callback_id);
-        }
-        delete data;
-    }
-
-public:
-    explicit CallbackManager(Isolate* isolate) : isolate_(isolate) {}
-
-    ~CallbackManager() {
-        // Reset all Global handles to allow V8 GC to collect them
-        std::lock_guard<std::mutex> lock(mutex_);
-        for (auto& pair : callbacks_) {
-            pair.second.function.Reset();
-            pair.second.context.Reset();
-            pair.second.receiver.Reset();
-        }
-        callbacks_.clear();
-    }
-
-    // Get or create the singleton instance
-    static CallbackManager* Get() {
-        std::lock_guard<std::mutex> lock(instance_mutex_);
-        return instance_;
-    }
-
-    // Initialize the singleton (called once at startup)
-    static void Initialize(Isolate* isolate) {
-        std::lock_guard<std::mutex> lock(instance_mutex_);
-        if (instance_ == nullptr) {
-            instance_ = new CallbackManager(isolate);
-        }
-    }
-
-    // Destroy the singleton (called at shutdown)
-    static void Destroy() {
-        std::lock_guard<std::mutex> lock(instance_mutex_);
-        if (instance_ != nullptr) {
-            delete instance_;
-            instance_ = nullptr;
-        }
-    }
-
-    // Register a callback - MUST be called while Locals are still valid
-    // Returns callback ID or 0 on failure
-    uint64_t Register(Local<Function> func, Local<Context> ctx, Local<Value> receiver = Local<Value>()) {
-        if (func.IsEmpty() || ctx.IsEmpty()) {
-            return 0;
-        }
-
-        uint64_t id = next_id_.fetch_add(1);
-
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        StoredCallback& cb = callbacks_[id];
-        cb.function.Reset(isolate_, func);
-        cb.context.Reset(isolate_, ctx);
-        if (!receiver.IsEmpty()) {
-            cb.receiver.Reset(isolate_, receiver);
-        }
-        cb.weak_registered = false;
-
-        return id;
-    }
-
-    // Invoke a registered callback
-    // Returns: true on success, false on failure
-    // On success, result contains the return value (may be nullptr for void returns)
-    // On failure, error_msg contains the error description
-    struct InvokeResult {
-        bool success;
-        Global<Value>* return_value;  // Caller owns, must dispose
-        const char* error_msg;        // Static string, valid until next call
-    };
-
-    InvokeResult Invoke(uint64_t id, int argc, Local<Value>* argv) {
-        InvokeResult result = {false, nullptr, nullptr};
-
-        std::unique_lock<std::mutex> lock(mutex_);
-
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end()) {
-            result.error_msg = "Callback not found";
-            return result;
-        }
-
-        StoredCallback& cb = it->second;
-
-        // Check if callback was collected by GC
-        if (cb.collected) {
-            result.error_msg = "Callback was garbage collected";
-            return result;
-        }
-
-        // Get Locals from Globals
-        Local<Function> func = cb.function.Get(isolate_);
-        Local<Context> ctx = cb.context.Get(isolate_);
-        Local<Value> receiver = cb.receiver.IsEmpty()
-            ? Undefined(isolate_).As<Value>()
-            : cb.receiver.Get(isolate_);
-
-        // Release lock before calling JS (avoids deadlock if callback registers another)
-        lock.unlock();
-
-        // Create HandleScope for the call
-        HandleScope handle_scope(isolate_);
-        Context::Scope context_scope(ctx);
-
-        TryCatch try_catch(isolate_);
-
-        MaybeLocal<Value> maybe_result = func->Call(ctx, receiver, argc, argv);
-
-        if (try_catch.HasCaught()) {
-            // Extract error message
-            Local<Value> exception = try_catch.Exception();
-            String::Utf8Value exception_str(isolate_, exception);
-            static thread_local char error_buffer[1024];
-            snprintf(error_buffer, sizeof(error_buffer), "%s",
-                     *exception_str ? *exception_str : "Unknown error");
-            result.error_msg = error_buffer;
-            return result;
-        }
-
-        if (maybe_result.IsEmpty()) {
-            result.error_msg = "Callback returned empty result";
-            return result;
-        }
-
-        result.success = true;
-        Local<Value> ret_val = maybe_result.ToLocalChecked();
-        result.return_value = new Global<Value>(isolate_, ret_val);
-        return result;
-    }
-
-    // Convenience: Invoke with single argument
-    InvokeResult Invoke1(uint64_t id, Local<Value> arg) {
-        Local<Value> argv[1] = {arg};
-        return Invoke(id, 1, argv);
-    }
-
-    // Convenience: Invoke with no arguments
-    InvokeResult Invoke0(uint64_t id) {
-        return Invoke(id, 0, nullptr);
-    }
-
-    // Remove a callback (explicit cleanup)
-    void Remove(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = callbacks_.find(id);
-        if (it != callbacks_.end()) {
-            it->second.function.Reset();
-            it->second.context.Reset();
-            it->second.receiver.Reset();
-            callbacks_.erase(it);
-        }
-    }
-
-    // Check if callback exists
-    bool Exists(uint64_t id) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        return callbacks_.find(id) != callbacks_.end();
-    }
-
-    // Get statistics for debugging
-    size_t Count() const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        return callbacks_.size();
-    }
-
-    // Get the isolate
-    Isolate* GetIsolate() const {
-        return isolate_;
-    }
-
-    // ========================================================================
-    // Weak Callback Support
-    // ========================================================================
-    //
-    // Weak callbacks allow V8's GC to collect JavaScript functions that are
-    // no longer referenced. This prevents memory leaks in long-running sessions.
-    //
-    // When a callback is made weak:
-    // 1. The Global<Function> becomes a weak reference
-    // 2. V8 can collect the function if there are no other JS references
-    // 3. When collected, WeakCallback fires and marks the callback as collected
-    // 4. Subsequent invoke attempts return an error
-    //
-    // NOTE: Event listeners should NOT be weak by default - the listener
-    // should stay alive as long as the EventTarget exists.
-
-    // Make a callback weak - V8 can GC the function when no JS refs remain
-    // Returns true on success, false if callback not found or already weak
-    bool MakeWeak(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end() || it->second.weak_registered) {
-            return false;
-        }
-
-        StoredCallback& cb = it->second;
-
-        // Create weak callback data
-        WeakCallbackData* data = new WeakCallbackData{id, this};
-
-        // Make the function handle weak
-        cb.function.SetWeak(data, WeakCallback, WeakCallbackType::kParameter);
-        cb.weak_registered = true;
-
-        return true;
-    }
-
-    // Clear weak status - make callback strong again
-    // Returns true on success, false if callback not found or not weak
-    bool ClearWeak(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end() || !it->second.weak_registered) {
-            return false;
-        }
-
-        StoredCallback& cb = it->second;
-
-        // Note: ClearWeak() returns the parameter we passed to SetWeak
-        // We need to delete it to avoid memory leak
-        WeakCallbackData* data = cb.function.ClearWeak<WeakCallbackData>();
-        delete data;
-
-        cb.weak_registered = false;
-
-        return true;
-    }
-
-    // Check if callback has been collected by GC
-    bool IsCollected(uint64_t id) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-
-        // Check collected_ids first (faster)
-        if (collected_ids_.find(id) != collected_ids_.end()) {
-            return true;
-        }
-
-        // Also check the stored callback's collected flag
-        auto it = callbacks_.find(id);
-        if (it != callbacks_.end()) {
-            return it->second.collected;
-        }
-
-        // Callback doesn't exist - treat as collected
-        return true;
-    }
-
-    // Check if callback is weak
-    bool IsWeak(uint64_t id) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        auto it = callbacks_.find(id);
-        if (it == callbacks_.end()) {
-            return false;
-        }
-        return it->second.weak_registered;
-    }
-
-    // Mark callback as collected (called from weak callback)
-    void MarkCollected(uint64_t id) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        collected_ids_.insert(id);
-
-        auto it = callbacks_.find(id);
-        if (it != callbacks_.end()) {
-            it->second.collected = true;
-            // The function Global is already invalid, don't try to reset it
-            // Just mark it so Invoke knows to fail
-        }
-    }
-
-    // Clean up collected callbacks - removes entries that have been GC'd
-    // Returns number of callbacks cleaned up
-    size_t CleanupCollected() {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        size_t count = 0;
-        for (auto id : collected_ids_) {
-            auto it = callbacks_.find(id);
-            if (it != callbacks_.end()) {
-                // Context and receiver may still be valid, clean them up
-                it->second.context.Reset();
-                it->second.receiver.Reset();
-                callbacks_.erase(it);
-                count++;
-            }
-        }
-        collected_ids_.clear();
-
-        return count;
-    }
-
-    // Get count of collected but not yet cleaned up callbacks
-    size_t CollectedCount() const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
-        return collected_ids_.size();
-    }
-};
-
-// Initialize static members
-CallbackManager* CallbackManager::instance_ = nullptr;
-std::mutex CallbackManager::instance_mutex_;
-
-// ============================================================================
 // V8 Exception Information Structure
 // ============================================================================
 //
@@ -609,277 +245,13 @@ Global<Function>* v8_FunctionCallbackInfo_GetFunction(const FunctionCallbackInfo
 /// Frees all strings allocated within the structure and the structure itself.
 void v8_FreeErrorInfo(V8ErrorInfo* info) {
     if (!info) return;
-
+    
     if (info->message) free(info->message);
     if (info->stack_trace) free(info->stack_trace);
     if (info->source_line) free(info->source_line);
     if (info->resource_name) free(info->resource_name);
-
+    
     delete info;
-}
-
-// ============================================================================
-// CallbackManager FFI Exports
-// ============================================================================
-//
-// These functions expose CallbackManager to Zig code. The key principle is that
-// V8 handles NEVER cross the FFI boundary - only opaque uint64_t callback IDs.
-
-/// Result structure for callback invocation
-struct CraneCallbackResult {
-    bool success;
-    Global<Value>* return_value;  // Caller must dispose if non-null
-    const char* error_msg;        // Valid until next call on this thread
-};
-
-/// Initialize the global callback manager (called once at startup)
-/// @param isolate - The V8 isolate to use for callback management
-void crane_callback_manager_init(Isolate* isolate) {
-    CallbackManager::Initialize(isolate);
-}
-
-/// Destroy the global callback manager (called at shutdown)
-void crane_callback_manager_destroy() {
-    CallbackManager::Destroy();
-}
-
-/// Register a callback function
-///
-/// CRITICAL: This MUST be called while inside a V8 callback handler where
-/// the func_local and ctx_local are valid Local handles. The function is
-/// immediately converted to a Global handle that persists.
-///
-/// @param func_local - Local<Function> internal pointer (from FunctionCallbackInfo::GetArgument)
-/// @param ctx_local - Local<Context> internal pointer
-/// @param receiver_local - Local<Value> internal pointer for 'this' binding (nullable)
-/// @return Callback ID (non-zero) on success, 0 on failure
-uint64_t crane_callback_register(void* func_local, void* ctx_local, void* receiver_local) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        fprintf(stderr, "[crane_callback_register] ERROR: CallbackManager not initialized\n");
-        return 0;
-    }
-
-    Isolate* isolate = mgr->GetIsolate();
-    if (!isolate) {
-        fprintf(stderr, "[crane_callback_register] ERROR: No isolate\n");
-        return 0;
-    }
-
-    if (!func_local || !ctx_local) {
-        fprintf(stderr, "[crane_callback_register] ERROR: null func or context\n");
-        return 0;
-    }
-
-    // The func_local is the internal T* from a Local<Function>
-    // We need to reconstruct the Local from this pointer while we're still
-    // in the same HandleScope where the Local was created
-    Function* func_ptr = static_cast<Function*>(func_local);
-    Local<Function> func = *reinterpret_cast<Local<Function>*>(&func_ptr);
-
-    Context* ctx_ptr = static_cast<Context*>(ctx_local);
-    Local<Context> ctx = *reinterpret_cast<Local<Context>*>(&ctx_ptr);
-
-    Local<Value> receiver;
-    if (receiver_local) {
-        Value* recv_ptr = static_cast<Value*>(receiver_local);
-        receiver = *reinterpret_cast<Local<Value>*>(&recv_ptr);
-    }
-
-    uint64_t id = mgr->Register(func, ctx, receiver);
-
-    if (id > 0) {
-        fprintf(stderr, "[crane_callback_register] SUCCESS: registered callback ID=%lu\n",
-                (unsigned long)id);
-    }
-
-    return id;
-}
-
-/// Invoke a registered callback with multiple arguments
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @param argc - Number of arguments
-/// @param argv - Array of Global<Value>* argument pointers
-/// @return Result struct with success/error info
-CraneCallbackResult crane_callback_invoke(uint64_t callback_id, int argc, Global<Value>** argv) {
-    CraneCallbackResult result = {false, nullptr, nullptr};
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        result.error_msg = "CallbackManager not initialized";
-        return result;
-    }
-
-    Isolate* isolate = mgr->GetIsolate();
-    HandleScope handle_scope(isolate);
-
-    // Convert Global args to Local for the call
-    std::vector<Local<Value>> local_args;
-    local_args.reserve(argc);
-    for (int i = 0; i < argc; i++) {
-        if (argv[i]) {
-            local_args.push_back(argv[i]->Get(isolate));
-        } else {
-            local_args.push_back(Undefined(isolate));
-        }
-    }
-
-    auto mgr_result = mgr->Invoke(callback_id, argc, local_args.data());
-    result.success = mgr_result.success;
-    result.return_value = mgr_result.return_value;
-    result.error_msg = mgr_result.error_msg;
-
-    return result;
-}
-
-/// Invoke a callback with a single argument (common case optimization)
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @param arg - Global<Value>* argument pointer
-/// @return Result struct with success/error info
-CraneCallbackResult crane_callback_invoke1(uint64_t callback_id, Global<Value>* arg) {
-    CraneCallbackResult result = {false, nullptr, nullptr};
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        result.error_msg = "CallbackManager not initialized";
-        return result;
-    }
-
-    Isolate* isolate = mgr->GetIsolate();
-    HandleScope handle_scope(isolate);
-
-    Local<Value> local_arg = arg ? arg->Get(isolate) : Undefined(isolate).As<Value>();
-
-    auto mgr_result = mgr->Invoke1(callback_id, local_arg);
-    result.success = mgr_result.success;
-    result.return_value = mgr_result.return_value;
-    result.error_msg = mgr_result.error_msg;
-
-    return result;
-}
-
-/// Invoke a callback with no arguments
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return Result struct with success/error info
-CraneCallbackResult crane_callback_invoke0(uint64_t callback_id) {
-    CraneCallbackResult result = {false, nullptr, nullptr};
-
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        result.error_msg = "CallbackManager not initialized";
-        return result;
-    }
-
-    auto mgr_result = mgr->Invoke0(callback_id);
-    result.success = mgr_result.success;
-    result.return_value = mgr_result.return_value;
-    result.error_msg = mgr_result.error_msg;
-
-    return result;
-}
-
-/// Remove a callback
-///
-/// @param callback_id - The callback ID to remove
-void crane_callback_remove(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (mgr) {
-        mgr->Remove(callback_id);
-    }
-}
-
-/// Check if a callback exists
-///
-/// @param callback_id - The callback ID to check
-/// @return true if callback exists, false otherwise
-bool crane_callback_exists(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    return mgr ? mgr->Exists(callback_id) : false;
-}
-
-/// Get the number of registered callbacks (for debugging)
-///
-/// @return Number of registered callbacks
-uint64_t crane_callback_count() {
-    CallbackManager* mgr = CallbackManager::Get();
-    return mgr ? static_cast<uint64_t>(mgr->Count()) : 0;
-}
-
-/// Free a CraneCallbackResult's return value
-///
-/// @param return_value - The return value to free
-void crane_callback_free_result(Global<Value>* return_value) {
-    if (return_value) {
-        return_value->Reset();
-        delete return_value;
-    }
-}
-
-// ============================================================================
-// Weak Callback FFI Exports
-// ============================================================================
-// These functions allow Zig code to coordinate callback lifecycle with V8's GC.
-
-/// Make a callback weak - V8 can GC the function when no JS refs remain
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true on success, false if callback not found or already weak
-bool crane_callback_make_weak(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-    return mgr->MakeWeak(callback_id);
-}
-
-/// Clear weak status - make callback strong again
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true on success, false if callback not found or not weak
-bool crane_callback_clear_weak(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-    return mgr->ClearWeak(callback_id);
-}
-
-/// Check if callback is currently weak
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true if callback is weak, false otherwise
-bool crane_callback_is_weak(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return false;
-    return mgr->IsWeak(callback_id);
-}
-
-/// Check if callback has been collected by GC
-///
-/// @param callback_id - The callback ID from crane_callback_register
-/// @return true if callback was collected, false otherwise
-bool crane_callback_is_collected(uint64_t callback_id) {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return true;  // No manager = treat as collected
-    return mgr->IsCollected(callback_id);
-}
-
-/// Clean up callbacks that have been collected by GC
-/// Frees memory associated with collected callbacks.
-///
-/// @return Number of callbacks cleaned up
-uint64_t crane_callback_cleanup_collected() {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return 0;
-    return static_cast<uint64_t>(mgr->CleanupCollected());
-}
-
-/// Get count of collected but not yet cleaned up callbacks
-///
-/// @return Number of callbacks pending cleanup
-uint64_t crane_callback_collected_count() {
-    CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) return 0;
-    return static_cast<uint64_t>(mgr->CollectedCount());
 }
 
 // ============================================================================
@@ -922,16 +294,6 @@ struct V8ModuleInstantiateResult {
 struct V8ModuleEvaluateResult {
     Global<Value>* value;        // nullptr if evaluation failed
     V8ErrorInfo* error;          // nullptr if evaluation succeeded
-};
-
-/// Result structure for safe ToString conversion
-/// 
-/// Per WebIDL § 3.2.1, when converting a value to DOMString/USVString:
-/// - If the value's toString() method throws, the exception MUST propagate
-/// - We capture the exception so the caller can rethrow it
-struct V8ToStringResult {
-    Global<String>* value;       // nullptr if conversion failed
-    Global<Value>* exception;    // The thrown exception value (nullptr if success)
 };
 
 /// Compile a script with TryCatch error handling
@@ -1078,46 +440,18 @@ void v8_FreeScriptRunResult(V8ScriptRunResult* result) {
     delete result;
 }
 
-/// Call a function stored as Global<Value>* (casts to Function internally)
+/// Call a function with TryCatch error handling
 V8FunctionCallResult* v8_Function_Call_Safe(
-    Global<Value>* function,
+    Global<Function>* function,
     Global<Context>* context,
     Global<Value>* recv,
     int argc,
     Global<Value>** argv
 ) {
-    fprintf(stderr, "[v8_Function_Call_Safe] function=%p, context=%p, recv=%p, argc=%d\n",
-            (void*)function, (void*)context, (void*)recv, argc);
-    
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     
-    if (!function || function->IsEmpty()) {
-        fprintf(stderr, "[v8_Function_Call_Safe] ERROR: function is null or empty\n");
-        V8FunctionCallResult* result = new V8FunctionCallResult();
-        result->value = nullptr;
-        result->error = new V8ErrorInfo();
-        result->error->has_error = true;
-        result->error->message = strdup("Function handle is null or empty");
-        return result;
-    }
-    
-    Local<Value> fn_value = function->Get(isolate);
-    fprintf(stderr, "[v8_Function_Call_Safe] fn_value.IsEmpty()=%d, IsFunction()=%d\n",
-            fn_value.IsEmpty(), fn_value.IsEmpty() ? 0 : fn_value->IsFunction());
-    
-    if (!fn_value->IsFunction()) {
-        fprintf(stderr, "[v8_Function_Call_Safe] ERROR: value is not a function\n");
-        V8FunctionCallResult* result = new V8FunctionCallResult();
-        result->value = nullptr;
-        result->error = new V8ErrorInfo();
-        result->error->has_error = true;
-        result->error->message = strdup("Value is not a function");
-        return result;
-    }
-    
-    Local<Function> fn = fn_value.As<Function>();
-    
+    Local<Function> fn = function->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Local<Value> this_val = recv ? recv->Get(isolate) : Undefined(isolate).As<Value>();
     
@@ -1798,20 +1132,6 @@ bool v8_Value_IsArray(Global<Value>* value) {
     return val->IsArray();
 }
 
-bool v8_Value_IsArrayBuffer(Global<Value>* value) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Value> val = value->Get(isolate);
-    return val->IsArrayBuffer();
-}
-
-bool v8_Value_IsArrayBufferView(Global<Value>* value) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Value> val = value->Get(isolate);
-    return val->IsArrayBufferView();
-}
-
 // Version for Local handle internal pointers
 bool v8_Value_IsArray_Local(void* value_ptr) {
     if (!value_ptr) return false;
@@ -1942,42 +1262,6 @@ Global<String>* v8_Value_ToString_Local(void* value_ptr, Global<Context>* contex
     
     Local<String> str = maybe_str.ToLocalChecked();
     return trackHandle(new Global<String>(isolate, str));
-}
-
-V8ToStringResult* v8_Value_ToString_Safe(Global<Value>* value, Global<Context>* context) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    
-    V8ToStringResult* result = new V8ToStringResult();
-    result->value = nullptr;
-    result->exception = nullptr;
-    
-    Local<Context> ctx = context->Get(isolate);
-    Local<Value> val = value->Get(isolate);
-    
-    TryCatch try_catch(isolate);
-    
-    MaybeLocal<String> maybe_str = val->ToString(ctx);
-    
-    if (try_catch.HasCaught()) {
-        Local<Value> exception = try_catch.Exception();
-        result->exception = trackHandle(new Global<Value>(isolate, exception));
-        return result;
-    }
-    
-    if (maybe_str.IsEmpty()) {
-        return result;
-    }
-    
-    Local<String> str = maybe_str.ToLocalChecked();
-    result->value = trackHandle(new Global<String>(isolate, str));
-    return result;
-}
-
-void v8_FreeToStringResult(V8ToStringResult* result) {
-    if (result) {
-        delete result;
-    }
 }
 
 bool v8_Value_StrictEquals(Global<Value>* value1, Global<Value>* value2) {
@@ -2314,17 +1598,6 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
-    
-    // CROSS-REALM FIX: If object is a Proxy, unwrap to get the target.
-    // Proxies (used for legacy platform objects like CSSStyleDeclaration)
-    // have no internal fields - the internal fields are on the target object.
-    if (local_obj->IsProxy()) {
-        Local<Proxy> proxy = local_obj.As<Proxy>();
-        Local<Value> target = proxy->GetTarget();
-        if (target->IsObject()) {
-            local_obj = target.As<Object>();
-        }
-    }
     
     // Safety check: verify object has enough internal fields before access
     // This prevents crashes when accessing prototype objects or other objects
@@ -3006,54 +2279,6 @@ Global<Value>* v8_Exception_TypeErrorInContext(Global<Context>* context, Global<
     Context::Scope context_scope(ctx);
     
     Local<Value> exception = Exception::TypeError(msg);
-    return trackHandle(new Global<Value>(isolate, exception));
-}
-
-/// Create RangeError in a specific context (for cross-realm errors).
-Global<Value>* v8_Exception_RangeErrorInContext(Global<Context>* context, Global<String>* message) {
-    if (!context || !message) return nullptr;
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    Local<String> msg = message->Get(isolate);
-    
-    // Enter the context to ensure RangeError comes from this realm
-    Context::Scope context_scope(ctx);
-    
-    Local<Value> exception = Exception::RangeError(msg);
-    return trackHandle(new Global<Value>(isolate, exception));
-}
-
-/// Create SyntaxError in a specific context (for cross-realm errors).
-Global<Value>* v8_Exception_SyntaxErrorInContext(Global<Context>* context, Global<String>* message) {
-    if (!context || !message) return nullptr;
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    Local<String> msg = message->Get(isolate);
-    
-    // Enter the context to ensure SyntaxError comes from this realm
-    Context::Scope context_scope(ctx);
-    
-    Local<Value> exception = Exception::SyntaxError(msg);
-    return trackHandle(new Global<Value>(isolate, exception));
-}
-
-/// Create Error in a specific context (for cross-realm errors).
-Global<Value>* v8_Exception_ErrorInContext(Global<Context>* context, Global<String>* message) {
-    if (!context || !message) return nullptr;
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    Local<String> msg = message->Get(isolate);
-    
-    // Enter the context to ensure Error comes from this realm
-    Context::Scope context_scope(ctx);
-    
-    Local<Value> exception = Exception::Error(msg);
     return trackHandle(new Global<Value>(isolate, exception));
 }
 
@@ -4305,17 +3530,12 @@ int v8_Object_InternalFieldCount_Raw(const void* obj) {
 }
 
 void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int index) {
+    // Cast to non-const since V8 API requires it
     Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
     
-    // CROSS-REALM FIX: Unwrap Proxy to get target with internal fields
-    if (object_ptr->IsProxy()) {
-        Proxy* proxy = Proxy::Cast(object_ptr);
-        Value* target = *proxy->GetTarget();
-        if (target->IsObject()) {
-            object_ptr = Object::Cast(target);
-        }
-    }
-    
+    // Safety check: verify object has enough internal fields before access
+    // This prevents crashes when accessing prototype objects or other objects
+    // that don't have internal fields set up
     if (object_ptr->InternalFieldCount() <= index) {
         return nullptr;
     }
@@ -4459,12 +3679,14 @@ bool v8_Object_SetAccessorProperty(
         setter_func = setter_tpl->GetFunction(ctx).ToLocalChecked();
     }
     
+    // Create accessor property descriptor
+    // PropertyDescriptor(Local<Value> get, Local<Value> set) creates an accessor descriptor
     PropertyDescriptor desc(
         getter ? Local<Value>(getter_func) : Local<Value>(),
         setter ? Local<Value>(setter_func) : Local<Value>()
     );
-    desc.set_enumerable(true);
-    desc.set_configurable(true);
+    desc.set_enumerable(true);  // WebIDL default
+    desc.set_configurable(true); // WebIDL default
     
     // Define the property on the object
     return obj->DefineProperty(ctx, key.As<Name>(), desc).FromMaybe(false);
@@ -4645,41 +3867,6 @@ Global<Value>* v8_Object_GetPrototype(Global<Object>* object) {
 }
 
 // ============================================================================
-// Lazy Data Property Functions
-// ============================================================================
-
-// Set a lazy data property on an object. The getter callback is called on first
-// access, and the property is then replaced with the returned value (becoming a
-// regular data property). This is used for lazy interface constructor installation.
-//
-// This matches Chromium's pattern in idl_member_installer.cc for installing
-// interface constructors on the global object.
-void v8_Object_SetLazyDataProperty(
-    Global<Object>* object,
-    Global<Context>* context,
-    Global<Name>* name,
-    AccessorNameGetterCallback getter,
-    Global<Value>* data
-) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    
-    Local<Object> obj = object->Get(isolate);
-    Local<Context> ctx = context->Get(isolate);
-    Local<Name> prop_name = name->Get(isolate);
-    Local<Value> prop_data = data ? data->Get(isolate) : Local<Value>();
-    
-    // Use DontEnum to match browser behavior (constructors aren't enumerable)
-    obj->SetLazyDataProperty(
-        ctx,
-        prop_name,
-        getter,
-        prop_data,
-        static_cast<PropertyAttribute>(v8::DontEnum)
-    );
-}
-
-// ============================================================================
 // Object Extensibility Functions
 // ============================================================================
 
@@ -4846,103 +4033,6 @@ void v8_Isolate_SetMicrotasksPolicy(Isolate* isolate, int policy) {
         default: return;  // Invalid policy
     }
     isolate->SetMicrotasksPolicy(v8_policy);
-}
-
-// ============================================================================
-// Promise Rejection Tracking (for unhandledrejection/rejectionhandled events)
-// ============================================================================
-
-/// Type definition for Zig promise rejection event callback
-/// Signature: fn(user_data: *anyopaque, event_type: i32, promise: *anyopaque, value: ?*anyopaque) void
-/// 
-/// event_type values (from V8 PromiseRejectEvent enum):
-///   0 = kPromiseRejectWithNoHandler       - Promise rejected, no handler attached
-///   1 = kPromiseHandlerAddedAfterReject   - Handler added to previously-rejected promise
-///   2 = kPromiseRejectAfterResolved       - Promise rejected after already resolved (unused)
-///   3 = kPromiseResolveAfterResolved      - Promise resolved after already resolved (unused)
-typedef void (*ZigPromiseRejectEventCallback)(
-    void* user_data,
-    int event_type,
-    void* promise,
-    void* value
-);
-
-/// Global storage for promise reject callback data
-struct PromiseRejectCallbackData {
-    void* user_data;
-    ZigPromiseRejectEventCallback callback;
-};
-static PromiseRejectCallbackData* g_promise_reject_callback = nullptr;
-
-/// V8 callback that forwards promise rejection events to Zig
-static void V8PromiseRejectCallback(PromiseRejectMessage message) {
-    if (!g_promise_reject_callback || !g_promise_reject_callback->callback) {
-        return;
-    }
-    
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    
-    // Get the promise (always available)
-    Local<Promise> promise = message.GetPromise();
-    
-    // Get the rejection value (may be empty for some event types)
-    Local<Value> value = message.GetValue();
-    
-    // Create Global handles for Zig to use
-    // Note: Zig is responsible for disposing these
-    Global<Promise>* promise_global = trackHandle(new Global<Promise>(isolate, promise));
-    
-    Global<Value>* value_global = nullptr;
-    if (!value.IsEmpty()) {
-        value_global = trackHandle(new Global<Value>(isolate, value));
-    }
-    
-    // Map V8 event type to integer
-    int event_type = static_cast<int>(message.GetEvent());
-    
-    // Call Zig callback
-    g_promise_reject_callback->callback(
-        g_promise_reject_callback->user_data,
-        event_type,
-        promise_global,
-        value_global
-    );
-}
-
-/// Set the promise rejection callback for an isolate
-/// 
-/// This enables tracking of unhandled promise rejections and late-attached handlers.
-/// The callback will be invoked when:
-/// - A promise is rejected with no handler (event_type=0)
-/// - A handler is added to a previously-rejected promise (event_type=1)
-///
-/// @param isolate - The V8 isolate to configure
-/// @param user_data - Opaque pointer passed to callback
-/// @param callback - Zig callback function
-void v8_Isolate_SetPromiseRejectCallback(
-    Isolate* isolate,
-    void* user_data,
-    ZigPromiseRejectEventCallback callback
-) {
-    // Store callback data
-    if (!g_promise_reject_callback) {
-        g_promise_reject_callback = new PromiseRejectCallbackData();
-    }
-    g_promise_reject_callback->user_data = user_data;
-    g_promise_reject_callback->callback = callback;
-    
-    // Register with V8
-    isolate->SetPromiseRejectCallback(V8PromiseRejectCallback);
-}
-
-/// Clear the promise rejection callback for an isolate
-void v8_Isolate_ClearPromiseRejectCallback(Isolate* isolate) {
-    if (g_promise_reject_callback) {
-        delete g_promise_reject_callback;
-        g_promise_reject_callback = nullptr;
-    }
-    isolate->SetPromiseRejectCallback(nullptr);
 }
 
 // ============================================================================
@@ -6692,52 +5782,6 @@ return nullptr;
     return trackHandle(new Global<Context>(isolate, context));
 }
 
-/// Create a context from a specific index in the snapshot
-///
-/// This creates a new context based on the context that was added at the
-/// specified index during snapshot creation. Use this to restore different
-/// context types (e.g., window context at index 0, worker context at index 1).
-///
-/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
-/// @param context_index - The index of the context to restore (0-based)
-/// @return New context with snapshot state, or nullptr if index is invalid
-Global<Context>* v8_Context_NewFromSnapshotAt(Isolate* isolate, size_t context_index) {
-    if (!isolate) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] ERROR: isolate is null\n");
-        return nullptr;
-    }
-    
-    // Enter the isolate before creating context
-    Isolate::Scope isolate_scope(isolate);
-    HandleScope handle_scope(isolate);
-    
-    // Add TryCatch to capture any exception
-    TryCatch try_catch(isolate);
-    
-    // Use Context::FromSnapshot to retrieve the context at the specified index
-    MaybeLocal<Context> maybe_context = Context::FromSnapshot(
-        isolate, context_index,
-        DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
-    
-    if (try_catch.HasCaught()) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] Exception caught during FromSnapshot(%zu)\n", context_index);
-        Local<Message> message = try_catch.Message();
-        if (!message.IsEmpty()) {
-            String::Utf8Value msg_str(isolate, message->Get());
-            fprintf(stderr, "[v8_Context_NewFromSnapshotAt] Exception: %s\n", *msg_str);
-        }
-    }
-    
-    Local<Context> context;
-    if (!maybe_context.ToLocal(&context)) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshotAt] ERROR: Context::FromSnapshot(%zu) failed\n", context_index);
-        fprintf(stderr, "  This usually means no context was added at index %zu during snapshot creation\n", context_index);
-        return nullptr;
-    }
-    
-    return trackHandle(new Global<Context>(isolate, context));
-}
-
 /// Create a NEW context for an isolate that was created from a snapshot
 ///
 /// Unlike v8_Context_NewFromSnapshot which restores a specific context from the
@@ -6994,17 +6038,6 @@ void v8_Unlocker_Dispose(void* unlocker) {
 /// from within an active HandleScope. This function creates a Global that persists
 /// after the HandleScope ends.
 ///
-/// WARNING - CALLBACK USE CASE DEPRECATED:
-/// For storing JavaScript callbacks (event listeners, stream callbacks, etc.),
-/// use the CallbackManager API instead (crane_callback_register, etc.).
-/// The CallbackManager provides safe handle management that doesn't require
-/// passing V8 handles through FFI boundaries.
-///
-/// This function is still valid for:
-/// - Storing error values
-/// - Storing non-callback values that need to persist
-/// - Creating GlobalHandle from valid Local values within a HandleScope
-///
 /// @param isolate - Current V8 isolate
 /// @param local - Local value pointer (from callback or conversion)
 /// @return New Global<Value>* or nullptr if local is empty
@@ -7025,10 +6058,6 @@ Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
     
     return new Global<Value>(isolate, local_value);
 }
-
-// NOTE: v8_Function_ToGlobal was removed - it was unused and the pattern
-// of reconstructing Local handles from raw pointers was problematic.
-// For callback storage, use the CallbackManager API instead.
 
 /// Dispose a Global<Value> handle
 ///
@@ -7747,12 +6776,6 @@ void TrapGet(const FunctionCallbackInfo<Value>& info) {
     Local<Value> target = info[0];
     Local<Value> property = info[1];
     
-    // Debug logging disabled for performance - uncomment if needed
-    // if (property->IsString()) {
-    //     String::Utf8Value prop_str(isolate, property);
-    //     fprintf(stderr, "[TrapGet] property='%s'\n", *prop_str);
-    // }
-    
     Local<Object> reflect = context->Global()
         ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
         .ToLocalChecked().As<Object>();
@@ -7781,11 +6804,6 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     
     Local<Object> target = info[0].As<Object>();
     Local<Value> property = info[1];
-    
-    if (property->IsString()) {
-        String::Utf8Value prop_str(isolate, property);
-        fprintf(stderr, "[TrapSet] property='%s'\n", *prop_str);
-    }
     Local<Value> value = info[2];
     
     // Use Object.defineProperty to bypass named property interceptor.

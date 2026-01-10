@@ -10,14 +10,14 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSGroupingRule = @import("CSSGroupingRule.zig").CSSGroupingRule;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("CSSRule.zig").CSSRule;
-const StylePropertyMap = @import("StylePropertyMap.zig").StylePropertyMap;
-const CSSRuleList = @import("CSSRuleList.zig").CSSRuleList;
-const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
-const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
+const CSSRule = @import("interfaces").CSSRule;
+const StylePropertyMap = @import("interfaces").StylePropertyMap;
+const CSSRuleList = @import("interfaces").CSSRuleList;
+const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSStyleRule = struct {
@@ -152,7 +152,6 @@ pub const CSSStyleRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

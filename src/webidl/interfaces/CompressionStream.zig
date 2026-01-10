@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GenericTransformStream = @import("mixins").GenericTransformStream;
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
-const WritableStream = @import("WritableStream.zig").WritableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
+const WritableStream = @import("interfaces").WritableStream;
 const CompressionFormat = @import("enums").CompressionFormat;
 
 pub const CompressionStream = struct {

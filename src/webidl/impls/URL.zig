@@ -22,16 +22,6 @@ const percent_encoding = @import("percent_encoding");
 const EncodeSet = @import("encode_sets").EncodeSet;
 const ParserState = @import("parser_state").ParserState;
 const form_parser = @import("form_parser");
-const infra = @import("infra");
-
-/// URLSearchParams's InternalState structure (for type-safe casting)
-/// This mirrors the structure in URLSearchParams.zig without creating a circular dependency
-/// MUST use form_parser.Tuple to match the actual list type in URLSearchParams
-const URLSearchParamsInternalState = struct {
-    list: infra.List(form_parser.Tuple),
-    url_object: ?*runtime.Instance,
-    allocator: std.mem.Allocator,
-};
 
 pub const State = URL.State;
 
@@ -356,9 +346,7 @@ pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     internal.url_record.deinit();
     internal.url_record = parsed;
 
-    // Update query object with new URL's query
-    const query_str = parsed.query() orelse "";
-    try updateQueryObjectList(internal, query_str);
+    // TODO: Update query object
 }
 
 /// protocol setter
@@ -615,8 +603,7 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
     // Step 2: If empty, set query to null
     if (value.len == 0) {
         internal.url_record.query_len = 0;
-        // Step 2.2: Empty this's query object's list
-        try updateQueryObjectList(internal, "");
+        // TODO: Empty query object list
         return;
     }
 
@@ -637,36 +624,7 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
         return;
     };
 
-    // Step 6: Set this's query object's list to the result of parsing input
-    try updateQueryObjectList(internal, input);
-}
-
-/// Helper to update the query object's list when URL.search is set
-/// Spec: https://url.spec.whatwg.org/#dom-url-search steps 2.2 and 6
-fn updateQueryObjectList(internal: *InternalState, query: []const u8) !void {
-    const params_instance = internal.query_params_instance orelse return;
-    const params_state = params_instance.getState(URLSearchParams.State);
-    const params_internal: *URLSearchParamsInternalState = @ptrCast(@alignCast(params_state.own._internal orelse return));
-
-    // Clear existing list entries (free memory)
-    for (0..params_internal.list.len) |i| {
-        if (params_internal.list.get(i)) |tuple| {
-            params_internal.allocator.free(tuple.name);
-            params_internal.allocator.free(tuple.value);
-        }
-    }
-    params_internal.list.clear();
-
-    // If query is empty, we're done
-    if (query.len == 0) return;
-
-    // Parse the new query string and add entries
-    const tuples = try form_parser.parse(params_internal.allocator, query);
-    defer params_internal.allocator.free(tuples);
-
-    for (tuples) |tuple| {
-        try params_internal.list.append(tuple);
-    }
+    // TODO: Update query object's list
 }
 
 /// hash setter

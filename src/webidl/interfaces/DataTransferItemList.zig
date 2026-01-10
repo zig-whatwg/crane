@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DataTransferItem = @import("DataTransferItem.zig").DataTransferItem;
-const File = @import("File.zig").File;
+const DataTransferItem = @import("interfaces").DataTransferItem;
+const File = @import("interfaces").File;
 const DOMString = @import("typedefs").DOMString;
 
 pub const DataTransferItemList = struct {

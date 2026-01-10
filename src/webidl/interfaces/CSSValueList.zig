@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSValue = @import("CSSValue.zig").CSSValue;
+const CSSValue = @import("interfaces").CSSValue;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSValueList = struct {

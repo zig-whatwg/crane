@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SpeechGrammar = @import("SpeechGrammar.zig").SpeechGrammar;
+const SpeechGrammar = @import("interfaces").SpeechGrammar;
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechGrammarList = struct {

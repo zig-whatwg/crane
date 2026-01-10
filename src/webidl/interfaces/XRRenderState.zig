@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRWebGLLayer = @import("XRWebGLLayer.zig").XRWebGLLayer;
-const XRLayer = @import("XRLayer.zig").XRLayer;
+const XRWebGLLayer = @import("interfaces").XRWebGLLayer;
+const XRLayer = @import("interfaces").XRLayer;
 
 pub const XRRenderState = struct {
     pub const Meta = struct {

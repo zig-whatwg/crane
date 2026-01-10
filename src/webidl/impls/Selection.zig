@@ -1137,9 +1137,3 @@ pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     _ = instance;
     return "[object]";
 }
-
-
-pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
-}

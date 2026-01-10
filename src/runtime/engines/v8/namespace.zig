@@ -118,24 +118,6 @@ pub fn V8Namespace(comptime Namespace: type) type {
         /// All methods in this namespace
         const all_methods = methods;
 
-        /// Cached callbacks generated at comptime - ensures the SAME callback
-        /// is used in both registerExternalReferences() and registerMethod().
-        /// This is critical for V8 snapshot support - the external references
-        /// must contain the exact same function pointers that are used when
-        /// creating FunctionTemplates.
-        const cached_callbacks = blk: {
-            var callbacks: [methods.len]v8.FunctionCallback = undefined;
-            for (methods, 0..) |method, i| {
-                callbacks[i] = generateCallback(method);
-            }
-            break :blk callbacks;
-        };
-
-        /// Get the cached callback for a method by index
-        fn getCachedCallback(comptime method_index: usize) v8.FunctionCallback {
-            return cached_callbacks[method_index];
-        }
-
         /// Register all namespace callbacks as external references
         ///
         /// This MUST be called before creating a V8 snapshot. V8 snapshots
@@ -153,9 +135,9 @@ pub fn V8Namespace(comptime Namespace: type) type {
         pub fn registerExternalReferences() void {
             const ext_refs = @import("external_references.zig");
 
-            // Register the CACHED callbacks - same pointers used in registerMethod
-            inline for (0..all_methods.len) |i| {
-                const callback = getCachedCallback(i);
+            // Register callback for each method in the namespace
+            inline for (all_methods) |method| {
+                const callback = generateCallback(method);
                 ext_refs.registerCallbackRuntime(callback);
             }
         }
@@ -175,7 +157,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
             context: *v8.Context,
             name: []const u8,
         ) void {
-            const ns_object = createObject(isolate, context) orelse return;
+            const ns_object = createObject(isolate, context);
             const global = v8.v8_Context_Global(context) orelse return;
 
             const key_str = v8.v8_String_NewFromUtf8(
@@ -184,37 +166,18 @@ pub fn V8Namespace(comptime Namespace: type) type {
                 @intCast(name.len),
             ) orelse return;
 
-            // Check BEFORE registration and delete any existing property
-            if (std.mem.eql(u8, name, "console")) {
-                const check_key = v8.v8_String_NewFromUtf8(isolate, "console", 7);
-                if (check_key) |ck| {
-                    const before_val = v8.v8_Object_Get(global, context, @ptrCast(ck));
-                    if (before_val) |bv| {
-                        const is_undefined = v8.v8_Value_IsUndefined(@ptrCast(bv));
-                        const is_null = v8.v8_Value_IsNull(@ptrCast(bv));
-                        const is_object = v8.v8_Value_IsObject(@ptrCast(bv));
-                        if (!is_undefined and !is_null and is_object) {
-                            // Delete existing console to allow overwriting
-                            const deleted = v8.v8_Object_Delete(global, context, @ptrCast(ck));
-                            _ = deleted;
-                        }
-                    }
-                }
-            }
-
             // Per WebIDL spec, namespaces on global object must be:
             // - writable: true
             // - enumerable: false (not in for...in loops or Object.keys)
             // - configurable: true
-            //
-            // NOTE: We use v8_Object_Set instead of v8_Object_DefineProperty because
-            // the snapshot may have a non-configurable console property that prevents
-            // DefineOwnProperty from overwriting it.
-            _ = v8.v8_Object_Set(
+            _ = v8.v8_Object_DefineProperty(
                 global,
                 context,
                 @ptrCast(key_str),
                 @ptrCast(ns_object),
+                true, // writable = true
+                false, // enumerable = false (per WebIDL spec)
+                true, // configurable = true
             );
         }
 
@@ -225,28 +188,28 @@ pub fn V8Namespace(comptime Namespace: type) type {
             isolate: *v8.Isolate,
             context: *v8.Context,
         ) ?*v8.Object {
-            // Use context-aware object creation to ensure proper realm association
-            const object = v8.v8_Object_NewInContext(context) orelse return null;
+            _ = context;
 
-            // Register all methods using CACHED callbacks
-            inline for (0..all_methods.len) |i| {
-                registerMethodByIndex(isolate, context, object, i);
+            const object = v8.v8_Object_New(isolate) orelse return null;
+
+            // Register all methods at compile time
+            inline for (all_methods) |method| {
+                registerMethod(isolate, object, method);
             }
 
             return object;
         }
 
-        /// Register a single method on the namespace object using cached callback
-        fn registerMethodByIndex(
+        /// Register a single method on the namespace object
+        fn registerMethod(
             isolate: *v8.Isolate,
-            context: *v8.Context,
             object: *v8.Object,
-            comptime method_index: usize,
+            comptime method: MethodInfo,
         ) void {
-            const method = all_methods[method_index];
-            // Use CACHED callback - same pointer as registered in external references
-            const callback = getCachedCallback(method_index);
+            // Create V8 function template for this method
+            const callback = comptime generateCallback(method);
             const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, null) orelse return;
+            const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             const fn_obj = v8.v8_FunctionTemplate_GetFunction(
                 fn_template,
                 context,
@@ -259,15 +222,11 @@ pub fn V8Namespace(comptime Namespace: type) type {
                 @intCast(method.name.len),
             ) orelse return;
 
-            // Use DefineProperty instead of Set - this matches how interfaces work
-            _ = v8.v8_Object_DefineProperty(
+            _ = v8.v8_Object_Set(
                 object,
                 context,
                 @ptrCast(name_str),
                 @ptrCast(fn_obj),
-                true, // writable
-                true, // enumerable
-                true, // configurable
             );
         }
 
@@ -324,11 +283,10 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // Extract and convert arguments at compile time based on parameter types
                     var args: std.meta.ArgsTuple(@TypeOf(namespace_fn)) = undefined;
 
-                    // Use arena allocator for temporary allocations during argument extraction
-                    // Arena is freed at end of function - handles strings of any size
-                    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-                    defer arena.deinit();
-                    const allocator = arena.allocator();
+                    // Use stack allocator for temporary allocations during argument extraction
+                    var stack_buffer: [4096]u8 = undefined;
+                    var fba = std.heap.FixedBufferAllocator.init(&stack_buffer);
+                    const allocator = fba.allocator();
 
                     // Track JS argument index separately from param index
                     var js_arg_idx: c_int = 0;
@@ -397,6 +355,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             };
                             for (0..remaining_args) |j| {
                                 const v8_value = info.get(@intCast(js_arg_idx + @as(c_int, @intCast(j))));
+                                // Convert V8 value to runtime.JSValue using proper conversion
                                 arg_slice[j] = conv.fromV8Value(runtime.JSValue, allocator, isolate, context, v8_value) catch {
                                     conv.throwTypeError(isolate, "Failed to convert value to JSValue");
                                     return;

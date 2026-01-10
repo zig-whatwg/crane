@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const NavigationHistoryEntry = @import("NavigationHistoryEntry.zig").NavigationHistoryEntry;
+const NavigationHistoryEntry = @import("interfaces").NavigationHistoryEntry;
 const NavigationType = @import("enums").NavigationType;
 
 pub const NavigationActivation = struct {

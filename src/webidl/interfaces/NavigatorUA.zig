@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const NavigatorUAData = @import("NavigatorUAData.zig").NavigatorUAData;
+const NavigatorUAData = @import("interfaces").NavigatorUAData;
 
 pub const NavigatorUA = struct {
     pub const Meta = struct {

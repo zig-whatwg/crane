@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const BluetoothDevice = @import("BluetoothDevice.zig").BluetoothDevice;
-const BluetoothRemoteGATTService = @import("BluetoothRemoteGATTService.zig").BluetoothRemoteGATTService;
+const BluetoothDevice = @import("interfaces").BluetoothDevice;
+const BluetoothRemoteGATTService = @import("interfaces").BluetoothRemoteGATTService;
 const BluetoothServiceUUID = @import("typedefs").BluetoothServiceUUID;
 
 pub const BluetoothRemoteGATTServer = struct {
