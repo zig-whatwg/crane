@@ -334,6 +334,10 @@ pub fn deinitializeRuntime() void {
         hook();
     }
 
+    // Deinitialize instance lifecycle registry
+    // This tracks cleanup state for instances (cleanup_started, cleanup_complete, etc.)
+    instance_lifecycle.deinit();
+
     // Reset internal state registry
     // This removes all instance→InternalState mappings to prevent stale references
     // when running multiple tests sequentially (each test gets a fresh environment)

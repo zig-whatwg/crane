@@ -1289,6 +1289,66 @@ THEN you cannot say the feature is complete
 
 **NO EXCEPTIONS. NO SKIPPING VALIDATION. RUN THE TESTS.**
 
+### Running WPT Tests - Practical Guide
+
+**There are three ways to run WPT tests:**
+
+#### Method 1: `zig build wpt` (Preferred)
+
+The standard way to run WPT tests. This handles server startup automatically.
+
+```bash
+# Run a specific test
+zig build wpt -- /dom/nodes/Document-constructor.html
+
+# Run tests with a filter
+zig build wpt -- --filter="url"
+
+# Run all tests in a directory
+zig build wpt -- /dom/nodes/
+```
+
+#### Method 2: Direct `wpt_browser` with HTTP URLs
+
+For debugging or running tests manually. **REQUIRES the WPT server to be running first!**
+
+```bash
+# Terminal 1: Start WPT server (clears ports first)
+./scripts/wpt-serve.sh
+
+# Terminal 2: Run wpt_browser directly
+./zig-out/bin/wpt_browser "http://web-platform.test:8000/dom/nodes/Document-constructor.html"
+```
+
+**CRITICAL**: If you use `wpt_browser` with HTTP URLs, you MUST run `./scripts/wpt-serve.sh` first in a separate terminal. The script automatically kills any processes on WPT ports (8000, 8443, 8444, 9000) before starting the server.
+
+#### Method 3: Direct `wpt_browser` with Local Files
+
+For quick testing of simple HTML files without network dependencies.
+
+```bash
+# MUST use file:// protocol
+./zig-out/bin/wpt_browser "file:///path/to/test.html"
+
+# Example with absolute path
+./zig-out/bin/wpt_browser "file:///tmp/simple_test.html"
+```
+
+**IMPORTANT**: When running local files:
+- You MUST use the `file://` protocol prefix
+- The path MUST be absolute
+- This only works for tests that don't require external resources
+
+#### WPT Server Ports
+
+The WPT server uses these ports:
+- **8000**: HTTP
+- **8443**: HTTPS
+- **8444**: HTTPS (alternate)
+- **9000**: HTTP/2
+
+If the server fails to start due to port conflicts, use `./scripts/wpt-serve.sh` which automatically clears these ports.
+
 ---
 
 ## Critical Project Context

@@ -230,21 +230,21 @@
             <div class="meta">
                 Version: N/A |
                 OS: mac |
-                Generated: 2026-01-10 07:48:51
+                Generated: 2026-01-10 10:51:57
             </div>
         </header>
         
         <div class="stats">
             <div class="stat-card">
-                <div class="value">117</div>
+                <div class="value">118</div>
                 <div class="label">Total Tests</div>
             </div>
             <div class="stat-card pass">
-                <div class="value">7088</div>
+                <div class="value">7091</div>
                 <div class="label">Passed Subtests</div>
             </div>
             <div class="stat-card fail">
-                <div class="value">2955</div>
+                <div class="value">2958</div>
                 <div class="label">Failed Subtests</div>
             </div>
             <div class="stat-card">
@@ -254,7 +254,7 @@
         </div>
         
         <div class="progress-bar">
-            <div class="fill" style="width: 70.57652095987254%"></div>
+            <div class="fill" style="width: 70.56423524728828%"></div>
         </div>
         
         <div class="filter-bar">
@@ -267,11 +267,11 @@
         
         <div id="tests">
 
-            <div class="test pass" data-name="/crane/basic.html">
+            <div class="test fail" data-name="/crane/basic.html">
                 <div class="test-header" onclick="toggleTest(this.parentElement)">
                     <span class="expand-icon">▶</span>
                     <span class="test-name">/crane/basic.html</span>
-                    <span class="test-stats">15/15 subtests</span>
+                    <span class="test-stats">15/16 subtests</span>
                     <span>✅</span>
                 </div>
                 <div class="subtests">
@@ -393,6 +393,66 @@
                         <div class="subtest-name">
                             Phase 3.4: EventTarget addEventListener and dispatchEvent work
                             
+                        </div>
+                    </div>
+
+                    <div class="subtest">
+                        <span class="subtest-status">❌</span>
+                        <div class="subtest-name">
+                            Phase 3.5: EventTarget removeEventListener works
+                            <div class="subtest-message">assert_equals: Removed listener should not be called expected 0 but got 1</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="test fail" data-name="/dom/nodes/document-constructor.html">
+                <div class="test-header" onclick="toggleTest(this.parentElement)">
+                    <span class="expand-icon">▶</span>
+                    <span class="test-name">/dom/nodes/Document-constructor.html</span>
+                    <span class="test-stats">3/5 subtests</span>
+                    <span>✅</span>
+                </div>
+                <div class="subtests">
+
+                    <div class="subtest">
+                        <span class="subtest-status">✅</span>
+                        <div class="subtest-name">
+                            new Document(): interfaces
+                            
+                        </div>
+                    </div>
+
+                    <div class="subtest">
+                        <span class="subtest-status">✅</span>
+                        <div class="subtest-name">
+                            new Document(): children
+                            
+                        </div>
+                    </div>
+
+                    <div class="subtest">
+                        <span class="subtest-status">❌</span>
+                        <div class="subtest-name">
+                            new Document(): metadata
+                            <div class="subtest-message">assert_equals: expected &quot;DIV&quot; but got &quot;div&quot;</div>
+                        </div>
+                    </div>
+
+                    <div class="subtest">
+                        <span class="subtest-status">✅</span>
+                        <div class="subtest-name">
+                            new Document(): characterSet aliases
+                            
+                        </div>
+                    </div>
+
+                    <div class="subtest">
+                        <span class="subtest-status">❌</span>
+                        <div class="subtest-name">
+                            new Document(): URL parsing
+                            <div class="subtest-message">assert_equals: expected function &quot;function HTMLAnchorElement() { [native code] }&quot; but got function &quot;function Element() { [native code] }&quot;</div>
                         </div>
                     </div>
 

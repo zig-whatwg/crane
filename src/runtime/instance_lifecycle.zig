@@ -80,10 +80,12 @@ pub fn init(allocator: std.mem.Allocator) void {
 
 /// Deinitialize the lifecycle registry
 pub fn deinit() void {
+    std.debug.print("[instance_lifecycle.deinit] CALLED, has_registry={}, count={d}\n", .{ registry != null, if (registry) |r| r.count() else 0 });
     if (registry) |*r| {
         r.deinit();
         registry = null;
         registry_allocator = null;
+        std.debug.print("[instance_lifecycle.deinit] DONE\n", .{});
     }
 }
 

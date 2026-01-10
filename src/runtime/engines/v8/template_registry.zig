@@ -198,6 +198,55 @@ pub fn clear() void {
     // Don't reset initialized - the registry can be reused
 }
 
+/// Fully deinitialize the template registry, freeing all memory.
+///
+/// Unlike clear(), this frees the underlying hashmap storage.
+/// Call this during final cleanup when the registry will never be used again.
+///
+/// This function is thread-safe and can be called from any thread.
+pub fn deinit() void {
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+
+    // First dispose all templates for all isolates (same as clear)
+    var iter = templates_by_isolate.iterator();
+    while (iter.next()) |entry| {
+        const templates = entry.value_ptr.*;
+        for (templates) |maybe_template| {
+            if (maybe_template) |template| {
+                v8.v8_FunctionTemplate_Dispose(template);
+            }
+        }
+        // Free the per-isolate array
+        if (registry_allocator) |alloc| {
+            alloc.destroy(templates);
+        }
+    }
+
+    // Free the hashmap storage itself (unlike clear which retains capacity)
+    if (registry_allocator) |alloc| {
+        templates_by_isolate.deinit(alloc);
+        // Reset to empty state
+        templates_by_isolate = .{};
+    }
+
+    // Clear C++ caches
+    v8.v8_ClearAsyncIteratorTemplateCache();
+    v8.v8_ClearModuleResolveCallback();
+    v8.v8_ClearDynamicImportCallback();
+
+    // Clear Zig-side global state
+    const engine = @import("engine.zig");
+    engine.clearDynamicImportHandler();
+
+    const namespace = @import("namespace.zig");
+    namespace.clearGlobalContext();
+
+    // Mark as uninitialized so it can be re-initialized if needed
+    initialized = false;
+    registry_allocator = null;
+}
+
 /// Register a FunctionTemplate for an interface
 ///
 /// Called by V8Interface.registerGlobal after creating the template.

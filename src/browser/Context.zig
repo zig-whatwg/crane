@@ -67,6 +67,7 @@ pub fn getTimerInterface() ?TimerInterface {
 /// Clear the timer interface reference and clean up ALL pending timer contexts
 /// This properly cancels libuv timers to prevent handle accumulation
 pub fn clearTimerInterface() void {
+    std.debug.print("[clearTimerInterface] CALLED, has_map={}, count={d}\n", .{ timer_contexts != null, if (timer_contexts) |m| m.count() else 0 });
     // Clean up any remaining timer contexts (both one-shot and intervals)
     if (timer_contexts) |*map| {
         var iter = map.iterator();
@@ -86,6 +87,9 @@ pub fn clearTimerInterface() void {
         }
         map.deinit();
         timer_contexts = null;
+        std.debug.print("[clearTimerInterface] DONE - map freed\n", .{});
+    } else {
+        std.debug.print("[clearTimerInterface] No map to clean up\n", .{});
     }
 
     current_timer_interface = null;

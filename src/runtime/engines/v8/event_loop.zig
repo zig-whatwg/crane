@@ -458,22 +458,14 @@ pub const V8EventLoop = struct {
         // Solution: After a timer callback fires, use pollBlocking() (UV_RUN_ONCE)
         // to ensure any newly scheduled 0ms timers get processed.
         if (self.timer_manager) |mgr| {
-            const timer_count = mgr.timers.count();
-            if (timer_count > 0) {
-                std.debug.print("[EVENT_LOOP] timer_manager: Polling {d} active timers\n", .{timer_count});
-            }
-
             var timer_iterations: u32 = 0;
             const max_timer_iterations: u32 = 100; // Prevent infinite loops
             var any_timer_fired = false;
 
             while (timer_iterations < max_timer_iterations) {
                 timer_iterations += 1;
-                const remaining = mgr.timers.count();
-                std.debug.print("[EVENT_LOOP] poll iteration {d}, {d} timers remaining\n", .{ timer_iterations, remaining });
                 const timer_callback_invoked = mgr.poll();
                 if (timer_callback_invoked) {
-                    std.debug.print("[EVENT_LOOP] Timer callback invoked!\n", .{});
                     did_work = true;
                     any_timer_fired = true;
                     // Run microtasks after each timer to handle Promise callbacks
@@ -484,7 +476,6 @@ pub const V8EventLoop = struct {
                     // may not be recognized as "ready" by the next poll() call.
                     std.Thread.sleep(10 * std.time.ns_per_ms);
                 } else {
-                    std.debug.print("[EVENT_LOOP] poll returned false, breaking\n", .{});
                     break; // No more ready timers (for now)
                 }
             }

@@ -139,7 +139,9 @@ pub fn resetArena(isolate: *v8.Isolate) void {
 /// This should be called when the isolate is being disposed.
 /// Frees all memory associated with the isolate allocator.
 pub fn deinitIsolateAllocator(isolate: *v8.Isolate) void {
-    const data_ptr = v8.v8_Isolate_GetData(isolate, ALLOCATOR_SLOT) orelse return;
+    const data_ptr = v8.v8_Isolate_GetData(isolate, ALLOCATOR_SLOT) orelse {
+        return;
+    };
     const data: *AllocatorData = @ptrCast(@alignCast(data_ptr));
 
     // Clean up based on type
