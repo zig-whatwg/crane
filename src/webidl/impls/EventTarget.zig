@@ -159,8 +159,11 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state from registry
     if (getInternalFromRegistry(instance)) |internal| {
+        const allocator = internal.allocator;
         internal.deinit();
         removeFromRegistry(instance);
+        // Free the InternalState struct itself
+        allocator.destroy(internal);
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
@@ -209,7 +212,10 @@ pub fn cleanupAllRemainingInternal() void {
     if (internal_state_registry) |*registry| {
         var iter = registry.valueIterator();
         while (iter.next()) |internal_ptr| {
-            internal_ptr.*.deinitEx(true);
+            const internal = internal_ptr.*;
+            const allocator = internal.allocator;
+            internal.deinitEx(true);
+            allocator.destroy(internal);
         }
         registry.deinit();
         internal_state_registry = null;
@@ -222,7 +228,10 @@ pub fn cleanupRegistry() void {
     if (internal_state_registry) |*registry| {
         var iter = registry.valueIterator();
         while (iter.next()) |internal_ptr| {
-            internal_ptr.*.deinitEx(false);
+            const internal = internal_ptr.*;
+            const allocator = internal.allocator;
+            internal.deinitEx(false);
+            allocator.destroy(internal);
         }
         registry.deinit();
         internal_state_registry = null;
