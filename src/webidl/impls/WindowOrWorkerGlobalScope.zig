@@ -16,6 +16,7 @@ const WindowOrWorkerGlobalScope = interfaces.WindowOrWorkerGlobalScope;
 
 // V8 engine for timer callback invocation
 const v8_engine = @import("v8");
+const context_manager = v8_engine.context_manager;
 
 // Fetch API support
 const fetch_api = @import("fetch");
@@ -212,10 +213,24 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
         // Remove from registry and clean up
         _ = ctx.registry.unregister(ctx.timer_id);
         ctx.deinit();
+    } else {
+        // For interval timers, reschedule the next firing
+        // Get the runtime context from the V8 context to access the timer interface
+        if (context_manager.get(ctx.v8_context)) |runtime_ctx| {
+            if (runtime_ctx.getTimer()) |timer_interface| {
+                // Schedule the next interval firing
+                _ = timer_interface.setTimeout(ctx.interval_ms, timerTrampoline, ctx);
+            } else |_| {
+                // Timer interface not available, clean up
+                _ = ctx.registry.unregister(ctx.timer_id);
+                ctx.deinit();
+            }
+        } else {
+            // Context not found, clean up
+            _ = ctx.registry.unregister(ctx.timer_id);
+            ctx.deinit();
+        }
     }
-    // For interval timers, the timer manager handles rescheduling
-    // The LibuvTimerManager's setInterval mechanism or the platform's
-    // timer backend handles repeated invocation
 }
 
 // ============================================================================
