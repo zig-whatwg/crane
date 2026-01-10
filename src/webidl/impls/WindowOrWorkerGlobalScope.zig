@@ -915,6 +915,34 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
                 };
             }
 
+            // Check for ArrayBuffer objects - per HTML spec §2.7.3 step 13.2
+            // Clone by copying [[ArrayBufferData]] bytes
+            if (v8_engine.ffi.v8_Value_IsArrayBuffer(@ptrCast(h.ptr))) {
+                // Check if the buffer is detached - detached buffers cannot be cloned
+                if (v8_engine.ffi.v8_ArrayBuffer_IsDetachedValue(@ptrCast(h.ptr))) {
+                    return error.DataCloneError;
+                }
+
+                // Get the byte length from the original ArrayBuffer
+                const byte_length = v8_engine.ffi.v8_ArrayBuffer_GetByteLength_Value(@ptrCast(h.ptr));
+
+                // Get the data pointer from the original ArrayBuffer
+                const data_ptr = v8_engine.ffi.v8_ArrayBuffer_GetData_Value(@ptrCast(h.ptr));
+
+                // Create a new ArrayBuffer with copied data
+                const new_buffer = v8_engine.ffi.v8_ArrayBuffer_NewWithData(isolate, v8_context, data_ptr, byte_length) orelse {
+                    return error.DataCloneError;
+                };
+
+                return runtime.JSValue{
+                    .handle = .{
+                        .ptr = @ptrCast(new_buffer),
+                        .needs_disposal = true,
+                        .handle_scope = .global,
+                    },
+                };
+            }
+
             // For objects, use JSON serialize/deserialize as simplified structured clone
             // This handles plain objects, arrays, etc. but not all spec-compliant types
             // h.ptr is a Global<Value>* which v8_JSON_Stringify_ToBuffer expects

@@ -2343,6 +2343,79 @@ Global<Value>* v8_RegExp_New(Isolate* isolate, Context* context_raw, Global<Stri
 }
 
 // ============================================================================
+// ArrayBuffer Functions (for structuredClone)
+// ============================================================================
+
+// Check if an ArrayBuffer value is detached
+// Detached buffers cannot be cloned per HTML spec
+bool v8_ArrayBuffer_IsDetachedValue(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return true;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    if (!val->IsArrayBuffer()) {
+        return true;
+    }
+    Local<ArrayBuffer> buffer = val.As<ArrayBuffer>();
+    return buffer->WasDetached();
+}
+
+// Get the byte length from an ArrayBuffer value
+size_t v8_ArrayBuffer_GetByteLength_Value(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return 0;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    if (!val->IsArrayBuffer()) {
+        return 0;
+    }
+    Local<ArrayBuffer> buffer = val.As<ArrayBuffer>();
+    return buffer->ByteLength();
+}
+
+// Get the data pointer from an ArrayBuffer value
+void* v8_ArrayBuffer_GetData_Value(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    if (!val->IsArrayBuffer()) {
+        return nullptr;
+    }
+    Local<ArrayBuffer> buffer = val.As<ArrayBuffer>();
+    if (buffer->WasDetached()) {
+        return nullptr;
+    }
+    return buffer->Data();
+}
+
+// Create a new ArrayBuffer with copied data
+// This is the key function for structuredClone
+Global<Value>* v8_ArrayBuffer_NewWithData(Isolate* isolate, Context* context_raw, void* data, size_t byte_length) {
+    HandleScope handle_scope(isolate);
+
+    // Get the current context
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) {
+        return nullptr;
+    }
+    Context::Scope context_scope(ctx);
+
+    // Create a new ArrayBuffer with the specified size
+    Local<ArrayBuffer> buffer = ArrayBuffer::New(isolate, byte_length);
+
+    // Copy the data if provided and length > 0
+    if (data != nullptr && byte_length > 0) {
+        void* dest = buffer->Data();
+        if (dest != nullptr) {
+            memcpy(dest, data, byte_length);
+        }
+    }
+
+    return trackHandle(new Global<Value>(isolate, buffer));
+}
+
+// ============================================================================
 // Object Functions
 // ============================================================================
 

@@ -718,6 +718,12 @@ pub extern fn v8_RegExp_GetSource(regexp: *Value) ?*String;
 pub extern fn v8_RegExp_GetFlags(regexp: *Value) c_int;
 pub extern fn v8_RegExp_New(isolate: *Isolate, context: *Context, pattern: *String, flags: c_int) ?*Value;
 
+// ArrayBuffer operations (for structuredClone)
+pub extern fn v8_ArrayBuffer_IsDetachedValue(value: *Value) bool;
+pub extern fn v8_ArrayBuffer_GetByteLength_Value(value: *Value) usize;
+pub extern fn v8_ArrayBuffer_GetData_Value(value: *Value) ?*anyopaque;
+pub extern fn v8_ArrayBuffer_NewWithData(isolate: *Isolate, context: *Context, data: ?*anyopaque, byte_length: usize) ?*Value;
+
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
