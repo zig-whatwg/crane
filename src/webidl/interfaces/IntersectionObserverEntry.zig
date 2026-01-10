@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
+const Element = @import("Element.zig").Element;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const IntersectionObserverEntryInit = @import("dictionaries").IntersectionObserverEntryInit;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 
 pub const IntersectionObserverEntry = struct {
     pub const Meta = struct {

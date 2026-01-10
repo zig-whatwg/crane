@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PushManager = @import("interfaces").PushManager;
+const PushManager = @import("PushManager.zig").PushManager;
 
 pub const PushManagerAttribute = struct {
     pub const Meta = struct {

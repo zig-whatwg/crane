@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUSize64 = @import("typedefs").GPUSize64;
-const GPUBindGroup = @import("interfaces").GPUBindGroup;
+const GPUBindGroup = @import("GPUBindGroup.zig").GPUBindGroup;
 const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const GPUSize32 = @import("typedefs").GPUSize32;
 

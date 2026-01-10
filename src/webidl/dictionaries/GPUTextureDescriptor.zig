@@ -18,4 +18,5 @@ pub const GPUTextureDescriptor = struct {
     format: enums.GPUTextureFormat,
     usage: typedefs.GPUTextureUsageFlags,
     viewFormats: ?[]const enums.GPUTextureFormat = null,
+    textureBindingViewDimension: ?enums.GPUTextureViewDimension = null,
 };

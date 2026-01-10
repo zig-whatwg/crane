@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("interfaces").CSSRule;
-const CSSFunctionDescriptors = @import("interfaces").CSSFunctionDescriptors;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSRule = @import("CSSRule.zig").CSSRule;
+const CSSFunctionDescriptors = @import("CSSFunctionDescriptors.zig").CSSFunctionDescriptors;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -128,6 +128,7 @@ pub const CSSFunctionDeclarations = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

@@ -703,6 +703,8 @@ pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsFunction(value: *Value) bool;
 pub extern fn v8_Value_IsArray(value: *Value) bool;
+pub extern fn v8_Value_IsArrayBuffer(value: *Value) bool;
+pub extern fn v8_Value_IsArrayBufferView(value: *Value) bool;
 
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
@@ -802,6 +804,17 @@ pub extern fn v8_Object_SetPrototype(object: *Object, context: *Context, prototy
 /// Set the prototype using the newer V2 API that works properly with global objects
 pub extern fn v8_Object_SetPrototypeV2(object: *Object, context: *Context, prototype: *Value) bool;
 pub extern fn v8_Object_GetPrototype(object: *Object) ?*Value;
+
+pub const AccessorNameGetterCallback = *const fn (property: *Name, info: *const PropertyCallbackInfo) callconv(.c) void;
+
+pub extern fn v8_Object_SetLazyDataProperty(
+    object: *Object,
+    context: *Context,
+    name: *Name,
+    getter: AccessorNameGetterCallback,
+    data: ?*Value,
+) void;
+
 pub extern fn v8_Object_PreventExtensions(object: *Object, context: *Context) bool;
 pub extern fn v8_Object_Has(context: *Context, obj: *Object, key: [*:0]const u8) bool;
 pub extern fn v8_Object_GetPropertyWithSymbol(context: *Context, obj: *Object, symbol: *Symbol) ?*Value;
@@ -942,6 +955,15 @@ pub const V8ModuleEvaluateResult = extern struct {
     error_info: ?*V8ErrorInfo,
 };
 
+/// Result of safe ToString conversion (WebIDL § 3.2.1 compliant)
+pub const V8ToStringResult = extern struct {
+    value: ?*String,
+    exception: ?*Value,
+};
+
+pub extern fn v8_Value_ToString_Safe(value: *Value, context: *Context) *V8ToStringResult;
+pub extern fn v8_FreeToStringResult(result: ?*V8ToStringResult) void;
+
 /// Compile a script with TryCatch error handling
 /// Returns both the compiled script (on success) and detailed error info (on failure).
 /// Caller must free the result with v8_FreeScriptCompileResult.
@@ -965,7 +987,7 @@ pub extern fn v8_FreeScriptRunResult(result: ?*V8ScriptRunResult) void;
 /// Returns both the return value (on success) and detailed error info (on failure).
 /// Caller must free the result with v8_FreeFunctionCallResult.
 pub extern fn v8_Function_Call_Safe(
-    function: *Function,
+    function: *Value,
     context: *Context,
     recv: ?*Value,
     argc: c_int,
@@ -1250,6 +1272,15 @@ pub extern fn v8_Object_GetCreationContext_Raw(obj_ptr: *const anyopaque) ?*Cont
 /// This enters the context before creating the error, ensuring the
 /// TypeError constructor comes from the correct realm.
 pub extern fn v8_Exception_TypeErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create RangeError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_RangeErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create SyntaxError in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_SyntaxErrorInContext(context: *Context, message: *String) ?*Value;
+
+/// Create Error in a specific context (for cross-realm errors).
+pub extern fn v8_Exception_ErrorInContext(context: *Context, message: *String) ?*Value;
 
 /// Get the creation context of an object's prototype.
 /// This walks up the prototype chain to find the context where the method/property
@@ -1697,6 +1728,61 @@ pub extern fn v8_Isolate_PerformMicrotaskCheckpoint(isolate: *Isolate) void;
 pub extern fn v8_Isolate_SetMicrotasksPolicy(isolate: *Isolate, policy: c_int) void;
 
 // ============================================================================
+// Promise Rejection Tracking
+// ============================================================================
+
+/// Promise reject event types (from V8 PromiseRejectEvent enum)
+pub const PromiseRejectEvent = enum(c_int) {
+    /// Promise rejected, no handler attached
+    kPromiseRejectWithNoHandler = 0,
+    /// Handler added to previously-rejected promise (rejectionhandled event)
+    kPromiseHandlerAddedAfterReject = 1,
+    /// Promise rejected after already resolved (usually ignored)
+    kPromiseRejectAfterResolved = 2,
+    /// Promise resolved after already resolved (usually ignored)
+    kPromiseResolveAfterResolved = 3,
+};
+
+/// Callback type for promise rejection events
+///
+/// Called when a promise is rejected without a handler, or when
+/// a handler is added to a previously-rejected promise.
+///
+/// Parameters:
+///   - user_data: Opaque pointer passed to SetPromiseRejectCallback
+///   - event_type: Type of promise rejection event (see PromiseRejectEvent)
+///   - promise: Global handle to the rejected promise
+///   - value: Global handle to the rejection reason (may be null)
+pub const PromiseRejectEventCallback = *const fn (
+    user_data: ?*anyopaque,
+    event_type: c_int,
+    promise: ?*anyopaque,
+    value: ?*anyopaque,
+) callconv(.c) void;
+
+/// Set the promise rejection callback for an isolate
+///
+/// This enables tracking of unhandled promise rejections for the
+/// "unhandledrejection" and "rejectionhandled" events (HTML § 8.1.4.7).
+///
+/// The callback will be invoked when:
+/// - A promise is rejected with no handler attached (kPromiseRejectWithNoHandler)
+/// - A handler is added to a previously-rejected promise (kPromiseHandlerAddedAfterReject)
+///
+/// Arguments:
+///   isolate: The V8 isolate to configure
+///   user_data: Opaque pointer passed to callback
+///   callback: Function to call on promise rejection events
+pub extern fn v8_Isolate_SetPromiseRejectCallback(
+    isolate: *Isolate,
+    user_data: ?*anyopaque,
+    callback: PromiseRejectEventCallback,
+) void;
+
+/// Clear the promise rejection callback for an isolate
+pub extern fn v8_Isolate_ClearPromiseRejectCallback(isolate: *Isolate) void;
+
+// ============================================================================
 // External - Wrap C pointers for storage in V8
 // ============================================================================
 
@@ -1846,6 +1932,10 @@ pub extern fn v8_Global_Get(isolate: *Isolate, global: ?*Value) ?*anyopaque;
 /// @param global - Global value handle
 /// @return The same pointer cast to Global<Function>* if it's a function, null otherwise
 pub extern fn v8_Global_ToFunction(global: ?*Value) ?*Function;
+
+// NOTE: v8_Function_ToGlobal was removed - it was unused and the pattern
+// of reconstructing Local handles from raw pointers was problematic.
+// For callback storage, use the CallbackManager API instead (crane_callback_register, etc.)
 
 // ============================================================================
 // Async Iterator Support
@@ -2126,6 +2216,33 @@ pub extern fn v8_Context_NewFromSnapshot(isolate: *Isolate) ?*Context;
 /// @return New context (fresh, not from snapshot state)
 pub extern fn v8_Context_NewFromSnapshotDefault(isolate: *Isolate) ?*Context;
 
+/// Create a context from a specific indexed context in the snapshot
+///
+/// During snapshot creation, multiple contexts can be added via AddContext().
+/// Each context is assigned an index (0, 1, 2, ...). This function restores
+/// the context at the specified index.
+///
+/// Use this for multi-context snapshots where different scope types
+/// (Window, Worker, ServiceWorker, etc.) have different pre-registered interfaces.
+///
+/// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
+/// @param context_index - Index of the context to restore (0-based)
+/// @return Context at that index, or null if index is out of range
+pub extern fn v8_Context_NewFromSnapshotAt(isolate: *Isolate, context_index: usize) ?*Context;
+
+/// Get the number of indexed contexts stored in the snapshot
+///
+/// Returns the count of contexts that were added via AddContext() during
+/// snapshot creation. Valid indices are 0 to (count - 1).
+///
+/// @param snapshot_data - Pointer to snapshot blob data
+/// @param snapshot_size - Size of snapshot blob in bytes
+/// @return Number of indexed contexts in the snapshot
+pub extern fn v8_Snapshot_GetContextCount(
+    snapshot_data: [*]const u8,
+    snapshot_size: c_int,
+) usize;
+
 /// Check if a snapshot blob is valid
 ///
 /// Validates that the snapshot data can be used with the current V8 version.
@@ -2382,3 +2499,148 @@ pub extern fn v8_Proxy_IsRevoked(proxy: *Object) bool;
 /// Create a transparent Proxy for legacy platform objects with WebIDL-compliant
 /// [[OwnPropertyKeys]] enumeration order: indexed → named → own → symbols
 pub extern fn v8_CreateLegacyPlatformObjectProxy(context: *Context, target: *Object) ?*Object;
+
+// ============================================================================
+// CallbackManager API
+// ============================================================================
+//
+// The CallbackManager provides safe callback registration and invocation.
+// Key principle: V8 handles NEVER cross the FFI boundary - only opaque uint64 IDs.
+//
+// This solves the fundamental problem where V8 Local<T> handles become invalid
+// after their HandleScope ends. By converting to Global handles IMMEDIATELY
+// upon registration (while still in the V8 callback handler), we ensure the
+// callback function is properly preserved.
+
+/// Result of callback invocation
+pub const CraneCallbackResult = extern struct {
+    /// Whether the invocation succeeded
+    success: bool,
+    /// Return value (caller must dispose with crane_callback_free_result)
+    return_value: ?*Value,
+    /// Error message (valid until next call on this thread)
+    error_msg: ?[*:0]const u8,
+
+    /// Get the error message as a Zig slice
+    pub fn getErrorMessage(self: *const CraneCallbackResult) ?[]const u8 {
+        if (self.error_msg) |msg| {
+            return std.mem.sliceTo(msg, 0);
+        }
+        return null;
+    }
+};
+
+/// Initialize the global callback manager (called once at startup)
+/// @param isolate - The V8 isolate to use for callback management
+pub extern fn crane_callback_manager_init(isolate: *Isolate) void;
+
+/// Destroy the global callback manager (called at shutdown)
+pub extern fn crane_callback_manager_destroy() void;
+
+/// Register a callback function
+///
+/// CRITICAL: This MUST be called while inside a V8 callback handler where
+/// func_local and ctx_local are valid Local handles. The function is
+/// immediately converted to a Global handle that persists.
+///
+/// @param func_local - Local<Function> internal pointer
+/// @param ctx_local - Local<Context> internal pointer
+/// @param receiver_local - Local<Value> internal pointer for 'this' binding (nullable)
+/// @return Callback ID (non-zero) on success, 0 on failure
+pub extern fn crane_callback_register(
+    func_local: *anyopaque,
+    ctx_local: *anyopaque,
+    receiver_local: ?*anyopaque,
+) u64;
+
+/// Invoke a callback with multiple arguments
+///
+/// @param callback_id - The callback ID from crane_callback_register
+/// @param argc - Number of arguments
+/// @param argv - Array of Global<Value>* argument pointers
+/// @return Result struct with success/error info
+pub extern fn crane_callback_invoke(
+    callback_id: u64,
+    argc: c_int,
+    argv: ?[*]*Value,
+) CraneCallbackResult;
+
+/// Invoke a callback with a single argument (common case optimization)
+///
+/// @param callback_id - The callback ID from crane_callback_register
+/// @param arg - Global<Value>* argument pointer
+/// @return Result struct with success/error info
+pub extern fn crane_callback_invoke1(
+    callback_id: u64,
+    arg: ?*Value,
+) CraneCallbackResult;
+
+/// Invoke a callback with no arguments
+///
+/// @param callback_id - The callback ID from crane_callback_register
+/// @return Result struct with success/error info
+pub extern fn crane_callback_invoke0(callback_id: u64) CraneCallbackResult;
+
+/// Remove a callback
+///
+/// @param callback_id - The callback ID to remove
+pub extern fn crane_callback_remove(callback_id: u64) void;
+
+/// Check if a callback exists
+///
+/// @param callback_id - The callback ID to check
+/// @return true if callback exists, false otherwise
+pub extern fn crane_callback_exists(callback_id: u64) bool;
+
+/// Get the number of registered callbacks (for debugging)
+///
+/// @return Number of registered callbacks
+pub extern fn crane_callback_count() u64;
+
+/// Free a CraneCallbackResult's return value
+///
+/// @param return_value - The return value to free
+pub extern fn crane_callback_free_result(return_value: ?*Value) void;
+
+// ============================================================================
+// Weak Callback FFI Functions
+// ============================================================================
+// These functions allow Zig code to coordinate callback lifecycle with V8's GC.
+
+/// Make a callback weak - V8 can GC the function when no JS refs remain
+/// When the function is collected, subsequent invoke calls will return an error.
+///
+/// @param callback_id - The callback ID from crane_callback_register
+/// @return true on success, false if callback not found or already weak
+pub extern fn crane_callback_make_weak(callback_id: u64) bool;
+
+/// Clear weak status - make callback strong again (prevents GC collection)
+///
+/// @param callback_id - The callback ID from crane_callback_register
+/// @return true on success, false if callback not found or not weak
+pub extern fn crane_callback_clear_weak(callback_id: u64) bool;
+
+/// Check if callback is currently weak
+///
+/// @param callback_id - The callback ID from crane_callback_register
+/// @return true if callback is weak, false otherwise
+pub extern fn crane_callback_is_weak(callback_id: u64) bool;
+
+/// Check if callback has been collected by GC
+/// If true, the callback can no longer be invoked.
+///
+/// @param callback_id - The callback ID from crane_callback_register
+/// @return true if callback was collected, false otherwise
+pub extern fn crane_callback_is_collected(callback_id: u64) bool;
+
+/// Clean up callbacks that have been collected by GC
+/// Frees memory associated with collected callbacks.
+/// Should be called periodically to reclaim memory.
+///
+/// @return Number of callbacks cleaned up
+pub extern fn crane_callback_cleanup_collected() u64;
+
+/// Get count of collected but not yet cleaned up callbacks
+///
+/// @return Number of callbacks pending cleanup
+pub extern fn crane_callback_collected_count() u64;

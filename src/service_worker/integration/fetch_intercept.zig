@@ -152,16 +152,15 @@ pub fn interceptFetch(
     };
 
     // Step 6: Build handle fetch context
+    // Note: dispatch_fetch_event is set to null here because the actual dispatch
+    // happens through the InterceptionContext.dispatch_callback which is called
+    // directly in interceptFetch. The handleFetch algorithm will fall through
+    // to network if dispatch_fetch_event is null, which is correct for the
+    // case where no SW handler intercepts the request.
+    //
+    // When dispatch_callback IS set, we call it directly below before handleFetch.
     const fetch_ctx = algorithms.HandleFetchContext{
-        .dispatch_fetch_event = if (context.dispatch_callback != null)
-            struct {
-                fn dispatch(_: *ServiceWorker, _: *@import("../events/fetch_event.zig").FetchEvent) ?ResponseInfo {
-                    // This would be filled in by the actual callback
-                    return null;
-                }
-            }.dispatch
-        else
-            null,
+        .dispatch_fetch_event = null, // Dispatch handled separately via context.dispatch_callback
         .preload_response = if (context.preload_response) |pr|
             ResponseInfo{
                 .status = pr.status,
@@ -172,7 +171,44 @@ pub fn interceptFetch(
             null,
     };
 
-    // Step 7: Run handle fetch algorithm
+    // Step 7a: Try dispatch_callback first if set (for JS integration)
+    if (context.dispatch_callback) |dispatch_fn| {
+        {
+            const request_for_interception = RequestForInterception{
+                .url = request.url,
+                .method = request.method,
+                .headers = request.headers,
+                .body = request.body,
+                .mode = request.mode,
+                .credentials = request.credentials,
+                .cache_mode = request.cache_mode,
+                .redirect = request.redirect,
+                .referrer = request.referrer,
+                .referrer_policy = request.referrer_policy,
+                .integrity = request.integrity,
+                .is_navigation = request.is_navigation,
+                .is_reload = request.is_reload,
+                .client_id = request.client_id,
+            };
+
+            if (dispatch_fn(worker, request_for_interception)) |intercepted| {
+                // SW handler provided a response
+                return .{
+                    .response = .{
+                        .status = intercepted.status,
+                        .status_text = intercepted.status_text,
+                        .body = intercepted.body,
+                        .content_type = intercepted.content_type,
+                        .source = .service_worker,
+                    },
+                };
+            }
+            // dispatch_callback returned null - no response, fall through to network
+            return .no_interception;
+        }
+    }
+
+    // Step 7b: Run handle fetch algorithm (fallback path when no dispatch_callback)
     const result = algorithms.handleFetch(registration, req_info, fetch_ctx, context.allocator);
 
     // Step 8: Convert result

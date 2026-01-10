@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ReadableStream = @import("interfaces").ReadableStream;
-const Blob = @import("interfaces").Blob;
-const FormData = @import("interfaces").FormData;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const Blob = @import("Blob.zig").Blob;
+const FormData = @import("FormData.zig").FormData;
 const USVString = @import("typedefs").USVString;
 
 pub const Body = struct {

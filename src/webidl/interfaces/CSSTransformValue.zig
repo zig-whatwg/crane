@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleValue = @import("interfaces").CSSStyleValue;
-const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValue;
+const CSSTransformComponent = @import("CSSTransformComponent.zig").CSSTransformComponent;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 

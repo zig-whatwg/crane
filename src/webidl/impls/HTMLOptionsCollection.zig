@@ -80,3 +80,11 @@ pub fn call_remove(instance: *runtime.Instance, index: i32) anyerror!void {
     _ = index;
     return error.NotImplemented;
 }
+
+
+pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
+    _ = instance;
+    _ = index;
+    _ = option;
+    return error.NotImplemented;
+}

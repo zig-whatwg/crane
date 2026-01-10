@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 
 pub const EventListener = struct {
     pub const Meta = struct {

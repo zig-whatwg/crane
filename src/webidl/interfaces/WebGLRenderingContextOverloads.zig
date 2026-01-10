@@ -21,7 +21,7 @@ const GLenum = @import("typedefs").GLenum;
 const GLsizeiptr = @import("typedefs").GLsizeiptr;
 const GLintptr = @import("typedefs").GLintptr;
 const GLsizei = @import("typedefs").GLsizei;
-const WebGLUniformLocation = @import("interfaces").WebGLUniformLocation;
+const WebGLUniformLocation = @import("WebGLUniformLocation.zig").WebGLUniformLocation;
 
 pub const WebGLRenderingContextOverloads = struct {
     pub const Meta = struct {

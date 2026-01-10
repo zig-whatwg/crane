@@ -39,6 +39,7 @@ pub const Logger = @import("logger.zig").Logger;
 // Realm and context type infrastructure (WHATWG HTML/WebIDL)
 pub const realm = @import("realm.zig");
 pub const ContextType = realm.ContextType;
+pub const GlobalScopeKind = realm.GlobalScopeKind;
 pub const Exposure = realm.Exposure;
 pub const RealmInfo = realm.RealmInfo;
 pub const Realm = realm.Realm;
@@ -198,6 +199,11 @@ pub const TimerCallback = timer.TimerCallback;
 pub const TimerInterface = timer.TimerInterface;
 pub const TimerVTable = timer.TimerVTable;
 pub const TimerError = timer.TimerError;
+
+// Network pollable interface - Host-agnostic async HTTP support
+// Used by call_fetch to make non-blocking HTTP requests
+pub const network_pollable = @import("network_pollable.zig");
+pub const NetworkPollable = network_pollable.NetworkPollable;
 
 // Typed callback wrappers for type-safe callback handling
 // Replaces *anyopaque user data with typed alternatives
@@ -396,6 +402,63 @@ pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value
     // Convert DOMString to slice for the engine interface
     const value_slice = value.asSlice();
     try setProperty(engine_ctx, target_wrapper, property_name, value_slice);
+}
+
+/// Set a property on a JSValue using JavaScript [[Set]] semantics
+///
+/// This is used by [PutForwards] extended attribute when the target attribute returns
+/// a JSValue (e.g., when [SameObject] caching is used). Per WebIDL spec §4.3.10:
+/// [PutForwards=X] means setting the attribute forwards to property X on the attribute's value.
+///
+/// The target JSValue may be:
+/// - A .handle (JS engine object) - property is set directly on the JS object
+/// - An .instance (*Instance) - property is set on the JS wrapper for that instance
+///
+/// Arguments:
+///   - target: The target JSValue (result of getting the attribute)
+///   - instance: The originating instance (used to access engine context)
+///   - property_name: Name of the forwarded property (e.g., "cssText")
+///   - value: String value to assign
+///
+/// Errors:
+///   - error.NoEngine if no JS engine is configured
+///   - error.TypeError if target cannot have properties set
+///   - error.OperationFailed if [[Set]] returns false
+pub fn setPropertyOnJSValue(target: JSValue, instance: *Instance, property_name: []const u8, value: DOMString) !void {
+    const ctx = instance.ctx;
+
+    // Get the engine interface
+    const engine = ctx.getEngine() orelse return error.NoEngine;
+
+    // Get the engine context
+    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
+
+    // Get the setPropertyOnObject function
+    const setProperty = engine.setPropertyOnObject orelse return error.NoEngine;
+
+    // Convert DOMString to slice for the engine interface
+    const value_slice = value.asSlice();
+
+    // Handle different JSValue types
+    switch (target) {
+        .handle => |handle| {
+            // Direct JS object handle - set property directly
+            try setProperty(engine_ctx, handle.ptr, property_name, value_slice);
+        },
+        .instance => |inst| {
+            // Zig instance - need to get its JS wrapper first
+            const wrapper_cache = ctx.getV8WrapperCacheStorage() orelse return error.NoEngine;
+            const getWrapper = engine.getWrapperForInstance orelse return error.NoEngine;
+            const target_wrapper = getWrapper(engine_ctx, wrapper_cache, inst) orelse {
+                return error.TypeError;
+            };
+            try setProperty(engine_ctx, target_wrapper, property_name, value_slice);
+        },
+        else => {
+            // Other JSValue types (undefined, null, boolean, number, string) cannot have properties set
+            return error.TypeError;
+        },
+    }
 }
 
 /// Define an own property on a runtime.Instance using JavaScript [[DefineOwnProperty]] semantics

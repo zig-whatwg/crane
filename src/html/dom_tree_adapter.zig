@@ -56,6 +56,7 @@ const DocumentType = interfaces.DocumentType;
 const DocumentFragment = interfaces.DocumentFragment;
 const Node = interfaces.Node;
 const HTMLScriptElement = interfaces.HTMLScriptElement;
+const HTMLIFrameElement = interfaces.HTMLIFrameElement;
 
 // Import DOM internals for state access (Golden Rule #12 compliant)
 const dom = @import("dom");
@@ -67,6 +68,12 @@ const NodeImpl = impls.Node;
 const ElementImpl = impls.Element;
 const DocumentTypeImpl = impls.DocumentType;
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
+const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
+const WindowImpl = impls.Window;
+
+// Import V8 context manager for getting Window from V8 context
+const v8 = @import("v8");
+const context_manager = v8.context_manager;
 
 // WebIDL types
 const webidl = @import("webidl");
@@ -202,6 +209,7 @@ pub const DomTreeAdapter = struct {
     ///
     /// This establishes the parent-child relationship in the DOM.
     /// When appending an <html> element to the document, also sets document.documentElement.
+    /// When appending an <iframe> element, triggers the iframe's insertion steps.
     ///
     /// @param parent The parent TreeNode
     /// @param child The child TreeNode being appended
@@ -215,15 +223,57 @@ pub const DomTreeAdapter = struct {
             return DomTreeAdapterError.DomOperationFailed;
         };
 
-        // CRITICAL: If appending <html> to document, set documentElement
-        // Per DOM spec, documentElement is the first Element child of the Document
-        if (parent.node_type == .document and child.node_type == .element) {
+        // Handle element-specific insertion steps
+        if (child.node_type == .element) {
             if (child.local_name) |name| {
-                if (std.mem.eql(u8, name, "html") and child.namespace == .html) {
+                // CRITICAL: If appending <html> to document, set documentElement
+                // Per DOM spec, documentElement is the first Element child of the Document
+                if (parent.node_type == .document and
+                    std.mem.eql(u8, name, "html") and child.namespace == .html)
+                {
                     document_internals.setDocumentElement(self.document, child_dom);
+                }
+
+                // CRITICAL: If appending <iframe>, trigger the iframe's insertion steps
+                // Per HTML Standard §4.8.5, when an iframe is inserted into a document,
+                // a nested browsing context must be created and navigation triggered.
+                if (std.mem.eql(u8, name, "iframe") and child.namespace == .html) {
+                    self.handleIframeInsertion(child_dom);
                 }
             }
         }
+    }
+
+    /// Handle iframe-specific insertion steps.
+    /// Per HTML Standard §4.8.5, when an iframe is inserted into a document:
+    /// 1. Create a nested browsing context as a child of the parent
+    /// 2. Navigate to the initial content (srcdoc > src > about:blank)
+    fn handleIframeInsertion(self: *DomTreeAdapter, iframe_element: *runtime.Instance) void {
+        // Get the iframe's internal state to access the integration
+        const internal = HTMLIFrameElementImpl.getInternal(iframe_element) orelse return;
+
+        // Get the parent document's browsing context via the V8 context manager.
+        // The runtime.Context holds an engine_ctx (V8 context) which we can use
+        // to look up the associated Window and its browsing context.
+        const engine_ctx = self.ctx.engine_ctx orelse return;
+        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+        // Get the Window associated with this V8 context
+        const window = context_manager.getWindowForContext(v8_ctx) orelse return;
+        const window_internal = WindowImpl.getInternal(window) orelse return;
+        const parent_bc = window_internal.browsing_context;
+
+        // Create the origin for the iframe (inherits from container document)
+        // For srcdoc and same-origin src, the origin is inherited
+        const container_origin = parent_bc.getOrigin();
+
+        // Trigger the iframe's insertion steps via integration
+        // This creates the browsing context and navigates to initial content
+        internal.integration.onInsertedIntoDocument(parent_bc, container_origin) catch {
+            // Insertion failed - iframe will not have a browsing context
+            // This is recoverable - accessing contentWindow will return null
+            return;
+        };
     }
 
     /// Called when tree builder removes a node from its parent.
@@ -347,13 +397,17 @@ pub const DomTreeAdapter = struct {
     fn createElementNode(self: *DomTreeAdapter, tree_node: *TreeNode) DomTreeAdapterError!*runtime.Instance {
         const local_name = tree_node.local_name orelse return DomTreeAdapterError.InvalidNode;
 
-        // Check if this is a script element
-        const is_script = std.mem.eql(u8, local_name, "script") and
-            tree_node.namespace == .html;
+        // Check element types for special handling
+        const is_html_ns = tree_node.namespace == .html;
+        const is_script = is_html_ns and std.mem.eql(u8, local_name, "script");
+        const is_iframe = is_html_ns and std.mem.eql(u8, local_name, "iframe");
 
-        // Create the appropriate element type
+        // Create the appropriate element type based on tag name
+        // Per HTML spec, each element type has its own interface
         const element = if (is_script)
             HTMLScriptElement.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory
+        else if (is_iframe)
+            HTMLIFrameElement.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory
         else
             Element.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory;
 
@@ -386,12 +440,42 @@ pub const DomTreeAdapter = struct {
             HTMLScriptElementImpl.clearForceAsync(element);
         }
 
+        // Track srcdoc and src attribute values for iframe special handling
+        var srcdoc_value: ?[]const u8 = null;
+        var src_value: ?[]const u8 = null;
+
         // Add existing attributes
         const attrs = tree_node.attributes.toSlice();
         for (attrs) |attr| {
             const name_str = runtime.DOMString.initInterned(attr.name);
             const value_str = runtime.DOMString.initInterned(attr.value);
             Element.call_setAttribute(element, name_str, value_str) catch continue;
+
+            // Track special iframe attributes for later processing
+            if (is_iframe) {
+                if (std.mem.eql(u8, attr.name, "srcdoc")) {
+                    srcdoc_value = attr.value;
+                } else if (std.mem.eql(u8, attr.name, "src")) {
+                    src_value = attr.value;
+                }
+            }
+        }
+
+        // CRITICAL: Trigger WebIDL property setters for reflected attributes
+        // The setAttribute() call above only stores the attribute value.
+        // For elements like <iframe>, we must call the property setter to trigger
+        // side effects (e.g., creating browsing context and loading content).
+        //
+        // Per HTML spec §4.8.5, when an iframe has a srcdoc attribute, it takes
+        // precedence over src. When src is set, it triggers navigation.
+        if (is_iframe) {
+            if (srcdoc_value) |srcdoc| {
+                // srcdoc takes precedence - triggers inline content loading
+                HTMLIFrameElement.set_srcdoc(element, runtime.DOMString.initInterned(srcdoc)) catch {};
+            } else if (src_value) |src| {
+                // src triggers URL navigation (only if no srcdoc)
+                HTMLIFrameElement.set_src(element, src) catch {};
+            }
         }
 
         return element;
