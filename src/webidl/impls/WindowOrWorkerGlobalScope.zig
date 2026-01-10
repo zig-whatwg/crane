@@ -943,6 +943,47 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
                 };
             }
 
+            // Check for Map objects - per HTML spec §2.7.3 step 15
+            // Clone by copying [[MapData]] entries
+            if (v8_engine.ffi.v8_Value_IsMap(@ptrCast(h.ptr))) {
+                // Get entries as array [key1, value1, key2, value2, ...]
+                const entries_array = v8_engine.ffi.v8_Map_AsArray(@ptrCast(h.ptr)) orelse {
+                    return error.DataCloneError;
+                };
+
+                // Create a new empty Map
+                const new_map = v8_engine.ffi.v8_Map_New(isolate) orelse {
+                    return error.DataCloneError;
+                };
+
+                // Get the length of the entries array (size * 2)
+                const entries_len = v8_engine.ffi.v8_Array_Length(entries_array);
+
+                // Iterate through entries in pairs and add to new Map
+                var i: u32 = 0;
+                while (i < entries_len) : (i += 2) {
+                    const key = v8_engine.ffi.v8_Array_Get(v8_context, entries_array, i) orelse {
+                        return error.DataCloneError;
+                    };
+                    const value_item = v8_engine.ffi.v8_Array_Get(v8_context, entries_array, i + 1) orelse {
+                        return error.DataCloneError;
+                    };
+
+                    // Set the key-value pair in the new Map
+                    if (!v8_engine.ffi.v8_Map_Set(new_map, key, value_item)) {
+                        return error.DataCloneError;
+                    }
+                }
+
+                return runtime.JSValue{
+                    .handle = .{
+                        .ptr = @ptrCast(new_map),
+                        .needs_disposal = true,
+                        .handle_scope = .global,
+                    },
+                };
+            }
+
             // For objects, use JSON serialize/deserialize as simplified structured clone
             // This handles plain objects, arrays, etc. but not all spec-compliant types
             // h.ptr is a Global<Value>* which v8_JSON_Stringify_ToBuffer expects

@@ -2416,6 +2416,78 @@ Global<Value>* v8_ArrayBuffer_NewWithData(Isolate* isolate, Context* context_raw
 }
 
 // ============================================================================
+// Map Functions (for structuredClone)
+// ============================================================================
+
+// Check if a value is a Map
+bool v8_Value_IsMap(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsMap();
+}
+
+// Get the size of a Map
+size_t v8_Map_GetSize(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return 0;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    if (!val->IsMap()) {
+        return 0;
+    }
+    Local<Map> map = val.As<Map>();
+    return map->Size();
+}
+
+// Get Map entries as an array [key1, value1, key2, value2, ...]
+// Returns a Global<Array>* that must be managed by caller
+Global<Array>* v8_Map_AsArray(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    if (!val->IsMap()) {
+        return nullptr;
+    }
+    Local<Map> map = val.As<Map>();
+    Local<Array> arr = map->AsArray();
+    return trackHandle(new Global<Array>(isolate, arr));
+}
+
+// Create a new empty Map
+Global<Value>* v8_Map_New(Isolate* isolate) {
+    HandleScope handle_scope(isolate);
+    Local<Map> map = Map::New(isolate);
+    return trackHandle(new Global<Value>(isolate, map));
+}
+
+// Set a key-value pair in a Map
+// Returns true on success, false on failure
+bool v8_Map_Set(Global<Value>* map_value, Global<Value>* key, Global<Value>* value) {
+    if (!map_value || map_value->IsEmpty()) return false;
+    if (!key || key->IsEmpty()) return false;
+    if (!value || value->IsEmpty()) return false;
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) return false;
+
+    Local<Value> map_val = map_value->Get(isolate);
+    if (!map_val->IsMap()) return false;
+
+    Local<Map> map = map_val.As<Map>();
+    Local<Value> local_key = key->Get(isolate);
+    Local<Value> local_value = value->Get(isolate);
+
+    MaybeLocal<Map> result = map->Set(ctx, local_key, local_value);
+    return !result.IsEmpty();
+}
+
+// ============================================================================
 // Object Functions
 // ============================================================================
 

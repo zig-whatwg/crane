@@ -724,6 +724,13 @@ pub extern fn v8_ArrayBuffer_GetByteLength_Value(value: *Value) usize;
 pub extern fn v8_ArrayBuffer_GetData_Value(value: *Value) ?*anyopaque;
 pub extern fn v8_ArrayBuffer_NewWithData(isolate: *Isolate, context: *Context, data: ?*anyopaque, byte_length: usize) ?*Value;
 
+// Map operations (for structuredClone)
+pub extern fn v8_Value_IsMap(value: *Value) bool;
+pub extern fn v8_Map_GetSize(value: *Value) usize;
+pub extern fn v8_Map_AsArray(value: *Value) ?*Array;
+pub extern fn v8_Map_New(isolate: *Isolate) ?*Value;
+pub extern fn v8_Map_Set(map: *Value, key: *Value, value: *Value) bool;
+
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
