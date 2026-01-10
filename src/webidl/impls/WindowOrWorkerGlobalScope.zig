@@ -890,6 +890,31 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
                 };
             }
 
+            // Check for RegExp objects - per HTML spec §2.7.3 step 12, clone by copying
+            // [[OriginalSource]] and [[OriginalFlags]] internal slots
+            if (v8_engine.ffi.v8_Value_IsRegExp(@ptrCast(h.ptr))) {
+                // Get the source pattern string from the original RegExp
+                const source = v8_engine.ffi.v8_RegExp_GetSource(@ptrCast(h.ptr)) orelse {
+                    return error.DataCloneError;
+                };
+
+                // Get the flags bitmask from the original RegExp
+                const flags = v8_engine.ffi.v8_RegExp_GetFlags(@ptrCast(h.ptr));
+
+                // Create a new RegExp with the same source and flags
+                const new_regexp = v8_engine.ffi.v8_RegExp_New(isolate, v8_context, source, flags) orelse {
+                    return error.DataCloneError;
+                };
+
+                return runtime.JSValue{
+                    .handle = .{
+                        .ptr = @ptrCast(new_regexp),
+                        .needs_disposal = true,
+                        .handle_scope = .global,
+                    },
+                };
+            }
+
             // For objects, use JSON serialize/deserialize as simplified structured clone
             // This handles plain objects, arrays, etc. but not all spec-compliant types
             // h.ptr is a Global<Value>* which v8_JSON_Stringify_ToBuffer expects

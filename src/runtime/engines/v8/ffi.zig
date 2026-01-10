@@ -712,6 +712,12 @@ pub extern fn v8_Value_IsDate_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Date_New(isolate: *Isolate, context: *Context, time: f64) ?*Value;
 pub extern fn v8_Date_ValueOf(date_value: *Value) f64;
 
+// RegExp operations
+pub extern fn v8_Value_IsRegExp(value: *Value) bool;
+pub extern fn v8_RegExp_GetSource(regexp: *Value) ?*String;
+pub extern fn v8_RegExp_GetFlags(regexp: *Value) c_int;
+pub extern fn v8_RegExp_New(isolate: *Isolate, context: *Context, pattern: *String, flags: c_int) ?*Value;
+
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;

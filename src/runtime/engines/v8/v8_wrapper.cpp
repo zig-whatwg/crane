@@ -2281,6 +2281,68 @@ double v8_Date_ValueOf(Global<Value>* date_value) {
 }
 
 // ============================================================================
+// RegExp Functions
+// ============================================================================
+
+bool v8_Value_IsRegExp(Global<Value>* value) {
+    if (!value || value->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = value->Get(isolate);
+    return val->IsRegExp();
+}
+
+// Get the source pattern string from a RegExp object
+// Returns a Global<String>* that the caller must manage
+Global<String>* v8_RegExp_GetSource(Global<Value>* regexp_value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = regexp_value->Get(isolate);
+    if (!val->IsRegExp()) {
+        return nullptr;
+    }
+    Local<RegExp> regexp = val.As<RegExp>();
+    Local<String> source = regexp->GetSource();
+    return trackHandle(new Global<String>(isolate, source));
+}
+
+// Get the flags from a RegExp object as a bitmask
+// Returns V8's RegExp::Flags enum value
+int v8_RegExp_GetFlags(Global<Value>* regexp_value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> val = regexp_value->Get(isolate);
+    if (!val->IsRegExp()) {
+        return 0;
+    }
+    Local<RegExp> regexp = val.As<RegExp>();
+    return static_cast<int>(regexp->GetFlags());
+}
+
+// Create a new RegExp object from a pattern string and flags
+// Uses the current context from the isolate
+Global<Value>* v8_RegExp_New(Isolate* isolate, Context* context_raw, Global<String>* pattern, int flags) {
+    HandleScope handle_scope(isolate);
+
+    // Get the CURRENT context from the isolate (not the passed context!)
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) {
+        return nullptr;
+    }
+    Context::Scope context_scope(ctx);
+
+    // Get the pattern string from the Global handle
+    Local<String> pattern_str = pattern->Get(isolate);
+
+    MaybeLocal<RegExp> maybe_regexp = RegExp::New(ctx, pattern_str, static_cast<RegExp::Flags>(flags));
+    if (maybe_regexp.IsEmpty()) {
+        return nullptr;
+    }
+    Local<RegExp> regexp = maybe_regexp.ToLocalChecked();
+    return trackHandle(new Global<Value>(isolate, regexp));
+}
+
+// ============================================================================
 // Object Functions
 // ============================================================================
 
