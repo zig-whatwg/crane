@@ -217,6 +217,7 @@ pub const LibuvTimerManager = struct {
         const ctx = self.timers.get(id) orelse return;
         if (ctx.cancelled or ctx.closing) return;
 
+        std.debug.print("[TIMER_CLEAR] Cancelling timer {d}\n", .{id});
         ctx.cancelled = true;
         ctx.closing = true;
 
@@ -251,11 +252,18 @@ pub const LibuvTimerManager = struct {
     /// Run the event loop once (blocking).
     /// This blocks until at least one callback has been invoked, or until
     /// there are no more active handles.
-    /// Returns true if there are still active handles.
+    /// Returns true if a callback was actually invoked.
     pub fn pollBlocking(self: *Self) bool {
         if (!self.initialized) return false;
-        const result = libuv.run(self.loop, .UV_RUN_ONCE);
-        return result > 0;
+
+        // Reset the callback_invoked flag before polling
+        self.callback_invoked = false;
+
+        // UV_RUN_ONCE blocks until at least one callback fires or no more handles
+        _ = libuv.run(self.loop, .UV_RUN_ONCE);
+
+        // Return whether a callback was actually invoked
+        return self.callback_invoked;
     }
 
     /// Get the timer interface for this manager.
@@ -294,8 +302,13 @@ pub const LibuvTimerManager = struct {
 fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {
     const ctx: *TimerContext = @ptrCast(@alignCast(handle.data));
 
+    std.debug.print("[TIMER_CB] Timer {d} fired\n", .{ctx.id});
+
     // Don't invoke callback if cancelled
-    if (ctx.cancelled) return;
+    if (ctx.cancelled) {
+        std.debug.print("[TIMER_CB] Timer {d} was cancelled, skipping\n", .{ctx.id});
+        return;
+    }
 
     // Mark callback as invoked for poll() return value
     ctx.callback_invoked = true;
@@ -305,7 +318,9 @@ fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {
     ctx.closing = true;
 
     // Invoke the user's callback
+    std.debug.print("[TIMER_CB] Invoking user callback for timer {d}\n", .{ctx.id});
     ctx.callback(ctx.user_data);
+    std.debug.print("[TIMER_CB] User callback for timer {d} returned\n", .{ctx.id});
 
     // Close the handle (will trigger closeCallback)
     libuv.close(libuv.timerToHandle(handle), closeCallback);
@@ -316,6 +331,8 @@ fn closeCallback(handle: *libuv.uv_handle_t) callconv(.c) void {
     // Get the timer handle (same address due to embedding)
     const timer_handle: *libuv.uv_timer_t = @ptrCast(@alignCast(handle));
     const ctx: *TimerContext = @ptrCast(@alignCast(timer_handle.data));
+
+    std.debug.print("[TIMER_CLOSE] Timer {d} closing, removing from tracking\n", .{ctx.id});
 
     // Remove from tracking
     _ = ctx.manager.timers.remove(ctx.id);

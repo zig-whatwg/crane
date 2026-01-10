@@ -1,6 +1,7 @@
 const std = @import("std");
 const Browser = @import("browser").Browser;
 const Context = @import("browser").Context;
+const test_runner = @import("testing").test_runner;
 
 /// Embed the V8 snapshot at compile time to ensure it's always available
 /// regardless of working directory when the binary runs
@@ -42,76 +43,108 @@ const WptBrowser = struct {
 
     pub fn run(self: *WptBrowser) !void {
         const stderr = std.fs.File.stderr();
+        const stdout = std.fs.File.stdout();
         stderr.writeAll("[WPT_BROWSER] run() starting\n") catch {};
 
         stderr.writeAll("[WPT_BROWSER] calling navigateWithOptions...\n") catch {};
         try self.browser.navigateWithOptions(self.test_url, .window, .{ .skip_load = true });
         stderr.writeAll("[WPT_BROWSER] navigateWithOptions complete\n") catch {};
 
-        // Define WPT report functions BEFORE the page loads
-        // testharnessreport.js checks for these on the GLOBAL scope (not window.*)
-        // We use var to hoist them to global scope, and also set on window for consistency
-        const wpt_setup_script =
-            \\var __wpt_results = [];
-            \\var __wpt_completed = false;
-            \\var __wpt_harness_status = null;
-            \\var __wpt_report_result = function(name, status, message, stack, duration) {
-            \\    __wpt_results.push([name, status, message, stack]);
-            \\};
-            \\var __wpt_report_completion = function(harness_status) {
-            \\    __wpt_completed = true;
-            \\    if (harness_status) __wpt_harness_status = harness_status;
-            \\    var status = __wpt_harness_status || {status: 0};
-            \\    var results = __wpt_results || [];
-            \\    var passed = 0;
-            \\    for (var i = 0; i < results.length; i++) {
-            \\        if (results[i][1] === 0) passed++;
-            \\    }
-            \\    // Output result via console.log - Console impl writes CRANE_WPT_RESULT: lines to stdout
-            \\    console.log("CRANE_WPT_RESULT:[null," + (status.status||0) + ",null,null,[[\"" + passed + "/" + results.length + " passed\",0,null,null]]]");
-            \\};
-            \\// Also set on window for scripts that use window.* syntax
-            \\window.__wpt_results = __wpt_results;
-            \\window.__wpt_completed = __wpt_completed;
-            \\window.__wpt_harness_status = __wpt_harness_status;
-            \\window.__wpt_report_result = __wpt_report_result;
-            \\window.__wpt_report_completion = __wpt_report_completion;
-        ;
+        // Inject testRunner API BEFORE the page loads
+        // This provides Chromium-compatible testRunner object that testharness.js expects
+        const testrunner_script = test_runner.generateTestRunnerScript();
 
         const ctx = self.browser.current_context orelse return error.NoContext;
 
-        // Inject WPT functions before loading the page
-        stderr.writeAll("[WPT_BROWSER] calling evaluateScript for WPT setup...\n") catch {};
-        _ = self.browser.evaluateScript(wpt_setup_script) catch {};
-        stderr.writeAll("[WPT_BROWSER] evaluateScript complete\n") catch {};
-
-        // DIAGNOSTIC: Check if Worker is available on the global object
-        _ = self.browser.evaluateScript(
-            \\console.log("DIAG: typeof Worker = " + typeof Worker);
-            \\console.log("DIAG: typeof XMLHttpRequest = " + typeof XMLHttpRequest);
-            \\console.log("DIAG: typeof fetch = " + typeof fetch);
-            \\console.log("DIAG: typeof EventTarget = " + typeof EventTarget);
-        ) catch {};
+        // Inject testRunner API before loading the page
+        stderr.writeAll("[WPT_BROWSER] injecting testRunner API...\n") catch {};
+        _ = self.browser.evaluateScript(testrunner_script) catch |err| {
+            stderr.writeAll("[WPT_BROWSER] ERROR: Failed to inject testRunner API\n") catch {};
+            return err;
+        };
+        stderr.writeAll("[WPT_BROWSER] testRunner API injected\n") catch {};
 
         stderr.writeAll("[WPT_BROWSER] calling ctx.loadPage()...\n") catch {};
         try ctx.loadPage();
         stderr.writeAll("[WPT_BROWSER] loadPage() complete\n") catch {};
 
-        // DIAGNOSTIC: Check if testharness.js and testharnessreport.js ran correctly
+        // Register our WPT callbacks AFTER testharness.js has loaded
+        stderr.writeAll("[WPT_BROWSER] registering WPT callbacks...\n") catch {};
         _ = self.browser.evaluateScript(
+            \\if (typeof __crane_register_wpt_callbacks === 'function') {
+            \\    __crane_register_wpt_callbacks();
+            \\}
+        ) catch {};
+
+        // Post-load diagnostics
+        _ = self.browser.evaluateScript(
+            \\console.log("POST_LOAD: typeof window.addEventListener = " + typeof window.addEventListener);
+            \\console.log("POST_LOAD: trying to add a load listener now...");
+            \\var loadListenerCalled = false;
+            \\window.addEventListener('load', function() {
+            \\    console.log("POST_LOAD_LISTENER: window load event received!");
+            \\    loadListenerCalled = true;
+            \\});
+            \\console.log("POST_LOAD: listener added, checking if load already fired...");
+            \\// Dispatch a test event to verify addEventListener works
+            \\var testEvent = new Event('testcustom');
+            \\var testListenerCalled = false;
+            \\window.addEventListener('testcustom', function() {
+            \\    console.log("POST_LOAD: testcustom event listener called!");
+            \\    testListenerCalled = true;
+            \\});
+            \\window.dispatchEvent(testEvent);
+            \\console.log("POST_LOAD: testListenerCalled = " + testListenerCalled);
+            \\console.log("POST_LOAD: typeof testRunner = " + typeof testRunner);
+            \\console.log("POST_LOAD: typeof add_result_callback = " + typeof add_result_callback);
+            \\console.log("POST_LOAD: typeof add_completion_callback = " + typeof add_completion_callback);
+            \\console.log("POST_LOAD: typeof __wpt_report_completion = " + typeof __wpt_report_completion);
+            \\console.log("POST_LOAD: testRunner._done = " + testRunner._done);
+            \\console.log("POST_LOAD: typeof self = " + typeof self);
+            \\console.log("POST_LOAD: self === window = " + (self === window));
             \\console.log("POST_LOAD: typeof test = " + typeof test);
-            \\console.log("POST_LOAD: __wpt_completed = " + __wpt_completed);
-            \\console.log("POST_LOAD: typeof setTimeout = " + typeof setTimeout);
-            \\// Check testharness internal state
+            \\console.log("POST_LOAD: typeof assert_true = " + typeof assert_true);
+            \\console.log("POST_LOAD: typeof setup = " + typeof setup);
+            \\
+            \\// Check testharness.js internal state
             \\if (typeof tests !== 'undefined') {
-            \\    console.log("POST_LOAD: tests.all_done = " + tests.all_done());
-            \\    console.log("POST_LOAD: tests.tests.length = " + tests.tests.length);
+            \\    console.log("POST_LOAD: tests object exists, tests.tests.length = " + tests.tests.length);
+            \\    console.log("POST_LOAD: tests.status = " + tests.status);
             \\    console.log("POST_LOAD: tests.num_pending = " + tests.num_pending);
-            \\    for (var i = 0; i < tests.tests.length; i++) {
-            \\        console.log("POST_LOAD: test[" + i + "] name=" + tests.tests[i].name + " status=" + tests.tests[i].status);
+            \\    console.log("POST_LOAD: tests.all_done = " + tests.all_done);
+            \\    console.log("POST_LOAD: tests.completion_callbacks length = " + (tests.completion_callbacks ? tests.completion_callbacks.length : 'undefined'));
+            \\}
+            \\
+            \\// Try to manually trigger completion if tests are done
+            \\if (typeof tests !== 'undefined' && tests.all_done) {
+            \\    console.log("POST_LOAD: Tests are done, manually calling done()");
+            \\    if (typeof tests.complete === 'function') {
+            \\        tests.complete();
             \\    }
-            \\} else {
-            \\    console.log("POST_LOAD: tests object not found");
+            \\}
+            \\
+            \\// Test setTimeout to verify timers work
+            \\setTimeout(function() {
+            \\    console.log("TIMER_TEST: setTimeout(0) callback fired!");
+            \\    console.log("TIMER_TEST: testRunner._done = " + testRunner._done);
+            \\    console.log("TIMER_TEST: __wpt_completed = " + __wpt_completed);
+            \\    console.log("TIMER_TEST: __wpt_results.length = " + __wpt_results.length);
+            \\    // Check testharness.js internal state via its internals
+            \\    if (typeof test_environment !== 'undefined') {
+            \\        console.log("TIMER_TEST: test_environment exists");
+            \\        console.log("TIMER_TEST: test_environment.all_loaded = " + test_environment.all_loaded);
+            \\    } else {
+            \\        console.log("TIMER_TEST: test_environment is undefined");
+            \\    }
+            \\    // Check via accessor if exposed
+            \\    if (typeof setup_func !== 'undefined' && setup_func.all_loaded !== undefined) {
+            \\        console.log("TIMER_TEST: setup_func.all_loaded = " + setup_func.all_loaded);
+            \\    }
+            \\}, 0);
+            \\
+            \\// Check if testharness test() was called
+            \\if (typeof Test !== 'undefined') {
+            \\    console.log("POST_LOAD: Test constructor exists");
             \\}
         ) catch {};
 
@@ -125,19 +158,17 @@ const WptBrowser = struct {
             iteration += 1;
             const elapsed = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
             if (elapsed >= timeout_ms) {
-                const stdout = std.fs.File.stdout();
-                stdout.writeAll("CRANE_WPT_RESULT:[null,2,\"Timeout\",null,[]]\n") catch {};
+                stdout.writeAll("CRANE_WPT_RESULT: TIMEOUT\n") catch {};
                 break;
             }
 
             // Run event loop to process scripts and network
             self.browser.runEventLoop(100) catch {};
 
-            // Check if tests completed - evaluateScript returns true/false for boolean expressions
-            // The console.log in __wpt_report_completion writes result to stdout automatically
-            // Use global __wpt_completed (not window.*) to match testharnessreport.js
-            if (self.browser.evaluateScriptBool("__wpt_completed === true")) {
-                stderr.writeAll("[WPT_BROWSER] Test completed, breaking\n") catch {};
+            // Check if testRunner.notifyDone() was called OR __wpt_completed is true
+            // testRunner._done is set by notifyDone() which is called by __wpt_report_completion
+            if (self.browser.evaluateScriptBool("testRunner._done === true")) {
+                stderr.writeAll("[WPT_BROWSER] testRunner.notifyDone() called, test complete\n") catch {};
                 break;
             }
 

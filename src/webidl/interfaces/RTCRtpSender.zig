@@ -49,7 +49,7 @@ pub const RTCRtpSender = struct {
             .{ "setParameters", "call_setParameters", 1 },
             .{ "getParameters", "call_getParameters", 0 },
             .{ "replaceTrack", "call_replaceTrack", 1 },
-            .{ "setStreams", "call_setStreams", 1 },
+            .{ "setStreams", "call_setStreams", 0 },
             .{ "getStats", "call_getStats", 0 },
         };
         

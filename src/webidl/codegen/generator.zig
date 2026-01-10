@@ -3201,6 +3201,15 @@ pub fn generateCallback(
     try w.writeAll("\n");
 
     // Generate callback function type with callback-specific type resolution
+    // Special case: The "Function" callback from WebIDL (callback Function = any (...arguments))
+    // is used for JavaScript function callbacks (like setTimeout). These are stored as
+    // V8 GlobalHandle pointers, not actual Zig function pointers. Use *anyopaque for FFI.
+    if (std.mem.eql(u8, callback.name, "Function")) {
+        try w.print("pub const {s} = *anyopaque;\n", .{callback.name});
+        try w.flush();
+        return;
+    }
+
     try w.print("pub const {s} = *const fn (", .{callback.name});
 
     for (callback.arguments, 0..) |arg, i| {

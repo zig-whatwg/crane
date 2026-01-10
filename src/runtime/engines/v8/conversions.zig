@@ -956,8 +956,50 @@ pub fn fromV8Value(
             break :blk null;
         };
 
+        // Callback function types: *anyopaque (for unions like TimerHandler)
+        // The "Function" callback is generated as *anyopaque to hold V8 GlobalHandle pointers.
+        // These match JavaScript functions that need to be stored for later invocation.
+        const function_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                // Check for *anyopaque (used for callback.Function)
+                if (field.type == *anyopaque) {
+                    break :blk i;
+                }
+                // Also check for *const fn(...) for backwards compatibility with other callbacks
+                const field_info = @typeInfo(field.type);
+                if (field_info == .pointer and field_info.pointer.size == .one) {
+                    const child_info = @typeInfo(field_info.pointer.child);
+                    if (child_info == .@"fn") {
+                        break :blk i;
+                    }
+                }
+            }
+            break :blk null;
+        };
+
         // Runtime dispatch based on V8 value type
-        if (v8.v8_Value_IsArray(value)) {
+        // Check function FIRST since functions are also objects in JavaScript
+        if (v8.v8_Value_IsFunction(value)) {
+            if (function_idx) |idx| {
+                // For callback functions, we need to create a GlobalHandle to the V8 function.
+                // The handle is stored as a tagged pointer (*anyopaque).
+                const global_handle = v8.v8_Value_ToGlobal(isolate, value) orelse {
+                    return ConversionError.OutOfMemory;
+                };
+                // Tag the pointer so we can identify it later as a GlobalHandle
+                const tagged = pointer_tag.tagPointer(global_handle, .global_handle);
+                // Handle the different callback pointer types
+                const FieldType = fields[idx].type;
+                if (FieldType == *anyopaque) {
+                    // Direct assignment for *anyopaque (callbacks.Function)
+                    return @unionInit(T, fields[idx].name, @constCast(tagged));
+                } else {
+                    // For *const fn(...) types, we need to convert through usize
+                    const ptr_value: usize = @intFromPtr(tagged);
+                    return @unionInit(T, fields[idx].name, @ptrFromInt(ptr_value));
+                }
+            }
+        } else if (v8.v8_Value_IsArray(value)) {
             if (sequence_idx) |idx| {
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);

@@ -4,4 +4,4 @@
 
 const runtime = @import("runtime");
 
-pub const Function = *const fn (arguments: []const runtime.JSValue) runtime.JSValue;
+pub const Function = *anyopaque;

@@ -1250,45 +1250,13 @@ pub const Context = struct {
     }
 
     /// Register common globals (setTimeout, fetch, console, etc.)
-    fn registerCommonGlobals(self: *Context, global_obj: *v8.ffi.Object) !void {
-        const isolate = self.isolate;
-        const v8_ctx = self.v8_context orelse return error.NotInitialized;
-
-        // setTimeout
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setTimeout", 10) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // clearTimeout
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearTimeout", 12) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // setInterval
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setIntervalCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setInterval", 11) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
-
-        // clearInterval
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearInterval", 13) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
+    fn registerCommonGlobals(self: *Context, _: *v8.ffi.Object) !void {
+        // NOTE: setTimeout, clearTimeout, setInterval, and clearInterval are now provided
+        // by the WebIDL WindowOrWorkerGlobalScope mixin (via Window interface).
+        // Previously, callbacks were registered here that overwrote the proper WebIDL bindings,
+        // breaking timer callbacks (e.g., testharness.js completion timers).
+        // The WindowOrWorkerGlobalScope implementation in src/webidl/impls/WindowOrWorkerGlobalScope.zig
+        // provides the actual functionality with proper timer registry integration.
 
         // NOTE: addEventListener, removeEventListener, and dispatchEvent are now provided
         // by the WebIDL EventTarget interface (registered via initializeBindingsWithGlobalTemplate).
@@ -1574,11 +1542,17 @@ pub const Context = struct {
         };
 
         // Fire DOMContentLoaded on document
+        // Per spec, set readyState to "interactive" before DOMContentLoaded fires
         if (self.document_instance) |doc| {
+            impls.Document.setReadyState(doc, ._interactive_);
             navigation.fireDOMContentLoaded(self.allocator, doc);
         }
 
         // Fire load event on window
+        // Per spec, set readyState to "complete" before load event fires
+        if (self.document_instance) |doc| {
+            impls.Document.setReadyState(doc, ._complete_);
+        }
         if (self.window_instance) |win| {
             navigation.fireLoad(self.allocator, win);
         }
@@ -2064,10 +2038,6 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     // Schedule the timer using TimerInterface with typed callback trampoline
     const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
 
-    // Debug: log 0ms timers as they may be important for testharness.js completion
-    if (delay_u64 == 0) {
-        std.debug.print("[setTimeout] 0ms timer scheduled (testharness completion?)\n", .{});
-    }
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
@@ -2085,6 +2055,39 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Register the timer context for cleanup tracking (prevents memory leak on deinit)
     registerTimerContext(timer_id, timer_wrapper);
+
+    // DEBUG: Log timer creation with stack trace
+    std.debug.print("[setTimeout] Created timer_id={d}, delay={d}ms\n", .{ timer_id, delay_u64 });
+    if (v8.ffi.v8_StackTrace_CurrentStackTrace(isolate, 10)) |stack_trace| {
+        const frame_count = v8.ffi.v8_StackTrace_GetFrameCount(stack_trace);
+        std.debug.print("[setTimeout] JS Stack ({d} frames):\n", .{frame_count});
+        var i: u32 = 0;
+        while (i < frame_count) : (i += 1) {
+            if (v8.ffi.v8_StackTrace_GetFrame(isolate, stack_trace, i)) |frame| {
+                const line = v8.ffi.v8_StackFrame_GetLineNumber(frame);
+                const col = v8.ffi.v8_StackFrame_GetColumn(frame);
+                if (v8.ffi.v8_StackFrame_GetFunctionName(frame)) |func_name| {
+                    if (v8.ffi.v8_String_ToCString(func_name, isolate)) |name_cstr| {
+                        if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
+                            if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
+                                std.debug.print("  [{d}] {s} at {s}:{d}:{d}\n", .{ i, name_cstr, script_cstr, line, col });
+                            }
+                        } else {
+                            std.debug.print("  [{d}] {s} at <unknown>:{d}:{d}\n", .{ i, name_cstr, line, col });
+                        }
+                    }
+                } else {
+                    if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
+                        if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
+                            std.debug.print("  [{d}] <anonymous> at {s}:{d}:{d}\n", .{ i, script_cstr, line, col });
+                        }
+                    } else {
+                        std.debug.print("  [{d}] <anonymous> at <unknown>:{d}:{d}\n", .{ i, line, col });
+                    }
+                }
+            }
+        }
+    }
 
     // Return timer ID (truncate to i32 for V8 Integer)
     const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
@@ -2131,6 +2134,41 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
         return;
     }
     const timer_id: TimerId = @intFromFloat(timer_id_f64);
+
+    // DEBUG: Log clearTimeout call with stack trace
+    std.debug.print("[clearTimeout] Called with timer_id={d}\n", .{timer_id});
+
+    // Capture and log JavaScript stack trace
+    if (v8.ffi.v8_StackTrace_CurrentStackTrace(isolate, 10)) |stack_trace| {
+        const frame_count = v8.ffi.v8_StackTrace_GetFrameCount(stack_trace);
+        std.debug.print("[clearTimeout] JS Stack ({d} frames):\n", .{frame_count});
+        var i: u32 = 0;
+        while (i < frame_count) : (i += 1) {
+            if (v8.ffi.v8_StackTrace_GetFrame(isolate, stack_trace, i)) |frame| {
+                const line = v8.ffi.v8_StackFrame_GetLineNumber(frame);
+                const col = v8.ffi.v8_StackFrame_GetColumn(frame);
+                if (v8.ffi.v8_StackFrame_GetFunctionName(frame)) |func_name| {
+                    if (v8.ffi.v8_String_ToCString(func_name, isolate)) |name_cstr| {
+                        if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
+                            if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
+                                std.debug.print("  [{d}] {s} at {s}:{d}:{d}\n", .{ i, name_cstr, script_cstr, line, col });
+                            }
+                        } else {
+                            std.debug.print("  [{d}] {s} at <unknown>:{d}:{d}\n", .{ i, name_cstr, line, col });
+                        }
+                    }
+                } else {
+                    if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
+                        if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
+                            std.debug.print("  [{d}] <anonymous> at {s}:{d}:{d}\n", .{ i, script_cstr, line, col });
+                        }
+                    } else {
+                        std.debug.print("  [{d}] <anonymous> at <unknown>:{d}:{d}\n", .{ i, line, col });
+                    }
+                }
+            }
+        }
+    }
 
     // Get timer interface and cancel the timer
     if (getTimerInterface()) |timer| {
@@ -2245,48 +2283,20 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
 /// This is called by context_manager.createChildContext via the
 /// setChildContextGlobalsCallback hook.
 ///
-/// Registers: setTimeout, clearTimeout, setInterval, clearInterval
+/// NOTE: Timer APIs (setTimeout, clearTimeout, setInterval, clearInterval) are now
+/// provided by the WebIDL WindowOrWorkerGlobalScope mixin via the Window interface.
+/// Child contexts should also receive these via WebIDL bindings, but that may require
+/// additional work to ensure child contexts properly inherit mixin methods.
 ///
-/// Note: This uses the same callbacks as registerCommonGlobals but
-/// can be called standalone for child contexts created by context_manager.
+/// For now, this is a no-op. If child contexts need timer support before full
+/// WebIDL mixin support is implemented, this will need to be addressed.
 pub fn registerTimerGlobalsOnContext(
     isolate: *v8.ffi.Isolate,
     v8_ctx: *v8.ffi.Context,
     global_obj: *v8.ffi.Object,
 ) void {
-    // setTimeout
-    {
-        const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return;
-        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
-        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setTimeout", 10) orelse return;
-        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-    }
-
-    // clearTimeout
-    {
-        const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return;
-        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
-        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearTimeout", 12) orelse return;
-        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-    }
-
-    // setInterval
-    {
-        const template = v8.ffi.v8_FunctionTemplate_New(isolate, setIntervalCallback, null) orelse return;
-        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
-        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setInterval", 11) orelse return;
-        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-    }
-
-    // clearInterval (uses same callback as clearTimeout)
-    {
-        const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return;
-        v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-        const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return;
-        const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearInterval", 13) orelse return;
-        _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-    }
+    // Timer APIs are now provided by WebIDL WindowOrWorkerGlobalScope mixin
+    _ = isolate;
+    _ = v8_ctx;
+    _ = global_obj;
 }

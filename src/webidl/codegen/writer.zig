@@ -595,10 +595,11 @@ pub fn writeMetadata(
                 op.special.? == .setter;
 
             if (should_include) {
-                // Count required (non-optional) parameters for arity
+                // Count required (non-optional and non-variadic) parameters for arity
+                // Variadic arguments (any...) are optional by nature - you can pass 0 or more
                 var arity: usize = 0;
                 for (op.arguments) |arg| {
-                    if (!arg.optional) {
+                    if (!arg.optional and !arg.variadic) {
                         arity += 1;
                     }
                 }
@@ -661,10 +662,11 @@ pub fn writeMetadata(
         for (own_operations) |op| {
             if (op.static) {
                 if (op.name) |name| {
-                    // Count required (non-optional) parameters for arity
+                    // Count required (non-optional and non-variadic) parameters for arity
+                    // Variadic arguments (any...) are optional by nature - you can pass 0 or more
                     var arity: usize = 0;
                     for (op.arguments) |arg| {
-                        if (!arg.optional) {
+                        if (!arg.optional and !arg.variadic) {
                             arity += 1;
                         }
                     }

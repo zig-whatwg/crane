@@ -122,7 +122,8 @@ const TimerRegistry = struct {
     }
 
     fn unregister(self: *Self, id: i32) ?*TimerCallbackContext {
-        return self.timers.fetchRemove(id).?.value;
+        const result = self.timers.fetchRemove(id);
+        return if (result) |kv| kv.value else null;
     }
 
     fn get(self: *Self, id: i32) ?*TimerCallbackContext {
@@ -197,13 +198,13 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
         }
     }
 
-    // Call the function
+    // Call the function (always pass args pointer, count determines usage)
     _ = v8_engine.ffi.v8_Function_Call(
         @ptrCast(function),
         v8_context,
         @ptrCast(undefined_recv),
         arg_count,
-        if (arg_count > 0) &args else null,
+        &args,
     );
 
     // For one-shot timers (setTimeout), clean up after invocation
@@ -593,9 +594,9 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
             // Create a new GlobalHandle from the handle
             const global_copy = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(local_value)) orelse return error.OutOfMemory;
 
-            // Copy arguments
-            const args_copy = if (arguments.len > 0)
-                try allocator.dupe(runtime.JSValue, arguments)
+            // Copy arguments (need mutable slice for struct field)
+            const args_copy: []runtime.JSValue = if (arguments.len > 0)
+                @constCast(try allocator.dupe(runtime.JSValue, arguments))
             else
                 &[_]runtime.JSValue{};
 
@@ -823,6 +824,11 @@ pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue,
 /// - timerTrampoline: Invokes V8 function when timer fires
 /// - LibuvTimerManager: Schedules timers via libuv (or platform timer backend)
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
+    std.debug.print("[SETTIMEOUT] call_setTimeout ENTRY - handler tag: {s}, timeout passed: {}, args len: {d}\n", .{
+        @tagName(handler),
+        timeout.wasPassed(),
+        arguments.len,
+    });
     const allocator = instance.ctx.allocator;
 
     // Get timeout value (default 0)
@@ -871,9 +877,9 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
             // The original GlobalHandle may be disposed by the caller
             const global_copy = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(local_value)) orelse return error.OutOfMemory;
 
-            // Copy arguments
-            const args_copy = if (arguments.len > 0)
-                try allocator.dupe(runtime.JSValue, arguments)
+            // Copy arguments (need mutable slice for struct field)
+            const args_copy: []runtime.JSValue = if (arguments.len > 0)
+                @constCast(try allocator.dupe(runtime.JSValue, arguments))
             else
                 &[_]runtime.JSValue{};
 
@@ -901,7 +907,8 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 
             // Schedule the timer via the platform timer interface
             if (instance.ctx.getTimer()) |timer_interface| {
-                _ = timer_interface.setTimeout(timeout_ms, timerTrampoline, timer_ctx);
+                const libuv_id = timer_interface.setTimeout(timeout_ms, timerTrampoline, timer_ctx);
+                std.debug.print("[JS_SETTIMEOUT] Created timer: registry_id={d}, libuv_id={d}, timeout={d}ms\n", .{ timer_id, libuv_id, timeout_ms });
             } else |_| {
                 // No timer interface available - clean up and fail
                 _ = registry.unregister(timer_id);
@@ -930,6 +937,7 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
     if (!id.wasPassed()) return;
 
     const timer_id = id.getValue();
+    std.debug.print("[JS_CLEARTIMEOUT] clearTimeout called with id={d}\n", .{timer_id});
     if (timer_id <= 0) return;
 
     // Get the timer registry
@@ -937,6 +945,7 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 
     // Unregister and clean up
     if (registry.unregister(timer_id)) |ctx| {
+        std.debug.print("[JS_CLEARTIMEOUT] Found timer in registry, cancelling\n", .{});
         // Get timer interface to cancel the timer
         if (instance.ctx.getTimer()) |timer_interface| {
             timer_interface.clearTimeout(@intCast(timer_id));
@@ -944,6 +953,8 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 
         // Clean up the context
         ctx.deinit();
+    } else {
+        std.debug.print("[JS_CLEARTIMEOUT] Timer id={d} not found in registry\n", .{timer_id});
     }
 }
 

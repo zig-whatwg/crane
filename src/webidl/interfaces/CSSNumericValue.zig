@@ -45,15 +45,15 @@ pub const CSSNumericValue = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "add", "call_add", 1 },
-            .{ "sub", "call_sub", 1 },
-            .{ "mul", "call_mul", 1 },
-            .{ "div", "call_div", 1 },
-            .{ "min", "call_min", 1 },
-            .{ "max", "call_max", 1 },
-            .{ "equals", "call_equals", 1 },
+            .{ "add", "call_add", 0 },
+            .{ "sub", "call_sub", 0 },
+            .{ "mul", "call_mul", 0 },
+            .{ "div", "call_div", 0 },
+            .{ "min", "call_min", 0 },
+            .{ "max", "call_max", 0 },
+            .{ "equals", "call_equals", 0 },
             .{ "to", "call_to", 1 },
-            .{ "toSum", "call_toSum", 1 },
+            .{ "toSum", "call_toSum", 0 },
             .{ "type", "call_type", 0 },
         };
         

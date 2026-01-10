@@ -40,9 +40,9 @@ pub const TrustedTypePolicy = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "createHTML", "call_createHTML", 2 },
-            .{ "createScript", "call_createScript", 2 },
-            .{ "createScriptURL", "call_createScriptURL", 2 },
+            .{ "createHTML", "call_createHTML", 1 },
+            .{ "createScript", "call_createScript", 1 },
+            .{ "createScriptURL", "call_createScriptURL", 1 },
         };
         
         /// Methods defined/overridden by this interface

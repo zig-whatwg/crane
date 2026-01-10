@@ -1585,6 +1585,12 @@ pub fn build(b: *std.Build) void {
     });
     intl_mod.addImport("infra", infra_mod);
 
+    // Testing module - TestRunner API for WPT (Web Platform Tests)
+    const testing_mod = b.addModule("testing", .{
+        .root_source_file = b.path("src/testing/root.zig"),
+        .target = target,
+    });
+
     // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
     v8_mod.addImport("intl", intl_mod);
 
@@ -2781,6 +2787,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "impls", .module = impls_mod },
                 .{ .name = "webidl", .module = webidl_mod },
                 .{ .name = "dictionaries", .module = dictionaries_mod },
+                .{ .name = "testing", .module = testing_mod },
             },
         }),
     });

@@ -127,7 +127,8 @@ fn byteLengthSizeFunction(arguments: []const runtime.JSValue) runtime.JSValue {
 pub fn get_size(instance: *runtime.Instance) anyerror!callbacks.Function {
     _ = instance;
 
-    // Return the byte length size function
-    // In a full implementation, this would be a global function cached per realm
-    return &byteLengthSizeFunction;
+    // Return the byte length size function as an opaque pointer.
+    // callbacks.Function is *anyopaque for FFI compatibility.
+    // In a full implementation, this would be a global function cached per realm.
+    return @ptrCast(@constCast(&byteLengthSizeFunction));
 }

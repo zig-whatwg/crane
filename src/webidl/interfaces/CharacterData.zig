@@ -60,9 +60,9 @@ pub const CharacterData = struct {
             .{ "insertData", "call_insertData", 2 },
             .{ "deleteData", "call_deleteData", 2 },
             .{ "replaceData", "call_replaceData", 3 },
-            .{ "before", "call_before", 1 },
-            .{ "after", "call_after", 1 },
-            .{ "replaceWith", "call_replaceWith", 1 },
+            .{ "before", "call_before", 0 },
+            .{ "after", "call_after", 0 },
+            .{ "replaceWith", "call_replaceWith", 0 },
             .{ "remove", "call_remove", 0 },
         };
         

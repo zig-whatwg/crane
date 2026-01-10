@@ -1302,6 +1302,15 @@ pub fn setDefaultView(instance: *runtime.Instance, window: ?*runtime.Instance) v
     internal.default_view = window;
 }
 
+/// Set the document's ready state
+/// Called by the browser context during page lifecycle transitions
+/// Per spec: "loading" -> "interactive" (DOM ready) -> "complete" (all resources loaded)
+pub fn setReadyState(instance: *runtime.Instance, state: enums.DocumentReadyState) void {
+    const internal = getInternal(instance) orelse return;
+    internal.ready_state = state;
+    std.debug.print("[Document] readyState set to: {s}\n", .{@tagName(state)});
+}
+
 /// Getter for designMode
 /// HTML §6.5.1 - Returns "on" or "off" depending on design mode state
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-designmode

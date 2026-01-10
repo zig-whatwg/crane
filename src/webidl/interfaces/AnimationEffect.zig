@@ -42,9 +42,9 @@ pub const AnimationEffect = struct {
             .{ "getTiming", "call_getTiming", 0 },
             .{ "getComputedTiming", "call_getComputedTiming", 0 },
             .{ "updateTiming", "call_updateTiming", 0 },
-            .{ "before", "call_before", 1 },
-            .{ "after", "call_after", 1 },
-            .{ "replace", "call_replace", 1 },
+            .{ "before", "call_before", 0 },
+            .{ "after", "call_after", 0 },
+            .{ "replace", "call_replace", 0 },
             .{ "remove", "call_remove", 0 },
         };
         

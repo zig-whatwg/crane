@@ -107,7 +107,7 @@ pub const RTCPeerConnection = struct {
             .{ "getSenders", "call_getSenders", 0 },
             .{ "getReceivers", "call_getReceivers", 0 },
             .{ "getTransceivers", "call_getTransceivers", 0 },
-            .{ "addTrack", "call_addTrack", 2 },
+            .{ "addTrack", "call_addTrack", 1 },
             .{ "removeTrack", "call_removeTrack", 1 },
             .{ "addTransceiver", "call_addTransceiver", 1 },
             .{ "createDataChannel", "call_createDataChannel", 1 },

@@ -475,6 +475,8 @@ pub fn fireLoad(
     _: std.mem.Allocator,
     window_instance: *runtime.Instance,
 ) void {
+    std.debug.print("[fireLoad] Starting - dispatching load event to window\n", .{});
+
     // Fire load event directly from Zig (not through JavaScript)
     // Per HTML spec, load fires on window, does not bubble, not cancelable
     // Use call_constructor to properly initialize internal state (including path for dispatch)
@@ -490,10 +492,12 @@ pub fn fireLoad(
     };
     defer interfaces.Event.deinit(event);
 
-    _ = interfaces.EventTarget.call_dispatchEvent(window_instance, event) catch |err| {
+    std.debug.print("[fireLoad] Event created, dispatching...\n", .{});
+    const result = interfaces.EventTarget.call_dispatchEvent(window_instance, event) catch |err| {
         std.debug.print("[fireLoad] Failed to dispatch event: {}\n", .{err});
         return;
     };
+    std.debug.print("[fireLoad] Dispatch complete, result: {}\n", .{result});
 }
 
 // =============================================================================

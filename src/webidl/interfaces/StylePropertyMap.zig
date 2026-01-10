@@ -36,8 +36,8 @@ pub const StylePropertyMap = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "set", "call_set", 2 },
-            .{ "append", "call_append", 2 },
+            .{ "set", "call_set", 1 },
+            .{ "append", "call_append", 1 },
             .{ "delete", "call_delete", 1 },
             .{ "clear", "call_clear", 0 },
         };

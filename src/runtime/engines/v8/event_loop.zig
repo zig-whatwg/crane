@@ -447,11 +447,72 @@ pub const V8EventLoop = struct {
         var did_work = false;
 
         // Step 1: Poll libuv for ready timer callbacks
-        // This processes any timers that have fired
+        // This processes any timers that have fired.
+        //
+        // IMPORTANT: When a timer callback schedules setTimeout(fn, 0), that timer
+        // needs the event loop to advance before it becomes "ready". UV_RUN_NOWAIT
+        // returns immediately without waiting, so newly scheduled 0ms timers aren't
+        // processed. This is critical for testharness.js which uses nested
+        // setTimeout(done, 0) for completion signaling.
+        //
+        // Solution: After a timer callback fires, use pollBlocking() (UV_RUN_ONCE)
+        // to ensure any newly scheduled 0ms timers get processed.
         if (self.timer_manager) |mgr| {
-            const timer_callback_invoked = mgr.poll();
-            if (timer_callback_invoked) {
-                did_work = true;
+            const timer_count = mgr.timers.count();
+            if (timer_count > 0) {
+                std.debug.print("[EVENT_LOOP] timer_manager: Polling {d} active timers\n", .{timer_count});
+            }
+
+            var timer_iterations: u32 = 0;
+            const max_timer_iterations: u32 = 100; // Prevent infinite loops
+            var any_timer_fired = false;
+
+            while (timer_iterations < max_timer_iterations) {
+                timer_iterations += 1;
+                const remaining = mgr.timers.count();
+                std.debug.print("[EVENT_LOOP] poll iteration {d}, {d} timers remaining\n", .{ timer_iterations, remaining });
+                const timer_callback_invoked = mgr.poll();
+                if (timer_callback_invoked) {
+                    std.debug.print("[EVENT_LOOP] Timer callback invoked!\n", .{});
+                    did_work = true;
+                    any_timer_fired = true;
+                    // Run microtasks after each timer to handle Promise callbacks
+                    v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+
+                    // Give libuv a micro-moment to update its internal timer state.
+                    // Without this, other 0ms timers scheduled at the same time
+                    // may not be recognized as "ready" by the next poll() call.
+                    std.Thread.sleep(10 * std.time.ns_per_ms);
+                } else {
+                    std.debug.print("[EVENT_LOOP] poll returned false, breaking\n", .{});
+                    break; // No more ready timers (for now)
+                }
+            }
+
+            // If a timer callback fired, it may have scheduled setTimeout(fn, 0).
+            // Use pollBlocking (UV_RUN_ONCE) to give libuv a chance to process it.
+            // This blocks until at least one callback fires or there are no active handles.
+            if (any_timer_fired and mgr.timers.count() > 0) {
+                // Poll one more time with blocking to catch newly scheduled 0ms timers
+                const blocking_callback_invoked = mgr.pollBlocking();
+                if (blocking_callback_invoked) {
+                    did_work = true;
+                    // Run microtasks after the blocking poll's callback
+                    v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+
+                    // That callback may have scheduled MORE 0ms timers - poll for them
+                    var extra_iterations: u32 = 0;
+                    while (extra_iterations < max_timer_iterations) {
+                        extra_iterations += 1;
+                        const extra_callback = mgr.poll();
+                        if (extra_callback) {
+                            did_work = true;
+                            v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+                        } else {
+                            break;
+                        }
+                    }
+                }
             }
         }
 

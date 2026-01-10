@@ -268,6 +268,12 @@ public:
     InvokeResult Invoke(uint64_t id, int argc, Local<Value>* argv) {
         InvokeResult result = {false, nullptr, nullptr};
 
+        // Create HandleScope FIRST - all Local handles must be created within a HandleScope.
+        // This is critical: without a HandleScope, Get() on Global handles creates Locals
+        // in whatever scope is on the stack, which may become invalid.
+        HandleScope handle_scope(isolate_);
+
+        // Now acquire lock and look up callback
         std::unique_lock<std::mutex> lock(mutex_);
 
         auto it = callbacks_.find(id);
@@ -284,7 +290,7 @@ public:
             return result;
         }
 
-        // Get Locals from Globals
+        // Get Locals from Globals - WITHIN the HandleScope
         Local<Function> func = cb.function.Get(isolate_);
         Local<Context> ctx = cb.context.Get(isolate_);
         Local<Value> receiver = cb.receiver.IsEmpty()
@@ -294,8 +300,7 @@ public:
         // Release lock before calling JS (avoids deadlock if callback registers another)
         lock.unlock();
 
-        // Create HandleScope for the call
-        HandleScope handle_scope(isolate_);
+        // Enter the callback's context
         Context::Scope context_scope(ctx);
 
         TryCatch try_catch(isolate_);
@@ -645,53 +650,103 @@ void crane_callback_manager_destroy() {
 
 /// Register a callback function
 ///
-/// CRITICAL: This MUST be called while inside a V8 callback handler where
-/// the func_local and ctx_local are valid Local handles. The function is
-/// immediately converted to a Global handle that persists.
+/// The pointers passed here are Global<T>* handles returned by V8 FFI functions
+/// (like v8_FunctionCallbackInfo_GetArgument). We need to get Local handles from
+/// these Globals within a HandleScope.
 ///
-/// @param func_local - Local<Function> internal pointer (from FunctionCallbackInfo::GetArgument)
-/// @param ctx_local - Local<Context> internal pointer
-/// @param receiver_local - Local<Value> internal pointer for 'this' binding (nullable)
+/// @param func_global - Global<Function>* pointer (from V8 FFI functions)
+/// @param ctx_global - Global<Context>* pointer
+/// @param receiver_global - Global<Value>* pointer for 'this' binding (nullable)
 /// @return Callback ID (non-zero) on success, 0 on failure
-uint64_t crane_callback_register(void* func_local, void* ctx_local, void* receiver_local) {
+uint64_t crane_callback_register(void* func_global, void* ctx_global, void* receiver_global) {
+    fprintf(stderr, "[crane_callback_register] ENTRY: func=%p, ctx=%p, recv=%p\n",
+            func_global, ctx_global, receiver_global);
+    fflush(stderr);
+
     CallbackManager* mgr = CallbackManager::Get();
     if (!mgr) {
         fprintf(stderr, "[crane_callback_register] ERROR: CallbackManager not initialized\n");
+        fflush(stderr);
         return 0;
     }
+    fprintf(stderr, "[crane_callback_register] CallbackManager OK\n");
+    fflush(stderr);
 
     Isolate* isolate = mgr->GetIsolate();
     if (!isolate) {
         fprintf(stderr, "[crane_callback_register] ERROR: No isolate\n");
+        fflush(stderr);
         return 0;
     }
+    fprintf(stderr, "[crane_callback_register] Isolate OK: %p\n", (void*)isolate);
+    fflush(stderr);
 
-    if (!func_local || !ctx_local) {
+    if (!func_global || !ctx_global) {
         fprintf(stderr, "[crane_callback_register] ERROR: null func or context\n");
+        fflush(stderr);
         return 0;
     }
 
-    // The func_local is the internal T* from a Local<Function>
-    // We need to reconstruct the Local from this pointer while we're still
-    // in the same HandleScope where the Local was created
-    Function* func_ptr = static_cast<Function*>(func_local);
-    Local<Function> func = *reinterpret_cast<Local<Function>*>(&func_ptr);
+    // Create a HandleScope to hold the Local handles we'll create
+    fprintf(stderr, "[crane_callback_register] Creating HandleScope...\n");
+    fflush(stderr);
+    HandleScope handle_scope(isolate);
+    fprintf(stderr, "[crane_callback_register] HandleScope created\n");
+    fflush(stderr);
 
-    Context* ctx_ptr = static_cast<Context*>(ctx_local);
-    Local<Context> ctx = *reinterpret_cast<Local<Context>*>(&ctx_ptr);
+    // The pointers are Global<T>* - cast and Get() to get valid Local handles
+    fprintf(stderr, "[crane_callback_register] Getting func from Global...\n");
+    fflush(stderr);
+    Global<Value>* func_handle = reinterpret_cast<Global<Value>*>(func_global);
+    Local<Value> func_value = func_handle->Get(isolate);
+    fprintf(stderr, "[crane_callback_register] Got func_value, IsEmpty=%d\n", func_value.IsEmpty());
+    fflush(stderr);
+    if (func_value.IsEmpty() || !func_value->IsFunction()) {
+        fprintf(stderr, "[crane_callback_register] ERROR: func is not a function (empty=%d, isFunc=%d)\n",
+                func_value.IsEmpty(), func_value.IsEmpty() ? 0 : func_value->IsFunction());
+        fflush(stderr);
+        return 0;
+    }
+    Local<Function> func = func_value.As<Function>();
+    fprintf(stderr, "[crane_callback_register] func OK\n");
+    fflush(stderr);
+
+    // Context - cast directly to Global<Context>*
+    fprintf(stderr, "[crane_callback_register] Getting context from Global...\n");
+    fflush(stderr);
+    Global<Context>* ctx_as_context = reinterpret_cast<Global<Context>*>(ctx_global);
+    Local<Context> ctx = ctx_as_context->Get(isolate);
+    fprintf(stderr, "[crane_callback_register] Got ctx, IsEmpty=%d\n", ctx.IsEmpty());
+    fflush(stderr);
+    if (ctx.IsEmpty()) {
+        fprintf(stderr, "[crane_callback_register] ERROR: could not get context\n");
+        fflush(stderr);
+        return 0;
+    }
+    fprintf(stderr, "[crane_callback_register] context OK\n");
+    fflush(stderr);
 
     Local<Value> receiver;
-    if (receiver_local) {
-        Value* recv_ptr = static_cast<Value*>(receiver_local);
-        receiver = *reinterpret_cast<Local<Value>*>(&recv_ptr);
+    if (receiver_global) {
+        fprintf(stderr, "[crane_callback_register] Getting receiver from Global...\n");
+        fflush(stderr);
+        Global<Value>* recv_handle = reinterpret_cast<Global<Value>*>(receiver_global);
+        receiver = recv_handle->Get(isolate);
+        fprintf(stderr, "[crane_callback_register] receiver OK\n");
+        fflush(stderr);
     }
 
+    fprintf(stderr, "[crane_callback_register] Calling mgr->Register...\n");
+    fflush(stderr);
     uint64_t id = mgr->Register(func, ctx, receiver);
 
     if (id > 0) {
         fprintf(stderr, "[crane_callback_register] SUCCESS: registered callback ID=%lu\n",
                 (unsigned long)id);
+    } else {
+        fprintf(stderr, "[crane_callback_register] Register returned 0\n");
     }
+    fflush(stderr);
 
     return id;
 }

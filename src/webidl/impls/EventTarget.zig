@@ -291,7 +291,7 @@ fn flattenAddEventListenerOptions(instance: *runtime.Instance, options: webidl.O
         },
         .handle => |h| {
             // Use engine abstraction to extract properties
-            
+
             // For now, we still have some V8-specific code here, but it's isolated
             // TODO: Move these property lookups to EngineInterface
             return extractAddEventListenerOptionsFromHandle(instance, h.ptr, result);
@@ -459,8 +459,11 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
 
 /// Operation: addEventListener
 pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
+    std.debug.print("[addEventListener] type='{s}', instance={*}\n", .{ @"type".asSlice(), instance });
+
     var internal = getInternalFromRegistry(instance);
     if (internal == null) {
+        std.debug.print("[addEventListener] Creating new internal state\n", .{});
         const ArenaAllocator = @import("runtime").ArenaAllocator;
         const new_internal = ArenaAllocator.get().create(InternalState) catch return error.OutOfMemory;
         new_internal.* = InternalState.init(std.heap.page_allocator);
@@ -482,6 +485,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     };
 
     try addAnEventListener(internal.?, instance, listener);
+    std.debug.print("[addEventListener] Added listener for '{s}'\n", .{@"type".asSlice()});
 }
 
 /// Operation: removeEventListener
@@ -509,7 +513,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 }
 
 pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, options: webidl.Opt(dictionaries.ObservableEventListenerOptions)) anyerror!*runtime.Instance {
-    _ = instance; _ = @"type"; _ = options;
+    _ = instance;
+    _ = @"type";
+    _ = options;
     return error.NotImplemented;
 }
 
@@ -543,6 +549,8 @@ pub fn invokeEventListenerCallback(
     legacy_flag: ?*bool,
 ) bool {
     const cb = callback orelse return false;
+    std.debug.print("[invokeEventListenerCallback] Starting callback invocation\n", .{});
+
     const v8_engine = @import("v8");
     const template_registry = v8_engine.template_registry;
     const engine_ctx = event.ctx.engine_ctx orelse return false;
@@ -561,11 +569,14 @@ pub fn invokeEventListenerCallback(
         return false;
     };
 
-    const result = cb.invoke1(@ptrCast(event_v8_obj)) catch {
+    std.debug.print("[invokeEventListenerCallback] Calling cb.invoke1()\n", .{});
+    const result = cb.invoke1(@ptrCast(event_v8_obj)) catch |err| {
+        std.debug.print("[invokeEventListenerCallback] invoke1 threw error: {s}\n", .{@errorName(err)});
         if (legacy_flag) |flag| flag.* = true;
         return false;
     };
 
+    std.debug.print("[invokeEventListenerCallback] invoke1 returned, result={?*}\n", .{result});
     if (result == null) {
         if (legacy_flag) |flag| flag.* = true;
     }

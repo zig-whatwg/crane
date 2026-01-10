@@ -101,7 +101,7 @@ pub const HTMLSlotElement = struct {
         pub const methods = .{
             .{ "assignedNodes", "call_assignedNodes", 0 },
             .{ "assignedElements", "call_assignedElements", 0 },
-            .{ "assign", "call_assign", 1 },
+            .{ "assign", "call_assign", 0 },
         };
         
         /// Methods defined/overridden by this interface

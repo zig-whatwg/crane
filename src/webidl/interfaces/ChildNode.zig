@@ -29,9 +29,9 @@ pub const ChildNode = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "before", "call_before", 1 },
-            .{ "after", "call_after", 1 },
-            .{ "replaceWith", "call_replaceWith", 1 },
+            .{ "before", "call_before", 0 },
+            .{ "after", "call_after", 0 },
+            .{ "replaceWith", "call_replaceWith", 0 },
             .{ "remove", "call_remove", 0 },
         };
         

@@ -91,6 +91,12 @@ fn getDefaultArgValue(comptime T: type) ?T {
         return null; // Signal to use undefined
     }
 
+    // Check for slice types (variadic arguments like "any... arguments")
+    // Return empty slice as default - variadic args are optional by nature
+    if (info == .pointer and info.pointer.size == .slice) {
+        return &[_]info.pointer.child{};
+    }
+
     // No valid default
     return null;
 }

@@ -2785,19 +2785,18 @@ pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(
 }
 
 /// Operation: setTimeout
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    std.debug.print("[WINDOW_SETTIMEOUT] Window.call_setTimeout ENTRY - delegating to mixin\n", .{});
+    const result = WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
+    std.debug.print("[WINDOW_SETTIMEOUT] Window.call_setTimeout result: {any}\n", .{result});
+    return result;
 }
 
 /// Operation: clearInterval
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
 }
 
 /// Operation: fetch
@@ -3203,10 +3202,9 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
 }
 
 /// Operation: clearTimeout
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
 }
 
 /// Operation: getComputedStyle
@@ -3241,12 +3239,9 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
 }
 
 /// Operation: setInterval
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
 }
 
 /// Operation: cancelAnimationFrame
