@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
-const GeolocationCoordinates = @import("GeolocationCoordinates.zig").GeolocationCoordinates;
+const GeolocationCoordinates = @import("interfaces").GeolocationCoordinates;
 
 pub const GeolocationPosition = struct {
     pub const Meta = struct {

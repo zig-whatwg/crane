@@ -4,120 +4,111 @@
 //! Unlike regular interfaces, callback interfaces (like EventListener) are
 //! JavaScript functions that need to be stored and invoked later.
 //!
-//! ## Architecture
+//! ## The Problem
 //!
-//! V8 handles NEVER cross the FFI boundary. Instead, we use opaque callback IDs:
-//!
-//! ```
-//! ┌─────────────────────────────────────────────────────────────────┐
-//! │ Zig DOM Implementation                                          │
-//! │ - EventTarget stores opaque callback IDs (u64)                  │
-//! │ - Calls C++ to register/invoke callbacks                        │
-//! │ - Never sees V8 types                                           │
-//! └───────────────────────────┬─────────────────────────────────────┘
-//!                             │ FFI (opaque IDs only)
-//! ┌───────────────────────────▼─────────────────────────────────────┐
-//! │ C++ CallbackManager                                              │
-//! │ - Owns all Global<Function> handles                              │
-//! │ - Handles registration: Local → Global immediately               │
-//! │ - Handles invocation with proper HandleScope                     │
-//! │ - Integrates with V8 GC via weak callbacks                       │
-//! └───────────────────────────┬─────────────────────────────────────┘
-//!                             │
-//!                             ▼
-//!                           V8
+//! In WebIDL:
+//! ```idl
+//! callback interface EventListener {
+//!     undefined handleEvent(Event event);
+//! };
 //! ```
 //!
-//! ## The Problem (Previous Architecture)
+//! This is NOT a regular interface - it's a type that represents a callable.
+//! In JavaScript, it's typically a function or an object with a handleEvent method.
 //!
-//! V8's `Local<T>` is NOT just a `T*` pointer - it's a handle containing `T**`
-//! that points to a slot in an active HandleScope. When we passed the internal
-//! pointer through FFI and tried to reconstruct the Local, we created garbage.
+//! ## Solution
 //!
-//! ## The Solution
+//! We wrap JavaScript callbacks in a CallbackWrapper that:
+//! 1. Stores a persistent reference to the V8 Function/Object using Global handles
+//! 2. Provides a way to invoke the callback later
+//! 3. Properly releases the reference when done
 //!
-//! Callbacks are registered with the C++ CallbackManager IMMEDIATELY upon receipt
-//! (while still in the V8 callback handler). The Zig side only ever sees opaque
-//! uint64 callback IDs, never V8 handles.
+//! This is different from regular interfaces which store a pointer to a Zig struct.
+//!
+//! ## V8 Handle Lifecycle
+//!
+//! V8 uses two types of handles:
+//! - **Local<T>**: Stack-bound, invalid after HandleScope ends
+//! - **Global<T>**: Heap-allocated, persists until explicitly disposed
+//!
+//! CallbackWrapper uses Global handles to ensure callbacks survive past the
+//! HandleScope that created them.
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
+const global_handles = @import("global_handles.zig");
+const GlobalHandle = global_handles.GlobalHandle;
 const runtime = @import("runtime");
 
 /// Wrapper for a JavaScript callback (function or object with method)
 ///
 /// Used for WebIDL callback interfaces like EventListener.
-/// Stores an opaque callback ID - the actual V8 Global handles are owned by
-/// the C++ CallbackManager.
+/// Stores Global handles to ensure callbacks persist across GC cycles and HandleScope destruction.
 pub const CallbackWrapper = struct {
-    /// Opaque callback ID - C++ CallbackManager owns the actual V8 handle
-    callback_id: u64,
-
-    /// The V8 isolate this callback belongs to (for creating HandleScopes)
+    /// The V8 isolate this callback belongs to
     isolate: *v8.Isolate,
+
+    /// Persistent Global handle to the callback function
+    /// This keeps the function alive across GC cycles and HandleScope destruction
+    callback_function_global: ?GlobalHandle,
+
+    /// Persistent Global handle to the callback object (if callback is an object with methods)
+    callback_object_global: ?GlobalHandle,
+
+    /// The method name to call (for object callbacks, e.g., "handleEvent")
+    method_name: ?[*:0]const u8,
+
+    /// Whether this callback is a function (true) or object (false)
+    is_function: bool,
 
     /// Allocator used to create this wrapper
     allocator: std.mem.Allocator,
 
-    /// Whether this callback is a function (true) or object with handleEvent (false)
-    is_function: bool,
+    /// V8 context Global handle where this callback was created
+    /// This is used to ensure we call the callback in the correct context
+    callback_context: ?*v8.Context = null,
 
-    /// The method name to call (for object callbacks, e.g., "handleEvent")
-    /// Null for direct function callbacks
-    method_name: ?[*:0]const u8,
+    /// Raw V8 context address (stable identity for comparison)
+    /// Unlike Global handle pointers, this is the actual V8 internal context address
+    callback_context_raw_addr: ?*anyopaque = null,
 
-    /// Create a wrapper by registering a JavaScript function with the CallbackManager
-    ///
-    /// CRITICAL: This MUST be called while inside the V8 callback handler where
-    /// `func` and `context` are valid Local handles. The function is immediately
-    /// converted to a Global handle in C++ before any FFI boundary crossing.
-    pub fn initFromFunction(
-        allocator: std.mem.Allocator,
-        isolate: *v8.Isolate,
-        context: *v8.Context,
-        func: *v8.Function,
-        receiver: ?*v8.Value,
-    ) !*CallbackWrapper {
-        // Register with C++ CallbackManager - MUST happen while Locals are valid
-        const callback_id = v8.crane_callback_register(
-            @ptrCast(func),
-            @ptrCast(context),
-            if (receiver) |r| @ptrCast(r) else null,
-        );
-
-        if (callback_id == 0) {
-            std.debug.print("[CallbackWrapper.initFromFunction] ERROR: registration failed\n", .{});
-            return error.CallbackRegistrationFailed;
-        }
-
-        std.debug.print("[CallbackWrapper.initFromFunction] SUCCESS: callback_id={d}\n", .{callback_id});
-
-        const wrapper = try allocator.create(CallbackWrapper);
-        wrapper.* = .{
-            .callback_id = callback_id,
-            .isolate = isolate,
-            .allocator = allocator,
-            .is_function = true,
-            .method_name = null,
-        };
-        return wrapper;
-    }
-
-    /// Legacy compatibility: Create from function with context
-    /// This is the same as initFromFunction but matches the old API signature
+    /// Create a wrapper for a JavaScript function callback
     pub fn initFunction(
         allocator: std.mem.Allocator,
         isolate: *v8.Isolate,
         context: *v8.Context,
         func: *v8.Function,
     ) !*CallbackWrapper {
-        return initFromFunction(allocator, isolate, context, func, null);
+        // IMPORTANT: In our architecture, values from FunctionCallbackInfo_GetArgument
+        // are ALREADY Global<Value>* handles (heap-allocated by the C++ side).
+        // We should NOT call v8_Value_ToGlobal on them, as that function expects
+        // a raw Local<Value> internal pointer, not a Global<Value>*.
+        //
+        // Instead, we just wrap the existing Global pointer.
+        const global = GlobalHandle{ .ptr = @ptrCast(func) };
+
+        // Use the provided context where this callback was created/intended to run
+        const current_ctx = context;
+
+        // Get the raw V8 context address for stable identity comparison
+        // (Global handle pointers change each time GetCurrentContext is called)
+        const raw_addr = v8.v8_Context_GetRawAddress(current_ctx);
+
+        const wrapper = try allocator.create(CallbackWrapper);
+        wrapper.* = .{
+            .isolate = isolate,
+            .callback_function_global = global,
+            .callback_object_global = null,
+            .method_name = null,
+            .is_function = true,
+            .allocator = allocator,
+            .callback_context = current_ctx,
+            .callback_context_raw_addr = raw_addr,
+        };
+        return wrapper;
     }
 
-    /// Create a wrapper for a JavaScript object callback (with method like handleEvent)
-    ///
-    /// For object callbacks, we register the object and store the method name.
-    /// The method is looked up and called when invoke is called.
+    /// Create a wrapper for a JavaScript object callback (with method)
     pub fn initObject(
         allocator: std.mem.Allocator,
         isolate: *v8.Isolate,
@@ -125,134 +116,229 @@ pub const CallbackWrapper = struct {
         object: *v8.Object,
         method_name: [*:0]const u8,
     ) !*CallbackWrapper {
-        // For object callbacks, we need to get the method and register that
-        // First, look up the method on the object
-        const name_str = v8.v8_String_NewFromUtf8(
-            isolate,
-            method_name,
-            @intCast(std.mem.len(method_name)),
-        ) orelse return error.OutOfMemory;
-        defer v8.v8_String_Dispose(name_str);
-
-        const method_value = v8.v8_Object_Get(@ptrCast(object), context, @ptrCast(name_str)) orelse {
-            return error.MethodNotFound;
+        // Convert Local<Object> to Global<Value> for persistence
+        const global = GlobalHandle.create(isolate, @ptrCast(object)) orelse {
+            return error.GlobalHandleCreationFailed;
         };
 
-        if (!v8.v8_Value_IsFunction(method_value)) {
-            return error.MethodNotCallable;
-        }
+        // Use the provided context
+        const current_ctx = context;
 
-        // Register the method function with the object as receiver
-        const callback_id = v8.crane_callback_register(
-            @ptrCast(method_value),
-            @ptrCast(context),
-            @ptrCast(object), // 'this' binding
-        );
-
-        if (callback_id == 0) {
-            return error.CallbackRegistrationFailed;
-        }
+        // Get the raw V8 context address for stable identity comparison
+        const raw_addr = v8.v8_Context_GetRawAddress(current_ctx);
 
         const wrapper = try allocator.create(CallbackWrapper);
         wrapper.* = .{
-            .callback_id = callback_id,
             .isolate = isolate,
-            .allocator = allocator,
-            .is_function = false,
+            .callback_function_global = null,
+            .callback_object_global = global,
             .method_name = method_name,
+            .is_function = false,
+            .allocator = allocator,
+            .callback_context = current_ctx,
+            .callback_context_raw_addr = raw_addr,
         };
         return wrapper;
     }
 
-    /// Clean up the callback wrapper and remove from CallbackManager
+    /// Clean up the callback wrapper and dispose Global handles
     pub fn deinit(self: *CallbackWrapper) void {
-        // Remove from C++ CallbackManager (releases the Global handle)
-        v8.crane_callback_remove(self.callback_id);
+        // Dispose Global handles to allow V8 GC to collect the underlying values
+        if (self.callback_function_global) |handle| {
+            handle.dispose();
+        }
+        if (self.callback_object_global) |handle| {
+            handle.dispose();
+        }
         self.allocator.destroy(self);
     }
 
-    /// Invoke the callback with no arguments
-    pub fn invoke0(self: *CallbackWrapper) !?*v8.Value {
-        const result = v8.crane_callback_invoke0(self.callback_id);
-        defer if (result.return_value) |rv| v8.crane_callback_free_result(rv);
-
-        if (!result.success) {
-            if (result.getErrorMessage()) |msg| {
-                std.debug.print("[CallbackWrapper.invoke0] ERROR: {s}\n", .{msg});
-            }
-            return error.CallbackInvocationFailed;
+    /// Get the callback function as a Local pointer for invocation
+    /// Returns null if no function is stored or the Global handle is empty
+    fn getCallbackFunction(self: *CallbackWrapper) ?*v8.Function {
+        if (self.callback_function_global) |handle| {
+            const local = handle.get(self.isolate) orelse return null;
+            return @ptrCast(local);
         }
+        return null;
+    }
 
-        return result.return_value;
+    /// Get the callback object as a Local pointer for invocation
+    /// Returns null if no object is stored or the Global handle is empty
+    fn getCallbackObject(self: *CallbackWrapper) ?*v8.Object {
+        if (self.callback_object_global) |handle| {
+            const local = handle.get(self.isolate) orelse return null;
+            return @ptrCast(local);
+        }
+        return null;
+    }
+
+    /// Invoke the callback with no arguments
+    pub fn call0(self: *CallbackWrapper, context: *v8.Context) ?*v8.Value {
+        return self.callN(context, &.{});
     }
 
     /// Invoke the callback with one argument
-    pub fn invoke1(self: *CallbackWrapper, arg: *v8.Value) !?*v8.Value {
-        const result = v8.crane_callback_invoke1(self.callback_id, arg);
-        // Note: Don't free return_value here - caller may need it
-        // The return value is owned by the caller now
-
-        if (!result.success) {
-            if (result.getErrorMessage()) |msg| {
-                std.debug.print("[CallbackWrapper.invoke1] ERROR: {s}\n", .{msg});
-            }
-            return error.CallbackInvocationFailed;
-        }
-
-        return result.return_value;
+    pub fn call1(self: *CallbackWrapper, context: *v8.Context, arg0: *v8.Value) ?*v8.Value {
+        return self.callN(context, &.{arg0});
     }
 
     /// Invoke the callback with multiple arguments
-    pub fn invoke(self: *CallbackWrapper, args: []const *v8.Value) !?*v8.Value {
-        const result = v8.crane_callback_invoke(
-            self.callback_id,
-            @intCast(args.len),
-            if (args.len > 0) @ptrCast(@constCast(args.ptr)) else null,
-        );
-
-        if (!result.success) {
-            if (result.getErrorMessage()) |msg| {
-                std.debug.print("[CallbackWrapper.invoke] ERROR: {s}\n", .{msg});
-            }
-            return error.CallbackInvocationFailed;
-        }
-
-        return result.return_value;
-    }
-
-    /// Legacy compatibility: call0
-    pub fn call0(self: *CallbackWrapper, context: *v8.Context) ?*v8.Value {
-        _ = context;
-        return self.invoke0() catch null;
-    }
-
-    /// Legacy compatibility: call1
-    pub fn call1(self: *CallbackWrapper, context: *v8.Context, arg: *v8.Value) ?*v8.Value {
-        _ = context;
-        return self.invoke1(arg) catch null;
-    }
-
-    /// Legacy compatibility: callN
+    ///
+    /// NOTE: The v8_Function_Call FFI expects Global<T>* handles, not Local<T> values.
+    /// We pass the raw GlobalHandle.ptr which IS the Global<T>* from the C++ side.
+    /// The arguments are also expected to be Global handles, but since they come from
+    /// the active HandleScope context (e.g., wrapping a MessageEvent), we need to
+    /// convert them to Global handles first.
     pub fn callN(self: *CallbackWrapper, context: *v8.Context, args: []const *v8.Value) ?*v8.Value {
-        _ = context;
-        return self.invoke(args) catch null;
-    }
+        // Check isolate and context consistency
+        const current_ctx = v8.v8_Isolate_GetCurrentContext(self.isolate);
 
-    /// Check if two CallbackWrappers represent the same callback
-    /// Used for removeEventListener to match callbacks
-    pub fn equals(self: *const CallbackWrapper, other: *const CallbackWrapper) bool {
-        return self.callback_id == other.callback_id;
-    }
+        // CRITICAL: Use the context where the callback was created, not the call-site context!
+        // This ensures closure variables are resolved correctly.
+        const effective_context = self.callback_context orelse context;
 
-    /// Get the callback ID (for external comparison if needed)
-    pub fn getId(self: *const CallbackWrapper) u64 {
-        return self.callback_id;
+        // Compare raw V8 context addresses (not Global handle pointers!) to determine
+        // if we need to switch contexts. Global handle pointers are different each time
+        // GetCurrentContext is called, even for the same underlying V8 context.
+        const current_raw_addr = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
+        const need_context_switch = (current_raw_addr != self.callback_context_raw_addr);
+
+        if (need_context_switch) {
+            v8.v8_Context_Enter(effective_context);
+        }
+        defer if (need_context_switch) {
+            v8.v8_Context_Exit(effective_context);
+        };
+
+        if (self.is_function) {
+            // Direct function call - use Global handle directly (not .get() which gives Local)
+            const func_global = self.callback_function_global orelse {
+                return null;
+            };
+
+            // Get receiver - use undefined since callbacks don't typically use 'this'
+            // Note: v8_Undefined already returns a Global<Value>*, so we don't need to wrap it again
+            const recv_global = v8.v8_Undefined(self.isolate);
+            // No defer needed - v8_Undefined returns a static Global that shouldn't be disposed
+
+            // Convert args to Global handles for the FFI call
+            // The args are Local values that need to be converted
+            var global_args: [16]*v8.Value = undefined; // Max 16 args
+            const arg_count = @min(args.len, 16);
+
+            // Use current isolate for arg conversion (same as what v8_Function_Call_Safe uses)
+            const current_isolate_for_args = v8.v8_Isolate_GetCurrent() orelse self.isolate;
+
+            for (0..arg_count) |i| {
+                // Convert Local to Global for the FFI call
+                const global_arg = v8.v8_Value_ToGlobal(current_isolate_for_args, @ptrCast(args[i]));
+                if (global_arg == null) {
+                    return null;
+                }
+                global_args[i] = global_arg.?;
+            }
+            defer {
+                // Dispose temporary Global handles after the call
+                for (0..arg_count) |i| {
+                    v8.v8_Global_Dispose(global_args[i]);
+                }
+            }
+
+            // Pass Global handles: func_global.ptr is the Global<Function>*
+            // Use the safe version with TryCatch to capture any exceptions
+            const call_result = if (arg_count > 0)
+                v8.v8_Function_Call_Safe(
+                    @ptrCast(func_global.ptr), // Global<Function>*
+                    effective_context, // Global<Context>* - use creation context!
+                    @ptrCast(recv_global), // Global<Value>* - 'this' is undefined
+                    @intCast(arg_count),
+                    @ptrCast(&global_args),
+                )
+            else blk: {
+                // No args - use call0 pattern with undefined as placeholder
+                var empty_args: [1]*v8.Value = undefined;
+                break :blk v8.v8_Function_Call_Safe(
+                    @ptrCast(func_global.ptr),
+                    effective_context, // Global<Context>* - use creation context!
+                    @ptrCast(recv_global),
+                    0,
+                    &empty_args,
+                );
+            };
+            defer v8.v8_FreeFunctionCallResult(call_result);
+
+            // Check for error
+            if (call_result.error_info) |_| {
+                return null;
+            }
+
+            return call_result.value;
+        } else {
+            // Object method call - get Local from Global handle for property access
+            const obj = self.getCallbackObject() orelse return null;
+            const method_name_str = self.method_name orelse return null;
+
+            // Get the method from the object
+            const name_str = v8.v8_String_NewFromUtf8(
+                self.isolate,
+                method_name_str,
+                @intCast(std.mem.len(method_name_str)),
+            ) orelse return null;
+
+            const method_value = v8.v8_Object_Get(obj, context, @ptrCast(name_str)) orelse return null;
+
+            if (!v8.v8_Value_IsFunction(method_value)) {
+                return null;
+            }
+
+            // Convert method to Global handle for FFI call
+            const method_global = v8.v8_Value_ToGlobal(self.isolate, method_value) orelse return null;
+            defer v8.v8_Global_Dispose(method_global);
+
+            // Convert object to Global for 'this' parameter
+            const obj_global = self.callback_object_global orelse return null;
+
+            // Convert args to Global handles
+            var global_args: [16]*v8.Value = undefined;
+            const arg_count = @min(args.len, 16);
+            for (0..arg_count) |i| {
+                const global_arg = v8.v8_Value_ToGlobal(self.isolate, @ptrCast(args[i]));
+                if (global_arg == null) return null;
+                global_args[i] = global_arg.?;
+            }
+            defer {
+                for (0..arg_count) |i| {
+                    v8.v8_Global_Dispose(global_args[i]);
+                }
+            }
+
+            if (arg_count > 0) {
+                return v8.v8_Function_Call(
+                    @ptrCast(method_global), // Global<Function>*
+                    context, // Global<Context>*
+                    @ptrCast(obj_global.ptr), // Global<Object>* - 'this' is callback object
+                    @intCast(arg_count),
+                    @ptrCast(&global_args),
+                );
+            } else {
+                var empty_args: [1]*v8.Value = undefined;
+                return v8.v8_Function_Call(
+                    @ptrCast(method_global),
+                    context,
+                    @ptrCast(obj_global.ptr),
+                    0,
+                    &empty_args,
+                );
+            }
+        }
     }
 };
 
 /// Create a CallbackWrapper from a V8 value
 ///
 /// Handles both function callbacks and object callbacks (with handleEvent method).
+/// The V8 value is converted to a Global handle for persistent storage.
 /// Returns null if the value is not a valid callback.
 pub fn createFromV8Value(
     allocator: std.mem.Allocator,
@@ -266,14 +352,27 @@ pub fn createFromV8Value(
     }
 
     if (v8.v8_Value_IsFunction(value)) {
-        // Direct function callback
+        // Direct function callback - initFunction now takes context
         const func: *v8.Function = @ptrCast(value);
-        return try CallbackWrapper.initFromFunction(allocator, isolate, context, func, null);
+        return try CallbackWrapper.initFunction(allocator, isolate, context, func);
     }
 
     if (v8.v8_Value_IsObject(value)) {
         // Check if object has the required method
         const obj: *v8.Object = @ptrCast(value);
+        const name_str = v8.v8_String_NewFromUtf8(
+            isolate,
+            method_name,
+            @intCast(std.mem.len(method_name)),
+        ) orelse return error.OutOfMemory;
+
+        const method_value = v8.v8_Object_Get(obj, context, @ptrCast(name_str)) orelse return null;
+
+        if (!v8.v8_Value_IsFunction(method_value)) {
+            return null;
+        }
+
+        // initObject now takes context
         return try CallbackWrapper.initObject(allocator, isolate, context, obj, method_name);
     }
 
@@ -315,7 +414,6 @@ pub const EventListenerCallback = struct {
 
     /// Call the event listener with an Event argument
     pub fn handleEvent(self: EventListenerCallback, context: *v8.Context, event: *v8.Value) ?*v8.Value {
-        _ = context;
-        return self.wrapper.invoke1(event) catch null;
+        return self.wrapper.call1(context, event);
     }
 };

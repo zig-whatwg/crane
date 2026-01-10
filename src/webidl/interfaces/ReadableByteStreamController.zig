@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
-const ReadableStreamBYOBRequest = @import("ReadableStreamBYOBRequest.zig").ReadableStreamBYOBRequest;
+const ReadableStreamBYOBRequest = @import("interfaces").ReadableStreamBYOBRequest;
 
 pub const ReadableByteStreamController = struct {
     pub const Meta = struct {

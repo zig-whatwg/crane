@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -47,17 +46,15 @@ pub fn get_joinedGroups(instance: *runtime.Instance) anyerror!runtime.JSValue {
 }
 
 /// Operation: joinGroup
-pub fn call_joinGroup(instance: *runtime.Instance, groupAddress: runtime.DOMString, options: webidl.Opt(dictionaries.MulticastGroupOptions)) anyerror!runtime.JSValue {
+pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
-    _ = groupAddress;
-    _ = options;
+    _ = ipAddress;
     return error.NotImplemented;
 }
 
 /// Operation: leaveGroup
-pub fn call_leaveGroup(instance: *runtime.Instance, groupAddress: runtime.DOMString, options: webidl.Opt(dictionaries.MulticastGroupOptions)) anyerror!runtime.JSValue {
+pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
-    _ = groupAddress;
-    _ = options;
+    _ = ipAddress;
     return error.NotImplemented;
 }

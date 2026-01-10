@@ -25,13 +25,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const MessageEvent = interfaces.MessageEvent;
 
-// V8 engine for Global handle disposal
-// Note: This direct import is needed for proper GC cleanup of MessageEvent.data
-// which stores a V8 Global handle when the event carries JSON-parsed data.
-// Ideally this would go through EngineInterface, but that abstraction doesn't
-// currently support handle disposal.
-const v8_engine = @import("v8");
-
 pub const State = MessageEvent.State;
 
 /// Static sentinel value for "undefined" data - avoids using @ptrFromInt
@@ -83,23 +76,6 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-
-    // Dispose the V8 Global handle if state.own.data holds one that we own
-    // This is critical for preventing memory leaks and use-after-free crashes.
-    // The Global handle was created in Worker.dispatchMessageEvent when JSON-parsing
-    // the message data, and stored via runtime.JSValue.fromHandle() which sets needs_disposal = true.
-    switch (state.own.data) {
-        .handle => |h| {
-            if (h.needs_disposal) {
-                v8_engine.ffi.v8_Global_Dispose(@ptrCast(h.ptr));
-            }
-        },
-        else => {
-            // Other JSValue variants (undefined, null, boolean, number, string, instance)
-            // don't require V8 Global handle disposal
-        },
-    }
-
     if (state.own._internal) |internal| {
         if (internal.owns_binary) {
             if (internal.message_data) |data| {
@@ -125,19 +101,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     errdefer deinit(instance);
 
     const state = instance.getState(State);
-
-    // Create internal state for Event (required for flags like dispatch_flag, initialized_flag, path)
-    // This is stored in the Event's part of the state hierarchy (state.base.own._internal)
-    // MessageEvent -> Event, so we use state.base.own._internal
-    const EventImpl = @import("Event.zig");
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const arena = ArenaAllocator.get();
-    const event_internal = try arena.create(EventImpl.InternalState);
-    event_internal.* = EventImpl.InternalState.init(ctx.allocator);
-    state.base.own._internal = event_internal;
-
-    // Set the initialized flag
-    event_internal.initialized_flag = true;
 
     // Initialize base Event attributes (Event fields in state.base.own)
     state.base.own.type = try @"type".clone(ctx.allocator);
@@ -191,27 +154,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    const data = state.own.data;
-    // Debug: log what we're returning
-    switch (data) {
-        .handle => |h| {
-            std.debug.print("[ME-GET-DATA] returning handle: ptr={*}, scope={s}, needs_disposal={}\n", .{
-                h.ptr,
-                if (h.handle_scope == .global) "global" else "local",
-                h.needs_disposal,
-            });
-        },
-        .undefined => {
-            std.debug.print("[ME-GET-DATA] returning undefined\n", .{});
-        },
-        .null => {
-            std.debug.print("[ME-GET-DATA] returning null\n", .{});
-        },
-        else => {
-            std.debug.print("[ME-GET-DATA] returning other type\n", .{});
-        },
-    }
-    return data;
+    return state.own.data;
 }
 
 /// Getter for origin
@@ -313,8 +256,7 @@ pub fn createTextMessageEvent(
 
     // Store the text data as a DOMString (copy for ownership)
     const text_string = try allocator.dupe(u8, text_data);
-    // Create a proper JSValue.string instead of invalid @ptrCast
-    state.own.data = .{ .string = .{ .data = text_string, .owned = true } };
+    state.own.data = @ptrCast(text_string.ptr);
 
     // Set origin (copy for ownership)
     state.own.origin = try allocator.dupe(u8, origin);
@@ -360,9 +302,7 @@ pub fn createBinaryMessageEvent(
 
     // For binary data, the actual conversion to Blob/ArrayBuffer
     // happens in the JS binding layer based on binaryType (MessageEvent fields in state.own)
-    // Create a proper JSValue.string for binary data (will be converted to ArrayBuffer/Blob by caller)
-    const binary_copy = if (owns_data) binary_data else try allocator.dupe(u8, binary_data);
-    state.own.data = .{ .string = .{ .data = binary_copy, .owned = true } };
+    state.own.data = @ptrCast(binary_data.ptr);
 
     // Set origin (copy for ownership)
     state.own.origin = try allocator.dupe(u8, origin_str);
@@ -372,7 +312,7 @@ pub fn createBinaryMessageEvent(
     // Store in internal state
     if (state.own._internal) |internal| {
         internal.message_data = .{ .binary = binary_data };
-        internal.owns_binary = owns_data;
+        internal.owns_data = owns_data;
     }
 
     return instance;

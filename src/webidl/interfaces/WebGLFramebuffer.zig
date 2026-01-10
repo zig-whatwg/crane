@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WebGLObject = @import("WebGLObject.zig").WebGLObject;
+const WebGLObject = @import("interfaces").WebGLObject;
 const USVString = @import("typedefs").USVString;
 
 pub const WebGLFramebuffer = struct {

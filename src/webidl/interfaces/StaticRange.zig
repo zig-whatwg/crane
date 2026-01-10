@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AbstractRange = @import("AbstractRange.zig").AbstractRange;
-const Node = @import("Node.zig").Node;
+const AbstractRange = @import("interfaces").AbstractRange;
+const Node = @import("interfaces").Node;
 const StaticRangeInit = @import("dictionaries").StaticRangeInit;
 
 pub const StaticRange = struct {

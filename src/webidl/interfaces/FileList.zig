@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const File = @import("File.zig").File;
+const File = @import("interfaces").File;
 
 pub const FileList = struct {
     pub const Meta = struct {
