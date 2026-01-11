@@ -354,6 +354,11 @@ fn invokeLegacyOnmessageHandler(
         return;
     };
 
+    // Create HandleScope for V8 operations - required when calling V8 APIs
+    // that create Local handles outside of a V8-initiated callback
+    const scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(scope);
+
     // Retrieve Local handle from Global handle
     const local_value = onmessage_global.get(isolate) orelse {
         std.log.warn("MessagePort.invokeLegacyOnmessageHandler: Failed to get Local from GlobalHandle", .{});

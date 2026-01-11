@@ -275,16 +275,28 @@ pub fn generateTestRunnerScript() []const u8 {
     \\    __wpt_completed = true;
     \\    __wpt_harness_status = harness_status;
     \\    testRunner._harnessStatus = harness_status;
-    \\    
-    \\    // Output results
-    \\    var status = harness_status || {status: 0};
+    \\
+    \\    // Build subtests array in format expected by Python executor:
+    \\    // [name, status, message, stack] for each test
     \\    var results = __wpt_results || [];
-    \\    var passed = 0;
+    \\    var subtests = [];
     \\    for (var i = 0; i < results.length; i++) {
-    \\        if (results[i].status === 0) passed++;
+    \\        var r = results[i];
+    \\        subtests.push([r.name, r.status, r.message || null, r.stack || null]);
     \\    }
-    \\    console.log("CRANE_WPT_RESULT: " + passed + "/" + results.length + " passed");
-    \\    
+    \\
+    \\    // Output JSON result in format expected by executorcrane.py:
+    \\    // [test_id, harness_status, harness_message, harness_stack, subtests]
+    \\    var status = harness_status || {status: 0, message: null};
+    \\    var result = [
+    \\        null,                           // test_id
+    \\        status.status,                  // harness_status (0=OK, 1=ERROR, 2=TIMEOUT)
+    \\        status.message || null,         // harness_message
+    \\        null,                           // harness_stack
+    \\        subtests                        // array of [name, status, message, stack]
+    \\    ];
+    \\    console.log("CRANE_WPT_RESULT:" + JSON.stringify(result));
+    \\
     \\    // Signal completion via testRunner
     \\    testRunner.notifyDone();
     \\};
