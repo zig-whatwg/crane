@@ -55,6 +55,139 @@ pub const InternalState = struct {
     }
 };
 
+// ============================================================================
+// BlobPart conversion helpers (JS Array → Zig BlobPart[])
+// ============================================================================
+
+/// BlobPart type from the algorithm module
+const AlgoBlobPart = file.algorithms.BlobPart;
+
+/// Convert a JavaScript array of BlobParts to Zig slice
+///
+/// Iterates through the JS array, extracts each element's data based on type
+/// (String, ArrayBuffer, TypedArray, Blob), and returns a slice of AlgoBlobPart.
+///
+/// Caller must free the returned slice and call freeBlobPartStrings() to clean up
+/// any allocated string data.
+fn convertJSBlobPartsToZig(
+    allocator: std.mem.Allocator,
+    v8_ctx: *v8.Context,
+    js_array: *v8.Value,
+) ![]const AlgoBlobPart {
+    // Cast to Array type
+    const arr: *v8.Array = @ptrCast(js_array);
+    const array_len = v8.v8_Array_Length(arr);
+
+    if (array_len == 0) {
+        return &[_]AlgoBlobPart{};
+    }
+
+    var parts = try allocator.alloc(AlgoBlobPart, array_len);
+    errdefer allocator.free(parts);
+
+    var valid_count: u32 = 0;
+    var i: u32 = 0;
+    while (i < array_len) : (i += 1) {
+        const element = v8.v8_Array_Get(v8_ctx, arr, i) orelse continue;
+        if (convertSingleBlobPart(allocator, element)) |part| {
+            parts[valid_count] = part;
+            valid_count += 1;
+        } else |_| {
+            // On error, skip this element and continue
+            continue;
+        }
+    }
+
+    // Shrink to actual count if we skipped elements
+    if (valid_count < array_len) {
+        parts = try allocator.realloc(parts, valid_count);
+    }
+
+    return parts;
+}
+
+/// Convert a single JavaScript value to a BlobPart
+///
+/// Handles: String (UTF-8 encoded), ArrayBuffer, TypedArray, and Blob instances.
+/// Returns empty buffer for unknown types per spec.
+fn convertSingleBlobPart(
+    allocator: std.mem.Allocator,
+    value: *v8.Value,
+) !AlgoBlobPart {
+    // Check for String - most common case in Blob(['hello world'])
+    if (v8.v8_Value_IsString(value)) {
+        const str: *v8.String = @ptrCast(value);
+        const str_len = v8.v8_String_Utf8Length(str);
+        if (str_len <= 0) {
+            return AlgoBlobPart{ .string = "" };
+        }
+        const buffer = try allocator.alloc(u8, @intCast(str_len));
+        errdefer allocator.free(buffer);
+        const written = v8.v8_String_WriteUtf8(str, buffer.ptr, str_len);
+        if (written != str_len) {
+            allocator.free(buffer);
+            return AlgoBlobPart{ .string = "" };
+        }
+        return AlgoBlobPart{ .string = buffer };
+    }
+
+    // Check for ArrayBuffer
+    if (v8.v8_Value_IsArrayBuffer(value)) {
+        const byte_len = v8.v8_ArrayBuffer_GetByteLength_Value(value);
+        if (byte_len == 0) return AlgoBlobPart{ .buffer = &[_]u8{} };
+        const data_ptr = v8.v8_ArrayBuffer_GetData_Value(value) orelse return AlgoBlobPart{ .buffer = &[_]u8{} };
+        const data: [*]const u8 = @ptrCast(data_ptr);
+        return AlgoBlobPart{ .buffer = data[0..byte_len] };
+    }
+
+    // Check for TypedArray (Uint8Array, Int8Array, etc)
+    if (v8.v8_Value_IsTypedArray(value)) {
+        const underlying = v8.v8_TypedArray_Buffer(value) orelse return AlgoBlobPart{ .buffer = &[_]u8{} };
+        const offset = v8.v8_TypedArray_ByteOffset(value);
+        const len = v8.v8_TypedArray_ByteLength(value);
+        if (len == 0) return AlgoBlobPart{ .buffer = &[_]u8{} };
+        const data_ptr = v8.v8_ArrayBuffer_Data(underlying) orelse return AlgoBlobPart{ .buffer = &[_]u8{} };
+        const data: [*]const u8 = @ptrCast(data_ptr);
+        return AlgoBlobPart{ .buffer = data[offset .. offset + len] };
+    }
+
+    // Check for Blob instance - get internal BlobData
+    if (v8.v8_Value_IsObject(value)) {
+        const obj: *v8.Object = @ptrCast(value);
+        const field_count = v8.v8_Object_InternalFieldCount(obj);
+        if (field_count >= 1) {
+            // Try to get InternalState from internal field
+            if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |ptr| {
+                // Note: This assumes any object with internal fields is a Blob.
+                // A more robust check would verify the constructor/prototype.
+                const internal: *InternalState = @ptrCast(@alignCast(ptr));
+                return AlgoBlobPart{ .blob = internal.blob_data };
+            }
+        }
+    }
+
+    // Unknown type - return empty buffer per spec
+    return AlgoBlobPart{ .buffer = &[_]u8{} };
+}
+
+/// Free allocated strings from BlobPart conversion
+///
+/// Only .string variants have allocated memory that needs to be freed.
+/// Buffer and blob variants point to existing memory.
+fn freeBlobPartStrings(allocator: std.mem.Allocator, parts: []const AlgoBlobPart) void {
+    for (parts) |part| {
+        switch (part) {
+            .string => |s| {
+                if (s.len > 0) {
+                    // Cast away const for deallocation since we allocated this
+                    allocator.free(@constCast(s));
+                }
+            },
+            .buffer, .blob => {},
+        }
+    }
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -113,25 +246,35 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
     const mime_type: []const u8 = if (options.wasPassed() and options.value.type != null) options.value.type.?.asSlice() else "";
 
     // Process blob parts if provided
-    // The blobParts parameter comes as an opaque pointer to a sequence
-    // For now, we'll handle the case where it might be null/empty
-    const bytes: []const u8 = blk: {
-        // Check if blobParts is actually provided (non-null pointer to valid data)
-        // In the WebIDL binding, an empty sequence would still be a valid pointer
-        // We need to handle this carefully - for now treat as potentially empty
+    // Get V8 isolate and context for array access
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const v8_ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
 
-        // Try to interpret as a slice of BlobPart
-        // The actual structure depends on how the V8 binding passes this
-        // For safety, we'll create empty bytes if we can't process it
-        _ = blobParts;
-        _ = endings_mode;
+    // Convert JS array to Zig BlobParts
+    var zig_parts: []const AlgoBlobPart = &[_]AlgoBlobPart{};
+    var needs_free = false;
 
-        // TODO: Full BlobPart processing requires V8 integration to extract
-        // the actual parts. For now, create empty blob.
-        // When V8 integration is complete, this will iterate through blobParts
-        // and call file.algorithms.processBlobParts()
-        break :blk "";
+    if (blobParts.wasPassed()) {
+        // Convert runtime.JSValue to *v8.Value via engine handle
+        if (blobParts.value.asEngineHandle()) |handle_ptr| {
+            const v8_value: *v8.Value = @ptrCast(handle_ptr);
+            if (v8.v8_Value_IsArray(v8_value)) {
+                zig_parts = try convertJSBlobPartsToZig(ctx.allocator, v8_ctx, v8_value);
+                needs_free = true;
+            }
+        }
+    }
+    defer if (needs_free) {
+        freeBlobPartStrings(ctx.allocator, zig_parts);
+        ctx.allocator.free(zig_parts);
     };
+
+    // Process blob parts using the W3C File API algorithm
+    const bytes = try file.algorithms.processBlobParts(
+        ctx.allocator,
+        zig_parts,
+        .{ .endings = endings_mode },
+    );
 
     // Create the internal BlobData
     const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
