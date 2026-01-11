@@ -85,6 +85,13 @@ fn getDefaultArgValue(comptime T: type) ?T {
         return runtime.DOMString.initEmpty();
     }
 
+    // Check runtime.JSValue - default to undefined
+    // This handles cases like postMessage(message, transfer) where transfer is optional
+    // and the JavaScript caller provides only one argument
+    if (T == runtime.JSValue) {
+        return runtime.JSValue{ .undefined = {} };
+    }
+
     // For anyopaque pointers, we can't return a valid default
     // Caller must handle this case specially
     if (T == *const anyopaque or T == *anyopaque) {
