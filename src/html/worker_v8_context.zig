@@ -963,11 +963,42 @@ pub const WorkerV8Context = struct {
 
         if (run_result.error_info) |err_info| {
             // Log the actual V8 error for debugging
-            const err_msg = if (err_info.message) |msg| std.mem.span(msg) else "<no message>";
+            const err_msg = err_info.getMessage() orelse "<no message>";
             std.log.err("[WorkerV8Context] Script execution failed: {s}", .{err_msg});
-            if (err_info.source_line) |line| {
-                std.log.err("[WorkerV8Context] Source line: {s}", .{std.mem.span(line)});
+            if (err_info.getSourceLine()) |line| {
+                std.log.err("[WorkerV8Context] Source line: {s}", .{line});
             }
+
+            // Queue error event to parent per HTML Standard § 10.2.5
+            // "Queue a task to fire an event named error at worker."
+            // We queue to the thread-safe pending_error field so the main thread
+            // can poll and dispatch on its own thread (V8 isolates aren't thread-safe).
+            if (self.dedicated_worker) |dedicated_worker| {
+                if (dedicated_worker.getThreadState()) |thread_state| {
+                    // Extract error details from V8
+                    const filename = err_info.getResourceName() orelse self.script_url;
+                    const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+                    const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+                    // Create WorkerErrorEvent with error details
+                    // Note: Don't defer deinit - main thread will own and clean up
+                    const error_event = workers.worker_error.WorkerErrorEvent.init(
+                        self.allocator,
+                        err_msg,
+                        filename,
+                        lineno,
+                        colno,
+                        null, // error_value - TODO: could pass actual V8 exception
+                    ) catch |alloc_err| {
+                        std.log.err("[WorkerV8Context] Failed to create error event: {}", .{alloc_err});
+                        return error.ExecutionFailed;
+                    };
+
+                    // Queue error to main thread - it will dispatch and clean up
+                    thread_state.setPendingError(error_event);
+                }
+            }
+
             return error.ExecutionFailed;
         }
 

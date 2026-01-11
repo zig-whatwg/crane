@@ -1926,12 +1926,20 @@ pub fn dispatchErrorEvent(
     }
 
     // Dispatch via EventTarget.dispatchEvent
-    const not_canceled = EventTarget.call_dispatchEvent(instance, error_event) catch |err| {
-        std.log.warn("Failed to dispatch ErrorEvent: {s}", .{@errorName(err)});
-        return;
+    // Note: We continue even if dispatch fails, to ensure the legacy onerror handler is invoked
+    const not_canceled: bool = blk: {
+        const result = EventTarget.call_dispatchEvent(instance, error_event) catch |err| {
+            std.log.warn("Failed to dispatch ErrorEvent via EventTarget: {s}", .{@errorName(err)});
+            // Continue to legacy handler - don't return early
+            // Treat as not canceled so we can still try legacy handler
+            break :blk true;
+        };
+        break :blk result;
     };
 
     // Also invoke the legacy onerror handler if set via IDL attribute
+    // This is called even if EventTarget.dispatchEvent failed, since the test may
+    // only use worker.onerror = ... (legacy) rather than addEventListener
     if (internal.onerror_handle) |onerror_global| {
         // Wrap the ErrorEvent as a V8 Object
         const v8_event = template_registry.wrapInstanceAsV8Object(

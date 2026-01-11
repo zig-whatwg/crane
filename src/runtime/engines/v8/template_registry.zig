@@ -538,16 +538,6 @@ pub fn wrapInstanceAsV8Object(
     // Without this, V8 falls back to Object.prototype and accessors don't work!
     const constructor_func = v8.v8_FunctionTemplate_GetFunction(template, context);
 
-    // Debug: Log for MessageEvent specifically
-    if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-        std.debug.print("[WRAP-ME] MessageEvent: template={*}, created_on_demand={}, is_worker={}\n", .{ template, created_on_demand, is_worker_context });
-        if (constructor_func) |func| {
-            std.debug.print("[WRAP-ME] MessageEvent: GetFunction succeeded, func={*}\n", .{func});
-        } else {
-            std.debug.print("[WRAP-ME] MessageEvent: GetFunction returned NULL!\n", .{});
-        }
-    }
-
     // Get the InstanceTemplate and create a new object
     // IMPORTANT: Use InstanceTemplate()->NewInstance(), NOT Function::NewInstance()
     // Function::NewInstance() calls the constructor callback, which throws "Illegal constructor"
@@ -601,45 +591,63 @@ pub fn wrapInstanceAsV8Object(
     // for the proper fix explanation.
 
     // ========================================
-    // MANUALLY SET PROTOTYPE to Constructor.prototype
+    // MANUALLY SET PROTOTYPE to global.Constructor.prototype
     // ========================================
     // ObjectTemplate::NewInstance() creates objects with Object.prototype,
     // NOT the constructor's prototype. We must manually set it.
     //
-    // GetFunction() (called at line 489) materializes the constructor in this
-    // context, making Constructor.prototype available. Now we set it.
-    if (constructor_func) |func| {
-        // Get Constructor.prototype
-        const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
-        if (prototype_str) |proto_key| {
-            const prototype_value = v8.v8_Object_Get(
-                @ptrCast(func), // Function is an Object
-                context,
-                @ptrCast(proto_key), // Cast String to Value
-            );
-            if (prototype_value) |proto| {
-                // Only set if it's an object (not undefined/null)
-                if (v8.v8_Value_IsObject(proto)) {
-                    _ = v8.v8_Object_SetPrototype(v8_object, context, proto);
+    // CRITICAL: For instanceof to work correctly, we MUST use the prototype from
+    // the GLOBAL constructor (window.ErrorEvent.prototype), NOT from GetFunction().
+    // GetFunction() on an on-demand template creates a NEW function that's NOT
+    // the same object as the global constructor. JavaScript's instanceof checks
+    // by object reference, so we need the exact same prototype object.
+    const global = v8.v8_Context_Global(context) orelse {
+        // No global object - this shouldn't happen in a valid context
+        return error.ObjectCreationFailed;
+    };
+    const interface_name_str = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len));
+    const global_constructor = if (interface_name_str) |name_key|
+        v8.v8_Object_Get(global, context, @ptrCast(name_key))
+    else
+        null;
 
-                    // CRITICAL: Install accessor properties directly on the prototype.
-                    // V8's ObjectTemplate::SetAccessorProperty() does NOT transfer accessors
-                    // to objects created via InstanceTemplate->NewInstance() when we manually
-                    // set the prototype. We must install them directly on the prototype object.
-                    const proto_object: *v8.Object = @ptrCast(proto);
-                    const ib = @import("interface_bindings.zig");
-                    _ = ib.registerPropertiesOnPrototypeByName(
-                        isolate,
-                        context,
-                        interface_name,
-                        proto_object,
-                    );
-
-                    if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-                        std.debug.print("[WRAP-ME] MessageEvent: Set prototype to Constructor.prototype\\n", .{});
-                    }
+    const prototype_to_use: ?*v8.Value = blk: {
+        if (global_constructor) |global_ctor| {
+            if (v8.v8_Value_IsFunction(@ptrCast(global_ctor))) {
+                // Use global.Constructor.prototype for correct instanceof
+                const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+                if (prototype_str) |proto_key| {
+                    break :blk v8.v8_Object_Get(@ptrCast(global_ctor), context, @ptrCast(proto_key));
                 }
             }
+        }
+        // Fallback to template function's prototype if global constructor not available
+        if (constructor_func) |func| {
+            const prototype_str = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
+            if (prototype_str) |proto_key| {
+                break :blk v8.v8_Object_Get(@ptrCast(func), context, @ptrCast(proto_key));
+            }
+        }
+        break :blk null;
+    };
+
+    if (prototype_to_use) |proto| {
+        // Only set if it's an object (not undefined/null)
+        if (v8.v8_Value_IsObject(proto)) {
+            _ = v8.v8_Object_SetPrototype(v8_object, context, proto);
+
+            // CRITICAL: Install accessor properties directly on the prototype.
+            // V8's ObjectTemplate::SetAccessorProperty() does NOT transfer accessors
+            // to objects created via InstanceTemplate->NewInstance() when we manually
+            // set the prototype. We must install them directly on the prototype object.
+            const proto_object: *v8.Object = @ptrCast(proto);
+            const ib = @import("interface_bindings.zig");
+            _ = ib.registerPropertiesOnPrototypeByName(
+                isolate,
+                context,
+                interface_name,
+                proto_object,
+            );
         }
     }
 

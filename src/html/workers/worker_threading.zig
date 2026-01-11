@@ -62,6 +62,9 @@ const message_channel = @import("message_channel.zig");
 const SerializedValue = message_channel.SerializedValue;
 const JSValue = message_channel.JSValue;
 
+// Worker error handling
+const worker_error = @import("worker_error.zig");
+
 /// Thread-safe message queue for cross-thread communication
 ///
 /// Messages are serialized using structured clone and safely passed
@@ -254,6 +257,11 @@ pub const WorkerThreadState = struct {
     /// Message queue from worker to main thread
     outbox: ThreadSafeMessageQueue,
 
+    /// Pending error to dispatch to main thread (thread-safe)
+    /// When an error occurs in the worker, store it here for main thread to poll
+    pending_error: ?*const worker_error.WorkerErrorEvent = null,
+    pending_error_mutex: std.Thread.Mutex = .{},
+
     /// Worker script URL
     script_url: []const u8,
 
@@ -406,6 +414,29 @@ pub const WorkerThreadState = struct {
         if (self.worker_wakeup) |wakeup| {
             wakeup.signal();
         }
+    }
+
+    /// Set a pending error to be dispatched to the main thread
+    /// Called from the worker thread when an error occurs
+    pub fn setPendingError(self: *Self, error_event: *const worker_error.WorkerErrorEvent) void {
+        self.pending_error_mutex.lock();
+        defer self.pending_error_mutex.unlock();
+        self.pending_error = error_event;
+
+        // Signal the main thread wakeup so it processes the error immediately
+        if (self.wakeup) |wakeup| {
+            wakeup.signal();
+        }
+    }
+
+    /// Get and clear any pending error (called from main thread)
+    /// Returns the pending error and clears it, or null if none
+    pub fn takePendingError(self: *Self) ?*const worker_error.WorkerErrorEvent {
+        self.pending_error_mutex.lock();
+        defer self.pending_error_mutex.unlock();
+        const error_event = self.pending_error;
+        self.pending_error = null;
+        return error_event;
     }
 };
 

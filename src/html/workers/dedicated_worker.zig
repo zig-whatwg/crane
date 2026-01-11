@@ -165,10 +165,19 @@ pub const ThreadedWorkerRegistry = struct {
             queued_msg: *message_channel.QueuedMessage,
         };
 
+        // Temporary storage for collected errors
+        const ErrorToDispatch = struct {
+            worker: *DedicatedWorker,
+            error_event: *const worker_error.WorkerErrorEvent,
+        };
+
         var messages_to_dispatch: [256]MessageToDispatch = undefined;
         var message_count: usize = 0;
 
-        // Phase 1: Collect messages under lock
+        var errors_to_dispatch: [16]ErrorToDispatch = undefined;
+        var error_count: usize = 0;
+
+        // Phase 1: Collect messages and errors under lock
         {
             mutex.lock();
             defer mutex.unlock();
@@ -220,6 +229,21 @@ pub const ThreadedWorkerRegistry = struct {
                         };
                         message_count += 1;
                     }
+
+                    // Also check for pending errors from the worker thread
+                    if (ts.takePendingError()) |error_event| {
+                        dwdebug.print("pollAndDispatch() found pending error from worker: {s}\n", .{error_event.message});
+                        if (error_count < errors_to_dispatch.len) {
+                            errors_to_dispatch[error_count] = .{
+                                .worker = worker,
+                                .error_event = error_event,
+                            };
+                            error_count += 1;
+                        } else {
+                            // Buffer full, clean up
+                            @constCast(error_event).deinit();
+                        }
+                    }
                 }
             }
         }
@@ -239,11 +263,24 @@ pub const ThreadedWorkerRegistry = struct {
             dwdebug.print("pollAndDispatch() dispatch complete\n", .{});
         }
 
+        // Phase 3: Dispatch errors to main thread via worker's error handler
+        for (errors_to_dispatch[0..error_count]) |item| {
+            dwdebug.print("pollAndDispatch() dispatching error to worker.handleError\n", .{});
+            // Call the worker's error handler (fires ErrorEvent to worker.onerror)
+            item.worker.handleError(@constCast(item.error_event));
+            // Clean up the error event (we own it now)
+            @constCast(item.error_event).deinit();
+            dwdebug.print("pollAndDispatch() error dispatch complete\n", .{});
+        }
+
         if (message_count > 0) {
             dwdebug.print("pollAndDispatch() processed {d} messages total\n", .{message_count});
         }
+        if (error_count > 0) {
+            dwdebug.print("pollAndDispatch() processed {d} errors total\n", .{error_count});
+        }
 
-        return message_count > 0;
+        return message_count > 0 or error_count > 0;
     }
 
     /// Terminate all workers without destroying the registry.
