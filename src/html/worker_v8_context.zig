@@ -47,9 +47,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
 
-// Crane version - should match build.zig.zon
-// TODO: Make this dynamic via build options when module conflicts are resolved
-const CRANE_VERSION = "0.0.0";
+// Crane version - single source of truth in src/version.zig
+const crane_version = @import("version");
+const CRANE_VERSION = crane_version.version;
 
 // V8 FFI through runtime module
 const v8 = @import("v8");

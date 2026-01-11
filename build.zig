@@ -451,6 +451,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // Version module - single source of truth for Crane version
+    const version_mod = b.addModule("version", .{
+        .root_source_file = b.path("src/version.zig"),
+        .target = target,
+    });
+
     const webidl_mod = b.addModule("webidl", .{
         .root_source_file = b.path("src/webidl/root.zig"),
         .target = target,
@@ -1462,6 +1468,7 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
     html_core_mod.addImport("csp", csp_mod); // For CSP checks on worker script loading
     html_core_mod.addImport("file", file_mod); // For blob: URL worker script loading
+    html_core_mod.addImport("version", version_mod); // For Crane version in navigator
 
     // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
     // Uses full.zig as root which re-exports html_core plus adds interface access.
@@ -1498,6 +1505,8 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("dictionaries", dictionaries_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
+    // Version module for Crane version in navigator
+    html_mod.addImport("version", version_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
