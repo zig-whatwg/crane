@@ -493,9 +493,24 @@ pub const JSValue = union(enum) {
                     break :blk self;
                 }
             },
+            .handle => |h| blk: {
+                // Handle cloning: the clone MUST NOT dispose the original handle
+                // We create a shallow copy with needs_disposal = false so only
+                // the original is responsible for cleanup. This is safe because
+                // the clone should only be used within the same scope as the original.
+                //
+                // For true independent ownership, callers should use engine-specific
+                // persistence APIs (like V8's Global.Reset) instead of clone().
+                break :blk JSValue{
+                    .handle = .{
+                        .ptr = h.ptr,
+                        .needs_disposal = false, // Clone does NOT own the handle
+                        .handle_scope = h.handle_scope,
+                    },
+                };
+            },
             // For all other variants, a shallow copy is sufficient
             // - undefined, null, boolean, number: value types
-            // - handle: pointer to V8 Global (ownership handled separately)
             // - instance: pointer to Zig Instance (managed by runtime)
             else => self,
         };

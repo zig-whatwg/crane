@@ -271,18 +271,26 @@ pub fn generateTestRunnerScript() []const u8 {
     \\    testRunner._results.push({name: name, status: status, message: message, stack: stack});
     \\};
     \\
-    \\var __wpt_report_completion = function(harness_status) {
+    \\var __wpt_report_completion = function(tests, harness_status) {
     \\    __wpt_completed = true;
     \\    __wpt_harness_status = harness_status;
     \\    testRunner._harnessStatus = harness_status;
     \\
-    \\    // Build subtests array in format expected by Python executor:
-    \\    // [name, status, message, stack] for each test
-    \\    var results = __wpt_results || [];
+    \\    // Build subtests array from the tests array passed by testharness.js
+    \\    // This contains ALL test results, including tests that completed before our callbacks were registered
     \\    var subtests = [];
-    \\    for (var i = 0; i < results.length; i++) {
-    \\        var r = results[i];
-    \\        subtests.push([r.name, r.status, r.message || null, r.stack || null]);
+    \\    if (tests && tests.length > 0) {
+    \\        for (var i = 0; i < tests.length; i++) {
+    \\            var t = tests[i];
+    \\            subtests.push([t.name, t.status, t.message || null, t.stack || null]);
+    \\        }
+    \\    } else {
+    \\        // Fallback to our own results if tests array not available
+    \\        var results = __wpt_results || [];
+    \\        for (var i = 0; i < results.length; i++) {
+    \\            var r = results[i];
+    \\            subtests.push([r.name, r.status, r.message || null, r.stack || null]);
+    \\        }
     \\    }
     \\
     \\    // Output JSON result in format expected by executorcrane.py:
@@ -309,22 +317,92 @@ pub fn generateTestRunnerScript() []const u8 {
     \\window.__wpt_report_completion = __wpt_report_completion;
     \\
     \\// Hook into testharness.js callbacks when it loads
-    \\// This needs to run AFTER testharness.js is loaded
-    \\window.__crane_register_wpt_callbacks = function() {
-    \\    if (typeof add_result_callback === 'function') {
-    \\        add_result_callback(function(test) {
-    \\            console.log("CRANE_RESULT_CB: " + test.name + " - status=" + test.status);
+    \\// CRITICAL: Must register callbacks BEFORE any tests execute!
+    \\// We use Object.defineProperty to intercept when testharness.js defines add_result_callback
+    \\var __crane_callbacks_registered = false;
+    \\var __crane_stored_add_result_callback = null;
+    \\var __crane_stored_add_completion_callback = null;
+    \\
+    \\function __crane_do_register_callbacks() {
+    \\    if (__crane_callbacks_registered) return;
+    \\    __crane_callbacks_registered = true;
+    \\
+    \\    var addResult = __crane_stored_add_result_callback;
+    \\    var addCompletion = __crane_stored_add_completion_callback;
+    \\
+    \\    try {
+    \\        addResult(function(test) {
     \\            __wpt_report_result(test.name, test.status, test.message, test.stack, test.duration);
     \\        });
-    \\        console.log("CRANE_SETUP: Registered add_result_callback");
+    \\    } catch(e) {
+    \\        console.log("CRANE_ERROR: add_result_callback failed: " + e.message);
+    \\        __crane_callbacks_registered = false;
+    \\    }
+    \\    try {
+    \\        addCompletion(function(tests, harness_status) {
+    \\            __wpt_report_completion(tests, harness_status);
+    \\        });
+    \\    } catch(e) {
+    \\        console.log("CRANE_ERROR: add_completion_callback failed: " + e.message);
+    \\        __crane_callbacks_registered = false;
+    \\    }
+    \\}
+    \\
+    \\var __crane_register_pending = false;
+    \\function __crane_try_register_callbacks() {
+    \\    if (__crane_callbacks_registered) return;
+    \\    if (__crane_register_pending) return;
+    \\
+    \\    var addResult = __crane_stored_add_result_callback;
+    \\    var addCompletion = __crane_stored_add_completion_callback;
+    \\
+    \\    if (addResult && addCompletion) {
+    \\        // Both callbacks are defined, but testharness.js might not be fully initialized yet.
+    \\        // Use setTimeout(0) to defer registration until after the current script completes.
+    \\        __crane_register_pending = true;
+    \\        setTimeout(function() {
+    \\            __crane_register_pending = false;
+    \\            __crane_do_register_callbacks();
+    \\        }, 0);
+    \\    }
+    \\}
+    \\
+    \\// Intercept when testharness.js defines add_result_callback on window
+    \\// This allows us to register our callbacks as early as possible
+    \\Object.defineProperty(window, 'add_result_callback', {
+    \\    configurable: true,
+    \\    enumerable: true,
+    \\    get: function() { return __crane_stored_add_result_callback; },
+    \\    set: function(val) {
+    \\        __crane_stored_add_result_callback = val;
+    \\        __crane_try_register_callbacks();
+    \\    }
+    \\});
+    \\
+    \\Object.defineProperty(window, 'add_completion_callback', {
+    \\    configurable: true,
+    \\    enumerable: true,
+    \\    get: function() { return __crane_stored_add_completion_callback; },
+    \\    set: function(val) {
+    \\        __crane_stored_add_completion_callback = val;
+    \\        __crane_try_register_callbacks();
+    \\    }
+    \\});
+    \\
+    \\// Fallback manual registration (for cases where interception doesn't work)
+    \\window.__crane_register_wpt_callbacks = function() {
+    \\    if (__crane_callbacks_registered) return;
+    \\    if (typeof add_result_callback === 'function') {
+    \\        add_result_callback(function(test) {
+    \\            __wpt_report_result(test.name, test.status, test.message, test.stack, test.duration);
+    \\        });
     \\    }
     \\    if (typeof add_completion_callback === 'function') {
     \\        add_completion_callback(function(tests, harness_status) {
-    \\            console.log("CRANE_COMPLETE_CB: " + tests.length + " tests, harness_status=" + JSON.stringify(harness_status));
-    \\            __wpt_report_completion(harness_status);
+    \\            __wpt_report_completion(tests, harness_status);
     \\        });
-    \\        console.log("CRANE_SETUP: Registered add_completion_callback");
     \\    }
+    \\    __crane_callbacks_registered = true;
     \\};
     ;
 }
