@@ -47,6 +47,10 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
 
+// Crane version - should match build.zig.zon
+// TODO: Make this dynamic via build options when module conflicts are resolved
+const CRANE_VERSION = "0.0.0";
+
 // V8 FFI through runtime module
 const v8 = @import("v8");
 const runtime = @import("runtime");
@@ -716,7 +720,7 @@ pub const WorkerV8Context = struct {
         // WorkerNavigator includes: NavigatorID, NavigatorLanguage, NavigatorOnLine, NavigatorConcurrentHardware
         std.debug.print("[setupWorkerGlobalScope] Setting up navigator object\n", .{});
         {
-            // Get platform string based on OS
+            // Get platform string based on OS (navigator.platform)
             const platform_str = switch (builtin.os.tag) {
                 .macos => "MacIntel",
                 .windows => "Win32",
@@ -726,11 +730,21 @@ pub const WorkerV8Context = struct {
                 else => "Unknown",
             };
 
+            // Get OS string for userAgent (more detailed)
+            const os_str = switch (builtin.os.tag) {
+                .macos => "Macintosh; Intel Mac OS X",
+                .windows => "Windows NT 10.0; Win64; x64",
+                .linux => "X11; Linux x86_64",
+                .freebsd => "X11; FreeBSD",
+                .ios => "iPhone; CPU iPhone OS 15_0 like Mac OS X",
+                else => "Unknown",
+            };
+
             // Get hardware concurrency
             const hardware_concurrency = std.Thread.getCpuCount() catch 1;
 
-            // User agent string matching worker_navigator.zig
-            const user_agent = "Mozilla/5.0 (compatible; WHATWG-Zig/1.0)";
+            // Version from constant (matches build.zig.zon)
+            const version_str = CRANE_VERSION;
 
             const navigator_script = try std.fmt.allocPrint(self.allocator,
                 \\(function() {{
@@ -739,12 +753,12 @@ pub const WorkerV8Context = struct {
                 \\    // NavigatorID mixin (§ 8.8.1.1)
                 \\    appCodeName: "Mozilla",
                 \\    appName: "Netscape",
-                \\    appVersion: "5.0",
+                \\    appVersion: "5.0 Crane/{s}",
                 \\    platform: "{s}",
                 \\    product: "Gecko",
                 \\    productSub: "",
-                \\    userAgent: "{s}",
-                \\    vendor: "",
+                \\    userAgent: "Mozilla/5.0 ({s}) Crane/{s}",
+                \\    vendor: "Cardarella",
                 \\    vendorSub: "",
                 \\    // NavigatorLanguage mixin (§ 8.8.1.2)
                 \\    language: "en-US",
@@ -757,7 +771,7 @@ pub const WorkerV8Context = struct {
                 \\  // Make it non-configurable like a real navigator
                 \\  Object.freeze(globalThis.navigator);
                 \\}})();
-            , .{ platform_str, user_agent, hardware_concurrency });
+            , .{ version_str, platform_str, os_str, version_str, hardware_concurrency });
             defer self.allocator.free(navigator_script);
             _ = try self.executeScriptInternal(navigator_script);
         }

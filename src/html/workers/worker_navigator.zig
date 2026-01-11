@@ -10,6 +10,10 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
 
+// Crane version - should match build.zig.zon
+// TODO: Make this dynamic via build options when module conflicts are resolved
+const CRANE_VERSION = "0.0.0";
+
 /// Navigator ID (NavigatorID mixin).
 ///
 /// Spec: HTML Standard § 8.8.1.1 NavigatorID
@@ -21,8 +25,8 @@ pub const NavigatorId = struct {
     /// Application name (always "Netscape" for compatibility).
     app_name: []const u8 = "Netscape",
 
-    /// Application version.
-    app_version: []const u8 = "5.0",
+    /// Application version (includes Crane version).
+    app_version: []const u8,
 
     /// Platform identifier.
     platform: []const u8,
@@ -37,7 +41,7 @@ pub const NavigatorId = struct {
     user_agent: []const u8,
 
     /// Vendor name.
-    vendor: []const u8 = "",
+    vendor: []const u8 = "Cardarella",
 
     /// Vendor sub (always empty).
     vendor_sub: []const u8 = "",
@@ -111,6 +115,9 @@ pub const WorkerNavigator = struct {
     /// Platform string (owned).
     platform_owned: []const u8,
 
+    /// App version string (owned).
+    app_version_owned: []const u8,
+
     /// Create a WorkerNavigator.
     pub fn init(allocator: Allocator) !*WorkerNavigator {
         const navigator = try allocator.create(WorkerNavigator);
@@ -124,10 +131,15 @@ pub const WorkerNavigator = struct {
         const user_agent_str = try getUserAgentString(allocator);
         errdefer allocator.free(user_agent_str);
 
+        // Build app version string
+        const app_version_str = try getAppVersionString(allocator);
+        errdefer allocator.free(app_version_str);
+
         navigator.* = .{
             .id = .{
                 .platform = platform_str,
                 .user_agent = user_agent_str,
+                .app_version = app_version_str,
             },
             .language = .{},
             .online = .{},
@@ -135,6 +147,7 @@ pub const WorkerNavigator = struct {
             .allocator = allocator,
             .user_agent_owned = user_agent_str,
             .platform_owned = platform_str,
+            .app_version_owned = app_version_str,
         };
 
         return navigator;
@@ -144,6 +157,7 @@ pub const WorkerNavigator = struct {
     pub fn deinit(self: *WorkerNavigator) void {
         self.allocator.free(self.user_agent_owned);
         self.allocator.free(self.platform_owned);
+        self.allocator.free(self.app_version_owned);
         self.allocator.destroy(self);
     }
 
@@ -274,11 +288,29 @@ fn getPlatformString(allocator: Allocator) ![]const u8 {
 }
 
 /// Get the user agent string.
+/// Format: Mozilla/5.0 (<OS>) Crane/<version>
 fn getUserAgentString(allocator: Allocator) ![]const u8 {
-    // A reasonable default user agent string
-    // In production, this would be configurable
-    const user_agent = "Mozilla/5.0 (compatible; WHATWG-Zig/1.0)";
-    return try allocator.dupe(u8, user_agent);
+    // OS string for userAgent
+    const os_str = switch (builtin.os.tag) {
+        .macos => "Macintosh; Intel Mac OS X",
+        .windows => "Windows NT 10.0; Win64; x64",
+        .linux => "X11; Linux x86_64",
+        .freebsd => "X11; FreeBSD",
+        .ios => "iPhone; CPU iPhone OS 15_0 like Mac OS X",
+        else => "Unknown",
+    };
+
+    // Version from build.zig.zon (single source of truth)
+    const version_str = CRANE_VERSION;
+
+    return try std.fmt.allocPrint(allocator, "Mozilla/5.0 ({s}) Crane/{s}", .{ os_str, version_str });
+}
+
+/// Get the app version string.
+/// Format: 5.0 Crane/<version>
+fn getAppVersionString(allocator: Allocator) ![]const u8 {
+    const version_str = CRANE_VERSION;
+    return try std.fmt.allocPrint(allocator, "5.0 Crane/{s}", .{version_str});
 }
 
 /// Get the hardware concurrency (number of logical processors).
@@ -326,7 +358,30 @@ test "WorkerNavigator - user agent" {
     defer navigator.deinit();
 
     const user_agent = navigator.getUserAgent();
-    try std.testing.expect(std.mem.indexOf(u8, user_agent, "Mozilla") != null);
+    // User agent should contain Mozilla/5.0 for compatibility
+    try std.testing.expect(std.mem.indexOf(u8, user_agent, "Mozilla/5.0") != null);
+    // User agent should contain Crane branding
+    try std.testing.expect(std.mem.indexOf(u8, user_agent, "Crane/") != null);
+}
+
+test "WorkerNavigator - vendor" {
+    const allocator = std.testing.allocator;
+
+    const navigator = try WorkerNavigator.init(allocator);
+    defer navigator.deinit();
+
+    try std.testing.expectEqualStrings("Cardarella", navigator.getVendor());
+}
+
+test "WorkerNavigator - app version" {
+    const allocator = std.testing.allocator;
+
+    const navigator = try WorkerNavigator.init(allocator);
+    defer navigator.deinit();
+
+    const app_version = navigator.getAppVersion();
+    // App version should start with 5.0
+    try std.testing.expect(std.mem.startsWith(u8, app_version, "5.0 Crane/"));
 }
 
 test "WorkerNavigator - online status" {
