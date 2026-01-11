@@ -389,6 +389,104 @@ pub const WorkerV8Context = struct {
         return result;
     }
 
+    /// Dispatch error to self.onerror handler in the worker
+    ///
+    /// HTML Standard § 10.2.5 "Runtime script errors"
+    /// The self.onerror handler (OnErrorEventHandler) receives 5 arguments:
+    ///   1. message (string) - error message
+    ///   2. filename (string) - script URL where error occurred
+    ///   3. lineno (number) - line number
+    ///   4. colno (number) - column number
+    ///   5. error (Error) - the Error object
+    ///
+    /// If the handler returns true, the error is considered handled and
+    /// should NOT propagate to the parent Worker object.
+    ///
+    /// Returns true if the handler was called and returned true (error handled).
+    /// Returns false if handler not set, not callable, returned false, or threw.
+    fn dispatchSelfOnerror(
+        self: *Self,
+        message: []const u8,
+        filename: []const u8,
+        lineno: u32,
+        colno: u32,
+    ) bool {
+        std.log.info("[WorkerV8Context] dispatchSelfOnerror() called with message: {s}", .{message});
+
+        // Get the global object
+        const global = v8.ffi.v8_Context_Global(self.context) orelse {
+            std.log.info("[WorkerV8Context] dispatchSelfOnerror() failed to get global object", .{});
+            return false;
+        };
+
+        // Get the "onerror" property from global (self.onerror)
+        const onerror_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "onerror", 7) orelse {
+            std.log.info("[WorkerV8Context] dispatchSelfOnerror() failed to create onerror key", .{});
+            return false;
+        };
+        const onerror_value = v8.ffi.v8_Object_Get(global, self.context, @ptrCast(onerror_key)) orelse {
+            std.log.info("[WorkerV8Context] dispatchSelfOnerror() no onerror property found", .{});
+            return false;
+        };
+
+        // Check if it's a function
+        if (!v8.ffi.v8_Value_IsFunction(onerror_value)) {
+            std.log.info("[WorkerV8Context] dispatchSelfOnerror() onerror is not a function", .{});
+            return false;
+        }
+
+        std.log.info("[WorkerV8Context] dispatchSelfOnerror() found onerror handler, preparing args...", .{});
+
+        // Create the 5 arguments for OnErrorEventHandler:
+        // 1. message (string)
+        const msg_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, message.ptr, @intCast(message.len)) orelse {
+            std.log.err("[WorkerV8Context] dispatchSelfOnerror() failed to create message string", .{});
+            return false;
+        };
+
+        // 2. filename (string)
+        const filename_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, filename.ptr, @intCast(filename.len)) orelse {
+            std.log.err("[WorkerV8Context] dispatchSelfOnerror() failed to create filename string", .{});
+            return false;
+        };
+
+        // 3. lineno (number)
+        const lineno_num = v8.ffi.v8_Integer_New(self.isolate, @intCast(lineno));
+
+        // 4. colno (number)
+        const colno_num = v8.ffi.v8_Integer_New(self.isolate, @intCast(colno));
+
+        // 5. error (Error object) - create an Error with the message
+        const error_obj = v8.ffi.v8_Exception_ErrorInContext(self.context, msg_str) orelse {
+            std.log.err("[WorkerV8Context] dispatchSelfOnerror() failed to create Error object", .{});
+            return false;
+        };
+
+        // Build args array
+        var args = [5]*v8.ffi.Value{
+            @ptrCast(msg_str),
+            @ptrCast(filename_str),
+            @ptrCast(lineno_num),
+            @ptrCast(colno_num),
+            error_obj,
+        };
+
+        // Call the onerror function with global as 'this'
+        const onerror_fn: *v8.ffi.Function = @ptrCast(onerror_value);
+        std.log.info("[WorkerV8Context] dispatchSelfOnerror() calling onerror handler...", .{});
+        const result = v8.ffi.v8_Function_Call(onerror_fn, self.context, @ptrCast(global), 5, &args);
+
+        // Check if result is truthy (true means error was handled)
+        if (result) |r| {
+            const is_handled = v8.ffi.v8_Value_BooleanValue(r, self.isolate);
+            std.log.info("[WorkerV8Context] dispatchSelfOnerror() handler returned: {}", .{is_handled});
+            return is_handled;
+        }
+
+        std.log.info("[WorkerV8Context] dispatchSelfOnerror() handler returned null/threw", .{});
+        return false;
+    }
+
     /// Set up basic worker global scope (called during init)
     ///
     /// Sets up:
@@ -969,17 +1067,32 @@ pub const WorkerV8Context = struct {
                 std.log.err("[WorkerV8Context] Source line: {s}", .{line});
             }
 
+            // Extract error details from V8
+            const filename = err_info.getResourceName() orelse self.script_url;
+            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+            // HTML Standard § 10.2.5: First dispatch to self.onerror inside the worker
+            // If the handler returns true, the error is considered handled and
+            // should NOT propagate to the parent Worker object.
+            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
+
+            if (error_handled) {
+                std.log.info("[WorkerV8Context] Error was handled by self.onerror, not propagating to parent", .{});
+                // Error was handled by the worker's onerror handler
+                // Run microtasks that may have been queued by the handler (like postMessage)
+                v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+                // Don't propagate to parent, but still indicate execution had an error
+                return error.ExecutionFailed;
+            }
+
+            // Error was not handled by self.onerror, propagate to parent
             // Queue error event to parent per HTML Standard § 10.2.5
             // "Queue a task to fire an event named error at worker."
             // We queue to the thread-safe pending_error field so the main thread
             // can poll and dispatch on its own thread (V8 isolates aren't thread-safe).
             if (self.dedicated_worker) |dedicated_worker| {
                 if (dedicated_worker.getThreadState()) |thread_state| {
-                    // Extract error details from V8
-                    const filename = err_info.getResourceName() orelse self.script_url;
-                    const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
-                    const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
-
                     // Create WorkerErrorEvent with error details
                     // Note: Don't defer deinit - main thread will own and clean up
                     const error_event = workers.worker_error.WorkerErrorEvent.init(

@@ -522,10 +522,16 @@ pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Setter for onerror
+///
+/// Spec: HTML Standard § 10.2.5 "Runtime script errors in documents"
+/// The onerror attribute is an OnErrorEventHandler that receives error events
+/// when uncaught exceptions occur in the worker.
+///
+/// The handler signature is: function(message, filename, lineno, colno, error)
+/// If the handler returns true, the error is considered handled and won't propagate.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    var state = instance.getState(State);
+    state.own.onerror = value;
 }
 
 /// Setter for onlanguagechange
