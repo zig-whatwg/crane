@@ -45,6 +45,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
 
 // V8 FFI through runtime module
 const v8 = @import("v8");
@@ -709,6 +710,58 @@ pub const WorkerV8Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(origin_key), @ptrCast(origin_value));
         }
         std.debug.print("[setupWorkerGlobalScope] origin set - COMPLETE\n", .{});
+
+        // Set up navigator object (WorkerNavigator interface)
+        // Per HTML Standard § 10.1.3, WorkerGlobalScope has a navigator attribute
+        // WorkerNavigator includes: NavigatorID, NavigatorLanguage, NavigatorOnLine, NavigatorConcurrentHardware
+        std.debug.print("[setupWorkerGlobalScope] Setting up navigator object\n", .{});
+        {
+            // Get platform string based on OS
+            const platform_str = switch (builtin.os.tag) {
+                .macos => "MacIntel",
+                .windows => "Win32",
+                .linux => "Linux x86_64",
+                .freebsd => "FreeBSD",
+                .ios => "iPhone",
+                else => "Unknown",
+            };
+
+            // Get hardware concurrency
+            const hardware_concurrency = std.Thread.getCpuCount() catch 1;
+
+            // User agent string matching worker_navigator.zig
+            const user_agent = "Mozilla/5.0 (compatible; WHATWG-Zig/1.0)";
+
+            const navigator_script = try std.fmt.allocPrint(self.allocator,
+                \\(function() {{
+                \\  // Create WorkerNavigator-like object per HTML Standard § 10.1.3
+                \\  globalThis.navigator = {{
+                \\    // NavigatorID mixin (§ 8.8.1.1)
+                \\    appCodeName: "Mozilla",
+                \\    appName: "Netscape",
+                \\    appVersion: "5.0",
+                \\    platform: "{s}",
+                \\    product: "Gecko",
+                \\    productSub: "",
+                \\    userAgent: "{s}",
+                \\    vendor: "",
+                \\    vendorSub: "",
+                \\    // NavigatorLanguage mixin (§ 8.8.1.2)
+                \\    language: "en-US",
+                \\    languages: Object.freeze(["en-US"]),
+                \\    // NavigatorOnLine mixin (§ 8.8.1.3)
+                \\    onLine: true,
+                \\    // NavigatorConcurrentHardware mixin (§ 8.8.1.4)
+                \\    hardwareConcurrency: {d}
+                \\  }};
+                \\  // Make it non-configurable like a real navigator
+                \\  Object.freeze(globalThis.navigator);
+                \\}})();
+            , .{ platform_str, user_agent, hardware_concurrency });
+            defer self.allocator.free(navigator_script);
+            _ = try self.executeScriptInternal(navigator_script);
+        }
+        std.debug.print("[setupWorkerGlobalScope] navigator object set\n", .{});
 
         // CRITICAL: Set up message handler for the worker to receive messages via onmessage
         // This MUST be done while the isolate is still entered (before the defer exits it)
