@@ -657,6 +657,15 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
 
+// Helper to get promise object and destroy handle to prevent memory leaks
+fn getPromiseAndCleanup(engine: *const runtime.EngineInterface, promise_handle: *anyopaque, allocator: std.mem.Allocator) runtime.JSValue {
+    const promise_obj = engine.getPromiseObject(promise_handle);
+    if (engine.destroyPromiseHandle) |destroy| {
+        destroy(promise_handle, allocator);
+    }
+    return runtime.JSValue.fromHandle(promise_obj);
+}
+
 /// Operation: arrayBuffer
 ///
 /// Spec: https://www.w3.org/TR/FileAPI/#dom-blob-arraybuffer
@@ -671,33 +680,39 @@ pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const allocator = internal.allocator;
 
-    // Get event loop from context
-    const ev_loop = instance.ctx.getEventLoop() catch return error.InvalidState;
+    // Get the engine interface and context
+    const engine = instance.ctx.engine orelse {
+        return error.InvalidState;
+    };
+    const engine_ctx = instance.ctx.engine_ctx orelse {
+        return error.InvalidState;
+    };
 
-    // Create promise that resolves with bytes (ArrayBuffer contents)
-    // Note: The actual ArrayBuffer wrapper would be created by the V8 binding layer
-    // Here we just return the raw bytes that would populate the ArrayBuffer
-    const promise = AsyncPromise([]const u8).init(allocator, ev_loop) catch return error.OutOfMemory;
+    // Create a Promise through the engine abstraction
+    const promise_handle = engine.createPromise(engine_ctx, allocator) catch {
+        return error.InvalidState;
+    };
 
     // Get blob bytes
     const bytes = internal.blob_data.bytes;
 
-    // Fulfill immediately since blob bytes are already in memory
-    promise.fulfill(bytes);
+    // Create JS ArrayBuffer through engine abstraction
+    const createArrayBuffer = engine.createArrayBuffer orelse {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return getPromiseAndCleanup(engine, promise_handle, allocator);
+    };
 
-    // Get V8 context for promise conversion
-    const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
-    const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
+    const js_array_buffer = createArrayBuffer(engine_ctx, bytes) catch {
+        engine.rejectPromise(engine_ctx, promise_handle, error.InvalidState) catch {};
+        return getPromiseAndCleanup(engine, promise_handle, allocator);
+    };
 
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        []const u8,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
+    // Resolve with the JS ArrayBuffer
+    engine.resolvePromise(engine_ctx, promise_handle, js_array_buffer) catch {
+        return error.InvalidState;
+    };
+
+    return getPromiseAndCleanup(engine, promise_handle, allocator);
 }
 
 // ============================================================================
