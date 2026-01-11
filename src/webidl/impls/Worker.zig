@@ -1536,6 +1536,32 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
         if (internal.dedicated_worker) |worker| {
             wdebug.print("call_postMessage() have dedicated_worker\n", .{});
 
+            // IMPORTANT: For ArrayBuffer transfers, we must extract the buffer data BEFORE
+            // calling parseTransferList, because parseTransferList detaches the buffer.
+            // If the message itself is an ArrayBuffer being transferred, we need its data first.
+            var arraybuffer_data: ?[]u8 = null;
+            var arraybuffer_byte_length: usize = 0;
+
+            // Check if message is an ArrayBuffer and extract data BEFORE any transfer processing
+            if (message == .handle) {
+                const v8_value: *v8_engine.ffi.Value = @ptrCast(message.handle.ptr);
+                if (v8_engine.ffi.v8_Value_IsArrayBuffer(v8_value)) {
+                    const array_buffer: *v8_engine.ffi.ArrayBuffer = @ptrCast(v8_value);
+                    arraybuffer_byte_length = v8_engine.ffi.v8_ArrayBuffer_ByteLength(array_buffer);
+                    const data_ptr = v8_engine.ffi.v8_ArrayBuffer_Data(array_buffer);
+                    if (data_ptr != null and arraybuffer_byte_length > 0) {
+                        // Copy the data before transfer (which will detach the buffer)
+                        arraybuffer_data = instance.ctx.allocator.alloc(u8, arraybuffer_byte_length) catch null;
+                        if (arraybuffer_data) |dest| {
+                            const src: [*]const u8 = @ptrCast(data_ptr.?);
+                            @memcpy(dest, src[0..arraybuffer_byte_length]);
+                            wdebug.print("call_postMessage() extracted ArrayBuffer data: {d} bytes\n", .{arraybuffer_byte_length});
+                        }
+                    }
+                }
+            }
+            defer if (arraybuffer_data) |data| instance.ctx.allocator.free(data);
+
             // Parse transfer list if provided
             // NOTE: transfer_pointers contains TransferredArrayBuffer structs that own their data.
             // We pass ownership to postMessageTyped → QueuedMessage → receiving end.
@@ -1605,13 +1631,42 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
                     break :blk JSValue{ .string = json_copy };
                 },
                 .handle => |h| blk: {
+                    const v8_value: *v8_engine.ffi.Value = @ptrCast(h.ptr);
+
+                    // Check if message is an ArrayBuffer - use pre-extracted data
+                    if (v8_engine.ffi.v8_Value_IsArrayBuffer(v8_value)) {
+                        wdebug.print("call_postMessage() message is ArrayBuffer\n", .{});
+                        if (arraybuffer_data) |data| {
+                            // Use the structured clone array_buffer type
+                            // The JSValue.array_buffer field expects ArrayBufferValue
+                            wdebug.print("call_postMessage() using pre-extracted ArrayBuffer data: {d} bytes\n", .{data.len});
+
+                            // We need to copy the data because arraybuffer_data will be freed by defer
+                            const data_copy = instance.ctx.allocator.dupe(u8, data) catch return error.OutOfMemory;
+                            break :blk JSValue{ .array_buffer = .{
+                                .data = data_copy,
+                                .detached = false,
+                                .max_byte_length = null,
+                                .shared = false,
+                            } };
+                        } else {
+                            wdebug.print("call_postMessage() ArrayBuffer has no data\n", .{});
+                            // Empty or detached buffer - send empty array buffer
+                            break :blk JSValue{ .array_buffer = .{
+                                .data = &[_]u8{},
+                                .detached = false,
+                                .max_byte_length = null,
+                                .shared = false,
+                            } };
+                        }
+                    }
+
                     wdebug.print("call_postMessage() message is V8 object (handle), using JSON.stringify\n", .{});
                     // V8 object - use JSON.stringify
                     const v8_ctx: *v8_engine.ffi.Context = @ptrCast(instance.ctx.engine_ctx orelse {
                         wdebug.print("call_postMessage() FAILED: no engine_ctx\n", .{});
                         return error.InvalidContext;
                     });
-                    const v8_value: *v8_engine.ffi.Value = @ptrCast(h.ptr);
 
                     // First call to get required buffer size
                     var size_buf: [1]u8 = undefined;
@@ -2191,9 +2246,43 @@ fn dispatchMessageEventViaJS(worker_ctx: *WorkerV8Context, msg: *workers.ThreadS
                 js_data_len = s.len;
             },
         }
+    } else if (msg.data.type == .array_buffer) {
+        // ArrayBuffer data - create it via JavaScript
+        // We need to generate code that creates an ArrayBuffer with the right bytes
+        wdebug.print("  dispatchMessageEventViaJS: handling array_buffer type\n", .{});
+        const ab_data = msg.data.data.array_buffer;
+        wdebug.print("  ArrayBuffer byte_length: {d}\n", .{ab_data.byte_length});
+
+        // Generate JavaScript that creates an ArrayBuffer with the byte values
+        // Format: new Uint8Array([b0, b1, b2, ...]).buffer
+        var pos: usize = 0;
+        const prefix = "new Uint8Array([";
+        if (pos + prefix.len > js_data_buf.len) return error.BufferTooSmall;
+        @memcpy(js_data_buf[pos..][0..prefix.len], prefix);
+        pos += prefix.len;
+
+        // Write each byte as a decimal number
+        for (ab_data.data, 0..) |byte, i| {
+            if (i > 0) {
+                if (pos >= js_data_buf.len) return error.BufferTooSmall;
+                js_data_buf[pos] = ',';
+                pos += 1;
+            }
+            const written = std.fmt.bufPrint(js_data_buf[pos..], "{d}", .{byte}) catch return error.BufferTooSmall;
+            pos += written.len;
+        }
+
+        const suffix = "]).buffer";
+        if (pos + suffix.len > js_data_buf.len) return error.BufferTooSmall;
+        @memcpy(js_data_buf[pos..][0..suffix.len], suffix);
+        pos += suffix.len;
+
+        js_data_len = pos;
+        wdebug.print("  Generated ArrayBuffer JS: {s}\n", .{js_data_buf[0..js_data_len]});
     } else {
         // For complex types, serialize to null for now
         // TODO: Full structured clone deserialization
+        wdebug.print("  dispatchMessageEventViaJS: unknown type {s}, using null\n", .{@tagName(msg.data.type)});
         const s = "null";
         @memcpy(js_data_buf[0..s.len], s);
         js_data_len = s.len;
@@ -2206,7 +2295,7 @@ fn dispatchMessageEventViaJS(worker_ctx: *WorkerV8Context, msg: *workers.ThreadS
     // NOTE: We only call self.onmessage directly since dispatchEvent may not be
     // available on the worker global scope. EventTarget methods on workers
     // require the full DedicatedWorkerGlobalScope setup.
-    var script_buf: [16384]u8 = undefined;
+    var script_buf: [65536]u8 = undefined; // Larger buffer for ArrayBuffer data
     const script = std.fmt.bufPrint(&script_buf,
         \\(function() {{
         \\  var data = {s};
