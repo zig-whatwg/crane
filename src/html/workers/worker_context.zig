@@ -65,6 +65,10 @@ pub const EngineCallbacks = struct {
     /// Run microtask checkpoint
     runMicrotasks: ?*const fn (engine_ctx: *EngineContext) void = null,
 
+    /// Run V8 event loop once to process libuv timers
+    /// This processes setTimeout/setInterval callbacks
+    runEventLoopOnce: ?*const fn (engine_ctx: *EngineContext) void = null,
+
     /// Dispose engine context
     disposeContext: ?*const fn (engine_ctx: *EngineContext) void = null,
 

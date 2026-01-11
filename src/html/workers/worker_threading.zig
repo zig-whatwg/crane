@@ -440,6 +440,11 @@ pub const WorkerThreadRunner = struct {
     /// This is needed because html_core cannot import v8 directly
     microtask_checkpoint_fn: ?MicrotaskCheckpointFn,
 
+    /// Callback to run V8 event loop once to process libuv timers
+    /// Signature: fn(*anyopaque) void
+    /// This processes setTimeout/setInterval callbacks
+    event_loop_run_once_fn: ?EventLoopRunOnceFn,
+
     /// Callback context for V8 operations
     callback_context: ?*anyopaque,
 
@@ -451,6 +456,7 @@ pub const WorkerThreadRunner = struct {
     pub const ExecuteScriptFn = *const fn (*anyopaque, []const u8, []const u8) anyerror!void;
     pub const DispatchMessageFn = *const fn (*anyopaque, *ThreadSafeMessageQueue.SerializedMessage) anyerror!void;
     pub const MicrotaskCheckpointFn = *const fn (*anyopaque) void;
+    pub const EventLoopRunOnceFn = *const fn (*anyopaque) void;
 
     pub fn init(
         allocator: Allocator,
@@ -465,6 +471,7 @@ pub const WorkerThreadRunner = struct {
             .execute_script_fn = null,
             .dispatch_message_fn = null,
             .microtask_checkpoint_fn = null,
+            .event_loop_run_once_fn = null,
             .callback_context = null,
         };
         return runner;
@@ -494,6 +501,7 @@ pub const WorkerThreadRunner = struct {
         execute_script: ExecuteScriptFn,
         dispatch_message: ?DispatchMessageFn,
         microtask_checkpoint: ?MicrotaskCheckpointFn,
+        event_loop_run_once: ?EventLoopRunOnceFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
@@ -501,6 +509,7 @@ pub const WorkerThreadRunner = struct {
         self.execute_script_fn = execute_script;
         self.dispatch_message_fn = dispatch_message;
         self.microtask_checkpoint_fn = microtask_checkpoint;
+        self.event_loop_run_once_fn = event_loop_run_once;
         self.callback_context = context;
     }
 
@@ -674,6 +683,15 @@ pub const WorkerThreadRunner = struct {
                 }
             }
 
+            // Run V8 event loop once to process libuv timers (setTimeout/setInterval)
+            // This MUST be called to fire timer callbacks - the V8EventLoop's libuv timers
+            // are NOT processed by the HTML event loop spin below.
+            if (self.event_loop_run_once_fn) |run_once_fn| {
+                if (isolate) |iso| {
+                    run_once_fn(iso);
+                }
+            }
+
             // Spin the worker's event loop to process timers and tasks
             // This handles setTimeout, setInterval, and queued tasks
             if (self.thread_state.worker_ptr) |worker_ptr| {
@@ -750,6 +768,7 @@ pub const ThreadedWorkerManager = struct {
     execute_script_fn: ?WorkerThreadRunner.ExecuteScriptFn,
     dispatch_message_fn: ?WorkerThreadRunner.DispatchMessageFn,
     microtask_checkpoint_fn: ?WorkerThreadRunner.MicrotaskCheckpointFn,
+    event_loop_run_once_fn: ?WorkerThreadRunner.EventLoopRunOnceFn,
     callback_context: ?*anyopaque,
 
     const Self = @This();
@@ -764,6 +783,7 @@ pub const ThreadedWorkerManager = struct {
             .execute_script_fn = null,
             .dispatch_message_fn = null,
             .microtask_checkpoint_fn = null,
+            .event_loop_run_once_fn = null,
             .callback_context = null,
         };
     }
@@ -790,6 +810,7 @@ pub const ThreadedWorkerManager = struct {
         execute_script: WorkerThreadRunner.ExecuteScriptFn,
         dispatch_message: ?WorkerThreadRunner.DispatchMessageFn,
         microtask_checkpoint: ?WorkerThreadRunner.MicrotaskCheckpointFn,
+        event_loop_run_once: ?WorkerThreadRunner.EventLoopRunOnceFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
@@ -797,6 +818,7 @@ pub const ThreadedWorkerManager = struct {
         self.execute_script_fn = execute_script;
         self.dispatch_message_fn = dispatch_message;
         self.microtask_checkpoint_fn = microtask_checkpoint;
+        self.event_loop_run_once_fn = event_loop_run_once;
         self.callback_context = context;
     }
 
@@ -832,6 +854,7 @@ pub const ThreadedWorkerManager = struct {
                 self.execute_script_fn.?,
                 self.dispatch_message_fn,
                 self.microtask_checkpoint_fn,
+                self.event_loop_run_once_fn,
                 self.callback_context,
             );
         }

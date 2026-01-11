@@ -773,6 +773,7 @@ fn spawnWorkerThread(internal: *InternalState) !void {
         executeScriptCallback(),
         dispatchMessageCallback(),
         microtaskCheckpointCallback(),
+        eventLoopRunOnceCallback(),
         null, // No callback context needed
     );
 
@@ -2385,6 +2386,27 @@ fn microtaskCheckpointWithInterfaces(isolate_data: *anyopaque) void {
 /// Get the microtask checkpoint callback function pointer
 pub fn microtaskCheckpointCallback() workers.WorkerThreadRunner.MicrotaskCheckpointFn {
     return microtaskCheckpointWithInterfaces;
+}
+
+/// Callback to run V8 event loop once to process libuv timers
+/// This is called from the worker loop to fire setTimeout/setInterval callbacks
+fn eventLoopRunOnceWithInterfaces(isolate_data: *anyopaque) void {
+    const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
+
+    // Get the V8EventLoop from the worker context (stored directly, not via context_manager)
+    // The worker's event loop is stored directly because context_manager uses thread-local
+    // storage that is not accessible from the worker thread.
+    if (worker_ctx.event_loop) |v8_event_loop| {
+        // Get the EventLoop interface which has the runOnce() wrapper
+        const event_loop = v8_event_loop.eventLoop();
+        // Run the event loop once to process ready timers
+        _ = event_loop.runOnce();
+    }
+}
+
+/// Get the event loop run once callback function pointer
+pub fn eventLoopRunOnceCallback() workers.WorkerThreadRunner.EventLoopRunOnceFn {
+    return eventLoopRunOnceWithInterfaces;
 }
 
 /// Get the global worker wakeup primitive.

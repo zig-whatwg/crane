@@ -55,6 +55,7 @@ const CRANE_VERSION = crane_version.version;
 const v8 = @import("v8");
 const runtime = @import("runtime");
 const context_manager = v8.context_manager;
+const V8EventLoop = v8.V8EventLoop;
 
 // V8Interface for registering constructors
 const V8Interface = v8.V8Interface;
@@ -159,6 +160,12 @@ pub const WorkerV8Context = struct {
 
     /// Allocator
     allocator: Allocator,
+
+    /// V8 Event loop for timer support (setTimeout/setInterval)
+    /// This is created and owned by the worker, not the context_manager,
+    /// because context_manager uses thread-local storage that is not
+    /// accessible from the worker thread.
+    event_loop: ?*V8EventLoop = null,
 
     /// Reference to the DedicatedWorker (set during setupWorkerGlobalScope)
     dedicated_worker: ?*DedicatedWorker = null,
@@ -292,8 +299,24 @@ pub const WorkerV8Context = struct {
             },
         };
 
-        // Register this V8 context with the context manager
-        // This creates a runtime context that WebIDL interfaces can use
+        // Create V8 event loop directly (not via context_manager) for timer support.
+        // We store this in self.event_loop because:
+        // 1. context_manager uses thread-local storage
+        // 2. The worker runs on a separate thread from where init() is called
+        // 3. The worker thread's thread-local storage won't have access to
+        //    anything stored by the main thread's context_manager
+        const ev_loop = try allocator.create(V8EventLoop);
+        errdefer allocator.destroy(ev_loop);
+
+        ev_loop.* = try V8EventLoop.init(isolate, allocator);
+        errdefer ev_loop.deinit();
+
+        self.event_loop = ev_loop;
+        std.debug.print("[WorkerV8Context] Created V8EventLoop for timer support\n", .{});
+
+        // Register this V8 context with the context manager (without isolate).
+        // We pass null for isolate since we're managing the event loop ourselves.
+        // This still creates a runtime context that WebIDL interfaces can use.
         _ = context_manager.getOrCreate(context, allocator) catch |err| {
             std.log.err("[WorkerV8Context] Failed to register context: {}", .{err});
             return error.ContextRegistrationFailed;
@@ -612,6 +635,70 @@ pub const WorkerV8Context = struct {
         }
         std.debug.print("[setupWorkerGlobalScope] importScripts registered\n", .{});
 
+        // Register setTimeout() - schedules a callback after a delay
+        std.debug.print("[setupWorkerGlobalScope] Registering setTimeout\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetTimeoutCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setTimeout", 10) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] setTimeout registered\n", .{});
+
+        // Register setInterval() - schedules a repeating callback
+        std.debug.print("[setupWorkerGlobalScope] Registering setInterval\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetIntervalCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setInterval", 11) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] setInterval registered\n", .{});
+
+        // Register clearTimeout() - cancels a setTimeout timer
+        std.debug.print("[setupWorkerGlobalScope] Registering clearTimeout\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearTimeoutCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearTimeout", 12) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] clearTimeout registered\n", .{});
+
+        // Register clearInterval() - cancels a setInterval timer
+        std.debug.print("[setupWorkerGlobalScope] Registering clearInterval\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearIntervalCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearInterval", 13) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] clearInterval registered\n", .{});
+
         // NOTE: We do NOT register a native done() function here.
         // testharness.js defines its own done() function when loaded via importScripts().
         // Registering a native done() would override testharness.js's done() and break
@@ -803,6 +890,7 @@ pub const WorkerV8Context = struct {
             .compileAndRunScript = compileAndRunScriptCallback,
             .compileAndRunModule = compileAndRunModuleCallback,
             .runMicrotasks = runMicrotasksCallback,
+            .runEventLoopOnce = runEventLoopOnceCallback,
             .disposeContext = disposeContextCallback,
             .configureImportMeta = null, // TODO: Implement for module workers
             .registerDynamicImportHandler = null, // TODO: Implement for module workers
@@ -1047,6 +1135,28 @@ fn runMicrotasksCallback(engine_ctx: *EngineContext) void {
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 }
 
+/// Run V8 event loop once to process libuv timers
+///
+/// This callback allows the worker thread to process setTimeout/setInterval
+/// callbacks that were scheduled via the V8EventLoop's libuv timer manager.
+///
+/// IMPORTANT: V8 requires the isolate to be entered before any API calls.
+fn runEventLoopOnceCallback(engine_ctx: *EngineContext) void {
+    const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
+
+    // Enter the isolate - required for all V8 API calls
+    v8.ffi.v8_Isolate_Enter(self.isolate);
+    defer v8.ffi.v8_Isolate_Exit(self.isolate);
+
+    // Get the V8EventLoop from the worker context (stored directly, not via context_manager)
+    if (self.event_loop) |v8_event_loop| {
+        // Get the EventLoop interface which has the runOnce() wrapper
+        const event_loop = v8_event_loop.eventLoop();
+        // Run the event loop once to process ready timers
+        _ = event_loop.runOnce();
+    }
+}
+
 /// Dispose engine context
 fn disposeContextCallback(engine_ctx: *EngineContext) void {
     const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
@@ -1286,6 +1396,228 @@ fn workerDoneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     if (self.dedicated_worker) |dedicated_worker| {
         dedicated_worker.close();
         std.log.debug("Worker done() called - signaling termination", .{});
+    }
+}
+
+// ============================================================================
+// Timer Callbacks (setTimeout, setInterval, clearTimeout, clearInterval)
+// ============================================================================
+
+/// V8 callback for setTimeout() - schedules a callback after a delay
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
+fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    workerTimerCallback(info, false);
+}
+
+/// V8 callback for setInterval() - schedules a repeating callback
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-setinterval
+fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    workerTimerCallback(info, true);
+}
+
+/// Common implementation for setTimeout and setInterval
+fn workerTimerCallback(info: *const v8.ffi.FunctionCallbackInfo, is_interval: bool) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const argc = info.v8_FunctionCallbackInfo_Length();
+
+    // Get WorkerV8Context from thread-local storage
+    const self = current_worker_context orelse return;
+
+    // Need at least the handler argument
+    if (argc < 1) {
+        // Return 0 as a timer ID when no arguments
+        const zero = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(zero));
+        return;
+    }
+
+    // Get the handler (first argument) - must be a function
+    const handler_arg = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(handler_arg)) {
+        // Per spec, non-function handlers should be coerced to string and eval'd
+        // For simplicity, we return 0 for non-function handlers
+        const zero = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(zero));
+        return;
+    }
+
+    // Get timeout (second argument, optional, defaults to 0)
+    var timeout_ms: i32 = 0;
+    if (argc >= 2) {
+        const timeout_arg = info.get(1);
+        if (v8.ffi.v8_Value_IsNumber(timeout_arg)) {
+            const num = v8.ffi.v8_Value_NumberValue_Raw(timeout_arg);
+            timeout_ms = @intFromFloat(@max(0, num));
+        }
+    }
+
+    // Create a GlobalHandle for the function to prevent GC
+    const global_handle = v8.ffi.v8_Value_ToGlobal(isolate, handler_arg) orelse {
+        const zero = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(zero));
+        return;
+    };
+
+    // Get the V8EventLoop from the worker context (stored directly, not via context_manager)
+    const v8_event_loop = self.event_loop orelse {
+        v8.ffi.v8_Global_Dispose(global_handle);
+        const zero = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(zero));
+        return;
+    };
+
+    // Get the timer interface
+    const timer_interface = v8_event_loop.timerInterface() orelse {
+        v8.ffi.v8_Global_Dispose(global_handle);
+        const zero = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(zero));
+        return;
+    };
+
+    // Create timer callback context
+    const callback_ctx = self.allocator.create(WorkerTimerCallbackContext) catch {
+        v8.ffi.v8_Global_Dispose(global_handle);
+        const zero = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(zero));
+        return;
+    };
+    callback_ctx.* = .{
+        .function_handle = global_handle,
+        .v8_context = v8_context,
+        .v8_isolate = isolate,
+        .allocator = self.allocator,
+        .is_interval = is_interval,
+        .interval_ms = @intCast(@max(0, timeout_ms)),
+        .worker_ctx = self,
+    };
+
+    // Schedule the timer (both setTimeout and setInterval use setTimeout,
+    // setInterval reschedules itself in the callback)
+    const timer_id = timer_interface.setTimeout(@intCast(@max(0, timeout_ms)), workerTimerFireCallback, callback_ctx);
+
+    callback_ctx.timer_id = timer_id;
+
+    // Return the timer ID
+    const result = v8.ffi.v8_Integer_New(isolate, @intCast(timer_id));
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// Context for worker timer callbacks
+const WorkerTimerCallbackContext = struct {
+    function_handle: *v8.ffi.Value,
+    v8_context: *v8.ffi.Context,
+    v8_isolate: *v8.ffi.Isolate,
+    allocator: Allocator,
+    timer_id: u64 = 0,
+    is_interval: bool,
+    interval_ms: u64,
+    /// Back-reference to the worker context for rescheduling intervals
+    worker_ctx: *WorkerV8Context,
+    /// Flag to indicate if the timer has been cancelled
+    cancelled: bool = false,
+};
+
+/// Timer fire callback - invoked when a timer fires
+fn workerTimerFireCallback(ctx: ?*anyopaque) void {
+    const callback_ctx: *WorkerTimerCallbackContext = @ptrCast(@alignCast(ctx orelse return));
+
+    // Check if timer was cancelled
+    if (callback_ctx.cancelled) {
+        // Clean up and return
+        v8.ffi.v8_Global_Dispose(callback_ctx.function_handle);
+        callback_ctx.allocator.destroy(callback_ctx);
+        return;
+    }
+
+    // Enter isolate and context
+    v8.ffi.v8_Isolate_Enter(callback_ctx.v8_isolate);
+    defer v8.ffi.v8_Isolate_Exit(callback_ctx.v8_isolate);
+
+    v8.ffi.v8_Context_Enter(callback_ctx.v8_context);
+    defer v8.ffi.v8_Context_Exit(callback_ctx.v8_context);
+
+    // Create handle scope
+    const handle_scope = v8.ffi.v8_HandleScope_New(callback_ctx.v8_isolate) orelse return;
+    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Get the function from the global handle
+    const func = v8.ffi.v8_Global_Get(callback_ctx.v8_isolate, callback_ctx.function_handle) orelse return;
+
+    // Get global object as 'this'
+    const global = v8.ffi.v8_Context_Global(callback_ctx.v8_context) orelse return;
+
+    // Call the function with no arguments
+    // Cast the function pointer and use v8_Function_CallWithReceiver which handles null argv
+    _ = v8.ffi.v8_Function_CallWithReceiver(
+        callback_ctx.v8_context,
+        @ptrCast(@alignCast(func)),
+        @ptrCast(global),
+        0,
+        null,
+    );
+
+    // Run microtasks after callback execution
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(callback_ctx.v8_isolate);
+
+    // For intervals, reschedule the timer
+    if (callback_ctx.is_interval and !callback_ctx.cancelled) {
+        // Get the timer interface from the worker context (stored directly, not via context_manager)
+        if (callback_ctx.worker_ctx.event_loop) |v8_event_loop| {
+            if (v8_event_loop.timerInterface()) |timer| {
+                const new_id = timer.setTimeout(callback_ctx.interval_ms, workerTimerFireCallback, callback_ctx);
+                callback_ctx.timer_id = new_id;
+            }
+        }
+    } else {
+        // For one-shot timers, clean up the context
+        v8.ffi.v8_Global_Dispose(callback_ctx.function_handle);
+        callback_ctx.allocator.destroy(callback_ctx);
+    }
+}
+
+/// V8 callback for clearTimeout() - cancels a setTimeout timer
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-cleartimeout
+fn workerClearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    workerClearTimerCallback(info);
+}
+
+/// V8 callback for clearInterval() - cancels a setInterval timer
+///
+/// Spec: HTML Standard § 8.6 Timers
+/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-clearinterval
+fn workerClearIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    workerClearTimerCallback(info);
+}
+
+/// Common implementation for clearTimeout and clearInterval
+fn workerClearTimerCallback(info: *const v8.ffi.FunctionCallbackInfo) void {
+    _ = info.v8_FunctionCallbackInfo_GetIsolate();
+    const argc = info.v8_FunctionCallbackInfo_Length();
+
+    // Get WorkerV8Context from thread-local storage
+    const self = current_worker_context orelse return;
+
+    if (argc < 1) return;
+
+    // Get the timer ID
+    const id_arg = info.get(0);
+    if (!v8.ffi.v8_Value_IsNumber(id_arg)) return;
+
+    const timer_id: u64 = @intFromFloat(@max(0, v8.ffi.v8_Value_NumberValue_Raw(id_arg)));
+
+    // Get the V8EventLoop from the worker context (stored directly, not via context_manager)
+    const v8_event_loop = self.event_loop orelse return;
+
+    // Get the timer interface and cancel the timer
+    if (v8_event_loop.timerInterface()) |timer_interface| {
+        timer_interface.clearTimeout(timer_id);
     }
 }
 

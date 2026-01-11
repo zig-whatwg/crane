@@ -668,41 +668,9 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
 /// https://html.spec.whatwg.org/#dom-setinterval
 ///
 /// Sets a repeating timer that fires at the specified interval.
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation for proper V8 callback handling.
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            // Get delay (default to 0 if not provided)
-            const delay_ms: i64 = if (timeout.wasPassed())
-                @intCast(timeout.getValue())
-            else
-                0;
-
-            // TODO: Proper callback conversion
-            // The handler needs to be wrapped to call the JavaScript function.
-            // For now, we create a no-op callback - real implementation needs V8 integration.
-            _ = handler;
-            _ = arguments;
-
-            const timer_id = event_loop.setInterval(
-                &noopTimerCallback,
-                delay_ms,
-                null,
-            ) catch return error.OutOfMemory;
-
-            return @intCast(timer_id);
-        }
-    }
-    return error.NotImplemented;
-}
-
-/// No-op timer callback used as placeholder until proper V8 callback integration
-fn noopTimerCallback(_: ?*anyopaque) void {
-    // TODO: This should invoke the actual JavaScript callback
-    // Real implementation needs:
-    // 1. Store timer_id -> handler mapping
-    // 2. When callback fires, look up handler
-    // 3. Call JavaScript function via V8
+    return WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
 }
 
 /// Operation: createImageBitmap
@@ -719,19 +687,9 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.Image
 /// https://html.spec.whatwg.org/#dom-clearinterval
 ///
 /// Cancels a repeating timer.
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    if (!id.wasPassed()) {
-        return; // No-op if no ID provided
-    }
-
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            event_loop.clearInterval(@intCast(id.getValue()));
-            return;
-        }
-    }
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
 }
 
 /// Operation: queueMicrotask
@@ -873,19 +831,9 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
 /// https://html.spec.whatwg.org/#dom-cleartimeout
 ///
 /// Cancels a one-shot timer.
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    if (!id.wasPassed()) {
-        return; // No-op if no ID provided
-    }
-
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            event_loop.clearTimeout(@intCast(id.getValue()));
-            return;
-        }
-    }
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
 }
 
 /// Operation: setTimeout
@@ -894,32 +842,9 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 /// https://html.spec.whatwg.org/#dom-settimeout
 ///
 /// Sets a one-shot timer that fires after the specified delay.
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation for proper V8 callback handling.
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.event_loop) |event_loop| {
-            // Get delay (default to 0 if not provided)
-            const delay_ms: i64 = if (timeout.wasPassed())
-                @intCast(timeout.getValue())
-            else
-                0;
-
-            // TODO: Proper callback conversion
-            // The handler needs to be wrapped to call the JavaScript function.
-            // For now, we create a no-op callback - real implementation needs V8 integration.
-            _ = handler;
-            _ = arguments;
-
-            const timer_id = event_loop.setTimeout(
-                &noopTimerCallback,
-                delay_ms,
-                null,
-            ) catch return error.OutOfMemory;
-
-            return @intCast(timer_id);
-        }
-    }
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
 }
 
 /// Operation: fetch

@@ -2119,6 +2119,24 @@ pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
     return null;
 }
 
+/// Get the V8EventLoop for a V8 context
+///
+/// Returns the V8EventLoop associated with this context, if one was created.
+/// This is used by worker threads to poll libuv timers (setTimeout/setInterval).
+///
+/// Thread safety: Thread-local, no synchronization needed
+pub fn getEventLoop(v8_ctx: *v8.Context) ?*V8EventLoop {
+    const state = &(manager_state orelse return null);
+
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    const key = @intFromPtr(raw_addr);
+
+    if (state.contexts.get(key)) |entry| {
+        return entry.event_loop;
+    }
+    return null;
+}
+
 /// Associate a realm with an existing context
 ///
 /// This is used when a context was created via getOrCreate but a realm

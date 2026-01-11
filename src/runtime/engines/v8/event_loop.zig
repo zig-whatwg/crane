@@ -421,7 +421,12 @@ pub const V8EventLoop = struct {
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
     }
 
-    fn runOnce(ptr: *anyopaque) bool {
+    /// Run the event loop once to process pending timers and tasks.
+    /// Returns true if work was performed, false otherwise.
+    ///
+    /// This is made public so worker threads can call it to process
+    /// setTimeout/setInterval callbacks scheduled via the libuv timer manager.
+    pub fn runOnce(ptr: *anyopaque) bool {
         const self: *Self = @ptrCast(@alignCast(ptr));
 
         // Don't process tasks or timers when frozen (bfcache support)

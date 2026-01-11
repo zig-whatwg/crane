@@ -3110,6 +3110,13 @@ pub fn V8Interface(comptime Interface: type) type {
         /// the appropriate Interface.call_constructor() with converted arguments.
         fn constructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             debug.print("[V8_CONSTRUCTOR] constructorCallback called for: {s}\n", .{interface_name});
+
+            // Always-on stderr debug for Worker constructor to trace issues
+            if (comptime std.mem.eql(u8, interface_name, "Worker")) {
+                const stderr = std.fs.File.stderr();
+                stderr.writeAll("[CTOR_CALLBACK] Worker constructorCallback ENTRY\n") catch {};
+            }
+
             const isolate = info.getIsolate();
 
             // CRITICAL: Check if this is a constructor call (called with 'new')
@@ -3176,9 +3183,19 @@ pub fn V8Interface(comptime Interface: type) type {
             // Call the interface's constructor with arguments parsed at comptime
             // Note: Arguments are parsed from current_context (caller's values), but
             // the runtime ctx uses constructor_context (constructor's realm)
+            if (comptime std.mem.eql(u8, interface_name, "Worker")) {
+                const stderr = std.fs.File.stderr();
+                stderr.writeAll("[CTOR_CALLBACK] Worker calling callConstructorWithArgs\n") catch {};
+            }
             const instance = callConstructorWithArgs(info, allocator, ctx, current_context, isolate) catch |err| {
                 // ExceptionPending means an exception was already rethrown during conversion
                 // (e.g., from toString() throwing) - don't throw a second error
+                if (comptime std.mem.eql(u8, interface_name, "Worker")) {
+                    const stderr = std.fs.File.stderr();
+                    var buf: [256]u8 = undefined;
+                    const msg = std.fmt.bufPrint(&buf, "[CTOR_CALLBACK] Worker callConstructorWithArgs FAILED: {s}\n", .{@errorName(err)}) catch "[CTOR_CALLBACK] Worker callConstructorWithArgs FAILED\n";
+                    stderr.writeAll(msg) catch {};
+                }
                 if (err == conv.ConversionError.ExceptionPending) {
                     return;
                 }
@@ -3340,6 +3357,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
                 defer freeConvertedArg(Param2Type, allocator, arg2);
+
+                // Debug for Worker
+                if (comptime std.mem.eql(u8, interface_name, "Worker")) {
+                    const stderr = std.fs.File.stderr();
+                    stderr.writeAll("[CTOR_CALLBACK] Worker args converted, calling Interface.call_constructor\n") catch {};
+                }
 
                 return try Interface.call_constructor(ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
