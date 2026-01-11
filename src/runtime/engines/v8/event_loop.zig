@@ -481,27 +481,25 @@ pub const V8EventLoop = struct {
             }
 
             // If a timer callback fired, it may have scheduled setTimeout(fn, 0).
-            // Use pollBlocking (UV_RUN_ONCE) to give libuv a chance to process it.
-            // This blocks until at least one callback fires or there are no active handles.
+            // Give libuv a micro-moment to update its timer state, then poll again
+            // (non-blocking) to catch 0ms timers.
+            //
+            // NOTE: We intentionally do NOT use pollBlocking() here because it uses
+            // UV_RUN_ONCE which blocks until the NEXT timer fires. If the next timer
+            // is 10 seconds away (e.g., testharness timeout), this would block for
+            // 10 seconds and prevent worker messages from being processed.
             if (any_timer_fired and mgr.timers.count() > 0) {
-                // Poll one more time with blocking to catch newly scheduled 0ms timers
-                const blocking_callback_invoked = mgr.pollBlocking();
-                if (blocking_callback_invoked) {
-                    did_work = true;
-                    // Run microtasks after the blocking poll's callback
-                    v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-
-                    // That callback may have scheduled MORE 0ms timers - poll for them
-                    var extra_iterations: u32 = 0;
-                    while (extra_iterations < max_timer_iterations) {
-                        extra_iterations += 1;
-                        const extra_callback = mgr.poll();
-                        if (extra_callback) {
-                            did_work = true;
-                            v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-                        } else {
-                            break;
-                        }
+                // Do a few more non-blocking polls to catch any 0ms timers
+                var extra_iterations: u32 = 0;
+                while (extra_iterations < 5) {
+                    extra_iterations += 1;
+                    std.Thread.sleep(1 * std.time.ns_per_ms);
+                    const extra_callback = mgr.poll();
+                    if (extra_callback) {
+                        did_work = true;
+                        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+                    } else {
+                        break;
                     }
                 }
             }

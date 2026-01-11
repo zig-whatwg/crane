@@ -380,6 +380,12 @@ pub const DedicatedWorker = struct {
     /// which contains thread-safe inbox/outbox queues for message passing.
     thread_state: ?*WorkerThreadState = null,
 
+    /// Pending messages to be sent to the worker thread once thread_state is set.
+    /// This buffers messages that are posted via postMessage() before the worker thread
+    /// has been spawned (during the async script fetch period).
+    /// Uses page_allocator since these messages will be transferred to a thread-safe queue.
+    pending_inbox_messages: std.ArrayListUnmanaged(*worker_threading.ThreadSafeMessageQueue.SerializedMessage) = .{},
+
     /// Create a new dedicated worker.
     ///
     /// Spec: HTML Standard § 10.2.3.1 Constructor
@@ -508,6 +514,14 @@ pub const DedicatedWorker = struct {
         if (self.thread_state != null) {
             ThreadedWorkerRegistry.unregister(self);
         }
+
+        // Clean up any pending inbox messages that were never flushed
+        // (edge case: worker destroyed before thread started)
+        for (self.pending_inbox_messages.items) |msg| {
+            msg.deinit();
+            std.heap.page_allocator.destroy(msg);
+        }
+        self.pending_inbox_messages.deinit(std.heap.page_allocator);
 
         // Clean up outside_user_data using the registered cleanup function (if any).
         // This is used by Worker.InternalState to clean up when the DedicatedWorker
@@ -740,37 +754,89 @@ pub const DedicatedWorker = struct {
     ///
     /// This is the typed version for internal use and testing.
     pub fn postMessageTyped(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
+        // TODO: Handle transfers for threaded workers
+        _ = transfer;
+
         // Spec step 1: If closing flag is true, return
         if (self.agent.isClosing() or self.agent.isTerminated()) {
             return;
         }
 
-        // Spec step 2: Let serialized be StructuredSerializeWithTransfer(message, transfer)
-        const serialized = try serializeForPostMessage(self.allocator, message);
-        errdefer {
-            var mutable = @constCast(serialized);
-            mutable.deinit();
-            self.allocator.destroy(mutable);
+        // For threaded workers, use thread-safe inbox instead of port-based messaging.
+        // The worker thread reads from thread_state.inbox, not from inside_port.message_queue.
+        if (self.thread_state) |thread_state| {
+            // Use page_allocator for cross-thread messaging - it's inherently thread-safe.
+            // The worker thread will free the message via msg.deinit().
+            const cross_thread_allocator = std.heap.page_allocator;
+
+            // Spec step 2: Serialize the message using structured clone
+            const serialized = message_channel.structuredSerialize(cross_thread_allocator, message) catch {
+                return error.OutOfMemory;
+            };
+
+            // Create a SerializedMessage for the thread-safe queue
+            const msg = cross_thread_allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
+                var mutable = @constCast(serialized);
+                mutable.deinit();
+                cross_thread_allocator.destroy(mutable);
+                return error.OutOfMemory;
+            };
+            msg.* = .{
+                .data = serialized.*,
+                .transfers = null, // TODO: Handle transfers for threaded workers
+                .allocator = cross_thread_allocator,
+            };
+
+            // Free the SerializedValue struct (its contents are now owned by msg.data)
+            cross_thread_allocator.destroy(serialized);
+
+            // Enqueue to the thread-safe inbox
+            dwdebug.print("postMessageTyped: enqueueing to thread_state.inbox for threaded worker\n", .{});
+            thread_state.inbox.enqueue(msg) catch {
+                dwdebug.print("postMessageTyped: FAILED to enqueue message\n", .{});
+                msg.deinit();
+                return error.OutOfMemory;
+            };
+            dwdebug.print("postMessageTyped: message enqueued successfully\n", .{});
+            return;
         }
 
-        // Spec step 3: If that threw an exception, rethrow the exception and abort
-        // (handled by error return above)
+        // Thread state is not yet set - the worker thread hasn't been spawned yet.
+        // Queue the message to pending_inbox_messages; it will be flushed to
+        // thread_state.inbox when setThreadState() is called.
+        dwdebug.print("postMessageTyped: thread_state is null, queueing to pending_inbox_messages\n", .{});
 
-        // Spec step 4: Queue a global task on DOM manipulation task source with
-        // worker's relevant global object to:
-        //   - Let targetPort be the port with which this is entangled
-        //   - Let data be StructuredDeserialize(serialized, targetRealm, memory)
-        //   - Let event be MessageEvent with data set to data
-        //   - Dispatch event at targetPort
+        // Use page_allocator for cross-thread messaging - it's inherently thread-safe.
+        const cross_thread_allocator = std.heap.page_allocator;
 
-        // Post to the outside port → arrives at entangled inside port (worker side)
-        self.port_pair.outside_port.postMessage(serialized, transfer) catch |err| {
-            // Clean up serialized value on failure
+        // Serialize the message using structured clone
+        const serialized = message_channel.structuredSerialize(cross_thread_allocator, message) catch {
+            return error.OutOfMemory;
+        };
+
+        // Create a SerializedMessage for the pending queue
+        const msg = cross_thread_allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
             var mutable = @constCast(serialized);
             mutable.deinit();
-            self.allocator.destroy(mutable);
-            return err;
+            cross_thread_allocator.destroy(mutable);
+            return error.OutOfMemory;
         };
+        msg.* = .{
+            .data = serialized.*,
+            .transfers = null, // TODO: Handle transfers
+            .allocator = cross_thread_allocator,
+        };
+
+        // Free the SerializedValue struct (its contents are now owned by msg.data)
+        cross_thread_allocator.destroy(serialized);
+
+        // Queue for later delivery when thread_state is set
+        self.pending_inbox_messages.append(cross_thread_allocator, msg) catch {
+            msg.deinit();
+            cross_thread_allocator.destroy(msg);
+            return error.OutOfMemory;
+        };
+        dwdebug.print("postMessageTyped: queued message to pending_inbox_messages (count={})\n", .{self.pending_inbox_messages.items.len});
     }
 
     // Thread-local storage for pending messages
@@ -987,6 +1053,36 @@ pub const DedicatedWorker = struct {
         state.worker_ptr = self;
         // Register with the global registry so main thread can poll our outbox
         ThreadedWorkerRegistry.register(self);
+
+        // NOTE: We do NOT flush pending messages here!
+        // The caller (spawnWorkerThread) must enqueue the script FIRST,
+        // then call flushPendingInboxMessages() to flush pending messages.
+        // This ensures the worker receives: [script, ...pending messages]
+    }
+
+    /// Flush pending inbox messages to the thread_state inbox.
+    ///
+    /// This MUST be called AFTER the worker script has been enqueued,
+    /// so that the worker thread receives messages in correct order:
+    /// [script, postMessage1, postMessage2, ...]
+    pub fn flushPendingInboxMessages(self: *DedicatedWorker) void {
+        const pending_count = self.pending_inbox_messages.items.len;
+        if (pending_count == 0) return;
+
+        const thread_state = self.thread_state orelse return;
+
+        dwdebug.print("flushPendingInboxMessages: flushing {} pending messages to thread_state.inbox\n", .{pending_count});
+        for (self.pending_inbox_messages.items) |msg| {
+            thread_state.inbox.enqueue(msg) catch |err| {
+                dwdebug.print("flushPendingInboxMessages: FAILED to enqueue pending message: {}\n", .{err});
+                msg.deinit();
+                std.heap.page_allocator.destroy(msg);
+                continue;
+            };
+        }
+        // Clear the pending queue (messages are now owned by thread_state.inbox)
+        self.pending_inbox_messages.clearRetainingCapacity();
+        dwdebug.print("flushPendingInboxMessages: pending messages flushed successfully\n", .{});
     }
 
     /// Get the thread state (if running on a separate thread).

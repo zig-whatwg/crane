@@ -823,6 +823,12 @@ fn spawnWorkerThread(internal: *InternalState) !void {
     };
     wdebug.print("spawnWorkerThread() script message enqueued to worker inbox\n", .{});
 
+    // Now flush any pending messages that were queued before thread_state was set
+    // This ensures message order: [script, postMessage1, postMessage2, ...]
+    if (internal.dedicated_worker) |dw| {
+        dw.flushPendingInboxMessages();
+    }
+
     // Free the pending script now that we've sent it
     if (internal.pending_script) |s| {
         internal.allocator.free(s);
@@ -1246,9 +1252,11 @@ fn dispatchMessageEventWithContext(
     var v8_data: ?*v8_engine.ffi.Value = null;
 
     // Check the serialized value type
+    wdebug.print("[dispatchMessageEventWithContext] msg.data.type={}\n", .{msg.data.type});
     if (msg.data.type == .primitive) {
         switch (msg.data.data.primitive) {
             .string => |json_str| {
+                wdebug.print("[dispatchMessageEventWithContext] JSON string from worker: {s}\n", .{json_str});
                 // JSON string from worker - parse it in main context
                 v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
                     v8_context,
@@ -1257,11 +1265,17 @@ fn dispatchMessageEventWithContext(
                 );
                 if (v8_data == null) {
                     std.log.warn("Worker.dispatchMessageEvent: JSON.parse failed for: {s}", .{json_str});
+                } else {
+                    wdebug.print("[dispatchMessageEventWithContext] JSON.parse succeeded, v8_data={*}\n", .{v8_data.?});
                 }
             },
-            else => {},
+            else => {
+                wdebug.print("[dispatchMessageEventWithContext] primitive is not string\n", .{});
+            },
         }
-    } else {}
+    } else {
+        wdebug.print("[dispatchMessageEventWithContext] msg.data.type is not primitive\n", .{});
+    }
 
     // If we couldn't get V8 data (JSON parse failed or not a string message),
     // fire messageerror event per HTML Standard § 9.3.6.2:
@@ -1364,8 +1378,11 @@ fn invokeLegacyOnmessageHandler(
 ) void {
     _ = instance; // For future use with EventTarget internal state
 
+    wdebug.print("[invokeLegacyOnmessageHandler] ENTRY, internal.onmessage_handle={?}\n", .{internal.onmessage_handle});
+
     // Invoke the onmessage handler if set
     if (internal.onmessage_handle) |onmessage_global| {
+        wdebug.print("[invokeLegacyOnmessageHandler] Found onmessage handler, invoking...\n", .{});
         // Retrieve Local handle from Global handle
         const local_value = onmessage_global.get(isolate) orelse {
             std.log.warn("Worker.invokeLegacyOnmessageHandler: Failed to get Local from GlobalHandle", .{});
@@ -1382,7 +1399,16 @@ fn invokeLegacyOnmessageHandler(
         // Call the V8 function with the MessageEvent as argument
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-        _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+        wdebug.print("[invokeLegacyOnmessageHandler] Calling V8 function...\n", .{});
+
+        const result = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+        if (result == null) {
+            wdebug.print("[invokeLegacyOnmessageHandler] V8 function call returned null (possible exception)\n", .{});
+        } else {
+            wdebug.print("[invokeLegacyOnmessageHandler] V8 function call complete, result={*}\n", .{result.?});
+        }
+    } else {
+        wdebug.print("[invokeLegacyOnmessageHandler] No onmessage handler set\n", .{});
     }
 }
 
@@ -1499,15 +1525,16 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 /// - ReadableStream, WritableStream, TransformStream
 /// - ImageBitmap, OffscreenCanvas
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    wdebug.print("call_postMessage() ENTRY\n", .{});
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        wdebug.print("call_postMessage() have internal state\n", .{});
         if (internal.terminated) {
+            wdebug.print("call_postMessage() worker is terminated, returning\n", .{});
             return; // Worker is terminated, ignore message
         }
         if (internal.dedicated_worker) |worker| {
-            // Serialize the V8 value to JSON string, then create JSValue for structured clone
-            const v8_ctx: *v8_engine.ffi.Context = @ptrCast(instance.ctx.engine_ctx orelse return error.InvalidContext);
-            const v8_value: *v8_engine.ffi.Value = @ptrCast(message.toAnyopaque() orelse return error.TypeError);
+            wdebug.print("call_postMessage() have dedicated_worker\n", .{});
 
             // Parse transfer list if provided
             // NOTE: transfer_pointers contains TransferredArrayBuffer structs that own their data.
@@ -1515,43 +1542,117 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             // DO NOT free transfer_pointers here - the receiving end is responsible for cleanup.
             var transfer_pointers: ?[]?*anyopaque = null;
 
-            if (transfer != .undefined and transfer != .null) {
-                transfer_pointers = try parseTransferList(instance.ctx.allocator, transfer);
+            // Check if we have a transfer list - the transfer argument is the second param
+            // Parse transfer list if provided and not undefined/null
+            const transfer_is_defined = switch (transfer) {
+                .undefined, .null => false,
+                else => true,
+            };
+            if (transfer_is_defined) {
+                if (transfer.toAnyopaque()) |_| {
+                    transfer_pointers = parseTransferList(instance.ctx.allocator, transfer) catch null;
+                }
             }
 
-            // First call to get required buffer size
-            var size_buf: [1]u8 = undefined;
-            const required_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_ctx, v8_value, &size_buf, 0);
-            if (required_size < 0) {
-                // Serialization failed - post undefined
-                const js_value = JSValue{ .undefined = {} };
-                try worker.postMessageTyped(&js_value, transfer_pointers);
-                return;
-            }
-            if (required_size == 0) {
-                // Empty result - post undefined
-                const js_value = JSValue{ .undefined = {} };
-                try worker.postMessageTyped(&js_value, transfer_pointers);
-                return;
-            }
+            // Handle different runtime.JSValue types for structured clone serialization
+            // The receiving end expects a JSON string that can be parsed
+            // Note: message is runtime.JSValue, js_value is workers.message_channel.JSValue
+            const js_value: JSValue = switch (message) {
+                .undefined => blk: {
+                    wdebug.print("call_postMessage() message is undefined\n", .{});
+                    break :blk JSValue{ .undefined = {} };
+                },
+                .null => blk: {
+                    wdebug.print("call_postMessage() message is null\n", .{});
+                    break :blk JSValue{ .null = {} };
+                },
+                .boolean => |b| blk: {
+                    wdebug.print("call_postMessage() message is boolean: {}\n", .{b});
+                    // JSON boolean
+                    const json_str = if (b) "true" else "false";
+                    const json_copy = instance.ctx.allocator.dupe(u8, json_str) catch return error.OutOfMemory;
+                    break :blk JSValue{ .string = json_copy };
+                },
+                .number => |n| blk: {
+                    wdebug.print("call_postMessage() message is number: {d}\n", .{n});
+                    // JSON number
+                    var num_buf: [32]u8 = undefined;
+                    const num_str = std.fmt.bufPrint(&num_buf, "{d}", .{n}) catch return error.OutOfMemory;
+                    const json_copy = instance.ctx.allocator.dupe(u8, num_str) catch return error.OutOfMemory;
+                    break :blk JSValue{ .string = json_copy };
+                },
+                .string => |s| blk: {
+                    wdebug.print("call_postMessage() message is string, len={d}\n", .{s.data.len});
+                    // JSON string needs quotes - allocate buffer for quoted string
+                    // Simple implementation: escape quotes and backslashes
+                    var escaped_len: usize = 2; // for opening and closing quotes
+                    for (s.data) |c| {
+                        escaped_len += if (c == '"' or c == '\\') 2 else 1;
+                    }
+                    const json_copy = instance.ctx.allocator.alloc(u8, escaped_len) catch return error.OutOfMemory;
+                    var i: usize = 0;
+                    json_copy[i] = '"';
+                    i += 1;
+                    for (s.data) |c| {
+                        if (c == '"' or c == '\\') {
+                            json_copy[i] = '\\';
+                            i += 1;
+                        }
+                        json_copy[i] = c;
+                        i += 1;
+                    }
+                    json_copy[i] = '"';
+                    break :blk JSValue{ .string = json_copy };
+                },
+                .handle => |h| blk: {
+                    wdebug.print("call_postMessage() message is V8 object (handle), using JSON.stringify\n", .{});
+                    // V8 object - use JSON.stringify
+                    const v8_ctx: *v8_engine.ffi.Context = @ptrCast(instance.ctx.engine_ctx orelse {
+                        wdebug.print("call_postMessage() FAILED: no engine_ctx\n", .{});
+                        return error.InvalidContext;
+                    });
+                    const v8_value: *v8_engine.ffi.Value = @ptrCast(h.ptr);
 
-            // Allocate buffer and serialize
-            const buf = instance.ctx.allocator.alloc(u8, @intCast(required_size)) catch return error.OutOfMemory;
-            defer instance.ctx.allocator.free(buf);
+                    // First call to get required buffer size
+                    var size_buf: [1]u8 = undefined;
+                    const required_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_ctx, v8_value, &size_buf, 0);
+                    if (required_size < 0) {
+                        break :blk JSValue{ .undefined = {} };
+                    }
+                    if (required_size == 0) {
+                        break :blk JSValue{ .undefined = {} };
+                    }
 
-            const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_ctx, v8_value, buf.ptr, required_size);
-            if (written < 0) {
-                return error.SerializationFailed;
-            }
+                    // Allocate buffer and serialize
+                    const buf = instance.ctx.allocator.alloc(u8, @intCast(required_size)) catch return error.OutOfMemory;
+                    defer instance.ctx.allocator.free(buf);
 
-            // Create JSValue with the JSON string (will be parsed on receive side)
-            const json_slice = buf[0..@intCast(written)];
-            const json_copy = instance.ctx.allocator.dupe(u8, json_slice) catch return error.OutOfMemory;
-            const js_value = JSValue{ .string = json_copy };
+                    const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_ctx, v8_value, buf.ptr, required_size);
+                    if (written < 0) {
+                        return error.SerializationFailed;
+                    }
+
+                    const json_slice = buf[0..@intCast(written)];
+                    wdebug.print("call_postMessage() serialized to JSON, len={d}\n", .{json_slice.len});
+                    const json_copy = instance.ctx.allocator.dupe(u8, json_slice) catch return error.OutOfMemory;
+                    break :blk JSValue{ .string = json_copy };
+                },
+                .instance => blk: {
+                    wdebug.print("call_postMessage() message is Zig instance, cannot serialize\n", .{});
+                    // Zig instances can't be serialized - post undefined
+                    break :blk JSValue{ .undefined = {} };
+                },
+            };
 
             // Post the serialized message with transfer list
+            wdebug.print("call_postMessage() calling worker.postMessageTyped\n", .{});
             try worker.postMessageTyped(&js_value, transfer_pointers);
+            wdebug.print("call_postMessage() postMessageTyped returned successfully\n", .{});
+        } else {
+            wdebug.print("call_postMessage() FAILED: no dedicated_worker\n", .{});
         }
+    } else {
+        wdebug.print("call_postMessage() FAILED: no _internal state\n", .{});
     }
 }
 
@@ -2059,7 +2160,11 @@ fn dispatchMessageEventViaJS(worker_ctx: *WorkerV8Context, msg: *workers.ThreadS
     } else if (msg.data.type == .primitive) {
         switch (msg.data.data.primitive) {
             .string => |str| {
-                js_data_len = try formatJSStringLiteral(str, &js_data_buf);
+                // The string is already JSON-encoded (including quotes for string values)
+                // from the sending side, so we embed it directly without additional formatting
+                if (str.len > js_data_buf.len) return error.BufferTooSmall;
+                @memcpy(js_data_buf[0..str.len], str);
+                js_data_len = str.len;
             },
             .number => |num| {
                 js_data_len = (std.fmt.bufPrint(&js_data_buf, "{d}", .{num}) catch return error.BufferTooSmall).len;
@@ -2098,17 +2203,19 @@ fn dispatchMessageEventViaJS(worker_ctx: *WorkerV8Context, msg: *workers.ThreadS
 
     // Build JavaScript to create and dispatch MessageEvent
     // Using a script buffer large enough for the template + data
+    // NOTE: We only call self.onmessage directly since dispatchEvent may not be
+    // available on the worker global scope. EventTarget methods on workers
+    // require the full DedicatedWorkerGlobalScope setup.
     var script_buf: [16384]u8 = undefined;
     const script = std.fmt.bufPrint(&script_buf,
         \\(function() {{
         \\  var data = {s};
         \\  var event = new MessageEvent('message', {{ data: data }});
-        \\  // Dispatch to addEventListener handlers
-        \\  self.dispatchEvent(event);
-        \\  // Also invoke legacy onmessage handler if set
+        \\  // Invoke legacy onmessage handler if set
         \\  if (typeof self.onmessage === 'function') {{
         \\    self.onmessage(event);
         \\  }}
+        \\  // TODO: Also dispatch to addEventListener handlers when dispatchEvent is available
         \\}})();
     , .{js_data}) catch return error.BufferTooSmall;
 
