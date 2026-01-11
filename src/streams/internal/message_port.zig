@@ -58,8 +58,13 @@ pub const MessagePort = struct {
     /// Entangled port (if any)
     entangled_port: ?*MessagePort,
 
-    /// Message queue
+    /// Message queue (for internal streams messages)
     message_queue: infra.List(*Message),
+
+    /// Pending WebIDL messages queue (for runtime.JSValue messages when queue is disabled)
+    /// Stores heap-allocated pointers to runtime.JSValue (as *anyopaque)
+    /// These are queued when postMessage is called but the queue is disabled
+    pending_webidl_messages: infra.List(*anyopaque),
 
     /// Message handler (invoked when message received)
     onmessage: ?*const fn (*MessagePort, *Message) void,
@@ -74,6 +79,10 @@ pub const MessagePort = struct {
     /// Spec: § 9.3.2.2 "port message queue"
     queue_enabled: bool,
 
+    /// Reference to WebIDL MessagePort instance for event dispatch
+    /// This is a *runtime.Instance stored as *anyopaque to avoid circular dependencies
+    webidl_instance: ?*anyopaque,
+
     pub fn init(allocator: Allocator) !*MessagePort {
         const port = try allocator.create(MessagePort);
         port.* = .{
@@ -81,10 +90,12 @@ pub const MessagePort = struct {
             .id = generatePortId(),
             .entangled_port = null,
             .message_queue = infra.List(*Message).init(allocator),
+            .pending_webidl_messages = infra.List(*anyopaque).init(allocator),
             .onmessage = null,
             .onmessageerror = null,
             .closed = false,
             .queue_enabled = false,
+            .webidl_instance = null,
         };
         return port;
     }
@@ -97,6 +108,11 @@ pub const MessagePort = struct {
             }
         }
         self.message_queue.deinit();
+
+        // Clean up pending WebIDL messages queue
+        // Note: The actual runtime.JSValue cleanup is handled by the WebIDL layer
+        // We just need to free the list itself
+        self.pending_webidl_messages.deinit();
 
         // Disentangle if needed
         if (self.entangled_port) |other| {
@@ -149,6 +165,23 @@ pub const MessagePort = struct {
     /// Spec: § 9.3.2.2 "Enable port's message queue"
     pub fn enableQueue(self: *MessagePort) void {
         self.queue_enabled = true;
+    }
+
+    /// Queue a pending WebIDL message (for when queue is disabled)
+    /// The msg_ptr should be a heap-allocated runtime.JSValue (as *anyopaque)
+    /// Spec: § 9.4.1 step 11 - messages queue until port is enabled
+    pub fn queuePendingMessage(self: *MessagePort, msg_ptr: *anyopaque) !void {
+        try self.pending_webidl_messages.append(msg_ptr);
+    }
+
+    /// Pop a pending WebIDL message from the queue
+    /// Returns null if the queue is empty
+    /// The caller is responsible for casting back to *runtime.JSValue and cleaning up
+    pub fn popPendingMessage(self: *MessagePort) ?*anyopaque {
+        if (self.pending_webidl_messages.len == 0) return null;
+        const msg_ptr = self.pending_webidl_messages.get(0) orelse return null;
+        _ = self.pending_webidl_messages.remove(0) catch return null;
+        return msg_ptr;
     }
 
     /// Dispatch all queued messages

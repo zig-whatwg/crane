@@ -367,3 +367,56 @@ pub fn createBinaryMessageEvent(
 
     return instance;
 }
+
+/// Create a MessageEvent for a MessagePort message (postMessage)
+///
+/// Spec: HTML Standard section 9.4.1
+/// - data: The message payload (any JavaScript value)
+/// - origin: Empty string for ports (per spec)
+/// - source: null for ports
+/// - ports: Array of transferred ports (empty for now)
+pub fn createPortMessageEvent(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    data: runtime.JSValue,
+) !*runtime.Instance {
+    const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
+    errdefer deinit(instance);
+
+    const state = instance.getState(State);
+
+    // Create internal state for Event (required for flags like dispatch_flag, initialized_flag, path)
+    const EventImpl = @import("Event.zig");
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const arena = ArenaAllocator.get();
+    const event_internal = try arena.create(EventImpl.InternalState);
+    event_internal.* = EventImpl.InternalState.init(ctx.allocator);
+    state.base.own._internal = event_internal;
+    event_internal.initialized_flag = true;
+
+    // Set event type to "message" (Event fields in state.base.own)
+    state.base.own.type = try typedefs.DOMString.initDupe(allocator, "message");
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.isTrusted = true; // System-generated event
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = 0;
+
+    state.base.own.bubbles = false;
+    state.base.own.cancelable = false;
+    state.base.own.composed = false;
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true;
+    state.base.own.defaultPrevented = false;
+
+    // MessageEvent-specific fields (state.own)
+    // Clone the data to take ownership
+    state.own.data = try data.clone(allocator);
+    state.own.origin = ""; // Empty string for ports per spec
+    state.own.lastEventId = runtime.DOMString.initEmpty();
+    state.own.source = null; // null for ports per spec
+    // ports would be set if transferring MessagePorts
+
+    return instance;
+}
