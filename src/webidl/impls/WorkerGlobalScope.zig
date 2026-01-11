@@ -693,10 +693,13 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 }
 
 /// Operation: queueMicrotask
+///
+/// Spec: HTML Standard § 8.6 Microtask queuing
+/// https://html.spec.whatwg.org/#dom-queuemicrotask
+///
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
 }
 
 /// Operation: structuredClone
