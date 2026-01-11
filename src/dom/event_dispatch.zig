@@ -362,11 +362,11 @@ pub fn dispatch(
                 }
 
                 // Invoke listeners in capturing phase
-                try invoke(event, path_struct, "capturing", legacy_output_did_listeners_throw_flag);
+                try invoke(event, path_struct, path_idx, "capturing", legacy_output_did_listeners_throw_flag);
             }
 
             // Step 6.14: For each struct in event's path (bubbling phase)
-            for (items) |path_struct| {
+            for (items, 0..) |path_struct, path_idx| {
                 // Set event phase
                 if (path_struct.shadow_adjusted_target != null) {
                     EventImpl.setEventPhase(event, Event.get_AT_TARGET());
@@ -378,7 +378,7 @@ pub fn dispatch(
                 }
 
                 // Invoke listeners in bubbling phase
-                try invoke(event, path_struct, "bubbling", legacy_output_did_listeners_throw_flag);
+                try invoke(event, path_struct, path_idx, "bubbling", legacy_output_did_listeners_throw_flag);
             }
         }
 
@@ -586,6 +586,7 @@ fn getTheParent(target: *runtime.Instance, event: *runtime.Instance) ?*runtime.I
 fn invoke(
     event: *runtime.Instance,
     path_struct: EventPathItem,
+    path_struct_index: usize,
     phase: []const u8,
     legacy_output_did_listeners_throw_flag: ?*bool,
 ) !void {
@@ -594,9 +595,11 @@ fn invoke(
     // Step 1: Set event's target to the shadow-adjusted target of the last struct
     // in event's path that is either this struct or preceding it, whose shadow-adjusted target is non-null
     const path = EventImpl.getPath(event) orelse return;
-    for (path.toSlice()) |item| {
+    const items = path.toSlice();
+    for (items, 0..) |item, idx| {
         if (item.shadow_adjusted_target) |target| {
-            if (@intFromPtr(&item) <= @intFromPtr(&path_struct)) {
+            // Check if this item is at or before the current path_struct
+            if (idx <= path_struct_index) {
                 EventImpl.setTarget(event, target);
             }
         }

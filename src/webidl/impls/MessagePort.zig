@@ -245,11 +245,13 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// asynchronously by creating a MessageEvent and dispatching it
 /// to the entangled port's message event target.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    _ = transfer; // TODO: Implement transfer semantics
-
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
     const internal_port = internal.internal_port;
+
+    // Extract MessagePort instances from the transfer list
+    // Per spec, only MessagePort and ArrayBuffer can be transferred
+    const ports = extractTransferredPorts(transfer, internal.allocator) catch runtime.JSValue.jsUndefined;
 
     // Step 2: Get the entangled port
     const entangled_port = internal_port.entangled_port orelse {
@@ -278,14 +280,33 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Check if target port's queue is enabled
     if (entangled_port.queue_enabled) {
         // Queue is enabled - deliver message now
-        try deliverMessage(target_instance, message);
+        try deliverMessage(target_instance, message, ports);
     } else {
         // Queue is disabled - store message for later delivery
+        // TODO: Store ports along with message for later delivery
         // Clone the message and heap-allocate it for storage
         const cloned_ptr = try internal.allocator.create(runtime.JSValue);
         errdefer internal.allocator.destroy(cloned_ptr);
         cloned_ptr.* = try message.clone(internal.allocator);
         try entangled_port.queuePendingMessage(@ptrCast(cloned_ptr));
+    }
+}
+
+/// Extract MessagePort instances from a transfer list
+/// Returns a JSValue representing an array of MessagePort instances
+fn extractTransferredPorts(transfer: runtime.JSValue, allocator: std.mem.Allocator) !runtime.JSValue {
+    _ = allocator;
+
+    // If transfer is undefined/null, return undefined (no ports)
+    switch (transfer) {
+        .undefined, .null => return runtime.JSValue.jsUndefined,
+        .handle => |h| {
+            // The transfer list is a JS array - we need to check if it contains MessagePorts
+            // For now, just pass the handle through as the ports array
+            // The V8 side will see this as a JS array
+            return runtime.JSValue{ .handle = h };
+        },
+        else => return runtime.JSValue.jsUndefined,
     }
 }
 
@@ -308,12 +329,12 @@ fn convertToStreamsJSValue(message: runtime.JSValue, allocator: std.mem.Allocato
 /// 1. Create a MessageEvent with the data
 /// 2. Dispatch the event to the port
 /// 3. Invoke legacy onmessage handler if set
-fn deliverMessage(port_instance: *runtime.Instance, data: runtime.JSValue) !void {
+fn deliverMessage(port_instance: *runtime.Instance, data: runtime.JSValue, ports: runtime.JSValue) !void {
     const allocator = port_instance.ctx.allocator;
 
-    // Create MessageEvent with the data
+    // Create MessageEvent with the data and transferred ports
     const MessageEventImpl = @import("MessageEvent.zig");
-    const event = try MessageEventImpl.createPortMessageEvent(allocator, port_instance.ctx, data);
+    const event = try MessageEventImpl.createPortMessageEvent(allocator, port_instance.ctx, data, ports);
     errdefer interfaces.Event.deinit(event);
 
     // Dispatch the event to the port via EventTarget (invokes addEventListener listeners)
@@ -404,7 +425,9 @@ fn flushPendingMessages(instance: *runtime.Instance, internal: *InternalState) v
             internal.allocator.destroy(pending_msg);
         }
 
-        deliverMessage(instance, pending_msg.*) catch |err| {
+        // TODO: Pending messages should also store transferred ports
+        // For now, pass undefined (no ports) for pending messages
+        deliverMessage(instance, pending_msg.*, runtime.JSValue.jsUndefined) catch |err| {
             // Log error but continue processing queue
             std.log.err("Failed to deliver pending message: {s}", .{@errorName(err)});
         };

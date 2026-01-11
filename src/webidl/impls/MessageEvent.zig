@@ -59,6 +59,8 @@ pub const InternalState = struct {
     message_data: ?MessageData = null,
     /// Whether we own the binary data (should free on deinit)
     owns_binary: bool = false,
+    /// V8 Global handle for ports array (persists beyond HandleScope)
+    ports_global: v8_engine.OptionalGlobalHandle = null,
 };
 
 /// Initialize instance (creates the instance)
@@ -107,6 +109,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
 
     if (state.own._internal) |internal| {
+        // Dispose the ports Global handle if set
+        if (internal.ports_global) |ports_handle| {
+            ports_handle.dispose();
+        }
+
         if (internal.owns_binary) {
             if (internal.message_data) |data| {
                 switch (data) {
@@ -237,13 +244,12 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// Getter for ports
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-ports
 ///
-/// For WebSocket, this is always an empty frozen array.
-/// This is used by postMessage for transferring MessagePorts.
+/// Returns an array of MessagePort objects representing transferred ports.
+/// For WebSocket, this is always an empty array.
+/// For MessagePort.postMessage with transfer list, this contains the transferred ports.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    // TODO: Return proper frozen array when V8 array creation is available
-    // For now, return undefined - spec requires a frozen array of MessagePort
-    return runtime.JSValue.jsUndefined;
+    const state = instance.getState(State);
+    return state.own.ports;
 }
 
 /// Operation: initMessageEvent (legacy)
@@ -374,11 +380,12 @@ pub fn createBinaryMessageEvent(
 /// - data: The message payload (any JavaScript value)
 /// - origin: Empty string for ports (per spec)
 /// - source: null for ports
-/// - ports: Array of transferred ports (empty for now)
+/// - ports: Array of transferred ports (JSValue containing array, or undefined for empty)
 pub fn createPortMessageEvent(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
     data: runtime.JSValue,
+    ports: runtime.JSValue,
 ) !*runtime.Instance {
     const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
     errdefer deinit(instance);
@@ -416,7 +423,46 @@ pub fn createPortMessageEvent(
     state.own.origin = ""; // Empty string for ports per spec
     state.own.lastEventId = runtime.DOMString.initEmpty();
     state.own.source = null; // null for ports per spec
-    // ports would be set if transferring MessagePorts
+
+    // For ports, we need to persist the V8 handle as a Global handle
+    // because the callback's Global handles are disposed after the callback returns.
+    // Store the Global handle in internal state and mark ports as having a global handle.
+    switch (ports) {
+        .handle => |h| {
+            // Get the current isolate
+            const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+                state.own.ports = runtime.JSValue.jsUndefined;
+                return instance;
+            };
+
+            // h.ptr is ALREADY a Global<Value>* from v8_FunctionCallbackInfo_GetArgument.
+            // We need to create our OWN Global handle because the callback's Global
+            // will be disposed when the callback returns.
+            //
+            // First get a Local from the existing Global, then create a new Global.
+            const local_value = v8_engine.ffi.v8_Global_Get(isolate, @ptrCast(h.ptr)) orelse {
+                state.own.ports = runtime.JSValue.jsUndefined;
+                return instance;
+            };
+
+            // Now create our own Global handle from the Local
+            if (v8_engine.GlobalHandle.create(isolate, local_value)) |global_handle| {
+                // Store in internal state for lifetime management
+                if (state.own._internal) |internal| {
+                    internal.ports_global = global_handle;
+                }
+                // Store a handle with the Global pointer for get_ports()
+                state.own.ports = runtime.JSValue{
+                    .handle = .{ .ptr = global_handle.ptr, .needs_disposal = false },
+                };
+            } else {
+                state.own.ports = runtime.JSValue.jsUndefined;
+            }
+        },
+        else => {
+            state.own.ports = ports;
+        },
+    }
 
     return instance;
 }
