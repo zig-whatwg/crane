@@ -432,6 +432,12 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             internal_state.isolate = isolate;
             wdebug.print("  Stored isolate reference for message dispatch\n", .{});
 
+            // CRITICAL: Store the parent isolate in DedicatedWorker for nested worker support.
+            // This allows pollAndDispatch() to only dispatch messages on the correct thread.
+            // For nested workers (created by another worker), this is the outer worker's isolate.
+            dedicated_worker.parent_isolate = @ptrCast(isolate);
+            wdebug.print("  Stored parent_isolate in DedicatedWorker: {*}\n", .{dedicated_worker.parent_isolate});
+
             // CRITICAL: Store the V8 context pointer for message dispatch
             // This is used instead of ctx.getEngineContextAs() which can crash
             // if the ContextData has been freed or corrupted.
@@ -801,6 +807,7 @@ fn spawnWorkerThread(internal: *InternalState) !void {
         dispatchMessageCallback(),
         microtaskCheckpointCallback(),
         eventLoopRunOnceCallback(),
+        getV8IsolateCallback(),
         null, // No callback context needed
     );
 
@@ -3000,6 +3007,19 @@ pub fn eventLoopRunOnceCallback() workers.WorkerThreadRunner.EventLoopRunOnceFn 
     return eventLoopRunOnceWithInterfaces;
 }
 
+/// Callback to extract the raw V8 isolate pointer from a WorkerV8Context.
+/// This is needed for nested worker message dispatch - we need the V8 isolate
+/// to match against parent_isolate, but the worker loop only has WorkerV8Context*.
+fn getV8IsolateFromWorkerContext(isolate_data: *anyopaque) ?*anyopaque {
+    const worker_ctx: *WorkerV8Context = @ptrCast(@alignCast(isolate_data));
+    return @ptrCast(worker_ctx.isolate);
+}
+
+/// Get the V8 isolate callback function pointer
+pub fn getV8IsolateCallback() workers.WorkerThreadRunner.GetV8IsolateFn {
+    return getV8IsolateFromWorkerContext;
+}
+
 /// Get the global worker wakeup primitive.
 /// Returns null if no workers have been created yet or wakeup initialization failed.
 /// Used by Browser.runEventLoop to wait efficiently for worker messages.
@@ -3015,7 +3035,10 @@ pub fn flushPendingWorkerMessages() void {
 
     // First, poll threaded workers' outboxes for cross-thread messages.
     // This is the primary path for workers running on separate OS threads.
-    const dispatched_threaded = workers.ThreadedWorkerRegistry.pollAndDispatch();
+    // Pass the current isolate so only workers created by this thread are dispatched.
+    // For nested workers, the outer worker's thread handles dispatch, not main thread.
+    const current_isolate: ?*anyopaque = if (v8_engine.ffi.v8_Isolate_GetCurrent()) |iso| @ptrCast(iso) else null;
+    const dispatched_threaded = workers.ThreadedWorkerRegistry.pollAndDispatchForIsolate(current_isolate);
     if (dispatched_threaded) {
         wdebug.print("flushPendingWorkerMessages() dispatched threaded worker messages\n", .{});
     }

@@ -160,6 +160,16 @@ pub const ThreadedWorkerRegistry = struct {
     /// before dispatching to avoid deadlock. If a handler creates a new Worker, it would
     /// deadlock if we held the mutex during dispatch.
     pub fn pollAndDispatch() bool {
+        // Main thread: dispatch for workers created by main thread (parent_isolate == main isolate)
+        // For backward compatibility, pass null to match main thread's isolate
+        return pollAndDispatchForIsolate(null);
+    }
+
+    /// Poll and dispatch for workers created by a specific isolate.
+    /// If current_isolate is null, only workers created by the main thread are processed.
+    /// If current_isolate is set, only workers whose parent_isolate matches are processed.
+    /// This ensures nested workers are dispatched by their parent thread, not the main thread.
+    pub fn pollAndDispatchForIsolate(current_isolate: ?*anyopaque) bool {
         // Temporary storage for collected messages
         // We collect under lock, then dispatch without lock to avoid deadlock
         const MessageToDispatch = struct {
@@ -184,12 +194,24 @@ pub const ThreadedWorkerRegistry = struct {
             mutex.lock();
             defer mutex.unlock();
 
-            dwdebug.print("pollAndDispatch() iterating {d} registered workers\n", .{workers.count()});
+            dwdebug.print("pollAndDispatch() iterating {d} registered workers, filtering for isolate={?*}\n", .{ workers.count(), current_isolate });
             var iter = workers.valueIterator();
             while (iter.next()) |worker_ptr| {
                 const worker = worker_ptr.*;
+
+                // Filter: Only dispatch messages for workers created by the current isolate.
+                // This ensures nested workers are dispatched by their parent thread, not the main thread.
+                // - Main thread has isolate A, creates Worker1 → Worker1.parent_isolate = A
+                // - Worker1's thread has isolate B, creates Worker2 → Worker2.parent_isolate = B
+                // - Main thread calls with current_isolate=A → processes Worker1, skips Worker2
+                // - Worker1's thread calls with current_isolate=B → processes Worker2, skips Worker1
+                if (current_isolate != worker.parent_isolate) {
+                    dwdebug.print("pollAndDispatch() skipping worker={*} (parent_isolate={?*} != current_isolate={?*})\n", .{ worker, worker.parent_isolate, current_isolate });
+                    continue;
+                }
+
                 const ts_ptr: usize = if (worker.thread_state) |ts| @intFromPtr(ts) else 0;
-                dwdebug.print("pollAndDispatch() checking worker, thread_state={x}\n", .{ts_ptr});
+                dwdebug.print("pollAndDispatch() checking worker={*} (parent_isolate matches), thread_state={x}\n", .{ worker, ts_ptr });
                 if (worker.thread_state) |ts| {
                     dwdebug.print("pollAndDispatch() worker has thread_state, outbox ptr={*}\n", .{&ts.outbox});
                     // Poll the thread-safe outbox for messages from the worker thread
@@ -473,6 +495,12 @@ pub const DedicatedWorker = struct {
     /// When a worker runs on a separate OS thread, this points to the shared WorkerThreadState
     /// which contains thread-safe inbox/outbox queues for message passing.
     thread_state: ?*WorkerThreadState = null,
+
+    /// Parent isolate pointer - tracks which V8 isolate created this worker.
+    /// Used by pollAndDispatch() to ensure messages are only dispatched on the
+    /// correct thread (the one that created the worker).
+    /// For nested workers, this points to the outer worker's isolate.
+    parent_isolate: ?*anyopaque = null,
 
     /// Pending messages to be sent to the worker thread once thread_state is set.
     /// This buffers messages that are posted via postMessage() before the worker thread

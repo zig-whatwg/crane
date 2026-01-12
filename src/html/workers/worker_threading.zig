@@ -481,6 +481,12 @@ pub const WorkerThreadRunner = struct {
     /// This processes setTimeout/setInterval callbacks
     event_loop_run_once_fn: ?EventLoopRunOnceFn,
 
+    /// Callback to get the raw V8 isolate pointer from the WorkerV8Context
+    /// Signature: fn(*anyopaque) ?*anyopaque
+    /// This is needed for nested worker message dispatch - we need the V8 isolate
+    /// to match against parent_isolate, but we only have WorkerV8Context* in the loop
+    get_v8_isolate_fn: ?GetV8IsolateFn,
+
     /// Callback context for V8 operations
     callback_context: ?*anyopaque,
 
@@ -493,6 +499,7 @@ pub const WorkerThreadRunner = struct {
     pub const DispatchMessageFn = *const fn (*anyopaque, *ThreadSafeMessageQueue.SerializedMessage) anyerror!void;
     pub const MicrotaskCheckpointFn = *const fn (*anyopaque) void;
     pub const EventLoopRunOnceFn = *const fn (*anyopaque) void;
+    pub const GetV8IsolateFn = *const fn (*anyopaque) ?*anyopaque;
 
     pub fn init(
         allocator: Allocator,
@@ -508,6 +515,7 @@ pub const WorkerThreadRunner = struct {
             .dispatch_message_fn = null,
             .microtask_checkpoint_fn = null,
             .event_loop_run_once_fn = null,
+            .get_v8_isolate_fn = null,
             .callback_context = null,
         };
         return runner;
@@ -538,6 +546,7 @@ pub const WorkerThreadRunner = struct {
         dispatch_message: ?DispatchMessageFn,
         microtask_checkpoint: ?MicrotaskCheckpointFn,
         event_loop_run_once: ?EventLoopRunOnceFn,
+        get_v8_isolate: ?GetV8IsolateFn,
         context: ?*anyopaque,
     ) void {
         self.create_isolate_fn = create_isolate;
@@ -546,6 +555,7 @@ pub const WorkerThreadRunner = struct {
         self.dispatch_message_fn = dispatch_message;
         self.microtask_checkpoint_fn = microtask_checkpoint;
         self.event_loop_run_once_fn = event_loop_run_once;
+        self.get_v8_isolate_fn = get_v8_isolate;
         self.callback_context = context;
     }
 
@@ -744,6 +754,30 @@ pub const WorkerThreadRunner = struct {
                 dedicated_worker.spin() catch |err| {
                     debug.print("[WorkerThread] event_loop.spin error: {s}\n", .{@errorName(err)});
                 };
+            }
+
+            // Poll for nested worker messages.
+            // When this worker creates child workers (nested workers), their messages
+            // are posted to the ThreadedWorkerRegistry. We need to poll and dispatch
+            // these messages so nested worker.onmessage handlers fire.
+            //
+            // CRITICAL: We need to pass the raw V8 isolate (not WorkerV8Context*) to match
+            // against parent_isolate which is set using v8_Isolate_GetCurrent() in Worker.call_constructor.
+            // The 'isolate' parameter here is actually a WorkerV8Context*, so we use the
+            // get_v8_isolate_fn callback to extract the raw V8 isolate pointer.
+            const ThreadedWorkerRegistry = @import("dedicated_worker.zig").ThreadedWorkerRegistry;
+            var v8_isolate_for_dispatch: ?*anyopaque = null;
+            if (isolate) |worker_ctx| {
+                if (self.get_v8_isolate_fn) |get_fn| {
+                    v8_isolate_for_dispatch = get_fn(worker_ctx);
+                }
+            }
+            if (loop_count == 1 or loop_count % 100 == 0) {
+                debug.print("[WorkerThread] About to poll for nested workers (v8_isolate={?*})\n", .{v8_isolate_for_dispatch});
+            }
+            const dispatched = ThreadedWorkerRegistry.pollAndDispatchForIsolate(v8_isolate_for_dispatch);
+            if (dispatched) {
+                debug.print("[WorkerThread] Dispatched nested worker messages (v8_isolate={?*})\n", .{v8_isolate_for_dispatch});
             }
 
             // Wait for messages or termination signal using EventWakeup
