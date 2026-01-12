@@ -1508,6 +1508,8 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("dom", dom_mod);
     // Version module for Crane version in navigator
     html_mod.addImport("version", version_mod);
+    // HR-Time module for Performance API in workers (performance.now(), performance.timeOrigin)
+    html_mod.addImport("hr_time", hr_time_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls

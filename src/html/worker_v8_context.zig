@@ -84,6 +84,10 @@ const fetch_response = @import("fetch").webidl.response;
 const infra = @import("infra");
 const base64 = infra.base64;
 
+// HR-Time module for Performance.now() and Performance.timeOrigin
+// Per W3C High Resolution Time spec: https://w3c.github.io/hr-time/
+const hr_time = @import("hr_time");
+
 /// Opaque engine context type expected by WorkerContext
 const EngineContext = workers.worker_context.EngineContext;
 
@@ -186,6 +190,10 @@ pub const WorkerV8Context = struct {
     /// Subsequent messages are postMessage data to dispatch as MessageEvents.
     script_executed: bool = false,
 
+    /// Time origin for Performance API (performance.now() and performance.timeOrigin)
+    /// Per W3C HR-Time spec, each worker context has its own time origin.
+    time_origin: hr_time.TimeOrigin,
+
     const Self = @This();
 
     /// Create a new V8 context for a worker
@@ -268,6 +276,10 @@ pub const WorkerV8Context = struct {
             .document_base_url = base_url_copy,
             .worker_type = worker_type,
             .allocator = allocator,
+            // Initialize time origin for Performance API
+            // Per HR-Time spec, each worker gets its own time origin at creation time
+            // TODO: Check if worker is cross-origin isolated for higher timer resolution
+            .time_origin = hr_time.TimeOrigin.init(false),
         };
 
         // CRITICAL: Create HandleScope for V8 handle allocation during setup
@@ -930,6 +942,48 @@ pub const WorkerV8Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(crypto_key), @ptrCast(crypto_obj));
         }
         std.debug.print("[setupWorkerGlobalScope] crypto registered\n", .{});
+
+        // Register performance global object
+        // Per W3C High Resolution Time spec and WHATWG HTML Standard:
+        // WorkerGlobalScope includes WindowOrWorkerGlobalScope mixin which provides performance
+        // Per spec: performance.now() returns time relative to worker's time origin
+        // Per spec: performance.timeOrigin returns Unix epoch time when worker was created
+        std.debug.print("[setupWorkerGlobalScope] Registering performance\n", .{});
+        {
+            // Create the performance object
+            const perf_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
+                return error.ObjectCreateFailed;
+            };
+
+            // Add now() function to performance
+            // Per HR-Time spec: Returns DOMHighResTimeStamp representing time elapsed since time origin
+            const now_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerPerformanceNowCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const now_func = v8.ffi.v8_FunctionTemplate_GetFunction(now_template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const now_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "now", 3) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(perf_obj, self.context, @ptrCast(now_key), @ptrCast(now_func));
+
+            // Add timeOrigin property to performance
+            // Per HR-Time spec: Returns DOMHighResTimeStamp representing Unix epoch time of time origin
+            const time_origin_ms = self.time_origin.getTimeOriginTimestampMs();
+            const time_origin_value = v8.ffi.v8_Number_New(self.isolate, time_origin_ms);
+            const time_origin_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "timeOrigin", 10) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(perf_obj, self.context, @ptrCast(time_origin_key), @ptrCast(time_origin_value));
+
+            // Set performance on global object
+            const perf_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "performance", 11) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(perf_key), @ptrCast(perf_obj));
+        }
+        std.debug.print("[setupWorkerGlobalScope] performance registered\n", .{});
 
         // NOTE: We do NOT register a native done() function here.
         // testharness.js defines its own done() function when loaded via importScripts().
@@ -2421,6 +2475,34 @@ fn workerRandomUUIDCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
 
     // Create V8 string and return
     const result = v8.ffi.v8_String_NewFromUtf8(isolate, &uuid_str, 36) orelse return;
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// V8 callback for performance.now()
+///
+/// Spec: W3C High Resolution Time § 4.2 The now() method
+/// https://w3c.github.io/hr-time/#dom-performance-now
+///
+/// Returns a DOMHighResTimeStamp representing the time elapsed since the
+/// worker's time origin. The time is coarsened per the HR-Time spec to
+/// mitigate timing side-channel attacks.
+fn workerPerformanceNowCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Get the worker context from thread-local storage
+    const worker_ctx = current_worker_context orelse {
+        // If no context, return 0 (should not happen in normal operation)
+        const zero = v8.ffi.v8_Number_New(isolate, 0.0);
+        info.setReturnValue(@ptrCast(zero));
+        return;
+    };
+
+    // Get current relative timestamp from time origin
+    // Per HR-Time spec, this is the time elapsed since the worker was created
+    const now_ms = worker_ctx.time_origin.currentRelativeTimestampMs();
+
+    // Create V8 number and return
+    const result = v8.ffi.v8_Number_New(isolate, now_ms);
     info.setReturnValue(@ptrCast(result));
 }
 
