@@ -1529,11 +1529,11 @@ fn dispatchMessageErrorEvent(
             return;
         }
 
-        const local_value = onmessageerror_global.get(isolate) orelse {
-            return;
-        };
-        const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+        // Use the Global handle directly for the function call
+        // v8_Function_Call expects Global<Function>*
+        const function: *v8_engine.ffi.Function = @ptrCast(onmessageerror_global.ptr);
 
+        // v8_event is already a Global<Object>* from wrapInstanceAsV8Object
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
         _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
@@ -2004,14 +2004,12 @@ pub fn dispatchErrorEvent(
             return;
         }
 
-        // Retrieve Local handle from Global handle
-        const local_value = onerror_global.get(isolate) orelse {
-            std.log.warn("Worker.dispatchErrorEvent: Failed to get Local from GlobalHandle", .{});
-            return;
-        };
-        const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+        // Use the Global handle directly for the function call
+        // v8_Function_Call expects Global<Function>*
+        const function: *v8_engine.ffi.Function = @ptrCast(onerror_global.ptr);
 
         // Call the V8 function with the ErrorEvent as argument
+        // v8_event is already a Global<Object>* from wrapInstanceAsV8Object
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
         _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
