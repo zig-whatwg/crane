@@ -294,13 +294,10 @@ pub fn fromV8ValueTyped(
             }
         }
 
-        // Not a wrapped instance - create Global handle for persistence
-        // Functions and objects need Global handles to survive HandleScope
-        if (v8.v8_Value_ToGlobal(isolate, @ptrCast(value))) |global| {
-            return JSValue.fromGlobal(global);
-        }
-
-        // Global creation failed (OOM) - fall through to local
+        // Not a wrapped instance - the value IS already a Global handle
+        // (from v8_FunctionCallbackInfo_GetArgument which creates and tracks a Global)
+        // Just use it directly - no need to call v8_Value_ToGlobal
+        return JSValue.fromGlobal(@ptrCast(value));
     }
 
     // For other values (strings, etc.) - return as local handle
@@ -712,6 +709,7 @@ pub fn fromV8Value(
             if (pointer_child_info == .@"fn") {
                 // This is an optional callback (?*fn(...))
                 // If value is not a function, return null instead of erroring
+                // NOTE: value from v8_FunctionCallbackInfo_GetArgument is already a Global<Value>*.
                 if (!v8.v8_Value_IsFunction(value)) {
                     return null;
                 }
@@ -979,13 +977,10 @@ pub fn fromV8Value(
         // Check function FIRST since functions are also objects in JavaScript
         if (v8.v8_Value_IsFunction(value)) {
             if (function_idx) |idx| {
-                // For callback functions, we need to create a GlobalHandle to the V8 function.
-                // The handle is stored as a tagged pointer (*anyopaque).
-                const global_handle = v8.v8_Value_ToGlobal(isolate, value) orelse {
-                    return ConversionError.OutOfMemory;
-                };
-                // Tag the pointer so we can identify it later as a GlobalHandle
-                const tagged = pointer_tag.tagPointer(global_handle, .global_handle);
+                // IMPORTANT: The 'value' from v8_FunctionCallbackInfo_GetArgument is already
+                // a Global<Value>* pointer. We do NOT need to call v8_Value_ToGlobal again.
+                // Just tag it directly so we can identify it later as a GlobalHandle.
+                const tagged = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
                 // Handle the different callback pointer types
                 const FieldType = fields[idx].type;
                 if (FieldType == *anyopaque) {
@@ -1205,19 +1200,16 @@ pub fn fromV8Value(
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .@"fn") {
             // Verify this is actually a V8 function
+            // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a Global<Value>*
+            // (the C++ function creates a new Global from the Local argument and returns it).
+            // So we use v8_Value_IsFunction which expects Global<Value>*.
             if (!v8.v8_Value_IsFunction(value)) {
                 return ConversionError.TypeError;
             }
 
-            // Create a Global handle to persist the callback across HandleScope boundaries.
-            // This converts the stack-bound Local<Value> to a heap-allocated Global<Value>.
-            const global_handle = global_handles.GlobalHandle.create(isolate, value) orelse {
-                return ConversionError.GlobalHandleCreationFailed;
-            };
-
-            // Return the Global handle's internal pointer, tagged with .global_handle.
-            // The tag tells consumers (like jsCallbackAlgorithmGlobal) that this is already
-            // a Global handle, so they don't need to create another one.
+            // The value is already a Global<Value>* from v8_FunctionCallbackInfo_GetArgument.
+            // We don't need to create another Global - just use this one directly.
+            // Tag the pointer so consumers know it's a GlobalHandle.
             //
             // Consumers should:
             // 1. Call pointer_tag.untagPointer() to get the raw pointer and tag
@@ -1228,7 +1220,7 @@ pub fn fromV8Value(
             // We can't use normal pointer casts because Zig checks alignment for function pointers.
             // Instead, we use a union type-pun to bypass alignment checks entirely.
             // The pointer MUST be untagged before any alignment-sensitive operations.
-            const tagged_ptr = pointer_tag.tagPointer(@ptrCast(global_handle.ptr), .global_handle);
+            const tagged_ptr = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
 
             // Bypass Zig's alignment checking for function pointers.
             // This is safe because:

@@ -198,7 +198,12 @@ pub const ThreadedWorkerRegistry = struct {
                             continue;
                         }
 
-                        dwdebug.print("pollAndDispatch() dequeued message #{d} from worker\n", .{message_count + 1});
+                        dwdebug.print("pollAndDispatch() dequeued message #{d} from worker={*} script_url={s} outside_user_data={?*}\n", .{
+                            message_count + 1,
+                            worker,
+                            worker.script_url,
+                            worker.outside_user_data,
+                        });
 
                         // Create a QueuedMessage to pass to the handler
                         const serialized = worker.allocator.create(SerializedValue) catch {
@@ -256,9 +261,16 @@ pub const ThreadedWorkerRegistry = struct {
                 handler(item.worker, item.queued_msg);
                 dwdebug.print("pollAndDispatch() handler called successfully\n", .{});
             } else {
-                dwdebug.print("pollAndDispatch() WARNING: no on_message handler set!\n", .{});
-                // Clean up if no handler
-                item.queued_msg.deinit();
+                // No handler set yet - queue message for later delivery
+                // This handles the case where the worker posts a message before
+                // the main thread has set worker.onmessage. The message will be
+                // delivered when processQueuedMessages() is called in set_onmessage.
+                dwdebug.print("pollAndDispatch() no on_message handler set - queueing for later\n", .{});
+                const outside_port = item.worker.port_pair.outside_port;
+                outside_port.message_queue.append(item.worker.allocator, item.queued_msg) catch {
+                    dwdebug.print("pollAndDispatch() FAILED to queue message for later delivery\n", .{});
+                    item.queued_msg.deinit();
+                };
             }
             dwdebug.print("pollAndDispatch() dispatch complete\n", .{});
         }
@@ -899,10 +911,12 @@ pub const DedicatedWorker = struct {
     pub fn postMessageFromWorker(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
         dwdebug.print("postMessageFromWorker() called\n", .{});
         _ = transfer;
-        if (self.agent.isClosing() or self.agent.isTerminated()) {
-            dwdebug.print("postMessageFromWorker() skipped - worker closing/terminated\n", .{});
-            return;
-        }
+        // NOTE: We intentionally do NOT check isClosing()/isTerminated() here.
+        // Per HTML Standard § 10.2.4.1, messages sent BEFORE close() should be delivered.
+        // The closing flag can be set by the main thread (terminate()), not just by the
+        // worker's own close() call. If this function is called, the worker script is
+        // still executing and should be able to send messages. The message will be
+        // enqueued to the thread-safe outbox and delivered to the main thread.
 
         // CRITICAL: For cross-thread messaging, we MUST use a thread-safe allocator.
         // The worker's allocator (self.allocator) may not be safe to use from the main thread.

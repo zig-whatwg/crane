@@ -205,20 +205,28 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// methods on the port that the DedicatedWorkerGlobalScope object's implicit port is
 /// entanwith, with the same arguments."
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    std.debug.print("[DWGScope.call_postMessage] ENTRY, message type: {s}\n", .{@tagName(message)});
     _ = transfer; // TODO: Handle transfer list properly
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.dedicated_worker) |worker| {
+            std.debug.print("[DWGScope.call_postMessage] have internal and worker\n", .{});
             // Convert from runtime.JSValue to structured_clone.JSValue
             // This properly walks V8 objects to create serializable values
             const allocator = internal.allocator;
             const js_value = try runtimeToStructuredClone(allocator, message, instance.ctx);
+            std.debug.print("[DWGScope.call_postMessage] converted to structured_clone, type: {s}\n", .{@tagName(js_value)});
             defer freeStructuredCloneValue(allocator, js_value);
 
             // Use postMessageFromWorker which properly serializes the message
             // and uses thread-safe outbox for cross-thread messaging
             try worker.postMessageFromWorker(&js_value, null);
+            std.debug.print("[DWGScope.call_postMessage] postMessageFromWorker returned successfully\n", .{});
+        } else {
+            std.debug.print("[DWGScope.call_postMessage] dedicated_worker is null\n", .{});
         }
+    } else {
+        std.debug.print("[DWGScope.call_postMessage] _internal is null\n", .{});
     }
 }
 

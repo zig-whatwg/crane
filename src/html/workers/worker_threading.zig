@@ -668,19 +668,15 @@ pub const WorkerThreadRunner = struct {
                 debug.print("[WorkerThread] runWorkerLoop iteration {d}\n", .{loop_count});
             }
 
-            // Check if the DedicatedWorker has been closed (e.g., via done() or close())
-            // This bridges the gap between the WorkerAgent state and the thread state
-            if (self.thread_state.worker_ptr) |worker_ptr| {
-                const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
-                if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
-                    debug.print("[WorkerThread] DedicatedWorker is closing/terminated, exiting loop\n", .{});
-                    // Worker has been closed, exit the loop
-                    self.thread_state.requestTermination();
-                    break;
-                }
-            }
-
-            // Process incoming messages (non-blocking)
+            // CRITICAL: Process incoming messages FIRST, before checking closing state.
+            // This ensures that:
+            // 1. The worker script (first message) always executes
+            // 2. Messages sent before close() are processed
+            // 3. postMessage("before") runs before close() takes effect
+            //
+            // Per HTML Standard § 10.2.3.2, close() "discards any tasks that have been
+            // added to the event loop's task queues", but the current message is already
+            // being processed (not queued), so it must complete.
             debug.print("[WorkerThread] About to tryDequeue, thread_state={*}, inbox={*}\n", .{ self.thread_state, &self.thread_state.inbox });
             while (self.thread_state.inbox.tryDequeue()) |msg| {
                 debug.print("[WorkerThread] Dequeued message, dispatching...\n", .{});
@@ -689,11 +685,12 @@ pub const WorkerThreadRunner = struct {
                 self.handleIncomingMessage(isolate, msg);
             }
 
-            // Check again after processing messages (worker script may have called close())
+            // NOW check if the DedicatedWorker has been closed (e.g., via done(), close(), or terminate())
+            // Only exit after inbox is empty to ensure all pending work is processed.
             if (self.thread_state.worker_ptr) |worker_ptr| {
                 const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
                 if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
-                    debug.print("[WorkerThread] DedicatedWorker closed after message processing, exiting\n", .{});
+                    debug.print("[WorkerThread] DedicatedWorker is closing/terminated (inbox empty), exiting loop\n", .{});
                     self.thread_state.requestTermination();
                     break;
                 }

@@ -199,18 +199,26 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
         v8_engine.ffi.v8_Context_Exit(v8_context);
     };
 
-    // Get the function from the global handle
-    const function = v8_engine.ffi.v8_Global_Get(isolate, ctx.function_handle) orelse {
+    // Check if the function handle is still valid (not GC'd)
+    if (v8_engine.ffi.v8_Global_IsEmpty(ctx.function_handle)) {
         // Function was garbage collected - clean up
         _ = ctx.registry.unregister(ctx.timer_id);
         ctx.deinit();
         return;
-    };
+    }
 
     // Prepare arguments
-    const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+    // v8_Undefined returns a Global<Value>* so it's compatible with v8_Function_Call
+    const undefined_recv = v8_engine.ffi.v8_Undefined(isolate) orelse {
+        // Very unlikely to fail, but handle it gracefully
+        _ = ctx.registry.unregister(ctx.timer_id);
+        ctx.deinit();
+        return;
+    };
+    defer v8_engine.ffi.v8_Global_Dispose(undefined_recv);
 
     // Convert runtime.JSValue arguments to V8 values
+    // The arguments are already Global handles from callback processing
     var args: [16]*v8_engine.ffi.Value = undefined;
     var arg_count: c_int = 0;
 
@@ -222,11 +230,16 @@ fn timerTrampoline(user_data: ?*anyopaque) void {
         }
     }
 
-    // Call the function (always pass args pointer, count determines usage)
+    // Call the function
+    // v8_Function_Call expects Global handles:
+    //   - ctx.function_handle is already a Global<Value>* (stored as *Value in Zig)
+    //   - v8_context is a Global<Context>* (stored as *Context in Zig)
+    //   - undefined_recv is a Global<Value>* from v8_Undefined
+    //   - args are Global<Value>* from callback argument conversion
     _ = v8_engine.ffi.v8_Function_Call(
-        @ptrCast(function),
+        @ptrCast(ctx.function_handle),
         v8_context,
-        @ptrCast(undefined_recv),
+        undefined_recv,
         arg_count,
         &args,
     );
@@ -639,7 +652,8 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
 
             // Verify the handle points to a function
             const local_value = v8_engine.ffi.v8_Global_Get(isolate, function_handle) orelse return error.InvalidStateError;
-            if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+            // Use _Local version since local_value is from v8_Global_Get (not a Global pointer)
+            if (!v8_engine.ffi.v8_Value_IsFunction_Local(@ptrCast(local_value))) {
                 return error.TypeError;
             }
 
@@ -1223,7 +1237,8 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
             // Verify the handle points to a function
             // For GlobalHandles, we need to get the Local first
             const local_value = v8_engine.ffi.v8_Global_Get(isolate, function_handle) orelse return error.InvalidStateError;
-            if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+            // Use _Local version since local_value is from v8_Global_Get (not a Global pointer)
+            if (!v8_engine.ffi.v8_Value_IsFunction_Local(@ptrCast(local_value))) {
                 return error.TypeError;
             }
 
@@ -1233,6 +1248,7 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 
             // Create a new GlobalHandle from the handle (we need our own copy)
             // The original GlobalHandle may be disposed by the caller
+            // Note: local_value is a Local pointer, so v8_Value_ToGlobal is correct here
             const global_copy = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(local_value)) orelse return error.OutOfMemory;
 
             // Copy arguments (need mutable slice for struct field)

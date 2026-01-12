@@ -1338,9 +1338,14 @@ fn disposeContextCallback(engine_ctx: *EngineContext) void {
 /// 3. Stores the JSON string in a JSValue
 /// 4. Posts it through the message port to the main thread
 fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    std.debug.print("[workerPostMessageCallback] ENTRY\n", .{});
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.debug.print("[workerPostMessageCallback] v8_context is null\n", .{});
+        return;
+    };
     const argc = info.v8_FunctionCallbackInfo_Length();
+    std.debug.print("[workerPostMessageCallback] argc={d}\n", .{argc});
 
     if (argc < 1) return;
     const message_arg = info.get(0);
@@ -1358,7 +1363,11 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     // Allocate buffer dynamically based on required size and stringify again
     // The "complete" message from testharness.js can be quite large (9000+ bytes)
     // containing all test results, so we need dynamic allocation.
-    const self = current_worker_context orelse return;
+    const self = current_worker_context orelse {
+        std.debug.print("[workerPostMessageCallback] current_worker_context is null\n", .{});
+        return;
+    };
+    std.debug.print("[workerPostMessageCallback] got current_worker_context, allocating {d} bytes\n", .{required_size + 1});
     const json_buffer = self.allocator.alloc(u8, @intCast(required_size + 1)) catch return;
     defer self.allocator.free(json_buffer);
 
@@ -1371,22 +1380,35 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     if (written <= 0) return;
 
     const json_str = json_buffer[0..@intCast(written)];
-    const dedicated_worker = self.dedicated_worker orelse return;
-
-    // Check agent state
-    if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
+    std.debug.print("[workerPostMessageCallback] JSON: {s}\n", .{json_str});
+    const dedicated_worker = self.dedicated_worker orelse {
+        std.debug.print("[workerPostMessageCallback] dedicated_worker is null\n", .{});
         return;
-    }
+    };
+    std.debug.print("[workerPostMessageCallback] dedicated_worker={*} script_url={s} outside_user_data={?*}\n", .{
+        dedicated_worker,
+        dedicated_worker.script_url,
+        dedicated_worker.outside_user_data,
+    });
+
+    // NOTE: We intentionally do NOT check isClosing()/isTerminated() here.
+    // Per HTML Standard § 10.2.4.1, messages sent BEFORE close() should be delivered.
+    // The closing flag can be set by the main thread (terminate()), not just by the
+    // worker's own close() call. If this callback is executing, the worker script is
+    // still running and should be able to send messages. The postMessageFromWorker
+    // function handles enqueuing to the thread-safe outbox.
 
     // Use the dedicated worker's postMessageFromWorker which handles thread-safe outbox
     // for cross-thread communication. This is CRITICAL for threaded workers - messages
     // must go through the thread-safe outbox (not pending_messages) so the main thread
     // can poll them via ThreadedWorkerRegistry.pollAndDispatch().
     var js_value = workers.message_channel.JSValue{ .string = json_str };
+    std.debug.print("[workerPostMessageCallback] calling postMessageFromWorker\n", .{});
     dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
         std.log.warn("Worker postMessage failed: {}", .{err});
         return;
     };
+    std.debug.print("[workerPostMessageCallback] postMessageFromWorker SUCCESS\n", .{});
 
     // NOTE: We intentionally do NOT auto-close the worker based on message content.
     // Per HTML Standard § 10.2, browsers should NEVER inspect message content to

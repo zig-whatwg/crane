@@ -411,7 +411,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // when it's destroyed (avoiding circular module dependencies).
         dedicated_worker.outside_user_data = internal_state;
         dedicated_worker.outside_user_data_cleanup_fn = &internalStateCleanup;
-        wdebug.print("  Stored InternalState ptr in dedicated_worker outside_user_data: {*}\n", .{internal_state});
+        wdebug.print("  Stored InternalState ptr in dedicated_worker outside_user_data: {*} at addr=0x{x:0>16}\n", .{ internal_state, @intFromPtr(internal_state) });
 
         // CRITICAL: Create a GlobalHandle to prevent V8 GC from collecting this Worker
         // while the DedicatedWorker thread is alive. Without this, V8 can GC the Worker
@@ -643,19 +643,36 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// when the handler is set achieves the correct observable behavior - messages
 /// are delivered after the handler is ready.
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
+    wdebug.print("[set_onmessage] START - instance={*}, raw value ptr=0x{x:0>16}\n", .{ instance, @intFromPtr(value) });
     var state = instance.getState(State);
     state.own.onmessage = value;
 
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
         v8_engine.disposeOptionalGlobalHandle(&internal.onmessage_handle);
+
+        // Log the tagged pointer we receive
+        const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(value));
+        wdebug.print("[set_onmessage] untagged ptr=0x{x:0>16}, tag={}\n", .{ @intFromPtr(untagged.ptr), untagged.tag });
+
         internal.onmessage_handle = extractEventHandler(@ptrCast(value));
+        if (internal.onmessage_handle) |gh| {
+            wdebug.print("[set_onmessage] GlobalHandle.ptr={*}\n", .{gh.ptr});
+        }
+        wdebug.print("[set_onmessage] internal={*} at addr=0x{x:0>16}, onmessage_handle={?}\n", .{ internal, @intFromPtr(internal), internal.onmessage_handle });
+        if (internal.dedicated_worker) |dw| {
+            wdebug.print("[set_onmessage] dedicated_worker={*} script_url={s}\n", .{ dw, dw.script_url });
+        }
 
         // Process any messages that were queued before the handler was set
         // This ensures messages posted by the worker during script execution
         // are delivered now that there's a handler to receive them.
         if (internal.dedicated_worker) |dedicated_worker| {
+            wdebug.print("[set_onmessage] Processing queued messages...\n", .{});
             dedicated_worker.processQueuedMessages();
+            wdebug.print("[set_onmessage] Done processing queued messages\n", .{});
+        } else {
+            wdebug.print("[set_onmessage] No dedicated_worker yet\n", .{});
         }
     }
 }
@@ -979,7 +996,10 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 /// This is called by DedicatedWorker when a message arrives from the worker
 /// on the outside_port (worker → main thread direction).
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
-    wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() called\n", .{});
+    wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() called, dedicated_worker={*} script_url={s}\n", .{
+        dedicated_worker,
+        dedicated_worker.script_url,
+    });
 
     // Get the InternalState from outside_user_data (set in call_constructor)
     // We use outside_user_data (not user_data) because user_data is used by the worker
@@ -991,7 +1011,7 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
         return;
     };
     const internal: *InternalState = @ptrCast(@alignCast(user_data));
-    wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() internal from outside_user_data: {*}\n", .{internal});
+    wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() internal from outside_user_data: {*} at addr=0x{x:0>16}\n", .{ internal, @intFromPtr(internal) });
 
     wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() dispatching to onmessage\n", .{});
     dispatchMessageEventDirect(internal, msg);
@@ -1258,6 +1278,10 @@ fn dispatchMessageEventWithContext(
         switch (msg.data.data.primitive) {
             .string => |json_str| {
                 wdebug.print("[dispatchMessageEventWithContext] JSON string from worker: {s}\n", .{json_str});
+                // Print dedicated_worker script URL for debugging
+                if (internal.dedicated_worker) |dw| {
+                    wdebug.print("[dispatchMessageEventWithContext] dedicated_worker={*} script_url={s}\n", .{ dw, dw.script_url });
+                }
                 // JSON string from worker - parse it in main context
                 v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
                     v8_context,
@@ -1324,7 +1348,6 @@ fn dispatchMessageEventWithContext(
     {
         var event_state = message_event.getState(MessageEvent.State);
         event_state.own.data = runtime.JSValue.fromHandle(@ptrCast(global_data));
-        std.debug.print("[Worker.dispatchMessageEvent] Set MessageEvent.data to handle ptr={*}\n", .{global_data});
         // Set isTrusted to true since this event is fired by the browser
         event_state.base.own.isTrusted = true;
         event_state.base.own.target = instance;
@@ -1379,34 +1402,56 @@ fn invokeLegacyOnmessageHandler(
 ) void {
     _ = instance; // For future use with EventTarget internal state
 
-    wdebug.print("[invokeLegacyOnmessageHandler] ENTRY, internal.onmessage_handle={?}\n", .{internal.onmessage_handle});
+    wdebug.print("[invokeLegacyOnmessageHandler] ENTRY, internal={*} at addr=0x{x:0>16}, onmessage_handle={?}\n", .{ internal, @intFromPtr(internal), internal.onmessage_handle });
+    if (internal.dedicated_worker) |dw| {
+        wdebug.print("[invokeLegacyOnmessageHandler] dedicated_worker={*} script_url={s}\n", .{ dw, dw.script_url });
+    }
 
     // Invoke the onmessage handler if set
     if (internal.onmessage_handle) |onmessage_global| {
-        wdebug.print("[invokeLegacyOnmessageHandler] Found onmessage handler, invoking...\n", .{});
-        // Retrieve Local handle from Global handle
-        const local_value = onmessage_global.get(isolate) orelse {
-            std.log.warn("Worker.invokeLegacyOnmessageHandler: Failed to get Local from GlobalHandle", .{});
-            return;
-        };
+        wdebug.print("[invokeLegacyOnmessageHandler] Found onmessage handler, GlobalHandle.ptr={*}\n", .{onmessage_global.ptr});
 
-        // Verify it's a function
-        if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+        // Verify the Global handle contains a function
+        // v8_Value_IsFunction expects Global<Value>* - our onmessage_global.ptr IS a Global<Value>*
+        if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.ptr)) {
             std.log.warn("Worker.invokeLegacyOnmessageHandler: onmessage is not a function", .{});
             return;
         }
-        const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
-        // Call the V8 function with the MessageEvent as argument
-        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
-        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-        wdebug.print("[invokeLegacyOnmessageHandler] Calling V8 function...\n", .{});
+        // The Global handle's ptr IS a Global<Value>* which can be cast to Global<Function>*
+        // v8_Function_Call expects Global<Function>* and will call ->Get(isolate) internally
+        const function: *v8_engine.ffi.Function = @ptrCast(onmessage_global.ptr);
 
-        const result = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+        // v8_Undefined returns a Global<Value>* to undefined
+        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate) orelse {
+            std.log.warn("Worker.invokeLegacyOnmessageHandler: Failed to get undefined", .{});
+            return;
+        };
+        defer v8_engine.ffi.v8_Global_Dispose(undefined_recv);
+
+        // v8_event is ALREADY a Global<Object>* from wrapInstanceAsV8Object
+        // (v8_ObjectTemplate_NewInstance returns Global<Object>*).
+        // Just cast it directly to *Value for the function call.
+        // Do NOT call v8_Value_ToGlobal - that expects a Local*, not a Global*!
+        const event_value: *v8_engine.ffi.Value = @ptrCast(v8_event);
+        // Note: Do NOT dispose event_value - v8_event's lifetime is managed by
+        // the caller or wrapper cache, not us.
+
+        var args = [_]*v8_engine.ffi.Value{event_value};
+        wdebug.print("[invokeLegacyOnmessageHandler] Calling V8 function (Global) at {*}...\n", .{function});
+
+        // v8_Function_Call expects:
+        //   - Global<Function>*: function (our onmessage_global.ptr cast to Function*)
+        //   - Global<Context>*: v8_context IS a Global<Context>* (from getEngineContextAs)
+        //   - Global<Value>*: undefined_recv from v8_Undefined
+        //   - args: array of Global<Value>* (event_global)
+        const result = v8_engine.ffi.v8_Function_Call(function, v8_context, undefined_recv, 1, &args);
         if (result == null) {
             wdebug.print("[invokeLegacyOnmessageHandler] V8 function call returned null (possible exception)\n", .{});
         } else {
             wdebug.print("[invokeLegacyOnmessageHandler] V8 function call complete, result={*}\n", .{result.?});
+            // Dispose the result Global handle
+            v8_engine.ffi.v8_Global_Dispose(result.?);
         }
     } else {
         wdebug.print("[invokeLegacyOnmessageHandler] No onmessage handler set\n", .{});

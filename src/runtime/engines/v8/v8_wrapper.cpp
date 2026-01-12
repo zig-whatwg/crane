@@ -719,96 +719,35 @@ void crane_callback_manager_destroy() {
 /// @param receiver_global - Global<Value>* pointer for 'this' binding (nullable)
 /// @return Callback ID (non-zero) on success, 0 on failure
 uint64_t crane_callback_register(void* func_global, void* ctx_global, void* receiver_global) {
-    fprintf(stderr, "[crane_callback_register] ENTRY: func=%p, ctx=%p, recv=%p\n",
-            func_global, ctx_global, receiver_global);
-    fflush(stderr);
-
     CallbackManager* mgr = CallbackManager::Get();
-    if (!mgr) {
-        fprintf(stderr, "[crane_callback_register] ERROR: CallbackManager not initialized\n");
-        fflush(stderr);
-        return 0;
-    }
-    fprintf(stderr, "[crane_callback_register] CallbackManager OK\n");
-    fflush(stderr);
+    if (!mgr) return 0;
 
     Isolate* isolate = mgr->GetIsolate();
-    if (!isolate) {
-        fprintf(stderr, "[crane_callback_register] ERROR: No isolate\n");
-        fflush(stderr);
-        return 0;
-    }
-    fprintf(stderr, "[crane_callback_register] Isolate OK: %p\n", (void*)isolate);
-    fflush(stderr);
+    if (!isolate) return 0;
 
-    if (!func_global || !ctx_global) {
-        fprintf(stderr, "[crane_callback_register] ERROR: null func or context\n");
-        fflush(stderr);
-        return 0;
-    }
+    if (!func_global || !ctx_global) return 0;
 
     // Create a HandleScope to hold the Local handles we'll create
-    fprintf(stderr, "[crane_callback_register] Creating HandleScope...\n");
-    fflush(stderr);
     HandleScope handle_scope(isolate);
-    fprintf(stderr, "[crane_callback_register] HandleScope created\n");
-    fflush(stderr);
 
     // The pointers are Global<T>* - cast and Get() to get valid Local handles
-    fprintf(stderr, "[crane_callback_register] Getting func from Global...\n");
-    fflush(stderr);
     Global<Value>* func_handle = reinterpret_cast<Global<Value>*>(func_global);
     Local<Value> func_value = func_handle->Get(isolate);
-    fprintf(stderr, "[crane_callback_register] Got func_value, IsEmpty=%d\n", func_value.IsEmpty());
-    fflush(stderr);
-    if (func_value.IsEmpty() || !func_value->IsFunction()) {
-        fprintf(stderr, "[crane_callback_register] ERROR: func is not a function (empty=%d, isFunc=%d)\n",
-                func_value.IsEmpty(), func_value.IsEmpty() ? 0 : func_value->IsFunction());
-        fflush(stderr);
-        return 0;
-    }
+    if (func_value.IsEmpty() || !func_value->IsFunction()) return 0;
     Local<Function> func = func_value.As<Function>();
-    fprintf(stderr, "[crane_callback_register] func OK\n");
-    fflush(stderr);
 
     // Context - cast directly to Global<Context>*
-    fprintf(stderr, "[crane_callback_register] Getting context from Global...\n");
-    fflush(stderr);
     Global<Context>* ctx_as_context = reinterpret_cast<Global<Context>*>(ctx_global);
     Local<Context> ctx = ctx_as_context->Get(isolate);
-    fprintf(stderr, "[crane_callback_register] Got ctx, IsEmpty=%d\n", ctx.IsEmpty());
-    fflush(stderr);
-    if (ctx.IsEmpty()) {
-        fprintf(stderr, "[crane_callback_register] ERROR: could not get context\n");
-        fflush(stderr);
-        return 0;
-    }
-    fprintf(stderr, "[crane_callback_register] context OK\n");
-    fflush(stderr);
+    if (ctx.IsEmpty()) return 0;
 
     Local<Value> receiver;
     if (receiver_global) {
-        fprintf(stderr, "[crane_callback_register] Getting receiver from Global...\n");
-        fflush(stderr);
         Global<Value>* recv_handle = reinterpret_cast<Global<Value>*>(receiver_global);
         receiver = recv_handle->Get(isolate);
-        fprintf(stderr, "[crane_callback_register] receiver OK\n");
-        fflush(stderr);
     }
 
-    fprintf(stderr, "[crane_callback_register] Calling mgr->Register...\n");
-    fflush(stderr);
-    uint64_t id = mgr->Register(func, ctx, receiver);
-
-    if (id > 0) {
-        fprintf(stderr, "[crane_callback_register] SUCCESS: registered callback ID=%lu\n",
-                (unsigned long)id);
-    } else {
-        fprintf(stderr, "[crane_callback_register] Register returned 0\n");
-    }
-    fflush(stderr);
-
-    return id;
+    return mgr->Register(func, ctx, receiver);
 }
 
 /// Invoke a registered callback with multiple arguments
@@ -1992,8 +1931,11 @@ bool v8_Value_IsString_Local(void* value_ptr) {
 }
 
 bool v8_Value_IsFunction(Global<Value>* value) {
+    if (!value) return false;
     Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return false;
     HandleScope handle_scope(isolate);
+    if (value->IsEmpty()) return false;
     Local<Value> val = value->Get(isolate);
     return !val.IsEmpty() && val->IsFunction();
 }
@@ -2030,6 +1972,7 @@ bool v8_Value_IsArrayBufferView(Global<Value>* value) {
 // Version for Local handle internal pointers
 bool v8_Value_IsArray_Local(void* value_ptr) {
     if (!value_ptr) return false;
+    // Reconstruct Local from internal pointer
     Local<Value> val = *reinterpret_cast<Local<Value>*>(&value_ptr);
     return val->IsArray();
 }
@@ -5221,13 +5164,15 @@ bool v8_Object_SetAccessorProperty(
         setter_func = setter_tpl->GetFunction(ctx).ToLocalChecked();
     }
     
-    PropertyDescriptor desc(
-        getter ? Local<Value>(getter_func) : Local<Value>(),
-        setter ? Local<Value>(setter_func) : Local<Value>()
-    );
+    // For accessor properties, V8 PropertyDescriptor requires getter/setter to be
+    // either a function OR undefined (not empty). For missing setter, use Undefined.
+    Local<Value> getter_value = getter ? Local<Value>(getter_func) : Undefined(isolate).As<Value>();
+    Local<Value> setter_value = setter ? Local<Value>(setter_func) : Undefined(isolate).As<Value>();
+
+    PropertyDescriptor desc(getter_value, setter_value);
     desc.set_enumerable(true);
     desc.set_configurable(true);
-    
+
     // Define the property on the object
     return obj->DefineProperty(ctx, key.As<Name>(), desc).FromMaybe(false);
 }
@@ -7772,20 +7717,20 @@ void v8_Unlocker_Dispose(void* unlocker) {
 /// @return New Global<Value>* or nullptr if local is empty
 Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
     if (!isolate || !local) return nullptr;
-    
+
     HandleScope handle_scope(isolate);
-    
+
     // Cast the void* back to Value* - this is the internal pointer from a Local<Value>
     // We can construct a Local from this internal pointer using the internal API
     Value* value_ptr = reinterpret_cast<Value*>(local);
-    
+
     // Use internal::ValueHelper to construct a proper Local<Value>
     // This mirrors how V8 internally handles the conversion
     Local<Value> local_value = *reinterpret_cast<Local<Value>*>(&value_ptr);
-    
+
     if (local_value.IsEmpty()) return nullptr;
-    
-    return new Global<Value>(isolate, local_value);
+
+    return trackHandle(new Global<Value>(isolate, local_value));
 }
 
 // NOTE: v8_Function_ToGlobal was removed - it was unused and the pattern
@@ -7827,15 +7772,16 @@ bool v8_Global_IsEmpty(Global<Value>* global) {
 /// an active HandleScope.
 void* v8_Global_Get(Isolate* isolate, Global<Value>* global) {
     if (!isolate || !global || global->IsEmpty()) return nullptr;
-    
+
     // Use EscapableHandleScope so we can return the Local to the caller's scope
     EscapableHandleScope handle_scope(isolate);
     Local<Value> local = global->Get(isolate);
-    
+
     // Escape the local so it survives this function's HandleScope
     Local<Value> escaped = handle_scope.Escape(local);
-    
+
     // Return the internal pointer - now valid in caller's HandleScope
+    // Use V8's slot-style representation (this is how V8 FFI handles work)
     return *reinterpret_cast<void**>(&escaped);
 }
 

@@ -208,6 +208,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
+    std.debug.print("[MessageEvent.get_data] state.own.data = {}\n", .{state.own.data});
     return state.own.data;
 }
 

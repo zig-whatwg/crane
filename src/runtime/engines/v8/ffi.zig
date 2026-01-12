@@ -700,8 +700,18 @@ pub extern fn v8_Symbol_GetIterator(isolate: *Isolate) ?*Symbol;
 pub extern fn v8_Symbol_GetAsyncIterator(isolate: *Isolate) ?*Symbol;
 pub extern fn v8_Symbol_GetUnscopables(isolate: *Isolate) ?*Symbol;
 pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
+
+// ============================================================================
+// Value Type Checking
+// ============================================================================
+//
+// All these functions take Global<Value>* handles (the pointer type matches *Value
+// in Zig's perspective). The C++ implementations dereference the Global to get
+// a Local<Value> and then perform type checking.
+
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsFunction(value: *Value) bool;
+
 pub extern fn v8_Value_IsArray(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBuffer(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBufferView(value: *Value) bool;
