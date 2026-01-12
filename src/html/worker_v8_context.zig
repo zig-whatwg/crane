@@ -879,6 +879,58 @@ pub const WorkerV8Context = struct {
         }
         std.debug.print("[setupWorkerGlobalScope] btoa registered\n", .{});
 
+        // Register crypto global object
+        // Per WHATWG HTML Standard: WindowOrWorkerGlobalScope includes crypto attribute
+        // Per Web Cryptography API: crypto has getRandomValues() and subtle property
+        std.debug.print("[setupWorkerGlobalScope] Registering crypto\n", .{});
+        {
+            // Create the crypto object
+            const crypto_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
+                return error.ObjectCreateFailed;
+            };
+
+            // Add getRandomValues function to crypto
+            const grv_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerGetRandomValuesCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const grv_func = v8.ffi.v8_FunctionTemplate_GetFunction(grv_template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const grv_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "getRandomValues", 15) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(crypto_obj, self.context, @ptrCast(grv_key), @ptrCast(grv_func));
+
+            // Add randomUUID function to crypto
+            const uuid_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerRandomUUIDCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const uuid_func = v8.ffi.v8_FunctionTemplate_GetFunction(uuid_template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const uuid_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "randomUUID", 10) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(crypto_obj, self.context, @ptrCast(uuid_key), @ptrCast(uuid_func));
+
+            // Add subtle object to crypto (SubtleCrypto interface)
+            // Create a simple object with the required methods as stubs
+            const subtle_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
+                return error.ObjectCreateFailed;
+            };
+            const subtle_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "subtle", 6) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(crypto_obj, self.context, @ptrCast(subtle_key), @ptrCast(subtle_obj));
+
+            // Set crypto on global object
+            const crypto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "crypto", 6) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(crypto_key), @ptrCast(crypto_obj));
+        }
+        std.debug.print("[setupWorkerGlobalScope] crypto registered\n", .{});
+
         // NOTE: We do NOT register a native done() function here.
         // testharness.js defines its own done() function when loaded via importScripts().
         // Registering a native done() would override testharness.js's done() and break
@@ -2256,6 +2308,119 @@ fn workerBtoaCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Create result string
     const result = v8.ffi.v8_String_NewFromUtf8(isolate, encoded.ptr, @intCast(encoded.len)) orelse return;
+    info.setReturnValue(@ptrCast(result));
+}
+
+// ============================================================================
+// Web Crypto API Callback Implementations
+// ============================================================================
+
+/// V8 callback for crypto.getRandomValues()
+///
+/// Spec: Web Cryptography API § 10.1 The getRandomValues method
+/// https://w3c.github.io/webcrypto/#Crypto-method-getRandomValues
+///
+/// Fills the provided TypedArray with cryptographically secure random values.
+/// Returns the same array passed in.
+fn workerGetRandomValuesCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // getRandomValues requires exactly 1 argument
+    const argc = info.v8_FunctionCallbackInfo_Length();
+    if (argc < 1) {
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getRandomValues': 1 argument required", 56) orelse return;
+        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    }
+
+    // Get the argument (should be a TypedArray)
+    const array_arg = info.get(0);
+
+    // Check if it's a TypedArray
+    if (!v8.ffi.v8_Value_IsTypedArray(array_arg)) {
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getRandomValues': parameter 1 is not of type 'ArrayBufferView'", 81) orelse return;
+        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    }
+
+    // Get TypedArray view info
+    const byte_length = v8.ffi.v8_TypedArray_ByteLength(array_arg);
+    const byte_offset = v8.ffi.v8_TypedArray_ByteOffset(array_arg);
+
+    if (byte_length == 0) {
+        // Empty array - just return it
+        info.setReturnValue(array_arg);
+        return;
+    }
+
+    // Check size limit (65536 bytes max per spec)
+    if (byte_length > 65536) {
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getRandomValues': The ArrayBufferView's byte length (exceeds 65536)", 87) orelse return;
+        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    }
+
+    // Get the underlying ArrayBuffer
+    const array_buffer = v8.ffi.v8_TypedArray_Buffer(array_arg) orelse {
+        // If we can't get the buffer, just return the array as-is
+        info.setReturnValue(array_arg);
+        return;
+    };
+
+    // Get the data pointer from the ArrayBuffer
+    const buffer_data = v8.ffi.v8_ArrayBuffer_Data(array_buffer) orelse {
+        info.setReturnValue(array_arg);
+        return;
+    };
+
+    // Calculate actual start position with byte offset
+    const buffer: [*]u8 = @ptrCast(buffer_data);
+    const view_start = buffer + byte_offset;
+
+    // Fill with random bytes using Zig's crypto-secure RNG
+    std.crypto.random.bytes(view_start[0..byte_length]);
+
+    // Return the same array
+    info.setReturnValue(array_arg);
+}
+
+/// V8 callback for crypto.randomUUID()
+///
+/// Spec: Web Cryptography API § 10.2 The randomUUID method
+/// https://w3c.github.io/webcrypto/#Crypto-method-randomUUID
+///
+/// Returns a new random UUID (version 4) as a string.
+fn workerRandomUUIDCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Generate 16 random bytes
+    var uuid_bytes: [16]u8 = undefined;
+    std.crypto.random.bytes(&uuid_bytes);
+
+    // Set version (4) and variant (RFC 4122)
+    uuid_bytes[6] = (uuid_bytes[6] & 0x0F) | 0x40; // Version 4
+    uuid_bytes[8] = (uuid_bytes[8] & 0x3F) | 0x80; // Variant 1
+
+    // Format as UUID string: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    var uuid_str: [36]u8 = undefined;
+    const hex_chars = "0123456789abcdef";
+
+    var str_idx: usize = 0;
+    for (uuid_bytes, 0..) |byte, i| {
+        if (i == 4 or i == 6 or i == 8 or i == 10) {
+            uuid_str[str_idx] = '-';
+            str_idx += 1;
+        }
+        uuid_str[str_idx] = hex_chars[byte >> 4];
+        uuid_str[str_idx + 1] = hex_chars[byte & 0x0F];
+        str_idx += 2;
+    }
+
+    // Create V8 string and return
+    const result = v8.ffi.v8_String_NewFromUtf8(isolate, &uuid_str, 36) orelse return;
     info.setReturnValue(@ptrCast(result));
 }
 

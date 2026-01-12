@@ -148,7 +148,7 @@ const WptBrowser = struct {
             \\}
         ) catch {};
 
-        const timeout_ms: u64 = 60_000;
+        const timeout_ms: u64 = 25_000;
         const start_time = std.time.milliTimestamp();
 
         stderr.writeAll("[WPT_BROWSER] Starting event loop\n") catch {};
