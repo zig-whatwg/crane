@@ -985,6 +985,53 @@ pub const WorkerV8Context = struct {
         }
         std.debug.print("[setupWorkerGlobalScope] performance registered\n", .{});
 
+        // Register indexedDB global object
+        // Per Indexed Database API spec and WHATWG HTML Standard:
+        // WorkerGlobalScope includes WindowOrWorkerGlobalScope mixin which provides indexedDB
+        // The indexedDB attribute returns an IDBFactory object
+        // Per spec: https://w3c.github.io/IndexedDB/#factory-interface
+        std.debug.print("[setupWorkerGlobalScope] Registering indexedDB\n", .{});
+        {
+            // Create the indexedDB object (IDBFactory)
+            // For now, create a basic object that can be detected by typeof
+            // Full IDBFactory methods (open, deleteDatabase, databases, cmp) can be added later
+            const indexeddb_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
+                return error.ObjectCreateFailed;
+            };
+
+            // Add placeholder methods that IDBFactory should have
+            // open() - Opens a database
+            const open_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerIndexedDBOpenCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const open_func = v8.ffi.v8_FunctionTemplate_GetFunction(open_template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const open_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "open", 4) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(indexeddb_obj, self.context, @ptrCast(open_key), @ptrCast(open_func));
+
+            // deleteDatabase() - Deletes a database
+            const delete_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerIndexedDBDeleteCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const delete_func = v8.ffi.v8_FunctionTemplate_GetFunction(delete_template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const delete_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "deleteDatabase", 14) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(indexeddb_obj, self.context, @ptrCast(delete_key), @ptrCast(delete_func));
+
+            // Set indexedDB on global object
+            const indexeddb_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "indexedDB", 9) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(indexeddb_key), @ptrCast(indexeddb_obj));
+        }
+        std.debug.print("[setupWorkerGlobalScope] indexedDB registered\n", .{});
+
         // NOTE: We do NOT register a native done() function here.
         // testharness.js defines its own done() function when loaded via importScripts().
         // Registering a native done() would override testharness.js's done() and break
@@ -2504,6 +2551,49 @@ fn workerPerformanceNowCallback(info: *const v8.ffi.FunctionCallbackInfo) callco
     // Create V8 number and return
     const result = v8.ffi.v8_Number_New(isolate, now_ms);
     info.setReturnValue(@ptrCast(result));
+}
+
+/// V8 callback for indexedDB.open()
+///
+/// Spec: Indexed Database API 3.0 § 4.1 The open() method
+/// https://w3c.github.io/IndexedDB/#dom-idbfactory-open
+///
+/// Opens a connection to a database. Returns an IDBOpenDBRequest.
+/// This is a placeholder implementation that throws NotSupportedError
+/// until full IndexedDB support is implemented in workers.
+fn workerIndexedDBOpenCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // For now, throw NotSupportedError indicating IndexedDB operations are not yet supported
+    // Full implementation will use the IDBFactory backend from src/storage/indexeddb/
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(
+        isolate,
+        "IndexedDB operations in workers not yet implemented",
+        51,
+    ) orelse return;
+    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+}
+
+/// V8 callback for indexedDB.deleteDatabase()
+///
+/// Spec: Indexed Database API 3.0 § 4.2 The deleteDatabase() method
+/// https://w3c.github.io/IndexedDB/#dom-idbfactory-deletedatabase
+///
+/// Deletes a database. Returns an IDBOpenDBRequest.
+/// This is a placeholder implementation that throws NotSupportedError
+/// until full IndexedDB support is implemented in workers.
+fn workerIndexedDBDeleteCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // For now, throw NotSupportedError indicating IndexedDB operations are not yet supported
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(
+        isolate,
+        "IndexedDB operations in workers not yet implemented",
+        51,
+    ) orelse return;
+    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
 }
 
 // ============================================================================
