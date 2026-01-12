@@ -60,6 +60,13 @@ const V8EventLoop = v8.V8EventLoop;
 // V8Interface for registering constructors
 const V8Interface = v8.V8Interface;
 
+// Interface bindings for scope-filtered registration
+const interface_bindings = v8.interface_bindings;
+
+// WebIDL helpers for GlobalScope enum
+const webidl = @import("webidl");
+const GlobalScope = webidl.GlobalScope;
+
 // Interfaces needed in worker context
 const interfaces = @import("interfaces");
 
@@ -530,16 +537,19 @@ pub const WorkerV8Context = struct {
         _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(global_this_key), @ptrCast(global_obj));
     }
 
-    /// Register essential WebIDL interfaces needed in worker context
+    /// Register WebIDL interfaces exposed to DedicatedWorker scope
     ///
-    /// This registers a minimal subset of interfaces commonly used by WPT tests:
-    /// - URL, URLSearchParams (for URL manipulation)
-    /// - Event, EventTarget (for event handling)
-    /// - DOMException (for error handling)
-    /// - WebSocket, CloseEvent, MessageEvent (for WebSocket API - Exposed in Worker per spec)
+    /// Uses the [Exposed=...] WebIDL attribute to automatically install
+    /// all interfaces that should be available in DedicatedWorker contexts.
+    /// This follows the Chromium pattern: runtime scope checks rather than
+    /// snapshot-based filtering.
     ///
-    /// Full interface registration (initializeBindings) can't be used directly
-    /// because it requires the main isolate's context manager state.
+    /// Spec: WebIDL § 2.6.2 "Exposed extended attribute"
+    /// https://webidl.spec.whatwg.org/#Exposed
+    ///
+    /// Interfaces with [Exposed=Worker] or [Exposed=(Window,Worker)] or
+    /// [Exposed=DedicatedWorker] will be registered. Abstract "Worker" matches
+    /// DedicatedWorker, SharedWorker, and ServiceWorker scopes per spec.
     fn registerWorkerInterfaces(self: *Self) void {
         // Create HandleScope for interface registration
         const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
@@ -548,62 +558,16 @@ pub const WorkerV8Context = struct {
         };
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
-        // Register URL interface
-        const URL = V8Interface(interfaces.URL);
-        URL.registerGlobal(self.isolate, self.context, "URL");
+        // Use installForScope to register only interfaces exposed to DedicatedWorker
+        // This uses the [Exposed=...] extended attribute from WebIDL specs
+        // to determine which interfaces should be available.
+        //
+        // Per Chromium research: workers don't use snapshots - they install
+        // interfaces at runtime based on scope checks.
+        interface_bindings.installForScope(self.isolate, self.context, .DedicatedWorker);
 
-        // Register URLSearchParams interface
-        const URLSearchParams = V8Interface(interfaces.URLSearchParams);
-        URLSearchParams.registerGlobal(self.isolate, self.context, "URLSearchParams");
-
-        // Register Event interface
-        const Event = V8Interface(interfaces.Event);
-        Event.registerGlobal(self.isolate, self.context, "Event");
-
-        // Register EventTarget interface
-        const EventTarget = V8Interface(interfaces.EventTarget);
-        EventTarget.registerGlobal(self.isolate, self.context, "EventTarget");
-
-        // Register DOMException interface
-        const DOMException = V8Interface(interfaces.DOMException);
-        DOMException.registerGlobal(self.isolate, self.context, "DOMException");
-
-        // Register WebSocket interface (Exposed in Worker per WHATWG WebSocket spec)
-        // WebIDL: [Exposed=(Window,Worker)] interface WebSocket : EventTarget { ... }
-        const WebSocket = V8Interface(interfaces.WebSocket);
-        WebSocket.registerGlobal(self.isolate, self.context, "WebSocket");
-
-        // Register CloseEvent interface (needed for WebSocket close events)
-        // WebIDL: [Exposed=(Window,Worker)] interface CloseEvent : Event { ... }
-        const CloseEvent = V8Interface(interfaces.CloseEvent);
-        CloseEvent.registerGlobal(self.isolate, self.context, "CloseEvent");
-
-        // Register MessageEvent interface (needed for WebSocket message events)
-        // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessageEvent : Event { ... }
-        const MessageEvent = V8Interface(interfaces.MessageEvent);
-        MessageEvent.registerGlobal(self.isolate, self.context, "MessageEvent");
-
-        // Register Fetch API interfaces (needed for fetch() in workers)
-        // WebIDL: [Exposed=(Window,Worker)] interface Headers { ... }
-        const Headers = V8Interface(interfaces.Headers);
-        Headers.registerGlobal(self.isolate, self.context, "Headers");
-
-        // WebIDL: [Exposed=(Window,Worker)] interface Request { ... }
-        const Request = V8Interface(interfaces.Request);
-        Request.registerGlobal(self.isolate, self.context, "Request");
-
-        // WebIDL: [Exposed=(Window,Worker)] interface Response { ... }
-        const Response = V8Interface(interfaces.Response);
-        Response.registerGlobal(self.isolate, self.context, "Response");
-
-        // Register AbortController and AbortSignal (needed for fetch abort)
-        // WebIDL: [Exposed=(Window,Worker)] interface AbortController { ... }
-        const AbortController = V8Interface(interfaces.AbortController);
-        AbortController.registerGlobal(self.isolate, self.context, "AbortController");
-
-        // WebIDL: [Exposed=(Window,Worker)] interface AbortSignal : EventTarget { ... }
-        const AbortSignal = V8Interface(interfaces.AbortSignal);
-        AbortSignal.registerGlobal(self.isolate, self.context, "AbortSignal");
+        // Set up constructor inheritance chain (Element.__proto__ = Node, etc.)
+        interface_bindings.setupConstructorInheritance(self.isolate, self.context);
     }
 
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
