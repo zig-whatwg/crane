@@ -312,11 +312,13 @@ pub const WorkerV8Context = struct {
         try self.setupWorkerGlobals();
         std.debug.print("[WorkerV8Context] Worker globals set up\n", .{});
 
-        // Only register interfaces if we didn't use the snapshot
-        // (snapshot already has all interfaces pre-registered)
-        if (!used_snapshot) {
-            self.registerWorkerInterfaces();
-        }
+        // Always register worker interfaces
+        // NOTE: The snapshot only includes 5 core DOM interfaces (EventTarget, Node,
+        // Element, Document, Window). All other worker-exposed interfaces (URL, Blob,
+        // TextEncoder, MessageChannel, etc.) must be registered at runtime.
+        // This matches Chromium's approach where workers install interfaces based on
+        // runtime scope checks rather than relying solely on snapshots.
+        self.registerWorkerInterfaces();
 
         // CRITICAL: Initialize the thread-local context manager for this worker thread
         // This allows WebIDL interfaces (like URL) to get the runtime context
