@@ -805,16 +805,17 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
 
     // Get the function handle from the global handle
     const global_handle = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+
+    // Verify it's a function (check the global handle directly - v8_Value_IsFunction expects Global<Value>*)
+    if (!v8_engine.ffi.v8_Value_IsFunction(global_handle.ptr)) {
+        std.log.warn("queueMicrotask: callback is not a function", .{});
+        return error.InvalidCallback;
+    }
+
     const local_value = global_handle.get(isolate) orelse {
         std.log.warn("queueMicrotask: failed to get local value from global handle", .{});
         return error.InvalidCallback;
     };
-
-    // Verify it's a function
-    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
-        std.log.warn("queueMicrotask: callback is not a function", .{});
-        return error.InvalidCallback;
-    }
 
     // Create a new global handle for the callback (to prevent GC)
     const function_global = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(local_value)) orelse {
@@ -855,14 +856,15 @@ fn microtaskTrampoline(data: ?*anyopaque) callconv(.c) void {
         ctx.allocator.destroy(ctx);
     }
 
-    // Get the local handle from the global
-    const local_value = v8_engine.ffi.v8_Global_Get(ctx.v8_isolate, ctx.function_handle) orelse {
-        std.log.warn("microtaskTrampoline: failed to get local value", .{});
+    // Check that the function handle is still valid
+    if (v8_engine.ffi.v8_Global_IsEmpty(ctx.function_handle)) {
+        std.log.warn("microtaskTrampoline: function handle is empty", .{});
         return;
-    };
+    }
 
-    // Cast to function
-    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+    // Use the Global handle directly for the function call
+    // v8_Function_Call expects Global<Function>*
+    const function: *v8_engine.ffi.Function = @ptrCast(ctx.function_handle);
 
     // Call the function with no arguments
     const undefined_recv = v8_engine.ffi.v8_Undefined(ctx.v8_isolate);

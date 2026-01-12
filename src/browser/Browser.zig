@@ -272,6 +272,19 @@ pub const Browser = struct {
             .poll_fn = curl_pollable.poll_fn,
         });
 
+        // Register worker message pollable so worker messages are polled after each timer callback.
+        // This is critical for WPT Phase 16.1 where worker messages must arrive before test timeout.
+        event_loop.setWorkerPortPollable(.{
+            .ptr = undefined, // Not used - flushPendingWorkerMessages is a static function
+            .poll_fn = workerMessagePollFn,
+        });
+
+        // Set post-timer hook to poll worker messages after EACH timer fires.
+        // This is essential because UV_RUN_NOWAIT fires ALL ready timers in a single call,
+        // and we need to poll worker messages between timer callbacks, not just after all.
+        // Critical for WPT Phase 16.1 where worker messages must arrive before test timeout.
+        event_loop.setPostTimerHook(postTimerHookFn);
+
         // Allocate browser struct
         const browser = try allocator.create(Browser);
         errdefer allocator.destroy(browser);
@@ -567,12 +580,10 @@ pub const Browser = struct {
                 last_log_iteration = iteration;
             }
 
-            // Run one iteration
-            _ = event_loop.eventLoop().runOnce();
-
-            // Flush pending worker messages to the main thread
-            // Workers post messages via postMessage() which queue to pending_messages.
-            // This transfers them to message_queue and dispatches to handlers.
+            // Flush pending worker messages BEFORE running timers.
+            // This ensures worker onmessage handlers run before setTimeout callbacks.
+            // Critical for tests like WPT Phase 16.1 which expect messages to be delivered
+            // before their assertion timeout fires.
             //
             // CRITICAL: Create a HandleScope before flushing worker messages.
             // Message dispatch can trigger V8 GC, which may fire weak callbacks.
@@ -583,6 +594,9 @@ pub const Browser = struct {
                 defer if (handle_scope) |h| v8.ffi.v8_HandleScope_Dispose(h);
                 impls.Worker.flushPendingWorkerMessages();
             }
+
+            // Run one iteration of the event loop (timers, microtasks, etc.)
+            _ = event_loop.eventLoop().runOnce();
 
             // Check timeout
             const now = std.time.milliTimestamp();
@@ -688,6 +702,23 @@ pub const Browser = struct {
         return self.certificate_trust_store;
     }
 };
+
+/// Pollable wrapper for worker message flushing.
+/// Called by the event loop after each timer callback to poll worker messages.
+fn workerMessagePollFn(_: *anyopaque) bool {
+    impls.Worker.flushPendingWorkerMessages();
+    // Return true to indicate work may have been done.
+    // The actual check for whether messages were dispatched is internal to flushPendingWorkerMessages.
+    return true;
+}
+
+/// Post-timer hook called after EACH timer callback fires.
+/// This is called from within the libuv timer callback, before the next timer fires.
+/// Critical for worker message timing: worker messages must be polled between timer
+/// callbacks, not just after all timers complete (which is what UV_RUN_NOWAIT does).
+fn postTimerHookFn() void {
+    impls.Worker.flushPendingWorkerMessages();
+}
 
 test "Browser - basic lifecycle" {
     const testing = std.testing;

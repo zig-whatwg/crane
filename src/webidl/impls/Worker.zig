@@ -552,8 +552,8 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // 4. The event loop runs the scheduled task
         if (ctx.timer) |timer| {
             wdebug.print("call_constructor() scheduling executeWorkerScriptCallback via setTimeout(0)\n", .{});
-            _ = timer.setTimeout(0, executeWorkerScriptCallback, instance);
-            wdebug.print("call_constructor() setTimeout scheduled\n", .{});
+            const timer_id = timer.setTimeout(0, executeWorkerScriptCallback, instance);
+            wdebug.print("call_constructor() setTimeout scheduled, libuv_timer_id={d}\n", .{timer_id});
         } else {
             // No timer available - fall back to synchronous execution
             // WARNING: This may cause crashes due to HandleScope issues
@@ -1524,13 +1524,14 @@ fn dispatchMessageErrorEvent(
 
     // Also invoke the legacy onmessageerror handler if set
     if (internal.onmessageerror_handle) |onmessageerror_global| {
+        // Verify it's a function (check global handle - v8_Value_IsFunction expects Global<Value>*)
+        if (!v8_engine.ffi.v8_Value_IsFunction(onmessageerror_global.ptr)) {
+            return;
+        }
+
         const local_value = onmessageerror_global.get(isolate) orelse {
             return;
         };
-
-        if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
-            return;
-        }
         const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
@@ -1997,17 +1998,17 @@ pub fn dispatchErrorEvent(
             return;
         };
 
+        // Verify it's a function (check global handle - v8_Value_IsFunction expects Global<Value>*)
+        if (!v8_engine.ffi.v8_Value_IsFunction(onerror_global.ptr)) {
+            std.log.warn("Worker.dispatchErrorEvent: onerror is not a function", .{});
+            return;
+        }
+
         // Retrieve Local handle from Global handle
         const local_value = onerror_global.get(isolate) orelse {
             std.log.warn("Worker.dispatchErrorEvent: Failed to get Local from GlobalHandle", .{});
             return;
         };
-
-        // Verify it's a function
-        if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
-            std.log.warn("Worker.dispatchErrorEvent: onerror is not a function", .{});
-            return;
-        }
         const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
         // Call the V8 function with the ErrorEvent as argument

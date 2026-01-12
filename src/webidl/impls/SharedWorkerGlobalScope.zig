@@ -334,28 +334,37 @@ fn invokeConnectHandler(
     // The handler is stored as a GlobalHandle to a V8 Function
     // We need to get the Local handle and call it
     const handler_global: *v8.GlobalHandle = @ptrCast(@alignCast(@constCast(handler)));
-    const local_value = handler_global.get(isolate) orelse {
-        return error.InvalidHandler;
-    };
 
-    // Verify it's a function
-    if (!v8.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+    // Verify it's a function (check global handle - v8_Value_IsFunction expects Global<Value>*)
+    if (!v8.ffi.v8_Value_IsFunction(handler_global.ptr)) {
         return error.NotAFunction;
     }
-    const function: *v8.ffi.Function = @ptrCast(local_value);
 
-    // Wrap the MessageEvent instance as a V8 object
-    const v8_event = v8.template_registry.wrapInstanceAsV8Object(
+    // Wrap the MessageEvent instance as a V8 object (returns Local)
+    const v8_event_local = v8.template_registry.wrapInstanceAsV8Object(
         isolate,
         v8_context,
         event,
     ) orelse return error.WrapFailed;
 
+    // Convert the event to a Global handle for the function call
+    // v8_Function_Call expects Global<Value>** for argv
+    const v8_event_global = v8.ffi.v8_Value_ToGlobal(isolate, @ptrCast(v8_event_local)) orelse {
+        return error.WrapFailed;
+    };
+    defer v8.ffi.v8_Global_Dispose(v8_event_global);
+
     // Call the handler with the event as the argument
     // The 'this' is undefined per spec for event handlers
+    // v8_Function_Call expects:
+    // - function: Global<Function>* (handler_global.ptr is already Global)
+    // - context: Global<Context>* (v8_context from GetCurrentContext is Global)
+    // - recv: Global<Value>* (v8_Undefined returns Global)
+    // - argv: Global<Value>** (array of Global handles)
     const undefined_recv = v8.ffi.v8_Undefined(isolate);
-    var args = [_]*v8.ffi.Value{@ptrCast(v8_event)};
-    _ = v8.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+    var args = [_]*v8.ffi.Value{v8_event_global};
+    const function_global: *v8.ffi.Function = @ptrCast(handler_global.ptr);
+    _ = v8.ffi.v8_Function_Call(function_global, v8_context, @ptrCast(undefined_recv), 1, &args);
 }
 
 /// Get the inside port for a connection (for event dispatch)

@@ -291,6 +291,31 @@ pub const V8EventLoop = struct {
         return null;
     }
 
+    /// Set a hook function to be called after each timer callback fires.
+    ///
+    /// This is critical for worker message timing: when a timer callback spawns
+    /// a worker (via setTimeout(0)), the worker thread runs in parallel. Without
+    /// this hook, worker messages are only polled AFTER all timers fire, which
+    /// may be too late for tests expecting messages before a timeout fires.
+    ///
+    /// Since UV_RUN_NOWAIT fires ALL ready timers in a single call to poll(),
+    /// we need to poll worker messages after EACH timer fires, not just after
+    /// all timers complete. This hook enables that.
+    ///
+    /// Example:
+    /// ```zig
+    /// event_loop.setPostTimerHook(struct {
+    ///     pub fn hook() void {
+    ///         Worker.flushPendingWorkerMessages();
+    ///     }
+    /// }.hook);
+    /// ```
+    pub fn setPostTimerHook(self: *Self, hook: ?*const fn () void) void {
+        if (self.timer_manager) |mgr| {
+            mgr.setPostTimerHook(hook);
+        }
+    }
+
     /// Get an EventLoop interface for this V8 loop
     ///
     /// This returns an EventLoop that can be used with async promise APIs.
@@ -475,6 +500,13 @@ pub const V8EventLoop = struct {
                     any_timer_fired = true;
                     // Run microtasks after each timer to handle Promise callbacks
                     v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+
+                    // Poll worker messages after each timer callback.
+                    // This ensures that when a timer spawns a worker thread (e.g., Worker constructor),
+                    // messages from that worker are picked up before subsequent timer callbacks fire.
+                    if (self.worker_port_pollable) |worker_pollable| {
+                        _ = worker_pollable.poll();
+                    }
 
                     // Give libuv a micro-moment to update its internal timer state.
                     // Without this, other 0ms timers scheduled at the same time

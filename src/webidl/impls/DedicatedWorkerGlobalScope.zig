@@ -611,25 +611,29 @@ fn invokeLegacyOnmessageHandler(instance: *runtime.Instance, event: *runtime.Ins
     }
 
     const global_handle = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-    const local_value = global_handle.get(v8_isolate) orelse return;
 
-    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+    // Verify it's a function (check global handle - v8_Value_IsFunction expects Global<Value>*)
+    if (!v8_engine.ffi.v8_Value_IsFunction(global_handle.ptr)) {
         return;
     }
-    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
-    // Wrap the event as a V8 object
-    const v8_event = template_registry.wrapInstanceAsV8Object(
+    // Wrap the event as a V8 object (returns Local)
+    const v8_event_local = template_registry.wrapInstanceAsV8Object(
         event,
         "MessageEvent",
         v8_isolate,
         v8_context,
     ) catch return;
 
-    // Call the handler
+    // Convert to Global handle for v8_Function_Call
+    const v8_event_global = v8_engine.ffi.v8_Value_ToGlobal(v8_isolate, @ptrCast(v8_event_local)) orelse return;
+    defer v8_engine.ffi.v8_Global_Dispose(v8_event_global);
+
+    // Call the handler with Global handles
     const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate);
-    var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-    _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+    var args = [_]*v8_engine.ffi.Value{v8_event_global};
+    const function_global: *v8_engine.ffi.Function = @ptrCast(global_handle.ptr);
+    _ = v8_engine.ffi.v8_Function_Call(function_global, v8_context, @ptrCast(undefined_recv), 1, &args);
 }
 
 /// Dispatch a messageerror event to this DedicatedWorkerGlobalScope
@@ -703,25 +707,29 @@ fn invokeLegacyOnmessageerrorHandler(instance: *runtime.Instance, event: *runtim
     }
 
     const global_handle = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-    const local_value = global_handle.get(v8_isolate) orelse return;
 
-    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+    // Verify it's a function (check global handle - v8_Value_IsFunction expects Global<Value>*)
+    if (!v8_engine.ffi.v8_Value_IsFunction(global_handle.ptr)) {
         return;
     }
-    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
-    // Wrap the event as a V8 object
-    const v8_event = template_registry.wrapInstanceAsV8Object(
+    // Wrap the event as a V8 object (returns Local)
+    const v8_event_local = template_registry.wrapInstanceAsV8Object(
         event,
         "MessageEvent",
         v8_isolate,
         v8_context,
     ) catch return;
 
-    // Call the handler
+    // Convert to Global handle for v8_Function_Call
+    const v8_event_global = v8_engine.ffi.v8_Value_ToGlobal(v8_isolate, @ptrCast(v8_event_local)) orelse return;
+    defer v8_engine.ffi.v8_Global_Dispose(v8_event_global);
+
+    // Call the handler with Global handles
     const undefined_recv = v8_engine.ffi.v8_Undefined(v8_isolate);
-    var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-    _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+    var args = [_]*v8_engine.ffi.Value{v8_event_global};
+    const function_global: *v8_engine.ffi.Function = @ptrCast(global_handle.ptr);
+    _ = v8_engine.ffi.v8_Function_Call(function_global, v8_context, @ptrCast(undefined_recv), 1, &args);
 }
 
 /// Wire up the message handler on the dedicated worker's inside port
@@ -942,9 +950,18 @@ pub fn dispatchMessageEventDirect(ctx: runtime.Context, serialized_data: *struct
 
     std.log.info("[WORKER] dispatchMessageEventDirect() found onmessage handler, calling it...", .{});
 
+    // Convert the event to a Global handle for the function call
+    // v8_Function_Call expects Global<Value>** for argv
+    const v8_event_global = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(v8_event)) orelse {
+        std.log.err("[WORKER] dispatchMessageEventDirect() failed to create Global handle for event", .{});
+        return error.GlobalCreationFailed;
+    };
+    defer v8_engine.ffi.v8_Global_Dispose(v8_event_global);
+
     // Call onmessage(event) with the real MessageEvent
+    // Note: onmessage_value is already a Global<Value>* from v8_Object_Get
     const onmessage_fn: *v8_engine.ffi.Function = @ptrCast(onmessage_value);
-    var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+    var args = [_]*v8_engine.ffi.Value{v8_event_global};
     _ = v8_engine.ffi.v8_Function_Call(onmessage_fn, v8_context, @ptrCast(global), 1, &args);
     std.log.info("[WORKER] dispatchMessageEventDirect() onmessage handler returned", .{});
 }

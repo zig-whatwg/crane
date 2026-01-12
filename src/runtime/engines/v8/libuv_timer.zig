@@ -94,6 +94,9 @@ pub const LibuvTimerManager = struct {
     /// Flag set when a callback is invoked during poll()
     /// This is used to correctly return whether work was done
     callback_invoked: bool,
+    /// Optional hook called after each timer callback fires.
+    /// Used to poll worker messages between timer callbacks.
+    post_timer_hook: ?*const fn () void,
 
     const Self = @This();
 
@@ -120,6 +123,7 @@ pub const LibuvTimerManager = struct {
             .timers = std.AutoHashMap(TimerId, *TimerContext).init(allocator),
             .initialized = true,
             .callback_invoked = false,
+            .post_timer_hook = null,
         };
 
         return self;
@@ -193,6 +197,14 @@ pub const LibuvTimerManager = struct {
 
         // Store context in handle's data field
         ctx.handle.data = ctx;
+
+        // Update the loop's cached time before starting the timer.
+        // This is critical! Without this, if the loop has been sitting idle
+        // (e.g., during HTML parsing), its cached time will be stale.
+        // When we later call uv_run(), it updates the loop time to current time,
+        // and timers appear ready immediately because their due_time (calculated
+        // from the stale loop_time) is less than the updated loop_time.
+        libuv.updateTime(self.loop);
 
         // Start the timer
         libuv.timerStart(&ctx.handle, timerCallback, ms, 0) catch {
@@ -273,6 +285,13 @@ pub const LibuvTimerManager = struct {
         };
     }
 
+    /// Set a hook function to be called after each timer callback fires.
+    /// This is used to poll worker messages between timer callbacks,
+    /// since UV_RUN_NOWAIT fires all ready timers in a single call.
+    pub fn setPostTimerHook(self: *Self, hook: ?*const fn () void) void {
+        self.post_timer_hook = hook;
+    }
+
     // ========================================================================
     // VTable Implementation
     // ========================================================================
@@ -315,6 +334,11 @@ fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {
 
     // Invoke the user's callback
     ctx.callback(ctx.user_data);
+
+    // Call the post-timer hook if set (used to poll worker messages between timers)
+    if (ctx.manager.post_timer_hook) |hook| {
+        hook();
+    }
 
     // Close the handle (will trigger closeCallback)
     libuv.close(libuv.timerToHandle(handle), closeCallback);

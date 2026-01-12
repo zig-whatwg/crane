@@ -172,12 +172,19 @@ pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) an
 /// Extract GlobalHandle from a tagged callback pointer (from V8 conversion).
 /// The V8 conversions layer creates Global handles and tags the pointers.
 fn extractEventHandler(handler: ?*const anyopaque) v8_engine.OptionalGlobalHandle {
+    std.log.warn("[extractEventHandler] ENTRY handler={?}", .{handler});
     if (handler) |ptr| {
+        std.log.warn("[extractEventHandler] ptr=0x{x}", .{@intFromPtr(ptr)});
         const untagged = v8_engine.pointer_tag.untagPointer(ptr);
+        std.log.warn("[extractEventHandler] untagged.ptr=0x{x}, tag={s}", .{ @intFromPtr(untagged.ptr), @tagName(untagged.tag) });
         if (untagged.tag == .global_handle or untagged.tag == .untagged) {
-            return v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
+            const result_ptr: *v8_engine.ffi.Value = @ptrCast(@alignCast(untagged.ptr));
+            std.log.warn("[extractEventHandler] RETURNING GlobalHandle with ptr=0x{x}", .{@intFromPtr(result_ptr)});
+            return v8_engine.GlobalHandle{ .ptr = result_ptr };
         }
+        std.log.warn("[extractEventHandler] tag not global_handle or untagged, returning null", .{});
     }
+    std.log.warn("[extractEventHandler] RETURNING null", .{});
     return null;
 }
 
@@ -365,6 +372,8 @@ fn invokeLegacyOnmessageHandler(
 ) void {
     _ = port_instance; // For future use
 
+    std.log.warn("[invokeLegacyOnmessageHandler] ENTRY onmessage_global.ptr=0x{x}", .{@intFromPtr(onmessage_global.ptr)});
+
     // Get the V8 isolate and context
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
         std.log.warn("MessagePort.invokeLegacyOnmessageHandler: No current isolate", .{});
@@ -380,20 +389,15 @@ fn invokeLegacyOnmessageHandler(
     const scope = v8_engine.ffi.v8_HandleScope_New(isolate);
     defer v8_engine.ffi.v8_HandleScope_Dispose(scope);
 
-    // Retrieve Local handle from Global handle
-    const local_value = onmessage_global.get(isolate) orelse {
-        std.log.warn("MessagePort.invokeLegacyOnmessageHandler: Failed to get Local from GlobalHandle", .{});
-        return;
-    };
-
-    // Verify it's a function
-    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+    // Verify it's a function (check global handle - v8_Value_IsFunction expects Global<Value>*)
+    if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.ptr)) {
         std.log.warn("MessagePort.invokeLegacyOnmessageHandler: onmessage is not a function", .{});
         return;
     }
-    const function: *v8_engine.ffi.Function = @ptrCast(local_value);
 
     // Wrap the event as a V8 object
+    // IMPORTANT: wrapInstanceAsV8Object returns Global<Object>* (from v8_ObjectTemplate_NewInstance)
+    // so we can use it directly in v8_Function_Call without conversion
     const v8_event = v8_engine.template_registry.wrapInstanceAsV8Object(
         event,
         "MessageEvent",
@@ -405,9 +409,15 @@ fn invokeLegacyOnmessageHandler(
     };
 
     // Call the V8 function with the MessageEvent as argument
+    // v8_Function_Call expects Global handles:
+    // - function: Global<Function>* (onmessage_global.ptr is already Global)
+    // - context: Global<Context>* (v8_context from GetCurrentContext is Global)
+    // - recv: Global<Value>* (v8_Undefined returns Global)
+    // - argv: Global<Value>** (v8_event is already Global from wrapInstanceAsV8Object)
     const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
     var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-    _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+    const function_global: *v8_engine.ffi.Function = @ptrCast(onmessage_global.ptr);
+    _ = v8_engine.ffi.v8_Function_Call(function_global, v8_context, @ptrCast(undefined_recv), 1, &args);
 }
 
 /// Flush all pending messages from the queue

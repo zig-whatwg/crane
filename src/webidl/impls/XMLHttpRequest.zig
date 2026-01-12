@@ -441,15 +441,14 @@ fn fireReadyStateChangeEvent(instance: *runtime.Instance) void {
 
     // Get the onreadystatechange handler from Global handle
     if (internal.onreadystatechange) |global| {
-        // Retrieve Local handle from Global handle
-        const local_value = global.get(isolate) orelse return;
-
         // Get V8 context from the instance's runtime context
         const v8_context: *v8_engine.ffi.Context = instance.ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
 
-        // Check if it's a function and invoke it
-        if (v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
-            const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+        // Check if it's a function (check global handle - v8_Value_IsFunction expects Global<Value>*)
+        if (v8_engine.ffi.v8_Value_IsFunction(global.ptr)) {
+            // Use the Global handle directly for the function call
+            // v8_Function_Call expects Global<Function>*
+            const function: *v8_engine.ffi.Function = @ptrCast(global.ptr);
             // Call the callback with no arguments
             // The readystatechange event doesn't pass an event object in typical XHR usage
             // Use undefined as the receiver (this) since XHR events don't need a specific this binding
