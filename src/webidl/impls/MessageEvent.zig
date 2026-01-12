@@ -250,6 +250,18 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// For MessagePort.postMessage with transfer list, this contains the transferred ports.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
+    std.log.warn("[get_ports] called, ports type: {s}", .{@tagName(state.own.ports)});
+    switch (state.own.ports) {
+        .handle => |h| {
+            std.log.warn("[get_ports] returning handle ptr={*}", .{h.ptr});
+        },
+        .undefined => {
+            std.log.warn("[get_ports] returning undefined", .{});
+        },
+        else => {
+            std.log.warn("[get_ports] returning other type", .{});
+        },
+    }
     return state.own.ports;
 }
 
@@ -425,42 +437,25 @@ pub fn createPortMessageEvent(
     state.own.lastEventId = runtime.DOMString.initEmpty();
     state.own.source = null; // null for ports per spec
 
-    // For ports, we need to persist the V8 handle as a Global handle
-    // because the callback's Global handles are disposed after the callback returns.
-    // Store the Global handle in internal state and mark ports as having a global handle.
+    // For ports, we need to persist the V8 handle as a Global handle.
+    // The caller has already created a Global handle (in dispatchMessageEventWithPorts),
+    // so we just store the existing Global pointer directly. The Global is heap-allocated
+    // and will persist beyond the caller's scope.
+    std.log.warn("[createPortMessageEvent] ports type: {s}", .{@tagName(ports)});
     switch (ports) {
         .handle => |h| {
-            // Get the current isolate
-            const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
-                state.own.ports = runtime.JSValue.jsUndefined;
-                return instance;
-            };
+            std.log.warn("[createPortMessageEvent] handle.ptr={*}, handle_scope={s}", .{ h.ptr, @tagName(h.handle_scope) });
 
-            // h.ptr is ALREADY a Global<Value>* from v8_FunctionCallbackInfo_GetArgument.
-            // We need to create our OWN Global handle because the callback's Global
-            // will be disposed when the callback returns.
-            //
-            // First get a Local from the existing Global, then create a new Global.
-            const local_value = v8_engine.ffi.v8_Global_Get(isolate, @ptrCast(h.ptr)) orelse {
-                state.own.ports = runtime.JSValue.jsUndefined;
-                return instance;
+            // h.ptr is a Global<Value>* that the caller has already created.
+            // Just store it directly - no need to convert Global->Local->Global.
+            // The Global is heap-allocated and persists.
+            state.own.ports = runtime.JSValue{
+                .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope },
             };
-
-            // Now create our own Global handle from the Local
-            if (v8_engine.GlobalHandle.create(isolate, local_value)) |global_handle| {
-                // Store in internal state for lifetime management
-                if (state.own._internal) |internal| {
-                    internal.ports_global = global_handle;
-                }
-                // Store a handle with the Global pointer for get_ports()
-                state.own.ports = runtime.JSValue{
-                    .handle = .{ .ptr = global_handle.ptr, .needs_disposal = false },
-                };
-            } else {
-                state.own.ports = runtime.JSValue.jsUndefined;
-            }
+            std.log.warn("[createPortMessageEvent] ports stored successfully (direct Global reuse)", .{});
         },
         else => {
+            std.log.warn("[createPortMessageEvent] non-handle ports type, storing directly", .{});
             state.own.ports = ports;
         },
     }

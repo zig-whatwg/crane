@@ -25,6 +25,14 @@ const InternalMessagePort = message_port.MessagePort;
 const streams_common = @import("streams_common");
 const JSValue = streams_common.JSValue;
 
+// Import worker threading for cross-thread message queues
+const html = @import("html");
+const worker_threading = html.workers.worker_threading;
+const ThreadSafeMessageQueue = worker_threading.ThreadSafeMessageQueue;
+const SerializedMessage = ThreadSafeMessageQueue.SerializedMessage;
+const message_channel = html.workers.message_channel;
+const SerializedValue = message_channel.SerializedValue;
+
 pub const State = MessagePort.State;
 
 pub const ImplError = error{
@@ -32,6 +40,27 @@ pub const ImplError = error{
     PortClosed,
     NotEntangled,
     OutOfMemory,
+    DataCloneError,
+    InvalidState,
+};
+
+/// Data structure for a MessagePort being transferred across realms.
+/// Per HTML spec § 9.4.1, this captures the port's identity and entanglement
+/// so it can be reconstructed in the target realm.
+pub const TransferredPortData = struct {
+    /// ID of this port (for reconstruction)
+    port_id: u64,
+    /// ID of the entangled port (if any)
+    entangled_port_id: ?u64,
+    /// Reference to the internal port (for cross-realm transfer)
+    internal_port: *InternalMessagePort,
+    /// Allocator for cleanup
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *TransferredPortData) void {
+        // Note: Do NOT deinit internal_port here - it's transferred to the target realm
+        self.allocator.destroy(self);
+    }
 };
 
 /// Internal state for MessagePort implementation
@@ -56,6 +85,10 @@ pub const InternalState = struct {
     /// V8 GlobalHandle for onmessage event handler
     /// Stored separately for direct V8 invocation after event dispatch
     onmessage_handle: v8_engine.OptionalGlobalHandle = null,
+
+    /// Per HTML spec § 9.4.1, tracks if port has been shipped (transferred).
+    /// A shipped port is disentangled and cannot be transferred again.
+    shipped: bool = false,
 
     pub fn deinit(self: *InternalState) void {
         // Dispose V8 GlobalHandle if set
@@ -93,6 +126,9 @@ pub fn init(
     // Link internal port back to WebIDL instance for message delivery
     internal_port.webidl_instance = instance;
 
+    // Set cross-thread message handler for messages from other threads
+    internal_port.cross_thread_message_handler = handleCrossThreadMessage;
+
     return instance;
 }
 
@@ -122,6 +158,9 @@ pub fn initWithInternal(
 
     // Link internal port back to WebIDL instance for message delivery
     internal_port.webidl_instance = instance;
+
+    // Set cross-thread message handler for messages from other threads
+    internal_port.cross_thread_message_handler = handleCrossThreadMessage;
 
     return instance;
 }
@@ -252,25 +291,77 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// asynchronously by creating a MessageEvent and dispatching it
 /// to the entangled port's message event target.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    std.log.warn("[MessagePort.call_postMessage] ENTRY, instance={*}", .{instance});
     const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
+    const internal = state.own._internal orelse {
+        std.log.warn("[MessagePort.call_postMessage] no internal state, returning", .{});
+        return;
+    };
     const internal_port = internal.internal_port;
+    std.log.warn("[MessagePort.call_postMessage] internal_port.id={d}", .{internal_port.id});
 
     // Extract MessagePort instances from the transfer list
     // Per spec, only MessagePort and ArrayBuffer can be transferred
     const ports = extractTransferredPorts(transfer, internal.allocator) catch runtime.JSValue.jsUndefined;
+    _ = ports; // Will be used for same-thread delivery
 
     // Step 2: Get the entangled port
     const entangled_port = internal_port.entangled_port orelse {
         // Not entangled - silently return per spec
+        std.log.warn("[MessagePort.call_postMessage] no entangled port, returning", .{});
         return;
     };
+    std.log.warn("[MessagePort.call_postMessage] entangled_port.id={d}", .{entangled_port.id});
 
+    // Check if this is a cross-thread port (entangled port is in another thread)
+    // If cross_thread_queue is set, we need to serialize and enqueue the message
+    // instead of delivering directly.
+    if (internal_port.cross_thread_queue) |queue_ptr| {
+        std.log.warn("[MessagePort.call_postMessage] cross-thread message, using queue", .{});
+        const queue: *ThreadSafeMessageQueue = @ptrCast(@alignCast(queue_ptr));
+
+        // Use page_allocator for cross-thread messaging - it's inherently thread-safe
+        const cross_thread_allocator = std.heap.page_allocator;
+
+        // Serialize the message
+        const serialized = serializeMessageForCrossThread(message, cross_thread_allocator) catch |err| {
+            std.log.warn("[MessagePort.call_postMessage] failed to serialize: {s}", .{@errorName(err)});
+            return ImplError.OutOfMemory;
+        };
+
+        // Create a SerializedMessage with target_port_id set for routing
+        const msg = cross_thread_allocator.create(SerializedMessage) catch {
+            serialized.deinit();
+            cross_thread_allocator.destroy(serialized);
+            return ImplError.OutOfMemory;
+        };
+        msg.* = .{
+            .data = serialized.*,
+            .transfers = null,
+            .target_port_id = entangled_port.id, // Route to this port on the receiving thread
+            .allocator = cross_thread_allocator,
+        };
+
+        // Free the SerializedValue struct (its contents are now owned by msg.data)
+        cross_thread_allocator.destroy(serialized);
+
+        // Enqueue to the cross-thread queue
+        queue.enqueue(msg) catch |err| {
+            std.log.warn("[MessagePort.call_postMessage] failed to enqueue: {s}", .{@errorName(err)});
+            msg.deinit();
+            return ImplError.OutOfMemory;
+        };
+        std.log.warn("[MessagePort.call_postMessage] message enqueued to cross-thread queue for port {d}", .{entangled_port.id});
+        return;
+    }
+
+    // Same-thread delivery path (original code)
     // Get the target port's WebIDL instance for event dispatch
     const target_instance: *runtime.Instance = if (entangled_port.webidl_instance) |inst|
         @ptrCast(@alignCast(inst))
     else {
         // No WebIDL instance - fall back to internal queue for streams
+        std.log.warn("[MessagePort.call_postMessage] entangled port has no webidl_instance, using internal queue", .{});
         const msg_value = convertToStreamsJSValue(message, internal.allocator) catch {
             return ImplError.OutOfMemory;
         };
@@ -283,20 +374,89 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
         };
         return;
     };
+    std.log.warn("[MessagePort.call_postMessage] target_instance={*}, queue_enabled={}", .{ target_instance, entangled_port.queue_enabled });
 
     // Check if target port's queue is enabled
     if (entangled_port.queue_enabled) {
         // Queue is enabled - deliver message now
-        try deliverMessage(target_instance, message, ports);
+        std.log.warn("[MessagePort.call_postMessage] delivering message to target", .{});
+        try deliverMessage(target_instance, message, runtime.JSValue.jsUndefined);
+        std.log.warn("[MessagePort.call_postMessage] message delivered successfully", .{});
     } else {
         // Queue is disabled - store message for later delivery
         // TODO: Store ports along with message for later delivery
+        std.log.warn("[MessagePort.call_postMessage] queue disabled, storing message for later", .{});
         // Clone the message and heap-allocate it for storage
         const cloned_ptr = try internal.allocator.create(runtime.JSValue);
         errdefer internal.allocator.destroy(cloned_ptr);
         cloned_ptr.* = try message.clone(internal.allocator);
         try entangled_port.queuePendingMessage(@ptrCast(cloned_ptr));
+        std.log.warn("[MessagePort.call_postMessage] message queued for later delivery", .{});
     }
+}
+
+/// Serialize a runtime.JSValue for cross-thread transfer
+fn serializeMessageForCrossThread(message: runtime.JSValue, allocator: std.mem.Allocator) !*SerializedValue {
+    // Convert runtime.JSValue to message_channel.JSValue for serialization
+    const mc_jsvalue: message_channel.JSValue = switch (message) {
+        .undefined => .{ .undefined = {} },
+        .null => .{ .null = {} },
+        .boolean => |b| .{ .boolean = b },
+        .number => |n| .{ .number = n },
+        .string => |s| blk: {
+            // JSON string needs quotes
+            var escaped_len: usize = 2; // for opening and closing quotes
+            for (s.data) |c| {
+                escaped_len += if (c == '"' or c == '\\') 2 else 1;
+            }
+            const quoted = try allocator.alloc(u8, escaped_len);
+            var pos: usize = 0;
+            quoted[pos] = '"';
+            pos += 1;
+            for (s.data) |c| {
+                if (c == '"' or c == '\\') {
+                    quoted[pos] = '\\';
+                    pos += 1;
+                }
+                quoted[pos] = c;
+                pos += 1;
+            }
+            quoted[pos] = '"';
+            break :blk .{ .string = quoted };
+        },
+        .handle => |h| blk: {
+            // For V8 handles, we need to serialize via JSON.stringify
+            // Get the current isolate and context
+            const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+                break :blk .{ .undefined = {} };
+            };
+            const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+                break :blk .{ .undefined = {} };
+            };
+
+            // First call to get required buffer size
+            var size_buf: [1]u8 = undefined;
+            const v8_value: *v8_engine.ffi.Value = @ptrCast(h.ptr);
+            const needed_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_context, v8_value, &size_buf, 0);
+            if (needed_size <= 0) {
+                break :blk .{ .undefined = {} };
+            }
+
+            // Allocate buffer and stringify
+            const buf = try allocator.alloc(u8, @intCast(needed_size));
+            const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(v8_context, v8_value, buf.ptr, @intCast(buf.len));
+            if (written <= 0) {
+                allocator.free(buf);
+                break :blk .{ .undefined = {} };
+            }
+
+            break :blk .{ .string = buf[0..@intCast(written)] };
+        },
+        .instance => .{ .undefined = {} }, // TODO: Handle instance serialization
+    };
+
+    // Use structured serialize
+    return message_channel.structuredSerialize(allocator, &mc_jsvalue);
 }
 
 /// Extract MessagePort instances from a transfer list
@@ -442,4 +602,170 @@ fn flushPendingMessages(instance: *runtime.Instance, internal: *InternalState) v
             std.log.err("Failed to deliver pending message: {s}", .{@errorName(err)});
         };
     }
+}
+
+/// Handler for cross-thread messages arriving on this MessagePort.
+/// This is set as the cross_thread_message_handler on the internal port
+/// and is called when messages arrive from another thread.
+///
+/// The callback signature matches InternalMessagePort.cross_thread_message_handler:
+/// fn(*InternalMessagePort, *anyopaque) void
+fn handleCrossThreadMessage(internal_port: *InternalMessagePort, msg_ptr: *anyopaque) void {
+    std.log.warn("[MessagePort.handleCrossThreadMessage] called", .{});
+
+    // Get the WebIDL MessagePort instance from the internal port
+    const webidl_instance: *runtime.Instance = if (internal_port.webidl_instance) |inst|
+        @ptrCast(@alignCast(inst))
+    else {
+        std.log.warn("[MessagePort.handleCrossThreadMessage] no webidl_instance on internal port", .{});
+        // Clean up the message since we can't deliver it
+        const serialized_msg: *SerializedMessage = @ptrCast(@alignCast(msg_ptr));
+        serialized_msg.deinit();
+        return;
+    };
+
+    // Get V8 context
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        std.log.warn("[MessagePort.handleCrossThreadMessage] no current isolate", .{});
+        const serialized_msg: *SerializedMessage = @ptrCast(@alignCast(msg_ptr));
+        serialized_msg.deinit();
+        return;
+    };
+    const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.log.warn("[MessagePort.handleCrossThreadMessage] no current context", .{});
+        const serialized_msg: *SerializedMessage = @ptrCast(@alignCast(msg_ptr));
+        serialized_msg.deinit();
+        return;
+    };
+
+    // Create HandleScope for V8 operations
+    const scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(scope);
+
+    // Cast the msg_ptr to SerializedMessage
+    const serialized_msg: *SerializedMessage = @ptrCast(@alignCast(msg_ptr));
+    defer serialized_msg.deinit();
+
+    // Deserialize the message data to a V8 value
+    var v8_data: ?*v8_engine.ffi.Value = null;
+    if (serialized_msg.data.type == .primitive) {
+        switch (serialized_msg.data.data.primitive) {
+            .string => |json_str| {
+                v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
+                    v8_context,
+                    json_str.ptr,
+                    @intCast(json_str.len),
+                );
+            },
+            .null => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+            },
+            .undefined => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Undefined(isolate));
+            },
+            else => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+            },
+        }
+    } else {
+        v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+    }
+
+    // Convert to runtime.JSValue
+    // IMPORTANT: v8_data is a LOCAL handle from JSON_Parse. Convert to Global so it persists
+    // beyond the HandleScope. Local handles become invalid when HandleScope is disposed.
+    const data_jsval = if (v8_data) |d| blk: {
+        const global_data = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(d)) orelse {
+            std.log.warn("[MessagePort.handleCrossThreadMessage] failed to convert data to global handle", .{});
+            break :blk runtime.JSValue.jsNull;
+        };
+        break :blk runtime.JSValue.fromHandle(@ptrCast(global_data));
+    } else runtime.JSValue.jsNull;
+
+    std.log.warn("[MessagePort.handleCrossThreadMessage] delivering message to port", .{});
+
+    // Deliver the message (creates MessageEvent and dispatches)
+    deliverMessage(webidl_instance, data_jsval, runtime.JSValue.jsUndefined) catch |err| {
+        std.log.err("[MessagePort.handleCrossThreadMessage] failed to deliver: {s}", .{@errorName(err)});
+    };
+}
+
+// =============================================================================
+// Transfer Support (HTML spec § 9.4.1 - Transferable objects)
+// =============================================================================
+
+/// Disentangle a MessagePort for transfer to another realm.
+/// Per HTML spec § 9.4.1, this marks the port as shipped and prepares it for
+/// transfer. A shipped port cannot be transferred again.
+///
+/// Returns TransferredPortData containing the port's identity and entanglement info.
+pub fn disentangleForTransfer(instance: *runtime.Instance, allocator: std.mem.Allocator) !*TransferredPortData {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return ImplError.InvalidState;
+
+    // Per HTML spec, attempting to transfer an already-shipped port is a DataCloneError
+    if (internal.shipped) {
+        return ImplError.DataCloneError;
+    }
+
+    // Mark as shipped - port is now disentangled from this realm
+    internal.shipped = true;
+
+    // Get entangled port ID if any
+    const internal_port = internal.internal_port;
+    const entangled_id: ?u64 = if (internal_port.entangled_port) |ep| ep.id else null;
+
+    // Create transfer data
+    const transfer_data = try allocator.create(TransferredPortData);
+    transfer_data.* = .{
+        .port_id = internal_port.id,
+        .entangled_port_id = entangled_id,
+        .internal_port = internal_port,
+        .allocator = allocator,
+    };
+
+    // Detach internal port from this instance (it belongs to the transfer now)
+    // The port remains entangled with its partner, just owned by transfer_data
+    internal.port_instance = null;
+
+    return transfer_data;
+}
+
+/// Re-entangle a MessagePort from transfer data in the target realm.
+/// Per HTML spec § 9.4.1, this creates a new MessagePort wrapper in the target
+/// realm that connects to the same internal port.
+///
+/// Note: The new port is NOT shipped (can be transferred again).
+pub fn entangleFromTransfer(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+    transfer_data: *TransferredPortData,
+) !*runtime.Instance {
+    // Create new MessagePort instance using the transferred internal port
+    const instance = try initWithInternal(
+        allocator,
+        StateType,
+        vtable,
+        ctx,
+        transfer_data.internal_port,
+    );
+
+    // Update the internal port's webidl_instance to point to the new wrapper
+    transfer_data.internal_port.webidl_instance = instance;
+
+    // Transfer data no longer owns the internal port
+    // Don't call transfer_data.deinit() - the caller manages that
+
+    return instance;
+}
+
+/// Check if a port has been shipped (transferred)
+pub fn isShipped(instance: *runtime.Instance) bool {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        return internal.shipped;
+    }
+    return false;
 }

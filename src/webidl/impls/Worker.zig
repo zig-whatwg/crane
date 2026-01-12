@@ -59,6 +59,10 @@ const structured_clone = html_core.structured_clone;
 const message_port_internal = @import("streams_internal");
 const InternalMessagePort = message_port_internal.MessagePort;
 
+// Import MessagePort impl for transfer support
+const MessagePortImpl = @import("MessagePort.zig");
+const TransferredPortData = MessagePortImpl.TransferredPortData;
+
 // Import platform for TimerBackend (used to create DedicatedWorker)
 const platform = @import("platform");
 
@@ -78,6 +82,9 @@ const WorkerThreadRunner = workers.WorkerThreadRunner;
 const ThreadedWorkerManager = workers.ThreadedWorkerManager;
 const WorkerV8Integration = workers.WorkerV8Integration;
 const WorkerThreadState = workers.WorkerThreadState;
+const ThreadSafeMessageQueue = workers.worker_threading.ThreadSafeMessageQueue;
+const TransferItem = ThreadSafeMessageQueue.TransferItem;
+const TransferType = ThreadSafeMessageQueue.TransferType;
 
 pub const State = Worker.State;
 
@@ -668,10 +675,13 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
         // This ensures messages posted by the worker during script execution
         // are delivered now that there's a handler to receive them.
         if (internal.dedicated_worker) |dedicated_worker| {
+            const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
+            std.debug.print("[DEBUG] set_onmessage: Processing queued messages, queue_len={d}\n", .{queue_len});
             wdebug.print("[set_onmessage] Processing queued messages...\n", .{});
             dedicated_worker.processQueuedMessages();
             wdebug.print("[set_onmessage] Done processing queued messages\n", .{});
         } else {
+            std.debug.print("[DEBUG] set_onmessage: No dedicated_worker yet\n", .{});
             wdebug.print("[set_onmessage] No dedicated_worker yet\n", .{});
         }
     }
@@ -996,6 +1006,8 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 /// This is called by DedicatedWorker when a message arrives from the worker
 /// on the outside_port (worker → main thread direction).
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
+    // Use std.debug.print for guaranteed visibility
+    std.debug.print("[DEBUG] handleMessageFromWorkerCallback CALLED script_url={s}\n", .{dedicated_worker.script_url});
     wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() called, dedicated_worker={*} script_url={s}\n", .{
         dedicated_worker,
         dedicated_worker.script_url,
@@ -1013,6 +1025,25 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
     const internal: *InternalState = @ptrCast(@alignCast(user_data));
     wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() internal from outside_user_data: {*} at addr=0x{x:0>16}\n", .{ internal, @intFromPtr(internal) });
 
+    // CRITICAL FIX: If onmessage_handle is not set yet (JS hasn't set worker.onmessage),
+    // we must queue the message for later delivery. Otherwise the message will be
+    // "dispatched" but the JS handler won't be called, and the message will be lost.
+    // When set_onmessage is called later, processQueuedMessages() will deliver queued messages.
+    if (internal.onmessage_handle == null) {
+        std.debug.print("[DEBUG] onmessage_handle is NULL, queueing message\n", .{});
+        wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() onmessage_handle is null, queueing for later\n", .{});
+        // Queue to outside port for later delivery via processQueuedMessages()
+        const outside_port = dedicated_worker.port_pair.outside_port;
+        outside_port.message_queue.append(dedicated_worker.allocator, msg) catch {
+            std.debug.print("[DEBUG] FAILED to queue message\n", .{});
+            wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() FAILED to queue message\n", .{});
+            msg.deinit();
+        };
+        std.debug.print("[DEBUG] Message queued, queue len={d}\n", .{outside_port.message_queue.items.len});
+        return;
+    }
+
+    std.debug.print("[DEBUG] onmessage_handle is SET, dispatching directly\n", .{});
     wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() dispatching to onmessage\n", .{});
     dispatchMessageEventDirect(internal, msg);
     wdebug.print("handleMessageFromWorkerCallback() dispatch complete\n", .{});
@@ -1610,10 +1641,10 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             defer if (arraybuffer_data) |data| instance.ctx.allocator.free(data);
 
             // Parse transfer list if provided
-            // NOTE: transfer_pointers contains TransferredArrayBuffer structs that own their data.
-            // We pass ownership to postMessageTyped → QueuedMessage → receiving end.
+            // NOTE: transfer_pointers contains TransferItem structs with typed transfer data.
+            // We pass ownership to postMessageTyped → SerializedMessage → receiving end.
             // DO NOT free transfer_pointers here - the receiving end is responsible for cleanup.
-            var transfer_pointers: ?[]?*anyopaque = null;
+            var transfer_pointers: ?[]TransferItem = null;
 
             // Check if we have a transfer list - the transfer argument is the second param
             // Parse transfer list if provided and not undefined/null
@@ -1624,6 +1655,33 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             if (transfer_is_defined) {
                 if (transfer.toAnyopaque()) |_| {
                     transfer_pointers = parseTransferList(instance.ctx.allocator, transfer) catch null;
+                }
+            }
+
+            // Set up cross-thread queues for transferred MessagePorts
+            // When a MessagePort is transferred TO the worker, the remaining port (on main thread)
+            // needs to know to route messages through the worker's inbox queue.
+            //
+            // Use early_inbox which is created when the Worker is constructed.
+            // This allows cross_thread_queue setup even before thread_state is set.
+            // The worker thread will read from both thread_state.inbox and early_inbox.
+            if (transfer_pointers) |transfers| {
+                for (transfers) |item| {
+                    if (item.item_type == .message_port) {
+                        const transfer_data: *TransferredPortData = @ptrCast(@alignCast(item.data));
+                        // The transferred port's entangled partner is still on the main thread
+                        // Set its cross_thread_queue to the worker's early_inbox
+                        if (transfer_data.internal_port.entangled_port) |entangled| {
+                            if (worker.early_inbox) |early_inbox| {
+                                wdebug.print("Setting cross_thread_queue for port {d} -> early_inbox for worker\n", .{entangled.id});
+                                entangled.cross_thread_queue = @ptrCast(early_inbox);
+                            } else if (worker.thread_state) |ts| {
+                                // Fallback to thread_state.inbox if early_inbox not available
+                                wdebug.print("Setting cross_thread_queue for port {d} -> thread_state.inbox for worker\n", .{entangled.id});
+                                entangled.cross_thread_queue = @ptrCast(&ts.inbox);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1787,8 +1845,8 @@ pub const TransferredArrayBuffer = struct {
 /// "When an ArrayBuffer is transferred, the original buffer is detached
 /// and becomes unusable."
 ///
-/// Returns: Array of TransferredArrayBuffer pointers (or null for non-ArrayBuffer items)
-fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?[]?*anyopaque {
+/// Returns: Array of TransferItem containing typed transfer data
+fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?[]TransferItem {
     // Transfer should be an array
     const transfer_ptr = transfer.toAnyopaque() orelse return null;
 
@@ -1809,15 +1867,48 @@ fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?
         return null;
     }
 
+    // First pass: count valid transferables
+    var valid_count: usize = 0;
+    for (0..length) |i| {
+        const element = v8_engine.ffi.v8_Array_Get(v8_context, transfer_array, @intCast(i));
+        if (element) |elem| {
+            if (v8_engine.ffi.v8_Value_IsArrayBuffer(elem)) {
+                valid_count += 1;
+            } else if (v8_engine.ffi.v8_Value_IsObject(elem)) {
+                const obj: *v8_engine.ffi.Object = @ptrCast(elem);
+                const type_info = v8_engine.interface_mod.getWrapperTypeInfo(obj);
+                if (type_info) |info| {
+                    const name_slice = std.mem.span(info.interface_name);
+                    if (std.mem.eql(u8, name_slice, "MessagePort")) {
+                        valid_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if (valid_count == 0) {
+        return null;
+    }
+
     // Allocate array for transfer data
-    var transfers = try allocator.alloc(?*anyopaque, length);
+    var transfers = try allocator.alloc(TransferItem, valid_count);
+    var transfer_idx: usize = 0;
+
     errdefer {
-        // Clean up any allocated TransferredArrayBuffer on error
-        for (transfers) |maybe_transfer| {
-            if (maybe_transfer) |transfer_ptr_inner| {
-                const tab: *TransferredArrayBuffer = @ptrCast(@alignCast(transfer_ptr_inner));
-                tab.deinit();
-                allocator.destroy(tab);
+        // Clean up any allocated transfer data on error
+        for (transfers[0..transfer_idx]) |item| {
+            switch (item.item_type) {
+                .array_buffer => {
+                    const tab: *TransferredArrayBuffer = @ptrCast(@alignCast(item.data));
+                    tab.deinit();
+                    allocator.destroy(tab);
+                },
+                .message_port => {
+                    const tpd: *TransferredPortData = @ptrCast(@alignCast(item.data));
+                    tpd.deinit();
+                },
+                else => {},
             }
         }
         allocator.free(transfers);
@@ -1872,17 +1963,42 @@ fn parseTransferList(allocator: std.mem.Allocator, transfer: runtime.JSValue) !?
                 // Per HTML § 2.7.3: "Detach(value)"
                 v8_engine.ffi.v8_ArrayBuffer_Detach(array_buffer);
 
-                // Store the transfer data
-                transfers[i] = @ptrCast(transferred);
+                // Store the transfer data with type info
+                transfers[transfer_idx] = .{
+                    .item_type = .array_buffer,
+                    .data = @ptrCast(transferred),
+                };
+                transfer_idx += 1;
             } else if (v8_engine.ffi.v8_Value_IsObject(elem)) {
-                // Other transferable objects (MessagePort, etc.) - store for now
-                // TODO: Implement MessagePort transfer (disentangle + re-entangle)
-                transfers[i] = @ptrCast(elem);
-            } else {
-                transfers[i] = null;
+                // Check if this is a MessagePort
+                const obj: *v8_engine.ffi.Object = @ptrCast(elem);
+                const type_info = v8_engine.interface_mod.getWrapperTypeInfo(obj);
+
+                if (type_info) |info| {
+                    // Check if it's a MessagePort by comparing interface names
+                    const name_slice = std.mem.span(info.interface_name);
+                    if (std.mem.eql(u8, name_slice, "MessagePort")) {
+                        // Get the runtime.Instance from the V8 object
+                        const instance = v8_engine.interface_mod.getInstance(runtime.Instance, obj) orelse {
+                            continue;
+                        };
+
+                        // Disentangle the port for transfer
+                        const transfer_data = MessagePortImpl.disentangleForTransfer(instance, allocator) catch |err| {
+                            // DataCloneError if already shipped, or other error
+                            wdebug.print("Failed to disentangle MessagePort: {s}\n", .{@errorName(err)});
+                            return err;
+                        };
+
+                        // Store the TransferredPortData with type info
+                        transfers[transfer_idx] = .{
+                            .item_type = .message_port,
+                            .data = @ptrCast(transfer_data),
+                        };
+                        transfer_idx += 1;
+                    }
+                }
             }
-        } else {
-            transfers[i] = null;
         }
     }
 
@@ -2238,9 +2354,17 @@ fn dispatchMessageWithInterfaces(isolate_data: *anyopaque, msg: *workers.ThreadS
         // Subsequent messages: dispatch as MessageEvent
         wdebug.print("  Subsequent message - dispatching as MessageEvent\n", .{});
 
-        // Convert the serialized data to a JavaScript value and dispatch
-        // Since worker global scope is set up via JavaScript, we dispatch using JS
-        try dispatchMessageEventViaJS(worker_ctx, msg);
+        // Check if this is a MessagePort message (target_port_id is set)
+        // MessagePort messages need to be routed to the specific port, not global onmessage
+        if (msg.target_port_id) |target_id| {
+            wdebug.print("  MessagePort message for port {d}\n", .{target_id});
+            try dispatchMessagePortMessage(worker_ctx, msg, target_id);
+        } else {
+            // Regular worker.onmessage dispatch
+            // Convert the serialized data to a JavaScript value and dispatch
+            // Since worker global scope is set up via JavaScript, we dispatch using JS
+            try dispatchMessageEventViaJS(worker_ctx, msg);
+        }
     }
 
     // Clean up the message
@@ -2257,9 +2381,38 @@ fn dispatchMessageWithInterfaces(isolate_data: *anyopaque, msg: *workers.ThreadS
 /// Spec: HTML Standard § 9.4.2 Posting messages
 /// https://html.spec.whatwg.org/#posting-messages
 fn dispatchMessageEventViaJS(worker_ctx: *WorkerV8Context, msg: *workers.ThreadSafeMessageQueue.SerializedMessage) !void {
+    const isolate = worker_ctx.isolate;
+    const v8_context = worker_ctx.context;
+
+    // Check for transferred MessagePorts that need to be reconstructed
+    // Per HTML spec, transferred ports must be entangled in the receiving realm
+    var has_transferred_ports = false;
+    var port_count: usize = 0;
+    if (msg.transfers) |transfers| {
+        for (transfers) |item| {
+            if (item.item_type == .message_port) {
+                has_transferred_ports = true;
+                port_count += 1;
+            }
+        }
+    }
+
+    if (has_transferred_ports) {
+        wdebug.print("  dispatchMessageEventViaJS: found {d} transferred MessagePort(s)\n", .{port_count});
+
+        // Use native approach for messages with transferred ports
+        try dispatchMessageEventWithPorts(worker_ctx, msg, port_count);
+        return;
+    }
+
+    // No transferred ports - use the simpler JS string approach
     // Convert the message data to a JavaScript literal for embedding in script
     var js_data_buf: [8192]u8 = undefined;
     var js_data_len: usize = 0;
+
+    // Create HandleScope for V8 operations
+    _ = isolate;
+    _ = v8_context;
 
     if (msg.data.type == .string_object) {
         // String data - escape for JavaScript string literal
@@ -2363,6 +2516,392 @@ fn dispatchMessageEventViaJS(worker_ctx: *WorkerV8Context, msg: *workers.ThreadS
 
     wdebug.print("  Dispatching MessageEvent with data type: {s}\n", .{@tagName(msg.data.type)});
     _ = try worker_ctx.executeScript(script);
+}
+
+/// Dispatch a message to a specific MessagePort
+///
+/// This is used for cross-thread MessagePort messages. The message's target_port_id
+/// indicates which MessagePort should receive the message.
+///
+/// Spec: HTML Standard § 9.4.1 postMessage - port message queue steps
+fn dispatchMessagePortMessage(
+    worker_ctx: *WorkerV8Context,
+    msg: *workers.ThreadSafeMessageQueue.SerializedMessage,
+    target_port_id: u64,
+) !void {
+    wdebug.print("  dispatchMessagePortMessage: ENTRY, target_port_id={d}\n", .{target_port_id});
+
+    const isolate = worker_ctx.isolate;
+    const v8_context = worker_ctx.context;
+    const allocator = worker_ctx.allocator;
+
+    // Look up the target MessagePort by ID
+    const internal_message_port = @import("streams_internal");
+    const port_registry = internal_message_port.getPortRegistry();
+    const internal_port = port_registry.lookup(target_port_id) orelse {
+        wdebug.print("  dispatchMessagePortMessage: port {d} not found in registry\n", .{target_port_id});
+        return;
+    };
+    wdebug.print("  dispatchMessagePortMessage: found internal port {d}\n", .{internal_port.id});
+
+    // Get the WebIDL MessagePort instance from the internal port
+    const webidl_instance: *runtime.Instance = if (internal_port.webidl_instance) |inst|
+        @ptrCast(@alignCast(inst))
+    else {
+        wdebug.print("  dispatchMessagePortMessage: no webidl_instance on port\n", .{});
+        return;
+    };
+    wdebug.print("  dispatchMessagePortMessage: got webidl_instance={*}\n", .{webidl_instance});
+
+    // Enter isolate and context
+    v8_engine.ffi.v8_Isolate_Enter(isolate);
+    v8_engine.ffi.v8_Context_Enter(v8_context);
+    defer {
+        v8_engine.ffi.v8_Context_Exit(v8_context);
+        v8_engine.ffi.v8_Isolate_Exit(isolate);
+    }
+
+    // Create HandleScope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
+        wdebug.print("  dispatchMessagePortMessage: failed to create HandleScope\n", .{});
+        return error.V8Error;
+    };
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Parse message data
+    var v8_data: ?*v8_engine.ffi.Value = null;
+    if (msg.data.type == .primitive) {
+        switch (msg.data.data.primitive) {
+            .string => |json_str| {
+                v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
+                    v8_context,
+                    json_str.ptr,
+                    @intCast(json_str.len),
+                );
+            },
+            .null => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+            },
+            .undefined => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Undefined(isolate));
+            },
+            else => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+            },
+        }
+    } else {
+        v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+    }
+
+    // Create runtime context
+    const runtime_ctx = worker_ctx.getRuntimeContext() orelse {
+        wdebug.print("  dispatchMessagePortMessage: failed to get runtime context\n", .{});
+        return error.NoRuntimeContext;
+    };
+
+    // Create MessageEvent with the data
+    // IMPORTANT: v8_data is a LOCAL handle from JSON_Parse. Convert to Global so it persists
+    // beyond the HandleScope. Local handles become invalid when HandleScope is disposed.
+    const data_jsval = if (v8_data) |d| blk: {
+        const global_data = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(d)) orelse {
+            wdebug.print("  dispatchMessagePortMessage: failed to convert data to global handle\n", .{});
+            break :blk runtime.JSValue.jsNull;
+        };
+        break :blk runtime.JSValue.fromHandle(@ptrCast(global_data));
+    } else runtime.JSValue.jsNull;
+
+    const MessageEventImpl = @import("MessageEvent.zig");
+    const message_event = MessageEventImpl.createPortMessageEvent(
+        allocator,
+        runtime_ctx,
+        data_jsval,
+        runtime.JSValue.jsUndefined, // No transferred ports for this message
+    ) catch |err| {
+        wdebug.print("  dispatchMessagePortMessage: failed to create MessageEvent: {s}\n", .{@errorName(err)});
+        return err;
+    };
+    wdebug.print("  dispatchMessagePortMessage: MessageEvent created\n", .{});
+
+    // Wrap the MessageEvent as V8 object
+    const v8_event = template_registry.wrapInstanceAsV8Object(
+        message_event,
+        "MessageEvent",
+        isolate,
+        v8_context,
+    ) catch |err| {
+        wdebug.print("  dispatchMessagePortMessage: failed to wrap MessageEvent: {s}\n", .{@errorName(err)});
+        return err;
+    };
+
+    // Get the port's onmessage handler from internal state
+    const port_state = webidl_instance.getState(MessagePortImpl.State);
+    const internal_state = port_state.own._internal orelse {
+        wdebug.print("  dispatchMessagePortMessage: no internal state on port\n", .{});
+        return;
+    };
+
+    // Check if onmessage handler is set
+    if (internal_state.onmessage_handle) |onmessage_global| {
+        wdebug.print("  dispatchMessagePortMessage: invoking onmessage handler\n", .{});
+
+        // Verify it's a function
+        if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.ptr)) {
+            wdebug.print("  dispatchMessagePortMessage: onmessage is not a function\n", .{});
+            return;
+        }
+
+        // Call the onmessage function with the MessageEvent
+        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
+        const function_global: *v8_engine.ffi.Function = @ptrCast(onmessage_global.ptr);
+        _ = v8_engine.ffi.v8_Function_Call(function_global, v8_context, @ptrCast(undefined_recv), 1, &args);
+        wdebug.print("  dispatchMessagePortMessage: onmessage handler invoked successfully\n", .{});
+    } else {
+        wdebug.print("  dispatchMessagePortMessage: no onmessage handler set on port\n", .{});
+    }
+}
+
+/// Dispatch a message with transferred MessagePorts using native MessageEvent creation
+///
+/// This reconstructs transferred MessagePorts in the worker's realm and creates
+/// a MessageEvent with the ports array populated.
+///
+/// Spec: HTML Standard § 9.4.1 MessagePort transfer steps
+/// https://html.spec.whatwg.org/#message-port-post-message-steps
+fn dispatchMessageEventWithPorts(
+    worker_ctx: *WorkerV8Context,
+    msg: *workers.ThreadSafeMessageQueue.SerializedMessage,
+    _: usize, // port_count - used for logging in caller
+) !void {
+    wdebug.print("  dispatchMessageEventWithPorts: ENTRY\n", .{});
+
+    const isolate = worker_ctx.isolate;
+    const v8_context = worker_ctx.context;
+    const allocator = worker_ctx.allocator;
+
+    // Enter isolate and context FIRST - required for any V8 operations
+    // This is the same pattern used by executeScript()
+    v8_engine.ffi.v8_Isolate_Enter(isolate);
+    v8_engine.ffi.v8_Context_Enter(v8_context);
+    defer {
+        v8_engine.ffi.v8_Context_Exit(v8_context);
+        v8_engine.ffi.v8_Isolate_Exit(isolate);
+    }
+
+    wdebug.print("  dispatchMessageEventWithPorts: entered isolate/context\n", .{});
+
+    // Create HandleScope for V8 operations
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
+        wdebug.print("  dispatchMessageEventWithPorts: failed to create HandleScope\n", .{});
+        return error.V8Error;
+    };
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    wdebug.print("  dispatchMessageEventWithPorts: HandleScope created\n", .{});
+
+    // Get runtime context using WorkerV8Context's method which properly handles
+    // the context manager for this worker thread
+    // Now that we've entered the context, getRuntimeContext() should work
+    const runtime_ctx = worker_ctx.getRuntimeContext() orelse {
+        wdebug.print("  dispatchMessageEventWithPorts: failed to get runtime context from worker_ctx\n", .{});
+        return error.NoRuntimeContext;
+    };
+
+    wdebug.print("  dispatchMessageEventWithPorts: got runtime context\n", .{});
+
+    // Reconstruct transferred MessagePorts
+    var reconstructed_ports: std.ArrayListUnmanaged(*runtime.Instance) = .{};
+    defer reconstructed_ports.deinit(allocator);
+
+    wdebug.print("  dispatchMessageEventWithPorts: checking msg.transfers\n", .{});
+    if (msg.transfers) |transfers| {
+        wdebug.print("  dispatchMessageEventWithPorts: transfers.len={d}\n", .{transfers.len});
+        for (transfers, 0..) |item, idx| {
+            wdebug.print("  dispatchMessageEventWithPorts: transfer[{d}] item_type={s}\n", .{ idx, @tagName(item.item_type) });
+            if (item.item_type == .message_port) {
+                const transfer_data: *TransferredPortData = @ptrCast(@alignCast(item.data));
+
+                wdebug.print("  Reconstructing MessagePort, port_id={d}\n", .{transfer_data.port_id});
+
+                // Entangle the port in the worker's realm
+                const port_instance = MessagePortImpl.entangleFromTransfer(
+                    allocator,
+                    MessagePortImpl.State,
+                    &interfaces.MessagePort.vtable,
+                    runtime_ctx,
+                    transfer_data,
+                ) catch |err| {
+                    wdebug.print("  Failed to entangle MessagePort: {s}\n", .{@errorName(err)});
+                    continue;
+                };
+
+                // Set up cross-thread queue for the transferred port (worker → main)
+                // The transferred port needs to use the worker's outbox to send messages back
+                if (worker_ctx.dedicated_worker) |dw| {
+                    if (dw.thread_state) |ts| {
+                        // Set up the internal port's cross_thread_queue to point to the outbox
+                        const port_state = port_instance.getState(MessagePortImpl.State);
+                        if (port_state.own._internal) |internal| {
+                            wdebug.print("  Setting cross_thread_queue for transferred port {d} -> outbox for main thread\n", .{internal.internal_port.id});
+                            internal.internal_port.cross_thread_queue = @ptrCast(&ts.outbox);
+                        }
+                    }
+                }
+
+                wdebug.print("  dispatchMessageEventWithPorts: port entangled successfully\n", .{});
+                reconstructed_ports.append(allocator, port_instance) catch continue;
+            }
+        }
+    } else {
+        wdebug.print("  dispatchMessageEventWithPorts: msg.transfers is null!\n", .{});
+    }
+
+    wdebug.print("  Reconstructed {d} MessagePort(s)\n", .{reconstructed_ports.items.len});
+
+    // Create V8 array for the ports
+    // v8_Array_New returns non-optional (crashes on failure)
+    wdebug.print("  Creating V8 ports array\n", .{});
+    const ports_array = v8_engine.ffi.v8_Array_New(isolate, @intCast(reconstructed_ports.items.len));
+    wdebug.print("  V8 ports array created\n", .{});
+
+    // Wrap each port as V8 object and add to array
+    for (reconstructed_ports.items, 0..) |port_instance, i| {
+        wdebug.print("  Wrapping port {d} as V8 object\n", .{i});
+        const v8_port = template_registry.wrapInstanceAsV8Object(
+            port_instance,
+            "MessagePort",
+            isolate,
+            v8_context,
+        ) catch |err| {
+            wdebug.print("  Failed to wrap MessagePort as V8 object: {s}\n", .{@errorName(err)});
+            continue;
+        };
+
+        wdebug.print("  Port {d} wrapped successfully\n", .{i});
+        // Set port in array - signature: (arr, context, index, value)
+        _ = v8_engine.ffi.v8_Array_Set(
+            ports_array,
+            v8_context,
+            @intCast(i),
+            @ptrCast(v8_port),
+        );
+        wdebug.print("  Port {d} added to array\n", .{i});
+    }
+
+    wdebug.print("  All ports wrapped, parsing message data\n", .{});
+    // Parse message data as JSON (same logic as the non-port path)
+    var v8_data: ?*v8_engine.ffi.Value = null;
+    if (msg.data.type == .primitive) {
+        switch (msg.data.data.primitive) {
+            .string => |json_str| {
+                v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
+                    v8_context,
+                    json_str.ptr,
+                    @intCast(json_str.len),
+                );
+            },
+            .null => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+            },
+            .undefined => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Undefined(isolate));
+            },
+            else => {
+                v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+            },
+        }
+    } else {
+        v8_data = @ptrCast(v8_engine.ffi.v8_Null(isolate));
+    }
+
+    // Create MessageEvent with ports using the factory function
+    const MessageEventImpl = @import("MessageEvent.zig");
+    // IMPORTANT: v8_data is a LOCAL handle from JSON_Parse. Convert to Global so it persists
+    // beyond the HandleScope. Local handles become invalid when HandleScope is disposed.
+    const data_jsval = if (v8_data) |d| blk: {
+        const global_data = v8_engine.ffi.v8_Value_ToGlobal(isolate, @ptrCast(d)) orelse {
+            wdebug.print("  dispatchMessageEventWithPorts: failed to convert data to global handle\n", .{});
+            break :blk runtime.JSValue.jsNull;
+        };
+        break :blk runtime.JSValue.fromHandle(@ptrCast(global_data));
+    } else runtime.JSValue.jsNull;
+
+    // NOTE: v8_Array_New already returns a Global<Array>* handle, NOT a Local.
+    // So we can use it directly without calling GlobalHandle.create.
+    // The Global handle survives beyond the HandleScope.
+    wdebug.print("  Using ports_array Global handle directly\n", .{});
+    wdebug.print("  ports_array (Global*) = {*}\n", .{ports_array});
+    const ports_jsval = runtime.JSValue{
+        .handle = .{ .ptr = @ptrCast(ports_array), .needs_disposal = false, .handle_scope = .global },
+    };
+    wdebug.print("  ports_jsval.handle.ptr = {*}\n", .{ports_jsval.handle.ptr});
+
+    wdebug.print("  Creating MessageEvent with ports\n", .{});
+    const message_event = MessageEventImpl.createPortMessageEvent(
+        allocator,
+        runtime_ctx,
+        data_jsval,
+        ports_jsval,
+    ) catch |err| {
+        wdebug.print("  Failed to create MessageEvent: {s}\n", .{@errorName(err)});
+        return err;
+    };
+    wdebug.print("  MessageEvent created successfully\n", .{});
+
+    // Wrap the MessageEvent as V8 object
+    wdebug.print("  Wrapping MessageEvent as V8 object\n", .{});
+    const v8_event = template_registry.wrapInstanceAsV8Object(
+        message_event,
+        "MessageEvent",
+        isolate,
+        v8_context,
+    ) catch |err| {
+        wdebug.print("  Failed to wrap MessageEvent as V8 object: {s}\n", .{@errorName(err)});
+        return err;
+    };
+    wdebug.print("  MessageEvent wrapped as V8 object\n", .{});
+
+    // Get self.onmessage and invoke it if it's a function
+    wdebug.print("  Getting global object\n", .{});
+    const global = v8_engine.ffi.v8_Context_Global(v8_context) orelse {
+        wdebug.print("  dispatchMessageEventWithPorts: failed to get global\n", .{});
+        return error.V8Error;
+    };
+    wdebug.print("  Got global object\n", .{});
+
+    // Get the 'onmessage' property from global/self
+    wdebug.print("  Getting onmessage property\n", .{});
+    const onmessage_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "onmessage".ptr, 9) orelse {
+        wdebug.print("  Failed to create onmessage key\n", .{});
+        return error.V8Error;
+    };
+
+    // v8_Object_Get signature: (object, context, key)
+    const onmessage_value = v8_engine.ffi.v8_Object_Get(global, v8_context, @ptrCast(onmessage_key)) orelse {
+        wdebug.print("  dispatchMessageEventWithPorts: onmessage not found\n", .{});
+        return;
+    };
+    wdebug.print("  Got onmessage value\n", .{});
+
+    // Check if onmessage is a function
+    if (v8_engine.ffi.v8_Value_IsFunction(onmessage_value)) {
+        wdebug.print("  Invoking onmessage handler with MessageEvent\n", .{});
+
+        // Call onmessage(event)
+        // v8_Function_Call signature: (function, context, recv, argc, argv)
+        var args: [1]*v8_engine.ffi.Value = .{@ptrCast(v8_event)};
+        _ = v8_engine.ffi.v8_Function_Call(
+            @ptrCast(onmessage_value), // function
+            v8_context, // context
+            @ptrCast(global), // recv (this)
+            1, // argc
+            &args, // argv
+        );
+
+        wdebug.print("  onmessage handler invoked successfully\n", .{});
+    } else {
+        wdebug.print("  onmessage is not a function, skipping\n", .{});
+    }
 }
 
 /// Format a string as a JavaScript string literal with proper escaping

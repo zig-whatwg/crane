@@ -4196,42 +4196,65 @@ void v8_FunctionCallbackInfo_SetReturnValueLocal(const FunctionCallbackInfo<Valu
 /// @param info - FunctionCallbackInfo pointer
 /// @param global_ptr - Pointer to a Global<Value> (from v8_String_NewFromUtf8, etc.)
 void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Value>* info, void* global_ptr) {
+    fprintf(stderr, "[SetReturnValueGlobal] ENTRY, global_ptr=%p\n", global_ptr);
     if (!global_ptr) {
+        fprintf(stderr, "[SetReturnValueGlobal] global_ptr is null, returning undefined\n");
         info->GetReturnValue().SetUndefined();
         return;
     }
-    
+
     // Sanity checks for corrupted pointers (same as SetReturnValue)
     uintptr_t ptr_val = reinterpret_cast<uintptr_t>(global_ptr);
-    
+
     // Check 1: Pointer should be in a reasonable address range
     if (ptr_val < 0x1000 || ptr_val > 0x0000FFFFFFFFFFFF) {
         fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValueGlobal called with suspicious pointer: %p (out of range)\n", global_ptr);
         info->GetReturnValue().SetUndefined();
         return;
     }
-    
+
     // Check 2: V8's Global handles should be aligned to at least 8 bytes on 64-bit
     if ((ptr_val & 0x7) != 0) {
         fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValueGlobal called with misaligned pointer: %p (alignment=%lu)\n", global_ptr, ptr_val & 0x7);
         info->GetReturnValue().SetUndefined();
         return;
     }
-    
+
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    
+
     // Cast to Global<Value>* and get the Local from it
     Global<Value>* global = reinterpret_cast<Global<Value>*>(global_ptr);
-    
+
     // Check if the Global handle is empty
     if (global->IsEmpty()) {
-        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValueGlobal called with empty Global handle\n");
+        fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValueGlobal called with empty Global handle (ptr=%p)\n", global_ptr);
         info->GetReturnValue().SetUndefined();
         return;
     }
-    
+
     Local<Value> local = global->Get(isolate);
+
+    // DEBUG: Check if this is an array and log its length
+    if (local->IsArray()) {
+        Local<Array> arr = local.As<Array>();
+        fprintf(stderr, "[SetReturnValueGlobal] Returning array with length=%u\n", arr->Length());
+    } else {
+        fprintf(stderr, "[SetReturnValueGlobal] Returning non-array value (type check: IsUndefined=%d, IsNull=%d, IsObject=%d, IsFunction=%d, IsString=%d, IsNumber=%d, IsBool=%d)\n",
+                local->IsUndefined(), local->IsNull(), local->IsObject(), local->IsFunction(), local->IsString(), local->IsNumber(), local->IsBoolean());
+        if (local->IsObject()) {
+            // Try to get more info about the object
+            Local<Context> ctx = isolate->GetCurrentContext();
+            Local<Object> obj = local.As<Object>();
+            MaybeLocal<String> maybeStr = obj->GetConstructorName();
+            if (!maybeStr.IsEmpty()) {
+                Local<String> constructorName = maybeStr.ToLocalChecked();
+                String::Utf8Value utf8(isolate, constructorName);
+                fprintf(stderr, "[SetReturnValueGlobal] Object constructor name: %s\n", *utf8);
+            }
+        }
+    }
+
     info->GetReturnValue().Set(local);
 }
 
@@ -7728,9 +7751,35 @@ Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
     // This mirrors how V8 internally handles the conversion
     Local<Value> local_value = *reinterpret_cast<Local<Value>*>(&value_ptr);
 
-    if (local_value.IsEmpty()) return nullptr;
+    if (local_value.IsEmpty()) {
+        fprintf(stderr, "[v8_Value_ToGlobal] ERROR: local_value is empty!\n");
+        return nullptr;
+    }
 
-    return trackHandle(new Global<Value>(isolate, local_value));
+    // DEBUG: Check what type of value we're storing
+    fprintf(stderr, "[v8_Value_ToGlobal] local=%p, IsArray=%d, IsObject=%d, IsUndefined=%d\n",
+            local, local_value->IsArray(), local_value->IsObject(), local_value->IsUndefined());
+
+    if (local_value->IsArray()) {
+        Local<Array> arr = local_value.As<Array>();
+        fprintf(stderr, "[v8_Value_ToGlobal] Storing array with length=%u\n", arr->Length());
+    }
+
+    Global<Value>* global = new Global<Value>(isolate, local_value);
+
+    // Verify the Global immediately after creation
+    if (global->IsEmpty()) {
+        fprintf(stderr, "[v8_Value_ToGlobal] ERROR: Created Global is empty!\n");
+        delete global;
+        return nullptr;
+    }
+
+    // Verify we can get the value back
+    Local<Value> verify = global->Get(isolate);
+    fprintf(stderr, "[v8_Value_ToGlobal] After Global creation: global=%p, verify IsArray=%d, IsUndefined=%d\n",
+            global, verify->IsArray(), verify->IsUndefined());
+
+    return trackHandle(global);
 }
 
 // NOTE: v8_Function_ToGlobal was removed - it was unused and the pattern

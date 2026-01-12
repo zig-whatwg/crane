@@ -99,6 +99,11 @@ pub const ThreadSafeMessageQueue = struct {
         /// Transfer list (ArrayBuffers, MessagePorts, etc.)
         transfers: ?[]TransferItem,
 
+        /// Target port ID for MessagePort messages.
+        /// If non-null, this message should be routed to the specified MessagePort
+        /// instead of being dispatched to worker.onmessage / self.onmessage.
+        target_port_id: ?u64 = null,
+
         /// Allocator used
         allocator: Allocator,
 
@@ -683,6 +688,18 @@ pub const WorkerThreadRunner = struct {
                 // Note: handleIncomingMessage takes ownership of the message
                 // and is responsible for calling msg.deinit() via the dispatch callback
                 self.handleIncomingMessage(isolate, msg);
+            }
+
+            // Also read from DedicatedWorker.early_inbox - this is used for cross-thread
+            // MessagePort messages that were sent before thread_state was set.
+            if (self.thread_state.worker_ptr) |worker_ptr| {
+                const dw: *DedicatedWorker = @ptrCast(@alignCast(worker_ptr));
+                if (dw.early_inbox) |early_inbox| {
+                    while (early_inbox.tryDequeue()) |msg| {
+                        debug.print("[WorkerThread] Dequeued early_inbox message, dispatching...\n", .{});
+                        self.handleIncomingMessage(isolate, msg);
+                    }
+                }
             }
 
             // NOW check if the DedicatedWorker has been closed (e.g., via done(), close(), or terminate())

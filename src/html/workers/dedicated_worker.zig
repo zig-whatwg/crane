@@ -47,6 +47,8 @@ const WorkerScriptError = script_fetch.WorkerScriptError;
 // Import threading infrastructure for cross-thread message passing
 const worker_threading = @import("worker_threading.zig");
 const WorkerThreadState = worker_threading.WorkerThreadState;
+const TransferItem = worker_threading.ThreadSafeMessageQueue.TransferItem;
+const TransferType = worker_threading.ThreadSafeMessageQueue.TransferType;
 
 // Message channel for postMessage communication
 const message_channel = @import("message_channel.zig");
@@ -192,6 +194,17 @@ pub const ThreadedWorkerRegistry = struct {
                     dwdebug.print("pollAndDispatch() worker has thread_state, outbox ptr={*}\n", .{&ts.outbox});
                     // Poll the thread-safe outbox for messages from the worker thread
                     while (ts.outbox.tryDequeue()) |msg| {
+                        // Check if this is a MessagePort message (target_port_id is set)
+                        // MessagePort messages need to be routed to the specific port, not worker.onmessage
+                        if (msg.target_port_id) |target_id| {
+                            dwdebug.print("pollAndDispatch() MessagePort message for port {d}\n", .{target_id});
+                            dispatchToMainThreadPort(target_id, msg) catch |err| {
+                                dwdebug.print("pollAndDispatch() failed to dispatch to MessagePort: {s}\n", .{@errorName(err)});
+                                msg.deinit();
+                            };
+                            continue;
+                        }
+
                         if (message_count >= messages_to_dispatch.len) {
                             dwdebug.print("pollAndDispatch() WARNING: message buffer full, dropping message\n", .{});
                             msg.deinit();
@@ -293,6 +306,38 @@ pub const ThreadedWorkerRegistry = struct {
         }
 
         return message_count > 0 or error_count > 0;
+    }
+
+    /// Dispatch a message to a specific MessagePort on the main thread.
+    /// This is used for cross-thread MessagePort messages from worker → main.
+    ///
+    /// The message's target_port_id indicates which MessagePort should receive
+    /// the message. We look up the port in the global registry and queue
+    /// the message for dispatch by the WebIDL layer.
+    fn dispatchToMainThreadPort(target_port_id: u64, msg: *worker_threading.ThreadSafeMessageQueue.SerializedMessage) !void {
+        dwdebug.print("dispatchToMainThreadPort() target_port_id={d}\n", .{target_port_id});
+
+        // Import MessagePort registry
+        const internal_message_port = @import("streams_internal");
+        const port_registry = internal_message_port.getPortRegistry();
+
+        // Look up the target port
+        const internal_port = port_registry.lookup(target_port_id) orelse {
+            dwdebug.print("dispatchToMainThreadPort() port {d} not found in registry\n", .{target_port_id});
+            msg.deinit();
+            return;
+        };
+        dwdebug.print("dispatchToMainThreadPort() found internal port {d}\n", .{internal_port.id});
+
+        // Queue the message for dispatch by the WebIDL layer
+        // The cross_thread_message_handler is set by the WebIDL MessagePort implementation
+        // and knows how to deserialize and dispatch the message using v8/runtime.
+        internal_port.queueCrossThreadMessage(@ptrCast(msg)) catch |err| {
+            dwdebug.print("dispatchToMainThreadPort() failed to queue message: {s}\n", .{@errorName(err)});
+            msg.deinit();
+            return;
+        };
+        dwdebug.print("dispatchToMainThreadPort() message queued successfully\n", .{});
     }
 
     /// Terminate all workers without destroying the registry.
@@ -435,6 +480,13 @@ pub const DedicatedWorker = struct {
     /// Uses page_allocator since these messages will be transferred to a thread-safe queue.
     pending_inbox_messages: std.ArrayListUnmanaged(*worker_threading.ThreadSafeMessageQueue.SerializedMessage) = .{},
 
+    /// Early inbox queue for cross-thread MessagePort transfers.
+    /// Created when the Worker is constructed, BEFORE the thread starts.
+    /// This allows transferred MessagePorts to have a valid cross_thread_queue
+    /// immediately, without waiting for thread_state to be set.
+    /// When thread_state is set, this becomes the thread_state.inbox.
+    early_inbox: ?*worker_threading.ThreadSafeMessageQueue = null,
+
     /// Create a new dedicated worker.
     ///
     /// Spec: HTML Standard § 10.2.3.1 Constructor
@@ -478,12 +530,20 @@ pub const DedicatedWorker = struct {
         agent.setName(name_copy);
         agent.setWorkerType(options.worker_type);
 
+        // Create early inbox queue for cross-thread MessagePort transfers.
+        // This allows transferred MessagePorts to have a valid cross_thread_queue
+        // immediately, without waiting for the worker thread to start.
+        const early_inbox = try allocator.create(worker_threading.ThreadSafeMessageQueue);
+        errdefer allocator.destroy(early_inbox);
+        early_inbox.* = worker_threading.ThreadSafeMessageQueue.init(std.heap.page_allocator);
+
         worker.* = .{
             .agent = agent,
             .port_pair = port_pair,
             .script_url = url_copy,
             .name = name_copy,
             .allocator = allocator,
+            .early_inbox = early_inbox,
         };
 
         // Set up message handler on outside port to forward to worker's on_message callback
@@ -559,8 +619,51 @@ pub const DedicatedWorker = struct {
 
     /// Clean up resources.
     pub fn deinit(self: *DedicatedWorker) void {
-        // Unregister from the threaded worker registry if we were registered
-        if (self.thread_state != null) {
+        // CRITICAL: Drain pending outbox messages BEFORE unregistering from registry.
+        // Per HTML Standard § 10.2.3, messages sent before close() should be delivered.
+        // If we unregister first, these messages would be lost and never dispatched.
+        if (self.thread_state) |ts| {
+            // Drain all pending messages from the worker's outbox
+            while (ts.outbox.tryDequeue()) |msg| {
+                dwdebug.print("deinit() draining pending outbox message\n", .{});
+
+                // Create a QueuedMessage to pass to the handler
+                const serialized = self.allocator.create(SerializedValue) catch {
+                    dwdebug.print("deinit() FAILED to allocate SerializedValue for drain\n", .{});
+                    msg.deinit();
+                    continue;
+                };
+                serialized.* = msg.data;
+
+                const queued_msg = message_channel.QueuedMessage.init(
+                    self.allocator,
+                    serialized,
+                    null,
+                ) catch {
+                    dwdebug.print("deinit() FAILED to create QueuedMessage for drain\n", .{});
+                    self.allocator.destroy(serialized);
+                    msg.allocator.destroy(msg);
+                    continue;
+                };
+
+                // Free the SerializedMessage wrapper (data ownership transferred)
+                msg.allocator.destroy(msg);
+
+                // Dispatch to handler if available, otherwise queue for later
+                if (self.on_message) |handler| {
+                    dwdebug.print("deinit() dispatching drained message via handler\n", .{});
+                    handler(self, queued_msg);
+                } else {
+                    // Queue to outside port for later delivery (same as pollAndDispatch)
+                    dwdebug.print("deinit() queueing drained message to outside port\n", .{});
+                    self.port_pair.outside_port.message_queue.append(self.allocator, queued_msg) catch {
+                        dwdebug.print("deinit() FAILED to queue message\n", .{});
+                        queued_msg.deinit();
+                    };
+                }
+            }
+
+            // Now safe to unregister since all messages have been drained
             ThreadedWorkerRegistry.unregister(self);
         }
 
@@ -580,6 +683,14 @@ pub const DedicatedWorker = struct {
                 cleanup_fn(user_data_ptr);
                 self.outside_user_data = null;
             }
+        }
+
+        // Clean up early_inbox if it exists
+        // Note: Messages in early_inbox may have been consumed by the worker thread,
+        // but any remaining messages need to be drained and freed.
+        if (self.early_inbox) |early_inbox| {
+            early_inbox.deinit();
+            self.allocator.destroy(early_inbox);
         }
 
         // Clean up port pair (handles disentangling)
@@ -802,10 +913,8 @@ pub const DedicatedWorker = struct {
     /// Post a message to the worker with typed JSValue.
     ///
     /// This is the typed version for internal use and testing.
-    pub fn postMessageTyped(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
-        // TODO: Handle transfers for threaded workers
-        _ = transfer;
-
+    /// The transfer parameter contains typed TransferItem structs (ArrayBuffers, MessagePorts, etc.)
+    pub fn postMessageTyped(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]TransferItem) !void {
         // Spec step 1: If closing flag is true, return
         if (self.agent.isClosing() or self.agent.isTerminated()) {
             return;
@@ -823,8 +932,21 @@ pub const DedicatedWorker = struct {
                 return error.OutOfMemory;
             };
 
+            // Copy transfers to cross_thread_allocator if present
+            // The original transfer array was allocated by a different allocator
+            var cross_thread_transfers: ?[]TransferItem = null;
+            if (transfer) |t| {
+                cross_thread_transfers = cross_thread_allocator.dupe(TransferItem, t) catch {
+                    var mutable = @constCast(serialized);
+                    mutable.deinit();
+                    cross_thread_allocator.destroy(mutable);
+                    return error.OutOfMemory;
+                };
+            }
+
             // Create a SerializedMessage for the thread-safe queue
             const msg = cross_thread_allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
+                if (cross_thread_transfers) |ct| cross_thread_allocator.free(ct);
                 var mutable = @constCast(serialized);
                 mutable.deinit();
                 cross_thread_allocator.destroy(mutable);
@@ -832,7 +954,7 @@ pub const DedicatedWorker = struct {
             };
             msg.* = .{
                 .data = serialized.*,
-                .transfers = null, // TODO: Handle transfers for threaded workers
+                .transfers = cross_thread_transfers, // Transfers are now owned by cross_thread_allocator
                 .allocator = cross_thread_allocator,
             };
 
@@ -863,8 +985,20 @@ pub const DedicatedWorker = struct {
             return error.OutOfMemory;
         };
 
+        // Copy transfers to cross_thread_allocator if present
+        var cross_thread_transfers: ?[]TransferItem = null;
+        if (transfer) |t| {
+            cross_thread_transfers = cross_thread_allocator.dupe(TransferItem, t) catch {
+                var mutable = @constCast(serialized);
+                mutable.deinit();
+                cross_thread_allocator.destroy(mutable);
+                return error.OutOfMemory;
+            };
+        }
+
         // Create a SerializedMessage for the pending queue
         const msg = cross_thread_allocator.create(worker_threading.ThreadSafeMessageQueue.SerializedMessage) catch {
+            if (cross_thread_transfers) |ct| cross_thread_allocator.free(ct);
             var mutable = @constCast(serialized);
             mutable.deinit();
             cross_thread_allocator.destroy(mutable);
@@ -872,7 +1006,7 @@ pub const DedicatedWorker = struct {
         };
         msg.* = .{
             .data = serialized.*,
-            .transfers = null, // TODO: Handle transfers
+            .transfers = cross_thread_transfers, // Transfers are now owned by cross_thread_allocator
             .allocator = cross_thread_allocator,
         };
 
@@ -1116,6 +1250,10 @@ pub const DedicatedWorker = struct {
     /// This MUST be called AFTER the worker script has been enqueued,
     /// so that the worker thread receives messages in correct order:
     /// [script, postMessage1, postMessage2, ...]
+    ///
+    /// Also sets up cross_thread_queue for any transferred MessagePorts.
+    /// When a MessagePort is transferred TO the worker, the entangled port
+    /// (which stays on main thread) needs to route messages through the worker's inbox.
     pub fn flushPendingInboxMessages(self: *DedicatedWorker) void {
         const pending_count = self.pending_inbox_messages.items.len;
         if (pending_count == 0) return;
@@ -1124,6 +1262,10 @@ pub const DedicatedWorker = struct {
 
         dwdebug.print("flushPendingInboxMessages: flushing {} pending messages to thread_state.inbox\n", .{pending_count});
         for (self.pending_inbox_messages.items) |msg| {
+            // Note: cross_thread_queue for transferred MessagePorts is already set to
+            // early_inbox by Worker.call_postMessage. The worker thread reads from both
+            // thread_state.inbox and early_inbox, so cross-thread MessagePort messages
+            // will be delivered correctly.
             thread_state.inbox.enqueue(msg) catch |err| {
                 dwdebug.print("flushPendingInboxMessages: FAILED to enqueue pending message: {}\n", .{err});
                 msg.deinit();
