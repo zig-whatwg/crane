@@ -80,6 +80,10 @@ const DedicatedWorkerGlobalScopeImpl = impls.DedicatedWorkerGlobalScope;
 const global_fetch = @import("fetch").webidl.global_fetch;
 const fetch_response = @import("fetch").webidl.response;
 
+// Infra module for base64 encoding/decoding (atob/btoa)
+const infra = @import("infra");
+const base64 = infra.base64;
+
 /// Opaque engine context type expected by WorkerContext
 const EngineContext = workers.worker_context.EngineContext;
 
@@ -838,6 +842,42 @@ pub const WorkerV8Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
         }
         std.debug.print("[setupWorkerGlobalScope] queueMicrotask registered\n", .{});
+
+        // Register atob() - decode base64 string to binary string
+        // Per WHATWG HTML Standard § 8.3: Base64 utility methods
+        // WindowOrWorkerGlobalScope mixin exposes atob to both Window and Worker
+        std.debug.print("[setupWorkerGlobalScope] Registering atob\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerAtobCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "atob", 4) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] atob registered\n", .{});
+
+        // Register btoa() - encode binary string to base64 string
+        // Per WHATWG HTML Standard § 8.3: Base64 utility methods
+        // WindowOrWorkerGlobalScope mixin exposes btoa to both Window and Worker
+        std.debug.print("[setupWorkerGlobalScope] Registering btoa\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerBtoaCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "btoa", 4) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] btoa registered\n", .{});
 
         // NOTE: We do NOT register a native done() function here.
         // testharness.js defines its own done() function when loaded via importScripts().
@@ -1993,6 +2033,230 @@ fn workerFetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
             info.setReturnValue(@ptrCast(promise));
         },
     }
+}
+
+// ============================================================================
+// Base64 Callback Implementations (atob/btoa)
+// ============================================================================
+
+/// V8 callback for atob() - decode base64 string to binary string
+///
+/// Spec: WHATWG HTML Standard § 8.3 Base64 utility methods
+/// https://html.spec.whatwg.org/multipage/webappapis.html#atob
+///
+/// Takes a base64-encoded string and returns the decoded binary string.
+/// Throws InvalidCharacterError DOMException if input contains invalid characters.
+fn workerAtobCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get WorkerV8Context from thread-local storage for allocator
+    const self = current_worker_context orelse return;
+
+    // atob requires exactly 1 argument
+    const argc = info.v8_FunctionCallbackInfo_Length();
+    if (argc < 1) {
+        // Throw TypeError: atob requires at least 1 argument
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'atob': 1 argument required", 45) orelse return;
+        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    }
+
+    // Get the input string argument
+    const input_arg = info.get(0);
+    const input_str = v8.ffi.v8_Value_ToString(input_arg, v8_context) orelse {
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to convert argument to string", 36) orelse return;
+        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    };
+
+    // Get the string value
+    const str_len = v8.ffi.v8_String_Utf8Length(input_str);
+    if (str_len < 0) {
+        // Empty string returns empty string
+        info.setReturnValue(@ptrCast(input_str));
+        return;
+    }
+
+    // Read the input string
+    var input_buf: [65536]u8 = undefined; // 64KB max for base64 input
+    const buf_size: usize = @min(@as(usize, @intCast(str_len + 1)), input_buf.len);
+    const actual_len = v8.ffi.v8_String_WriteUtf8(input_str, &input_buf, @intCast(buf_size));
+    if (actual_len <= 0) {
+        // Empty string
+        const empty = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+        info.setReturnValue(@ptrCast(empty));
+        return;
+    }
+
+    // v8_String_WriteUtf8 returns count INCLUDING null terminator
+    const input_len: usize = @intCast(actual_len - 1);
+    const input = input_buf[0..input_len];
+
+    // Per spec: First validate that input contains only Latin1 characters
+    for (input) |c| {
+        if (c > 0xFF) {
+            // This shouldn't happen with UTF-8 but check anyway
+            const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'atob': The string to be decoded contains characters outside of the Latin1 range.", 99) orelse return;
+            const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+            // Create DOMException with name "InvalidCharacterError"
+            _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+            return;
+        }
+    }
+
+    // Decode base64 using forgiving algorithm
+    const decoded = base64.forgivingBase64Decode(self.allocator, input) catch {
+        // Throw InvalidCharacterError DOMException
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'atob': The string to be decoded is not correctly encoded.", 77) orelse return;
+        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    };
+    defer self.allocator.free(decoded);
+
+    // Create result string - decoded bytes become Latin1 characters
+    const result = v8.ffi.v8_String_NewFromUtf8(isolate, decoded.ptr, @intCast(decoded.len)) orelse return;
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// V8 callback for btoa() - encode binary string to base64 string
+///
+/// Spec: WHATWG HTML Standard § 8.3 Base64 utility methods
+/// https://html.spec.whatwg.org/multipage/webappapis.html#btoa
+///
+/// Takes a binary string (each character must be U+0000 to U+00FF) and returns
+/// the base64-encoded result.
+/// Throws InvalidCharacterError DOMException if input contains characters > U+00FF.
+fn workerBtoaCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get WorkerV8Context from thread-local storage for allocator
+    const self = current_worker_context orelse return;
+
+    // btoa requires exactly 1 argument
+    const argc = info.v8_FunctionCallbackInfo_Length();
+    if (argc < 1) {
+        // Throw TypeError: btoa requires at least 1 argument
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': 1 argument required", 45) orelse return;
+        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    }
+
+    // Get the input string argument
+    const input_arg = info.get(0);
+    const input_str = v8.ffi.v8_Value_ToString(input_arg, v8_context) orelse {
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to convert argument to string", 36) orelse return;
+        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    };
+
+    // Get the string value
+    const str_len = v8.ffi.v8_String_Utf8Length(input_str);
+    if (str_len < 0) {
+        // Empty string returns empty base64 (empty string)
+        info.setReturnValue(@ptrCast(input_str));
+        return;
+    }
+
+    // Read the input string
+    var input_buf: [65536]u8 = undefined; // 64KB max for binary input
+    const buf_size: usize = @min(@as(usize, @intCast(str_len + 1)), input_buf.len);
+    const actual_len = v8.ffi.v8_String_WriteUtf8(input_str, &input_buf, @intCast(buf_size));
+    if (actual_len <= 0) {
+        // Empty string
+        const empty = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
+        info.setReturnValue(@ptrCast(empty));
+        return;
+    }
+
+    // v8_String_WriteUtf8 returns count INCLUDING null terminator
+    const input_len: usize = @intCast(actual_len - 1);
+    const input = input_buf[0..input_len];
+
+    // Per spec: Input must contain only Latin1 characters (U+0000 to U+00FF)
+    // Since we're reading UTF-8 bytes, we need to check for multi-byte sequences
+    // which would indicate characters > U+00FF
+    var i: usize = 0;
+    while (i < input.len) {
+        const c = input[i];
+        if (c > 0x7F) {
+            // This is a multi-byte UTF-8 sequence, meaning the character is > U+007F
+            // We need to decode it to check if it's > U+00FF
+            // For simplicity, if it's a 3+ byte sequence, it's definitely > U+00FF
+            if ((c & 0xE0) == 0xC0) {
+                // 2-byte sequence: U+0080 to U+07FF
+                // Only U+0080 to U+00FF are valid for btoa
+                if (i + 1 >= input.len) {
+                    // Invalid UTF-8
+                    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': The string to be encoded contains characters outside of the Latin1 range.", 99) orelse return;
+                    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+                    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+                    return;
+                }
+                const byte2 = input[i + 1];
+                // Decode: ((c & 0x1F) << 6) | (byte2 & 0x3F)
+                const codepoint = (@as(u16, c & 0x1F) << 6) | @as(u16, byte2 & 0x3F);
+                if (codepoint > 0xFF) {
+                    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': The string to be encoded contains characters outside of the Latin1 range.", 99) orelse return;
+                    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+                    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+                    return;
+                }
+                i += 2;
+            } else {
+                // 3+ byte sequence means U+0800 or higher, definitely > U+00FF
+                const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': The string to be encoded contains characters outside of the Latin1 range.", 99) orelse return;
+                const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+                _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+                return;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    // For btoa, we need to treat the UTF-8 bytes as Latin1 code points
+    // This means we need to convert UTF-8 to Latin1 first
+    var latin1_buf: [65536]u8 = undefined;
+    var latin1_len: usize = 0;
+    i = 0;
+    while (i < input.len and latin1_len < latin1_buf.len) {
+        const c = input[i];
+        if (c <= 0x7F) {
+            latin1_buf[latin1_len] = c;
+            latin1_len += 1;
+            i += 1;
+        } else if ((c & 0xE0) == 0xC0 and i + 1 < input.len) {
+            // 2-byte UTF-8 sequence
+            const byte2 = input[i + 1];
+            const codepoint: u8 = @truncate((@as(u16, c & 0x1F) << 6) | @as(u16, byte2 & 0x3F));
+            latin1_buf[latin1_len] = codepoint;
+            latin1_len += 1;
+            i += 2;
+        } else {
+            // Should have been caught above
+            i += 1;
+        }
+    }
+
+    // Encode to base64
+    const encoded = base64.forgivingBase64Encode(self.allocator, latin1_buf[0..latin1_len]) catch {
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to encode to base64", 26) orelse return;
+        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    };
+    defer self.allocator.free(encoded);
+
+    // Create result string
+    const result = v8.ffi.v8_String_NewFromUtf8(isolate, encoded.ptr, @intCast(encoded.len)) orelse return;
+    info.setReturnValue(@ptrCast(result));
 }
 
 // ============================================================================
