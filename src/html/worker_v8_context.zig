@@ -76,6 +76,10 @@ const script_fetch = workers.script_fetch;
 const impls = @import("impls");
 const DedicatedWorkerGlobalScopeImpl = impls.DedicatedWorkerGlobalScope;
 
+// Fetch module for worker fetch() implementation
+const global_fetch = @import("fetch").webidl.global_fetch;
+const fetch_response = @import("fetch").webidl.response;
+
 /// Opaque engine context type expected by WorkerContext
 const EngineContext = workers.worker_context.EngineContext;
 
@@ -562,6 +566,28 @@ pub const WorkerV8Context = struct {
         // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessageEvent : Event { ... }
         const MessageEvent = V8Interface(interfaces.MessageEvent);
         MessageEvent.registerGlobal(self.isolate, self.context, "MessageEvent");
+
+        // Register Fetch API interfaces (needed for fetch() in workers)
+        // WebIDL: [Exposed=(Window,Worker)] interface Headers { ... }
+        const Headers = V8Interface(interfaces.Headers);
+        Headers.registerGlobal(self.isolate, self.context, "Headers");
+
+        // WebIDL: [Exposed=(Window,Worker)] interface Request { ... }
+        const Request = V8Interface(interfaces.Request);
+        Request.registerGlobal(self.isolate, self.context, "Request");
+
+        // WebIDL: [Exposed=(Window,Worker)] interface Response { ... }
+        const Response = V8Interface(interfaces.Response);
+        Response.registerGlobal(self.isolate, self.context, "Response");
+
+        // Register AbortController and AbortSignal (needed for fetch abort)
+        // WebIDL: [Exposed=(Window,Worker)] interface AbortController { ... }
+        const AbortController = V8Interface(interfaces.AbortController);
+        AbortController.registerGlobal(self.isolate, self.context, "AbortController");
+
+        // WebIDL: [Exposed=(Window,Worker)] interface AbortSignal : EventTarget { ... }
+        const AbortSignal = V8Interface(interfaces.AbortSignal);
+        AbortSignal.registerGlobal(self.isolate, self.context, "AbortSignal");
     }
 
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
@@ -977,6 +1003,24 @@ pub const WorkerV8Context = struct {
             _ = try self.executeScriptInternal(navigator_script);
         }
         std.debug.print("[setupWorkerGlobalScope] navigator object set\n", .{});
+
+        // Register fetch() - the Fetch API global function
+        // Per WHATWG Fetch spec: WindowOrWorkerGlobalScope includes fetch()
+        // This makes fetch() available in both Window and Worker contexts
+        std.debug.print("[setupWorkerGlobalScope] Registering fetch\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerFetchCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "fetch", 5) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] fetch registered\n", .{});
 
         // CRITICAL: Set up message handler for the worker to receive messages via onmessage
         // This MUST be done while the isolate is still entered (before the defer exits it)
@@ -1800,6 +1844,154 @@ fn workerClearTimerCallback(info: *const v8.ffi.FunctionCallbackInfo) void {
     // Get the timer interface and cancel the timer
     if (v8_event_loop.timerInterface()) |timer_interface| {
         timer_interface.clearTimeout(timer_id);
+    }
+}
+
+// ============================================================================
+// Fetch Callback Implementation
+// ============================================================================
+
+/// V8 callback for fetch() - the Fetch API global function
+///
+/// Spec: WHATWG Fetch Standard § 5.6 Fetch method
+/// https://fetch.spec.whatwg.org/#fetch-method
+///
+/// This is a simplified synchronous implementation for workers.
+/// The full async implementation would require integrating with the worker's event loop.
+fn workerFetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    std.debug.print("[workerFetchCallback] ENTRY\n", .{});
+
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        std.debug.print("[workerFetchCallback] no V8 context\n", .{});
+        return;
+    };
+
+    // Get WorkerV8Context from thread-local storage
+    const self = current_worker_context orelse {
+        std.debug.print("[workerFetchCallback] no current_worker_context\n", .{});
+        return;
+    };
+
+    // Get number of arguments - fetch(input, init?)
+    const argc = info.v8_FunctionCallbackInfo_Length();
+    std.debug.print("[workerFetchCallback] argc={d}\n", .{argc});
+
+    if (argc < 1) {
+        // fetch() requires at least one argument (the URL/Request)
+        // Create rejected promise with TypeError
+        const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse return;
+        const type_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch requires at least 1 argument", 35) orelse return;
+        const type_error = v8.ffi.v8_Exception_TypeError(@ptrCast(type_error_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, type_error);
+        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse return;
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    }
+
+    // Create a Promise to return to JavaScript
+    const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse {
+        std.debug.print("[workerFetchCallback] failed to create Promise resolver\n", .{});
+        return;
+    };
+    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
+        std.debug.print("[workerFetchCallback] failed to get Promise from resolver\n", .{});
+        return;
+    };
+
+    // Get the first argument (URL string or Request object)
+    const input_arg = info.get(0);
+
+    // Convert to string (works for both URL strings and Request.toString())
+    const input_str = v8.ffi.v8_Value_ToString(input_arg, v8_context) orelse {
+        std.debug.print("[workerFetchCallback] failed to convert input to string\n", .{});
+        const type_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to convert input to string", 33) orelse return;
+        const type_error = v8.ffi.v8_Exception_TypeError(@ptrCast(type_error_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, type_error);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    };
+
+    // Get URL string
+    const str_len = v8.ffi.v8_String_Utf8Length(input_str);
+    if (str_len <= 0) {
+        std.debug.print("[workerFetchCallback] empty URL\n", .{});
+        const type_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "URL cannot be empty", 19) orelse return;
+        const type_error = v8.ffi.v8_Exception_TypeError(@ptrCast(type_error_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, type_error);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    }
+
+    var url_buf: [8192]u8 = undefined;
+    const actual_len = v8.ffi.v8_String_WriteUtf8(input_str, &url_buf, @intCast(url_buf.len));
+    if (actual_len <= 0) {
+        std.debug.print("[workerFetchCallback] failed to write URL string\n", .{});
+        const network_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to read URL", 18) orelse return;
+        const network_error = v8.ffi.v8_Exception_TypeError(@ptrCast(network_error_msg)) orelse return;
+        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, network_error);
+        info.setReturnValue(@ptrCast(promise));
+        return;
+    }
+
+    // v8_String_WriteUtf8 returns count INCLUDING null terminator, so subtract 1
+    const url_len: usize = @intCast(actual_len - 1);
+    const url = url_buf[0..url_len];
+    std.debug.print("[workerFetchCallback] URL: {s}\n", .{url});
+
+    // Perform synchronous fetch (blocking)
+    // TODO: Make this async by integrating with worker event loop
+    const fetch_result = global_fetch.fetchUrl(self.allocator, url);
+
+    switch (fetch_result) {
+        .response => |response| {
+            std.debug.print("[workerFetchCallback] fetch succeeded\n", .{});
+
+            // Create a simplified Response-like object with basic properties
+            // TODO: Full Response wrapping with WebIDL interface
+            const response_obj = v8.ffi.v8_Object_New(isolate) orelse {
+                var resp = response;
+                resp.deinit();
+                return;
+            };
+
+            // Set response.ok = true
+            const ok_key = v8.ffi.v8_String_NewFromUtf8(isolate, "ok", 2) orelse return;
+            const ok_val = v8.ffi.v8_Boolean_New(isolate, true);
+            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(ok_key), @ptrCast(ok_val));
+
+            // Set response.status = 200
+            const status_key = v8.ffi.v8_String_NewFromUtf8(isolate, "status", 6) orelse return;
+            const status_val = v8.ffi.v8_Number_New(isolate, 200);
+            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(status_key), @ptrCast(status_val));
+
+            // Resolve the promise with the Response-like object
+            _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(response_obj));
+            info.setReturnValue(@ptrCast(promise));
+
+            // Clean up the internal response
+            var resp = response;
+            resp.deinit();
+        },
+        .err => |err| {
+            std.debug.print("[workerFetchCallback] fetch failed: {}\n", .{err});
+
+            // Create appropriate error based on fetch error type
+            const error_msg = switch (err) {
+                global_fetch.FetchError.TypeError => v8.ffi.v8_String_NewFromUtf8(isolate, "TypeError in fetch", 18),
+                global_fetch.FetchError.NetworkError => v8.ffi.v8_String_NewFromUtf8(isolate, "NetworkError: Failed to fetch", 29),
+                global_fetch.FetchError.AbortError => v8.ffi.v8_String_NewFromUtf8(isolate, "AbortError: The operation was aborted", 37),
+                global_fetch.FetchError.OutOfMemory => v8.ffi.v8_String_NewFromUtf8(isolate, "OutOfMemory during fetch", 24),
+            } orelse return;
+
+            const error_val = switch (err) {
+                global_fetch.FetchError.TypeError => v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return,
+                else => v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return,
+            };
+
+            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, error_val);
+            info.setReturnValue(@ptrCast(promise));
+        },
     }
 }
 

@@ -1469,6 +1469,7 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("csp", csp_mod); // For CSP checks on worker script loading
     html_core_mod.addImport("file", file_mod); // For blob: URL worker script loading
     html_core_mod.addImport("version", version_mod); // For Crane version in navigator
+    html_core_mod.addImport("streams_internal", streams_message_port_mod); // For MessagePort cross-thread registry
 
     // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
     // Uses full.zig as root which re-exports html_core plus adds interface access.
