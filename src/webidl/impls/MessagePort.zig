@@ -303,7 +303,6 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Extract MessagePort instances from the transfer list
     // Per spec, only MessagePort and ArrayBuffer can be transferred
     const ports = extractTransferredPorts(transfer, internal.allocator) catch runtime.JSValue.jsUndefined;
-    _ = ports; // Will be used for same-thread delivery
 
     // Step 2: Get the entangled port
     const entangled_port = internal_port.entangled_port orelse {
@@ -379,8 +378,8 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Check if target port's queue is enabled
     if (entangled_port.queue_enabled) {
         // Queue is enabled - deliver message now
-        std.log.warn("[MessagePort.call_postMessage] delivering message to target", .{});
-        try deliverMessage(target_instance, message, runtime.JSValue.jsUndefined);
+        std.log.warn("[MessagePort.call_postMessage] delivering message to target with ports={s}", .{@tagName(ports)});
+        try deliverMessage(target_instance, message, ports);
         std.log.warn("[MessagePort.call_postMessage] message delivered successfully", .{});
     } else {
         // Queue is disabled - store message for later delivery
