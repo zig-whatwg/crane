@@ -857,6 +857,23 @@ pub const WorkerV8Context = struct {
         }
         std.debug.print("[setupWorkerGlobalScope] btoa registered\n", .{});
 
+        // Register structuredClone() - creates a deep copy of a value using structured clone algorithm
+        // Per HTML Standard § 2.7.8: StructuredClone method
+        std.debug.print("[setupWorkerGlobalScope] Registering structuredClone\n", .{});
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerStructuredCloneCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "structuredClone", 15) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+        std.debug.print("[setupWorkerGlobalScope] structuredClone registered\n", .{});
+
         // Register crypto global object
         // Per WHATWG HTML Standard: WindowOrWorkerGlobalScope includes crypto attribute
         // Per Web Cryptography API: crypto has getRandomValues() and subtle property
@@ -2376,6 +2393,52 @@ fn workerBtoaCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     // Create result string
     const result = v8.ffi.v8_String_NewFromUtf8(isolate, encoded.ptr, @intCast(encoded.len)) orelse return;
     info.setReturnValue(@ptrCast(result));
+}
+
+/// V8 callback for structuredClone() - creates a deep copy using the structured clone algorithm
+///
+/// Spec: HTML Standard § 2.7.8: StructuredClone method
+/// https://html.spec.whatwg.org/multipage/structured-data.html#dom-structuredclone
+///
+/// Creates and returns a deep copy of a given value using the structured clone algorithm.
+/// Primitives are returned as-is. Objects are serialized and deserialized to create
+/// independent copies. Functions and Symbols throw DataCloneError.
+fn workerStructuredCloneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // structuredClone requires at least 1 argument (the value to clone)
+    const argc = info.v8_FunctionCallbackInfo_Length();
+    if (argc < 1) {
+        // Per spec, undefined is a valid argument, but we need at least one arg syntactically
+        // Clone undefined and return
+        const undef = v8.ffi.v8_Undefined(isolate) orelse return;
+        info.setReturnValue(@ptrCast(undef));
+        return;
+    }
+
+    // Get the value to clone
+    const value = info.get(0);
+
+    // Check for unclonable types
+    if (v8.ffi.v8_Value_IsFunction(value) or v8.ffi.v8_Value_IsSymbol(value)) {
+        // Functions and Symbols cannot be cloned - throw DataCloneError
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'structuredClone': could not be cloned", 56) orelse return;
+        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    }
+
+    // Use V8's built-in structured clone for objects
+    // This handles circular references, typed arrays, dates, etc.
+    const cloned = v8.ffi.v8_Value_StructuredClone(value) orelse {
+        // Clone failed - likely contains unclonable data
+        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'structuredClone': could not be cloned", 56) orelse return;
+        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
+        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+        return;
+    };
+
+    info.setReturnValue(cloned);
 }
 
 // ============================================================================
