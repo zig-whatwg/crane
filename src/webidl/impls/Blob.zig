@@ -422,18 +422,15 @@ pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webi
 /// 2. Let reader be the result of getting a reader from stream.
 /// 3. Let promise be the result of reading all bytes from stream with reader.
 /// 4. Return the result of transforming promise with UTF-8 decode.
+///
+/// Implementation note: Since blob bytes are already in memory, we create and
+/// immediately resolve the promise. This avoids the need for an event loop,
+/// allowing Blob.text() to work in Worker contexts which may not have one.
 pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const allocator = internal.allocator;
+    _ = internal.allocator; // Not needed for immediate resolution
 
-    // Get event loop from context
-    const ev_loop = instance.ctx.getEventLoop() catch return error.InvalidState;
-
-    // Create promise that resolves with string
-    const promise = AsyncPromise([]const u8).init(allocator, ev_loop) catch return error.OutOfMemory;
-
-    // For Blob.text(), we synchronously read bytes and decode as UTF-8
-    // Per spec, text() always uses UTF-8 (unlike FileReader.readAsText which can use other encodings)
+    // Get blob bytes - data is already in memory
     const bytes = internal.blob_data.bytes;
 
     // UTF-8 decode - for valid UTF-8, just use bytes directly
@@ -441,20 +438,17 @@ pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Since blob data is already stored as-is, we just pass through
     // (Full spec compliance would validate/replace invalid sequences)
 
-    // Fulfill immediately since blob bytes are already in memory
-    promise.fulfill(bytes);
-
-    // Get V8 context for promise conversion
+    // Get V8 context for promise creation
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
 
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
+    // Create and immediately resolve promise with the text
+    // This doesn't require an event loop since we're resolving synchronously
+    const v8_promise = try promise_utils.createResolvedV8Promise(
         []const u8,
-        std.heap.c_allocator,
         isolate,
         context,
-        promise,
+        bytes,
     );
     return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
 }
