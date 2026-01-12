@@ -82,6 +82,7 @@ pub const Selection = struct {
             "modify",
             "deleteFromDocument",
             "containsNode",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)

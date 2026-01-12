@@ -47,6 +47,7 @@ pub const MediaList = struct {
             "item",
             "appendMedium",
             "deleteMedium",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)

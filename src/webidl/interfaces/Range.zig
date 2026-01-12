@@ -92,6 +92,7 @@ pub const Range = struct {
             "createContextualFragment",
             "getClientRects",
             "getBoundingClientRect",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)

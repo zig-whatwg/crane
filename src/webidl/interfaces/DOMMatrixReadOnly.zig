@@ -104,6 +104,7 @@ pub const DOMMatrixReadOnly = struct {
             "toFloat32Array",
             "toFloat64Array",
             "toJSON",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)

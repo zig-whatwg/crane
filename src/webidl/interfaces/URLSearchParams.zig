@@ -57,6 +57,7 @@ pub const URLSearchParams = struct {
             "set",
             "sort",
             "forEach",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)

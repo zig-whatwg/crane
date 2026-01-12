@@ -1192,6 +1192,18 @@ pub fn writeMetadataWithArities(
             try writer.print("            \"{s}\",\n", .{op_name});
             try written_own_methods.put(op_name, {});
         }
+
+        // Add forEach for iterable interfaces (matches methods tuple)
+        if (iterable != null and !written_own_methods.contains("forEach")) {
+            try writer.writeAll("            \"forEach\",\n");
+            try written_own_methods.put("forEach", {});
+        }
+
+        // Add toString for stringifier interfaces (matches methods tuple)
+        if (has_stringifier and !written_own_methods.contains("toString")) {
+            try writer.writeAll("            \"toString\",\n");
+            try written_own_methods.put("toString", {});
+        }
     }
     try writer.writeAll("        };\n");
 

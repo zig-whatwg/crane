@@ -43,6 +43,7 @@ pub const CSSParserDeclaration = struct {
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)

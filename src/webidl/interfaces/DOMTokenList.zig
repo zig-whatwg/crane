@@ -57,6 +57,7 @@ pub const DOMTokenList = struct {
             "replace",
             "supports",
             "forEach",
+            "toString",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
