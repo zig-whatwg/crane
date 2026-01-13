@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemDirectoryHandle = @import("FileSystemDirectoryHandle.zig").FileSystemDirectoryHandle;
+const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const StorageEstimate = @import("dictionaries").StorageEstimate;
 
 pub const StorageManager = struct {
@@ -64,9 +64,6 @@ pub const StorageManager = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

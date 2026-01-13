@@ -224,7 +224,6 @@ pub const ParityType = @import("ParityType.zig").ParityType;
 pub const PaymentComplete = @import("PaymentComplete.zig").PaymentComplete;
 pub const PaymentDelegation = @import("PaymentDelegation.zig").PaymentDelegation;
 pub const PaymentShippingType = @import("PaymentShippingType.zig").PaymentShippingType;
-pub const PerformanceTimingConfidenceValue = @import("PerformanceTimingConfidenceValue.zig").PerformanceTimingConfidenceValue;
 pub const PermissionState = @import("PermissionState.zig").PermissionState;
 pub const PlaybackDirection = @import("PlaybackDirection.zig").PlaybackDirection;
 pub const PointerAxis = @import("PointerAxis.zig").PointerAxis;

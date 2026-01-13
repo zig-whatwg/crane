@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const DOMString = @import("typedefs").DOMString;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const GPUUncapturedErrorEventInit = @import("dictionaries").GPUUncapturedErrorEventInit;
-const GPUError = @import("GPUError.zig").GPUError;
+const GPUError = @import("interfaces").GPUError;
 
 pub const GPUUncapturedErrorEvent = struct {
     pub const Meta = struct {
@@ -69,9 +69,6 @@ pub const GPUUncapturedErrorEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

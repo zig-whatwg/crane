@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DataTransferItem = @import("DataTransferItem.zig").DataTransferItem;
-const File = @import("File.zig").File;
+const DataTransferItem = @import("interfaces").DataTransferItem;
+const File = @import("interfaces").File;
 const DOMString = @import("typedefs").DOMString;
 
 pub const DataTransferItemList = struct {
@@ -36,7 +36,7 @@ pub const DataTransferItemList = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "add", "call_add", 1 },
+            .{ "add", "call_add", 2 },
             .{ "remove", "call_remove", 1 },
             .{ "clear", "call_clear", 0 },
         };
@@ -61,9 +61,6 @@ pub const DataTransferItemList = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

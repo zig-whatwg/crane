@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const DestroyableModel = @import("mixins").DestroyableModel;
 const TranslatorCreateOptions = @import("dictionaries").TranslatorCreateOptions;
 const Availability = @import("enums").Availability;
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
 const TranslatorCreateCoreOptions = @import("dictionaries").TranslatorCreateCoreOptions;
 const TranslatorTranslateOptions = @import("dictionaries").TranslatorTranslateOptions;
 const DOMString = @import("typedefs").DOMString;
@@ -51,8 +51,16 @@ pub const Translator = struct {
             .{ "destroy", "call_destroy", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "create", "call_static_create", 1 },
+            .{ "availability", "call_static_availability", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "create",
+            "availability",
             "translate",
             "translateStreaming",
             "measureInputUsage",
@@ -74,11 +82,6 @@ pub const Translator = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "create", "call_static_create", 1 },
-            .{ "availability", "call_static_availability", 1 },
-        };
         pub const has_constructor = false;
     };
 

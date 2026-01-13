@@ -58,26 +58,24 @@ fn validateAndNormalizeMethod(allocator: Allocator, method: []const u8) ![]const
 
 /// Parse and validate URL
 ///
-/// Spec step 4-5: Parse URL and throw SyntaxError on failure
-/// XHR Spec: https://xhr.spec.whatwg.org/#the-open()-method
-/// Step 4: Let parsedURL be the result of parsing url with relevant base URL
-/// Step 5: If parsedURL is failure, throw a "SyntaxError" DOMException
+/// Spec step 3-5: URL parsing
 fn parseURL(allocator: Allocator, url: []const u8, base: ?[]const u8) ![]const u8 {
-    _ = base; // TODO: Use base URL when parsing
+    _ = base; // TODO: Implement URL parsing with base
 
-    // Empty URL is invalid
+    // For now, basic validation
     if (url.len == 0) {
         return OpenError.InvalidURL;
     }
 
-    // Use the actual URL parser to validate
-    const api_parser = @import("api_parser");
-    var parsed = api_parser.parseURL(allocator, url, null) catch {
+    // Check for valid URL scheme
+    if (!std.mem.startsWith(u8, url, "http://") and
+        !std.mem.startsWith(u8, url, "https://") and
+        !std.mem.startsWith(u8, url, "data:") and
+        !std.mem.startsWith(u8, url, "file://"))
+    {
         return OpenError.InvalidURL;
-    };
-    parsed.deinit();
+    }
 
-    // Return the URL string (it's valid)
     return try allocator.dupe(u8, url);
 }
 

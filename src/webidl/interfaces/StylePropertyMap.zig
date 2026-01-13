@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
-const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValue;
+const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
+const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const USVString = @import("typedefs").USVString;
 
 pub const StylePropertyMap = struct {
@@ -36,8 +36,8 @@ pub const StylePropertyMap = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "set", "call_set", 1 },
-            .{ "append", "call_append", 1 },
+            .{ "set", "call_set", 2 },
+            .{ "append", "call_append", 2 },
             .{ "delete", "call_delete", 1 },
             .{ "clear", "call_clear", 0 },
         };
@@ -65,9 +65,6 @@ pub const StylePropertyMap = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
