@@ -37,14 +37,6 @@ pub const PerformanceNavigation = struct {
             .{ "toJSON", "call_toJSON", 0 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "TYPE_NAVIGATE", "get_TYPE_NAVIGATE" },
-            .{ "TYPE_RELOAD", "get_TYPE_RELOAD" },
-            .{ "TYPE_BACK_FORWARD", "get_TYPE_BACK_FORWARD" },
-            .{ "TYPE_RESERVED", "get_TYPE_RESERVED" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toJSON",
@@ -64,6 +56,9 @@ pub const PerformanceNavigation = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

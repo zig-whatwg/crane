@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ExceptionOptions = @import("dictionaries").ExceptionOptions;
-const Tag = @import("interfaces").Tag;
+const Tag = @import("Tag.zig").Tag;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Exception = struct {
@@ -64,6 +64,9 @@ pub const Exception = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

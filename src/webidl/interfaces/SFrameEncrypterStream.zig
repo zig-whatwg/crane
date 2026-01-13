@@ -10,22 +10,22 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const GenericTransformStream = @import("mixins").GenericTransformStream;
 const SFrameKeyManagement = @import("mixins").SFrameKeyManagement;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
-const ReadableStream = @import("interfaces").ReadableStream;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 const SFrameTransformOptions = @import("dictionaries").SFrameTransformOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
-const WritableStream = @import("interfaces").WritableStream;
+const EventListener = @import("EventListener.zig").EventListener;
+const WritableStream = @import("WritableStream.zig").WritableStream;
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const EventHandler = @import("typedefs").EventHandler;
-const CryptoKey = @import("interfaces").CryptoKey;
+const CryptoKey = @import("CryptoKey.zig").CryptoKey;
 
 pub const SFrameEncrypterStream = struct {
     pub const Meta = struct {
@@ -85,6 +85,9 @@ pub const SFrameEncrypterStream = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

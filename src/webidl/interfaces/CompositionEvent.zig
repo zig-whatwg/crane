@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const UIEvent = @import("interfaces").UIEvent;
+const UIEvent = @import("UIEvent.zig").UIEvent;
 const UIEventInit = @import("dictionaries").UIEventInit;
-const Window = @import("interfaces").Window;
+const Window = @import("Window.zig").Window;
 const CompositionEventInit = @import("dictionaries").CompositionEventInit;
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const WindowProxy = @import("typedefs").WindowProxy;
-const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const InputDeviceCapabilities = @import("InputDeviceCapabilities.zig").InputDeviceCapabilities;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const USVString = @import("typedefs").USVString;
@@ -72,6 +72,9 @@ pub const CompositionEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

@@ -11,13 +11,13 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const USBDirection = @import("enums").USBDirection;
-const USBOutTransferResult = @import("interfaces").USBOutTransferResult;
+const USBOutTransferResult = @import("USBOutTransferResult.zig").USBOutTransferResult;
 const BufferSource = @import("typedefs").BufferSource;
-const USBInTransferResult = @import("interfaces").USBInTransferResult;
-const USBConfiguration = @import("interfaces").USBConfiguration;
+const USBInTransferResult = @import("USBInTransferResult.zig").USBInTransferResult;
+const USBConfiguration = @import("USBConfiguration.zig").USBConfiguration;
 const USBControlTransferParameters = @import("dictionaries").USBControlTransferParameters;
-const USBIsochronousOutTransferResult = @import("interfaces").USBIsochronousOutTransferResult;
-const USBIsochronousInTransferResult = @import("interfaces").USBIsochronousInTransferResult;
+const USBIsochronousOutTransferResult = @import("USBIsochronousOutTransferResult.zig").USBIsochronousOutTransferResult;
+const USBIsochronousInTransferResult = @import("USBIsochronousInTransferResult.zig").USBIsochronousInTransferResult;
 const DOMString = @import("typedefs").DOMString;
 
 pub const USBDevice = struct {
@@ -127,6 +127,9 @@ pub const USBDevice = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

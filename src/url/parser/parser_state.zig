@@ -84,10 +84,17 @@ pub const ParserState = enum {
     /// - Accumulates buffer until host starts
     authority,
 
-    /// Host state / Hostname state (spec line 1229-1230)
+    /// Host state (spec line 1229)
     /// - Parses host (domain, IPv4, IPv6, opaque)
     /// - Handles [ ] for IPv6 addresses
+    /// - Used by URL.host setter (accepts port after :)
     host,
+
+    /// Hostname state (spec line 1230)
+    /// - Same algorithm as host state
+    /// - Used by URL.hostname setter (rejects port after :)
+    /// - When colon is encountered, returns instead of parsing port
+    hostname,
 
     /// Port state (spec line 1274)
     /// - Parses port number after ":"

@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMPoint = @import("interfaces").DOMPoint;
+const DOMPoint = @import("DOMPoint.zig").DOMPoint;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const DOMQuad = @import("interfaces").DOMQuad;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
+const DOMQuad = @import("DOMQuad.zig").DOMQuad;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
@@ -61,6 +61,9 @@ pub const GeometryUtils = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

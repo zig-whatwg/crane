@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const LayoutFragment = @import("interfaces").LayoutFragment;
-const IntrinsicSizes = @import("interfaces").IntrinsicSizes;
-const ChildBreakToken = @import("interfaces").ChildBreakToken;
+const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
+const LayoutFragment = @import("LayoutFragment.zig").LayoutFragment;
+const IntrinsicSizes = @import("IntrinsicSizes.zig").IntrinsicSizes;
+const ChildBreakToken = @import("ChildBreakToken.zig").ChildBreakToken;
 const LayoutConstraintsOptions = @import("dictionaries").LayoutConstraintsOptions;
 
 pub const LayoutChild = struct {
@@ -61,6 +61,9 @@ pub const LayoutChild = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

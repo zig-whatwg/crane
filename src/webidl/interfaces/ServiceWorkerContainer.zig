@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
-const ServiceWorker = @import("interfaces").ServiceWorker;
+const EventTarget = @import("EventTarget.zig").EventTarget;
+const ServiceWorker = @import("ServiceWorker.zig").ServiceWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const USVString = @import("typedefs").USVString;
-const Observable = @import("interfaces").Observable;
-const ServiceWorkerRegistration = @import("interfaces").ServiceWorkerRegistration;
-const Event = @import("interfaces").Event;
+const Observable = @import("Observable.zig").Observable;
+const ServiceWorkerRegistration = @import("ServiceWorkerRegistration.zig").ServiceWorkerRegistration;
+const Event = @import("Event.zig").Event;
 const RegistrationOptions = @import("dictionaries").RegistrationOptions;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -91,6 +91,9 @@ pub const ServiceWorkerContainer = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

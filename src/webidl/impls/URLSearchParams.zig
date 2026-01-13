@@ -7,6 +7,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const interfaces = @import("interfaces");
+const v8 = @import("v8");
 const URLSearchParams = interfaces.URLSearchParams;
 
 // Import URL infrastructure
@@ -115,7 +116,6 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSVa
     };
 
     // Get V8 isolate and context from runtime
-    const v8 = @import("v8");
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return initWithString(ctx.allocator, ctx, "");
     const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return initWithString(ctx.allocator, ctx, "");
 
@@ -462,7 +462,10 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.USVString) anyerror!?
 pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
-    const allocator = instance.ctx.allocator;
+
+    // Get V8 isolate and context
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidState;
+    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
 
     // Count matching values first
     var count: usize = 0;
@@ -473,13 +476,22 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
         }
     }
 
-    // Return undefined for no matches (caller should convert to empty array)
-    if (count == 0) return .undefined;
+    // Create V8 array with the matching values
+    const array = v8.ffi.v8_Array_New(isolate, @intCast(count));
 
-    // For now return undefined - full array support requires V8 array creation
-    // TODO: Create V8 array with string values
-    _ = allocator;
-    return .undefined;
+    // Populate array with matching values
+    var array_idx: u32 = 0;
+    for (0..internal.list.len) |i| {
+        const tuple = internal.list.get(i).?;
+        if (std.mem.eql(u8, tuple.name, name)) {
+            // Create V8 string from the value
+            const v8_string = v8.ffi.v8_String_NewFromUtf8(isolate, tuple.value.ptr, @intCast(tuple.value.len));
+            _ = v8.ffi.v8_Array_Set(array, context, array_idx, @ptrCast(v8_string));
+            array_idx += 1;
+        }
+    }
+
+    return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(array) } };
 }
 
 /// has method
@@ -488,8 +500,9 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.USVString, value: web
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
+    // Per spec: If value is passed (even if empty string), check both name AND value
+    const should_match_value = value.was_passed;
     const value_slice = if (value.was_passed) value.value else "";
-    const should_match_value = value_slice.len > 0;
 
     for (0..internal.list.len) |i| {
         const tuple = internal.list.get(i).?;
@@ -625,4 +638,10 @@ pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     // This is a zero-copy operation - we're just reinterpreting the existing data.
     const entries: []const IterableEntry = @ptrCast(tuples);
     return entries;
+}
+
+
+pub fn call_stringifier(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
 }

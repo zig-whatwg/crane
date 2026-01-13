@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const GroupEffect = @import("interfaces").GroupEffect;
-const AnimationEffect = @import("interfaces").AnimationEffect;
-const AnimationNodeList = @import("interfaces").AnimationNodeList;
+const GroupEffect = @import("GroupEffect.zig").GroupEffect;
+const AnimationEffect = @import("AnimationEffect.zig").AnimationEffect;
+const AnimationNodeList = @import("AnimationNodeList.zig").AnimationNodeList;
 const EffectTiming = @import("dictionaries").EffectTiming;
 
 pub const SequenceEffect = struct {
@@ -59,6 +59,9 @@ pub const SequenceEffect = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

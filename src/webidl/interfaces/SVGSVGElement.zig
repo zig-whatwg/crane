@@ -10,85 +10,85 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SVGGraphicsElement = @import("interfaces").SVGGraphicsElement;
+const SVGGraphicsElement = @import("SVGGraphicsElement.zig").SVGGraphicsElement;
 const SVGFitToViewBox = @import("mixins").SVGFitToViewBox;
 const WindowEventHandlers = @import("mixins").WindowEventHandlers;
-const DOMStringMap = @import("interfaces").DOMStringMap;
+const DOMStringMap = @import("DOMStringMap.zig").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const NamedNodeMap = @import("NamedNodeMap.zig").NamedNodeMap;
+const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
-const Element = @import("interfaces").Element;
+const Element = @import("Element.zig").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const SVGLength = @import("interfaces").SVGLength;
+const SVGLength = @import("SVGLength.zig").SVGLength;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
-const EventListener = @import("interfaces").EventListener;
-const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
-const SVGStringList = @import("interfaces").SVGStringList;
-const SVGAngle = @import("interfaces").SVGAngle;
+const EventListener = @import("EventListener.zig").EventListener;
+const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
+const CSSPseudoElement = @import("CSSPseudoElement.zig").CSSPseudoElement;
+const SVGStringList = @import("SVGStringList.zig").SVGStringList;
+const SVGAngle = @import("SVGAngle.zig").SVGAngle;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
-const Node = @import("interfaces").Node;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const SVGNumber = @import("interfaces").SVGNumber;
-const Animation = @import("interfaces").Animation;
-const Range = @import("interfaces").Range;
-const Event = @import("interfaces").Event;
-const SVGAnimatedRect = @import("interfaces").SVGAnimatedRect;
+const Node = @import("Node.zig").Node;
+const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const SVGNumber = @import("SVGNumber.zig").SVGNumber;
+const Animation = @import("Animation.zig").Animation;
+const Range = @import("Range.zig").Range;
+const Event = @import("Event.zig").Event;
+const SVGAnimatedRect = @import("SVGAnimatedRect.zig").SVGAnimatedRect;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const SVGBoundingBoxOptions = @import("dictionaries").SVGBoundingBoxOptions;
-const SVGTransform = @import("interfaces").SVGTransform;
-const SVGAnimatedTransformList = @import("interfaces").SVGAnimatedTransformList;
+const SVGTransform = @import("SVGTransform.zig").SVGTransform;
+const SVGAnimatedTransformList = @import("SVGAnimatedTransformList.zig").SVGAnimatedTransformList;
 const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
-const Document = @import("interfaces").Document;
+const Document = @import("Document.zig").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const DOMRectList = @import("interfaces").DOMRectList;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMRectList = @import("DOMRectList.zig").DOMRectList;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
+const DOMQuad = @import("DOMQuad.zig").DOMQuad;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const SVGUseElement = @import("interfaces").SVGUseElement;
-const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const DOMTokenList = @import("interfaces").DOMTokenList;
-const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
+const SVGUseElement = @import("SVGUseElement.zig").SVGUseElement;
+const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
+const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
+const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
-const DOMRect = @import("interfaces").DOMRect;
-const ViewTransition = @import("interfaces").ViewTransition;
+const DOMRect = @import("DOMRect.zig").DOMRect;
+const ViewTransition = @import("ViewTransition.zig").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const OnBeforeUnloadEventHandler = @import("typedefs").OnBeforeUnloadEventHandler;
-const SVGAnimatedLength = @import("interfaces").SVGAnimatedLength;
+const SVGAnimatedLength = @import("SVGAnimatedLength.zig").SVGAnimatedLength;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
-const SVGAnimatedPreserveAspectRatio = @import("interfaces").SVGAnimatedPreserveAspectRatio;
+const SVGAnimatedString = @import("SVGAnimatedString.zig").SVGAnimatedString;
+const SVGAnimatedPreserveAspectRatio = @import("SVGAnimatedPreserveAspectRatio.zig").SVGAnimatedPreserveAspectRatio;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
-const StylePropertyMap = @import("interfaces").StylePropertyMap;
-const ShadowRoot = @import("interfaces").ShadowRoot;
-const Attr = @import("interfaces").Attr;
-const TrustedHTML = @import("interfaces").TrustedHTML;
-const NodeList = @import("interfaces").NodeList;
+const StylePropertyMap = @import("StylePropertyMap.zig").StylePropertyMap;
+const ShadowRoot = @import("ShadowRoot.zig").ShadowRoot;
+const Attr = @import("Attr.zig").Attr;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
+const NodeList = @import("NodeList.zig").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
-const Observable = @import("interfaces").Observable;
-const DOMPoint = @import("interfaces").DOMPoint;
+const Observable = @import("Observable.zig").Observable;
+const DOMPoint = @import("DOMPoint.zig").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
-const SVGElement = @import("interfaces").SVGElement;
+const SVGElement = @import("SVGElement.zig").SVGElement;
 
 pub const SVGSVGElement = struct {
     pub const Meta = struct {
@@ -261,10 +261,7 @@ pub const SVGSVGElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -327,6 +324,9 @@ pub const SVGSVGElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

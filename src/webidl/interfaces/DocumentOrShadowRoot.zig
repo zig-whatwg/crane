@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const StyleSheetList = @import("interfaces").StyleSheetList;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const Element = @import("Element.zig").Element;
+const StyleSheetList = @import("StyleSheetList.zig").StyleSheetList;
+const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const Animation = @import("Animation.zig").Animation;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 
 pub const DocumentOrShadowRoot = struct {
     pub const Meta = struct {
@@ -35,12 +35,6 @@ pub const DocumentOrShadowRoot = struct {
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
             .{ "activeElement", "get_activeElement", null },
-        };
-        
-        /// [LegacyLenientSetter] attributes: readonly with no-op setters
-        /// Setters silently do nothing (don't throw, don't modify)
-        pub const lenient_setter_attributes = .{
-            "fullscreenElement",
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -72,6 +66,9 @@ pub const DocumentOrShadowRoot = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

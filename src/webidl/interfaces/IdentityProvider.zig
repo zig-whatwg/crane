@@ -37,18 +37,8 @@ pub const IdentityProvider = struct {
         pub const methods = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "close", "call_static_close", 0 },
-            .{ "resolve", "call_static_resolve", 1 },
-            .{ "getUserInfo", "call_static_getUserInfo", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "close",
-            "resolve",
-            "getUserInfo",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -63,6 +53,12 @@ pub const IdentityProvider = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "close", "call_static_close", 0 },
+            .{ "resolve", "call_static_resolve", 1 },
+            .{ "getUserInfo", "call_static_getUserInfo", 1 },
+        };
         pub const has_constructor = false;
     };
 

@@ -10,21 +10,21 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const NavigationActivation = @import("interfaces").NavigationActivation;
-const NavigationTransition = @import("interfaces").NavigationTransition;
-const NavigationHistoryEntry = @import("interfaces").NavigationHistoryEntry;
+const NavigationActivation = @import("NavigationActivation.zig").NavigationActivation;
+const NavigationTransition = @import("NavigationTransition.zig").NavigationTransition;
+const NavigationHistoryEntry = @import("NavigationHistoryEntry.zig").NavigationHistoryEntry;
 const USVString = @import("typedefs").USVString;
 const NavigationUpdateCurrentEntryOptions = @import("dictionaries").NavigationUpdateCurrentEntryOptions;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const NavigationResult = @import("dictionaries").NavigationResult;
 const NavigationOptions = @import("dictionaries").NavigationOptions;
 const NavigationNavigateOptions = @import("dictionaries").NavigationNavigateOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const NavigationReloadOptions = @import("dictionaries").NavigationReloadOptions;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
@@ -105,6 +105,9 @@ pub const Navigation = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

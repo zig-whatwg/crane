@@ -11,10 +11,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUDeviceDescriptor = @import("dictionaries").GPUDeviceDescriptor;
-const GPUSupportedLimits = @import("interfaces").GPUSupportedLimits;
-const GPUSupportedFeatures = @import("interfaces").GPUSupportedFeatures;
-const GPUAdapterInfo = @import("interfaces").GPUAdapterInfo;
-const GPUDevice = @import("interfaces").GPUDevice;
+const GPUSupportedLimits = @import("GPUSupportedLimits.zig").GPUSupportedLimits;
+const GPUSupportedFeatures = @import("GPUSupportedFeatures.zig").GPUSupportedFeatures;
+const GPUAdapterInfo = @import("GPUAdapterInfo.zig").GPUAdapterInfo;
+const GPUDevice = @import("GPUDevice.zig").GPUDevice;
 
 pub const GPUAdapter = struct {
     pub const Meta = struct {
@@ -67,6 +67,9 @@ pub const GPUAdapter = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

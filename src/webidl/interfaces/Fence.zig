@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const FenceEvent = @import("dictionaries").FenceEvent;
-const FencedFrameConfig = @import("interfaces").FencedFrameConfig;
+const FencedFrameConfig = @import("FencedFrameConfig.zig").FencedFrameConfig;
 const ReportEventType = @import("typedefs").ReportEventType;
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 
 pub const Fence = struct {
     pub const Meta = struct {
@@ -64,6 +64,9 @@ pub const Fence = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

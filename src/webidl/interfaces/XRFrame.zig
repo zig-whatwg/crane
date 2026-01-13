@@ -10,29 +10,28 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRTransientInputHitTestSource = @import("interfaces").XRTransientInputHitTestSource;
-const XRHitTestSource = @import("interfaces").XRHitTestSource;
-const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
-const XRView = @import("interfaces").XRView;
-const XRMetadata = @import("dictionaries").XRMetadata;
-const XRTransientInputHitTestResult = @import("interfaces").XRTransientInputHitTestResult;
-const XRSession = @import("interfaces").XRSession;
+const XRTransientInputHitTestSource = @import("XRTransientInputHitTestSource.zig").XRTransientInputHitTestSource;
+const XRHitTestSource = @import("XRHitTestSource.zig").XRHitTestSource;
+const XRReferenceSpace = @import("XRReferenceSpace.zig").XRReferenceSpace;
+const XRView = @import("XRView.zig").XRView;
+const XRTransientInputHitTestResult = @import("XRTransientInputHitTestResult.zig").XRTransientInputHitTestResult;
+const XRSession = @import("XRSession.zig").XRSession;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const XRPose = @import("interfaces").XRPose;
-const XRCPUDepthInformation = @import("interfaces").XRCPUDepthInformation;
-const XRRigidTransform = @import("interfaces").XRRigidTransform;
-const XRJointPose = @import("interfaces").XRJointPose;
-const XRBody = @import("interfaces").XRBody;
-const XRHitTestResult = @import("interfaces").XRHitTestResult;
-const XRAnchorSet = @import("interfaces").XRAnchorSet;
-const XRSpace = @import("interfaces").XRSpace;
-const XRViewerPose = @import("interfaces").XRViewerPose;
-const XRLightProbe = @import("interfaces").XRLightProbe;
-const XRAnchor = @import("interfaces").XRAnchor;
-const XRMeshSet = @import("interfaces").XRMeshSet;
-const XRJointSpace = @import("interfaces").XRJointSpace;
-const XRLightEstimate = @import("interfaces").XRLightEstimate;
-const XRPlaneSet = @import("interfaces").XRPlaneSet;
+const XRPose = @import("XRPose.zig").XRPose;
+const XRCPUDepthInformation = @import("XRCPUDepthInformation.zig").XRCPUDepthInformation;
+const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
+const XRJointPose = @import("XRJointPose.zig").XRJointPose;
+const XRBody = @import("XRBody.zig").XRBody;
+const XRHitTestResult = @import("XRHitTestResult.zig").XRHitTestResult;
+const XRAnchorSet = @import("XRAnchorSet.zig").XRAnchorSet;
+const XRSpace = @import("XRSpace.zig").XRSpace;
+const XRViewerPose = @import("XRViewerPose.zig").XRViewerPose;
+const XRLightProbe = @import("XRLightProbe.zig").XRLightProbe;
+const XRAnchor = @import("XRAnchor.zig").XRAnchor;
+const XRMeshSet = @import("XRMeshSet.zig").XRMeshSet;
+const XRJointSpace = @import("XRJointSpace.zig").XRJointSpace;
+const XRLightEstimate = @import("XRLightEstimate.zig").XRLightEstimate;
+const XRPlaneSet = @import("XRPlaneSet.zig").XRPlaneSet;
 
 pub const XRFrame = struct {
     pub const Meta = struct {
@@ -58,7 +57,6 @@ pub const XRFrame = struct {
             .{ "trackedAnchors", "get_trackedAnchors", null },
             .{ "detectedPlanes", "get_detectedPlanes", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
-            .{ "metaData", "get_metaData", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -101,13 +99,15 @@ pub const XRFrame = struct {
             .{ "trackedAnchors", "get_trackedAnchors", null },
             .{ "detectedPlanes", "get_detectedPlanes", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
-            .{ "metaData", "get_metaData", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -121,7 +121,6 @@ pub const XRFrame = struct {
             trackedAnchors: *runtime.Instance = undefined,
             detectedPlanes: *runtime.Instance = undefined,
             detectedMeshes: *runtime.Instance = undefined,
-            metaData: dictionaries.XRMetadata = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_body: ?*runtime.Instance = null,
             cached_trackedAnchors: ?*runtime.Instance = null,
@@ -134,7 +133,6 @@ pub const XRFrame = struct {
         .get_body = &get_body,
         .get_detectedMeshes = &get_detectedMeshes,
         .get_detectedPlanes = &get_detectedPlanes,
-        .get_metaData = &get_metaData,
         .get_predictedDisplayTime = &get_predictedDisplayTime,
         .get_session = &get_session,
         .get_trackedAnchors = &get_trackedAnchors,
@@ -221,10 +219,6 @@ pub const XRFrame = struct {
 
     pub fn get_detectedMeshes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRFrameImpl.get_detectedMeshes(instance);
-    }
-
-    pub fn get_metaData(instance: *runtime.Instance) anyerror!XRMetadata {
-        return try XRFrameImpl.get_metaData(instance);
     }
 
     pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
