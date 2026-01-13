@@ -12,6 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const USVString = @import("typedefs").USVString;
 const NavigationNavigateOptions = @import("dictionaries").NavigationNavigateOptions;
+const NavigationInterceptHandler = @import("callbacks").NavigationInterceptHandler;
 
 pub const NavigationPrecommitController = struct {
     pub const Meta = struct {
@@ -35,11 +36,13 @@ pub const NavigationPrecommitController = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "redirect", "call_redirect", 1 },
+            .{ "addHandler", "call_addHandler", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "redirect",
+            "addHandler",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -54,6 +57,9 @@ pub const NavigationPrecommitController = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -67,6 +73,7 @@ pub const NavigationPrecommitController = struct {
 
     const delegates = .{
 
+        .call_addHandler = &call_addHandler,
         .call_redirect = &call_redirect,
 
         .deinit = &deinit,
@@ -92,6 +99,11 @@ pub const NavigationPrecommitController = struct {
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
         NavigationPrecommitControllerImpl.deinit(instance);
+    }
+
+    pub fn call_addHandler(instance: *runtime.Instance, handler: NavigationInterceptHandler) anyerror!void {
+        
+        return try NavigationPrecommitControllerImpl.call_addHandler(instance, handler);
     }
 
     pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(NavigationNavigateOptions)) anyerror!void {

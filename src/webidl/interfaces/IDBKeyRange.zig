@@ -42,20 +42,8 @@ pub const IDBKeyRange = struct {
             .{ "includes", "call_includes", 1 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "only", "call_static_only", 1 },
-            .{ "lowerBound", "call_static_lowerBound", 1 },
-            .{ "upperBound", "call_static_upperBound", 1 },
-            .{ "bound", "call_static_bound", 2 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "only",
-            "lowerBound",
-            "upperBound",
-            "bound",
             "includes",
         };
         
@@ -75,6 +63,13 @@ pub const IDBKeyRange = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "only", "call_static_only", 1 },
+            .{ "lowerBound", "call_static_lowerBound", 1 },
+            .{ "upperBound", "call_static_upperBound", 1 },
+            .{ "bound", "call_static_bound", 2 },
+        };
         pub const has_constructor = false;
     };
 

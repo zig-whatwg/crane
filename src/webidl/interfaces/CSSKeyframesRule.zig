@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("interfaces").CSSRule;
+const CSSRule = @import("CSSRule.zig").CSSRule;
 const DOMString = @import("typedefs").DOMString;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSKeyframeRule = @import("interfaces").CSSKeyframeRule;
-const CSSRuleList = @import("interfaces").CSSRuleList;
+const CSSKeyframeRule = @import("CSSKeyframeRule.zig").CSSKeyframeRule;
+const CSSRuleList = @import("CSSRuleList.zig").CSSRuleList;
 
 pub const CSSKeyframesRule = struct {
     pub const Meta = struct {
@@ -69,6 +69,9 @@ pub const CSSKeyframesRule = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -14,8 +14,8 @@ const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const VideoFrameMetadata = @import("dictionaries").VideoFrameMetadata;
 const VideoFrameInit = @import("dictionaries").VideoFrameInit;
 const VideoFrameCopyToOptions = @import("dictionaries").VideoFrameCopyToOptions;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const VideoColorSpace = @import("interfaces").VideoColorSpace;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
+const VideoColorSpace = @import("VideoColorSpace.zig").VideoColorSpace;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const VideoFrameBufferInit = @import("dictionaries").VideoFrameBufferInit;
 const VideoPixelFormat = @import("enums").VideoPixelFormat;
@@ -98,6 +98,9 @@ pub const VideoFrame = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

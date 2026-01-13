@@ -37,8 +37,8 @@ pub const DOMTokenList = struct {
         pub const methods = .{
             .{ "item", "call_item", 1 },
             .{ "contains", "call_contains", 1 },
-            .{ "add", "call_add", 1 },
-            .{ "remove", "call_remove", 1 },
+            .{ "add", "call_add", 0 },
+            .{ "remove", "call_remove", 0 },
             .{ "toggle", "call_toggle", 1 },
             .{ "replace", "call_replace", 2 },
             .{ "supports", "call_supports", 1 },
@@ -74,6 +74,9 @@ pub const DOMTokenList = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
         
         /// Iterable declaration (for Symbol.iterator support)

@@ -10,40 +10,40 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WorkerGlobalScope = @import("interfaces").WorkerGlobalScope;
+const WorkerGlobalScope = @import("WorkerGlobalScope.zig").WorkerGlobalScope;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ByteString = @import("typedefs").ByteString;
-const FontFaceSet = @import("interfaces").FontFaceSet;
+const FontFaceSet = @import("FontFaceSet.zig").FontFaceSet;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
-const WorkerNavigator = @import("interfaces").WorkerNavigator;
+const WorkerNavigator = @import("WorkerNavigator.zig").WorkerNavigator;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 const TimerHandler = @import("typedefs").TimerHandler;
 const USVString = @import("typedefs").USVString;
-const Scheduler = @import("interfaces").Scheduler;
-const Crypto = @import("interfaces").Crypto;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const Scheduler = @import("Scheduler.zig").Scheduler;
+const Crypto = @import("Crypto.zig").Crypto;
+const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
-const WorkerLocation = @import("interfaces").WorkerLocation;
+const WorkerLocation = @import("WorkerLocation.zig").WorkerLocation;
 const EventHandler = @import("typedefs").EventHandler;
-const ImageBitmap = @import("interfaces").ImageBitmap;
-const ServiceWorker = @import("interfaces").ServiceWorker;
-const CookieStore = @import("interfaces").CookieStore;
+const ImageBitmap = @import("ImageBitmap.zig").ImageBitmap;
+const ServiceWorker = @import("ServiceWorker.zig").ServiceWorker;
+const CookieStore = @import("CookieStore.zig").CookieStore;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const Clients = @import("interfaces").Clients;
+const Clients = @import("Clients.zig").Clients;
 const VoidFunction = @import("callbacks").VoidFunction;
-const Performance = @import("interfaces").Performance;
-const IDBFactory = @import("interfaces").IDBFactory;
-const CacheStorage = @import("interfaces").CacheStorage;
+const Performance = @import("Performance.zig").Performance;
+const IDBFactory = @import("IDBFactory.zig").IDBFactory;
+const CacheStorage = @import("CacheStorage.zig").CacheStorage;
 const RequestInfo = @import("typedefs").RequestInfo;
-const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
+const TrustedTypePolicyFactory = @import("TrustedTypePolicyFactory.zig").TrustedTypePolicyFactory;
 const RequestInit = @import("dictionaries").RequestInit;
-const Observable = @import("interfaces").Observable;
-const ServiceWorkerRegistration = @import("interfaces").ServiceWorkerRegistration;
-const Event = @import("interfaces").Event;
-const Response = @import("interfaces").Response;
+const Observable = @import("Observable.zig").Observable;
+const ServiceWorkerRegistration = @import("ServiceWorkerRegistration.zig").ServiceWorkerRegistration;
+const Event = @import("Event.zig").Event;
+const Response = @import("Response.zig").Response;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ServiceWorkerGlobalScope = struct {
@@ -117,7 +117,6 @@ pub const ServiceWorkerGlobalScope = struct {
             "clearInterval",
             "queueMicrotask",
             "createImageBitmap",
-            "createImageBitmap",
             "structuredClone",
             "fetch",
         };
@@ -153,6 +152,9 @@ pub const ServiceWorkerGlobalScope = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

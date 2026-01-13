@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Credential = @import("interfaces").Credential;
+const Credential = @import("Credential.zig").Credential;
 const CredentialUserData = @import("mixins").CredentialUserData;
-const HTMLFormElement = @import("interfaces").HTMLFormElement;
+const HTMLFormElement = @import("HTMLFormElement.zig").HTMLFormElement;
 const PasswordCredentialData = @import("dictionaries").PasswordCredentialData;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
@@ -53,8 +53,6 @@ pub const PasswordCredential = struct {
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -68,6 +66,9 @@ pub const PasswordCredential = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

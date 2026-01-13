@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("interfaces").CSSRule;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSRule = @import("CSSRule.zig").CSSRule;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
-const CSSPositionTryDescriptors = @import("interfaces").CSSPositionTryDescriptors;
+const CSSPositionTryDescriptors = @import("CSSPositionTryDescriptors.zig").CSSPositionTryDescriptors;
 
 pub const CSSPositionTryRule = struct {
     pub const Meta = struct {
@@ -36,12 +36,6 @@ pub const CSSPositionTryRule = struct {
         pub const properties = .{
             .{ "name", "get_name", null },
             .{ "style", "get_style", "set_style" },
-        };
-        
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "style", "cssText" },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -66,6 +60,9 @@ pub const CSSPositionTryRule = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -136,6 +133,7 @@ pub const CSSPositionTryRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

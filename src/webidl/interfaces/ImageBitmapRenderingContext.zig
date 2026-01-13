@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
-const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
-const ImageBitmap = @import("interfaces").ImageBitmap;
+const HTMLCanvasElement = @import("HTMLCanvasElement.zig").HTMLCanvasElement;
+const OffscreenCanvas = @import("OffscreenCanvas.zig").OffscreenCanvas;
+const ImageBitmap = @import("ImageBitmap.zig").ImageBitmap;
 
 pub const ImageBitmapRenderingContext = struct {
     pub const Meta = struct {
@@ -60,6 +60,9 @@ pub const ImageBitmapRenderingContext = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

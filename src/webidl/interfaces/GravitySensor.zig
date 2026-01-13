@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Accelerometer = @import("interfaces").Accelerometer;
+const Accelerometer = @import("Accelerometer.zig").Accelerometer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const AccelerometerSensorOptions = @import("dictionaries").AccelerometerSensorOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventHandler = @import("typedefs").EventHandler;
-const Observable = @import("interfaces").Observable;
+const Observable = @import("Observable.zig").Observable;
 
 pub const GravitySensor = struct {
     pub const Meta = struct {
@@ -69,6 +69,9 @@ pub const GravitySensor = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 
