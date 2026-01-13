@@ -743,6 +743,14 @@ pub const Context = struct {
             };
             self.window_instance = window_instance;
 
+            // CRITICAL: Set the active window on the browsing context
+            // This is required for iframe.parent to return the correct Window.
+            // Without this, the browsing context's active_window is null and
+            // get_parent will return self instead of the actual parent.
+            if (impls.Window.getInternal(window_instance)) |internal| {
+                internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
+            }
+
             // Store Window instance in internal field 0
             v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
 
@@ -959,6 +967,12 @@ pub const Context = struct {
             return;
         };
         self.window_instance = window_instance;
+
+        // CRITICAL: Set the active window on the browsing context
+        // This is required for iframe.parent to return the correct Window.
+        if (impls.Window.getInternal(window_instance)) |internal| {
+            internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
+        }
 
         // Store Window instance in internal field 0
         v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
@@ -2293,20 +2307,21 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
 /// This is called by context_manager.createChildContext via the
 /// setChildContextGlobalsCallback hook.
 ///
+/// This function registers:
+/// - console namespace (not included in snapshot, must be registered at runtime)
+/// - Other namespaces needed for web platform functionality
+///
 /// NOTE: Timer APIs (setTimeout, clearTimeout, setInterval, clearInterval) are now
 /// provided by the WebIDL WindowOrWorkerGlobalScope mixin via the Window interface.
-/// Child contexts should also receive these via WebIDL bindings, but that may require
-/// additional work to ensure child contexts properly inherit mixin methods.
-///
-/// For now, this is a no-op. If child contexts need timer support before full
-/// WebIDL mixin support is implemented, this will need to be addressed.
+/// Child contexts receive these via WebIDL bindings.
 pub fn registerTimerGlobalsOnContext(
     isolate: *v8.ffi.Isolate,
     v8_ctx: *v8.ffi.Context,
     global_obj: *v8.ffi.Object,
 ) void {
-    // Timer APIs are now provided by WebIDL WindowOrWorkerGlobalScope mixin
-    _ = isolate;
-    _ = v8_ctx;
     _ = global_obj;
+
+    // Register namespaces (console, WebAssembly, etc.) which are NOT included in the snapshot.
+    // This is essential for iframe scripts to have access to console.log, etc.
+    v8.interface_bindings.registerNamespacesGeneric(namespaces, @ptrCast(isolate), @ptrCast(v8_ctx));
 }

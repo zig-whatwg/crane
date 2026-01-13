@@ -736,10 +736,13 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // If we have a parent context, return its WindowProxy
-    if (internal.browsing_context.parent != null) {
-        // TODO: Look up the Window for the parent context
-        // For now, return null to indicate "return self" per spec
+    // If we have a parent context, return its Window
+    if (internal.browsing_context.parent) |parent_bc| {
+        // Get the active Window from the parent browsing context
+        if (parent_bc.getActiveWindow()) |parent_window_ptr| {
+            const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
+            return getWindowProxy(parent_window);
+        }
     }
 
     // If no parent, return self per spec
@@ -2713,12 +2716,35 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
 }
 
 /// Operation: postMessage
+/// Per HTML Standard §9.4.3: Posts a message to the target window
+/// This creates a MessageEvent and dispatches it to the target window.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = instance;
-    _ = message;
-    _ = targetOrigin;
-    _ = transfer;
-    return error.NotImplemented;
+    _ = transfer; // TODO: Handle transferables
+    _ = targetOrigin; // TODO: Validate origin
+
+    std.debug.print("[postMessage] Called on window={*}\n", .{instance});
+
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = internal;
+
+    // Get the context from the instance
+    const ctx = instance.ctx;
+    const allocator = ctx.allocator;
+
+    // Create MessageEvent with the message data
+    // createPortMessageEvent already sets type to "message"
+    const MessageEventImpl = @import("MessageEvent.zig");
+    const event = try MessageEventImpl.createPortMessageEvent(
+        allocator,
+        ctx,
+        message,
+        runtime.JSValue.jsUndefined, // No ports for basic postMessage
+    );
+    defer interfaces.MessageEvent.deinit(event);
+
+    // Dispatch the event to the target window (which is the instance we were called on)
+    std.debug.print("[postMessage] Dispatching message event to window={*}\n", .{instance});
+    _ = try interfaces.EventTarget.call_dispatchEvent(instance, event);
 }
 
 /// Operation: showDirectoryPicker
@@ -3098,9 +3124,11 @@ pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString)
     }
     if (std.mem.eql(u8, target_str, "_parent")) {
         // Return parent's window, or self if no parent
-        if (internal.browsing_context.parent != null) {
-            // TODO: Return parent window's proxy
-            return getWindowProxy(instance);
+        if (internal.browsing_context.parent) |parent_bc| {
+            if (parent_bc.getActiveWindow()) |parent_window_ptr| {
+                const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
+                return getWindowProxy(parent_window);
+            }
         }
         return getWindowProxy(instance);
     }

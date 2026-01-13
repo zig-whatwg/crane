@@ -1335,6 +1335,14 @@ fn createWindowForExistingBrowsingContext(
     // 4c. Register Window properties as own properties on the global
     interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, child_context, global);
 
+    // 4c-bis. Register Window methods as own properties on the global
+    interface_bindings.Window.registerMethodsAsOwnOnObject(isolate, child_context, global);
+
+    // 4c-ter. Register EventTarget methods (addEventListener, removeEventListener, dispatchEvent)
+    // Window inherits from EventTarget, and these methods must be available on the global
+    // for iframe scripts to use window.addEventListener('load', ...).
+    interface_bindings.EventTarget.registerMethodsAsOwnOnObject(isolate, child_context, global);
+
     // 4d. Register browser-level globals (setTimeout, setInterval, etc.)
     // These are essential for web platform functionality and are set by the browser layer.
     if (child_context_globals_callback) |callback| {
@@ -1758,6 +1766,15 @@ pub fn createChildContext(
     // Per WebIDL §3.8: For [Global] interfaces, the global object should have
     // the interface's operations as own properties (callable functions).
     interface_bindings.Window.registerMethodsAsOwnOnObject(
+        options.isolate,
+        child_context,
+        global,
+    );
+
+    // 4d-bis. Register EventTarget methods (addEventListener, removeEventListener, dispatchEvent)
+    // Window inherits from EventTarget, and these methods must be available on the global
+    // for iframe scripts to use window.addEventListener('load', ...).
+    interface_bindings.EventTarget.registerMethodsAsOwnOnObject(
         options.isolate,
         child_context,
         global,

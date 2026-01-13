@@ -38,6 +38,12 @@ const SandboxFlags = html_core.SandboxFlags;
 const v8 = @import("v8");
 const context_manager = v8.context_manager;
 
+// HTML parser for data: URL content
+const html_parser = @import("html").parser;
+const webidl = @import("webidl");
+const EventTarget = interfaces.EventTarget;
+const Event = interfaces.Event;
+
 // ============================================================================
 // Iframe Src Loading Hook (for WPT runner integration)
 // ============================================================================
@@ -437,6 +443,16 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
                 return;
             }
         }
+    }
+
+    // Handle data: URLs with script execution
+    if (std.mem.startsWith(u8, value, "data:")) {
+        std.debug.print("[set_src] Detected data: URL, calling loadDataUrl\n", .{});
+        loadDataUrl(instance, internal, value) catch |err| {
+            std.debug.print("[set_src] Failed to load data: URL: {}\n", .{err});
+        };
+        std.debug.print("[set_src] loadDataUrl completed\n", .{});
+        return;
     }
 
     // Trigger navigation via integration
@@ -925,4 +941,499 @@ pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
     _ = instance;
     // TODO: Implement SVG document retrieval
     return null;
+}
+
+// ============================================================================
+// Data URL Loading with Script Execution
+// ============================================================================
+
+/// Load a data: URL with proper script execution
+/// Per HTML Standard §4.8.5, navigating an iframe to a data: URL should:
+/// 1. Parse the data URL to extract content
+/// 2. Create a new document in the iframe's browsing context
+/// 3. Parse the HTML content
+/// 4. Execute any scripts in the content
+/// 5. Fire the 'load' event on the iframe
+fn loadDataUrl(iframe: *runtime.Instance, internal: *InternalState, data_url: []const u8) !void {
+    std.debug.print("[loadDataUrl] Starting to load data URL\n", .{});
+    const allocator = internal.allocator;
+
+    // Parse the data URL
+    const content = try parseDataUrl(allocator, data_url);
+    defer if (content.needs_free) allocator.free(content.data);
+    std.debug.print("[loadDataUrl] Parsed data URL, mime={s}, data_len={d}\n", .{ content.mime_type, content.data.len });
+
+    // Only process text/html content
+    if (!std.mem.startsWith(u8, content.mime_type, "text/html")) {
+        // Non-HTML content - delegate to integration
+        internal.integration.setSrc(data_url) catch {};
+        return;
+    }
+
+    // Ensure the iframe has a V8 context (creates browsing context if needed)
+    const content_window = try get_contentWindow(iframe);
+    if (content_window == null) {
+        std.debug.print("[loadDataUrl] Failed to get contentWindow\n", .{});
+        return;
+    }
+
+    // Get the V8 context for the iframe from the integration
+    const engine_ctx = internal.integration.getEngineContext() orelse {
+        std.debug.print("[loadDataUrl] No engine context for iframe\n", .{});
+        return;
+    };
+    const child_v8_context: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+
+    // Get the iframe's contentDocument to populate with parsed content
+    // Note: We bypass get_contentDocument's same-origin check since this is internal
+    // data: URL loading, not cross-origin JavaScript access
+    const browsing_ctx = internal.integration.browsing_context orelse {
+        std.debug.print("[loadDataUrl] No browsing context\n", .{});
+        return;
+    };
+    const content_document: *runtime.Instance = @ptrCast(@alignCast(browsing_ctx.getActiveDocument() orelse {
+        std.debug.print("[loadDataUrl] No active document in browsing context\n", .{});
+        return;
+    }));
+
+    // Parse HTML content using the tokenizer and tree builder
+    var tokenizer = html_parser.Tokenizer.init(allocator, content.data);
+    defer tokenizer.deinit();
+
+    var tree_builder = try html_parser.TreeBuilder.init(allocator, &tokenizer);
+    defer tree_builder.deinit();
+
+    // Run the tree building algorithm - processes all tokens
+    try tree_builder.parse();
+
+    // Convert parsed tree to DOM nodes and add to contentDocument
+    const parsed_doc = tree_builder.document;
+    std.debug.print("[loadDataUrl] Document parsed, converting to DOM\n", .{});
+
+    // Get the runtime context from the iframe's context
+    const ctx = context_manager.get(child_v8_context) orelse {
+        std.debug.print("[loadDataUrl] Failed to get runtime context\n", .{});
+        return;
+    };
+
+    // Convert the parsed tree to real DOM nodes and populate the contentDocument
+    try populateDocumentFromTree(content_document, parsed_doc, ctx, isolate, child_v8_context, allocator);
+    std.debug.print("[loadDataUrl] DOM populated\n", .{});
+
+    // Run microtasks
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+
+    // Fire 'load' event on the iframe's window and iframe element
+    try fireLoadEventOnIframe(iframe, internal);
+}
+
+/// Populate a Document with content from a parsed TreeNode tree
+/// This converts the TreeNode structure to real DOM nodes and adds them to the document,
+/// executing scripts as they are encountered.
+fn populateDocumentFromTree(
+    document: *runtime.Instance,
+    parsed_tree: *html_parser.TreeNode,
+    ctx: runtime.Context,
+    isolate: *v8.ffi.Isolate,
+    v8_ctx: *v8.ffi.Context,
+    allocator: std.mem.Allocator,
+) !void {
+    const DocumentImpl = @import("Document.zig");
+    const NodeImpl = @import("Node.zig");
+    const ElementImpl = @import("Element.zig");
+
+    // Clear existing children from document
+    while (try interfaces.Node.get_firstChild(document)) |first_child| {
+        _ = try interfaces.Node.call_removeChild(document, first_child);
+    }
+
+    // Get document_element from parsed tree (should be <html>)
+    var html_node = parsed_tree.first_child;
+    while (html_node) |node| {
+        if (node.node_type == .element) {
+            if (node.local_name) |name| {
+                if (std.mem.eql(u8, name, "html")) {
+                    break;
+                }
+            }
+        }
+        html_node = node.next_sibling;
+    }
+
+    if (html_node == null) {
+        std.debug.print("[populateDocumentFromTree] No <html> element found\n", .{});
+        return;
+    }
+
+    // Create <html> element
+    const html_element = try interfaces.HTMLHtmlElement.init(allocator, ctx);
+    try ElementImpl.setLocalName(html_element, "html");
+    try NodeImpl.setOwnerDocument(html_element, document);
+    _ = try interfaces.Node.call_appendChild(document, html_element);
+
+    // Set as document element
+    if (DocumentImpl.getInternal(document)) |doc_internal| {
+        doc_internal.document_element = html_element;
+    }
+
+    // Process children of <html> (head and body)
+    var head_node: ?*html_parser.TreeNode = null;
+    var body_node: ?*html_parser.TreeNode = null;
+
+    var child = html_node.?.first_child;
+    while (child) |c| {
+        if (c.node_type == .element) {
+            if (c.local_name) |name| {
+                if (std.mem.eql(u8, name, "head")) {
+                    head_node = c;
+                } else if (std.mem.eql(u8, name, "body")) {
+                    body_node = c;
+                }
+            }
+        }
+        child = c.next_sibling;
+    }
+
+    // Create <head> if found
+    if (head_node) |hn| {
+        const head_element = try interfaces.HTMLHeadElement.init(allocator, ctx);
+        try ElementImpl.setLocalName(head_element, "head");
+        try NodeImpl.setOwnerDocument(head_element, document);
+        _ = try interfaces.Node.call_appendChild(html_element, head_element);
+
+        // Process head children (style, etc.)
+        try convertChildrenToDOM(hn, head_element, document, ctx, isolate, v8_ctx, allocator);
+    }
+
+    // Create <body>
+    const body_element = try interfaces.HTMLBodyElement.init(allocator, ctx);
+    try ElementImpl.setLocalName(body_element, "body");
+    try NodeImpl.setOwnerDocument(body_element, document);
+    _ = try interfaces.Node.call_appendChild(html_element, body_element);
+
+    // Process body children
+    if (body_node) |bn| {
+        try convertChildrenToDOM(bn, body_element, document, ctx, isolate, v8_ctx, allocator);
+    }
+}
+
+/// Convert TreeNode children to DOM nodes and append to parent
+fn convertChildrenToDOM(
+    tree_node: *html_parser.TreeNode,
+    parent: *runtime.Instance,
+    document: *runtime.Instance,
+    ctx: runtime.Context,
+    isolate: *v8.ffi.Isolate,
+    v8_ctx: *v8.ffi.Context,
+    allocator: std.mem.Allocator,
+) !void {
+    const NodeImpl = @import("Node.zig");
+    const ElementImpl = @import("Element.zig");
+
+    var child = tree_node.first_child;
+    while (child) |c| {
+        switch (c.node_type) {
+            .element => {
+                if (c.local_name) |name| {
+                    // Check if it's a script element
+                    if (std.mem.eql(u8, name, "script")) {
+                        // Execute script immediately
+                        try executeScriptInIframe(c, isolate, v8_ctx, allocator);
+                    } else {
+                        // Create the element
+                        const element = try createElementForTag(name, allocator, ctx);
+                        try ElementImpl.setLocalName(element, name);
+                        try NodeImpl.setOwnerDocument(element, document);
+
+                        // Copy id attribute if present
+                        const attrs = c.attributes.toSlice();
+                        for (attrs) |attr| {
+                            if (std.mem.eql(u8, attr.name, "id")) {
+                                _ = try interfaces.Element.call_setAttribute(
+                                    element,
+                                    runtime.DOMString.initInterned("id"),
+                                    runtime.DOMString.initOwned(attr.value),
+                                );
+                                break;
+                            }
+                        }
+
+                        // Recursively process children
+                        try convertChildrenToDOM(c, element, document, ctx, isolate, v8_ctx, allocator);
+
+                        _ = try interfaces.Node.call_appendChild(parent, element);
+                    }
+                }
+            },
+            .text => {
+                const text_content = c.text_content.toSlice();
+                if (text_content.len > 0) {
+                    // Skip whitespace-only text nodes
+                    var has_content = false;
+                    for (text_content) |ch| {
+                        if (ch != ' ' and ch != '\t' and ch != '\n' and ch != '\r') {
+                            has_content = true;
+                            break;
+                        }
+                    }
+                    if (has_content) {
+                        const text_node = try interfaces.Text.init(allocator, ctx);
+                        try NodeImpl.setOwnerDocument(text_node, document);
+                        // Set text content via CharacterData
+                        const CharacterDataImpl = @import("CharacterData.zig");
+                        try CharacterDataImpl.setData(text_node, text_content);
+
+                        _ = try interfaces.Node.call_appendChild(parent, text_node);
+                    }
+                }
+            },
+            else => {},
+        }
+        child = c.next_sibling;
+    }
+}
+
+/// Create an appropriate element instance for a given tag name
+fn createElementForTag(tag_name: []const u8, allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
+    // Map common tags to their specific interfaces
+    if (std.mem.eql(u8, tag_name, "p")) {
+        return try interfaces.HTMLParagraphElement.init(allocator, ctx);
+    } else if (std.mem.eql(u8, tag_name, "div")) {
+        return try interfaces.HTMLDivElement.init(allocator, ctx);
+    } else if (std.mem.eql(u8, tag_name, "span")) {
+        return try interfaces.HTMLSpanElement.init(allocator, ctx);
+    } else if (std.mem.eql(u8, tag_name, "style")) {
+        return try interfaces.HTMLStyleElement.init(allocator, ctx);
+    } else if (std.mem.eql(u8, tag_name, "a")) {
+        return try interfaces.HTMLAnchorElement.init(allocator, ctx);
+    } else {
+        // Default to generic HTMLElement
+        return try interfaces.HTMLElement.init(allocator, ctx);
+    }
+}
+
+/// Parse a data: URL and extract the content
+const DataUrlContent = struct {
+    data: []const u8,
+    mime_type: []const u8,
+    needs_free: bool,
+};
+
+fn parseDataUrl(allocator: std.mem.Allocator, url: []const u8) !DataUrlContent {
+    // data:[<mediatype>][;base64],<data>
+    const data_start = std.mem.indexOf(u8, url, ":") orelse return error.InvalidUrl;
+    const rest = url[data_start + 1 ..];
+
+    // Find comma separating metadata from data
+    const comma_pos = std.mem.indexOf(u8, rest, ",") orelse return error.InvalidUrl;
+    const metadata = rest[0..comma_pos];
+    const encoded_data = rest[comma_pos + 1 ..];
+
+    // Parse metadata
+    var mime_type: []const u8 = "text/plain";
+    var is_base64 = false;
+
+    if (metadata.len > 0) {
+        if (std.mem.endsWith(u8, metadata, ";base64")) {
+            is_base64 = true;
+            const mime_part = metadata[0 .. metadata.len - 7];
+            if (mime_part.len > 0) {
+                mime_type = mime_part;
+            }
+        } else {
+            mime_type = metadata;
+        }
+    }
+
+    // Decode data
+    if (is_base64) {
+        const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(encoded_data) catch {
+            return error.ParseError;
+        };
+        const decoded = try allocator.alloc(u8, decoded_len);
+        errdefer allocator.free(decoded);
+
+        _ = std.base64.standard.Decoder.decode(decoded, encoded_data) catch {
+            allocator.free(decoded);
+            return error.ParseError;
+        };
+        return .{ .data = decoded, .mime_type = mime_type, .needs_free = true };
+    } else {
+        // URL decode
+        const decoded = try percentDecode(allocator, encoded_data);
+        return .{ .data = decoded, .mime_type = mime_type, .needs_free = true };
+    }
+}
+
+/// Percent-decode a string
+fn percentDecode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .{};
+    errdefer result.deinit(allocator);
+
+    var i: usize = 0;
+    while (i < input.len) {
+        if (input[i] == '%' and i + 2 < input.len) {
+            const hex = input[i + 1 .. i + 3];
+            const byte = std.fmt.parseInt(u8, hex, 16) catch {
+                try result.append(allocator, input[i]);
+                i += 1;
+                continue;
+            };
+            try result.append(allocator, byte);
+            i += 3;
+        } else {
+            try result.append(allocator, input[i]);
+            i += 1;
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
+}
+
+/// Execute scripts in an iframe's parsed document tree
+fn executeScriptsInIframe(
+    node: *html_parser.TreeNode,
+    isolate: *v8.ffi.Isolate,
+    context: *v8.ffi.Context,
+    allocator: std.mem.Allocator,
+) !void {
+    // Check if this is a script element
+    if (node.node_type == .element) {
+        if (node.local_name) |name| {
+            std.debug.print("[executeScriptsInIframe] Found element: {s}\n", .{name});
+            if (std.mem.eql(u8, name, "script")) {
+                std.debug.print("[executeScriptsInIframe] Found script element!\n", .{});
+                try executeScriptInIframe(node, isolate, context, allocator);
+            }
+        }
+    }
+
+    // Recurse to children
+    var child = node.first_child;
+    while (child) |c| {
+        try executeScriptsInIframe(c, isolate, context, allocator);
+        child = c.next_sibling;
+    }
+}
+
+/// Execute a single script element in the iframe's V8 context
+fn executeScriptInIframe(
+    script_node: *html_parser.TreeNode,
+    isolate: *v8.ffi.Isolate,
+    context: *v8.ffi.Context,
+    allocator: std.mem.Allocator,
+) !void {
+    // Get script content from child text nodes
+    var script_content: std.ArrayList(u8) = .{};
+    defer script_content.deinit(allocator);
+
+    var child = script_node.first_child;
+    while (child) |c| {
+        if (c.node_type == .text) {
+            const text = c.text_content.toSlice();
+            try script_content.appendSlice(allocator, text);
+        }
+        child = c.next_sibling;
+    }
+
+    if (script_content.items.len == 0) {
+        std.debug.print("[executeScriptInIframe] Empty script content\n", .{});
+        return;
+    }
+
+    std.debug.print("[executeScriptInIframe] Executing script ({d} chars)\n", .{script_content.items.len});
+
+    // Create handle scope for this script
+    const handle_scope = v8.ffi.v8_HandleScope_New(isolate) orelse return;
+    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Execute the script in the iframe's context
+    // First, we need to enter the context
+    v8.ffi.v8_Context_Enter(context);
+    defer v8.ffi.v8_Context_Exit(context);
+
+    // Execute the script
+    const source_str = v8.ffi.v8_String_NewFromUtf8(
+        isolate,
+        script_content.items.ptr,
+        @intCast(script_content.items.len),
+    ) orelse {
+        std.debug.print("[executeScriptInIframe] Failed to create source string\n", .{});
+        return;
+    };
+
+    const compiled = v8.ffi.v8_Script_Compile(context, source_str) orelse {
+        std.debug.print("[executeScriptInIframe] Failed to compile script\n", .{});
+        return;
+    };
+    const result = v8.ffi.v8_Script_Run(context, compiled);
+    if (result == null) {
+        std.debug.print("[executeScriptInIframe] Script execution returned null\n", .{});
+    } else {
+        std.debug.print("[executeScriptInIframe] Script executed successfully\n", .{});
+    }
+
+    // Run microtasks
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    std.debug.print("[executeScriptInIframe] Microtasks checkpointed\n", .{});
+}
+
+/// Fire 'load' event on the iframe's window and iframe element
+/// Per HTML spec, the 'load' event should fire on:
+/// 1. The Window inside the iframe (when the document finishes loading)
+/// 2. Then on the iframe element
+fn fireLoadEventOnIframe(iframe: *runtime.Instance, internal: *InternalState) !void {
+    std.debug.print("[fireLoadEventOnIframe] Starting to fire load events\n", .{});
+
+    // First, fire 'load' on the iframe's contentWindow
+    if (internal.integration.getEngineContext()) |engine_ctx| {
+        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+        if (context_manager.getWindowForContext(v8_ctx)) |window_instance| {
+            std.debug.print("[fireLoadEventOnIframe] Found window instance, firing load event\n", .{});
+
+            const window_ctx = window_instance.ctx;
+            const event_type = runtime.DOMString.initInterned("load");
+            const event_init = dictionaries.EventInit{
+                .bubbles = false,
+                .cancelable = false,
+                .composed = false,
+            };
+
+            const window_event = try Event.call_constructor(
+                window_ctx,
+                event_type,
+                webidl.Opt(dictionaries.EventInit).passed(event_init),
+            );
+            defer Event.deinit(window_event);
+
+            // Dispatch load event on the window
+            _ = try EventTarget.call_dispatchEvent(window_instance, window_event);
+            std.debug.print("[fireLoadEventOnIframe] Load event dispatched on window\n", .{});
+        } else {
+            std.debug.print("[fireLoadEventOnIframe] No window instance found\n", .{});
+        }
+    } else {
+        std.debug.print("[fireLoadEventOnIframe] No engine context\n", .{});
+    }
+
+    // Then fire 'load' on the iframe element itself
+    const iframe_ctx = iframe.ctx;
+    const iframe_event_type = runtime.DOMString.initInterned("load");
+    const iframe_event_init = dictionaries.EventInit{
+        .bubbles = false,
+        .cancelable = false,
+        .composed = false,
+    };
+
+    const iframe_event = try Event.call_constructor(
+        iframe_ctx,
+        iframe_event_type,
+        webidl.Opt(dictionaries.EventInit).passed(iframe_event_init),
+    );
+    defer Event.deinit(iframe_event);
+
+    _ = try EventTarget.call_dispatchEvent(iframe, iframe_event);
+    std.debug.print("[fireLoadEventOnIframe] Load event dispatched on iframe element\n", .{});
 }
