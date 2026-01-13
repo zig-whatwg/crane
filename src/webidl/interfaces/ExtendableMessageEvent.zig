@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ExtendableEvent = @import("ExtendableEvent.zig").ExtendableEvent;
-const ServiceWorker = @import("ServiceWorker.zig").ServiceWorker;
-const Client = @import("Client.zig").Client;
+const ExtendableEvent = @import("interfaces").ExtendableEvent;
+const ServiceWorker = @import("interfaces").ServiceWorker;
+const Client = @import("interfaces").Client;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const ExtendableMessageEventInit = @import("dictionaries").ExtendableMessageEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
-const MessagePort = @import("MessagePort.zig").MessagePort;
+const MessagePort = @import("interfaces").MessagePort;
 
 pub const ExtendableMessageEvent = struct {
     pub const Meta = struct {
@@ -78,9 +78,6 @@ pub const ExtendableMessageEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

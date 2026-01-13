@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("mixins").AbstractWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const USVString = @import("typedefs").USVString;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const ServiceWorkerState = @import("enums").ServiceWorkerState;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
@@ -56,7 +56,7 @@ pub const ServiceWorker = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "postMessage", "call_postMessage", 1 },
+            .{ "postMessage", "call_postMessage", 2 },
         };
         
         /// Methods defined/overridden by this interface
@@ -84,9 +84,6 @@ pub const ServiceWorker = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WindowClient = @import("WindowClient.zig").WindowClient;
+const WindowClient = @import("interfaces").WindowClient;
 const ClientQueryOptions = @import("dictionaries").ClientQueryOptions;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
@@ -62,9 +62,6 @@ pub const Clients = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

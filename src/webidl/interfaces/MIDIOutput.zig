@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MIDIPort = @import("MIDIPort.zig").MIDIPort;
+const MIDIPort = @import("interfaces").MIDIPort;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const MIDIPortType = @import("enums").MIDIPortType;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const Event = @import("Event.zig").Event;
-const Observable = @import("Observable.zig").Observable;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const MIDIPortConnectionState = @import("enums").MIDIPortConnectionState;
 const MIDIPortDeviceState = @import("enums").MIDIPortDeviceState;
 const DOMString = @import("typedefs").DOMString;
@@ -78,9 +78,6 @@ pub const MIDIOutput = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

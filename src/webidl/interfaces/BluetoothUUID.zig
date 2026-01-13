@@ -36,8 +36,20 @@ pub const BluetoothUUID = struct {
         pub const methods = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "getService", "call_static_getService", 1 },
+            .{ "getCharacteristic", "call_static_getCharacteristic", 1 },
+            .{ "getDescriptor", "call_static_getDescriptor", 1 },
+            .{ "canonicalUUID", "call_static_canonicalUUID", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "getService",
+            "getCharacteristic",
+            "getDescriptor",
+            "canonicalUUID",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -52,13 +64,6 @@ pub const BluetoothUUID = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "getService", "call_static_getService", 1 },
-            .{ "getCharacteristic", "call_static_getCharacteristic", 1 },
-            .{ "getDescriptor", "call_static_getDescriptor", 1 },
-            .{ "canonicalUUID", "call_static_canonicalUUID", 1 },
-        };
         pub const has_constructor = false;
     };
 

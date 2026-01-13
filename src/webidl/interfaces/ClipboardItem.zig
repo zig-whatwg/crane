@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ClipboardItemOptions = @import("dictionaries").ClipboardItemOptions;
 const PresentationStyle = @import("enums").PresentationStyle;
-const Blob = @import("Blob.zig").Blob;
+const Blob = @import("interfaces").Blob;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ClipboardItem = struct {
@@ -42,9 +42,15 @@ pub const ClipboardItem = struct {
             .{ "getType", "call_getType", 1 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "supports", "call_static_supports", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getType",
+            "supports",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -61,10 +67,6 @@ pub const ClipboardItem = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "supports", "call_static_supports", 1 },
-        };
         pub const has_constructor = true;
     };
 

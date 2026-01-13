@@ -39,6 +39,14 @@ pub const EXT_sRGB = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "SRGB_EXT", "get_SRGB_EXT" },
+            .{ "SRGB_ALPHA_EXT", "get_SRGB_ALPHA_EXT" },
+            .{ "SRGB8_ALPHA8_EXT", "get_SRGB8_ALPHA8_EXT" },
+            .{ "FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT", "get_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -55,9 +63,6 @@ pub const EXT_sRGB = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

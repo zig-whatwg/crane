@@ -39,6 +39,21 @@ pub const WEBGL_clip_cull_distance = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "MAX_CLIP_DISTANCES_WEBGL", "get_MAX_CLIP_DISTANCES_WEBGL" },
+            .{ "MAX_CULL_DISTANCES_WEBGL", "get_MAX_CULL_DISTANCES_WEBGL" },
+            .{ "MAX_COMBINED_CLIP_AND_CULL_DISTANCES_WEBGL", "get_MAX_COMBINED_CLIP_AND_CULL_DISTANCES_WEBGL" },
+            .{ "CLIP_DISTANCE0_WEBGL", "get_CLIP_DISTANCE0_WEBGL" },
+            .{ "CLIP_DISTANCE1_WEBGL", "get_CLIP_DISTANCE1_WEBGL" },
+            .{ "CLIP_DISTANCE2_WEBGL", "get_CLIP_DISTANCE2_WEBGL" },
+            .{ "CLIP_DISTANCE3_WEBGL", "get_CLIP_DISTANCE3_WEBGL" },
+            .{ "CLIP_DISTANCE4_WEBGL", "get_CLIP_DISTANCE4_WEBGL" },
+            .{ "CLIP_DISTANCE5_WEBGL", "get_CLIP_DISTANCE5_WEBGL" },
+            .{ "CLIP_DISTANCE6_WEBGL", "get_CLIP_DISTANCE6_WEBGL" },
+            .{ "CLIP_DISTANCE7_WEBGL", "get_CLIP_DISTANCE7_WEBGL" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -55,9 +70,6 @@ pub const WEBGL_clip_cull_distance = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

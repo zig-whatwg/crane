@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Event = @import("Event.zig").Event;
-const SpeechSynthesisVoice = @import("SpeechSynthesisVoice.zig").SpeechSynthesisVoice;
+const Event = @import("interfaces").Event;
+const SpeechSynthesisVoice = @import("interfaces").SpeechSynthesisVoice;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 
 pub const SpeechSynthesisUtterance = struct {
     pub const Meta = struct {
@@ -73,7 +73,6 @@ pub const SpeechSynthesisUtterance = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "text", "get_text", "set_text" },
-            .{ "lang", "get_lang", "set_lang" },
             .{ "voice", "get_voice", "set_voice" },
             .{ "volume", "get_volume", "set_volume" },
             .{ "rate", "get_rate", "set_rate" },
@@ -89,11 +88,9 @@ pub const SpeechSynthesisUtterance = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
+            .{ "lang", "get_lang", "set_lang" },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

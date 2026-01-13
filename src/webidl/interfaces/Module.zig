@@ -40,8 +40,18 @@ pub const Module = struct {
         pub const methods = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "exports", "call_static_exports", 1 },
+            .{ "imports", "call_static_imports", 1 },
+            .{ "customSections", "call_static_customSections", 2 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "exports",
+            "imports",
+            "customSections",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -56,12 +66,6 @@ pub const Module = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "exports", "call_static_exports", 1 },
-            .{ "imports", "call_static_imports", 1 },
-            .{ "customSections", "call_static_customSections", 2 },
-        };
         pub const has_constructor = true;
     };
 

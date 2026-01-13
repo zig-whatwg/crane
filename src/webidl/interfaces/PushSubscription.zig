@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
-const PushSubscriptionOptions = @import("PushSubscriptionOptions.zig").PushSubscriptionOptions;
+const PushSubscriptionOptions = @import("interfaces").PushSubscriptionOptions;
 const PushSubscriptionJSON = @import("dictionaries").PushSubscriptionJSON;
 const USVString = @import("typedefs").USVString;
 const PushEncryptionKeyName = @import("enums").PushEncryptionKeyName;
@@ -71,9 +71,6 @@ pub const PushSubscription = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

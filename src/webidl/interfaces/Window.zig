@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const PushManagerAttribute = @import("mixins").PushManagerAttribute;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
 const WindowEventHandlers = @import("mixins").WindowEventHandlers;
@@ -18,75 +18,75 @@ const WindowOrWorkerGlobalScope = @import("mixins").WindowOrWorkerGlobalScope;
 const AnimationFrameProvider = @import("mixins").AnimationFrameProvider;
 const WindowSessionStorage = @import("mixins").WindowSessionStorage;
 const WindowLocalStorage = @import("mixins").WindowLocalStorage;
-const External = @import("External.zig").External;
+const External = @import("interfaces").External;
 const CSSOMString = @import("typedefs").CSSOMString;
-const Navigator = @import("Navigator.zig").Navigator;
-const FetchLaterResult = @import("FetchLaterResult.zig").FetchLaterResult;
+const Navigator = @import("interfaces").Navigator;
+const FetchLaterResult = @import("interfaces").FetchLaterResult;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
 const TimerHandler = @import("typedefs").TimerHandler;
 const USVString = @import("typedefs").USVString;
-const History = @import("History.zig").History;
-const VisualViewport = @import("VisualViewport.zig").VisualViewport;
-const FileSystemFileHandle = @import("FileSystemFileHandle.zig").FileSystemFileHandle;
-const Element = @import("Element.zig").Element;
-const PushManager = @import("PushManager.zig").PushManager;
-const Scheduler = @import("Scheduler.zig").Scheduler;
-const Crypto = @import("Crypto.zig").Crypto;
-const Location = @import("Location.zig").Location;
+const History = @import("interfaces").History;
+const VisualViewport = @import("interfaces").VisualViewport;
+const FileSystemFileHandle = @import("interfaces").FileSystemFileHandle;
+const Element = @import("interfaces").Element;
+const PushManager = @import("interfaces").PushManager;
+const Scheduler = @import("interfaces").Scheduler;
+const Crypto = @import("interfaces").Crypto;
+const Location = @import("interfaces").Location;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
-const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
-const CookieStore = @import("CookieStore.zig").CookieStore;
+const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
+const CookieStore = @import("interfaces").CookieStore;
 const IdleRequestCallback = @import("callbacks").IdleRequestCallback;
-const PortalHost = @import("PortalHost.zig").PortalHost;
+const PortalHost = @import("interfaces").PortalHost;
 const FrameRequestCallback = @import("callbacks").FrameRequestCallback;
-const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const RequestInit = @import("dictionaries").RequestInit;
-const Storage = @import("Storage.zig").Storage;
-const Event = @import("Event.zig").Event;
+const Storage = @import("interfaces").Storage;
+const Event = @import("interfaces").Event;
 const DirectoryPickerOptions = @import("dictionaries").DirectoryPickerOptions;
 const SaveFilePickerOptions = @import("dictionaries").SaveFilePickerOptions;
-const Response = @import("Response.zig").Response;
-const DocumentPictureInPicture = @import("DocumentPictureInPicture.zig").DocumentPictureInPicture;
-const Document = @import("Document.zig").Document;
-const FileSystemDirectoryHandle = @import("FileSystemDirectoryHandle.zig").FileSystemDirectoryHandle;
+const Response = @import("interfaces").Response;
+const DocumentPictureInPicture = @import("interfaces").DocumentPictureInPicture;
+const Document = @import("interfaces").Document;
+const FileSystemDirectoryHandle = @import("interfaces").FileSystemDirectoryHandle;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ByteString = @import("typedefs").ByteString;
-const DigitalGoodsService = @import("DigitalGoodsService.zig").DigitalGoodsService;
+const DigitalGoodsService = @import("interfaces").DigitalGoodsService;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const OpenFilePickerOptions = @import("dictionaries").OpenFilePickerOptions;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const DOMString = @import("typedefs").DOMString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DeferredRequestInit = @import("dictionaries").DeferredRequestInit;
-const Navigation = @import("Navigation.zig").Navigation;
+const Navigation = @import("interfaces").Navigation;
 const WindowPostMessageOptions = @import("dictionaries").WindowPostMessageOptions;
 const EventHandler = @import("typedefs").EventHandler;
-const Fence = @import("Fence.zig").Fence;
-const SharedStorage = @import("SharedStorage.zig").SharedStorage;
+const Fence = @import("interfaces").Fence;
+const SharedStorage = @import("interfaces").SharedStorage;
 const QueryOptions = @import("dictionaries").QueryOptions;
 const OnBeforeUnloadEventHandler = @import("typedefs").OnBeforeUnloadEventHandler;
-const ImageBitmap = @import("ImageBitmap.zig").ImageBitmap;
+const ImageBitmap = @import("interfaces").ImageBitmap;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const WindowProxy = @import("typedefs").WindowProxy;
-const ScreenDetails = @import("ScreenDetails.zig").ScreenDetails;
+const ScreenDetails = @import("interfaces").ScreenDetails;
 const RequestInfo = @import("typedefs").RequestInfo;
-const Screen = @import("Screen.zig").Screen;
+const Screen = @import("interfaces").Screen;
 const VoidFunction = @import("callbacks").VoidFunction;
-const IDBFactory = @import("IDBFactory.zig").IDBFactory;
-const BarProp = @import("BarProp.zig").BarProp;
-const TrustedTypePolicyFactory = @import("TrustedTypePolicyFactory.zig").TrustedTypePolicyFactory;
-const Performance = @import("Performance.zig").Performance;
-const CacheStorage = @import("CacheStorage.zig").CacheStorage;
-const Observable = @import("Observable.zig").Observable;
+const IDBFactory = @import("interfaces").IDBFactory;
+const BarProp = @import("interfaces").BarProp;
+const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
+const Performance = @import("interfaces").Performance;
+const CacheStorage = @import("interfaces").CacheStorage;
+const Observable = @import("interfaces").Observable;
 const IdleRequestOptions = @import("dictionaries").IdleRequestOptions;
-const LaunchQueue = @import("LaunchQueue.zig").LaunchQueue;
-const SpeechSynthesis = @import("SpeechSynthesis.zig").SpeechSynthesis;
-const Viewport = @import("Viewport.zig").Viewport;
-const MediaQueryList = @import("MediaQueryList.zig").MediaQueryList;
-const Selection = @import("Selection.zig").Selection;
+const LaunchQueue = @import("interfaces").LaunchQueue;
+const SpeechSynthesis = @import("interfaces").SpeechSynthesis;
+const Viewport = @import("interfaces").Viewport;
+const MediaQueryList = @import("interfaces").MediaQueryList;
+const Selection = @import("interfaces").Selection;
 
 pub const Window = struct {
     pub const Meta = struct {
@@ -315,6 +315,19 @@ pub const Window = struct {
             .{ "localStorage", "get_localStorage", null },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "location", "href" },
+        };
+        
+        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
+        /// Getters return undefined, setters silently return
+        pub const lenient_this_attributes = .{
+            "onmouseenter",
+            "onmouseleave",
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "close", "call_close", 0 },
@@ -326,7 +339,7 @@ pub const Window = struct {
             .{ "confirm", "call_confirm", 0 },
             .{ "prompt", "call_prompt", 0 },
             .{ "print", "call_print", 0 },
-            .{ "postMessage", "call_postMessage", 1 },
+            .{ "postMessage", "call_postMessage", 2 },
             .{ "navigate", "call_navigate", 1 },
             .{ "showOpenFilePicker", "call_showOpenFilePicker", 0 },
             .{ "showSaveFilePicker", "call_showSaveFilePicker", 0 },
@@ -349,13 +362,12 @@ pub const Window = struct {
             .{ "scrollTo", "call_scrollTo", 0 },
             .{ "scrollBy", "call_scrollBy", 0 },
             .{ "queryLocalFonts", "call_queryLocalFonts", 0 },
-            .{ "item", "call_item", 1 },
             .{ "reportError", "call_reportError", 1 },
             .{ "btoa", "call_btoa", 1 },
             .{ "atob", "call_atob", 1 },
-            .{ "setTimeout", "call_setTimeout", 1 },
+            .{ "setTimeout", "call_setTimeout", 2 },
             .{ "clearTimeout", "call_clearTimeout", 0 },
-            .{ "setInterval", "call_setInterval", 1 },
+            .{ "setInterval", "call_setInterval", 2 },
             .{ "clearInterval", "call_clearInterval", 0 },
             .{ "queueMicrotask", "call_queueMicrotask", 1 },
             .{ "createImageBitmap", "call_createImageBitmap", 1 },
@@ -399,7 +411,6 @@ pub const Window = struct {
             "scrollTo",
             "scrollBy",
             "queryLocalFonts",
-            "item",
             "reportError",
             "btoa",
             "atob",
@@ -627,9 +638,6 @@ pub const Window = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
@@ -1238,7 +1246,6 @@ pub const Window = struct {
         .call_getDigitalGoodsService = &call_getDigitalGoodsService,
         .call_getScreenDetails = &call_getScreenDetails,
         .call_getSelection = &call_getSelection,
-        .call_item = &call_item,
         .call_matchMedia = &call_matchMedia,
         .call_moveBy = &call_moveBy,
         .call_moveTo = &call_moveTo,
@@ -1335,7 +1342,6 @@ pub const Window = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "href", value);
     }
 
@@ -3245,11 +3251,6 @@ pub const Window = struct {
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         
         return try WindowImpl.call_scroll(instance, options);
-    }
-
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?WindowProxy {
-        
-        return try WindowImpl.call_item(instance, index);
     }
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)

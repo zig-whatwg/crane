@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const RTCIceTransport = @import("RTCIceTransport.zig").RTCIceTransport;
+const RTCIceTransport = @import("interfaces").RTCIceTransport;
 const RTCDtlsTransportState = @import("enums").RTCDtlsTransportState;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const Event = @import("Event.zig").Event;
-const EventListener = @import("EventListener.zig").EventListener;
+const Event = @import("interfaces").Event;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 
 pub const RTCDtlsTransport = struct {
     pub const Meta = struct {
@@ -76,9 +76,6 @@ pub const RTCDtlsTransport = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

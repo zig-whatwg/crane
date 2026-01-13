@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const GamepadHapticActuator = @import("GamepadHapticActuator.zig").GamepadHapticActuator;
-const GamepadPose = @import("GamepadPose.zig").GamepadPose;
-const GamepadButton = @import("GamepadButton.zig").GamepadButton;
+const GamepadHapticActuator = @import("interfaces").GamepadHapticActuator;
+const GamepadPose = @import("interfaces").GamepadPose;
+const GamepadButton = @import("interfaces").GamepadButton;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const GamepadMappingType = @import("enums").GamepadMappingType;
 const GamepadHand = @import("enums").GamepadHand;
@@ -82,9 +82,6 @@ pub const Gamepad = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
