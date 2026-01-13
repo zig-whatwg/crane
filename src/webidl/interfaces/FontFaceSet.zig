@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CSSOMString = @import("typedefs").CSSOMString;
-const FontFace = @import("interfaces").FontFace;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const FontFace = @import("FontFace.zig").FontFace;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const FontFaceSetLoadStatus = @import("enums").FontFaceSetLoadStatus;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -49,6 +49,7 @@ pub const FontFaceSet = struct {
             .{ "onloadingerror", "get_onloadingerror", "set_onloadingerror" },
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
+            .{ "size", "get_size", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -84,12 +85,16 @@ pub const FontFaceSet = struct {
             .{ "onloadingerror", "get_onloadingerror", "set_onloadingerror" },
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
+            .{ "size", "get_size", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -102,6 +107,7 @@ pub const FontFaceSet = struct {
             onloadingerror: typedefs.EventHandler = undefined,
             ready: runtime.JSValue = undefined,
             status: enums.FontFaceSetLoadStatus = undefined,
+            size: u32 = undefined,
             _internal: ?*FontFaceSetImpl.InternalState = null,
         },
     );
@@ -116,6 +122,7 @@ pub const FontFaceSet = struct {
         .get_onloadingdone = &get_onloadingdone,
         .get_onloadingerror = &get_onloadingerror,
         .get_ready = &get_ready,
+        .get_size = &get_size,
         .get_status = &get_status,
 
         .set_onloading = &set_onloading,
@@ -183,6 +190,10 @@ pub const FontFaceSet = struct {
 
     pub fn get_status(instance: *runtime.Instance) anyerror!FontFaceSetLoadStatus {
         return try FontFaceSetImpl.get_status(instance);
+    }
+
+    pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
+        return try FontFaceSetImpl.get_size(instance);
     }
 
     pub fn call_delete(instance: *runtime.Instance, font: *runtime.Instance) anyerror!bool {

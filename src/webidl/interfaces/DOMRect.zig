@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const DOMRectInit = @import("dictionaries").DOMRectInit;
 
 pub const DOMRect = struct {
@@ -46,14 +46,8 @@ pub const DOMRect = struct {
         pub const methods = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "fromRect", "call_static_fromRect", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "fromRect",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -73,6 +67,10 @@ pub const DOMRect = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "fromRect", "call_static_fromRect", 0 },
+        };
         pub const has_constructor = true;
     };
 

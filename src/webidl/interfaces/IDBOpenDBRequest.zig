@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const IDBRequest = @import("interfaces").IDBRequest;
+const IDBRequest = @import("IDBRequest.zig").IDBRequest;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const IDBRequestReadyState = @import("enums").IDBRequestReadyState;
-const IDBIndex = @import("interfaces").IDBIndex;
-const IDBTransaction = @import("interfaces").IDBTransaction;
-const IDBObjectStore = @import("interfaces").IDBObjectStore;
-const IDBCursor = @import("interfaces").IDBCursor;
-const Event = @import("interfaces").Event;
-const Observable = @import("interfaces").Observable;
+const IDBIndex = @import("IDBIndex.zig").IDBIndex;
+const IDBTransaction = @import("IDBTransaction.zig").IDBTransaction;
+const IDBObjectStore = @import("IDBObjectStore.zig").IDBObjectStore;
+const IDBCursor = @import("IDBCursor.zig").IDBCursor;
+const Event = @import("Event.zig").Event;
+const Observable = @import("Observable.zig").Observable;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
-const DOMException = @import("interfaces").DOMException;
+const EventListener = @import("EventListener.zig").EventListener;
+const DOMException = @import("DOMException.zig").DOMException;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -77,6 +77,9 @@ pub const IDBOpenDBRequest = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

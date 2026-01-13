@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CacheQueryOptions = @import("dictionaries").CacheQueryOptions;
 const RequestInfo = @import("typedefs").RequestInfo;
-const Response = @import("interfaces").Response;
+const Response = @import("Response.zig").Response;
 
 pub const Cache = struct {
     pub const Meta = struct {
@@ -71,6 +71,9 @@ pub const Cache = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

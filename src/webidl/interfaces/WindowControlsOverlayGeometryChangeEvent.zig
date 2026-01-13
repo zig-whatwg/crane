@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
-const DOMRect = @import("interfaces").DOMRect;
-const EventTarget = @import("interfaces").EventTarget;
+const Event = @import("Event.zig").Event;
+const DOMRect = @import("DOMRect.zig").DOMRect;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const WindowControlsOverlayGeometryChangeEventInit = @import("dictionaries").WindowControlsOverlayGeometryChangeEventInit;
@@ -67,6 +67,9 @@ pub const WindowControlsOverlayGeometryChangeEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
-const XRInputSource = @import("interfaces").XRInputSource;
-const EventTarget = @import("interfaces").EventTarget;
+const Event = @import("Event.zig").Event;
+const XRInputSource = @import("XRInputSource.zig").XRInputSource;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const XRInputSourcesChangeEventInit = @import("dictionaries").XRInputSourcesChangeEventInit;
-const XRSession = @import("interfaces").XRSession;
+const XRSession = @import("XRSession.zig").XRSession;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -71,6 +71,9 @@ pub const XRInputSourcesChangeEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

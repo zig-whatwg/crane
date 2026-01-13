@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMException = @import("interfaces").DOMException;
+const DOMException = @import("DOMException.zig").DOMException;
 const RTCErrorInit = @import("dictionaries").RTCErrorInit;
 const DOMString = @import("typedefs").DOMString;
 const RTCErrorDetailType = @import("enums").RTCErrorDetailType;
@@ -67,6 +67,9 @@ pub const RTCError = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 
