@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const OrientationType = @import("enums").OrientationType;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const OrientationLockType = @import("enums").OrientationLockType;
 const EventHandler = @import("typedefs").EventHandler;
-const Observable = @import("interfaces").Observable;
+const Observable = @import("Observable.zig").Observable;
 
 pub const ScreenOrientation = struct {
     pub const Meta = struct {
@@ -76,6 +76,9 @@ pub const ScreenOrientation = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

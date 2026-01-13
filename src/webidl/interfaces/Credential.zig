@@ -39,16 +39,8 @@ pub const Credential = struct {
         pub const methods = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
-            .{ "willRequestConditionalCreation", "call_static_willRequestConditionalCreation", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -65,6 +57,11 @@ pub const Credential = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isConditionalMediationAvailable", "call_static_isConditionalMediationAvailable", 0 },
+            .{ "willRequestConditionalCreation", "call_static_willRequestConditionalCreation", 0 },
+        };
         pub const has_constructor = false;
     };
 

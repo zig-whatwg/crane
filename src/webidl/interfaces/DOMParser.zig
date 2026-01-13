@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Document = @import("interfaces").Document;
-const TrustedHTML = @import("interfaces").TrustedHTML;
+const Document = @import("Document.zig").Document;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
 const DOMString = @import("typedefs").DOMString;
 const DOMParserSupportedType = @import("enums").DOMParserSupportedType;
 
@@ -56,6 +56,9 @@ pub const DOMParser = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

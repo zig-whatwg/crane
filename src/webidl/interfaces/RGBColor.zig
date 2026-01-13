@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSPrimitiveValue = @import("interfaces").CSSPrimitiveValue;
+const CSSPrimitiveValue = @import("CSSPrimitiveValue.zig").CSSPrimitiveValue;
 
 pub const RGBColor = struct {
     pub const Meta = struct {
@@ -52,6 +52,9 @@ pub const RGBColor = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

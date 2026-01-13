@@ -75,6 +75,7 @@ pub const Region = @import("Region.zig");
 pub const SFrameKeyManagement = @import("SFrameKeyManagement.zig");
 pub const SVGAnimatedPoints = @import("SVGAnimatedPoints.zig");
 pub const SVGElementInstance = @import("SVGElementInstance.zig");
+pub const SVGFilterPrimitiveStandardAttributes = @import("SVGFilterPrimitiveStandardAttributes.zig");
 pub const SVGFitToViewBox = @import("SVGFitToViewBox.zig");
 pub const SVGPathData = @import("SVGPathData.zig");
 pub const SVGTests = @import("SVGTests.zig");

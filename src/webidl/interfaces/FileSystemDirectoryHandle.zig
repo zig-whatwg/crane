@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemHandle = @import("interfaces").FileSystemHandle;
+const FileSystemHandle = @import("FileSystemHandle.zig").FileSystemHandle;
 const FileSystemRemoveOptions = @import("dictionaries").FileSystemRemoveOptions;
 const PermissionState = @import("enums").PermissionState;
 const FileSystemGetFileOptions = @import("dictionaries").FileSystemGetFileOptions;
@@ -18,7 +18,7 @@ const FileSystemHandlePermissionDescriptor = @import("dictionaries").FileSystemH
 const FileSystemGetDirectoryOptions = @import("dictionaries").FileSystemGetDirectoryOptions;
 const FileSystemHandleKind = @import("enums").FileSystemHandleKind;
 const USVString = @import("typedefs").USVString;
-const FileSystemFileHandle = @import("interfaces").FileSystemFileHandle;
+const FileSystemFileHandle = @import("FileSystemFileHandle.zig").FileSystemFileHandle;
 
 pub const FileSystemDirectoryHandle = struct {
     pub const Meta = struct {
@@ -80,14 +80,10 @@ pub const FileSystemDirectoryHandle = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = false;
-        
-        /// Async iterable declaration (for Symbol.asyncIterator support)
-        pub const async_iterable = .{
-            .value_type = "runtime.USVString",
-            .key_type = "FileSystemHandle",
-            .options_type = null,
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
         };
+        pub const has_constructor = false;
     };
 
     pub const State = runtime.FlattenedState(

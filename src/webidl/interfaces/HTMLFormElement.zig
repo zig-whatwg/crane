@@ -10,69 +10,69 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLElement = @import("interfaces").HTMLElement;
-const DOMStringMap = @import("interfaces").DOMStringMap;
+const HTMLElement = @import("HTMLElement.zig").HTMLElement;
+const DOMStringMap = @import("DOMStringMap.zig").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const NamedNodeMap = @import("NamedNodeMap.zig").NamedNodeMap;
+const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
-const Element = @import("interfaces").Element;
+const Element = @import("Element.zig").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
-const EventListener = @import("interfaces").EventListener;
-const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
+const EventListener = @import("EventListener.zig").EventListener;
+const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
+const CSSPseudoElement = @import("CSSPseudoElement.zig").CSSPseudoElement;
 const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
-const Node = @import("interfaces").Node;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
-const Range = @import("interfaces").Range;
-const Event = @import("interfaces").Event;
+const Node = @import("Node.zig").Node;
+const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const Animation = @import("Animation.zig").Animation;
+const Range = @import("Range.zig").Range;
+const Event = @import("Event.zig").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
-const DOMRectList = @import("interfaces").DOMRectList;
+const DOMRectList = @import("DOMRectList.zig").DOMRectList;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
-const Document = @import("interfaces").Document;
+const Document = @import("Document.zig").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const RadioNodeList = @import("interfaces").RadioNodeList;
+const RadioNodeList = @import("RadioNodeList.zig").RadioNodeList;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
+const DOMQuad = @import("DOMQuad.zig").DOMQuad;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const DOMString = @import("typedefs").DOMString;
-const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const DOMTokenList = @import("interfaces").DOMTokenList;
+const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
+const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
-const EditContext = @import("interfaces").EditContext;
-const HTMLFormControlsCollection = @import("interfaces").HTMLFormControlsCollection;
-const DOMRect = @import("interfaces").DOMRect;
-const ElementInternals = @import("interfaces").ElementInternals;
-const ViewTransition = @import("interfaces").ViewTransition;
+const EditContext = @import("EditContext.zig").EditContext;
+const HTMLFormControlsCollection = @import("HTMLFormControlsCollection.zig").HTMLFormControlsCollection;
+const DOMRect = @import("DOMRect.zig").DOMRect;
+const ElementInternals = @import("ElementInternals.zig").ElementInternals;
+const ViewTransition = @import("ViewTransition.zig").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
-const StylePropertyMap = @import("interfaces").StylePropertyMap;
-const ShadowRoot = @import("interfaces").ShadowRoot;
-const Attr = @import("interfaces").Attr;
-const TrustedHTML = @import("interfaces").TrustedHTML;
+const StylePropertyMap = @import("StylePropertyMap.zig").StylePropertyMap;
+const ShadowRoot = @import("ShadowRoot.zig").ShadowRoot;
+const Attr = @import("Attr.zig").Attr;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
-const NodeList = @import("interfaces").NodeList;
+const NodeList = @import("NodeList.zig").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
-const Observable = @import("interfaces").Observable;
-const DOMPoint = @import("interfaces").DOMPoint;
+const Observable = @import("Observable.zig").Observable;
+const DOMPoint = @import("DOMPoint.zig").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
@@ -110,12 +110,6 @@ pub const HTMLFormElement = struct {
             .{ "relList", "get_relList", "set_relList" },
             .{ "elements", "get_elements", null },
             .{ "length", "get_length", null },
-        };
-        
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "relList", "value" },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -201,10 +195,7 @@ pub const HTMLFormElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -253,6 +244,9 @@ pub const HTMLFormElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 
@@ -506,6 +500,7 @@ pub const HTMLFormElement = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "value", value);
     }
 
@@ -547,10 +542,7 @@ pub const HTMLFormElement = struct {
     };
 
     pub fn call_getter(instance: *runtime.Instance, args: GetterArgs) anyerror!Element {
-        switch (args) {
-            .unsigned_long => |arg| return try HTMLFormElementImpl.unsigned_long(instance, arg),
-            .string => |arg| return try HTMLFormElementImpl.string(instance, arg),
-        }
+        return try HTMLFormElementImpl.call_getter(instance, args);
     }
 
     pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {

@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const UIEvent = @import("interfaces").UIEvent;
-const Window = @import("interfaces").Window;
+const UIEvent = @import("UIEvent.zig").UIEvent;
+const Window = @import("Window.zig").Window;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const USVString = @import("typedefs").USVString;
 const UIEventInit = @import("dictionaries").UIEventInit;
 const InputEventInit = @import("dictionaries").InputEventInit;
-const EventTarget = @import("interfaces").EventTarget;
-const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const EventTarget = @import("EventTarget.zig").EventTarget;
+const InputDeviceCapabilities = @import("InputDeviceCapabilities.zig").InputDeviceCapabilities;
 const EventInit = @import("dictionaries").EventInit;
-const DataTransfer = @import("interfaces").DataTransfer;
+const DataTransfer = @import("DataTransfer.zig").DataTransfer;
 const DOMString = @import("typedefs").DOMString;
-const StaticRange = @import("interfaces").StaticRange;
+const StaticRange = @import("StaticRange.zig").StaticRange;
 
 pub const InputEvent = struct {
     pub const Meta = struct {
@@ -79,6 +79,9 @@ pub const InputEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

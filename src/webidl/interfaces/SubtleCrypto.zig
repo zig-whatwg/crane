@@ -18,7 +18,7 @@ const BufferSource = @import("typedefs").BufferSource;
 const JsonWebKey = @import("dictionaries").JsonWebKey;
 const EncapsulatedKey = @import("dictionaries").EncapsulatedKey;
 const DOMString = @import("typedefs").DOMString;
-const CryptoKey = @import("interfaces").CryptoKey;
+const CryptoKey = @import("CryptoKey.zig").CryptoKey;
 
 pub const SubtleCrypto = struct {
     pub const Meta = struct {
@@ -64,11 +64,6 @@ pub const SubtleCrypto = struct {
             .{ "getPublicKey", "call_getPublicKey", 2 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "supports", "call_static_supports", 2 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "encrypt",
@@ -88,7 +83,6 @@ pub const SubtleCrypto = struct {
             "decapsulateKey",
             "decapsulateBits",
             "getPublicKey",
-            "supports",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -103,6 +97,10 @@ pub const SubtleCrypto = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "supports", "call_static_supports", 2 },
+        };
         pub const has_constructor = false;
     };
 
