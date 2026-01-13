@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSColorValue = @import("interfaces").CSSColorValue;
-const CSSNumericValue = @import("interfaces").CSSNumericValue;
-const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const CSSColorValue = @import("CSSColorValue.zig").CSSColorValue;
+const CSSNumericValue = @import("CSSNumericValue.zig").CSSNumericValue;
+const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValue;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
@@ -56,9 +56,6 @@ pub const CSSHWB = struct {
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "parse",
-            "parseAll",
-            "parse",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -73,6 +70,9 @@ pub const CSSHWB = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

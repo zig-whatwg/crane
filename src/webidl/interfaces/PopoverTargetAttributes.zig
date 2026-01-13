@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
+const Element = @import("Element.zig").Element;
 const DOMString = @import("typedefs").DOMString;
 
 pub const PopoverTargetAttributes = struct {
@@ -51,6 +51,9 @@ pub const PopoverTargetAttributes = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

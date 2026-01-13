@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const OrientationSensor = @import("interfaces").OrientationSensor;
+const OrientationSensor = @import("OrientationSensor.zig").OrientationSensor;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const RotationMatrixType = @import("typedefs").RotationMatrixType;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const OrientationSensorOptions = @import("dictionaries").OrientationSensorOptions;
 const EventHandler = @import("typedefs").EventHandler;
-const Observable = @import("interfaces").Observable;
+const Observable = @import("Observable.zig").Observable;
 
 pub const AbsoluteOrientationSensor = struct {
     pub const Meta = struct {
@@ -71,6 +71,9 @@ pub const AbsoluteOrientationSensor = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

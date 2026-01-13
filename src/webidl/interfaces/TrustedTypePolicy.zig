@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const TrustedHTML = @import("interfaces").TrustedHTML;
-const TrustedScript = @import("interfaces").TrustedScript;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
+const TrustedScript = @import("TrustedScript.zig").TrustedScript;
+const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
 const DOMString = @import("typedefs").DOMString;
 
 pub const TrustedTypePolicy = struct {
@@ -40,9 +40,9 @@ pub const TrustedTypePolicy = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "createHTML", "call_createHTML", 2 },
-            .{ "createScript", "call_createScript", 2 },
-            .{ "createScriptURL", "call_createScriptURL", 2 },
+            .{ "createHTML", "call_createHTML", 1 },
+            .{ "createScript", "call_createScript", 1 },
+            .{ "createScriptURL", "call_createScriptURL", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -65,6 +65,9 @@ pub const TrustedTypePolicy = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

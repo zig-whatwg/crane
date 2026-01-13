@@ -10,15 +10,15 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const ElementCSSInlineStyle = @import("interfaces").ElementCSSInlineStyle;
+const Element = @import("Element.zig").Element;
+const ElementCSSInlineStyle = @import("ElementCSSInlineStyle.zig").ElementCSSInlineStyle;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
 const CSSOMString = @import("typedefs").CSSOMString;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const NamedNodeMap = @import("interfaces").NamedNodeMap;
+const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
+const NamedNodeMap = @import("NamedNodeMap.zig").NamedNodeMap;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -26,46 +26,46 @@ const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
-const EventListener = @import("interfaces").EventListener;
-const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
+const EventListener = @import("EventListener.zig").EventListener;
+const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
+const CSSPseudoElement = @import("CSSPseudoElement.zig").CSSPseudoElement;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
-const Node = @import("interfaces").Node;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
-const Range = @import("interfaces").Range;
-const Event = @import("interfaces").Event;
-const DOMRectList = @import("interfaces").DOMRectList;
+const Node = @import("Node.zig").Node;
+const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const Animation = @import("Animation.zig").Animation;
+const Range = @import("Range.zig").Range;
+const Event = @import("Event.zig").Event;
+const DOMRectList = @import("DOMRectList.zig").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
-const Document = @import("interfaces").Document;
+const Document = @import("Document.zig").Document;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
+const DOMQuad = @import("DOMQuad.zig").DOMQuad;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
-const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const DOMTokenList = @import("interfaces").DOMTokenList;
+const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
+const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
-const DOMRect = @import("interfaces").DOMRect;
-const ViewTransition = @import("interfaces").ViewTransition;
+const DOMRect = @import("DOMRect.zig").DOMRect;
+const ViewTransition = @import("ViewTransition.zig").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
-const StylePropertyMap = @import("interfaces").StylePropertyMap;
-const ShadowRoot = @import("interfaces").ShadowRoot;
-const Attr = @import("interfaces").Attr;
-const TrustedHTML = @import("interfaces").TrustedHTML;
+const StylePropertyMap = @import("StylePropertyMap.zig").StylePropertyMap;
+const ShadowRoot = @import("ShadowRoot.zig").ShadowRoot;
+const Attr = @import("Attr.zig").Attr;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
-const NodeList = @import("interfaces").NodeList;
+const NodeList = @import("NodeList.zig").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
-const Observable = @import("interfaces").Observable;
-const DOMPoint = @import("interfaces").DOMPoint;
+const Observable = @import("Observable.zig").Observable;
+const DOMPoint = @import("DOMPoint.zig").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
@@ -200,19 +200,6 @@ pub const MathMLElement = struct {
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "style", "cssText" },
-        };
-        
-        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
-        /// Getters return undefined, setters silently return
-        pub const lenient_this_attributes = .{
-            "onmouseenter",
-            "onmouseleave",
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
@@ -286,10 +273,7 @@ pub const MathMLElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -425,6 +409,9 @@ pub const MathMLElement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -807,6 +794,7 @@ pub const MathMLElement = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

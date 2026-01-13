@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRBodyJoint = @import("enums").XRBodyJoint;
-const XRBodySpace = @import("interfaces").XRBodySpace;
+const XRBodySpace = @import("XRBodySpace.zig").XRBodySpace;
 
 pub const XRBody = struct {
     pub const Meta = struct {
@@ -59,6 +59,9 @@ pub const XRBody = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
         
         /// Iterable declaration (for Symbol.iterator support)

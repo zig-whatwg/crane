@@ -16,7 +16,7 @@ const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 const ReadableStreamIteratorOptions = @import("dictionaries").ReadableStreamIteratorOptions;
 const ReadableStreamReader = @import("typedefs").ReadableStreamReader;
-const WritableStream = @import("interfaces").WritableStream;
+const WritableStream = @import("WritableStream.zig").WritableStream;
 
 pub const ReadableStream = struct {
     pub const Meta = struct {
@@ -50,14 +50,8 @@ pub const ReadableStream = struct {
             .{ "getAsyncIterator", "call_getAsyncIterator", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "from", "call_static_from", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "from",
             "cancel",
             "getReader",
             "pipeThrough",
@@ -80,14 +74,11 @@ pub const ReadableStream = struct {
         pub const lazy_properties = .{
         };
         
-        pub const has_constructor = true;
-        
-        /// Async iterable declaration (for Symbol.asyncIterator support)
-        pub const async_iterable = .{
-            .value_type = "runtime.JSValue",
-            .key_type = null,
-            .options_type = "ReadableStreamIteratorOptions",
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "from", "call_static_from", 1 },
         };
+        pub const has_constructor = true;
     };
 
     pub const State = runtime.FlattenedState(

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const StorageBucketOptions = @import("dictionaries").StorageBucketOptions;
-const StorageBucket = @import("interfaces").StorageBucket;
+const StorageBucket = @import("StorageBucket.zig").StorageBucket;
 const DOMString = @import("typedefs").DOMString;
 
 pub const StorageBucketManager = struct {
@@ -63,6 +63,9 @@ pub const StorageBucketManager = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

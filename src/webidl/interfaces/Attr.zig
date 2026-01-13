@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("interfaces").Node;
+const Node = @import("Node.zig").Node;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Document = @import("interfaces").Document;
-const NodeList = @import("interfaces").NodeList;
+const Document = @import("Document.zig").Document;
+const NodeList = @import("NodeList.zig").NodeList;
 const USVString = @import("typedefs").USVString;
-const Event = @import("interfaces").Event;
-const Observable = @import("interfaces").Observable;
-const Element = @import("interfaces").Element;
+const Event = @import("Event.zig").Event;
+const Observable = @import("Observable.zig").Observable;
+const Element = @import("Element.zig").Element;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DOMString = @import("typedefs").DOMString;
 
@@ -84,6 +84,9 @@ pub const Attr = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "namespaceURI", "get_namespaceURI", null },
+            .{ "prefix", "get_prefix", null },
+            .{ "localName", "get_localName", null },
             .{ "name", "get_name", null },
             .{ "value", "get_value", "set_value" },
             .{ "ownerElement", "get_ownerElement", null },
@@ -92,11 +95,11 @@ pub const Attr = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "namespaceURI", "get_namespaceURI", null },
-            .{ "prefix", "get_prefix", null },
-            .{ "localName", "get_localName", null },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

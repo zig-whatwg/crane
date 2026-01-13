@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const EventHandler = @import("typedefs").EventHandler;
-const CryptoKey = @import("interfaces").CryptoKey;
+const CryptoKey = @import("CryptoKey.zig").CryptoKey;
 
 pub const SFrameKeyManagement = struct {
     pub const Meta = struct {
@@ -52,6 +52,9 @@ pub const SFrameKeyManagement = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
-const EventTarget = @import("interfaces").EventTarget;
-const RTCError = @import("interfaces").RTCError;
+const Event = @import("Event.zig").Event;
+const EventTarget = @import("EventTarget.zig").EventTarget;
+const RTCError = @import("RTCError.zig").RTCError;
 const RTCErrorEventInit = @import("dictionaries").RTCErrorEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -65,6 +65,9 @@ pub const RTCErrorEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

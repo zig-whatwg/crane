@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
-const EventTarget = @import("interfaces").EventTarget;
-const XRSession = @import("interfaces").XRSession;
+const Event = @import("Event.zig").Event;
+const EventTarget = @import("EventTarget.zig").EventTarget;
+const XRSession = @import("XRSession.zig").XRSession;
 const XRVisibilityMaskChangeEventInit = @import("dictionaries").XRVisibilityMaskChangeEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -75,6 +75,9 @@ pub const XRVisibilityMaskChangeEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

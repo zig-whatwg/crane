@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("interfaces").Node;
+const Node = @import("Node.zig").Node;
 const ARIAMixin = @import("mixins").ARIAMixin;
 const Animatable = @import("mixins").Animatable;
 const Region = @import("mixins").Region;
@@ -20,10 +20,10 @@ const ChildNode = @import("mixins").ChildNode;
 const Slottable = @import("mixins").Slottable;
 const GeometryUtils = @import("mixins").GeometryUtils;
 const CSSOMString = @import("typedefs").CSSOMString;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const NamedNodeMap = @import("interfaces").NamedNodeMap;
+const NamedNodeMap = @import("NamedNodeMap.zig").NamedNodeMap;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -31,42 +31,42 @@ const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
-const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
+const EventListener = @import("EventListener.zig").EventListener;
+const CSSPseudoElement = @import("CSSPseudoElement.zig").CSSPseudoElement;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
-const Range = @import("interfaces").Range;
-const Event = @import("interfaces").Event;
-const DOMRectList = @import("interfaces").DOMRectList;
+const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const Animation = @import("Animation.zig").Animation;
+const Range = @import("Range.zig").Range;
+const Event = @import("Event.zig").Event;
+const DOMRectList = @import("DOMRectList.zig").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
-const Document = @import("interfaces").Document;
+const Document = @import("Document.zig").Document;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
+const DOMQuad = @import("DOMQuad.zig").DOMQuad;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const DOMTokenList = @import("interfaces").DOMTokenList;
+const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
+const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
-const DOMRect = @import("interfaces").DOMRect;
-const ViewTransition = @import("interfaces").ViewTransition;
+const DOMRect = @import("DOMRect.zig").DOMRect;
+const ViewTransition = @import("ViewTransition.zig").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
-const ShadowRoot = @import("interfaces").ShadowRoot;
-const Attr = @import("interfaces").Attr;
-const TrustedHTML = @import("interfaces").TrustedHTML;
+const ShadowRoot = @import("ShadowRoot.zig").ShadowRoot;
+const Attr = @import("Attr.zig").Attr;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
-const NodeList = @import("interfaces").NodeList;
-const Observable = @import("interfaces").Observable;
-const DOMPoint = @import("interfaces").DOMPoint;
+const NodeList = @import("NodeList.zig").NodeList;
+const Observable = @import("Observable.zig").Observable;
+const DOMPoint = @import("DOMPoint.zig").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
@@ -187,13 +187,6 @@ pub const Element = struct {
             .{ "assignedSlot", "get_assignedSlot", null },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "classList", "value" },
-            .{ "part", "value" },
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "hasAttributes", "call_hasAttributes", 0 },
@@ -245,15 +238,15 @@ pub const Element = struct {
             .{ "animate", "call_animate", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
             .{ "getRegionFlowRanges", "call_getRegionFlowRanges", 0 },
-            .{ "prepend", "call_prepend", 1 },
-            .{ "append", "call_append", 1 },
-            .{ "replaceChildren", "call_replaceChildren", 1 },
+            .{ "prepend", "call_prepend", 0 },
+            .{ "append", "call_append", 0 },
+            .{ "replaceChildren", "call_replaceChildren", 0 },
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
-            .{ "before", "call_before", 1 },
-            .{ "after", "call_after", 1 },
-            .{ "replaceWith", "call_replaceWith", 1 },
+            .{ "before", "call_before", 0 },
+            .{ "after", "call_after", 0 },
+            .{ "replaceWith", "call_replaceWith", 0 },
             .{ "remove", "call_remove", 0 },
             .{ "getBoxQuads", "call_getBoxQuads", 0 },
             .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
@@ -353,10 +346,16 @@ pub const Element = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "namespaceURI", "get_namespaceURI", null },
+            .{ "prefix", "get_prefix", null },
+            .{ "localName", "get_localName", null },
             .{ "tagName", "get_tagName", null },
             .{ "id", "get_id", "set_id" },
             .{ "className", "get_className", "set_className" },
             .{ "classList", "get_classList", "set_classList" },
+            .{ "slot", "get_slot", "set_slot" },
+            .{ "attributes", "get_attributes", null },
+            .{ "shadowRoot", "get_shadowRoot", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
             .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
             .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
@@ -365,6 +364,14 @@ pub const Element = struct {
             .{ "activeViewTransition", "get_activeViewTransition", null },
             .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
             .{ "outerHTML", "get_outerHTML", "set_outerHTML" },
+            .{ "scrollTop", "get_scrollTop", "set_scrollTop" },
+            .{ "scrollLeft", "get_scrollLeft", "set_scrollLeft" },
+            .{ "scrollWidth", "get_scrollWidth", null },
+            .{ "scrollHeight", "get_scrollHeight", null },
+            .{ "clientTop", "get_clientTop", null },
+            .{ "clientLeft", "get_clientLeft", null },
+            .{ "clientWidth", "get_clientWidth", null },
+            .{ "clientHeight", "get_clientHeight", null },
             .{ "currentCSSZoom", "get_currentCSSZoom", null },
             .{ "role", "get_role", "set_role" },
             .{ "ariaActiveDescendantElement", "get_ariaActiveDescendantElement", "set_ariaActiveDescendantElement" },
@@ -425,40 +432,17 @@ pub const Element = struct {
             .{ "childElementCount", "get_childElementCount", null },
             .{ "previousElementSibling", "get_previousElementSibling", null },
             .{ "nextElementSibling", "get_nextElementSibling", null },
+            .{ "assignedSlot", "get_assignedSlot", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "namespaceURI", "get_namespaceURI", null },
-            .{ "prefix", "get_prefix", null },
-            .{ "localName", "get_localName", null },
-            .{ "slot", "get_slot", "set_slot" },
-            .{ "attributes", "get_attributes", null },
-            .{ "shadowRoot", "get_shadowRoot", null },
-            .{ "scrollTop", "get_scrollTop", "set_scrollTop" },
-            .{ "scrollLeft", "get_scrollLeft", "set_scrollLeft" },
-            .{ "scrollWidth", "get_scrollWidth", null },
-            .{ "scrollHeight", "get_scrollHeight", null },
-            .{ "clientTop", "get_clientTop", null },
-            .{ "clientLeft", "get_clientLeft", null },
-            .{ "clientWidth", "get_clientWidth", null },
-            .{ "clientHeight", "get_clientHeight", null },
-            .{ "assignedSlot", "get_assignedSlot", null },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
-        
-        /// Members marked with [Unscopable] extended attribute
-        pub const unscopables = .{
-            "slot",
-            "prepend",
-            "append",
-            "replaceChildren",
-            "before",
-            "after",
-            "replaceWith",
-            "remove",
-        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -874,6 +858,7 @@ pub const Element = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "value", value);
     }
 
@@ -961,6 +946,7 @@ pub const Element = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "value", value);
     }
 

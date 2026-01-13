@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GLenum = @import("typedefs").GLenum;
-const WebGLVertexArrayObjectOES = @import("interfaces").WebGLVertexArrayObjectOES;
+const WebGLVertexArrayObjectOES = @import("WebGLVertexArrayObjectOES.zig").WebGLVertexArrayObjectOES;
 const GLboolean = @import("typedefs").GLboolean;
 
 pub const OES_vertex_array_object = struct {
@@ -45,11 +45,6 @@ pub const OES_vertex_array_object = struct {
             .{ "bindVertexArrayOES", "call_bindVertexArrayOES", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "VERTEX_ARRAY_BINDING_OES", "get_VERTEX_ARRAY_BINDING_OES" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "createVertexArrayOES",
@@ -70,6 +65,9 @@ pub const OES_vertex_array_object = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

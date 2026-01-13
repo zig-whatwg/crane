@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("interfaces").CSSRule;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSRule = @import("CSSRule.zig").CSSRule;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -37,12 +37,6 @@ pub const CSSMarginRule = struct {
             .{ "style", "get_style", "set_style" },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "style", "cssText" },
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
         };
@@ -65,6 +59,9 @@ pub const CSSMarginRule = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -135,7 +132,8 @@ pub const CSSMarginRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        try runtime.setPropertyOnInstance(target, "cssText", value);
+        // Note: target is a JSValue (from [SameObject] caching), not *Instance
+        try runtime.setPropertyOnJSValue(target, instance, "cssText", value);
     }
 
 };

@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const BluetoothDeviceEventHandlers = @import("mixins").BluetoothDeviceEventHandlers;
 const CharacteristicEventHandlers = @import("mixins").CharacteristicEventHandlers;
 const ServiceEventHandlers = @import("mixins").ServiceEventHandlers;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
-const BluetoothRemoteGATTServer = @import("interfaces").BluetoothRemoteGATTServer;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
+const BluetoothRemoteGATTServer = @import("BluetoothRemoteGATTServer.zig").BluetoothRemoteGATTServer;
 const WatchAdvertisementsOptions = @import("dictionaries").WatchAdvertisementsOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -98,6 +98,9 @@ pub const BluetoothDevice = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

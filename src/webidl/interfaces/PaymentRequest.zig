@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
@@ -18,13 +18,13 @@ const PaymentMethodData = @import("dictionaries").PaymentMethodData;
 const PaymentShippingType = @import("enums").PaymentShippingType;
 const SecurePaymentConfirmationAvailability = @import("enums").SecurePaymentConfirmationAvailability;
 const PaymentOptions = @import("dictionaries").PaymentOptions;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const PaymentDetailsInit = @import("dictionaries").PaymentDetailsInit;
-const EventListener = @import("interfaces").EventListener;
-const PaymentResponse = @import("interfaces").PaymentResponse;
-const ContactAddress = @import("interfaces").ContactAddress;
+const EventListener = @import("EventListener.zig").EventListener;
+const PaymentResponse = @import("PaymentResponse.zig").PaymentResponse;
+const ContactAddress = @import("ContactAddress.zig").ContactAddress;
 const DOMString = @import("typedefs").DOMString;
 const PaymentDetailsUpdate = @import("dictionaries").PaymentDetailsUpdate;
 
@@ -63,17 +63,11 @@ pub const PaymentRequest = struct {
             .{ "canMakePayment", "call_canMakePayment", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "securePaymentConfirmationAvailability", "call_static_securePaymentConfirmationAvailability", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "show",
             "abort",
             "canMakePayment",
-            "securePaymentConfirmationAvailability",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -99,6 +93,10 @@ pub const PaymentRequest = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "securePaymentConfirmationAvailability", "call_static_securePaymentConfirmationAvailability", 0 },
+        };
         pub const has_constructor = true;
     };
 
