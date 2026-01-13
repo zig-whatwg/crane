@@ -39,11 +39,6 @@ pub const OES_standard_derivatives = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "FRAGMENT_SHADER_DERIVATIVE_HINT_OES", "get_FRAGMENT_SHADER_DERIVATIVE_HINT_OES" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -60,6 +55,9 @@ pub const OES_standard_derivatives = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

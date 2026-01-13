@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceEntry = @import("interfaces").PerformanceEntry;
+const PerformanceEntry = @import("PerformanceEntry.zig").PerformanceEntry;
 const PaintTimingMixin = @import("mixins").PaintTimingMixin;
-const Element = @import("interfaces").Element;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const Element = @import("Element.zig").Element;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
@@ -84,6 +84,9 @@ pub const PerformanceElementTiming = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

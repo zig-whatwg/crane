@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const GroupEffect = @import("interfaces").GroupEffect;
+const GroupEffect = @import("GroupEffect.zig").GroupEffect;
 const ComputedEffectTiming = @import("dictionaries").ComputedEffectTiming;
 const EffectTiming = @import("dictionaries").EffectTiming;
 const OptionalEffectTiming = @import("dictionaries").OptionalEffectTiming;
@@ -42,9 +42,9 @@ pub const AnimationEffect = struct {
             .{ "getTiming", "call_getTiming", 0 },
             .{ "getComputedTiming", "call_getComputedTiming", 0 },
             .{ "updateTiming", "call_updateTiming", 0 },
-            .{ "before", "call_before", 1 },
-            .{ "after", "call_after", 1 },
-            .{ "replace", "call_replace", 1 },
+            .{ "before", "call_before", 0 },
+            .{ "after", "call_after", 0 },
+            .{ "replace", "call_replace", 0 },
             .{ "remove", "call_remove", 0 },
         };
         
@@ -74,6 +74,9 @@ pub const AnimationEffect = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

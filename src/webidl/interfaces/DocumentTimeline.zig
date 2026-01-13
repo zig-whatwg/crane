@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AnimationTimeline = @import("interfaces").AnimationTimeline;
+const AnimationTimeline = @import("AnimationTimeline.zig").AnimationTimeline;
 const DocumentTimelineOptions = @import("dictionaries").DocumentTimelineOptions;
-const AnimationEffect = @import("interfaces").AnimationEffect;
+const AnimationEffect = @import("AnimationEffect.zig").AnimationEffect;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const Animation = @import("interfaces").Animation;
+const Animation = @import("Animation.zig").Animation;
 
 pub const DocumentTimeline = struct {
     pub const Meta = struct {
@@ -57,6 +57,9 @@ pub const DocumentTimeline = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

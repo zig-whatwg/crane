@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DestroyableModel = @import("mixins").DestroyableModel;
 const Availability = @import("enums").Availability;
-const ReadableStream = @import("interfaces").ReadableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 const SummarizerSummarizeOptions = @import("dictionaries").SummarizerSummarizeOptions;
 const SummarizerCreateCoreOptions = @import("dictionaries").SummarizerCreateCoreOptions;
 const SummarizerType = @import("enums").SummarizerType;
@@ -59,16 +59,8 @@ pub const Summarizer = struct {
             .{ "destroy", "call_destroy", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "create", "call_static_create", 0 },
-            .{ "availability", "call_static_availability", 0 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "create",
-            "availability",
             "summarize",
             "summarizeStreaming",
             "measureInputUsage",
@@ -95,6 +87,11 @@ pub const Summarizer = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "create", "call_static_create", 0 },
+            .{ "availability", "call_static_availability", 0 },
+        };
         pub const has_constructor = false;
     };
 

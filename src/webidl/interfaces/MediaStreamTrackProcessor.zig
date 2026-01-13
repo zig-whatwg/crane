@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const MediaStreamTrackProcessorInit = @import("dictionaries").MediaStreamTrackProcessorInit;
-const ReadableStream = @import("interfaces").ReadableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 
 pub const MediaStreamTrackProcessor = struct {
     pub const Meta = struct {
@@ -54,6 +54,9 @@ pub const MediaStreamTrackProcessor = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

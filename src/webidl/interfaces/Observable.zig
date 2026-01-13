@@ -63,15 +63,9 @@ pub const Observable = struct {
             .{ "reduce", "call_reduce", 1 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "from", "call_static_from", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "subscribe",
-            "from",
             "takeUntil",
             "map",
             "filter",
@@ -104,6 +98,10 @@ pub const Observable = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "from", "call_static_from", 1 },
+        };
         pub const has_constructor = true;
     };
 

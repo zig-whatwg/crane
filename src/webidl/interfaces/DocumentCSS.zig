@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DocumentStyle = @import("interfaces").DocumentStyle;
-const Element = @import("interfaces").Element;
-const StyleSheetList = @import("interfaces").StyleSheetList;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const DocumentStyle = @import("DocumentStyle.zig").DocumentStyle;
+const Element = @import("Element.zig").Element;
+const StyleSheetList = @import("StyleSheetList.zig").StyleSheetList;
+const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
 const DOMString = @import("typedefs").DOMString;
 
 pub const DocumentCSS = struct {
@@ -53,6 +53,9 @@ pub const DocumentCSS = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

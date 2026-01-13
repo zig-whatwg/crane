@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUObjectBase = @import("mixins").GPUObjectBase;
 const GPUPipelineBase = @import("mixins").GPUPipelineBase;
-const GPUBindGroupLayout = @import("interfaces").GPUBindGroupLayout;
+const GPUBindGroupLayout = @import("GPUBindGroupLayout.zig").GPUBindGroupLayout;
 const USVString = @import("typedefs").USVString;
 
 pub const GPURenderPipeline = struct {
@@ -65,6 +65,9 @@ pub const GPURenderPipeline = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

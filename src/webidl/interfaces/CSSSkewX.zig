@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
-const CSSNumericValue = @import("interfaces").CSSNumericValue;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const CSSTransformComponent = @import("CSSTransformComponent.zig").CSSTransformComponent;
+const CSSNumericValue = @import("CSSNumericValue.zig").CSSNumericValue;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSSkewX = struct {
@@ -63,6 +63,9 @@ pub const CSSSkewX = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

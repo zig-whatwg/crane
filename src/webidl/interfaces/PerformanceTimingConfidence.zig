@@ -1,36 +1,46 @@
-//! Generated from: webxr-meshing.idl
+//! Generated from: navigation-timing.idl
 //!
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
-const XRWorldMeshImpl = @import("impls").XRWorldMesh;
+const PerformanceTimingConfidenceImpl = @import("impls").PerformanceTimingConfidence;
 const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const PerformanceTimingConfidenceValue = @import("enums").PerformanceTimingConfidenceValue;
 
-pub const XRWorldMesh = struct {
+pub const PerformanceTimingConfidence = struct {
     pub const Meta = struct {
-        pub const name = "XRWorldMesh";
+        pub const name = "PerformanceTimingConfidence";
         pub const is_mixin = false;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = null;
         pub const MixinTypes = &.{};
-        pub const extended_attributes = .{};
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        };
+        
+        /// Global contexts where this interface is exposed
+        pub const exposed_in = .{ .Window = true };
         
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
+            .{ "randomizedTriggerRate", "get_randomizedTriggerRate", null },
+            .{ "value", "get_value", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "toJSON", "call_toJSON", 0 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "toJSON",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -39,12 +49,17 @@ pub const XRWorldMesh = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "randomizedTriggerRate", "get_randomizedTriggerRate", null },
+            .{ "value", "get_value", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -52,15 +67,18 @@ pub const XRWorldMesh = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            _internal: ?*XRWorldMeshImpl.InternalState = null,
+            randomizedTriggerRate: f64 = undefined,
+            value: enums.PerformanceTimingConfidenceValue = undefined,
+            _internal: ?*PerformanceTimingConfidenceImpl.InternalState = null,
         },
     );
 
-    // ========================================
-    // Constants (static getters)
-    // ========================================
-
     const delegates = .{
+
+        .get_randomizedTriggerRate = &get_randomizedTriggerRate,
+        .get_value = &get_value,
+
+        .call_toJSON = &call_toJSON,
 
         .deinit = &deinit,
     };
@@ -68,7 +86,7 @@ pub const XRWorldMesh = struct {
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
-        return XRWorldMeshImpl.init(allocator, State, &vtable, ctx);
+        return PerformanceTimingConfidenceImpl.init(allocator, State, &vtable, ctx);
     }
 
     /// Initialize with custom state type (for subclasses)
@@ -79,12 +97,24 @@ pub const XRWorldMesh = struct {
         vtable_ptr: *const runtime.VTable,
         ctx: runtime.Context,
     ) !*runtime.Instance {
-        return XRWorldMeshImpl.init(allocator, StateType, vtable_ptr, ctx);
+        return PerformanceTimingConfidenceImpl.init(allocator, StateType, vtable_ptr, ctx);
     }
 
     /// Clean up instance resources
     pub fn deinit(instance: *runtime.Instance) void {
-        XRWorldMeshImpl.deinit(instance);
+        PerformanceTimingConfidenceImpl.deinit(instance);
+    }
+
+    pub fn get_randomizedTriggerRate(instance: *runtime.Instance) anyerror!f64 {
+        return try PerformanceTimingConfidenceImpl.get_randomizedTriggerRate(instance);
+    }
+
+    pub fn get_value(instance: *runtime.Instance) anyerror!PerformanceTimingConfidenceValue {
+        return try PerformanceTimingConfidenceImpl.get_value(instance);
+    }
+
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try PerformanceTimingConfidenceImpl.call_toJSON(instance);
     }
 
 };
