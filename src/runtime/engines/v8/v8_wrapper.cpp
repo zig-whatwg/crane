@@ -3247,11 +3247,15 @@ Global<Module>* v8_Module_Compile(
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Context> local_context = context->Get(isolate);
     Local<String> local_source = source->Get(isolate);
     Local<String> local_name = resource_name ? resource_name->Get(isolate) : String::Empty(isolate);
-    
+
+    // Enter the context for module compilation
+    // This ensures the module is compiled in the right realm
+    Context::Scope context_scope(local_context);
+
     // Create ScriptOrigin for module (is_module = true)
     ScriptOrigin origin(
         local_name,        // resource name
@@ -3264,17 +3268,17 @@ Global<Module>* v8_Module_Compile(
         false,             // is_wasm
         true               // is_module
     );
-    
+
     // Create ScriptCompiler::Source
     ScriptCompiler::Source script_source(local_source, origin);
-    
+
     // Compile the module
     MaybeLocal<Module> maybe_module = ScriptCompiler::CompileModule(isolate, &script_source);
-    
+
     if (maybe_module.IsEmpty()) {
         return nullptr;
     }
-    
+
     Local<Module> module = maybe_module.ToLocalChecked();
     return trackHandle(new Global<Module>(isolate, module));
 }
@@ -3337,12 +3341,16 @@ int v8_Module_GetStatus(Global<Module>* module) {
 bool v8_Module_Instantiate(Global<Context>* context, Global<Module>* module) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Context> local_context = context->Get(isolate);
     Local<Module> local_module = module->Get(isolate);
-    
+
+    // Enter the context for module instantiation
+    // This ensures import resolution happens in the right realm
+    Context::Scope context_scope(local_context);
+
     Maybe<bool> result = local_module->InstantiateModule(local_context, V8ModuleResolveCallback);
-    
+
     return result.FromMaybe(false);
 }
 
@@ -3351,16 +3359,20 @@ bool v8_Module_Instantiate(Global<Context>* context, Global<Module>* module) {
 Global<Value>* v8_Module_Evaluate(Global<Context>* context, Global<Module>* module) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Context> local_context = context->Get(isolate);
     Local<Module> local_module = module->Get(isolate);
-    
+
+    // Enter the context for module evaluation
+    // This is critical for globalThis to reference the correct global object
+    Context::Scope context_scope(local_context);
+
     MaybeLocal<Value> maybe_result = local_module->Evaluate(local_context);
-    
+
     if (maybe_result.IsEmpty()) {
         return nullptr;
     }
-    
+
     Local<Value> result = maybe_result.ToLocalChecked();
     return trackHandle(new Global<Value>(isolate, result));
 }
@@ -3472,7 +3484,7 @@ static MaybeLocal<Promise> V8HostImportModuleDynamicallyCallback(
 ) {
     (void)host_defined_options;
     (void)import_assertions;
-    
+
     Isolate* isolate = context->GetIsolate();
     EscapableHandleScope handle_scope(isolate);
     

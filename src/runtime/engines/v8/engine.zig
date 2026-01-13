@@ -101,6 +101,7 @@ pub const v8_engine_interface: EngineInterface = .{
     .destroyEventLoop = v8DestroyEventLoop,
     .createCallbackWrapper = v8CreateCallbackWrapper,
     .invokeCallback = v8InvokeCallback,
+    .callbacksEqual = v8CallbacksEqual,
     .destroyCallbackWrapper = v8DestroyCallbackWrapper,
     .requestGarbageCollection = v8RequestGarbageCollection,
     .scheduleOnMainThread = v8ScheduleOnMainThread,
@@ -215,6 +216,16 @@ fn v8ResolvePromise(
 }
 
 /// Reject a V8 Promise with an error
+///
+/// CRITICAL: The error object MUST be created in the promise's context (realm),
+/// not in whatever context happens to be current. This is essential for cross-realm
+/// scenarios like:
+///   - fetch() called from iframe that rejects when async callback completes
+///   - Promise created in one realm, rejected from callback in another realm
+///
+/// Per WebIDL spec, the TypeError (or other error) must come from the promise's
+/// realm so that `error instanceof TypeError` works correctly even in cross-realm
+/// scenarios.
 fn v8RejectPromise(
     engine_ctx: *anyopaque,
     promise_handle: *anyopaque,
@@ -232,14 +243,17 @@ fn v8RejectPromise(
     ) orelse return EngineError.OperationFailed;
 
     // Create appropriate Error object based on error type
+    // CRITICAL: Use context-aware exception functions to create the error
+    // in the promise's realm, not the current realm. This ensures the error
+    // is an instance of the promise realm's TypeError/Error constructor.
     const err_obj = switch (err) {
-        error.SyntaxError => ffi.v8_Exception_SyntaxError(err_str) orelse
+        error.SyntaxError => ffi.v8_Exception_SyntaxErrorInContext(handle.context, err_str) orelse
             return EngineError.OperationFailed,
-        error.TypeError => ffi.v8_Exception_TypeError(err_str) orelse
+        error.TypeError => ffi.v8_Exception_TypeErrorInContext(handle.context, err_str) orelse
             return EngineError.OperationFailed,
-        error.RangeError => ffi.v8_Exception_RangeError(err_str) orelse
+        error.RangeError => ffi.v8_Exception_RangeErrorInContext(handle.context, err_str) orelse
             return EngineError.OperationFailed,
-        else => ffi.v8_Exception_Error(err_str) orelse
+        else => ffi.v8_Exception_ErrorInContext(handle.context, err_str) orelse
             return EngineError.OperationFailed,
     };
 
@@ -658,6 +672,8 @@ fn v8InvokeCallback(
     args: [*]const *anyopaque,
     args_len: usize,
 ) EngineError!?*anyopaque {
+    std.debug.print("[v8InvokeCallback] Starting, args_len={}\n", .{args_len});
+
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const wrapper: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper));
 
@@ -665,14 +681,29 @@ fn v8InvokeCallback(
     const v8_args: [*]const *ffi.Value = @ptrCast(args);
     const v8_args_slice = v8_args[0..args_len];
 
+    std.debug.print("[v8InvokeCallback] Calling wrapper.callN\n", .{});
     const result = wrapper.callN(context, v8_args_slice);
+    std.debug.print("[v8InvokeCallback] callN returned: {?*}\n", .{result});
+
     if (result) |r| {
         return @ptrCast(r);
     }
     return null;
 }
 
-/// Destroy a V8 callback wrapper
+/// Compare two V8 callback wrappers
+fn v8CallbacksEqual(
+    callback_wrapper1: *anyopaque,
+    callback_wrapper2: *anyopaque,
+) bool {
+    const w1: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper1));
+    const w2: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper2));
+
+    // With the new CallbackManager design, callbacks are identified by opaque IDs
+    // Two wrappers are equal if they have the same callback_id
+    return w1.equals(w2);
+}
+
 fn v8DestroyCallbackWrapper(
     callback_wrapper: *anyopaque,
 ) void {
@@ -782,7 +813,7 @@ fn v8InvokeStreamCallback(
     // Call the function using safe variant with TryCatch
     const args_ptr: [*]*ffi.Value = &args;
     const call_result = ffi.v8_Function_Call_Safe(
-        callback_fn,
+        @ptrCast(callback_fn),
         context,
         this_val,
         @intCast(arg_count),
@@ -1316,8 +1347,11 @@ fn dynamicImportCallbackWrapper(
         .resolver = promise_resolver,
     };
 
-    // Call the Zig handler
-    handler.callback(handler.context, referrer, spec, resolver);
+    // Call the Zig handler with the ACTUAL V8 context from the callback,
+    // not the static handler.context. This is critical for ShadowRealm support
+    // where the import() is called from a different context than where the handler
+    // was registered.
+    handler.callback(ctx, referrer, spec, resolver);
 }
 
 /// Register a dynamic import handler for the given isolate

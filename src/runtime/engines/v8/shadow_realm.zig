@@ -23,6 +23,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const SnapshotContextIndex = @import("snapshot_context_index.zig").SnapshotContextIndex;
+const context_manager = @import("context_manager.zig");
 
 /// Tracked ShadowRealm context entry
 const ShadowRealmEntry = struct {
@@ -91,6 +92,15 @@ fn shadowRealmContextCallback(
         std.log.err("[ShadowRealm] Failed to create global handle for context", .{});
         ffi.v8_Context_Dispose(context);
         return null;
+    }
+
+    // Register the ShadowRealm context in the context manager
+    // This enables dynamic import to work correctly with ShadowRealm contexts
+    if (callback_data) |data| {
+        // Use the callback data's allocator for the context entry
+        _ = context_manager.getOrCreate(context, data.allocator) catch |err| {
+            std.log.warn("[ShadowRealm] Failed to register context in manager: {}", .{err});
+        };
     }
 
     // Track the ShadowRealm for lifetime management
