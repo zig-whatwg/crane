@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AnimationTriggerBehavior = @import("enums").AnimationTriggerBehavior;
 const AnimationTriggerOptions = @import("dictionaries").AnimationTriggerOptions;
-const AnimationTimeline = @import("interfaces").AnimationTimeline;
+const AnimationTimeline = @import("AnimationTimeline.zig").AnimationTimeline;
 
 pub const AnimationTrigger = struct {
     pub const Meta = struct {
@@ -65,6 +65,9 @@ pub const AnimationTrigger = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

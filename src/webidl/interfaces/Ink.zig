@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DelegatedInkTrailPresenter = @import("interfaces").DelegatedInkTrailPresenter;
+const DelegatedInkTrailPresenter = @import("DelegatedInkTrailPresenter.zig").DelegatedInkTrailPresenter;
 const InkPresenterParam = @import("dictionaries").InkPresenterParam;
 
 pub const Ink = struct {
@@ -54,6 +54,9 @@ pub const Ink = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

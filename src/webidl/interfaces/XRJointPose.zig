@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRPose = @import("interfaces").XRPose;
-const XRRigidTransform = @import("interfaces").XRRigidTransform;
-const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
+const XRPose = @import("XRPose.zig").XRPose;
+const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
+const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
 
 pub const XRJointPose = struct {
     pub const Meta = struct {
@@ -56,6 +56,9 @@ pub const XRJointPose = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

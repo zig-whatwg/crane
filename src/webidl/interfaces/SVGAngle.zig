@@ -41,15 +41,6 @@ pub const SVGAngle = struct {
             .{ "convertToSpecifiedUnits", "call_convertToSpecifiedUnits", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_ANGLETYPE_UNKNOWN", "get_SVG_ANGLETYPE_UNKNOWN" },
-            .{ "SVG_ANGLETYPE_UNSPECIFIED", "get_SVG_ANGLETYPE_UNSPECIFIED" },
-            .{ "SVG_ANGLETYPE_DEG", "get_SVG_ANGLETYPE_DEG" },
-            .{ "SVG_ANGLETYPE_RAD", "get_SVG_ANGLETYPE_RAD" },
-            .{ "SVG_ANGLETYPE_GRAD", "get_SVG_ANGLETYPE_GRAD" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "newValueSpecifiedUnits",
@@ -72,6 +63,9 @@ pub const SVGAngle = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

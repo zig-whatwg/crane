@@ -11,23 +11,23 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ByteString = @import("typedefs").ByteString;
-const Performance = @import("interfaces").Performance;
-const CacheStorage = @import("interfaces").CacheStorage;
+const Performance = @import("Performance.zig").Performance;
+const CacheStorage = @import("CacheStorage.zig").CacheStorage;
 const VoidFunction = @import("callbacks").VoidFunction;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
-const IDBFactory = @import("interfaces").IDBFactory;
+const IDBFactory = @import("IDBFactory.zig").IDBFactory;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
-const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
+const TrustedTypePolicyFactory = @import("TrustedTypePolicyFactory.zig").TrustedTypePolicyFactory;
 const TimerHandler = @import("typedefs").TimerHandler;
 const USVString = @import("typedefs").USVString;
 const RequestInfo = @import("typedefs").RequestInfo;
 const RequestInit = @import("dictionaries").RequestInit;
-const Scheduler = @import("interfaces").Scheduler;
-const Crypto = @import("interfaces").Crypto;
+const Scheduler = @import("Scheduler.zig").Scheduler;
+const Crypto = @import("Crypto.zig").Crypto;
 const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
-const Response = @import("interfaces").Response;
+const Response = @import("Response.zig").Response;
 const DOMString = @import("typedefs").DOMString;
-const ImageBitmap = @import("interfaces").ImageBitmap;
+const ImageBitmap = @import("ImageBitmap.zig").ImageBitmap;
 
 pub const WindowOrWorkerGlobalScope = struct {
     pub const Meta = struct {
@@ -57,9 +57,9 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "reportError", "call_reportError", 1 },
             .{ "btoa", "call_btoa", 1 },
             .{ "atob", "call_atob", 1 },
-            .{ "setTimeout", "call_setTimeout", 2 },
+            .{ "setTimeout", "call_setTimeout", 1 },
             .{ "clearTimeout", "call_clearTimeout", 0 },
-            .{ "setInterval", "call_setInterval", 2 },
+            .{ "setInterval", "call_setInterval", 1 },
             .{ "clearInterval", "call_clearInterval", 0 },
             .{ "queueMicrotask", "call_queueMicrotask", 1 },
             .{ "createImageBitmap", "call_createImageBitmap", 1 },
@@ -103,6 +103,9 @@ pub const WindowOrWorkerGlobalScope = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

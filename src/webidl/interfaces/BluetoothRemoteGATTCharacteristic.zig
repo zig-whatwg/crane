@@ -10,20 +10,20 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const CharacteristicEventHandlers = @import("mixins").CharacteristicEventHandlers;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const UUID = @import("typedefs").UUID;
-const BluetoothCharacteristicProperties = @import("interfaces").BluetoothCharacteristicProperties;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
-const BluetoothRemoteGATTDescriptor = @import("interfaces").BluetoothRemoteGATTDescriptor;
+const BluetoothCharacteristicProperties = @import("BluetoothCharacteristicProperties.zig").BluetoothCharacteristicProperties;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
+const BluetoothRemoteGATTDescriptor = @import("BluetoothRemoteGATTDescriptor.zig").BluetoothRemoteGATTDescriptor;
 const BufferSource = @import("typedefs").BufferSource;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const BluetoothDescriptorUUID = @import("typedefs").BluetoothDescriptorUUID;
-const BluetoothRemoteGATTService = @import("interfaces").BluetoothRemoteGATTService;
+const BluetoothRemoteGATTService = @import("BluetoothRemoteGATTService.zig").BluetoothRemoteGATTService;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -100,6 +100,9 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

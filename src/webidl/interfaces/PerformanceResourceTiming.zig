@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceEntry = @import("interfaces").PerformanceEntry;
+const PerformanceEntry = @import("PerformanceEntry.zig").PerformanceEntry;
 const ByteString = @import("typedefs").ByteString;
 const RenderBlockingStatusType = @import("enums").RenderBlockingStatusType;
-const PerformanceServerTiming = @import("interfaces").PerformanceServerTiming;
+const PerformanceServerTiming = @import("PerformanceServerTiming.zig").PerformanceServerTiming;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const DOMString = @import("typedefs").DOMString;
 
@@ -55,6 +55,10 @@ pub const PerformanceResourceTiming = struct {
             .{ "firstInterimResponseStart", "get_firstInterimResponseStart", null },
             .{ "responseStart", "get_responseStart", null },
             .{ "responseEnd", "get_responseEnd", null },
+            .{ "workerRouterEvaluationStart", "get_workerRouterEvaluationStart", null },
+            .{ "workerCacheLookupStart", "get_workerCacheLookupStart", null },
+            .{ "workerMatchedRouterSource", "get_workerMatchedRouterSource", null },
+            .{ "workerFinalRouterSource", "get_workerFinalRouterSource", null },
             .{ "transferSize", "get_transferSize", null },
             .{ "encodedBodySize", "get_encodedBodySize", null },
             .{ "decodedBodySize", "get_decodedBodySize", null },
@@ -98,6 +102,10 @@ pub const PerformanceResourceTiming = struct {
             .{ "firstInterimResponseStart", "get_firstInterimResponseStart", null },
             .{ "responseStart", "get_responseStart", null },
             .{ "responseEnd", "get_responseEnd", null },
+            .{ "workerRouterEvaluationStart", "get_workerRouterEvaluationStart", null },
+            .{ "workerCacheLookupStart", "get_workerCacheLookupStart", null },
+            .{ "workerMatchedRouterSource", "get_workerMatchedRouterSource", null },
+            .{ "workerFinalRouterSource", "get_workerFinalRouterSource", null },
             .{ "transferSize", "get_transferSize", null },
             .{ "encodedBodySize", "get_encodedBodySize", null },
             .{ "decodedBodySize", "get_decodedBodySize", null },
@@ -112,6 +120,9 @@ pub const PerformanceResourceTiming = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -136,6 +147,10 @@ pub const PerformanceResourceTiming = struct {
             firstInterimResponseStart: typedefs.DOMHighResTimeStamp = undefined,
             responseStart: typedefs.DOMHighResTimeStamp = undefined,
             responseEnd: typedefs.DOMHighResTimeStamp = undefined,
+            workerRouterEvaluationStart: typedefs.DOMHighResTimeStamp = undefined,
+            workerCacheLookupStart: typedefs.DOMHighResTimeStamp = undefined,
+            workerMatchedRouterSource: typedefs.DOMString = undefined,
+            workerFinalRouterSource: typedefs.DOMString = undefined,
             transferSize: u64 = undefined,
             encodedBodySize: u64 = undefined,
             decodedBodySize: u64 = undefined,
@@ -178,6 +193,10 @@ pub const PerformanceResourceTiming = struct {
         firstInterimResponseStart: DOMHighResTimeStamp,
         responseStart: DOMHighResTimeStamp,
         responseEnd: DOMHighResTimeStamp,
+        workerRouterEvaluationStart: DOMHighResTimeStamp,
+        workerCacheLookupStart: DOMHighResTimeStamp,
+        workerMatchedRouterSource: runtime.DOMString,
+        workerFinalRouterSource: runtime.DOMString,
         transferSize: u64,
         encodedBodySize: u64,
         decodedBodySize: u64,
@@ -214,6 +233,10 @@ pub const PerformanceResourceTiming = struct {
         .get_secureConnectionStart = &get_secureConnectionStart,
         .get_serverTiming = &get_serverTiming,
         .get_transferSize = &get_transferSize,
+        .get_workerCacheLookupStart = &get_workerCacheLookupStart,
+        .get_workerFinalRouterSource = &get_workerFinalRouterSource,
+        .get_workerMatchedRouterSource = &get_workerMatchedRouterSource,
+        .get_workerRouterEvaluationStart = &get_workerRouterEvaluationStart,
         .get_workerStart = &get_workerStart,
 
         .call_toJSON = &call_toJSON,
@@ -309,6 +332,22 @@ pub const PerformanceResourceTiming = struct {
 
     pub fn get_responseEnd(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceResourceTimingImpl.get_responseEnd(instance);
+    }
+
+    pub fn get_workerRouterEvaluationStart(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
+        return try PerformanceResourceTimingImpl.get_workerRouterEvaluationStart(instance);
+    }
+
+    pub fn get_workerCacheLookupStart(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
+        return try PerformanceResourceTimingImpl.get_workerCacheLookupStart(instance);
+    }
+
+    pub fn get_workerMatchedRouterSource(instance: *runtime.Instance) anyerror!DOMString {
+        return try PerformanceResourceTimingImpl.get_workerMatchedRouterSource(instance);
+    }
+
+    pub fn get_workerFinalRouterSource(instance: *runtime.Instance) anyerror!DOMString {
+        return try PerformanceResourceTimingImpl.get_workerFinalRouterSource(instance);
     }
 
     pub fn get_transferSize(instance: *runtime.Instance) anyerror!u64 {

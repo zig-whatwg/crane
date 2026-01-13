@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AnimationNodeList = @import("interfaces").AnimationNodeList;
-const AnimationEffect = @import("interfaces").AnimationEffect;
+const AnimationNodeList = @import("AnimationNodeList.zig").AnimationNodeList;
+const AnimationEffect = @import("AnimationEffect.zig").AnimationEffect;
 const EffectTiming = @import("dictionaries").EffectTiming;
 
 pub const GroupEffect = struct {
@@ -39,8 +39,8 @@ pub const GroupEffect = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
-            .{ "prepend", "call_prepend", 1 },
-            .{ "append", "call_append", 1 },
+            .{ "prepend", "call_prepend", 0 },
+            .{ "append", "call_append", 0 },
         };
         
         /// Methods defined/overridden by this interface
@@ -65,6 +65,9 @@ pub const GroupEffect = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

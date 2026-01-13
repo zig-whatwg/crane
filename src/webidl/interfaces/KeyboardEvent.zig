@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const UIEvent = @import("interfaces").UIEvent;
-const Window = @import("interfaces").Window;
+const UIEvent = @import("UIEvent.zig").UIEvent;
+const Window = @import("Window.zig").Window;
 const UIEventInit = @import("dictionaries").UIEventInit;
-const EventTarget = @import("interfaces").EventTarget;
-const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const EventTarget = @import("EventTarget.zig").EventTarget;
+const InputDeviceCapabilities = @import("InputDeviceCapabilities.zig").InputDeviceCapabilities;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -57,14 +57,6 @@ pub const KeyboardEvent = struct {
             .{ "initKeyboardEvent", "call_initKeyboardEvent", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "DOM_KEY_LOCATION_STANDARD", "get_DOM_KEY_LOCATION_STANDARD" },
-            .{ "DOM_KEY_LOCATION_LEFT", "get_DOM_KEY_LOCATION_LEFT" },
-            .{ "DOM_KEY_LOCATION_RIGHT", "get_DOM_KEY_LOCATION_RIGHT" },
-            .{ "DOM_KEY_LOCATION_NUMPAD", "get_DOM_KEY_LOCATION_NUMPAD" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getModifierState",
@@ -100,6 +92,9 @@ pub const KeyboardEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

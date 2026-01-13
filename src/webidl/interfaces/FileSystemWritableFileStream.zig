@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WritableStream = @import("interfaces").WritableStream;
-const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
+const WritableStream = @import("WritableStream.zig").WritableStream;
+const WritableStreamDefaultWriter = @import("WritableStreamDefaultWriter.zig").WritableStreamDefaultWriter;
 const FileSystemWriteChunkType = @import("typedefs").FileSystemWriteChunkType;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 
@@ -68,6 +68,9 @@ pub const FileSystemWritableFileStream = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

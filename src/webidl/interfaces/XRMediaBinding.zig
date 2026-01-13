@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLVideoElement = @import("interfaces").HTMLVideoElement;
+const HTMLVideoElement = @import("HTMLVideoElement.zig").HTMLVideoElement;
 const XRMediaCylinderLayerInit = @import("dictionaries").XRMediaCylinderLayerInit;
-const XREquirectLayer = @import("interfaces").XREquirectLayer;
+const XREquirectLayer = @import("XREquirectLayer.zig").XREquirectLayer;
 const XRMediaQuadLayerInit = @import("dictionaries").XRMediaQuadLayerInit;
-const XRCylinderLayer = @import("interfaces").XRCylinderLayer;
-const XRSession = @import("interfaces").XRSession;
-const XRQuadLayer = @import("interfaces").XRQuadLayer;
+const XRCylinderLayer = @import("XRCylinderLayer.zig").XRCylinderLayer;
+const XRSession = @import("XRSession.zig").XRSession;
+const XRQuadLayer = @import("XRQuadLayer.zig").XRQuadLayer;
 const XRMediaEquirectLayerInit = @import("dictionaries").XRMediaEquirectLayerInit;
 
 pub const XRMediaBinding = struct {
@@ -64,6 +64,9 @@ pub const XRMediaBinding = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const USVString = @import("typedefs").USVString;
-const Blob = @import("interfaces").Blob;
-const HTMLElement = @import("interfaces").HTMLElement;
-const HTMLFormElement = @import("interfaces").HTMLFormElement;
+const Blob = @import("Blob.zig").Blob;
+const HTMLElement = @import("HTMLElement.zig").HTMLElement;
+const HTMLFormElement = @import("HTMLFormElement.zig").HTMLFormElement;
 const FormDataEntryValue = @import("typedefs").FormDataEntryValue;
 
 pub const FormData = struct {
@@ -73,6 +73,9 @@ pub const FormData = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
         
         /// Iterable declaration (for Symbol.iterator support)

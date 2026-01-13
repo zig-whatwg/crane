@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemEntry = @import("interfaces").FileSystemEntry;
+const FileSystemEntry = @import("FileSystemEntry.zig").FileSystemEntry;
 const ErrorCallback = @import("callbacks").ErrorCallback;
-const FileSystem = @import("interfaces").FileSystem;
+const FileSystem = @import("FileSystem.zig").FileSystem;
 const FileSystemEntryCallback = @import("callbacks").FileSystemEntryCallback;
 const USVString = @import("typedefs").USVString;
 const FileSystemFlags = @import("dictionaries").FileSystemFlags;
-const FileSystemDirectoryReader = @import("interfaces").FileSystemDirectoryReader;
+const FileSystemDirectoryReader = @import("FileSystemDirectoryReader.zig").FileSystemDirectoryReader;
 
 pub const FileSystemDirectoryEntry = struct {
     pub const Meta = struct {
@@ -65,6 +65,9 @@ pub const FileSystemDirectoryEntry = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

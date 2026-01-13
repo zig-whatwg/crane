@@ -10,20 +10,20 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AudioNode = @import("interfaces").AudioNode;
+const AudioNode = @import("AudioNode.zig").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const BaseAudioContext = @import("interfaces").BaseAudioContext;
+const BaseAudioContext = @import("BaseAudioContext.zig").BaseAudioContext;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const ChannelCountMode = @import("enums").ChannelCountMode;
-const AudioParamMap = @import("interfaces").AudioParamMap;
+const AudioParamMap = @import("AudioParamMap.zig").AudioParamMap;
 const AudioWorkletNodeOptions = @import("dictionaries").AudioWorkletNodeOptions;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
-const AudioParam = @import("interfaces").AudioParam;
+const EventListener = @import("EventListener.zig").EventListener;
+const AudioParam = @import("AudioParam.zig").AudioParam;
 const ChannelInterpretation = @import("enums").ChannelInterpretation;
-const MessagePort = @import("interfaces").MessagePort;
+const MessagePort = @import("MessagePort.zig").MessagePort;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -66,13 +66,6 @@ pub const AudioWorkletNode = struct {
             "dispatchEvent",
             "when",
             "connect",
-            "connect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
-            "disconnect",
             "disconnect",
         };
         
@@ -87,6 +80,9 @@ pub const AudioWorkletNode = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

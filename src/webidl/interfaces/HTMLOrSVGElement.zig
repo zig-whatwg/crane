@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMStringMap = @import("interfaces").DOMStringMap;
+const DOMStringMap = @import("DOMStringMap.zig").DOMStringMap;
 const DOMString = @import("typedefs").DOMString;
 const FocusOptions = @import("dictionaries").FocusOptions;
 
@@ -50,16 +50,19 @@ pub const HTMLOrSVGElement = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "dataset", "get_dataset", null },
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
+            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "dataset", "get_dataset", null },
-            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
