@@ -10,40 +10,40 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const OscillatorNode = @import("interfaces").OscillatorNode;
-const ScriptProcessorNode = @import("interfaces").ScriptProcessorNode;
-const DelayNode = @import("interfaces").DelayNode;
+const OscillatorNode = @import("OscillatorNode.zig").OscillatorNode;
+const ScriptProcessorNode = @import("ScriptProcessorNode.zig").ScriptProcessorNode;
+const DelayNode = @import("DelayNode.zig").DelayNode;
 const DecodeErrorCallback = @import("callbacks").DecodeErrorCallback;
-const AudioDestinationNode = @import("interfaces").AudioDestinationNode;
-const ConvolverNode = @import("interfaces").ConvolverNode;
+const AudioDestinationNode = @import("AudioDestinationNode.zig").AudioDestinationNode;
+const ConvolverNode = @import("ConvolverNode.zig").ConvolverNode;
 const AudioContextState = @import("enums").AudioContextState;
-const PannerNode = @import("interfaces").PannerNode;
-const AudioBufferSourceNode = @import("interfaces").AudioBufferSourceNode;
-const WaveShaperNode = @import("interfaces").WaveShaperNode;
+const PannerNode = @import("PannerNode.zig").PannerNode;
+const AudioBufferSourceNode = @import("AudioBufferSourceNode.zig").AudioBufferSourceNode;
+const WaveShaperNode = @import("WaveShaperNode.zig").WaveShaperNode;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
-const IIRFilterNode = @import("interfaces").IIRFilterNode;
-const AudioBuffer = @import("interfaces").AudioBuffer;
+const EventListener = @import("EventListener.zig").EventListener;
+const IIRFilterNode = @import("IIRFilterNode.zig").IIRFilterNode;
+const AudioBuffer = @import("AudioBuffer.zig").AudioBuffer;
 const EventHandler = @import("typedefs").EventHandler;
-const AudioListener = @import("interfaces").AudioListener;
+const AudioListener = @import("AudioListener.zig").AudioListener;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DecodeSuccessCallback = @import("callbacks").DecodeSuccessCallback;
-const AnalyserNode = @import("interfaces").AnalyserNode;
-const StereoPannerNode = @import("interfaces").StereoPannerNode;
-const GainNode = @import("interfaces").GainNode;
-const ChannelSplitterNode = @import("interfaces").ChannelSplitterNode;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
-const ConstantSourceNode = @import("interfaces").ConstantSourceNode;
-const ChannelMergerNode = @import("interfaces").ChannelMergerNode;
-const PeriodicWave = @import("interfaces").PeriodicWave;
+const AnalyserNode = @import("AnalyserNode.zig").AnalyserNode;
+const StereoPannerNode = @import("StereoPannerNode.zig").StereoPannerNode;
+const GainNode = @import("GainNode.zig").GainNode;
+const ChannelSplitterNode = @import("ChannelSplitterNode.zig").ChannelSplitterNode;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
+const ConstantSourceNode = @import("ConstantSourceNode.zig").ConstantSourceNode;
+const ChannelMergerNode = @import("ChannelMergerNode.zig").ChannelMergerNode;
+const PeriodicWave = @import("PeriodicWave.zig").PeriodicWave;
 const PeriodicWaveConstraints = @import("dictionaries").PeriodicWaveConstraints;
-const AudioWorklet = @import("interfaces").AudioWorklet;
-const BiquadFilterNode = @import("interfaces").BiquadFilterNode;
+const AudioWorklet = @import("AudioWorklet.zig").AudioWorklet;
+const BiquadFilterNode = @import("BiquadFilterNode.zig").BiquadFilterNode;
 const DOMString = @import("typedefs").DOMString;
-const DynamicsCompressorNode = @import("interfaces").DynamicsCompressorNode;
+const DynamicsCompressorNode = @import("DynamicsCompressorNode.zig").DynamicsCompressorNode;
 
 pub const BaseAudioContext = struct {
     pub const Meta = struct {
@@ -143,6 +143,9 @@ pub const BaseAudioContext = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

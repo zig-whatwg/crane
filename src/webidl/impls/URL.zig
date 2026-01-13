@@ -10,6 +10,15 @@ const interfaces = @import("interfaces");
 const URL = interfaces.URL;
 const URLSearchParams = interfaces.URLSearchParams;
 
+// Import V8 for internal field access
+const v8_engine = @import("v8");
+const v8 = v8_engine.ffi;
+
+// Import file module for Blob URL store
+const file_mod = @import("file");
+const BlobURLStore = file_mod.BlobURLStore;
+const BlobImpl = @import("Blob.zig");
+
 // Import URL infrastructure from src/url/
 const URLRecord = @import("url_record").URLRecord;
 const api_parser = @import("api_parser");
@@ -22,6 +31,16 @@ const percent_encoding = @import("percent_encoding");
 const EncodeSet = @import("encode_sets").EncodeSet;
 const ParserState = @import("parser_state").ParserState;
 const form_parser = @import("form_parser");
+const infra = @import("infra");
+
+/// URLSearchParams's InternalState structure (for type-safe casting)
+/// This mirrors the structure in URLSearchParams.zig without creating a circular dependency
+/// MUST use form_parser.Tuple to match the actual list type in URLSearchParams
+const URLSearchParamsInternalState = struct {
+    list: infra.List(form_parser.Tuple),
+    url_object: ?*runtime.Instance,
+    allocator: std.mem.Allocator,
+};
 
 pub const State = URL.State;
 
@@ -346,7 +365,9 @@ pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     internal.url_record.deinit();
     internal.url_record = parsed;
 
-    // TODO: Update query object
+    // Update query object with new URL's query
+    const query_str = parsed.query() orelse "";
+    try updateQueryObjectList(internal, query_str);
 }
 
 /// protocol setter
@@ -534,12 +555,13 @@ pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyer
     // Step 1: If has opaque path, return
     if (internal.url_record.hasOpaquePath()) return;
 
-    // Step 2: Basic URL parse with host state override
+    // Step 2: Basic URL parse with hostname state override
+    // NOTE: Uses .hostname which rejects port (unlike .host which accepts port)
     _ = basic_parser.parseWithStateOverride(
         internal.allocator,
         value,
         null,
-        ParserState.host,
+        ParserState.hostname,
         &internal.url_record,
     ) catch {
         return;
@@ -582,6 +604,18 @@ pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyer
     // Step 1: If has opaque path, return
     if (internal.url_record.hasOpaquePath()) return;
 
+    // Step 2: Empty this's URL's path
+    switch (internal.url_record.path) {
+        .segments => |*segments| {
+            // Free each existing segment
+            for (segments.toSlice()) |segment| {
+                internal.allocator.free(segment);
+            }
+            segments.clear();
+        },
+        .opaque_path => {}, // Opaque paths handled by step 1 check above
+    }
+
     // Step 3: Parse with path start state override
     _ = basic_parser.parseWithStateOverride(
         internal.allocator,
@@ -603,7 +637,8 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
     // Step 2: If empty, set query to null
     if (value.len == 0) {
         internal.url_record.query_len = 0;
-        // TODO: Empty query object list
+        // Step 2.2: Empty this's query object's list
+        try updateQueryObjectList(internal, "");
         return;
     }
 
@@ -624,7 +659,36 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
         return;
     };
 
-    // TODO: Update query object's list
+    // Step 6: Set this's query object's list to the result of parsing input
+    try updateQueryObjectList(internal, input);
+}
+
+/// Helper to update the query object's list when URL.search is set
+/// Spec: https://url.spec.whatwg.org/#dom-url-search steps 2.2 and 6
+fn updateQueryObjectList(internal: *InternalState, query: []const u8) !void {
+    const params_instance = internal.query_params_instance orelse return;
+    const params_state = params_instance.getState(URLSearchParams.State);
+    const params_internal: *URLSearchParamsInternalState = @ptrCast(@alignCast(params_state.own._internal orelse return));
+
+    // Clear existing list entries (free memory)
+    for (0..params_internal.list.len) |i| {
+        if (params_internal.list.get(i)) |tuple| {
+            params_internal.allocator.free(tuple.name);
+            params_internal.allocator.free(tuple.value);
+        }
+    }
+    params_internal.list.clear();
+
+    // If query is empty, we're done
+    if (query.len == 0) return;
+
+    // Parse the new query string and add entries
+    const tuples = try form_parser.parse(params_internal.allocator, query);
+    defer params_internal.allocator.free(tuples);
+
+    for (tuples) |tuple| {
+        try params_internal.list.append(tuple);
+    }
 }
 
 /// hash setter
@@ -705,36 +769,110 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// createObjectURL static method (Blob URLs)
+/// Spec: https://www.w3.org/TR/FileAPI/#dfn-createObjectURL
+///
+/// Creates a blob URL for the given Blob object.
+/// The URL can be used to reference the Blob in contexts like img.src, a.href, etc.
 pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = obj;
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+
+    // Get the global blob URL store
+    const store = file_mod.getGlobalBlobURLStore() orelse {
+        // If no store exists, create one and set it as global
+        const new_store = try allocator.create(BlobURLStore);
+        new_store.* = BlobURLStore.init(allocator);
+        file_mod.setGlobalBlobURLStore(new_store);
+        return call_static_createObjectURL(instance, obj);
+    };
+
+    // Extract the Blob's internal data from the JSValue
+    // The JSValue contains a V8 object wrapping a runtime.Instance
+    const v8_value = obj.asEngineHandle();
+    const value: *v8.Value = @ptrCast(v8_value);
+
+    if (!v8.v8_Value_IsObject(value)) {
+        return error.TypeError;
+    }
+
+    const v8_obj: *v8.Object = @ptrCast(value);
+    const field_count = v8.v8_Object_InternalFieldCount(v8_obj);
+    if (field_count < 1) {
+        return error.TypeError;
+    }
+
+    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(v8_obj, 0) orelse {
+        return error.TypeError;
+    };
+
+    // The internal field should point to a runtime.Instance
+    const blob_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+
+    // Get the Blob's internal state
+    const blob_internal = BlobImpl.getInternal(blob_instance) orelse {
+        return error.TypeError;
+    };
+
+    // Get origin from context (use "null" origin for file:// or opaque origins)
+    // Per spec, the origin is the serialization of the entry settings object's origin
+    const origin = "null"; // Default to "null" origin for now
+
+    // Create the blob URL
+    const blob_url = try store.createObjectURL(blob_internal.blob_data, origin);
+
+    // Return as DOMString (take ownership of the allocated URL string)
+    return runtime.DOMString.initOwned(blob_url);
 }
 
 /// revokeObjectURL static method (Blob URLs)
+/// Spec: https://www.w3.org/TR/FileAPI/#dfn-revokeObjectURL
+///
+/// Revokes a previously created blob URL, making it no longer usable.
 pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
     _ = instance;
-    _ = url;
-    return error.NotImplemented;
+
+    // Get the global blob URL store
+    const store = file_mod.getGlobalBlobURLStore() orelse {
+        // No store means no URLs to revoke
+        return;
+    };
+
+    // Revoke the URL
+    store.revokeObjectURL(url.asSlice());
 }
 
+/// createObjectURL instance method (delegates to static)
 pub fn call_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = obj;
-    return error.NotImplemented;
+    return call_static_createObjectURL(instance, obj);
 }
 
+/// canParse static method
+/// Spec: https://url.spec.whatwg.org/#dom-url-canparse
 pub fn call_canParse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!bool {
     _ = instance;
-    _ = url;
-    _ = base;
-    return error.NotImplemented;
+
+    // Try to parse the URL with the given base
+    const base_slice = if (base.was_passed) base.value else "";
+    var base_record: ?URLRecord = null;
+
+    if (base_slice.len > 0) {
+        base_record = api_parser.parseURL(std.heap.c_allocator, base_slice, null) catch {
+            return false;
+        };
+    }
+    defer if (base_record) |*br| br.deinit();
+
+    // Try to parse the URL
+    var url_record = api_parser.parseURL(std.heap.c_allocator, url, base_record) catch {
+        return false;
+    };
+    url_record.deinit();
+
+    return true;
 }
 
+/// revokeObjectURL instance method (delegates to static)
 pub fn call_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = url;
-    return error.NotImplemented;
+    return call_static_revokeObjectURL(instance, url);
 }
 
 pub fn call_parse(instance: *runtime.Instance, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) anyerror!?*runtime.Instance {

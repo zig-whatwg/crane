@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GenericTransformStream = @import("mixins").GenericTransformStream;
-const ReadableStream = @import("interfaces").ReadableStream;
-const WritableStream = @import("interfaces").WritableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const WritableStream = @import("WritableStream.zig").WritableStream;
 const CompressionFormat = @import("enums").CompressionFormat;
 
 pub const DecompressionStream = struct {
@@ -60,6 +60,9 @@ pub const DecompressionStream = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

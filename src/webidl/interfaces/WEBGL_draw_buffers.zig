@@ -40,44 +40,6 @@ pub const WEBGL_draw_buffers = struct {
             .{ "drawBuffersWEBGL", "call_drawBuffersWEBGL", 1 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "COLOR_ATTACHMENT0_WEBGL", "get_COLOR_ATTACHMENT0_WEBGL" },
-            .{ "COLOR_ATTACHMENT1_WEBGL", "get_COLOR_ATTACHMENT1_WEBGL" },
-            .{ "COLOR_ATTACHMENT2_WEBGL", "get_COLOR_ATTACHMENT2_WEBGL" },
-            .{ "COLOR_ATTACHMENT3_WEBGL", "get_COLOR_ATTACHMENT3_WEBGL" },
-            .{ "COLOR_ATTACHMENT4_WEBGL", "get_COLOR_ATTACHMENT4_WEBGL" },
-            .{ "COLOR_ATTACHMENT5_WEBGL", "get_COLOR_ATTACHMENT5_WEBGL" },
-            .{ "COLOR_ATTACHMENT6_WEBGL", "get_COLOR_ATTACHMENT6_WEBGL" },
-            .{ "COLOR_ATTACHMENT7_WEBGL", "get_COLOR_ATTACHMENT7_WEBGL" },
-            .{ "COLOR_ATTACHMENT8_WEBGL", "get_COLOR_ATTACHMENT8_WEBGL" },
-            .{ "COLOR_ATTACHMENT9_WEBGL", "get_COLOR_ATTACHMENT9_WEBGL" },
-            .{ "COLOR_ATTACHMENT10_WEBGL", "get_COLOR_ATTACHMENT10_WEBGL" },
-            .{ "COLOR_ATTACHMENT11_WEBGL", "get_COLOR_ATTACHMENT11_WEBGL" },
-            .{ "COLOR_ATTACHMENT12_WEBGL", "get_COLOR_ATTACHMENT12_WEBGL" },
-            .{ "COLOR_ATTACHMENT13_WEBGL", "get_COLOR_ATTACHMENT13_WEBGL" },
-            .{ "COLOR_ATTACHMENT14_WEBGL", "get_COLOR_ATTACHMENT14_WEBGL" },
-            .{ "COLOR_ATTACHMENT15_WEBGL", "get_COLOR_ATTACHMENT15_WEBGL" },
-            .{ "DRAW_BUFFER0_WEBGL", "get_DRAW_BUFFER0_WEBGL" },
-            .{ "DRAW_BUFFER1_WEBGL", "get_DRAW_BUFFER1_WEBGL" },
-            .{ "DRAW_BUFFER2_WEBGL", "get_DRAW_BUFFER2_WEBGL" },
-            .{ "DRAW_BUFFER3_WEBGL", "get_DRAW_BUFFER3_WEBGL" },
-            .{ "DRAW_BUFFER4_WEBGL", "get_DRAW_BUFFER4_WEBGL" },
-            .{ "DRAW_BUFFER5_WEBGL", "get_DRAW_BUFFER5_WEBGL" },
-            .{ "DRAW_BUFFER6_WEBGL", "get_DRAW_BUFFER6_WEBGL" },
-            .{ "DRAW_BUFFER7_WEBGL", "get_DRAW_BUFFER7_WEBGL" },
-            .{ "DRAW_BUFFER8_WEBGL", "get_DRAW_BUFFER8_WEBGL" },
-            .{ "DRAW_BUFFER9_WEBGL", "get_DRAW_BUFFER9_WEBGL" },
-            .{ "DRAW_BUFFER10_WEBGL", "get_DRAW_BUFFER10_WEBGL" },
-            .{ "DRAW_BUFFER11_WEBGL", "get_DRAW_BUFFER11_WEBGL" },
-            .{ "DRAW_BUFFER12_WEBGL", "get_DRAW_BUFFER12_WEBGL" },
-            .{ "DRAW_BUFFER13_WEBGL", "get_DRAW_BUFFER13_WEBGL" },
-            .{ "DRAW_BUFFER14_WEBGL", "get_DRAW_BUFFER14_WEBGL" },
-            .{ "DRAW_BUFFER15_WEBGL", "get_DRAW_BUFFER15_WEBGL" },
-            .{ "MAX_COLOR_ATTACHMENTS_WEBGL", "get_MAX_COLOR_ATTACHMENTS_WEBGL" },
-            .{ "MAX_DRAW_BUFFERS_WEBGL", "get_MAX_DRAW_BUFFERS_WEBGL" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "drawBuffersWEBGL",
@@ -95,6 +57,9 @@ pub const WEBGL_draw_buffers = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

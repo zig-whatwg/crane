@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const UIEvent = @import("interfaces").UIEvent;
+const UIEvent = @import("UIEvent.zig").UIEvent;
 const UIEventInit = @import("dictionaries").UIEventInit;
 const NavigationEventInit = @import("dictionaries").NavigationEventInit;
-const Window = @import("interfaces").Window;
+const Window = @import("Window.zig").Window;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
-const EventTarget = @import("interfaces").EventTarget;
-const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const EventTarget = @import("EventTarget.zig").EventTarget;
+const InputDeviceCapabilities = @import("InputDeviceCapabilities.zig").InputDeviceCapabilities;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -63,14 +63,17 @@ pub const NavigationEvent = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "dir", "get_dir", null },
             .{ "relatedTarget", "get_relatedTarget", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "dir", "get_dir", null },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

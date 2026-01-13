@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const GPUAdapter = @import("interfaces").GPUAdapter;
-const WGSLLanguageFeatures = @import("interfaces").WGSLLanguageFeatures;
+const GPUAdapter = @import("GPUAdapter.zig").GPUAdapter;
+const WGSLLanguageFeatures = @import("WGSLLanguageFeatures.zig").WGSLLanguageFeatures;
 const GPURequestAdapterOptions = @import("dictionaries").GPURequestAdapterOptions;
 const GPUTextureFormat = @import("enums").GPUTextureFormat;
 
@@ -64,6 +64,9 @@ pub const GPU = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

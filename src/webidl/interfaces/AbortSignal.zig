@@ -10,15 +10,15 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
-const Observable = @import("interfaces").Observable;
+const Observable = @import("Observable.zig").Observable;
 
 pub const AbortSignal = struct {
     pub const Meta = struct {
@@ -48,18 +48,8 @@ pub const AbortSignal = struct {
             .{ "throwIfAborted", "call_throwIfAborted", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "abort", "call_static_abort", 0 },
-            .{ "timeout", "call_static_timeout", 1 },
-            .{ "_any", "call_static__any", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "abort",
-            "timeout",
-            "_any",
             "throwIfAborted",
         };
         
@@ -82,6 +72,12 @@ pub const AbortSignal = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "abort", "call_static_abort", 0 },
+            .{ "timeout", "call_static_timeout", 1 },
+            .{ "_any", "call_static__any", 1 },
+        };
         pub const has_constructor = false;
     };
 

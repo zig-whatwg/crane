@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XPathNSResolver = @import("interfaces").XPathNSResolver;
-const XPathExpression = @import("interfaces").XPathExpression;
-const Node = @import("interfaces").Node;
-const XPathResult = @import("interfaces").XPathResult;
+const XPathNSResolver = @import("XPathNSResolver.zig").XPathNSResolver;
+const XPathExpression = @import("XPathExpression.zig").XPathExpression;
+const Node = @import("Node.zig").Node;
+const XPathResult = @import("XPathResult.zig").XPathResult;
 const DOMString = @import("typedefs").DOMString;
 
 pub const XPathEvaluatorBase = struct {
@@ -56,6 +56,9 @@ pub const XPathEvaluatorBase = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

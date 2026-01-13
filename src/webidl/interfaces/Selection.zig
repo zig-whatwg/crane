@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("interfaces").Node;
+const Node = @import("Node.zig").Node;
 const GetComposedRangesOptions = @import("dictionaries").GetComposedRangesOptions;
-const Range = @import("interfaces").Range;
+const Range = @import("Range.zig").Range;
 const DOMString = @import("typedefs").DOMString;
-const StaticRange = @import("interfaces").StaticRange;
+const StaticRange = @import("StaticRange.zig").StaticRange;
 
 pub const Selection = struct {
     pub const Meta = struct {
@@ -105,6 +105,9 @@ pub const Selection = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

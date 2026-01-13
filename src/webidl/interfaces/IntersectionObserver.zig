@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Document = @import("interfaces").Document;
-const Element = @import("interfaces").Element;
+const Document = @import("Document.zig").Document;
+const Element = @import("Element.zig").Element;
 const IntersectionObserverCallback = @import("callbacks").IntersectionObserverCallback;
 const IntersectionObserverInit = @import("dictionaries").IntersectionObserverInit;
-const IntersectionObserverEntry = @import("interfaces").IntersectionObserverEntry;
+const IntersectionObserverEntry = @import("IntersectionObserverEntry.zig").IntersectionObserverEntry;
 const DOMString = @import("typedefs").DOMString;
 
 pub const IntersectionObserver = struct {
@@ -76,6 +76,9 @@ pub const IntersectionObserver = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

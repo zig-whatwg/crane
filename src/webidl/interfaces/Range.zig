@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AbstractRange = @import("interfaces").AbstractRange;
-const DocumentFragment = @import("interfaces").DocumentFragment;
-const DOMRect = @import("interfaces").DOMRect;
-const TrustedHTML = @import("interfaces").TrustedHTML;
-const Node = @import("interfaces").Node;
-const DOMRectList = @import("interfaces").DOMRectList;
+const AbstractRange = @import("AbstractRange.zig").AbstractRange;
+const DocumentFragment = @import("DocumentFragment.zig").DocumentFragment;
+const DOMRect = @import("DOMRect.zig").DOMRect;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
+const Node = @import("Node.zig").Node;
+const DOMRectList = @import("DOMRectList.zig").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Range = struct {
@@ -67,14 +67,6 @@ pub const Range = struct {
             .{ "toString", "serialize", 0 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "START_TO_START", "get_START_TO_START" },
-            .{ "START_TO_END", "get_START_TO_END" },
-            .{ "END_TO_END", "get_END_TO_END" },
-            .{ "END_TO_START", "get_END_TO_START" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setStart",
@@ -116,6 +108,9 @@ pub const Range = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

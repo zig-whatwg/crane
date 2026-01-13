@@ -44,7 +44,11 @@ pub const GPUSupportedLimits = struct {
             .{ "maxSampledTexturesPerShaderStage", "get_maxSampledTexturesPerShaderStage", null },
             .{ "maxSamplersPerShaderStage", "get_maxSamplersPerShaderStage", null },
             .{ "maxStorageBuffersPerShaderStage", "get_maxStorageBuffersPerShaderStage", null },
+            .{ "maxStorageBuffersInVertexStage", "get_maxStorageBuffersInVertexStage", null },
+            .{ "maxStorageBuffersInFragmentStage", "get_maxStorageBuffersInFragmentStage", null },
             .{ "maxStorageTexturesPerShaderStage", "get_maxStorageTexturesPerShaderStage", null },
+            .{ "maxStorageTexturesInVertexStage", "get_maxStorageTexturesInVertexStage", null },
+            .{ "maxStorageTexturesInFragmentStage", "get_maxStorageTexturesInFragmentStage", null },
             .{ "maxUniformBuffersPerShaderStage", "get_maxUniformBuffersPerShaderStage", null },
             .{ "maxUniformBufferBindingSize", "get_maxUniformBufferBindingSize", null },
             .{ "maxStorageBufferBindingSize", "get_maxStorageBufferBindingSize", null },
@@ -91,7 +95,11 @@ pub const GPUSupportedLimits = struct {
             .{ "maxSampledTexturesPerShaderStage", "get_maxSampledTexturesPerShaderStage", null },
             .{ "maxSamplersPerShaderStage", "get_maxSamplersPerShaderStage", null },
             .{ "maxStorageBuffersPerShaderStage", "get_maxStorageBuffersPerShaderStage", null },
+            .{ "maxStorageBuffersInVertexStage", "get_maxStorageBuffersInVertexStage", null },
+            .{ "maxStorageBuffersInFragmentStage", "get_maxStorageBuffersInFragmentStage", null },
             .{ "maxStorageTexturesPerShaderStage", "get_maxStorageTexturesPerShaderStage", null },
+            .{ "maxStorageTexturesInVertexStage", "get_maxStorageTexturesInVertexStage", null },
+            .{ "maxStorageTexturesInFragmentStage", "get_maxStorageTexturesInFragmentStage", null },
             .{ "maxUniformBuffersPerShaderStage", "get_maxUniformBuffersPerShaderStage", null },
             .{ "maxUniformBufferBindingSize", "get_maxUniformBufferBindingSize", null },
             .{ "maxStorageBufferBindingSize", "get_maxStorageBufferBindingSize", null },
@@ -116,6 +124,9 @@ pub const GPUSupportedLimits = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -135,7 +146,11 @@ pub const GPUSupportedLimits = struct {
             maxSampledTexturesPerShaderStage: u32 = undefined,
             maxSamplersPerShaderStage: u32 = undefined,
             maxStorageBuffersPerShaderStage: u32 = undefined,
+            maxStorageBuffersInVertexStage: u32 = undefined,
+            maxStorageBuffersInFragmentStage: u32 = undefined,
             maxStorageTexturesPerShaderStage: u32 = undefined,
+            maxStorageTexturesInVertexStage: u32 = undefined,
+            maxStorageTexturesInFragmentStage: u32 = undefined,
             maxUniformBuffersPerShaderStage: u32 = undefined,
             maxUniformBufferBindingSize: u64 = undefined,
             maxStorageBufferBindingSize: u64 = undefined,
@@ -178,7 +193,11 @@ pub const GPUSupportedLimits = struct {
         .get_maxSampledTexturesPerShaderStage = &get_maxSampledTexturesPerShaderStage,
         .get_maxSamplersPerShaderStage = &get_maxSamplersPerShaderStage,
         .get_maxStorageBufferBindingSize = &get_maxStorageBufferBindingSize,
+        .get_maxStorageBuffersInFragmentStage = &get_maxStorageBuffersInFragmentStage,
+        .get_maxStorageBuffersInVertexStage = &get_maxStorageBuffersInVertexStage,
         .get_maxStorageBuffersPerShaderStage = &get_maxStorageBuffersPerShaderStage,
+        .get_maxStorageTexturesInFragmentStage = &get_maxStorageTexturesInFragmentStage,
+        .get_maxStorageTexturesInVertexStage = &get_maxStorageTexturesInVertexStage,
         .get_maxStorageTexturesPerShaderStage = &get_maxStorageTexturesPerShaderStage,
         .get_maxTextureArrayLayers = &get_maxTextureArrayLayers,
         .get_maxTextureDimension1D = &get_maxTextureDimension1D,
@@ -265,8 +284,24 @@ pub const GPUSupportedLimits = struct {
         return try GPUSupportedLimitsImpl.get_maxStorageBuffersPerShaderStage(instance);
     }
 
+    pub fn get_maxStorageBuffersInVertexStage(instance: *runtime.Instance) anyerror!u32 {
+        return try GPUSupportedLimitsImpl.get_maxStorageBuffersInVertexStage(instance);
+    }
+
+    pub fn get_maxStorageBuffersInFragmentStage(instance: *runtime.Instance) anyerror!u32 {
+        return try GPUSupportedLimitsImpl.get_maxStorageBuffersInFragmentStage(instance);
+    }
+
     pub fn get_maxStorageTexturesPerShaderStage(instance: *runtime.Instance) anyerror!u32 {
         return try GPUSupportedLimitsImpl.get_maxStorageTexturesPerShaderStage(instance);
+    }
+
+    pub fn get_maxStorageTexturesInVertexStage(instance: *runtime.Instance) anyerror!u32 {
+        return try GPUSupportedLimitsImpl.get_maxStorageTexturesInVertexStage(instance);
+    }
+
+    pub fn get_maxStorageTexturesInFragmentStage(instance: *runtime.Instance) anyerror!u32 {
+        return try GPUSupportedLimitsImpl.get_maxStorageTexturesInFragmentStage(instance);
     }
 
     pub fn get_maxUniformBuffersPerShaderStage(instance: *runtime.Instance) anyerror!u32 {

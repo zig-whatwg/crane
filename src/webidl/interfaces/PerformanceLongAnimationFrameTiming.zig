@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceEntry = @import("interfaces").PerformanceEntry;
+const PerformanceEntry = @import("PerformanceEntry.zig").PerformanceEntry;
 const PaintTimingMixin = @import("mixins").PaintTimingMixin;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const PerformanceScriptTiming = @import("interfaces").PerformanceScriptTiming;
+const PerformanceScriptTiming = @import("PerformanceScriptTiming.zig").PerformanceScriptTiming;
 const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceLongAnimationFrameTiming = struct {
@@ -82,6 +82,9 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

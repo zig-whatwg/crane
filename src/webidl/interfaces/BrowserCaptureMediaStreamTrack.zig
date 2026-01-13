@@ -10,21 +10,21 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CaptureHandle = @import("dictionaries").CaptureHandle;
-const CropTarget = @import("interfaces").CropTarget;
+const CropTarget = @import("CropTarget.zig").CropTarget;
 const MediaTrackSettings = @import("dictionaries").MediaTrackSettings;
-const RestrictionTarget = @import("interfaces").RestrictionTarget;
+const RestrictionTarget = @import("RestrictionTarget.zig").RestrictionTarget;
 const MediaTrackConstraints = @import("dictionaries").MediaTrackConstraints;
 const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
-const Event = @import("interfaces").Event;
-const Observable = @import("interfaces").Observable;
+const Event = @import("Event.zig").Event;
+const Observable = @import("Observable.zig").Observable;
 const CaptureAction = @import("enums").CaptureAction;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -86,6 +86,9 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -133,9 +136,9 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
     }
 
-    pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: ?*runtime.Instance) anyerror!runtime.JSValue {
+    pub fn call_restrictTo(instance: *runtime.Instance, RestrictionTarget_param: ?*runtime.Instance) anyerror!runtime.JSValue {
         
-        return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
+        return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, RestrictionTarget_param);
     }
 
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {

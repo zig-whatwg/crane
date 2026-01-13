@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const USBInterface = @import("interfaces").USBInterface;
-const USBEndpoint = @import("interfaces").USBEndpoint;
+const USBInterface = @import("USBInterface.zig").USBInterface;
+const USBEndpoint = @import("USBEndpoint.zig").USBEndpoint;
 const DOMString = @import("typedefs").DOMString;
 
 pub const USBAlternateInterface = struct {
@@ -69,6 +69,9 @@ pub const USBAlternateInterface = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

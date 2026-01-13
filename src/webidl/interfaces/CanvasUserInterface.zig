@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const Path2D = @import("interfaces").Path2D;
+const Element = @import("Element.zig").Element;
+const Path2D = @import("Path2D.zig").Path2D;
 
 pub const CanvasUserInterface = struct {
     pub const Meta = struct {
@@ -49,6 +49,9 @@ pub const CanvasUserInterface = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

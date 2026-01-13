@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
 const TextTrackKind = @import("enums").TextTrackKind;
-const Observable = @import("interfaces").Observable;
+const Observable = @import("Observable.zig").Observable;
 const TextTrackMode = @import("enums").TextTrackMode;
-const Event = @import("interfaces").Event;
-const TextTrackCueList = @import("interfaces").TextTrackCueList;
+const Event = @import("Event.zig").Event;
+const TextTrackCueList = @import("TextTrackCueList.zig").TextTrackCueList;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const SourceBuffer = @import("interfaces").SourceBuffer;
-const EventListener = @import("interfaces").EventListener;
-const TextTrackCue = @import("interfaces").TextTrackCue;
+const SourceBuffer = @import("SourceBuffer.zig").SourceBuffer;
+const EventListener = @import("EventListener.zig").EventListener;
+const TextTrackCue = @import("TextTrackCue.zig").TextTrackCue;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const TextTrack = struct {
@@ -96,6 +96,9 @@ pub const TextTrack = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

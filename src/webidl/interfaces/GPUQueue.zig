@@ -13,11 +13,11 @@ const dictionaries = @import("dictionaries");
 const GPUObjectBase = @import("mixins").GPUObjectBase;
 const AllowSharedBufferSource = @import("typedefs").AllowSharedBufferSource;
 const GPUTexelCopyBufferLayout = @import("dictionaries").GPUTexelCopyBufferLayout;
-const GPUBuffer = @import("interfaces").GPUBuffer;
+const GPUBuffer = @import("GPUBuffer.zig").GPUBuffer;
 const GPUSize64 = @import("typedefs").GPUSize64;
 const GPUCopyExternalImageSourceInfo = @import("dictionaries").GPUCopyExternalImageSourceInfo;
 const GPUTexelCopyTextureInfo = @import("dictionaries").GPUTexelCopyTextureInfo;
-const GPUCommandBuffer = @import("interfaces").GPUCommandBuffer;
+const GPUCommandBuffer = @import("GPUCommandBuffer.zig").GPUCommandBuffer;
 const GPUCopyExternalImageDestInfo = @import("dictionaries").GPUCopyExternalImageDestInfo;
 const GPUExtent3D = @import("typedefs").GPUExtent3D;
 const USVString = @import("typedefs").USVString;
@@ -79,6 +79,9 @@ pub const GPUQueue = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
