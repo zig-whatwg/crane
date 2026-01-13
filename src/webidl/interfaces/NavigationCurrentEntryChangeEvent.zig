@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const NavigationCurrentEntryChangeEventInit = @import("dictionaries").NavigationCurrentEntryChangeEventInit;
 const NavigationType = @import("enums").NavigationType;
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const NavigationHistoryEntry = @import("interfaces").NavigationHistoryEntry;
+const NavigationHistoryEntry = @import("NavigationHistoryEntry.zig").NavigationHistoryEntry;
 const DOMString = @import("typedefs").DOMString;
 
 pub const NavigationCurrentEntryChangeEvent = struct {
@@ -68,6 +68,9 @@ pub const NavigationCurrentEntryChangeEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

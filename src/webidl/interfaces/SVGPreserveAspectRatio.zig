@@ -36,24 +36,6 @@ pub const SVGPreserveAspectRatio = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "SVG_PRESERVEASPECTRATIO_UNKNOWN", "get_SVG_PRESERVEASPECTRATIO_UNKNOWN" },
-            .{ "SVG_PRESERVEASPECTRATIO_NONE", "get_SVG_PRESERVEASPECTRATIO_NONE" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMINYMIN", "get_SVG_PRESERVEASPECTRATIO_XMINYMIN" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMIDYMIN", "get_SVG_PRESERVEASPECTRATIO_XMIDYMIN" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMAXYMIN", "get_SVG_PRESERVEASPECTRATIO_XMAXYMIN" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMINYMID", "get_SVG_PRESERVEASPECTRATIO_XMINYMID" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMIDYMID", "get_SVG_PRESERVEASPECTRATIO_XMIDYMID" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMAXYMID", "get_SVG_PRESERVEASPECTRATIO_XMAXYMID" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMINYMAX", "get_SVG_PRESERVEASPECTRATIO_XMINYMAX" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMIDYMAX", "get_SVG_PRESERVEASPECTRATIO_XMIDYMAX" },
-            .{ "SVG_PRESERVEASPECTRATIO_XMAXYMAX", "get_SVG_PRESERVEASPECTRATIO_XMAXYMAX" },
-            .{ "SVG_MEETORSLICE_UNKNOWN", "get_SVG_MEETORSLICE_UNKNOWN" },
-            .{ "SVG_MEETORSLICE_MEET", "get_SVG_MEETORSLICE_MEET" },
-            .{ "SVG_MEETORSLICE_SLICE", "get_SVG_MEETORSLICE_SLICE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -72,6 +54,9 @@ pub const SVGPreserveAspectRatio = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

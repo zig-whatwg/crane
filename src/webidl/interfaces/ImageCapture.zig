@@ -11,10 +11,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const PhotoSettings = @import("dictionaries").PhotoSettings;
-const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
 const PhotoCapabilities = @import("dictionaries").PhotoCapabilities;
-const Blob = @import("interfaces").Blob;
-const ImageBitmap = @import("interfaces").ImageBitmap;
+const Blob = @import("Blob.zig").Blob;
+const ImageBitmap = @import("ImageBitmap.zig").ImageBitmap;
 
 pub const ImageCapture = struct {
     pub const Meta = struct {
@@ -66,6 +66,9 @@ pub const ImageCapture = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const SerialOutputSignals = @import("dictionaries").SerialOutputSignals;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const SerialInputSignals = @import("dictionaries").SerialInputSignals;
-const Event = @import("interfaces").Event;
-const Observable = @import("interfaces").Observable;
-const ReadableStream = @import("interfaces").ReadableStream;
+const Event = @import("Event.zig").Event;
+const Observable = @import("Observable.zig").Observable;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 const SerialPortInfo = @import("dictionaries").SerialPortInfo;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const SerialOptions = @import("dictionaries").SerialOptions;
-const WritableStream = @import("interfaces").WritableStream;
+const WritableStream = @import("WritableStream.zig").WritableStream;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -96,6 +96,9 @@ pub const SerialPort = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

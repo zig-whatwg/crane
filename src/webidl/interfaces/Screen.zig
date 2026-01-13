@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ScreenOrientation = @import("interfaces").ScreenOrientation;
+const ScreenOrientation = @import("ScreenOrientation.zig").ScreenOrientation;
 const EventHandler = @import("typedefs").EventHandler;
 
 pub const Screen = struct {
@@ -70,6 +70,9 @@ pub const Screen = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

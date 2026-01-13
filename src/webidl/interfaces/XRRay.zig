@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMPointInit = @import("dictionaries").DOMPointInit;
-const XRRigidTransform = @import("interfaces").XRRigidTransform;
+const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
 const XRRayDirectionInit = @import("dictionaries").XRRayDirectionInit;
-const DOMPointReadOnly = @import("interfaces").DOMPointReadOnly;
+const DOMPointReadOnly = @import("DOMPointReadOnly.zig").DOMPointReadOnly;
 
 pub const XRRay = struct {
     pub const Meta = struct {
@@ -61,6 +61,9 @@ pub const XRRay = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

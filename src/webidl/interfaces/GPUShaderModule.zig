@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUObjectBase = @import("mixins").GPUObjectBase;
-const GPUCompilationInfo = @import("interfaces").GPUCompilationInfo;
+const GPUCompilationInfo = @import("GPUCompilationInfo.zig").GPUCompilationInfo;
 const USVString = @import("typedefs").USVString;
 
 pub const GPUShaderModule = struct {
@@ -63,6 +63,9 @@ pub const GPUShaderModule = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

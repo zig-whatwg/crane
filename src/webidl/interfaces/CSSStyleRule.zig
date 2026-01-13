@@ -10,14 +10,14 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const CSSGroupingRule = @import("CSSGroupingRule.zig").CSSGroupingRule;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("interfaces").CSSRule;
-const StylePropertyMap = @import("interfaces").StylePropertyMap;
-const CSSRuleList = @import("interfaces").CSSRuleList;
-const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const CSSRule = @import("CSSRule.zig").CSSRule;
+const StylePropertyMap = @import("StylePropertyMap.zig").StylePropertyMap;
+const CSSRuleList = @import("CSSRuleList.zig").CSSRuleList;
+const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
+const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSStyleRule = struct {
@@ -41,12 +41,6 @@ pub const CSSStyleRule = struct {
             .{ "selectorText", "get_selectorText", "set_selectorText" },
             .{ "style", "get_style", "set_style" },
             .{ "styleMap", "get_styleMap", null },
-        };
-        
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "style", "cssText" },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -74,6 +68,9 @@ pub const CSSStyleRule = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -152,6 +149,7 @@ pub const CSSStyleRule = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

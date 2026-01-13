@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const ResizeObserverSize = @import("interfaces").ResizeObserverSize;
+const Element = @import("Element.zig").Element;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
+const ResizeObserverSize = @import("ResizeObserverSize.zig").ResizeObserverSize;
 
 pub const ResizeObserverEntry = struct {
     pub const Meta = struct {
@@ -63,6 +63,9 @@ pub const ResizeObserverEntry = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

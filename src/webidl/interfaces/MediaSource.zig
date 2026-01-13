@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const EndOfStreamError = @import("enums").EndOfStreamError;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const MediaSourceHandle = @import("interfaces").MediaSourceHandle;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
-const SourceBufferList = @import("interfaces").SourceBufferList;
+const MediaSourceHandle = @import("MediaSourceHandle.zig").MediaSourceHandle;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
+const SourceBufferList = @import("SourceBufferList.zig").SourceBufferList;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const SourceBuffer = @import("interfaces").SourceBuffer;
-const EventListener = @import("interfaces").EventListener;
+const SourceBuffer = @import("SourceBuffer.zig").SourceBuffer;
+const EventListener = @import("EventListener.zig").EventListener;
 const ReadyState = @import("enums").ReadyState;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
@@ -66,11 +66,6 @@ pub const MediaSource = struct {
             .{ "clearLiveSeekableRange", "call_clearLiveSeekableRange", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "addSourceBuffer",
@@ -78,7 +73,6 @@ pub const MediaSource = struct {
             "endOfStream",
             "setLiveSeekableRange",
             "clearLiveSeekableRange",
-            "isTypeSupported",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -106,6 +100,10 @@ pub const MediaSource = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
+        };
         pub const has_constructor = true;
     };
 

@@ -12,12 +12,12 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCSetParameterOptions = @import("dictionaries").RTCSetParameterOptions;
-const MediaStream = @import("interfaces").MediaStream;
+const MediaStream = @import("MediaStream.zig").MediaStream;
 const RTCRtpSendParameters = @import("dictionaries").RTCRtpSendParameters;
-const RTCStatsReport = @import("interfaces").RTCStatsReport;
-const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
-const RTCDTMFSender = @import("interfaces").RTCDTMFSender;
-const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const RTCStatsReport = @import("RTCStatsReport.zig").RTCStatsReport;
+const RTCDtlsTransport = @import("RTCDtlsTransport.zig").RTCDtlsTransport;
+const RTCDTMFSender = @import("RTCDTMFSender.zig").RTCDTMFSender;
+const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
 const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
 const DOMString = @import("typedefs").DOMString;
 
@@ -49,18 +49,12 @@ pub const RTCRtpSender = struct {
             .{ "setParameters", "call_setParameters", 1 },
             .{ "getParameters", "call_getParameters", 0 },
             .{ "replaceTrack", "call_replaceTrack", 1 },
-            .{ "setStreams", "call_setStreams", 1 },
+            .{ "setStreams", "call_setStreams", 0 },
             .{ "getStats", "call_getStats", 0 },
-        };
-        
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "getCapabilities", "call_static_getCapabilities", 1 },
         };
         
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "getCapabilities",
             "setParameters",
             "getParameters",
             "replaceTrack",
@@ -84,6 +78,10 @@ pub const RTCRtpSender = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "getCapabilities", "call_static_getCapabilities", 1 },
+        };
         pub const has_constructor = false;
     };
 

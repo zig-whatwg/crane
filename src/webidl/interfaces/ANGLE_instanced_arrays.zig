@@ -46,11 +46,6 @@ pub const ANGLE_instanced_arrays = struct {
             .{ "vertexAttribDivisorANGLE", "call_vertexAttribDivisorANGLE", 2 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE", "get_VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "drawArraysInstancedANGLE",
@@ -70,6 +65,9 @@ pub const ANGLE_instanced_arrays = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
