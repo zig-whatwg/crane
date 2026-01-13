@@ -97,6 +97,9 @@ pub fn init(
     internal.* = InternalState.init(allocator);
     try Registry.set(instance, internal);
 
+    // Set node type to TEXT_NODE (3) - must be done in init for all Text nodes
+    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.TEXT_NODE);
+
     return instance;
 }
 
@@ -123,8 +126,7 @@ pub fn call_constructor(ctx: runtime.Context, data: webidl.Opt(runtime.DOMString
     const instance = try init(ctx.allocator, State, &Text.vtable, ctx);
     errdefer deinit(instance);
 
-    // Set node type to TEXT_NODE (3)
-    try NodeImpl.setNodeType(instance, NodeImpl.NodeType.TEXT_NODE);
+    // Note: node type is set to TEXT_NODE in init()
 
     // Set the text data via CharacterData
     const data_slice = if (data.was_passed) data.value.asSlice() else "";

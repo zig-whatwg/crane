@@ -892,6 +892,7 @@ pub fn get_outerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
 fn serializeNode(node: *runtime.Instance, result: *infra.List(u8), allocator: std.mem.Allocator) !void {
     _ = allocator;
     const node_type = NodeImpl.getNodeType(node) orelse return;
+    std.debug.print("[serializeNode] Processing node type: {d}\n", .{node_type});
 
     switch (node_type) {
         NodeImpl.NodeType.ELEMENT_NODE => {
@@ -950,6 +951,7 @@ fn serializeNode(node: *runtime.Instance, result: *infra.List(u8), allocator: st
         NodeImpl.NodeType.TEXT_NODE => {
             // Get text content
             const text = CharacterDataImpl.getData(node);
+            std.debug.print("[serializeNode] TEXT_NODE found, text={s}\n", .{text orelse "(null)"});
             if (text) |t| {
                 // Escape text content
                 for (t) |c| {

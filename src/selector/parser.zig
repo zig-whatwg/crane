@@ -398,6 +398,9 @@ pub const PseudoClassKind = union(enum) {
     Empty,
     Root,
 
+    // Location pseudo-classes
+    Target,
+
     // Nth pseudo-classes
     NthChild: NthPattern,
     NthLastChild: NthPattern,
@@ -933,6 +936,7 @@ pub const Parser = struct {
         if (std.mem.eql(u8, name, "empty")) return .Empty;
         if (std.mem.eql(u8, name, "root")) return .Root;
         if (std.mem.eql(u8, name, "scope")) return .Scope;
+        if (std.mem.eql(u8, name, "target")) return .Target;
         if (std.mem.eql(u8, name, "any-link")) return .AnyLink;
         if (std.mem.eql(u8, name, "link")) return .Link;
         if (std.mem.eql(u8, name, "visited")) return .Visited;

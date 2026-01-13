@@ -1437,10 +1437,21 @@ pub const TreeBuilder = struct {
                 try self.handleBeforeHtmlAnythingElse();
                 try self.processToken(token);
             },
-            .text_run => {
-                // Text runs contain non-whitespace text, treat as "anything else"
-                try self.handleBeforeHtmlAnythingElse();
-                try self.processToken(token);
+            .text_run => |text_run| {
+                // Check if text_run is all whitespace - if so, ignore it
+                var all_whitespace = true;
+                for (text_run.data) |c| {
+                    if (!isHtmlWhitespace(c)) {
+                        all_whitespace = false;
+                        break;
+                    }
+                }
+                if (!all_whitespace) {
+                    // Non-whitespace text triggers "anything else"
+                    try self.handleBeforeHtmlAnythingElse();
+                    try self.processToken(token);
+                }
+                // Whitespace-only text_run is ignored in before_html mode
             },
         }
     }
@@ -1510,10 +1521,21 @@ pub const TreeBuilder = struct {
                 try self.handleBeforeHeadAnythingElse();
                 try self.processToken(token);
             },
-            .text_run => {
-                // Text runs contain non-whitespace text, treat as "anything else"
-                try self.handleBeforeHeadAnythingElse();
-                try self.processToken(token);
+            .text_run => |text_run| {
+                // Check if text_run is all whitespace - if so, ignore it
+                var all_whitespace = true;
+                for (text_run.data) |c| {
+                    if (!isHtmlWhitespace(c)) {
+                        all_whitespace = false;
+                        break;
+                    }
+                }
+                if (!all_whitespace) {
+                    // Non-whitespace text triggers "anything else"
+                    try self.handleBeforeHeadAnythingElse();
+                    try self.processToken(token);
+                }
+                // Whitespace-only text_run is ignored in before_head mode
             },
         }
     }
@@ -1631,10 +1653,25 @@ pub const TreeBuilder = struct {
                 try self.handleInHeadAnythingElse();
                 try self.processToken(token);
             },
-            .text_run => {
-                // Text runs contain non-whitespace text, treat as "anything else"
-                try self.handleInHeadAnythingElse();
-                try self.processToken(token);
+            .text_run => |text_run| {
+                // Check if text_run is all whitespace
+                var all_whitespace = true;
+                for (text_run.data) |c| {
+                    if (!isHtmlWhitespace(c)) {
+                        all_whitespace = false;
+                        break;
+                    }
+                }
+                if (all_whitespace) {
+                    // Insert whitespace text_run as characters
+                    for (text_run.data) |c| {
+                        try self.insertCharacter(c);
+                    }
+                } else {
+                    // Non-whitespace text triggers "anything else"
+                    try self.handleInHeadAnythingElse();
+                    try self.processToken(token);
+                }
             },
         }
     }
@@ -1845,10 +1882,25 @@ pub const TreeBuilder = struct {
                 try self.handleAfterHeadAnythingElse();
                 try self.processToken(token);
             },
-            .text_run => {
-                // Text runs contain non-whitespace text, treat as "anything else"
-                try self.handleAfterHeadAnythingElse();
-                try self.processToken(token);
+            .text_run => |text_run| {
+                // Check if text_run is all whitespace
+                var all_whitespace = true;
+                for (text_run.data) |c| {
+                    if (!isHtmlWhitespace(c)) {
+                        all_whitespace = false;
+                        break;
+                    }
+                }
+                if (all_whitespace) {
+                    // Insert whitespace text_run as characters
+                    for (text_run.data) |c| {
+                        try self.insertCharacter(c);
+                    }
+                } else {
+                    // Non-whitespace text triggers "anything else"
+                    try self.handleAfterHeadAnythingElse();
+                    try self.processToken(token);
+                }
             },
         }
     }

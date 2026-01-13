@@ -447,7 +447,6 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 
     // Handle data: URLs with script execution
     if (std.mem.startsWith(u8, value, "data:")) {
-        std.debug.print("[set_src] Detected data: URL, calling loadDataUrl\n", .{});
         loadDataUrl(instance, internal, value) catch |err| {
             std.debug.print("[set_src] Failed to load data: URL: {}\n", .{err});
         };
@@ -948,6 +947,40 @@ pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
 // ============================================================================
 
 /// Load a data: URL with proper script execution
+/// Debug function to print tree structure
+fn debugPrintTreeNode(node: *html_parser.TreeNode, depth: usize) void {
+    var indent: [64]u8 = undefined;
+    const indent_len = @min(depth * 2, 62);
+    for (0..indent_len) |i| {
+        indent[i] = ' ';
+    }
+    const indent_slice = indent[0..indent_len];
+
+    switch (node.node_type) {
+        .document => std.debug.print("{s}#document\n", .{indent_slice}),
+        .element => {
+            if (node.local_name) |name| {
+                std.debug.print("{s}<{s}>\n", .{ indent_slice, name });
+            }
+        },
+        .text => {
+            const text = node.text_content.toSlice();
+            if (text.len > 30) {
+                std.debug.print("{s}#text: {s}...\n", .{ indent_slice, text[0..30] });
+            } else {
+                std.debug.print("{s}#text: {s}\n", .{ indent_slice, text });
+            }
+        },
+        else => {},
+    }
+
+    var child = node.first_child;
+    while (child) |c| {
+        debugPrintTreeNode(c, depth + 1);
+        child = c.next_sibling;
+    }
+}
+
 /// Per HTML Standard §4.8.5, navigating an iframe to a data: URL should:
 /// 1. Parse the data URL to extract content
 /// 2. Create a new document in the iframe's browsing context
@@ -998,6 +1031,13 @@ fn loadDataUrl(iframe: *runtime.Instance, internal: *InternalState, data_url: []
         return;
     }));
 
+    // Set the document's URL to the data: URL (including fragment)
+    // This is needed for :target pseudo-class matching
+    const DocumentImpl = @import("Document.zig");
+    DocumentImpl.setUrl(content_document, data_url) catch |err| {
+        std.debug.print("[loadDataUrl] Failed to set document URL: {}\n", .{err});
+    };
+
     // Parse HTML content using the tokenizer and tree builder
     var tokenizer = html_parser.Tokenizer.init(allocator, content.data);
     defer tokenizer.deinit();
@@ -1010,7 +1050,6 @@ fn loadDataUrl(iframe: *runtime.Instance, internal: *InternalState, data_url: []
 
     // Convert parsed tree to DOM nodes and add to contentDocument
     const parsed_doc = tree_builder.document;
-    std.debug.print("[loadDataUrl] Document parsed, converting to DOM\n", .{});
 
     // Get the runtime context from the iframe's context
     const ctx = context_manager.get(child_v8_context) orelse {
@@ -1137,6 +1176,7 @@ fn convertChildrenToDOM(
         switch (c.node_type) {
             .element => {
                 if (c.local_name) |name| {
+                    std.debug.print("[convertChildrenToDOM] Element: {s}, has_children={}\n", .{ name, c.first_child != null });
                     // Check if it's a script element
                     if (std.mem.eql(u8, name, "script")) {
                         // Execute script immediately
@@ -1169,6 +1209,7 @@ fn convertChildrenToDOM(
             },
             .text => {
                 const text_content = c.text_content.toSlice();
+                std.debug.print("[convertChildrenToDOM] Text node: len={d}, content={s}\n", .{ text_content.len, if (text_content.len > 50) text_content[0..50] else text_content });
                 if (text_content.len > 0) {
                     // Skip whitespace-only text nodes
                     var has_content = false;
@@ -1186,6 +1227,9 @@ fn convertChildrenToDOM(
                         try CharacterDataImpl.setData(text_node, text_content);
 
                         _ = try interfaces.Node.call_appendChild(parent, text_node);
+                        // Verify the node was actually added
+                        const first_child = try interfaces.Node.get_firstChild(parent);
+                        std.debug.print("[convertChildrenToDOM] Added text node to DOM, parent now has firstChild={}\n", .{first_child != null});
                     }
                 }
             },
@@ -1223,13 +1267,21 @@ const DataUrlContent = struct {
 
 fn parseDataUrl(allocator: std.mem.Allocator, url: []const u8) !DataUrlContent {
     // data:[<mediatype>][;base64],<data>
+    // Note: Fragment (#foo) must be stripped from data before parsing
+    // Per URL spec, fragment is not part of the data content
     const data_start = std.mem.indexOf(u8, url, ":") orelse return error.InvalidUrl;
     const rest = url[data_start + 1 ..];
 
     // Find comma separating metadata from data
     const comma_pos = std.mem.indexOf(u8, rest, ",") orelse return error.InvalidUrl;
     const metadata = rest[0..comma_pos];
-    const encoded_data = rest[comma_pos + 1 ..];
+    var encoded_data = rest[comma_pos + 1 ..];
+
+    // Strip fragment identifier from data - fragment is NOT part of the data content
+    // e.g., data:text/html,<p>Hello</p>#foo should only parse "<p>Hello</p>"
+    if (std.mem.indexOf(u8, encoded_data, "#")) |fragment_pos| {
+        encoded_data = encoded_data[0..fragment_pos];
+    }
 
     // Parse metadata
     var mime_type: []const u8 = "text/plain";

@@ -1311,6 +1311,22 @@ pub fn setReadyState(instance: *runtime.Instance, state: enums.DocumentReadyStat
     std.debug.print("[Document] readyState set to: {s}\n", .{@tagName(state)});
 }
 
+/// Set the document's URL
+/// Called when navigating to a new document (e.g., iframe with data: URL)
+/// Used for :target pseudo-class matching
+pub fn setUrl(instance: *runtime.Instance, url: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Free old URL if it was allocated
+    if (internal.url.len > 0) {
+        internal.allocator.free(internal.url);
+    }
+
+    // Duplicate the new URL
+    internal.url = try internal.allocator.dupe(u8, url);
+    std.debug.print("[Document] URL set to: {s}\n", .{internal.url});
+}
+
 /// Getter for designMode
 /// HTML §6.5.1 - Returns "on" or "off" depending on design mode state
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-designmode
