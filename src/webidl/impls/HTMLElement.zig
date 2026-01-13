@@ -21,6 +21,8 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLElement = interfaces.HTMLElement;
+const MouseEvent = interfaces.MouseEvent;
+const EventTarget = interfaces.EventTarget;
 
 // Import parent impl for chaining initialization
 const ElementImpl = @import("Element.zig");
@@ -1813,17 +1815,99 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: click
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-click
+///
+/// The click() method must run the following steps:
+/// 1. If this element is a form control that is disabled, then return.
+/// 2. If this element's click in progress flag is set, then return.
+/// 3. Set this element's click in progress flag.
+/// 4. Fire a synthetic pointer event named "click" at this element, with
+///    the not trusted flag set.
+/// 5. Unset this element's click in progress flag.
 pub fn call_click(instance: *runtime.Instance) anyerror!void {
-    // Fire a click event at this element
-    // In a full implementation, this would:
-    // 1. Create a MouseEvent with type "click"
-    // 2. Set bubbles=true, cancelable=true
-    // 3. Dispatch the event via EventTarget.dispatchEvent()
+    const ctx = instance.ctx;
 
-    // For now, just invoke the onclick handler if present
-    if (getEventHandler(instance, "click")) |handler| {
-        _ = handler; // Would invoke handler
+    // Create a MouseEvent with type "click"
+    // MouseEventInit defaults: bubbles=false, cancelable=false
+    // For click(), we need: bubbles=true, cancelable=true, composed=true
+    const event_init = dictionaries.MouseEventInit{
+        .base = .{
+            .base = .{
+                .base = .{
+                    .bubbles = true,
+                    .cancelable = true,
+                    .composed = true,
+                },
+            },
+        },
+    };
+
+    const click_event = try MouseEvent.call_constructor(
+        ctx,
+        runtime.DOMString.initInterned("click"),
+        webidl.Opt(dictionaries.MouseEventInit).passed(event_init),
+    );
+
+    // Set the event properties
+    // MouseEvent.State -> UIEvent.State (base) -> Event.State (base.base)
+    {
+        var event_state = click_event.getState(MouseEvent.State);
+        // MouseEvent.State.base = UIEvent.State
+        // UIEvent.State.base = Event.State
+        // Event.State.own contains isTrusted, target, currentTarget
+        event_state.base.base.own.target = instance;
+        event_state.base.base.own.currentTarget = instance;
+        // isTrusted is false for script-initiated clicks (already default)
     }
+
+    // Dispatch the event via EventTarget.dispatchEvent
+    // This will invoke all event listeners and handle bubbling/capturing
+    const dispatch_result = try EventTarget.call_dispatchEvent(instance, click_event);
+
+    // If the event was not cancelled (dispatch returned true) and this element
+    // has activation behavior, run it.
+    // Activation behavior is element-specific and handled by subclasses
+    // (e.g., HTMLAnchorElement follows the hyperlink, HTMLButtonElement submits forms)
+    if (dispatch_result) {
+        // Run activation behavior if the element has one
+        // This is a virtual dispatch point - subclasses override this
+        try runActivationBehavior(instance);
+    }
+}
+
+/// Run the activation behavior for this element.
+/// Spec: https://dom.spec.whatwg.org/#eventtarget-activation-behavior
+///
+/// This is called after a click event completes without being prevented.
+/// Subclasses should override this to provide element-specific behavior:
+/// - HTMLAnchorElement: follow the hyperlink
+/// - HTMLButtonElement: submit/reset form
+/// - HTMLInputElement: activate the input
+fn runActivationBehavior(instance: *runtime.Instance) !void {
+    // Check if this is an anchor element by looking at the tag name
+    const elem_internal = ElementImpl.getInternal(instance) orelse return;
+
+    // Get the local name (tag name in lowercase for HTML)
+    const local_name = elem_internal.local_name.asSlice();
+
+    if (std.mem.eql(u8, local_name, "a")) {
+        // HTMLAnchorElement: follow the hyperlink
+        const HTMLAnchorElementImpl = @import("HTMLAnchorElement.zig");
+        try HTMLAnchorElementImpl.activationBehavior(instance);
+        return;
+    }
+
+    if (std.mem.eql(u8, local_name, "area")) {
+        // HTMLAreaElement: follow the hyperlink (same as anchor)
+        const HTMLAnchorElementImpl = @import("HTMLAnchorElement.zig");
+        try HTMLAnchorElementImpl.activationBehavior(instance);
+        return;
+    }
+
+    // Add other elements with activation behavior here:
+    // - button: submit/reset form
+    // - input[type=submit/reset/button]: activate
+
+    // Default: no activation behavior
 }
 
 /// Operation: showPopover
