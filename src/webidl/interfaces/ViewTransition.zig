@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ViewTransitionTypeSet = @import("interfaces").ViewTransitionTypeSet;
-const Element = @import("interfaces").Element;
+const ViewTransitionTypeSet = @import("ViewTransitionTypeSet.zig").ViewTransitionTypeSet;
+const Element = @import("Element.zig").Element;
 
 pub const ViewTransition = struct {
     pub const Meta = struct {
@@ -66,6 +66,9 @@ pub const ViewTransition = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -78,6 +81,7 @@ pub const ViewTransition = struct {
             finished: runtime.JSValue = undefined,
             types: *runtime.Instance = undefined,
             transitionRoot: *runtime.Instance = undefined,
+            cached_types: ?*runtime.Instance = null,
             _internal: ?*ViewTransitionImpl.InternalState = null,
         },
     );
@@ -132,11 +136,22 @@ pub const ViewTransition = struct {
         return try ViewTransitionImpl.get_finished(instance);
     }
 
+    /// Extended attributes: [SameObject]
     pub fn get_types(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ViewTransitionImpl.get_types(instance);
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_types) |cached| {
+            return cached;
+        }
+        const value = try ViewTransitionImpl.get_types(instance);
+        state.own.cached_types = value;
+        return value;
     }
 
+    /// Extended attributes: [SameObject]
     pub fn set_types(instance: *runtime.Instance, value: *runtime.Instance) anyerror!void {
+        const state = instance.getState(State);
+        state.own.cached_types = null; // Invalidate [SameObject] cache
         try ViewTransitionImpl.set_types(instance, value);
     }
 

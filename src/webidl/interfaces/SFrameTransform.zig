@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const SFrameKeyManagement = @import("mixins").SFrameKeyManagement;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const CryptoKey = @import("interfaces").CryptoKey;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const CryptoKey = @import("CryptoKey.zig").CryptoKey;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const SFrameTransformOptions = @import("dictionaries").SFrameTransformOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
@@ -74,6 +74,9 @@ pub const SFrameTransform = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

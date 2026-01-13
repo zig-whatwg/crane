@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Animation = @import("interfaces").Animation;
+const Animation = @import("Animation.zig").Animation;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 
@@ -52,6 +52,9 @@ pub const Animatable = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

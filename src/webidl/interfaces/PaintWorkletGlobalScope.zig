@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WorkletGlobalScope = @import("interfaces").WorkletGlobalScope;
+const WorkletGlobalScope = @import("WorkletGlobalScope.zig").WorkletGlobalScope;
 const VoidFunction = @import("callbacks").VoidFunction;
 const DOMString = @import("typedefs").DOMString;
 
@@ -59,6 +59,9 @@ pub const PaintWorkletGlobalScope = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

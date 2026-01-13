@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
-const BluetoothDevice = @import("interfaces").BluetoothDevice;
-const BluetoothManufacturerDataMap = @import("interfaces").BluetoothManufacturerDataMap;
+const Event = @import("Event.zig").Event;
+const BluetoothDevice = @import("BluetoothDevice.zig").BluetoothDevice;
+const BluetoothManufacturerDataMap = @import("BluetoothManufacturerDataMap.zig").BluetoothManufacturerDataMap;
 const UUID = @import("typedefs").UUID;
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const BluetoothAdvertisingEventInit = @import("dictionaries").BluetoothAdvertisingEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
-const BluetoothServiceDataMap = @import("interfaces").BluetoothServiceDataMap;
+const BluetoothServiceDataMap = @import("BluetoothServiceDataMap.zig").BluetoothServiceDataMap;
 
 pub const BluetoothAdvertisingEvent = struct {
     pub const Meta = struct {
@@ -83,6 +83,9 @@ pub const BluetoothAdvertisingEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

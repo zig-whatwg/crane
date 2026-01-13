@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ReadableStream = @import("interfaces").ReadableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 const ReadableWritablePair = @import("dictionaries").ReadableWritablePair;
 const ReadableStreamGetReaderOptions = @import("dictionaries").ReadableStreamGetReaderOptions;
 const StreamPipeOptions = @import("dictionaries").StreamPipeOptions;
@@ -18,7 +18,7 @@ const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 const ReadableStreamIteratorOptions = @import("dictionaries").ReadableStreamIteratorOptions;
 const ReadableStreamReader = @import("typedefs").ReadableStreamReader;
 const WebTransportReceiveStreamStats = @import("dictionaries").WebTransportReceiveStreamStats;
-const WritableStream = @import("interfaces").WritableStream;
+const WritableStream = @import("WritableStream.zig").WritableStream;
 
 pub const WebTransportReceiveStream = struct {
     pub const Meta = struct {
@@ -57,7 +57,6 @@ pub const WebTransportReceiveStream = struct {
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "from",
             "cancel",
             "getReader",
             "pipeThrough",
@@ -73,6 +72,9 @@ pub const WebTransportReceiveStream = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

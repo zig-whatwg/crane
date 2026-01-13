@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MediaSource = @import("interfaces").MediaSource;
+const MediaSource = @import("MediaSource.zig").MediaSource;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const EndOfStreamError = @import("enums").EndOfStreamError;
-const MediaSourceHandle = @import("interfaces").MediaSourceHandle;
+const MediaSourceHandle = @import("MediaSourceHandle.zig").MediaSourceHandle;
 const DOMString = @import("typedefs").DOMString;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
-const SourceBufferList = @import("interfaces").SourceBufferList;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
+const SourceBufferList = @import("SourceBufferList.zig").SourceBufferList;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const SourceBuffer = @import("interfaces").SourceBuffer;
-const EventListener = @import("interfaces").EventListener;
+const SourceBuffer = @import("SourceBuffer.zig").SourceBuffer;
+const EventListener = @import("EventListener.zig").EventListener;
 const ReadyState = @import("enums").ReadyState;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -70,7 +70,6 @@ pub const ManagedMediaSource = struct {
             "endOfStream",
             "setLiveSeekableRange",
             "clearLiveSeekableRange",
-            "isTypeSupported",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -84,6 +83,9 @@ pub const ManagedMediaSource = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

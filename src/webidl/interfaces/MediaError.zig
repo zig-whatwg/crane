@@ -37,14 +37,6 @@ pub const MediaError = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "MEDIA_ERR_ABORTED", "get_MEDIA_ERR_ABORTED" },
-            .{ "MEDIA_ERR_NETWORK", "get_MEDIA_ERR_NETWORK" },
-            .{ "MEDIA_ERR_DECODE", "get_MEDIA_ERR_DECODE" },
-            .{ "MEDIA_ERR_SRC_NOT_SUPPORTED", "get_MEDIA_ERR_SRC_NOT_SUPPORTED" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -63,6 +55,9 @@ pub const MediaError = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

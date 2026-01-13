@@ -15,17 +15,17 @@ const GPUCommandsMixin = @import("mixins").GPUCommandsMixin;
 const GPUDebugCommandsMixin = @import("mixins").GPUDebugCommandsMixin;
 const GPURenderPassDescriptor = @import("dictionaries").GPURenderPassDescriptor;
 const GPUSize32 = @import("typedefs").GPUSize32;
-const GPUCommandBuffer = @import("interfaces").GPUCommandBuffer;
+const GPUCommandBuffer = @import("GPUCommandBuffer.zig").GPUCommandBuffer;
 const GPUExtent3D = @import("typedefs").GPUExtent3D;
 const USVString = @import("typedefs").USVString;
-const GPURenderPassEncoder = @import("interfaces").GPURenderPassEncoder;
-const GPUComputePassEncoder = @import("interfaces").GPUComputePassEncoder;
+const GPURenderPassEncoder = @import("GPURenderPassEncoder.zig").GPURenderPassEncoder;
+const GPUComputePassEncoder = @import("GPUComputePassEncoder.zig").GPUComputePassEncoder;
 const GPUCommandBufferDescriptor = @import("dictionaries").GPUCommandBufferDescriptor;
 const GPUComputePassDescriptor = @import("dictionaries").GPUComputePassDescriptor;
-const GPUBuffer = @import("interfaces").GPUBuffer;
+const GPUBuffer = @import("GPUBuffer.zig").GPUBuffer;
 const GPUSize64 = @import("typedefs").GPUSize64;
 const GPUTexelCopyTextureInfo = @import("dictionaries").GPUTexelCopyTextureInfo;
-const GPUQuerySet = @import("interfaces").GPUQuerySet;
+const GPUQuerySet = @import("GPUQuerySet.zig").GPUQuerySet;
 const GPUTexelCopyBufferInfo = @import("dictionaries").GPUTexelCopyBufferInfo;
 
 pub const GPUCommandEncoder = struct {
@@ -101,6 +101,9 @@ pub const GPUCommandEncoder = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

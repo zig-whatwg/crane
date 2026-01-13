@@ -43,7 +43,7 @@ pub const Client = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "postMessage", "call_postMessage", 2 },
+            .{ "postMessage", "call_postMessage", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -68,6 +68,9 @@ pub const Client = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const IDBRequest = @import("interfaces").IDBRequest;
+const IDBRequest = @import("IDBRequest.zig").IDBRequest;
 const IDBGetAllOptions = @import("dictionaries").IDBGetAllOptions;
 const IDBCursorDirection = @import("enums").IDBCursorDirection;
 const DOMString = @import("typedefs").DOMString;
-const IDBObjectStore = @import("interfaces").IDBObjectStore;
+const IDBObjectStore = @import("IDBObjectStore.zig").IDBObjectStore;
 
 pub const IDBIndex = struct {
     pub const Meta = struct {
@@ -84,6 +84,9 @@ pub const IDBIndex = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

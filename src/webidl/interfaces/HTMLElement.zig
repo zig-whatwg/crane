@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("interfaces").Element;
-const ElementCSSInlineStyle = @import("interfaces").ElementCSSInlineStyle;
+const Element = @import("Element.zig").Element;
+const ElementCSSInlineStyle = @import("ElementCSSInlineStyle.zig").ElementCSSInlineStyle;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
 const ElementContentEditable = @import("mixins").ElementContentEditable;
 const HTMLOrSVGElement = @import("mixins").HTMLOrSVGElement;
-const DOMStringMap = @import("interfaces").DOMStringMap;
+const DOMStringMap = @import("DOMStringMap.zig").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const NamedNodeMap = @import("interfaces").NamedNodeMap;
+const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
+const NamedNodeMap = @import("NamedNodeMap.zig").NamedNodeMap;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
@@ -30,50 +30,50 @@ const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
-const EventListener = @import("interfaces").EventListener;
-const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
+const EventListener = @import("EventListener.zig").EventListener;
+const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
+const CSSPseudoElement = @import("CSSPseudoElement.zig").CSSPseudoElement;
 const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
-const Node = @import("interfaces").Node;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
+const Node = @import("Node.zig").Node;
+const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const Animation = @import("Animation.zig").Animation;
 const FocusOptions = @import("dictionaries").FocusOptions;
-const Range = @import("interfaces").Range;
-const Event = @import("interfaces").Event;
-const DOMRectList = @import("interfaces").DOMRectList;
+const Range = @import("Range.zig").Range;
+const Event = @import("Event.zig").Event;
+const DOMRectList = @import("DOMRectList.zig").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
-const Document = @import("interfaces").Document;
+const Document = @import("Document.zig").Document;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
+const DOMQuad = @import("DOMQuad.zig").DOMQuad;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
-const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
-const DOMTokenList = @import("interfaces").DOMTokenList;
-const EditContext = @import("interfaces").EditContext;
+const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
+const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
+const EditContext = @import("EditContext.zig").EditContext;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
-const ElementInternals = @import("interfaces").ElementInternals;
-const DOMRect = @import("interfaces").DOMRect;
-const ViewTransition = @import("interfaces").ViewTransition;
+const ElementInternals = @import("ElementInternals.zig").ElementInternals;
+const DOMRect = @import("DOMRect.zig").DOMRect;
+const ViewTransition = @import("ViewTransition.zig").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
-const StylePropertyMap = @import("interfaces").StylePropertyMap;
-const ShadowRoot = @import("interfaces").ShadowRoot;
-const Attr = @import("interfaces").Attr;
-const TrustedHTML = @import("interfaces").TrustedHTML;
+const StylePropertyMap = @import("StylePropertyMap.zig").StylePropertyMap;
+const ShadowRoot = @import("ShadowRoot.zig").ShadowRoot;
+const Attr = @import("Attr.zig").Attr;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
-const NodeList = @import("interfaces").NodeList;
+const NodeList = @import("NodeList.zig").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
-const Observable = @import("interfaces").Observable;
-const DOMPoint = @import("interfaces").DOMPoint;
+const Observable = @import("Observable.zig").Observable;
+const DOMPoint = @import("DOMPoint.zig").DOMPoint;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const ShadowRootInit = @import("dictionaries").ShadowRootInit;
@@ -244,19 +244,6 @@ pub const HTMLElement = struct {
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
-        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
-        /// Format: { "attrName", "forwardedProperty" }
-        pub const put_forwards_attributes = .{
-            .{ "style", "cssText" },
-        };
-        
-        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
-        /// Getters return undefined, setters silently return
-        pub const lenient_this_attributes = .{
-            "onmouseenter",
-            "onmouseleave",
-        };
-        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "click", "call_click", 0 },
@@ -344,10 +331,7 @@ pub const HTMLElement = struct {
             "checkVisibility",
             "scrollIntoView",
             "scroll",
-            "scroll",
             "scrollTo",
-            "scrollTo",
-            "scrollBy",
             "scrollBy",
             "animate",
             "getAnimations",
@@ -371,8 +355,17 @@ pub const HTMLElement = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "title", "get_title", "set_title" },
+            .{ "lang", "get_lang", "set_lang" },
+            .{ "translate", "get_translate", "set_translate" },
+            .{ "dir", "get_dir", "set_dir" },
+            .{ "hidden", "get_hidden", "set_hidden" },
+            .{ "inert", "get_inert", "set_inert" },
+            .{ "accessKey", "get_accessKey", "set_accessKey" },
             .{ "accessKeyLabel", "get_accessKeyLabel", null },
+            .{ "draggable", "get_draggable", "set_draggable" },
+            .{ "spellcheck", "get_spellcheck", "set_spellcheck" },
             .{ "writingSuggestions", "get_writingSuggestions", "set_writingSuggestions" },
+            .{ "autocapitalize", "get_autocapitalize", "set_autocapitalize" },
             .{ "autocorrect", "get_autocorrect", "set_autocorrect" },
             .{ "innerText", "get_innerText", "set_innerText" },
             .{ "outerText", "get_outerText", "set_outerText" },
@@ -381,6 +374,11 @@ pub const HTMLElement = struct {
             .{ "headingReset", "get_headingReset", "set_headingReset" },
             .{ "editContext", "get_editContext", "set_editContext" },
             .{ "scrollParent", "get_scrollParent", null },
+            .{ "offsetParent", "get_offsetParent", null },
+            .{ "offsetTop", "get_offsetTop", null },
+            .{ "offsetLeft", "get_offsetLeft", null },
+            .{ "offsetWidth", "get_offsetWidth", null },
+            .{ "offsetHeight", "get_offsetHeight", null },
             .{ "style", "get_style", "set_style" },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },
@@ -488,35 +486,24 @@ pub const HTMLElement = struct {
             .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "contentEditable", "get_contentEditable", "set_contentEditable" },
             .{ "enterKeyHint", "get_enterKeyHint", "set_enterKeyHint" },
+            .{ "isContentEditable", "get_isContentEditable", null },
             .{ "inputMode", "get_inputMode", "set_inputMode" },
             .{ "virtualKeyboardPolicy", "get_virtualKeyboardPolicy", "set_virtualKeyboardPolicy" },
+            .{ "dataset", "get_dataset", null },
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
+            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
-            .{ "translate", "get_translate", "set_translate" },
-            .{ "dir", "get_dir", "set_dir" },
-            .{ "hidden", "get_hidden", "set_hidden" },
-            .{ "inert", "get_inert", "set_inert" },
-            .{ "accessKey", "get_accessKey", "set_accessKey" },
-            .{ "draggable", "get_draggable", "set_draggable" },
-            .{ "spellcheck", "get_spellcheck", "set_spellcheck" },
-            .{ "autocapitalize", "get_autocapitalize", "set_autocapitalize" },
-            .{ "offsetParent", "get_offsetParent", null },
-            .{ "offsetTop", "get_offsetTop", null },
-            .{ "offsetLeft", "get_offsetLeft", null },
-            .{ "offsetWidth", "get_offsetWidth", null },
-            .{ "offsetHeight", "get_offsetHeight", null },
-            .{ "contentEditable", "get_contentEditable", "set_contentEditable" },
-            .{ "isContentEditable", "get_isContentEditable", null },
-            .{ "dataset", "get_dataset", null },
-            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 
@@ -1287,6 +1274,7 @@ pub const HTMLElement = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
+        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

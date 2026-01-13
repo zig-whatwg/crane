@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AbstractWorker = @import("mixins").AbstractWorker;
 const MessageEventTarget = @import("mixins").MessageEventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const USVString = @import("typedefs").USVString;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const WorkerOptions = @import("dictionaries").WorkerOptions;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -59,7 +59,7 @@ pub const Worker = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "terminate", "call_terminate", 0 },
-            .{ "postMessage", "call_postMessage", 2 },
+            .{ "postMessage", "call_postMessage", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -87,6 +87,9 @@ pub const Worker = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

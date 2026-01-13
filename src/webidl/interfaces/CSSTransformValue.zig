@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleValue = @import("interfaces").CSSStyleValue;
-const CSSTransformComponent = @import("interfaces").CSSTransformComponent;
-const DOMMatrix = @import("interfaces").DOMMatrix;
+const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValue;
+const CSSTransformComponent = @import("CSSTransformComponent.zig").CSSTransformComponent;
+const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -58,8 +58,6 @@ pub const CSSTransformValue = struct {
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "parse",
-            "parseAll",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -72,6 +70,9 @@ pub const CSSTransformValue = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
         
         /// Iterable declaration (for Symbol.iterator support)
