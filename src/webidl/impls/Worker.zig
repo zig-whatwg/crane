@@ -1032,26 +1032,15 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
     const internal: *InternalState = @ptrCast(@alignCast(user_data));
     wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() internal from outside_user_data: {*} at addr=0x{x:0>16}\n", .{ internal, @intFromPtr(internal) });
 
-    // CRITICAL FIX: If onmessage_handle is not set yet (JS hasn't set worker.onmessage),
-    // we must queue the message for later delivery. Otherwise the message will be
-    // "dispatched" but the JS handler won't be called, and the message will be lost.
-    // When set_onmessage is called later, processQueuedMessages() will deliver queued messages.
-    if (internal.onmessage_handle == null) {
-        std.debug.print("[DEBUG] onmessage_handle is NULL, queueing message\n", .{});
-        wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() onmessage_handle is null, queueing for later\n", .{});
-        // Queue to outside port for later delivery via processQueuedMessages()
-        const outside_port = dedicated_worker.port_pair.outside_port;
-        outside_port.message_queue.append(dedicated_worker.allocator, msg) catch {
-            std.debug.print("[DEBUG] FAILED to queue message\n", .{});
-            wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() FAILED to queue message\n", .{});
-            msg.deinit();
-        };
-        std.debug.print("[DEBUG] Message queued, queue len={d}\n", .{outside_port.message_queue.items.len});
-        return;
-    }
-
-    std.debug.print("[DEBUG] onmessage_handle is SET, dispatching directly\n", .{});
-    wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() dispatching to onmessage\n", .{});
+    // Always dispatch messages via EventTarget.dispatchEvent, which handles listeners
+    // registered via addEventListener(). The legacy onmessage IDL attribute handler
+    // is invoked separately in dispatchMessageEventWithContext (guarded by null check).
+    //
+    // Previous bug: We used to return early if onmessage_handle was null, which meant
+    // messages were queued but NEVER dispatched to addEventListener listeners.
+    // testharness.js uses addEventListener, not onmessage, so worker tests timed out.
+    std.debug.print("[DEBUG] Dispatching message via EventTarget\n", .{});
+    wdebug.print("[WORKER_IMPL] handleMessageFromWorkerCallback() dispatching via EventTarget (onmessage_handle={?})\n", .{internal.onmessage_handle});
     dispatchMessageEventDirect(internal, msg);
     wdebug.print("handleMessageFromWorkerCallback() dispatch complete\n", .{});
 }
