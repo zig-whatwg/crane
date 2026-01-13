@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
-const SubtleCrypto = @import("SubtleCrypto.zig").SubtleCrypto;
+const SubtleCrypto = @import("interfaces").SubtleCrypto;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Crypto = struct {
@@ -62,9 +62,6 @@ pub const Crypto = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
-const Element = @import("Element.zig").Element;
-const RadioNodeList = @import("RadioNodeList.zig").RadioNodeList;
+const HTMLCollection = @import("interfaces").HTMLCollection;
+const Element = @import("interfaces").Element;
+const RadioNodeList = @import("interfaces").RadioNodeList;
 const DOMString = @import("typedefs").DOMString;
 
 pub const HTMLFormControlsCollection = struct {
@@ -58,9 +58,6 @@ pub const HTMLFormControlsCollection = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

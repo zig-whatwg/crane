@@ -10,14 +10,14 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemHandle = @import("FileSystemHandle.zig").FileSystemHandle;
+const FileSystemHandle = @import("interfaces").FileSystemHandle;
 const PermissionState = @import("enums").PermissionState;
 const FileSystemCreateWritableOptions = @import("dictionaries").FileSystemCreateWritableOptions;
 const FileSystemHandlePermissionDescriptor = @import("dictionaries").FileSystemHandlePermissionDescriptor;
-const File = @import("File.zig").File;
+const File = @import("interfaces").File;
 const FileSystemHandleKind = @import("enums").FileSystemHandleKind;
-const FileSystemSyncAccessHandle = @import("FileSystemSyncAccessHandle.zig").FileSystemSyncAccessHandle;
-const FileSystemWritableFileStream = @import("FileSystemWritableFileStream.zig").FileSystemWritableFileStream;
+const FileSystemSyncAccessHandle = @import("interfaces").FileSystemSyncAccessHandle;
+const FileSystemWritableFileStream = @import("interfaces").FileSystemWritableFileStream;
 const USVString = @import("typedefs").USVString;
 
 pub const FileSystemFileHandle = struct {
@@ -74,9 +74,6 @@ pub const FileSystemFileHandle = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

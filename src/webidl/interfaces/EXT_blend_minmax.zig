@@ -39,6 +39,12 @@ pub const EXT_blend_minmax = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "MIN_EXT", "get_MIN_EXT" },
+            .{ "MAX_EXT", "get_MAX_EXT" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -55,9 +61,6 @@ pub const EXT_blend_minmax = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

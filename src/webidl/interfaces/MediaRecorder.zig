@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const BitrateMode = @import("enums").BitrateMode;
 const MediaRecorderOptions = @import("dictionaries").MediaRecorderOptions;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const RecordingState = @import("enums").RecordingState;
-const MediaStream = @import("MediaStream.zig").MediaStream;
+const MediaStream = @import("interfaces").MediaStream;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -65,6 +65,11 @@ pub const MediaRecorder = struct {
             .{ "requestData", "call_requestData", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
@@ -72,6 +77,7 @@ pub const MediaRecorder = struct {
             "pause",
             "resume",
             "requestData",
+            "isTypeSupported",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -102,10 +108,6 @@ pub const MediaRecorder = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "isTypeSupported", "call_static_isTypeSupported", 1 },
-        };
         pub const has_constructor = true;
     };
 

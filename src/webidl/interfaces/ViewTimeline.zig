@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ScrollTimeline = @import("ScrollTimeline.zig").ScrollTimeline;
-const CSSNumericValue = @import("CSSNumericValue.zig").CSSNumericValue;
+const ScrollTimeline = @import("interfaces").ScrollTimeline;
+const CSSNumericValue = @import("interfaces").CSSNumericValue;
 const ViewTimelineOptions = @import("dictionaries").ViewTimelineOptions;
-const Element = @import("Element.zig").Element;
-const AnimationEffect = @import("AnimationEffect.zig").AnimationEffect;
+const Element = @import("interfaces").Element;
+const AnimationEffect = @import("interfaces").AnimationEffect;
 const CSSNumberish = @import("typedefs").CSSNumberish;
-const Animation = @import("Animation.zig").Animation;
+const Animation = @import("interfaces").Animation;
 const ScrollAxis = @import("enums").ScrollAxis;
 const ScrollTimelineOptions = @import("dictionaries").ScrollTimelineOptions;
 
@@ -67,9 +67,6 @@ pub const ViewTimeline = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

@@ -451,12 +451,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // Version module - single source of truth for Crane version
-    const version_mod = b.addModule("version", .{
-        .root_source_file = b.path("src/version.zig"),
-        .target = target,
-    });
-
     const webidl_mod = b.addModule("webidl", .{
         .root_source_file = b.path("src/webidl/root.zig"),
         .target = target,
@@ -626,9 +620,6 @@ pub fn build(b: *std.Build) void {
     v8_mod.addImport("typedefs", typedefs_mod);
     // V8 module needs impls for ReadableStream start callback invocation
     v8_mod.addImport("impls", impls_mod);
-
-    // V8 module needs namespaces for console, CSS, WebAssembly registration
-    v8_mod.addImport("namespaces", namespaces_mod);
 
     // Dictionaries module needs typedefs, enums and callbacks for RequestInit and other dictionaries
     dictionaries_mod.addImport("typedefs", typedefs_mod);
@@ -1391,12 +1382,9 @@ pub fn build(b: *std.Build) void {
     });
     xhr_mod.addImport("fetch", fetch_mod); // XHR uses Fetch infrastructure
     xhr_mod.addImport("mimesniff", mimesniff_mod); // XHR uses MIME type parsing for overrideMimeType
-    xhr_mod.addImport("api_parser", url_parser_api_mod); // XHR needs URL parsing for open() validation
 
     // Allow impls to access fetch for Headers, Request, Response implementations
     impls_mod.addImport("fetch", fetch_mod);
-    // Allow V8 context_manager to use fetch for dynamic HTTP module imports
-    v8_mod.addImport("fetch", fetch_mod);
     impls_mod.addImport("url", url_mod); // For Request constructor URL parsing
     impls_mod.addImport("urlpattern", urlpattern_mod); // For URLPattern implementation
     impls_mod.addImport("xhr", xhr_mod); // For FormData implementation
@@ -1469,10 +1457,6 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("fetch", fetch_mod);
     html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
     html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
-    html_core_mod.addImport("csp", csp_mod); // For CSP checks on worker script loading
-    html_core_mod.addImport("file", file_mod); // For blob: URL worker script loading
-    html_core_mod.addImport("version", version_mod); // For Crane version in navigator
-    html_core_mod.addImport("streams_internal", streams_message_port_mod); // For MessagePort cross-thread registry
 
     // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
     // Uses full.zig as root which re-exports html_core plus adds interface access.
@@ -1509,10 +1493,6 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("dictionaries", dictionaries_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
-    // Version module for Crane version in navigator
-    html_mod.addImport("version", version_mod);
-    // HR-Time module for Performance API in workers (performance.now(), performance.timeOrigin)
-    html_mod.addImport("hr_time", hr_time_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
@@ -1540,40 +1520,6 @@ pub fn build(b: *std.Build) void {
     // Add permissions to impls for navigator.permissions implementation
     impls_mod.addImport("permissions", permissions_mod);
 
-    // Service Worker Common module (leaf module - no WebIDL dependencies)
-    // Contains VTable interfaces and types that can be safely imported by impls
-    // Uses registrar_contract.zig which is completely standalone (no service_worker imports)
-    const sw_common_mod = b.addModule("sw_common", .{
-        .root_source_file = b.path("src/service_worker/registrar_contract.zig"),
-        .target = target,
-    });
-
-    // Add sw_common to impls for ServiceWorkerContainer VTable pattern
-    // This avoids circular dependencies since common.zig has no WebIDL imports
-    impls_mod.addImport("sw_common", sw_common_mod);
-
-    // Service Worker Manager - browser-side coordination (no WebIDL deps)
-    const sw_manager_mod = b.addModule("sw_manager", .{
-        .root_source_file = b.path("src/service_worker/manager.zig"),
-        .target = target,
-    });
-
-    // Service Worker module (full module - for Browser use only)
-    // Contains registration_map, job queues, integration, etc.
-    // NOTE: This module has WebIDL dependencies via global/ and cannot be imported by impls
-    const service_worker_mod = b.addModule("service_worker", .{
-        .root_source_file = b.path("src/service_worker/root.zig"),
-        .target = target,
-    });
-    service_worker_mod.addImport("fetch", fetch_mod);
-
-    // Standalone SW fetch integration module - no WebIDL deps, safe for browser to import
-    const sw_fetch_integration_mod = b.addModule("sw_fetch_integration", .{
-        .root_source_file = b.path("src/service_worker/sw_fetch_integration.zig"),
-        .target = target,
-    });
-    sw_fetch_integration_mod.addImport("fetch", fetch_mod);
-
     // Browser module - Single V8 isolate browser implementation for WPT
     const browser_mod = b.addModule("browser", .{
         .root_source_file = b.path("src/browser/root.zig"),
@@ -1585,13 +1531,6 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("namespaces", namespaces_mod);
     browser_mod.addImport("fetch", fetch_mod);
     browser_mod.addImport("impls", impls_mod);
-    browser_mod.addImport("webidl", webidl_mod);
-    browser_mod.addImport("dictionaries", dictionaries_mod);
-    browser_mod.addImport("html", html_mod);
-    // Standalone SW fetch integration - includes both fetch interception and registrar
-    browser_mod.addImport("sw_fetch_integration", sw_fetch_integration_mod);
-    browser_mod.addImport("sw_common", sw_common_mod);
-    browser_mod.addImport("sw_manager", sw_manager_mod);
 
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
     const intl_mod = b.addModule("intl", .{
@@ -1599,12 +1538,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     intl_mod.addImport("infra", infra_mod);
-
-    // Testing module - TestRunner API for WPT (Web Platform Tests)
-    const testing_mod = b.addModule("testing", .{
-        .root_source_file = b.path("src/testing/root.zig"),
-        .target = target,
-    });
 
     // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
     v8_mod.addImport("intl", intl_mod);
@@ -1867,8 +1800,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "platform", .module = platform_mod },
-            .{ .name = "browser", .module = browser_mod },
-            .{ .name = "v8", .module = v8_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
@@ -2778,150 +2709,6 @@ pub fn build(b: *std.Build) void {
     repl_step.dependOn(&run_repl.step);
 
     // ========================================================================
-    // WPT BROWSER (for wptrunner integration)
-    // ========================================================================
-
-    const wpt_browser_exe = b.addExecutable(.{
-        .name = "wpt_browser",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/wpt_browser.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = "v8", .module = v8_mod },
-                .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "namespaces", .module = namespaces_mod },
-                .{ .name = "fetch", .module = fetch_mod },
-                .{ .name = "platform", .module = platform_mod },
-                .{ .name = "html", .module = html_core_mod },
-                .{ .name = "html_full", .module = html_mod },
-                .{ .name = "dom", .module = dom_mod },
-                .{ .name = "infra", .module = infra_mod },
-                .{ .name = "browser", .module = browser_mod },
-                .{ .name = "impls", .module = impls_mod },
-                .{ .name = "webidl", .module = webidl_mod },
-                .{ .name = "dictionaries", .module = dictionaries_mod },
-                .{ .name = "testing", .module = testing_mod },
-            },
-        }),
-    });
-
-    // Add snapshot path for @embedFile - the snapshot is generated to zig-out/bin/
-    // wpt_browser.zig uses @embedFile("whatwg_snapshot.bin") which needs this path
-    wpt_browser_exe.root_module.addAnonymousImport("whatwg_snapshot.bin", .{
-        .root_source_file = .{ .cwd_relative = snapshot_output_path },
-    });
-
-    wpt_browser_exe.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
-    });
-
-    wpt_browser_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    wpt_browser_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    wpt_browser_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    wpt_browser_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-
-    wpt_browser_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    wpt_browser_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    wpt_browser_exe.linkSystemLibrary("uv");
-
-    wpt_browser_exe.linkLibCpp();
-
-    wpt_browser_exe.step.dependOn(&gen_snapshot.step);
-
-    b.installArtifact(wpt_browser_exe);
-
-    const wpt_browser_install = b.addInstallArtifact(wpt_browser_exe, .{});
-    const wpt_browser_step = b.step("wpt_browser", "Build WPT browser for wptrunner integration");
-    wpt_browser_step.dependOn(&wpt_browser_install.step);
-
-    // Force rebuild of wpt_browser by removing cached artifacts before building
-    const wpt_clean = b.addSystemCommand(&.{
-        "sh", "-c",
-        \\rm -f zig-out/bin/wpt_browser 2>/dev/null || true
-        \\rm -rf .zig-cache/o/*wpt_browser* 2>/dev/null || true
-        ,
-    });
-    wpt_browser_exe.step.dependOn(&wpt_clean.step);
-
-    // ========================================================================
-    // WPT TEST RUNNER (zig build wpt -- [test filter])
-    // ========================================================================
-
-    const wpt_run = b.addSystemCommand(&.{
-        "sh", "-c",
-        \\# Kill any existing WPT server processes
-        \\pkill -9 -f wptserve 2>/dev/null || true
-        \\pkill -9 -f "wpt serve" 2>/dev/null || true
-        \\pkill -9 -f "wpt run" 2>/dev/null || true
-        \\
-        \\# Kill any processes using WPT ports
-        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do
-        \\    lsof -ti:$port | xargs kill -9 2>/dev/null || true
-        \\done
-        \\
-        \\# Wait for ports to be released
-        \\sleep 2
-        \\
-        \\# Check if any WPT ports are still in use
-        \\PORTS_IN_USE=""
-        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do
-        \\    if lsof -i :$port >/dev/null 2>&1; then
-        \\        PORTS_IN_USE="$PORTS_IN_USE $port"
-        \\    fi
-        \\done
-        \\if [ -n "$PORTS_IN_USE" ]; then
-        \\    echo "ERROR: Ports still in use after cleanup:$PORTS_IN_USE"
-        \\    exit 1
-        \\fi
-        \\
-        \\cd tests/wpt
-        \\
-        \\# Get filter from args (default to url/ if none provided)
-        \\FILTER="${WPT_FILTER:-url/url-tojson.any.html}"
-        \\
-        \\# Run WPT with cleanup trap
-        \\trap 'pkill -9 -f wptserve 2>/dev/null || true; pkill -9 -f "wpt serve" 2>/dev/null || true; for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do lsof -ti:$port | xargs kill -9 2>/dev/null || true; done' EXIT
-        \\
-        \\./wpt run crane \
-        \\    --binary "$WPT_BROWSER_PATH" \
-        \\    --processes 1 \
-        \\    --timeout-multiplier 2 \
-        \\    --log-wptreport ../../wpt-results/wptreport.json \
-        \\    "$FILTER"
-        \\
-        \\# Generate HTML dashboard from results
-        \\python3 ../../tools/wpt_report.py ../../wpt-results/wptreport.json ../../wpt-results/dashboard.html 2>/dev/null || true
-        \\
-        \\# Upload results to local wpt.fyi (fail silently if not running)
-        \\gzip -c ../../wpt-results/wptreport.json > ../../wpt-results/wptreport.json.gz 2>/dev/null && \
-        \\curl -s -u test:123 -X POST -F "result_file=@../../wpt-results/wptreport.json.gz" \
-        \\    http://localhost:8080/api/results/upload 2>/dev/null || true
-        ,
-    });
-
-    wpt_run.setEnvironmentVariable("WPT_BROWSER_PATH", b.getInstallPath(.bin, "wpt_browser"));
-
-    if (b.args) |args| {
-        if (args.len > 0) {
-            wpt_run.setEnvironmentVariable("WPT_FILTER", args[0]);
-        }
-    }
-
-    wpt_run.step.dependOn(&wpt_browser_install.step);
-
-    const wpt_step = b.step("wpt", "Run WPT tests (usage: zig build wpt -- [filter])");
-    wpt_step.dependOn(&wpt_run.step);
-
-    // ========================================================================
     // MINIMAL SNAPSHOT TEST (for isolating snapshot failures)
     // ========================================================================
 
@@ -2972,6 +2759,110 @@ pub fn build(b: *std.Build) void {
     const run_minimal_snapshot_test = b.addRunArtifact(minimal_snapshot_test_exe);
     const minimal_snapshot_test_step = b.step("minimal-snapshot-test", "Run minimal V8 snapshot test to isolate failures");
     minimal_snapshot_test_step.dependOn(&run_minimal_snapshot_test.step);
+
+    // ========================================================================
+    // WPT (Web Platform Tests) RUNNER
+    // ========================================================================
+
+    // WPT Runner executable for running Web Platform Tests
+    const wpt_runner_exe = b.addExecutable(.{
+        .name = "wpt_runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "v8", .module = v8_mod },
+                .{ .name = "interfaces", .module = interfaces_mod },
+                .{ .name = "namespaces", .module = namespaces_mod },
+                .{ .name = "fetch", .module = fetch_mod },
+                // Platform abstraction for timer backend
+                .{ .name = "platform", .module = platform_mod },
+                // HTML event loop and timer manager (core module without interfaces)
+                .{ .name = "html", .module = html_core_mod },
+                // HTML full module with custom_elements for thread-local cleanup
+                .{ .name = "html_full", .module = html_mod },
+                // DOM module for mutation observer thread-local cleanup
+                .{ .name = "dom", .module = dom_mod },
+                // Infra primitives
+                .{ .name = "infra", .module = infra_mod },
+                // Browser module for single-isolate WPT execution
+                .{ .name = "browser", .module = browser_mod },
+                // Impls module for HTMLParser (needed for HTML test parsing)
+                .{ .name = "impls", .module = impls_mod },
+                // WebIDL module for Optional type wrappers
+                .{ .name = "webidl", .module = webidl_mod },
+                // Dictionaries module for Event init dictionaries
+                .{ .name = "dictionaries", .module = dictionaries_mod },
+                // Storage module for cleanup
+                .{ .name = "storage", .module = storage_mod },
+            },
+        }),
+    });
+
+    // Add V8 C++ wrapper
+    wpt_runner_exe.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = &.{
+            "-std=c++20",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-DV8_COMPRESS_POINTERS",
+            "-DV8_ENABLE_SANDBOX",
+        },
+    });
+
+    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
+    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+
+    // Link V8 libraries (custom-built static libraries)
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+
+    // Link libuv for timer support
+    wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    wpt_runner_exe.linkSystemLibrary("uv");
+
+    // Link C++ standard library
+    wpt_runner_exe.linkLibCpp();
+
+    // Make WPT runner depend on snapshot generation
+    // This ensures the snapshot is always up-to-date with the current V8 build
+    wpt_runner_exe.step.dependOn(&gen_snapshot.step);
+
+    b.installArtifact(wpt_runner_exe);
+
+    // WPT build options
+    const wpt_output = b.option(
+        []const u8,
+        "wpt-output",
+        "Output path for wptreport.json (default: wpt-results/)",
+    ) orelse "wpt-results";
+
+    const wpt_verbose = b.option(
+        bool,
+        "wpt-verbose",
+        "Show verbose output for each test",
+    ) orelse false;
+
+    // Add run step for WPT runner
+    const run_wpt = b.addRunArtifact(wpt_runner_exe);
+    run_wpt.step.dependOn(b.getInstallStep());
+
+    // Pass build options as command-line arguments
+    run_wpt.addArg(b.fmt("--output={s}", .{wpt_output}));
+    if (wpt_verbose) {
+        run_wpt.addArg("--verbose");
+    }
+
+    // Pass through any additional args (e.g., category filters)
+    if (b.args) |args| run_wpt.addArgs(args);
+
+    const wpt_step = b.step("wpt", "Run Web Platform Tests (use -- to pass args like url/)");
+    wpt_step.dependOn(&run_wpt.step);
 
     // ========================================================================
     // HTTP MOCK SERVER (for V8 fetch integration tests)
@@ -3514,13 +3405,13 @@ pub fn build(b: *std.Build) void {
         \\    
         \\    # Download tarball (no auth required for public repos)
         \\    WEBREF_TMP=$(mktemp -d)
-        \\    curl -sL "https://github.com/w3c/webref/archive/refs/tags/@webref/raw-idl@3.70.1.tar.gz" | tar -xz -C "$WEBREF_TMP"
+        \\    curl -sL "https://github.com/w3c/webref/archive/refs/heads/main.tar.gz" | tar -xz -C "$WEBREF_TMP"
         \\    
-        \\    # Copy to specs directory (tarball extracts to webref-raw-idl-3.70.1/)
+        \\    # Copy to specs directory (tarball extracts to webref-main/)
         \\    mkdir -p "$SPECS_DIR"
         \\    rm -rf "$SPECS_DIR/algorithms" "$SPECS_DIR/idl"
-        \\    cp -r "$WEBREF_TMP"/webref-*/ed/algorithms "$SPECS_DIR/algorithms"
-        \\    cp -r "$WEBREF_TMP"/webref-*/ed/idl "$SPECS_DIR/idl"
+        \\    cp -r "$WEBREF_TMP/webref-main/ed/algorithms" "$SPECS_DIR/algorithms"
+        \\    cp -r "$WEBREF_TMP/webref-main/ed/idl" "$SPECS_DIR/idl"
         \\    rm -rf "$WEBREF_TMP"
         \\    
         \\    echo "    WebRef data downloaded successfully"
