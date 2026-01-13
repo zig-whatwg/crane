@@ -21,7 +21,7 @@ const GLenum = @import("typedefs").GLenum;
 const GLsizeiptr = @import("typedefs").GLsizeiptr;
 const GLintptr = @import("typedefs").GLintptr;
 const GLsizei = @import("typedefs").GLsizei;
-const WebGLUniformLocation = @import("WebGLUniformLocation.zig").WebGLUniformLocation;
+const WebGLUniformLocation = @import("interfaces").WebGLUniformLocation;
 
 pub const WebGLRenderingContextOverloads = struct {
     pub const Meta = struct {
@@ -44,8 +44,8 @@ pub const WebGLRenderingContextOverloads = struct {
             .{ "compressedTexImage2D", "call_compressedTexImage2D", 7 },
             .{ "compressedTexSubImage2D", "call_compressedTexSubImage2D", 8 },
             .{ "readPixels", "call_readPixels", 7 },
-            .{ "texImage2D", "call_texImage2D", 6 },
-            .{ "texSubImage2D", "call_texSubImage2D", 7 },
+            .{ "texImage2D", "call_texImage2D", 9 },
+            .{ "texSubImage2D", "call_texSubImage2D", 9 },
             .{ "uniform1fv", "call_uniform1fv", 2 },
             .{ "uniform2fv", "call_uniform2fv", 2 },
             .{ "uniform3fv", "call_uniform3fv", 2 },
@@ -93,9 +93,6 @@ pub const WebGLRenderingContextOverloads = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

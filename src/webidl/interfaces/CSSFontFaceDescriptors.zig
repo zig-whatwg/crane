@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("CSSRule.zig").CSSRule;
+const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
-const CSSValue = @import("CSSValue.zig").CSSValue;
+const CSSValue = @import("interfaces").CSSValue;
 
 pub const CSSFontFaceDescriptors = struct {
     pub const Meta = struct {
@@ -92,7 +92,12 @@ pub const CSSFontFaceDescriptors = struct {
             "getPropertyPriority",
             "setProperty",
             "removeProperty",
+            "getPropertyValue",
             "getPropertyCSSValue",
+            "removeProperty",
+            "getPropertyPriority",
+            "setProperty",
+            "item",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -144,9 +149,6 @@ pub const CSSFontFaceDescriptors = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

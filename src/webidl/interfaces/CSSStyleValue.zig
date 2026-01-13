@@ -42,8 +42,16 @@ pub const CSSStyleValue = struct {
             .{ "toString", "serialize", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "parse", "call_static_parse", 2 },
+            .{ "parseAll", "call_static_parseAll", 2 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "parse",
+            "parseAll",
             "toString",
         };
         
@@ -59,11 +67,6 @@ pub const CSSStyleValue = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "parse", "call_static_parse", 2 },
-            .{ "parseAll", "call_static_parseAll", 2 },
-        };
         pub const has_constructor = false;
     };
 

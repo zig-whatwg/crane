@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const PermissionState = @import("enums").PermissionState;
-const DeviceMotionEventRotationRate = @import("DeviceMotionEventRotationRate.zig").DeviceMotionEventRotationRate;
+const DeviceMotionEventRotationRate = @import("interfaces").DeviceMotionEventRotationRate;
 const DeviceMotionEventInit = @import("dictionaries").DeviceMotionEventInit;
-const EventTarget = @import("EventTarget.zig").EventTarget;
-const DeviceMotionEventAcceleration = @import("DeviceMotionEventAcceleration.zig").DeviceMotionEventAcceleration;
+const EventTarget = @import("interfaces").EventTarget;
+const DeviceMotionEventAcceleration = @import("interfaces").DeviceMotionEventAcceleration;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -49,8 +49,14 @@ pub const DeviceMotionEvent = struct {
         pub const methods = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "requestPermission", "call_static_requestPermission", 0 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "requestPermission",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -74,10 +80,6 @@ pub const DeviceMotionEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "requestPermission", "call_static_requestPermission", 0 },
-        };
         pub const has_constructor = true;
     };
 

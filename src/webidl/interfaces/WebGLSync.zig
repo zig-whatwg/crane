@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WebGLObject = @import("WebGLObject.zig").WebGLObject;
+const WebGLObject = @import("interfaces").WebGLObject;
 const USVString = @import("typedefs").USVString;
 
 pub const WebGLSync = struct {
@@ -56,9 +56,6 @@ pub const WebGLSync = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

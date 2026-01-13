@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValue;
-const CSSUnitValue = @import("CSSUnitValue.zig").CSSUnitValue;
-const CSSMathSum = @import("CSSMathSum.zig").CSSMathSum;
+const CSSStyleValue = @import("interfaces").CSSStyleValue;
+const CSSUnitValue = @import("interfaces").CSSUnitValue;
+const CSSMathSum = @import("interfaces").CSSMathSum;
 const CSSNumericType = @import("dictionaries").CSSNumericType;
 const CSSNumberish = @import("typedefs").CSSNumberish;
 const USVString = @import("typedefs").USVString;
@@ -45,16 +45,21 @@ pub const CSSNumericValue = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "add", "call_add", 0 },
-            .{ "sub", "call_sub", 0 },
-            .{ "mul", "call_mul", 0 },
-            .{ "div", "call_div", 0 },
-            .{ "min", "call_min", 0 },
-            .{ "max", "call_max", 0 },
-            .{ "equals", "call_equals", 0 },
+            .{ "add", "call_add", 1 },
+            .{ "sub", "call_sub", 1 },
+            .{ "mul", "call_mul", 1 },
+            .{ "div", "call_div", 1 },
+            .{ "min", "call_min", 1 },
+            .{ "max", "call_max", 1 },
+            .{ "equals", "call_equals", 1 },
             .{ "to", "call_to", 1 },
-            .{ "toSum", "call_toSum", 0 },
+            .{ "toSum", "call_toSum", 1 },
             .{ "type", "call_type", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "parse", "call_static_parse", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -69,10 +74,12 @@ pub const CSSNumericValue = struct {
             "to",
             "toSum",
             "type",
+            "parse",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
+            "parseAll",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -83,10 +90,6 @@ pub const CSSNumericValue = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "parse", "call_static_parse", 1 },
-        };
         pub const has_constructor = false;
     };
 

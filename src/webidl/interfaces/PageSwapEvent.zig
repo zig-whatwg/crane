@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const PageSwapEventInit = @import("dictionaries").PageSwapEventInit;
-const NavigationActivation = @import("NavigationActivation.zig").NavigationActivation;
-const EventTarget = @import("EventTarget.zig").EventTarget;
-const ViewTransition = @import("ViewTransition.zig").ViewTransition;
+const NavigationActivation = @import("interfaces").NavigationActivation;
+const EventTarget = @import("interfaces").EventTarget;
+const ViewTransition = @import("interfaces").ViewTransition;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -68,9 +68,6 @@ pub const PageSwapEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 
