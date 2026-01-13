@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSRule = @import("CSSRule.zig").CSSRule;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSRule = @import("interfaces").CSSRule;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -65,7 +65,6 @@ pub const CSSCounterStyleRule = struct {
             .{ "symbols", "get_symbols", "set_symbols" },
             .{ "additiveSymbols", "get_additiveSymbols", "set_additiveSymbols" },
             .{ "negative", "get_negative", "set_negative" },
-            .{ "prefix", "get_prefix", "set_prefix" },
             .{ "suffix", "get_suffix", "set_suffix" },
             .{ "range", "get_range", "set_range" },
             .{ "pad", "get_pad", "set_pad" },
@@ -75,11 +74,9 @@ pub const CSSCounterStyleRule = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
+            .{ "prefix", "get_prefix", "set_prefix" },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

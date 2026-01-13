@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const MutationCallback = @import("callbacks").MutationCallback;
-const Node = @import("Node.zig").Node;
-const MutationRecord = @import("MutationRecord.zig").MutationRecord;
+const Node = @import("interfaces").Node;
+const MutationRecord = @import("interfaces").MutationRecord;
 const MutationObserverInit = @import("dictionaries").MutationObserverInit;
 
 pub const MutationObserver = struct {
@@ -60,9 +60,6 @@ pub const MutationObserver = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

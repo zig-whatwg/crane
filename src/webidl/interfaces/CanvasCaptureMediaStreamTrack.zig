@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
+const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CaptureHandle = @import("dictionaries").CaptureHandle;
@@ -18,14 +18,14 @@ const DOMString = @import("typedefs").DOMString;
 const MediaTrackSettings = @import("dictionaries").MediaTrackSettings;
 const MediaTrackConstraints = @import("dictionaries").MediaTrackConstraints;
 const MediaStreamTrackState = @import("enums").MediaStreamTrackState;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const CaptureAction = @import("enums").CaptureAction;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
-const HTMLCanvasElement = @import("HTMLCanvasElement.zig").HTMLCanvasElement;
+const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
 
 pub const CanvasCaptureMediaStreamTrack = struct {
     pub const Meta = struct {
@@ -84,9 +84,6 @@ pub const CanvasCaptureMediaStreamTrack = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

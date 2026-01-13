@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AttributionImpressionOptions = @import("dictionaries").AttributionImpressionOptions;
 const AttributionConversionResult = @import("dictionaries").AttributionConversionResult;
-const AttributionAggregationServices = @import("AttributionAggregationServices.zig").AttributionAggregationServices;
+const AttributionAggregationServices = @import("interfaces").AttributionAggregationServices;
 const AttributionImpressionResult = @import("dictionaries").AttributionImpressionResult;
 const AttributionConversionOptions = @import("dictionaries").AttributionConversionOptions;
 
@@ -62,9 +62,6 @@ pub const Attribution = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

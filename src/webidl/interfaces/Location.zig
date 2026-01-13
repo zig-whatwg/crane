@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMStringList = @import("DOMStringList.zig").DOMStringList;
+const DOMStringList = @import("interfaces").DOMStringList;
 const USVString = @import("typedefs").USVString;
 
 pub const Location = struct {
@@ -80,9 +80,6 @@ pub const Location = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

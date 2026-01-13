@@ -10,21 +10,21 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CharacterData = @import("CharacterData.zig").CharacterData;
-const LinkStyle = @import("LinkStyle.zig").LinkStyle;
+const CharacterData = @import("interfaces").CharacterData;
+const LinkStyle = @import("interfaces").LinkStyle;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
-const Document = @import("Document.zig").Document;
-const Node = @import("Node.zig").Node;
-const NodeList = @import("NodeList.zig").NodeList;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const Document = @import("interfaces").Document;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
 const USVString = @import("typedefs").USVString;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
-const Element = @import("Element.zig").Element;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const Element = @import("interfaces").Element;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const StyleSheet = @import("StyleSheet.zig").StyleSheet;
-const EventListener = @import("EventListener.zig").EventListener;
+const StyleSheet = @import("interfaces").StyleSheet;
+const EventListener = @import("interfaces").EventListener;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DOMString = @import("typedefs").DOMString;
 
@@ -102,9 +102,6 @@ pub const ProcessingInstruction = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

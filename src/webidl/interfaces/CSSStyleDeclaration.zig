@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("CSSRule.zig").CSSRule;
+const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
-const CSSValue = @import("CSSValue.zig").CSSValue;
+const CSSValue = @import("interfaces").CSSValue;
 
 pub const CSSStyleDeclaration = struct {
     pub const Meta = struct {
@@ -72,9 +72,6 @@ pub const CSSStyleDeclaration = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

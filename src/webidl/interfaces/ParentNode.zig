@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("Element.zig").Element;
-const Node = @import("Node.zig").Node;
-const NodeList = @import("NodeList.zig").NodeList;
-const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
+const Element = @import("interfaces").Element;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
+const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ParentNode = struct {
@@ -36,9 +36,9 @@ pub const ParentNode = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "prepend", "call_prepend", 0 },
-            .{ "append", "call_append", 0 },
-            .{ "replaceChildren", "call_replaceChildren", 0 },
+            .{ "prepend", "call_prepend", 1 },
+            .{ "append", "call_append", 1 },
+            .{ "replaceChildren", "call_replaceChildren", 1 },
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
@@ -70,10 +70,14 @@ pub const ParentNode = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
+        
+        /// Members marked with [Unscopable] extended attribute
+        pub const unscopables = .{
+            "prepend",
+            "append",
+            "replaceChildren",
+        };
     };
 
     pub const State = runtime.FlattenedState(

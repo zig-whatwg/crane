@@ -10,28 +10,28 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DocumentFragment = @import("DocumentFragment.zig").DocumentFragment;
+const DocumentFragment = @import("interfaces").DocumentFragment;
 const DocumentOrShadowRoot = @import("mixins").DocumentOrShadowRoot;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
-const Document = @import("Document.zig").Document;
-const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
+const Document = @import("interfaces").Document;
+const HTMLCollection = @import("interfaces").HTMLCollection;
 const USVString = @import("typedefs").USVString;
-const Element = @import("Element.zig").Element;
+const Element = @import("interfaces").Element;
 const ShadowRootMode = @import("enums").ShadowRootMode;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
-const StyleSheetList = @import("StyleSheetList.zig").StyleSheetList;
+const EventListener = @import("interfaces").EventListener;
+const StyleSheetList = @import("interfaces").StyleSheetList;
 const EventHandler = @import("typedefs").EventHandler;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
-const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
-const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
-const Animation = @import("Animation.zig").Animation;
-const Node = @import("Node.zig").Node;
-const NodeList = @import("NodeList.zig").NodeList;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const TrustedHTML = @import("interfaces").TrustedHTML;
+const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const Animation = @import("interfaces").Animation;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const SlotAssignmentMode = @import("enums").SlotAssignmentMode;
 const DOMString = @import("typedefs").DOMString;
@@ -71,6 +71,12 @@ pub const ShadowRoot = struct {
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
             .{ "activeElement", "get_activeElement", null },
+        };
+        
+        /// [LegacyLenientSetter] attributes: readonly with no-op setters
+        /// Setters silently do nothing (don't throw, don't modify)
+        pub const lenient_setter_attributes = .{
+            "fullscreenElement",
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -140,9 +146,6 @@ pub const ShadowRoot = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -52,18 +52,15 @@ pub const SpeechSynthesisVoice = struct {
         pub const eager_properties = .{
             .{ "voiceURI", "get_voiceURI", null },
             .{ "name", "get_name", null },
-            .{ "lang", "get_lang", null },
             .{ "localService", "get_localService", null },
             .{ "default", "get_default", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
+            .{ "lang", "get_lang", null },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
