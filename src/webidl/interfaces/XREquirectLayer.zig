@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRCompositionLayer = @import("interfaces").XRCompositionLayer;
+const XRCompositionLayer = @import("XRCompositionLayer.zig").XRCompositionLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const XRRigidTransform = @import("interfaces").XRRigidTransform;
+const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
 const XRLayerQuality = @import("enums").XRLayerQuality;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const XRSpace = @import("interfaces").XRSpace;
-const EventListener = @import("interfaces").EventListener;
+const XRSpace = @import("XRSpace.zig").XRSpace;
+const EventListener = @import("EventListener.zig").EventListener;
 const XRLayerLayout = @import("enums").XRLayerLayout;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
@@ -83,6 +83,9 @@ pub const XREquirectLayer = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

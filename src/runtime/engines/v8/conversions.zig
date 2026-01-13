@@ -27,6 +27,8 @@ const namespace = @import("namespace.zig");
 const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
+const callback_registry = @import("callback_registry.zig");
+const engine_mod = @import("engine.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
@@ -58,6 +60,10 @@ pub const ConversionError = error{
 
     /// Failed to create a V8 Global handle for persistent storage
     GlobalHandleCreationFailed,
+
+    /// A JavaScript exception is already pending in V8 (rethrown from conversion)
+    /// When this error is returned, the caller should NOT throw another exception
+    ExceptionPending,
 };
 
 // ============================================================================
@@ -288,13 +294,10 @@ pub fn fromV8ValueTyped(
             }
         }
 
-        // Not a wrapped instance - create Global handle for persistence
-        // Functions and objects need Global handles to survive HandleScope
-        if (v8.v8_Value_ToGlobal(isolate, @ptrCast(value))) |global| {
-            return JSValue.fromGlobal(global);
-        }
-
-        // Global creation failed (OOM) - fall through to local
+        // Not a wrapped instance - the value IS already a Global handle
+        // (from v8_FunctionCallbackInfo_GetArgument which creates and tracks a Global)
+        // Just use it directly - no need to call v8_Value_ToGlobal
+        return JSValue.fromGlobal(@ptrCast(value));
     }
 
     // For other values (strings, etc.) - return as local handle
@@ -706,6 +709,7 @@ pub fn fromV8Value(
             if (pointer_child_info == .@"fn") {
                 // This is an optional callback (?*fn(...))
                 // If value is not a function, return null instead of erroring
+                // NOTE: value from v8_FunctionCallbackInfo_GetArgument is already a Global<Value>*.
                 if (!v8.v8_Value_IsFunction(value)) {
                     return null;
                 }
@@ -729,9 +733,18 @@ pub fn fromV8Value(
             if (v8.v8_Value_IsSymbol_Local(@ptrCast(value))) {
                 return ConversionError.TypeError;
             }
-            // Use ToString coercion for everything else (numbers, booleans, objects, etc.)
-            // This matches browser behavior where formData.append('key', 123) stores "123"
-            const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+            // Use safe ToString that captures exceptions from toString() methods
+            // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
+            const result = v8.v8_Value_ToString_Safe(value, context);
+            defer v8.v8_FreeToStringResult(result);
+
+            // If toString() threw an exception, rethrow it and signal caller not to throw again
+            if (result.exception) |exc| {
+                v8.v8_Isolate_ThrowException(isolate, exc);
+                return ConversionError.ExceptionPending;
+            }
+
+            const string = result.value orelse return ConversionError.TypeError;
             const length = v8.v8_String_Utf8Length(string);
             if (length < 0) return ConversionError.StringError;
             if (length == 0) return &[_]u8{};
@@ -762,10 +775,18 @@ pub fn fromV8Value(
         if (v8.v8_Value_IsSymbol(value)) {
             return ConversionError.TypeError;
         }
-        // Use ToString coercion for everything else (null, undefined, numbers, booleans, objects, etc.)
-        // The value parameter must be a Global<Value>* - interceptor callbacks should persist raw
-        // pointers to Global handles before calling fromV8Value.
-        const string = v8.v8_Value_ToString(value, context) orelse return ConversionError.TypeError;
+        // Use safe ToString that captures exceptions from toString() methods
+        // Per WebIDL § 3.2.1, if ToString throws, we must propagate the exception
+        const result = v8.v8_Value_ToString_Safe(value, context);
+        defer v8.v8_FreeToStringResult(result);
+
+        // If toString() threw an exception, rethrow it and signal caller not to throw again
+        if (result.exception) |exc| {
+            v8.v8_Isolate_ThrowException(isolate, exc);
+            return ConversionError.ExceptionPending;
+        }
+
+        const string = result.value orelse return ConversionError.TypeError;
         return try fromV8String(allocator, isolate, context, string);
     }
 
@@ -826,12 +847,10 @@ pub fn fromV8Value(
             return runtime.JSValue{ .string = .{ .data = buffer, .owned = true } };
         }
 
-        // For objects/functions/etc., persist to global handle
-        const global = v8.v8_Value_Persist(isolate, value);
-        if (global) |g| {
-            return runtime.JSValue{ .handle = .{ .ptr = g } };
-        }
-        return runtime.JSValue{ .undefined = {} };
+        // For objects/functions/etc., the value IS already a Global handle
+        // (from v8_FunctionCallbackInfo_GetArgument which creates and tracks a Global)
+        // Just store it directly - no need to persist again
+        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
     }
 
     // Handle unions (for constructor overloading and type unions)
@@ -933,8 +952,48 @@ pub fn fromV8Value(
             break :blk null;
         };
 
+        // Callback function types: *anyopaque (for unions like TimerHandler)
+        // The "Function" callback is generated as *anyopaque to hold V8 GlobalHandle pointers.
+        // These match JavaScript functions that need to be stored for later invocation.
+        const function_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                // Check for *anyopaque (used for callback.Function)
+                if (field.type == *anyopaque) {
+                    break :blk i;
+                }
+                // Also check for *const fn(...) for backwards compatibility with other callbacks
+                const field_info = @typeInfo(field.type);
+                if (field_info == .pointer and field_info.pointer.size == .one) {
+                    const child_info = @typeInfo(field_info.pointer.child);
+                    if (child_info == .@"fn") {
+                        break :blk i;
+                    }
+                }
+            }
+            break :blk null;
+        };
+
         // Runtime dispatch based on V8 value type
-        if (v8.v8_Value_IsArray(value)) {
+        // Check function FIRST since functions are also objects in JavaScript
+        if (v8.v8_Value_IsFunction(value)) {
+            if (function_idx) |idx| {
+                // IMPORTANT: The 'value' from v8_FunctionCallbackInfo_GetArgument is already
+                // a Global<Value>* pointer. We do NOT need to call v8_Value_ToGlobal again.
+                // Handle the different callback pointer types
+                const FieldType = fields[idx].type;
+                if (FieldType == *anyopaque) {
+                    // For *anyopaque (callbacks.Function), tag so we can identify it later as GlobalHandle
+                    const tagged = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
+                    return @unionInit(T, fields[idx].name, @constCast(tagged));
+                } else {
+                    // For typed function pointer fields (*const fn(...)), do NOT tag the pointer.
+                    // Tagged pointers have low bits set which violates Zig's alignment requirements
+                    // for function pointers. The union variant type already tells us what it is.
+                    const ptr_value: usize = @intFromPtr(value);
+                    return @unionInit(T, fields[idx].name, @ptrFromInt(ptr_value));
+                }
+            }
+        } else if (v8.v8_Value_IsArray(value)) {
             if (sequence_idx) |idx| {
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
@@ -959,15 +1018,36 @@ pub fn fromV8Value(
                 return @unionInit(T, fields[idx].name, converted);
             }
         } else if (v8.v8_Value_IsObject(value)) {
-            // Try *runtime.Instance first (for unions like NodeOrString)
-            // These are wrapped platform objects (DOM nodes, etc.)
+            // For objects, we need to distinguish between:
+            // 1. Wrapped platform objects (DOM nodes, etc.) - have internal fields
+            // 2. Plain JS objects (dictionaries, String objects, etc.) - no internal fields
+            //
+            // The problem: v8_Object_InternalFieldCount_Raw segfaults on plain objects.
+            // Solution: Try instance conversion, but if it returns an instance with null
+            // internal pointer, treat it as a plain object.
             if (instance_idx) |idx| {
                 const FieldType = fields[idx].type;
-                // Try to extract instance from V8 object
-                if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
+                // Try to extract as instance - but first check if we have a string alternative
+                // because strings should take priority over treating them as objects
+                if (string_idx != null and v8.v8_Value_IsString(value)) {
+                    // This is a string, skip instance extraction and let string handling below deal with it
+                } else if (fromV8Value(FieldType, allocator, isolate, context, value)) |converted| {
                     return @unionInit(T, fields[idx].name, converted);
                 } else |_| {
-                    // Not a valid instance - fall through to dict_idx
+                    // Instance conversion failed - this might be a native JS object like URL.
+                    // If we have a string variant, try to convert the object to string via toString()
+                    if (string_idx) |str_idx| {
+                        // Call toString() on the object to get a string representation
+                        if (v8.v8_Value_ToString(value, context)) |str_value| {
+                            const StringFieldType = fields[str_idx].type;
+                            if (fromV8Value(StringFieldType, allocator, isolate, context, @ptrCast(str_value))) |str_converted| {
+                                return @unionInit(T, fields[str_idx].name, str_converted);
+                            } else |_| {
+                                // String conversion also failed, fall through
+                            }
+                        }
+                    }
+                    // Fall through to dict_idx
                 }
             }
             if (dict_idx) |idx| {
@@ -1068,7 +1148,9 @@ pub fn fromV8Value(
 
         const object = @as(*v8.Object, @ptrCast(value));
 
-        // First try to get stored WrapperTypeInfo for validation
+        // Only accept objects that have valid WrapperTypeInfo - this means they
+        // were created by our WebIDL bindings. Native JS objects (like URL, Date, etc.)
+        // should NOT be converted to *runtime.Instance.
         if (interface_mod.getWrapperTypeInfo(object)) |wrapper_info| {
             // We have type info - use type-safe unwrapping
             // For generic *runtime.Instance, we accept any valid wrapped object
@@ -1081,13 +1163,9 @@ pub fn fromV8Value(
             }
         }
 
-        // Fall back to legacy extraction (no type info stored)
-        // Get the instance pointer from internal field 0
-        const internal_field = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse {
-            return ConversionError.TypeError;
-        };
-
-        return @ptrCast(@alignCast(internal_field));
+        // No valid WrapperTypeInfo - this is a native JS object (URL, Date, etc.),
+        // not a WebIDL-wrapped platform object. Do NOT try to extract instance.
+        return ConversionError.TypeError;
     }
 
     // Handle function pointers (callbacks)
@@ -1123,19 +1201,16 @@ pub fn fromV8Value(
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .@"fn") {
             // Verify this is actually a V8 function
+            // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a Global<Value>*
+            // (the C++ function creates a new Global from the Local argument and returns it).
+            // So we use v8_Value_IsFunction which expects Global<Value>*.
             if (!v8.v8_Value_IsFunction(value)) {
                 return ConversionError.TypeError;
             }
 
-            // Create a Global handle to persist the callback across HandleScope boundaries.
-            // This converts the stack-bound Local<Value> to a heap-allocated Global<Value>.
-            const global_handle = global_handles.GlobalHandle.create(isolate, value) orelse {
-                return ConversionError.GlobalHandleCreationFailed;
-            };
-
-            // Return the Global handle's internal pointer, tagged with .global_handle.
-            // The tag tells consumers (like jsCallbackAlgorithmGlobal) that this is already
-            // a Global handle, so they don't need to create another one.
+            // The value is already a Global<Value>* from v8_FunctionCallbackInfo_GetArgument.
+            // We don't need to create another Global - just use this one directly.
+            // Tag the pointer so consumers know it's a GlobalHandle.
             //
             // Consumers should:
             // 1. Call pointer_tag.untagPointer() to get the raw pointer and tag
@@ -1146,7 +1221,7 @@ pub fn fromV8Value(
             // We can't use normal pointer casts because Zig checks alignment for function pointers.
             // Instead, we use a union type-pun to bypass alignment checks entirely.
             // The pointer MUST be untagged before any alignment-sensitive operations.
-            const tagged_ptr = pointer_tag.tagPointer(@ptrCast(global_handle.ptr), .global_handle);
+            const tagged_ptr = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
 
             // Bypass Zig's alignment checking for function pointers.
             // This is safe because:
@@ -1443,34 +1518,70 @@ pub fn fromV8Value(
     }
 
     // Handle CallbackWrapper types (for callback interfaces like EventListener, NodeFilter, etc.)
-    // We use the V8-specific callback wrapper and cast to runtime.CallbackWrapper pointer
+    // We create a runtime.CallbackWrapper that wraps the V8-specific callback wrapper.
+    // The runtime.CallbackWrapper uses the engine interface to invoke the V8 callback.
     if (T == *runtime.CallbackWrapper) {
+        // CRITICAL: CallbackWrappers MUST use a persistent allocator, NOT the arena allocator.
+        // The arena is reset during GC sweeps (onGCSweep -> ArenaAllocator.reset()), but
+        // callbacks stored in EventTarget must survive across GC cycles.
+        // Using arena allocator here causes use-after-free when event listeners are invoked.
+        const persistent_allocator = std.heap.page_allocator;
+
         // Create a V8 CallbackWrapper from the V8 value (function or object with handleEvent)
-        const v8_wrapper = try callback_wrapper.createFromV8Value(
-            allocator,
+        // Note: createFromV8Value may return callback-specific errors which we map to TypeError
+        const v8_wrapper_opt = callback_wrapper.createFromV8Value(
+            persistent_allocator,
             isolate,
             context,
             value,
             "handleEvent", // Default method name for callback interfaces
-        ) orelse return ConversionError.TypeError;
-        // Cast to opaque runtime.CallbackWrapper pointer
-        // The runtime.CallbackWrapper and v8 CallbackWrapper are layout-compatible for this use
-        return @ptrCast(v8_wrapper);
+        ) catch return ConversionError.TypeError;
+        const v8_wrapper = v8_wrapper_opt orelse return ConversionError.TypeError;
+        // Register wrapper for cleanup when context is destroyed
+        callback_registry.register(v8_wrapper);
+
+        // Create a runtime.CallbackWrapper that properly wraps the V8 callback.
+        // CRITICAL: We cannot just @ptrCast because runtime.CallbackWrapper and V8 CallbackWrapper
+        // have INCOMPATIBLE struct layouts! runtime.CallbackWrapper.invoke() calls
+        // self.engine.invokeCallback(), so we must set up the engine interface correctly.
+        const runtime_wrapper = persistent_allocator.create(runtime.CallbackWrapper) catch return ConversionError.TypeError;
+        runtime_wrapper.* = .{
+            .engine_handle = v8_wrapper, // V8 CallbackWrapper pointer
+            .engine = &engine_mod.v8_engine_interface, // V8 engine interface with invokeCallback
+            .engine_ctx = context, // V8 context for invoking callbacks
+            .allocator = persistent_allocator,
+        };
+        return runtime_wrapper;
     }
     if (T == ?*runtime.CallbackWrapper) {
         // Optional callback - null/undefined is valid
         if (v8.v8_Value_IsNullOrUndefined(value)) {
             return null;
         }
-        const v8_wrapper = try callback_wrapper.createFromV8Value(
-            allocator,
+        // CRITICAL: Use persistent allocator for optional callbacks too (same reason as above)
+        const persistent_allocator = std.heap.page_allocator;
+
+        // Note: createFromV8Value may return callback-specific errors which we map to TypeError
+        const v8_wrapper = callback_wrapper.createFromV8Value(
+            persistent_allocator,
             isolate,
             context,
             value,
             "handleEvent",
-        );
+        ) catch return ConversionError.TypeError;
         if (v8_wrapper) |w| {
-            return @ptrCast(w);
+            // Register wrapper for cleanup when context is destroyed
+            callback_registry.register(w);
+
+            // Create a runtime.CallbackWrapper that properly wraps the V8 callback
+            const runtime_wrapper = persistent_allocator.create(runtime.CallbackWrapper) catch return ConversionError.TypeError;
+            runtime_wrapper.* = .{
+                .engine_handle = w, // V8 CallbackWrapper pointer
+                .engine = &engine_mod.v8_engine_interface, // V8 engine interface
+                .engine_ctx = context, // V8 context
+                .allocator = persistent_allocator,
+            };
+            return runtime_wrapper;
         }
         return null;
     }
@@ -1729,19 +1840,13 @@ pub fn toV8Value(
                     break :blk toV8Undefined(isolate);
                 }
 
-                // Handle scope determines how to convert:
-                // - Global handles are already Global<Value>* and can be returned directly
-                //   (setReturnValue expects Global pointers from v8_String_NewFromUtf8, etc.)
-                // - Local handles need to be persisted to Global for setReturnValue to work
-                if (h.handle_scope == .global) {
-                    // Already a Global<Value>* - return directly
-                    break :blk @ptrCast(h.ptr);
-                } else {
-                    // Local handle - need to persist to Global for safe return
-                    // Use v8_Value_Persist to convert Local to Global
-                    const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
-                    break :blk if (global) |g| @ptrCast(g) else toV8Undefined(isolate);
-                }
+                // For both Global and Local handles, return the pointer directly.
+                // The caller (setReturnValue) will use SetReturnValueGlobal which
+                // handles Global<Value>* pointers correctly by calling Get() internally.
+                // For Local handles, this also works because SetReturnValueGlobal
+                // can handle both Global and Local pointers - it checks if the
+                // pointer is valid and handles conversion appropriately.
+                break :blk @ptrCast(h.ptr);
             },
             .instance => |i| instanceToV8(isolate, @ptrCast(@alignCast(i))),
         };
@@ -1751,6 +1856,23 @@ pub fn toV8Value(
             .not_passed => toV8Undefined(isolate),
             .passed => |v| try toV8Value(runtime.JSValue, isolate, context, v),
         };
+    }
+
+    // Handle webidl.Opt types (WebIDL optional parameters)
+    // These are structs with was_passed and value fields, used for optional parameters
+    // that need to distinguish between "not passed" and "passed with value"
+    if (@typeInfo(T) == .@"struct") {
+        if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed") and @hasDecl(T, "getValue")) {
+            // This is a webidl.Opt type
+            if (!value.wasPassed()) {
+                // Not passed -> undefined
+                return toV8Undefined(isolate);
+            } else {
+                // Passed -> convert inner value
+                const InnerType = @TypeOf(value.getValue());
+                return try toV8Value(InnerType, isolate, context, value.getValue());
+            }
+        }
     }
 
     // Handle optional types (nullable)

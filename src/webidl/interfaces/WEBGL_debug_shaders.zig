@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMString = @import("typedefs").DOMString;
-const WebGLShader = @import("interfaces").WebGLShader;
+const WebGLShader = @import("WebGLShader.zig").WebGLShader;
 
 pub const WEBGL_debug_shaders = struct {
     pub const Meta = struct {
@@ -58,6 +58,9 @@ pub const WEBGL_debug_shaders = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

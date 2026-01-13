@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const Event = @import("interfaces").Event;
+const Event = @import("Event.zig").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const ScreenDetailed = @import("interfaces").ScreenDetailed;
-const EventListener = @import("interfaces").EventListener;
+const ScreenDetailed = @import("ScreenDetailed.zig").ScreenDetailed;
+const EventListener = @import("EventListener.zig").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
-const Observable = @import("interfaces").Observable;
+const Observable = @import("Observable.zig").Observable;
 
 pub const ScreenDetails = struct {
     pub const Meta = struct {
@@ -74,6 +74,9 @@ pub const ScreenDetails = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

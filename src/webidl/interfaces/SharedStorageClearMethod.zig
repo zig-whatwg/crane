@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SharedStorageModifierMethod = @import("interfaces").SharedStorageModifierMethod;
+const SharedStorageModifierMethod = @import("SharedStorageModifierMethod.zig").SharedStorageModifierMethod;
 const SharedStorageModifierMethodOptions = @import("dictionaries").SharedStorageModifierMethodOptions;
 
 pub const SharedStorageClearMethod = struct {
@@ -56,6 +56,9 @@ pub const SharedStorageClearMethod = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

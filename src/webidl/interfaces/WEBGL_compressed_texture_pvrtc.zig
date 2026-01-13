@@ -39,14 +39,6 @@ pub const WEBGL_compressed_texture_pvrtc = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "COMPRESSED_RGB_PVRTC_4BPPV1_IMG", "get_COMPRESSED_RGB_PVRTC_4BPPV1_IMG" },
-            .{ "COMPRESSED_RGB_PVRTC_2BPPV1_IMG", "get_COMPRESSED_RGB_PVRTC_2BPPV1_IMG" },
-            .{ "COMPRESSED_RGBA_PVRTC_4BPPV1_IMG", "get_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG" },
-            .{ "COMPRESSED_RGBA_PVRTC_2BPPV1_IMG", "get_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -63,6 +55,9 @@ pub const WEBGL_compressed_texture_pvrtc = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

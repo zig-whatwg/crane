@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const UIEvent = @import("interfaces").UIEvent;
+const UIEvent = @import("UIEvent.zig").UIEvent;
 const UIEventInit = @import("dictionaries").UIEventInit;
-const Window = @import("interfaces").Window;
-const EventTarget = @import("interfaces").EventTarget;
-const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
+const Window = @import("Window.zig").Window;
+const EventTarget = @import("EventTarget.zig").EventTarget;
+const InputDeviceCapabilities = @import("InputDeviceCapabilities.zig").InputDeviceCapabilities;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -68,6 +68,9 @@ pub const FocusEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

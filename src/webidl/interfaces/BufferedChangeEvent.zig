@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("interfaces").Event;
-const TimeRanges = @import("interfaces").TimeRanges;
-const EventTarget = @import("interfaces").EventTarget;
+const Event = @import("Event.zig").Event;
+const TimeRanges = @import("TimeRanges.zig").TimeRanges;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const BufferedChangeEventInit = @import("dictionaries").BufferedChangeEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -70,6 +70,9 @@ pub const BufferedChangeEvent = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

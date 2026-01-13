@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ReadableStreamGenericReader = @import("mixins").ReadableStreamGenericReader;
 const ArrayBufferView = @import("typedefs").ArrayBufferView;
-const ReadableStream = @import("interfaces").ReadableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 const ReadableStreamBYOBReaderReadOptions = @import("dictionaries").ReadableStreamBYOBReaderReadOptions;
 const ReadableStreamReadResult = @import("dictionaries").ReadableStreamReadResult;
 
@@ -65,6 +65,9 @@ pub const ReadableStreamBYOBReader = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 

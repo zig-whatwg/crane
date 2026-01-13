@@ -154,6 +154,11 @@ const ParserContext = struct {
         return self.pointer >= self.input.len;
     }
 
+    fn peekNext(self: *const ParserContext) ?u8 {
+        if (self.pointer + 1 >= self.input.len) return null;
+        return self.input[self.pointer + 1];
+    }
+
     fn remaining(self: *const ParserContext) []const u8 {
         return helpers.remaining(self.input, self.pointer);
     }
@@ -360,8 +365,10 @@ fn applyContextToURL(ctx: *ParserContext, url: *URLRecord) !void {
 
     url.query_start = query_start;
     url.query_len = query_len;
+    url.has_query = ctx.has_query;
     url.fragment_start = fragment_start;
     url.fragment_len = fragment_len;
+    url.has_fragment = ctx.has_fragment;
 }
 
 /// Build URLRecord from parser context
@@ -429,8 +436,10 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
         .path = path,
         .query_start = query_start,
         .query_len = query_len,
+        .has_query = ctx.has_query,
         .fragment_start = fragment_start,
         .fragment_len = fragment_len,
+        .has_fragment = ctx.has_fragment,
         .blob_url_entry = null,
         .allocator = allocator,
     };
@@ -448,7 +457,7 @@ fn runStateMachine(ctx: *ParserContext, c: ?u8) ParseError!void {
         .special_authority_slashes => try specialAuthoritySlashesState(ctx, c),
         .special_authority_ignore_slashes => try specialAuthorityIgnoreSlashesState(ctx, c),
         .authority => try authorityState(ctx, c),
-        .host => try hostState(ctx, c),
+        .host, .hostname => try hostState(ctx, c),
         .port => try portState(ctx, c),
         .file => try fileState(ctx, c),
         .file_slash => try fileSlashState(ctx, c),
@@ -570,6 +579,8 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
             }
 
             // Spec step 2.9 (line 1113): Otherwise, opaque path
+            // Initialize opaque_path to empty string so even "a:" creates an opaque path URL
+            ctx.opaque_path = "";
             ctx.state = .opaque_path;
             return;
         }
@@ -643,6 +654,9 @@ fn pathOrAuthorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
 fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const base = ctx.base.?;
+    // Clear any existing scheme before copying from base
+    // (fixes duplicate scheme bug when input like "http:foo" has same scheme as base)
+    ctx.scheme.clear();
     try ctx.scheme.appendSlice(base.scheme());
 
     if (c == null) {
@@ -711,7 +725,19 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
 }
 
 fn relativeSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
-    if (c == null) return;
+    // Handle EOF and non-slash characters the same way:
+    // copy base credentials/host/port and transition to path state
+    if (c == null) {
+        const base = ctx.base.?;
+        try ctx.username.appendSlice(base.username());
+        try ctx.password.appendSlice(base.password());
+        if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
+        ctx.port = base.port;
+        ctx.state = .path;
+        ctx.pointer -%= 1; // Rewind so path state sees EOF
+        return;
+    }
+
     const char = c.?;
 
     if (ctx.isSpecial() and (char == '/' or char == '\\')) {
@@ -753,38 +779,21 @@ fn specialAuthorityIgnoreSlashesState(ctx: *ParserContext, c: ?u8) ParseError!vo
 }
 
 fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
-    // Handle EOF: finalize as host
+    // Handle EOF same as terminators per WHATWG spec:
+    // "If c is EOF, /, ?, #, or (special and \), then..."
+    // We rewind pointer and transition to host state, letting host state handle
+    // the actual host parsing (which may include port handling for ':')
     if (c == null) {
         if (ctx.at_sign_seen and ctx.buffer.items().len == 0) {
             return ParseError.HostMissing;
         }
-        // If we've seen @ sign, the buffer contains the host
-        // If not, the buffer contains userinfo@host and we need to backtrack
-        if (!ctx.at_sign_seen) {
-            // No @ seen, so this is all host (no userinfo)
-            // Parse the buffer as host
-            if (ctx.isSpecial() and ctx.buffer.items().len == 0) {
-                return ParseError.HostMissing;
-            }
-            if (ctx.buffer.items().len > 0) {
-                const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
-                    return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
-                };
-                ctx.host = host;
-            }
-            ctx.buffer.clear();
-            ctx.state = .path_start;
-            return;
-        }
-        // @ sign seen, buffer contains host
-        if (ctx.buffer.items().len > 0) {
-            const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
-                return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
-            };
-            ctx.host = host;
+        // Rewind pointer by buffer length + 1 (for the EOF/terminator itself)
+        // and transition to host state per spec step 2.2
+        if (ctx.pointer >= ctx.buffer.items().len) {
+            ctx.pointer -= ctx.buffer.items().len + 1;
         }
         ctx.buffer.clear();
-        ctx.state = .path_start;
+        ctx.state = .host;
         return;
     }
 
@@ -792,9 +801,13 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (char == '@') {
         if (ctx.at_sign_seen) {
-            try ctx.buffer.insert(0, '%');
-            try ctx.buffer.insert(1, '4');
-            try ctx.buffer.insert(2, '0');
+            // Prepend "%40" (encoded @) to username or password
+            // We append directly instead of inserting into buffer to avoid double-encoding
+            if (ctx.password_token_seen) {
+                try ctx.password.appendSlice("%40");
+            } else {
+                try ctx.username.appendSlice("%40");
+            }
         }
         ctx.at_sign_seen = true;
 
@@ -847,7 +860,8 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
         }
 
         // Step 2.2 (line 1238): If state override is given and state override is hostname state
-        if (ctx.hasStateOverride() and ctx.state_override.? == .host) {
+        // NOTE: This checks for .hostname (rejects port), NOT .host (allows port)
+        if (ctx.hasStateOverride() and ctx.state_override.? == .hostname) {
             return ParseError.InvalidHost;
         }
 
@@ -889,6 +903,10 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
             };
             ctx.host = host;
+        } else if (!ctx.isSpecial()) {
+            // For non-special URLs with empty authority (e.g., "data:///test"),
+            // set host to empty string per spec step 3.3
+            ctx.host = Host.empty;
         }
 
         // Step 3.5 (line 1262): Clear buffer, set state to path start
@@ -970,6 +988,9 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
 }
 
 fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
+    // Clear any existing scheme before setting to "file"
+    // (fixes duplicate scheme bug when input starts with "file:")
+    ctx.scheme.clear();
     try ctx.scheme.appendSlice("file");
     ctx.host = Host.empty;
 
@@ -1024,8 +1045,9 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 }
                 ctx.state = .path;
                 ctx.pointer -%= 1;
-                return;
             }
+            // If c is null (EOF), we've copied from base and are done
+            return;
         }
     }
 
@@ -1079,7 +1101,7 @@ fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
             return;
         }
 
-        const host = parseHost(ctx.allocator, ctx.buffer.items(), true, null) catch |err| {
+        const host = parseHost(ctx.allocator, ctx.buffer.items(), false, null) catch |err| {
             return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
         };
         if (host == .domain and std.mem.eql(u8, host.domain, "localhost")) {
@@ -1144,19 +1166,29 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (is_terminator) {
         if (path_helpers.isDoubleDotPathSegment(ctx.buffer.items())) {
+            // Shorten URL's path (but don't remove Windows drive letter from file URLs)
             if (ctx.path_segments.size() > 0) {
-                const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
-                ctx.allocator.free(last);
+                // Check for Windows drive letter: file URL with single segment that's a drive letter
+                const is_file_scheme = std.mem.eql(u8, ctx.scheme.items(), "file");
+                const should_keep = is_file_scheme and ctx.path_segments.size() == 1 and blk: {
+                    const first = ctx.path_segments.items()[0];
+                    break :blk windows_drive.isNormalizedWindowsDriveLetter(first);
+                };
+                if (!should_keep) {
+                    const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
+                    ctx.allocator.free(last);
+                }
             }
-            const should_append_empty = !(c != null and c.? == '/') and
-                !(ctx.isSpecial() and c != null and c.? == '\\');
-            if (!should_append_empty) {
+            // Spec: If c is NOT '/' AND NOT (url is special AND c is '\\'), append empty string
+            // This ensures paths like "/usr/.." result in "/" not empty path
+            const c_is_slash = c != null and c.? == '/';
+            if (!c_is_slash and !is_special_backslash) {
                 try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
             }
         } else if (path_helpers.isSingleDotPathSegment(ctx.buffer.items())) {
-            const should_append_empty = !(c != null and c.? == '/') and
-                !(ctx.isSpecial() and c != null and c.? == '\\');
-            if (!should_append_empty) {
+            // Spec: If c is NOT '/' AND NOT (url is special AND c is '\\'), append empty string
+            const c_is_slash = c != null and c.? == '/';
+            if (!c_is_slash and !is_special_backslash) {
                 try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
             }
         } else {
@@ -1199,9 +1231,30 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
         const result = encodeSingleAscii(char, .path);
         try ctx.buffer.appendSlice(result.bytes[0..result.length]);
     } else {
-        const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .path);
-        defer ctx.allocator.free(encoded);
-        try ctx.buffer.appendSlice(encoded);
+        // For non-ASCII, we need to collect the complete UTF-8 sequence
+        // This is important for handling surrogate code points from V8 (WTF-8)
+        const cp_len = std.unicode.utf8ByteSequenceLength(char) catch {
+            // Invalid start byte - encode as-is
+            const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .path);
+            defer ctx.allocator.free(encoded);
+            try ctx.buffer.appendSlice(encoded);
+            return;
+        };
+
+        // Collect the complete UTF-8 sequence from the input
+        if (ctx.pointer + cp_len <= ctx.input.len) {
+            const sequence = ctx.input[ctx.pointer .. ctx.pointer + cp_len];
+            const encoded = try percentEncode(ctx.allocator, sequence, .path);
+            defer ctx.allocator.free(encoded);
+            try ctx.buffer.appendSlice(encoded);
+            // Skip the remaining bytes of the sequence (we'll advance past them)
+            ctx.pointer += cp_len - 1; // -1 because main loop will add 1
+        } else {
+            // Truncated sequence - encode just this byte
+            const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .path);
+            defer ctx.allocator.free(encoded);
+            try ctx.buffer.appendSlice(encoded);
+        }
     }
 }
 
@@ -1217,10 +1270,22 @@ fn opaquePathState(ctx: *ParserContext, c: ?u8) ParseError!void {
             ctx.state = .fragment;
             return;
         }
+
+        // Special handling for space: encode if followed by ? or # or at end
+        // Per WHATWG URL spec, trailing spaces in opaque paths must be percent-encoded
+        var encode_set: EncodeSet = .c0_control;
+        if (char == 0x20) {
+            // Check if next character is ?, #, or EOF
+            const next_char = ctx.peekNext();
+            if (next_char == null or next_char.? == '?' or next_char.? == '#') {
+                encode_set = .query; // query set includes space
+            }
+        }
+
         // Percent encode and append to opaque path
         // P9 Optimization: For ASCII input, use fast path to avoid allocation
         if (ctx.is_ascii and char < 128) {
-            const result = encodeSingleAscii(char, .c0_control);
+            const result = encodeSingleAscii(char, encode_set);
             const encoded_slice = result.bytes[0..result.length];
 
             if (ctx.opaque_path) |*op| {

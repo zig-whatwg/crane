@@ -39,13 +39,6 @@ pub const WEBGL_color_buffer_float = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "RGBA32F_EXT", "get_RGBA32F_EXT" },
-            .{ "FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT", "get_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT" },
-            .{ "UNSIGNED_NORMALIZED_EXT", "get_UNSIGNED_NORMALIZED_EXT" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -62,6 +55,9 @@ pub const WEBGL_color_buffer_float = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

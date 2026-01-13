@@ -12,14 +12,14 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Body = @import("mixins").Body;
 const ByteString = @import("typedefs").ByteString;
-const Blob = @import("interfaces").Blob;
+const Blob = @import("Blob.zig").Blob;
 const ResponseType = @import("enums").ResponseType;
 const USVString = @import("typedefs").USVString;
-const ReadableStream = @import("interfaces").ReadableStream;
+const ReadableStream = @import("ReadableStream.zig").ReadableStream;
 const BodyInit = @import("typedefs").BodyInit;
 const ResponseInit = @import("dictionaries").ResponseInit;
-const FormData = @import("interfaces").FormData;
-const Headers = @import("interfaces").Headers;
+const FormData = @import("FormData.zig").FormData;
+const Headers = @import("Headers.zig").Headers;
 
 pub const Response = struct {
     pub const Meta = struct {
@@ -65,18 +65,8 @@ pub const Response = struct {
             .{ "text", "call_text", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "error", "call_static_error", 0 },
-            .{ "redirect", "call_static_redirect", 1 },
-            .{ "json", "call_static_json", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "error",
-            "redirect",
-            "json",
             "clone",
             "arrayBuffer",
             "blob",
@@ -107,6 +97,12 @@ pub const Response = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "error", "call_static_error", 0 },
+            .{ "redirect", "call_static_redirect", 1 },
+            .{ "json", "call_static_json", 1 },
+        };
         pub const has_constructor = true;
     };
 

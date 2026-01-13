@@ -10,6 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const MulticastGroupOptions = @import("dictionaries").MulticastGroupOptions;
 const DOMString = @import("typedefs").DOMString;
 
 pub const MulticastController = struct {
@@ -62,6 +63,9 @@ pub const MulticastController = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
@@ -110,14 +114,14 @@ pub const MulticastController = struct {
         return try MulticastControllerImpl.get_joinedGroups(instance);
     }
 
-    pub fn call_leaveGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!runtime.JSValue {
+    pub fn call_leaveGroup(instance: *runtime.Instance, groupAddress: DOMString, options: webidl.Opt(MulticastGroupOptions)) anyerror!runtime.JSValue {
         
-        return try MulticastControllerImpl.call_leaveGroup(instance, ipAddress);
+        return try MulticastControllerImpl.call_leaveGroup(instance, groupAddress, options);
     }
 
-    pub fn call_joinGroup(instance: *runtime.Instance, ipAddress: DOMString) anyerror!runtime.JSValue {
+    pub fn call_joinGroup(instance: *runtime.Instance, groupAddress: DOMString, options: webidl.Opt(MulticastGroupOptions)) anyerror!runtime.JSValue {
         
-        return try MulticastControllerImpl.call_joinGroup(instance, ipAddress);
+        return try MulticastControllerImpl.call_joinGroup(instance, groupAddress, options);
     }
 
 };

@@ -10,29 +10,29 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CharacterData = @import("interfaces").CharacterData;
+const CharacterData = @import("CharacterData.zig").CharacterData;
 const Slottable = @import("mixins").Slottable;
 const GeometryUtils = @import("mixins").GeometryUtils;
-const Document = @import("interfaces").Document;
+const Document = @import("Document.zig").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
+const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
+const DOMQuad = @import("DOMQuad.zig").DOMQuad;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const USVString = @import("typedefs").USVString;
-const Element = @import("interfaces").Element;
+const Element = @import("Element.zig").Element;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
-const Node = @import("interfaces").Node;
-const NodeList = @import("interfaces").NodeList;
-const Observable = @import("interfaces").Observable;
-const DOMPoint = @import("interfaces").DOMPoint;
-const Event = @import("interfaces").Event;
+const Node = @import("Node.zig").Node;
+const NodeList = @import("NodeList.zig").NodeList;
+const Observable = @import("Observable.zig").Observable;
+const DOMPoint = @import("DOMPoint.zig").DOMPoint;
+const Event = @import("Event.zig").Event;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DOMString = @import("typedefs").DOMString;
 
@@ -114,13 +114,16 @@ pub const Text = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "wholeText", "get_wholeText", null },
+            .{ "assignedSlot", "get_assignedSlot", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "assignedSlot", "get_assignedSlot", null },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
     };
 
