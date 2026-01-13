@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUIndex32 = @import("typedefs").GPUIndex32;
-const GPUBuffer = @import("GPUBuffer.zig").GPUBuffer;
+const GPUBuffer = @import("interfaces").GPUBuffer;
 const GPUSize64 = @import("typedefs").GPUSize64;
-const GPURenderPipeline = @import("GPURenderPipeline.zig").GPURenderPipeline;
+const GPURenderPipeline = @import("interfaces").GPURenderPipeline;
 const GPUSignedOffset32 = @import("typedefs").GPUSignedOffset32;
 const GPUSize32 = @import("typedefs").GPUSize32;
 const GPUIndexFormat = @import("enums").GPUIndexFormat;
@@ -66,9 +66,6 @@ pub const GPURenderCommandsMixin = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

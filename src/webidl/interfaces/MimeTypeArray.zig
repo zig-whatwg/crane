@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MimeType = @import("MimeType.zig").MimeType;
+const MimeType = @import("interfaces").MimeType;
 const DOMString = @import("typedefs").DOMString;
 
 pub const MimeTypeArray = struct {
@@ -59,9 +59,6 @@ pub const MimeTypeArray = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

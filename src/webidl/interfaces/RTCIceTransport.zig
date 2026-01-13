@@ -10,22 +10,22 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const RTCIceGatherOptions = @import("dictionaries").RTCIceGatherOptions;
 const RTCIceRole = @import("enums").RTCIceRole;
-const RTCIceCandidatePair = @import("RTCIceCandidatePair.zig").RTCIceCandidatePair;
+const RTCIceCandidatePair = @import("interfaces").RTCIceCandidatePair;
 const RTCIceTransportState = @import("enums").RTCIceTransportState;
 const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
 const RTCIceGathererState = @import("enums").RTCIceGathererState;
 const RTCIceComponent = @import("enums").RTCIceComponent;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const RTCIceParameters = @import("dictionaries").RTCIceParameters;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
-const RTCIceCandidate = @import("RTCIceCandidate.zig").RTCIceCandidate;
+const EventListener = @import("interfaces").EventListener;
+const RTCIceCandidate = @import("interfaces").RTCIceCandidate;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -109,9 +109,6 @@ pub const RTCIceTransport = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

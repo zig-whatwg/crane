@@ -412,8 +412,6 @@ pub const Matcher = struct {
             .Has => |selector_list| try self.matchesHas(element, selector_list),
             .Lang => |lang_code| matchesLang(element, lang_code),
             .Dir => |direction| matchesDir(element, direction),
-            // Location pseudo-class - requires document URL context
-            .Target => false,
             // User action pseudo-classes - not supported in querySelector
             // (these require runtime state tracking)
             .AnyLink, .Link, .Visited, .Hover, .Active, .Focus, .FocusVisible, .FocusWithin => false,

@@ -1,31 +1,19 @@
-//! Worker V8 Context Setup (PRODUCTION - Used by WPT)
+//! Worker V8 Context Setup
 //!
 //! Spec: HTML Standard § 10.2.5 Processing model
 //! https://html.spec.whatwg.org/#run-a-worker
 //!
-//! This is the PRODUCTION worker implementation used by WPT tests.
+//! This module creates V8 isolates and contexts for worker execution.
 //! Each worker gets its own V8 isolate for complete memory isolation.
 //!
-//! ## THIS IS THE CORRECT PATH FOR WPT
+//! ## Design
 //!
-//! When JavaScript calls `new Worker(url)`, the WebIDL Worker.zig impl uses
-//! this module via the callbacks in `Worker.zig:spawnWorkerThread()`:
-//! - `createIsolateWithInterfaces()` → WorkerV8Context.init()
-//! - `executeScriptWithInterfaces()` → WorkerV8Context.executeScript()
-//!
-//! ## Working Implementations
-//!
-//! This module has REAL, WORKING implementations:
-//! - `importScriptsCallback()` - Fetches scripts via HTTP and executes them
-//! - `workerPostMessageCallback()` - Serializes messages and sends to main thread
-//! - `workerCloseCallback()` - Properly terminates the worker
-//! - Registers WebIDL interfaces (URL, Event, EventTarget, WebSocket, etc.)
-//!
-//! ## vs worker_v8_integration.zig
-//!
-//! Do NOT confuse with `workers/worker_v8_integration.zig` which has STUB
-//! implementations that just log "TODO". That module is LEGACY and NOT
-//! used by WPT.
+//! Workers need isolated V8 execution contexts separate from the main thread.
+//! This module provides:
+//! - V8 isolate creation per worker
+//! - V8 context creation within the isolate
+//! - EngineCallbacks implementation for WorkerContext
+//! - Global scope setup (self, console, etc.)
 //!
 //! ## Usage
 //!
@@ -45,27 +33,13 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const builtin = @import("builtin");
-
-// Crane version - single source of truth in src/version.zig
-const crane_version = @import("version");
-const CRANE_VERSION = crane_version.version;
 
 // V8 FFI through runtime module
 const v8 = @import("v8");
 const runtime = @import("runtime");
-const context_manager = v8.context_manager;
-const V8EventLoop = v8.V8EventLoop;
 
 // V8Interface for registering constructors
 const V8Interface = v8.V8Interface;
-
-// Interface bindings for scope-filtered registration
-const interface_bindings = v8.interface_bindings;
-
-// WebIDL helpers for GlobalScope enum
-const webidl = @import("webidl");
-const GlobalScope = webidl.GlobalScope;
 
 // Interfaces needed in worker context
 const interfaces = @import("interfaces");
@@ -78,22 +52,6 @@ const EngineCallbacks = workers.worker_context.EngineCallbacks;
 const WorkerType = workers.WorkerType;
 const DedicatedWorker = workers.DedicatedWorker;
 const script_fetch = workers.script_fetch;
-
-// Impl for setting up message handler
-const impls = @import("impls");
-const DedicatedWorkerGlobalScopeImpl = impls.DedicatedWorkerGlobalScope;
-
-// Fetch module for worker fetch() implementation
-const global_fetch = @import("fetch").webidl.global_fetch;
-const fetch_response = @import("fetch").webidl.response;
-
-// Infra module for base64 encoding/decoding (atob/btoa)
-const infra = @import("infra");
-const base64 = infra.base64;
-
-// HR-Time module for Performance.now() and Performance.timeOrigin
-// Per W3C High Resolution Time spec: https://w3c.github.io/hr-time/
-const hr_time = @import("hr_time");
 
 /// Opaque engine context type expected by WorkerContext
 const EngineContext = workers.worker_context.EngineContext;
@@ -168,23 +126,11 @@ pub const WorkerV8Context = struct {
     /// Script URL for error messages and import.meta.url
     script_url: []const u8,
 
-    /// Document base URL for resolving relative imports
-    /// This is the creating document's URL, used when script_url is data: or blob:
-    /// Per HTML Standard, relative URLs in workers should resolve against the
-    /// document that created the worker, not the worker's script URL.
-    document_base_url: ?[]const u8 = null,
-
     /// Worker type (classic or module)
     worker_type: WorkerType,
 
     /// Allocator
     allocator: Allocator,
-
-    /// V8 Event loop for timer support (setTimeout/setInterval)
-    /// This is created and owned by the worker, not the context_manager,
-    /// because context_manager uses thread-local storage that is not
-    /// accessible from the worker thread.
-    event_loop: ?*V8EventLoop = null,
 
     /// Reference to the DedicatedWorker (set during setupWorkerGlobalScope)
     dedicated_worker: ?*DedicatedWorker = null,
@@ -192,32 +138,18 @@ pub const WorkerV8Context = struct {
     /// Flag to prevent double-deinit (deinit can be called from Worker.deinit and disposeContextCallback)
     is_deinitialized: bool = false,
 
-    /// Flag to track if the initial script has been executed.
-    /// The first message to a worker is the script to execute.
-    /// Subsequent messages are postMessage data to dispatch as MessageEvents.
-    script_executed: bool = false,
-
-    /// Time origin for Performance API (performance.now() and performance.timeOrigin)
-    /// Per W3C HR-Time spec, each worker context has its own time origin.
-    time_origin: hr_time.TimeOrigin,
-
     const Self = @This();
 
     /// Create a new V8 context for a worker
     ///
     /// This creates:
-    /// 1. A new V8 isolate from the snapshot (with all WebIDL interfaces pre-registered)
+    /// 1. A new V8 isolate (separate from main thread)
     /// 2. A V8 context within that isolate
     /// 3. Sets up basic global scope
-    ///
-    /// IMPORTANT: The main browser MUST have called initializeV8() first to:
-    /// - Register external references
-    /// - Load and cache the snapshot data
     pub fn init(
         allocator: Allocator,
         script_url: []const u8,
         worker_type: WorkerType,
-        document_base_url: ?[]const u8,
     ) !*Self {
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
@@ -226,143 +158,55 @@ pub const WorkerV8Context = struct {
         const url_copy = try allocator.dupe(u8, script_url);
         errdefer allocator.free(url_copy);
 
-        // Copy document base URL if provided (for data:/blob: workers)
-        const base_url_copy: ?[]const u8 = if (document_base_url) |base|
-            try allocator.dupe(u8, base)
-        else
-            null;
-        errdefer if (base_url_copy) |b| allocator.free(b);
+        // Initialize V8 platform if not already done
+        // NOTE: The main browser context should have already called
+        // snapshot_loader.initializePlatformForSnapshots() which sets the
+        // required V8 flags before platform init. If this is the first
+        // V8 initialization, it won't support snapshot loading properly.
+        v8.ffi.v8_Platform_Initialize();
 
-        // Try to create isolate from snapshot (thread-safe, uses already-registered refs)
-        // This gives us all WebIDL interfaces pre-registered
-        // Use context index 1 = DedicatedWorkerGlobalScope (not 0 = Window)
-        const dedicated_worker_context_index: usize = 1;
-        const snapshot_result = v8.snapshot_loader.createWorkerIsolateFromSnapshot(dedicated_worker_context_index);
+        // Create V8 Isolate for this worker
+        const isolate = v8.ffi.v8_Isolate_New() orelse {
+            return error.V8IsolateCreationFailed;
+        };
+        errdefer v8.ffi.v8_Isolate_Dispose(isolate);
 
-        var isolate: *v8.ffi.Isolate = undefined;
-        var context: *v8.ffi.Context = undefined;
-        var used_snapshot = false;
-
-        if (snapshot_result) |result| {
-            isolate = result.isolate;
-            context = result.context;
-            used_snapshot = true;
-        } else {
-            // Fallback to raw isolate (no WebIDL interfaces)
-            std.log.warn("[WorkerV8Context] Snapshot not available, falling back to raw V8 isolate", .{});
-
-            // Initialize V8 platform if not already done
-            v8.ffi.v8_Platform_Initialize();
-
-            // Create raw V8 Isolate for this worker
-            isolate = v8.ffi.v8_Isolate_New() orelse {
-                return error.V8IsolateCreationFailed;
-            };
-            errdefer v8.ffi.v8_Isolate_Dispose(isolate);
-
-            // Enter the isolate temporarily to create the context
-            v8.ffi.v8_Isolate_Enter(isolate);
-
-            // Create V8 Context within the isolate
-            context = v8.ffi.v8_Context_New(isolate) orelse {
-                v8.ffi.v8_Isolate_Exit(isolate);
-                return error.V8ContextCreationFailed;
-            };
-
-            v8.ffi.v8_Isolate_Exit(isolate);
-        }
-
-        // Enter isolate and context for setup
+        // Enter the isolate temporarily to create the context
         v8.ffi.v8_Isolate_Enter(isolate);
+
+        // Create V8 Context within the isolate
+        const context = v8.ffi.v8_Context_New(isolate) orelse {
+            v8.ffi.v8_Isolate_Exit(isolate);
+            return error.V8ContextCreationFailed;
+        };
+
+        // Enter the context for setup
         v8.ffi.v8_Context_Enter(context);
 
         self.* = .{
             .isolate = isolate,
             .context = context,
             .script_url = url_copy,
-            .document_base_url = base_url_copy,
             .worker_type = worker_type,
             .allocator = allocator,
-            // Initialize time origin for Performance API
-            // Per HR-Time spec, each worker gets its own time origin at creation time
-            // TODO: Check if worker is cross-origin isolated for higher timer resolution
-            .time_origin = hr_time.TimeOrigin.init(false),
         };
 
         // CRITICAL: Create HandleScope for V8 handle allocation during setup
-        const handle_scope = v8.ffi.v8_HandleScope_New(isolate) orelse {
-            v8.ffi.v8_Isolate_Exit(isolate);
-            return error.HandleScopeCreationFailed;
-        };
+        // V8 requires any API calls that create Local handles to be within a HandleScope.
+        // setupWorkerGlobals() calls v8_String_NewFromUtf8 which creates Local<String>.
+        // Without this, those calls will crash with "Cannot create a handle without a HandleScope".
+        const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
-        // Hydrate worker context if using snapshot (reinstalls callbacks)
-        if (used_snapshot) {
-            std.debug.print("[WorkerV8Context] Hydrating worker context...\n", .{});
-            _ = try context_manager.hydrateWorkerContext(.{
-                .isolate = isolate,
-                .context = context,
-                .allocator = allocator,
-            });
-            std.debug.print("[WorkerV8Context] Worker context hydrated\n", .{});
-        }
-
         // Set up basic worker globals (self, globalThis)
-        std.debug.print("[WorkerV8Context] Setting up worker globals...\n", .{});
         try self.setupWorkerGlobals();
-        std.debug.print("[WorkerV8Context] Worker globals set up\n", .{});
 
-        // Always register worker interfaces
-        // NOTE: The snapshot only includes 5 core DOM interfaces (EventTarget, Node,
-        // Element, Document, Window). All other worker-exposed interfaces (URL, Blob,
-        // TextEncoder, MessageChannel, etc.) must be registered at runtime.
-        // This matches Chromium's approach where workers install interfaces based on
-        // runtime scope checks rather than relying solely on snapshots.
+        // Register essential WebIDL interfaces needed for worker scripts
+        // This is a minimal subset needed for WPT tests
         self.registerWorkerInterfaces();
 
-        // CRITICAL: Initialize the thread-local context manager for this worker thread
-        // This allows WebIDL interfaces (like URL) to get the runtime context
-        context_manager.init(allocator) catch |err| switch (err) {
-            error.AlreadyInitialized => {
-                // Context manager already initialized for this thread, that's fine
-            },
-        };
-
-        // Create V8 event loop directly (not via context_manager) for timer support.
-        // We store this in self.event_loop because:
-        // 1. context_manager uses thread-local storage
-        // 2. The worker runs on a separate thread from where init() is called
-        // 3. The worker thread's thread-local storage won't have access to
-        //    anything stored by the main thread's context_manager
-        const ev_loop = try allocator.create(V8EventLoop);
-        errdefer allocator.destroy(ev_loop);
-
-        ev_loop.* = try V8EventLoop.init(isolate, allocator);
-        errdefer ev_loop.deinit();
-
-        self.event_loop = ev_loop;
-        std.debug.print("[WorkerV8Context] Created V8EventLoop for timer support\n", .{});
-
-        // Register this V8 context with the context manager (without isolate).
-        // We pass null for isolate since we're managing the event loop ourselves.
-        // This still creates a runtime context that WebIDL interfaces can use.
-        var runtime_ctx = context_manager.getOrCreate(context, allocator) catch |err| {
-            std.log.err("[WorkerV8Context] Failed to register context: {}", .{err});
-            return error.ContextRegistrationFailed;
-        };
-
-        // CRITICAL: Set the timer interface on the runtime context.
-        // This is needed for nested worker creation - without this, Worker.call_constructor
-        // sees ctx.timer as null and falls back to synchronous execution which fails.
-        // Workers manage their own event loop, so we set the timer interface from it.
-        if (ev_loop.timerInterface()) |timer_iface| {
-            runtime_ctx.setTimer(timer_iface);
-            std.debug.print("[WorkerV8Context] Set timer interface on runtime context for nested worker support\n", .{});
-        } else {
-            std.debug.print("[WorkerV8Context] WARNING: Event loop has no timer interface\n", .{});
-        }
-
         // Exit worker context/isolate after setup - we'll re-enter when executing scripts
+        // This allows the main isolate to remain active during Worker construction
         v8.ffi.v8_Context_Exit(context);
         v8.ffi.v8_Isolate_Exit(isolate);
 
@@ -394,10 +238,6 @@ pub const WorkerV8Context = struct {
         // - Dispose worker isolates BEFORE main isolate
         // - Or run workers in actual separate threads with their own cleanup
 
-        // Clean up the thread-local context manager
-        // This removes the runtime context and frees associated resources
-        context_manager.deinit();
-
         // Free Zig allocations only
         self.allocator.free(self.script_url);
         self.allocator.destroy(self);
@@ -415,151 +255,6 @@ pub const WorkerV8Context = struct {
     pub fn enterIsolate(self: *Self) void {
         v8.ffi.v8_Isolate_Enter(self.isolate);
         v8.ffi.v8_Context_Enter(self.context);
-    }
-
-    /// Get the runtime context for this worker
-    /// Returns null if context manager is not initialized or context not found
-    pub fn getRuntimeContext(self: *Self) ?runtime.Context {
-        std.debug.print("[WorkerV8Context] getRuntimeContext() called, self.context={*}\n", .{self.context});
-        const result = context_manager.getOrCreate(self.context, self.allocator) catch |err| {
-            std.debug.print("[WorkerV8Context] getRuntimeContext() error: {}\n", .{err});
-            return null;
-        };
-        std.debug.print("[WorkerV8Context] getRuntimeContext() returning result\n", .{});
-        return result;
-    }
-
-    /// Dispatch error to self.onerror handler in the worker
-    ///
-    /// HTML Standard § 10.2.5 "Runtime script errors"
-    /// The self.onerror handler (OnErrorEventHandler) receives 5 arguments:
-    ///   1. message (string) - error message
-    ///   2. filename (string) - script URL where error occurred
-    ///   3. lineno (number) - line number
-    ///   4. colno (number) - column number
-    ///   5. error (Error) - the Error object
-    ///
-    /// If the handler returns true, the error is considered handled and
-    /// should NOT propagate to the parent Worker object.
-    ///
-    /// Returns true if the handler was called and returned true (error handled).
-    /// Returns false if handler not set, not callable, returned false, or threw.
-    fn dispatchSelfOnerror(
-        self: *Self,
-        message: []const u8,
-        filename: []const u8,
-        lineno: u32,
-        colno: u32,
-    ) bool {
-        std.log.info("[WorkerV8Context] dispatchSelfOnerror() called with message: {s}", .{message});
-
-        // Get the global object
-        const global = v8.ffi.v8_Context_Global(self.context) orelse {
-            std.log.info("[WorkerV8Context] dispatchSelfOnerror() failed to get global object", .{});
-            return false;
-        };
-
-        // Get the "onerror" property from global (self.onerror)
-        const onerror_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "onerror", 7) orelse {
-            std.log.info("[WorkerV8Context] dispatchSelfOnerror() failed to create onerror key", .{});
-            return false;
-        };
-        const onerror_value = v8.ffi.v8_Object_Get(global, self.context, @ptrCast(onerror_key)) orelse {
-            std.log.info("[WorkerV8Context] dispatchSelfOnerror() no onerror property found", .{});
-            return false;
-        };
-
-        // Check if it's a function
-        if (!v8.ffi.v8_Value_IsFunction(onerror_value)) {
-            std.log.info("[WorkerV8Context] dispatchSelfOnerror() onerror is not a function", .{});
-            return false;
-        }
-
-        std.log.info("[WorkerV8Context] dispatchSelfOnerror() found onerror handler, preparing args...", .{});
-
-        // Create the 5 arguments for OnErrorEventHandler:
-        // 1. message (string)
-        const msg_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, message.ptr, @intCast(message.len)) orelse {
-            std.log.err("[WorkerV8Context] dispatchSelfOnerror() failed to create message string", .{});
-            return false;
-        };
-
-        // 2. filename (string)
-        const filename_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, filename.ptr, @intCast(filename.len)) orelse {
-            std.log.err("[WorkerV8Context] dispatchSelfOnerror() failed to create filename string", .{});
-            return false;
-        };
-
-        // 3. lineno (number)
-        const lineno_num = v8.ffi.v8_Integer_New(self.isolate, @intCast(lineno));
-
-        // 4. colno (number)
-        const colno_num = v8.ffi.v8_Integer_New(self.isolate, @intCast(colno));
-
-        // 5. error (Error object) - create an Error with the message
-        const error_obj = v8.ffi.v8_Exception_ErrorInContext(self.context, msg_str) orelse {
-            std.log.err("[WorkerV8Context] dispatchSelfOnerror() failed to create Error object", .{});
-            return false;
-        };
-
-        // Build args array
-        var args = [5]*v8.ffi.Value{
-            @ptrCast(msg_str),
-            @ptrCast(filename_str),
-            @ptrCast(lineno_num),
-            @ptrCast(colno_num),
-            error_obj,
-        };
-
-        // Call the onerror function with global as 'this'
-        const onerror_fn: *v8.ffi.Function = @ptrCast(onerror_value);
-        std.log.info("[WorkerV8Context] dispatchSelfOnerror() calling onerror handler...", .{});
-        const result = v8.ffi.v8_Function_Call(onerror_fn, self.context, @ptrCast(global), 5, &args);
-
-        // Check if result is truthy (true means error was handled)
-        if (result) |r| {
-            const is_handled = v8.ffi.v8_Value_BooleanValue(r, self.isolate);
-            std.log.info("[WorkerV8Context] dispatchSelfOnerror() handler returned: {}", .{is_handled});
-            return is_handled;
-        }
-
-        std.log.info("[WorkerV8Context] dispatchSelfOnerror() handler returned null/threw", .{});
-        return false;
-    }
-
-    /// Send an error event to the parent Worker object via the thread-safe channel.
-    ///
-    /// This queues a WorkerErrorEvent to be dispatched on the parent thread.
-    /// The main thread's event loop will poll and dispatch the error via
-    /// Worker.onerror or addEventListener('error').
-    ///
-    /// Spec: HTML Standard § 10.2.5 step 11
-    /// "Queue a task to fire an event named error at worker."
-    fn sendErrorToParent(
-        self: *Self,
-        message: []const u8,
-        filename: []const u8,
-        lineno: u32,
-        colno: u32,
-    ) void {
-        if (self.dedicated_worker) |dedicated_worker| {
-            if (dedicated_worker.getThreadState()) |thread_state| {
-                const error_event = workers.worker_error.WorkerErrorEvent.init(
-                    self.allocator,
-                    message,
-                    filename,
-                    lineno,
-                    colno,
-                    null, // error_value - TODO: could pass actual V8 exception
-                ) catch |alloc_err| {
-                    std.log.err("[WorkerV8Context] Failed to create error event for parent: {}", .{alloc_err});
-                    return;
-                };
-
-                // Queue error to main thread - it will dispatch and clean up
-                thread_state.setPendingError(error_event);
-            }
-        }
     }
 
     /// Set up basic worker global scope (called during init)
@@ -585,37 +280,55 @@ pub const WorkerV8Context = struct {
         _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(global_this_key), @ptrCast(global_obj));
     }
 
-    /// Register WebIDL interfaces exposed to DedicatedWorker scope
+    /// Register essential WebIDL interfaces needed in worker context
     ///
-    /// Uses the [Exposed=...] WebIDL attribute to automatically install
-    /// all interfaces that should be available in DedicatedWorker contexts.
-    /// This follows the Chromium pattern: runtime scope checks rather than
-    /// snapshot-based filtering.
+    /// This registers a minimal subset of interfaces commonly used by WPT tests:
+    /// - URL, URLSearchParams (for URL manipulation)
+    /// - Event, EventTarget (for event handling)
+    /// - DOMException (for error handling)
+    /// - WebSocket, CloseEvent, MessageEvent (for WebSocket API - Exposed in Worker per spec)
     ///
-    /// Spec: WebIDL § 2.6.2 "Exposed extended attribute"
-    /// https://webidl.spec.whatwg.org/#Exposed
-    ///
-    /// Interfaces with [Exposed=Worker] or [Exposed=(Window,Worker)] or
-    /// [Exposed=DedicatedWorker] will be registered. Abstract "Worker" matches
-    /// DedicatedWorker, SharedWorker, and ServiceWorker scopes per spec.
+    /// Full interface registration (initializeBindings) can't be used directly
+    /// because it requires the main isolate's context manager state.
     fn registerWorkerInterfaces(self: *Self) void {
         // Create HandleScope for interface registration
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
-            std.log.err("[WorkerV8Context] Failed to create HandleScope for interface registration", .{});
-            return;
-        };
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
-        // Use installForScope to register only interfaces exposed to DedicatedWorker
-        // This uses the [Exposed=...] extended attribute from WebIDL specs
-        // to determine which interfaces should be available.
-        //
-        // Per Chromium research: workers don't use snapshots - they install
-        // interfaces at runtime based on scope checks.
-        interface_bindings.installForScope(self.isolate, self.context, .DedicatedWorker);
+        // Register URL interface
+        const URL = V8Interface(interfaces.URL);
+        URL.registerGlobal(self.isolate, self.context, "URL");
 
-        // Set up constructor inheritance chain (Element.__proto__ = Node, etc.)
-        interface_bindings.setupConstructorInheritance(self.isolate, self.context);
+        // Register URLSearchParams interface
+        const URLSearchParams = V8Interface(interfaces.URLSearchParams);
+        URLSearchParams.registerGlobal(self.isolate, self.context, "URLSearchParams");
+
+        // Register Event interface
+        const Event = V8Interface(interfaces.Event);
+        Event.registerGlobal(self.isolate, self.context, "Event");
+
+        // Register EventTarget interface
+        const EventTarget = V8Interface(interfaces.EventTarget);
+        EventTarget.registerGlobal(self.isolate, self.context, "EventTarget");
+
+        // Register DOMException interface
+        const DOMException = V8Interface(interfaces.DOMException);
+        DOMException.registerGlobal(self.isolate, self.context, "DOMException");
+
+        // Register WebSocket interface (Exposed in Worker per WHATWG WebSocket spec)
+        // WebIDL: [Exposed=(Window,Worker)] interface WebSocket : EventTarget { ... }
+        const WebSocket = V8Interface(interfaces.WebSocket);
+        WebSocket.registerGlobal(self.isolate, self.context, "WebSocket");
+
+        // Register CloseEvent interface (needed for WebSocket close events)
+        // WebIDL: [Exposed=(Window,Worker)] interface CloseEvent : Event { ... }
+        const CloseEvent = V8Interface(interfaces.CloseEvent);
+        CloseEvent.registerGlobal(self.isolate, self.context, "CloseEvent");
+
+        // Register MessageEvent interface (needed for WebSocket message events)
+        // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessageEvent : Event { ... }
+        const MessageEvent = V8Interface(interfaces.MessageEvent);
+        MessageEvent.registerGlobal(self.isolate, self.context, "MessageEvent");
     }
 
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
@@ -631,11 +344,9 @@ pub const WorkerV8Context = struct {
     /// - console object (no-op for workers)
     /// - name property (worker name)
     pub fn setupWorkerGlobalScope(self: *Self, dedicated_worker: *DedicatedWorker) !void {
-        std.debug.print("[setupWorkerGlobalScope] ENTRY\n", .{});
         self.dedicated_worker = dedicated_worker;
 
         // Enter worker's isolate and context for setup
-        std.debug.print("[setupWorkerGlobalScope] Entering isolate/context\n", .{});
         v8.ffi.v8_Isolate_Enter(self.isolate);
         v8.ffi.v8_Context_Enter(self.context);
         defer {
@@ -643,31 +354,12 @@ pub const WorkerV8Context = struct {
             v8.ffi.v8_Isolate_Exit(self.isolate);
         }
 
-        // CRITICAL: Create HandleScope for V8 handle allocation
-        // All V8 API calls that create Local handles must be within a HandleScope
-        std.debug.print("[setupWorkerGlobalScope] Creating HandleScope\n", .{});
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
-            return error.HandleScopeCreationFailed;
-        };
-        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-        std.debug.print("[setupWorkerGlobalScope] Getting global object\n", .{});
         const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
             return error.NoGlobalObject;
         };
 
-        // First, set up 'self' to point to globalThis (required by worker scripts)
-        // In browser workers, 'self' is an alias for the global scope
-        std.debug.print("[setupWorkerGlobalScope] Executing self_script\n", .{});
-        const self_script =
-            \\globalThis.self = globalThis;
-        ;
-        _ = try self.executeScript(self_script);
-        std.debug.print("[setupWorkerGlobalScope] self_script done\n", .{});
-
         // Set up GLOBAL object for WPT tests
         // This is required by testharness.js to detect the execution context
-        std.debug.print("[setupWorkerGlobalScope] Executing global_script\n", .{});
         const global_script =
             \\self.GLOBAL = {
             \\  isWindow: function() { return false; },
@@ -676,37 +368,31 @@ pub const WorkerV8Context = struct {
             \\};
         ;
         _ = try self.executeScript(global_script);
-        _ = try self.executeScript(global_script);
-        std.debug.print("[setupWorkerGlobalScope] global_script done\n", .{});
 
         // Set up DedicatedWorkerGlobalScope constructor for testharness.js detection
         // testharness.js checks: 'DedicatedWorkerGlobalScope' in global_scope &&
         //                        global_scope instanceof DedicatedWorkerGlobalScope
-        // V8 snapshots have immutable global prototypes, so we use Symbol.hasInstance
-        // to make `self instanceof DedicatedWorkerGlobalScope` return true
-        std.debug.print("[setupWorkerGlobalScope] Executing worker_scope_script\n", .{});
+        // We create a constructor and make self an instance of it
         const worker_scope_script =
             \\(function() {
-            \\  // Create WorkerGlobalScope base class with custom instanceof
-            \\  function WorkerGlobalScope() {}
-            \\  Object.defineProperty(WorkerGlobalScope, Symbol.hasInstance, {
-            \\    value: function(obj) { return obj === globalThis || obj === self; }
-            \\  });
-            \\  globalThis.WorkerGlobalScope = WorkerGlobalScope;
-            \\
-            \\  // Create DedicatedWorkerGlobalScope with custom instanceof
+            \\  // Create DedicatedWorkerGlobalScope constructor
             \\  function DedicatedWorkerGlobalScope() {}
-            \\  Object.defineProperty(DedicatedWorkerGlobalScope, Symbol.hasInstance, {
-            \\    value: function(obj) { return obj === globalThis || obj === self; }
-            \\  });
             \\  globalThis.DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
+            \\
+            \\  // Make the global object (self) have DedicatedWorkerGlobalScope.prototype in its chain
+            \\  // This makes `self instanceof DedicatedWorkerGlobalScope` return true
+            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, Object.getPrototypeOf(globalThis));
+            \\  Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+            \\
+            \\  // Also add WorkerGlobalScope as a fallback
+            \\  function WorkerGlobalScope() {}
+            \\  globalThis.WorkerGlobalScope = WorkerGlobalScope;
+            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, WorkerGlobalScope.prototype);
             \\})();
         ;
         _ = try self.executeScript(worker_scope_script);
-        std.debug.print("[setupWorkerGlobalScope] worker_scope_script done\n", .{});
 
         // Set up console object (no-op implementation for workers)
-        std.debug.print("[setupWorkerGlobalScope] Executing console_script\n", .{});
         const console_script =
             \\(function() {
             \\  function consoleNoop() {}
@@ -733,14 +419,11 @@ pub const WorkerV8Context = struct {
             \\})();
         ;
         _ = try self.executeScript(console_script);
-        std.debug.print("[setupWorkerGlobalScope] console_script done\n", .{});
 
         // Set thread-local reference for callbacks to access this context
-        std.debug.print("[setupWorkerGlobalScope] Setting current_worker_context\n", .{});
         current_worker_context = self;
 
         // Register postMessage() - sends message to main thread
-        std.debug.print("[setupWorkerGlobalScope] Registering postMessage\n", .{});
         {
             const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerPostMessageCallback, null) orelse {
                 return error.FunctionTemplateCreateFailed;
@@ -753,10 +436,8 @@ pub const WorkerV8Context = struct {
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
         }
-        std.debug.print("[setupWorkerGlobalScope] postMessage registered\n", .{});
 
         // Register close() - terminates the worker
-        std.debug.print("[setupWorkerGlobalScope] Registering close\n", .{});
         {
             const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerCloseCallback, null) orelse {
                 return error.FunctionTemplateCreateFailed;
@@ -769,10 +450,8 @@ pub const WorkerV8Context = struct {
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
         }
-        std.debug.print("[setupWorkerGlobalScope] close registered\n", .{});
 
         // Register importScripts() - loads and executes scripts synchronously
-        std.debug.print("[setupWorkerGlobalScope] Registering importScripts\n", .{});
         {
             const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, importScriptsCallback, null) orelse {
                 return error.FunctionTemplateCreateFailed;
@@ -785,290 +464,22 @@ pub const WorkerV8Context = struct {
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
         }
-        std.debug.print("[setupWorkerGlobalScope] importScripts registered\n", .{});
 
-        // Register setTimeout() - schedules a callback after a delay
-        std.debug.print("[setupWorkerGlobalScope] Registering setTimeout\n", .{});
+        // Register done() for WPT test harness - signals test completion
         {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetTimeoutCallback, null) orelse {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerDoneCallback, null) orelse {
                 return error.FunctionTemplateCreateFailed;
             };
             const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
                 return error.FunctionCreateFailed;
             };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setTimeout", 10) orelse {
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "done", 4) orelse {
                 return error.StringCreationFailed;
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
         }
-        std.debug.print("[setupWorkerGlobalScope] setTimeout registered\n", .{});
-
-        // Register setInterval() - schedules a repeating callback
-        std.debug.print("[setupWorkerGlobalScope] Registering setInterval\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetIntervalCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setInterval", 11) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] setInterval registered\n", .{});
-
-        // Register clearTimeout() - cancels a setTimeout timer
-        std.debug.print("[setupWorkerGlobalScope] Registering clearTimeout\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearTimeoutCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearTimeout", 12) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] clearTimeout registered\n", .{});
-
-        // Register clearInterval() - cancels a setInterval timer
-        std.debug.print("[setupWorkerGlobalScope] Registering clearInterval\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearIntervalCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearInterval", 13) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] clearInterval registered\n", .{});
-
-        // Register queueMicrotask() - queues a microtask callback
-        std.debug.print("[setupWorkerGlobalScope] Registering queueMicrotask\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerQueueMicrotaskCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "queueMicrotask", 14) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] queueMicrotask registered\n", .{});
-
-        // Register atob() - decode base64 string to binary string
-        // Per WHATWG HTML Standard § 8.3: Base64 utility methods
-        // WindowOrWorkerGlobalScope mixin exposes atob to both Window and Worker
-        std.debug.print("[setupWorkerGlobalScope] Registering atob\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerAtobCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "atob", 4) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] atob registered\n", .{});
-
-        // Register btoa() - encode binary string to base64 string
-        // Per WHATWG HTML Standard § 8.3: Base64 utility methods
-        // WindowOrWorkerGlobalScope mixin exposes btoa to both Window and Worker
-        std.debug.print("[setupWorkerGlobalScope] Registering btoa\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerBtoaCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "btoa", 4) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] btoa registered\n", .{});
-
-        // Register structuredClone() - creates a deep copy of a value using structured clone algorithm
-        // Per HTML Standard § 2.7.8: StructuredClone method
-        std.debug.print("[setupWorkerGlobalScope] Registering structuredClone\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerStructuredCloneCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "structuredClone", 15) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] structuredClone registered\n", .{});
-
-        // Register crypto global object
-        // Per WHATWG HTML Standard: WindowOrWorkerGlobalScope includes crypto attribute
-        // Per Web Cryptography API: crypto has getRandomValues() and subtle property
-        std.debug.print("[setupWorkerGlobalScope] Registering crypto\n", .{});
-        {
-            // Create the crypto object
-            const crypto_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
-                return error.ObjectCreateFailed;
-            };
-
-            // Add getRandomValues function to crypto
-            const grv_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerGetRandomValuesCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const grv_func = v8.ffi.v8_FunctionTemplate_GetFunction(grv_template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const grv_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "getRandomValues", 15) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(crypto_obj, self.context, @ptrCast(grv_key), @ptrCast(grv_func));
-
-            // Add randomUUID function to crypto
-            const uuid_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerRandomUUIDCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const uuid_func = v8.ffi.v8_FunctionTemplate_GetFunction(uuid_template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const uuid_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "randomUUID", 10) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(crypto_obj, self.context, @ptrCast(uuid_key), @ptrCast(uuid_func));
-
-            // Add subtle object to crypto (SubtleCrypto interface)
-            // Create a simple object with the required methods as stubs
-            const subtle_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
-                return error.ObjectCreateFailed;
-            };
-            const subtle_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "subtle", 6) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(crypto_obj, self.context, @ptrCast(subtle_key), @ptrCast(subtle_obj));
-
-            // Set crypto on global object
-            const crypto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "crypto", 6) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(crypto_key), @ptrCast(crypto_obj));
-        }
-        std.debug.print("[setupWorkerGlobalScope] crypto registered\n", .{});
-
-        // Register performance global object
-        // Per W3C High Resolution Time spec and WHATWG HTML Standard:
-        // WorkerGlobalScope includes WindowOrWorkerGlobalScope mixin which provides performance
-        // Per spec: performance.now() returns time relative to worker's time origin
-        // Per spec: performance.timeOrigin returns Unix epoch time when worker was created
-        std.debug.print("[setupWorkerGlobalScope] Registering performance\n", .{});
-        {
-            // Create the performance object
-            const perf_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
-                return error.ObjectCreateFailed;
-            };
-
-            // Add now() function to performance
-            // Per HR-Time spec: Returns DOMHighResTimeStamp representing time elapsed since time origin
-            const now_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerPerformanceNowCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const now_func = v8.ffi.v8_FunctionTemplate_GetFunction(now_template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const now_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "now", 3) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(perf_obj, self.context, @ptrCast(now_key), @ptrCast(now_func));
-
-            // Add timeOrigin property to performance
-            // Per HR-Time spec: Returns DOMHighResTimeStamp representing Unix epoch time of time origin
-            const time_origin_ms = self.time_origin.getTimeOriginTimestampMs();
-            const time_origin_value = v8.ffi.v8_Number_New(self.isolate, time_origin_ms);
-            const time_origin_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "timeOrigin", 10) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(perf_obj, self.context, @ptrCast(time_origin_key), @ptrCast(time_origin_value));
-
-            // Set performance on global object
-            const perf_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "performance", 11) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(perf_key), @ptrCast(perf_obj));
-        }
-        std.debug.print("[setupWorkerGlobalScope] performance registered\n", .{});
-
-        // Register indexedDB global object
-        // Per Indexed Database API spec and WHATWG HTML Standard:
-        // WorkerGlobalScope includes WindowOrWorkerGlobalScope mixin which provides indexedDB
-        // The indexedDB attribute returns an IDBFactory object
-        // Per spec: https://w3c.github.io/IndexedDB/#factory-interface
-        std.debug.print("[setupWorkerGlobalScope] Registering indexedDB\n", .{});
-        {
-            // Create the indexedDB object (IDBFactory)
-            // For now, create a basic object that can be detected by typeof
-            // Full IDBFactory methods (open, deleteDatabase, databases, cmp) can be added later
-            const indexeddb_obj = v8.ffi.v8_Object_New(self.isolate) orelse {
-                return error.ObjectCreateFailed;
-            };
-
-            // Add placeholder methods that IDBFactory should have
-            // open() - Opens a database
-            const open_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerIndexedDBOpenCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const open_func = v8.ffi.v8_FunctionTemplate_GetFunction(open_template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const open_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "open", 4) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(indexeddb_obj, self.context, @ptrCast(open_key), @ptrCast(open_func));
-
-            // deleteDatabase() - Deletes a database
-            const delete_template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerIndexedDBDeleteCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const delete_func = v8.ffi.v8_FunctionTemplate_GetFunction(delete_template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const delete_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "deleteDatabase", 14) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(indexeddb_obj, self.context, @ptrCast(delete_key), @ptrCast(delete_func));
-
-            // Set indexedDB on global object
-            const indexeddb_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "indexedDB", 9) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(indexeddb_key), @ptrCast(indexeddb_obj));
-        }
-        std.debug.print("[setupWorkerGlobalScope] indexedDB registered\n", .{});
-
-        // NOTE: We do NOT register a native done() function here.
-        // testharness.js defines its own done() function when loaded via importScripts().
-        // Registering a native done() would override testharness.js's done() and break
-        // the test harness's ability to collect and send test results.
-        // testharness.js's done() will call postMessage() to send results to the main thread.
 
         // Set up worker 'name' property
-        std.debug.print("[setupWorkerGlobalScope] Setting up name property\n", .{});
         const name = dedicated_worker.getName();
         if (name.len > 0) {
             const name_value = v8.ffi.v8_String_NewFromUtf8(self.isolate, name.ptr, @intCast(name.len)) orelse {
@@ -1088,12 +499,10 @@ pub const WorkerV8Context = struct {
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(name_key), @ptrCast(name_value));
         }
-        std.debug.print("[setupWorkerGlobalScope] name property set\n", .{});
 
         // Set up isSecureContext property
         // Per HTML Standard, isSecureContext indicates if the context is secure
         // For WPT tests, this depends on the URL - .https. or .h2. in filename means secure
-        std.debug.print("[setupWorkerGlobalScope] Setting up isSecureContext\n", .{});
         {
             const is_secure = isSecureUrlForWorker(self.script_url);
             const is_secure_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "isSecureContext", 15) orelse {
@@ -1103,12 +512,10 @@ pub const WorkerV8Context = struct {
                 _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(is_secure_key), is_secure_value);
             }
         }
-        std.debug.print("[setupWorkerGlobalScope] isSecureContext set\n", .{});
 
         // Set up location object using WorkerLocation interface
         // Per HTML Standard, WorkerGlobalScope has a location attribute
         // Apply WPT URL rewriting: .https. -> port 8443, .h2. -> port 9000
-        std.debug.print("[setupWorkerGlobalScope] Setting up location object\n", .{});
         {
             const effective_url = try getEffectiveWorkerUrl(self.allocator, self.script_url);
             defer self.allocator.free(effective_url);
@@ -1134,12 +541,10 @@ pub const WorkerV8Context = struct {
             defer self.allocator.free(location_script);
             _ = try self.executeScriptInternal(location_script);
         }
-        std.debug.print("[setupWorkerGlobalScope] location object set\n", .{});
 
         // Set up origin property
         // Per HTML Standard, WorkerGlobalScope has an origin attribute
         // Apply WPT URL rewriting: .https. -> port 8443, .h2. -> port 9000
-        std.debug.print("[setupWorkerGlobalScope] Setting up origin\n", .{});
         {
             const effective_url = try getEffectiveWorkerUrl(self.allocator, self.script_url);
             defer self.allocator.free(effective_url);
@@ -1162,99 +567,6 @@ pub const WorkerV8Context = struct {
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(origin_key), @ptrCast(origin_value));
         }
-        std.debug.print("[setupWorkerGlobalScope] origin set - COMPLETE\n", .{});
-
-        // Set up navigator object (WorkerNavigator interface)
-        // Per HTML Standard § 10.1.3, WorkerGlobalScope has a navigator attribute
-        // WorkerNavigator includes: NavigatorID, NavigatorLanguage, NavigatorOnLine, NavigatorConcurrentHardware
-        std.debug.print("[setupWorkerGlobalScope] Setting up navigator object\n", .{});
-        {
-            // Get platform string based on OS (navigator.platform)
-            const platform_str = switch (builtin.os.tag) {
-                .macos => "MacIntel",
-                .windows => "Win32",
-                .linux => "Linux x86_64",
-                .freebsd => "FreeBSD",
-                .ios => "iPhone",
-                else => "Unknown",
-            };
-
-            // Get OS string for userAgent (more detailed)
-            const os_str = switch (builtin.os.tag) {
-                .macos => "Macintosh; Intel Mac OS X",
-                .windows => "Windows NT 10.0; Win64; x64",
-                .linux => "X11; Linux x86_64",
-                .freebsd => "X11; FreeBSD",
-                .ios => "iPhone; CPU iPhone OS 15_0 like Mac OS X",
-                else => "Unknown",
-            };
-
-            // Get hardware concurrency
-            const hardware_concurrency = std.Thread.getCpuCount() catch 1;
-
-            // Version from constant (matches build.zig.zon)
-            const version_str = CRANE_VERSION;
-
-            const navigator_script = try std.fmt.allocPrint(self.allocator,
-                \\(function() {{
-                \\  // Create WorkerNavigator-like object per HTML Standard § 10.1.3
-                \\  globalThis.navigator = {{
-                \\    // NavigatorID mixin (§ 8.8.1.1)
-                \\    appCodeName: "Mozilla",
-                \\    appName: "Netscape",
-                \\    appVersion: "5.0 Crane/{s}",
-                \\    platform: "{s}",
-                \\    product: "Gecko",
-                \\    productSub: "",
-                \\    userAgent: "Mozilla/5.0 ({s}) Crane/{s}",
-                \\    vendor: "Cardarella",
-                \\    vendorSub: "",
-                \\    // NavigatorLanguage mixin (§ 8.8.1.2)
-                \\    language: "en-US",
-                \\    languages: Object.freeze(["en-US"]),
-                \\    // NavigatorOnLine mixin (§ 8.8.1.3)
-                \\    onLine: true,
-                \\    // NavigatorConcurrentHardware mixin (§ 8.8.1.4)
-                \\    hardwareConcurrency: {d}
-                \\  }};
-                \\  // Make it non-configurable like a real navigator
-                \\  Object.freeze(globalThis.navigator);
-                \\}})();
-            , .{ version_str, platform_str, os_str, version_str, hardware_concurrency });
-            defer self.allocator.free(navigator_script);
-            _ = try self.executeScriptInternal(navigator_script);
-        }
-        std.debug.print("[setupWorkerGlobalScope] navigator object set\n", .{});
-
-        // Register fetch() - the Fetch API global function
-        // Per WHATWG Fetch spec: WindowOrWorkerGlobalScope includes fetch()
-        // This makes fetch() available in both Window and Worker contexts
-        std.debug.print("[setupWorkerGlobalScope] Registering fetch\n", .{});
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerFetchCallback, null) orelse {
-                return error.FunctionTemplateCreateFailed;
-            };
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
-                return error.FunctionCreateFailed;
-            };
-            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "fetch", 5) orelse {
-                return error.StringCreationFailed;
-            };
-            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-        std.debug.print("[setupWorkerGlobalScope] fetch registered\n", .{});
-
-        // CRITICAL: Set up message handler for the worker to receive messages via onmessage
-        // This MUST be done while the isolate is still entered (before the defer exits it)
-        // The getRuntimeContext() call accesses V8 APIs, so it requires an active isolate
-        std.debug.print("[setupWorkerGlobalScope] Setting up message handler...\n", .{});
-        if (self.getRuntimeContext()) |runtime_ctx| {
-            std.debug.print("[setupWorkerGlobalScope] Got runtime context, calling setupMessageHandlerDirect\n", .{});
-            DedicatedWorkerGlobalScopeImpl.setupMessageHandlerDirect(dedicated_worker, runtime_ctx);
-            std.debug.print("[setupWorkerGlobalScope] Message handler setup complete\n", .{});
-        } else {
-            std.debug.print("[setupWorkerGlobalScope] WARNING: Could not get runtime context for message handler\n", .{});
-        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -1270,7 +582,6 @@ pub const WorkerV8Context = struct {
             .compileAndRunScript = compileAndRunScriptCallback,
             .compileAndRunModule = compileAndRunModuleCallback,
             .runMicrotasks = runMicrotasksCallback,
-            .runEventLoopOnce = runEventLoopOnceCallback,
             .disposeContext = disposeContextCallback,
             .configureImportMeta = null, // TODO: Implement for module workers
             .registerDynamicImportHandler = null, // TODO: Implement for module workers
@@ -1291,10 +602,7 @@ pub const WorkerV8Context = struct {
         // V8 requires any API calls that create Local handles to be within a HandleScope.
         // Without this, v8_String_NewFromUtf8 and other handle-creating calls will crash
         // with "Cannot create a handle without a HandleScope".
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
-            std.log.err("[WorkerV8Context] Failed to create HandleScope - V8 may be in invalid state", .{});
-            return error.HandleScopeCreationFailed;
-        };
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
         return self.executeScriptInternal(source);
@@ -1315,41 +623,7 @@ pub const WorkerV8Context = struct {
         const compile_result = v8.ffi.v8_Script_Compile_Safe(self.context, source_str);
         defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
 
-        if (compile_result.error_info) |err_info| {
-            // Extract error details from V8
-            const err_msg = err_info.getMessage() orelse "Script compilation failed";
-            const filename = err_info.getResourceName() orelse self.script_url;
-            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
-            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
-
-            std.log.err("[WorkerV8Context] Script compilation failed: {s}", .{err_msg});
-            if (err_info.getSourceLine()) |line| {
-                std.log.err("[WorkerV8Context] Source line: {s}", .{line});
-            }
-
-            // HTML Standard § 10.2.5: First dispatch to self.onerror inside the worker
-            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
-
-            if (!error_handled) {
-                // Error was not handled, propagate to parent
-                if (self.dedicated_worker) |dedicated_worker| {
-                    if (dedicated_worker.getThreadState()) |thread_state| {
-                        const error_event = workers.worker_error.WorkerErrorEvent.init(
-                            self.allocator,
-                            err_msg,
-                            filename,
-                            lineno,
-                            colno,
-                            null,
-                        ) catch |alloc_err| {
-                            std.log.err("[WorkerV8Context] Failed to create error event: {}", .{alloc_err});
-                            return error.CompilationFailed;
-                        };
-                        thread_state.setPendingError(error_event);
-                    }
-                }
-            }
-
+        if (compile_result.error_info != null) {
             return error.CompilationFailed;
         }
 
@@ -1359,59 +633,7 @@ pub const WorkerV8Context = struct {
         const run_result = v8.ffi.v8_Script_Run_Safe(self.context, script);
         defer v8.ffi.v8_FreeScriptRunResult(run_result);
 
-        if (run_result.error_info) |err_info| {
-            // Log the actual V8 error for debugging
-            const err_msg = err_info.getMessage() orelse "<no message>";
-            std.log.err("[WorkerV8Context] Script execution failed: {s}", .{err_msg});
-            if (err_info.getSourceLine()) |line| {
-                std.log.err("[WorkerV8Context] Source line: {s}", .{line});
-            }
-
-            // Extract error details from V8
-            const filename = err_info.getResourceName() orelse self.script_url;
-            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
-            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
-
-            // HTML Standard § 10.2.5: First dispatch to self.onerror inside the worker
-            // If the handler returns true, the error is considered handled and
-            // should NOT propagate to the parent Worker object.
-            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
-
-            if (error_handled) {
-                std.log.info("[WorkerV8Context] Error was handled by self.onerror, not propagating to parent", .{});
-                // Error was handled by the worker's onerror handler
-                // Run microtasks that may have been queued by the handler (like postMessage)
-                v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-                // Don't propagate to parent, but still indicate execution had an error
-                return error.ExecutionFailed;
-            }
-
-            // Error was not handled by self.onerror, propagate to parent
-            // Queue error event to parent per HTML Standard § 10.2.5
-            // "Queue a task to fire an event named error at worker."
-            // We queue to the thread-safe pending_error field so the main thread
-            // can poll and dispatch on its own thread (V8 isolates aren't thread-safe).
-            if (self.dedicated_worker) |dedicated_worker| {
-                if (dedicated_worker.getThreadState()) |thread_state| {
-                    // Create WorkerErrorEvent with error details
-                    // Note: Don't defer deinit - main thread will own and clean up
-                    const error_event = workers.worker_error.WorkerErrorEvent.init(
-                        self.allocator,
-                        err_msg,
-                        filename,
-                        lineno,
-                        colno,
-                        null, // error_value - TODO: could pass actual V8 exception
-                    ) catch |alloc_err| {
-                        std.log.err("[WorkerV8Context] Failed to create error event: {}", .{alloc_err});
-                        return error.ExecutionFailed;
-                    };
-
-                    // Queue error to main thread - it will dispatch and clean up
-                    thread_state.setPendingError(error_event);
-                }
-            }
-
+        if (run_result.error_info != null) {
             return error.ExecutionFailed;
         }
 
@@ -1419,163 +641,6 @@ pub const WorkerV8Context = struct {
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
         return @ptrCast(run_result.value);
-    }
-
-    /// Execute an ES module in this worker's context
-    ///
-    /// Spec: HTML Standard § 10.2.5 step 24 (for type: "module")
-    /// "Run the module script scriptOrModule."
-    ///
-    /// This compiles, instantiates, and evaluates the source as an ES module,
-    /// enabling import/export statements and import.meta support.
-    pub fn executeModule(self: *Self, source: []const u8, source_url: []const u8) !void {
-        // Enter worker's isolate and context for module execution
-        v8.ffi.v8_Isolate_Enter(self.isolate);
-        v8.ffi.v8_Context_Enter(self.context);
-        defer {
-            v8.ffi.v8_Context_Exit(self.context);
-            v8.ffi.v8_Isolate_Exit(self.isolate);
-        }
-
-        // Create HandleScope for V8 handle allocation
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate) orelse {
-            std.log.err("[WorkerV8Context] Failed to create HandleScope for module execution", .{});
-            return error.HandleScopeCreationFailed;
-        };
-        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-        return self.executeModuleInternal(source, source_url);
-    }
-
-    /// Execute a module - internal version that assumes context is already entered
-    fn executeModuleInternal(self: *Self, source: []const u8, source_url: []const u8) !void {
-        // Create V8 string from source
-        const source_str = v8.ffi.v8_String_NewFromUtf8(
-            self.isolate,
-            source.ptr,
-            @intCast(source.len),
-        ) orelse {
-            return error.StringCreationFailed;
-        };
-
-        // Create resource name (required for modules - used for import.meta.url)
-        const resource_name = v8.ffi.v8_String_NewFromUtf8(
-            self.isolate,
-            source_url.ptr,
-            @intCast(source_url.len),
-        );
-
-        // Compile as ES Module using safe variant with TryCatch
-        const compile_result = v8.ffi.v8_Module_Compile_Safe(self.context, source_str, resource_name);
-        defer v8.ffi.v8_FreeModuleCompileResult(compile_result);
-
-        // Clean up resource name string (V8 manages the V8 string memory)
-        if (resource_name) |name| {
-            v8.ffi.v8_String_Dispose(name);
-        }
-
-        // Check for compilation error
-        if (compile_result.error_info) |err_info| {
-            // Extract error details from V8
-            const err_msg = err_info.getMessage() orelse "Module compilation failed";
-            const filename = err_info.getResourceName() orelse source_url;
-            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
-            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
-
-            std.log.err("[WorkerV8Context] Module compilation error: {s}", .{err_msg});
-            if (err_info.getSourceLine()) |line| {
-                std.log.err("[WorkerV8Context] Source line: {s}", .{line});
-            }
-
-            // Dispatch to self.onerror first, then propagate to parent if not handled
-            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
-            if (!error_handled) {
-                self.sendErrorToParent(err_msg, filename, lineno, colno);
-            }
-
-            return error.ModuleCompilationFailed;
-        }
-
-        const module = compile_result.module orelse {
-            std.log.err("Module compilation returned null without error", .{});
-            self.sendErrorToParent("Module compilation failed", source_url, 0, 0);
-            return error.ModuleCompilationFailed;
-        };
-
-        // Instantiate the module (link imports)
-        const instantiate_result = v8.ffi.v8_Module_Instantiate_Safe(self.context, module);
-        defer v8.ffi.v8_FreeModuleInstantiateResult(instantiate_result);
-
-        if (instantiate_result.error_info) |err_info| {
-            const err_msg = err_info.getMessage() orelse "Module instantiation failed";
-            const filename = err_info.getResourceName() orelse source_url;
-            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
-            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
-
-            std.log.err("[WorkerV8Context] Module instantiation error: {s}", .{err_msg});
-
-            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
-            if (!error_handled) {
-                self.sendErrorToParent(err_msg, filename, lineno, colno);
-            }
-
-            return error.ModuleInstantiationFailed;
-        }
-
-        if (!instantiate_result.success) {
-            std.log.err("Module instantiation failed without error details", .{});
-            self.sendErrorToParent("Module instantiation failed", source_url, 0, 0);
-            return error.ModuleInstantiationFailed;
-        }
-
-        // Evaluate the module (execute top-level code)
-        const evaluate_result = v8.ffi.v8_Module_Evaluate_Safe(self.context, module);
-        defer v8.ffi.v8_FreeModuleEvaluateResult(evaluate_result);
-
-        if (evaluate_result.error_info) |err_info| {
-            const err_msg = err_info.getMessage() orelse "Module evaluation failed";
-            const filename = err_info.getResourceName() orelse source_url;
-            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
-            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
-
-            std.log.err("[WorkerV8Context] Module evaluation error: {s}", .{err_msg});
-
-            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
-            if (!error_handled) {
-                self.sendErrorToParent(err_msg, filename, lineno, colno);
-            }
-
-            return error.ModuleEvaluationFailed;
-        }
-
-        // Run microtasks after module execution
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-    }
-
-    /// Public method to perform V8 microtask checkpoint
-    /// Called from the worker loop to process Promises and async/await continuations
-    ///
-    /// Spec: HTML Standard § 8.1.6.3 Perform a microtask checkpoint
-    /// https://html.spec.whatwg.org/#perform-a-microtask-checkpoint
-    ///
-    /// This processes:
-    /// - Promise.then/catch/finally callbacks
-    /// - queueMicrotask() callbacks
-    /// - async/await continuations
-    ///
-    /// IMPORTANT: V8 requires the isolate to be entered before any API calls.
-    /// The worker's init() exits the isolate after setup (line 284), so we must
-    /// re-enter it here before calling V8 APIs.
-    pub fn performMicrotaskCheckpoint(self: *Self) void {
-        // Enter the isolate - required for all V8 API calls
-        v8.ffi.v8_Isolate_Enter(self.isolate);
-        defer v8.ffi.v8_Isolate_Exit(self.isolate);
-
-        // Create HandleScope for any V8 handles created during microtask execution
-        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
-        defer if (handle_scope) |hs| v8.ffi.v8_HandleScope_Dispose(hs);
-
-        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
     }
 };
 
@@ -1595,56 +660,22 @@ fn compileAndRunScriptCallback(
 }
 
 /// Compile and run a module
-///
-/// Spec: HTML Standard § 10.2.5 step 24 (for type: "module")
-/// "Run the module script scriptOrModule."
-///
-/// This compiles, instantiates, and evaluates the source as an ES module,
-/// enabling import/export statements and import.meta support.
 fn compileAndRunModuleCallback(
     engine_ctx: *EngineContext,
     source: []const u8,
     source_url: []const u8,
 ) anyerror!void {
+    _ = source_url; // TODO: Used for import resolution
     const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
-    try self.executeModule(source, source_url);
+
+    // For now, execute as script. Full module support needs more V8 FFI.
+    _ = try self.executeScript(source);
 }
 
 /// Run microtask checkpoint
-///
-/// IMPORTANT: V8 requires the isolate to be entered before any API calls.
-/// The worker's init() exits the isolate after setup, so we must
-/// re-enter it here before calling V8 APIs.
 fn runMicrotasksCallback(engine_ctx: *EngineContext) void {
     const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
-
-    // Enter the isolate - required for all V8 API calls
-    v8.ffi.v8_Isolate_Enter(self.isolate);
-    defer v8.ffi.v8_Isolate_Exit(self.isolate);
-
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-}
-
-/// Run V8 event loop once to process libuv timers
-///
-/// This callback allows the worker thread to process setTimeout/setInterval
-/// callbacks that were scheduled via the V8EventLoop's libuv timer manager.
-///
-/// IMPORTANT: V8 requires the isolate to be entered before any API calls.
-fn runEventLoopOnceCallback(engine_ctx: *EngineContext) void {
-    const self: *WorkerV8Context = @ptrCast(@alignCast(engine_ctx));
-
-    // Enter the isolate - required for all V8 API calls
-    v8.ffi.v8_Isolate_Enter(self.isolate);
-    defer v8.ffi.v8_Isolate_Exit(self.isolate);
-
-    // Get the V8EventLoop from the worker context (stored directly, not via context_manager)
-    if (self.event_loop) |v8_event_loop| {
-        // Get the EventLoop interface which has the runOnce() wrapper
-        const event_loop = v8_event_loop.eventLoop();
-        // Run the event loop once to process ready timers
-        _ = event_loop.runOnce();
-    }
 }
 
 /// Dispose engine context
@@ -1668,14 +699,9 @@ fn disposeContextCallback(engine_ctx: *EngineContext) void {
 /// 3. Stores the JSON string in a JSValue
 /// 4. Posts it through the message port to the main thread
 fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    std.debug.print("[workerPostMessageCallback] ENTRY\n", .{});
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        std.debug.print("[workerPostMessageCallback] v8_context is null\n", .{});
-        return;
-    };
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const argc = info.v8_FunctionCallbackInfo_Length();
-    std.debug.print("[workerPostMessageCallback] argc={d}\n", .{argc});
 
     if (argc < 1) return;
     const message_arg = info.get(0);
@@ -1693,11 +719,7 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     // Allocate buffer dynamically based on required size and stringify again
     // The "complete" message from testharness.js can be quite large (9000+ bytes)
     // containing all test results, so we need dynamic allocation.
-    const self = current_worker_context orelse {
-        std.debug.print("[workerPostMessageCallback] current_worker_context is null\n", .{});
-        return;
-    };
-    std.debug.print("[workerPostMessageCallback] got current_worker_context, allocating {d} bytes\n", .{required_size + 1});
+    const self = current_worker_context orelse return;
     const json_buffer = self.allocator.alloc(u8, @intCast(required_size + 1)) catch return;
     defer self.allocator.free(json_buffer);
 
@@ -1710,40 +732,35 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     if (written <= 0) return;
 
     const json_str = json_buffer[0..@intCast(written)];
-    std.debug.print("[workerPostMessageCallback] JSON: {s}\n", .{json_str});
-    const dedicated_worker = self.dedicated_worker orelse {
-        std.debug.print("[workerPostMessageCallback] dedicated_worker is null\n", .{});
+    const dedicated_worker = self.dedicated_worker orelse return;
+
+    // Check agent state
+    if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
         return;
-    };
-    std.debug.print("[workerPostMessageCallback] dedicated_worker={*} script_url={s} outside_user_data={?*}\n", .{
-        dedicated_worker,
-        dedicated_worker.script_url,
-        dedicated_worker.outside_user_data,
-    });
+    }
 
-    // NOTE: We intentionally do NOT check isClosing()/isTerminated() here.
-    // Per HTML Standard § 10.2.4.1, messages sent BEFORE close() should be delivered.
-    // The closing flag can be set by the main thread (terminate()), not just by the
-    // worker's own close() call. If this callback is executing, the worker script is
-    // still running and should be able to send messages. The postMessageFromWorker
-    // function handles enqueuing to the thread-safe outbox.
-
-    // Use the dedicated worker's postMessageFromWorker which handles thread-safe outbox
-    // for cross-thread communication. This is CRITICAL for threaded workers - messages
-    // must go through the thread-safe outbox (not pending_messages) so the main thread
-    // can poll them via ThreadedWorkerRegistry.pollAndDispatch().
+    // Serialize the JSON string for posting
     var js_value = workers.message_channel.JSValue{ .string = json_str };
-    std.debug.print("[workerPostMessageCallback] calling postMessageFromWorker\n", .{});
-    dedicated_worker.postMessageFromWorker(&js_value, null) catch |err| {
-        std.log.warn("Worker postMessage failed: {}", .{err});
+    const serialized = workers.message_channel.serializeForPostMessage(
+        dedicated_worker.allocator,
+        &js_value,
+    ) catch return;
+
+    // Create QueuedMessage
+    const msg = workers.message_channel.QueuedMessage.init(dedicated_worker.allocator, serialized, null) catch {
+        serialized.deinit();
+        dedicated_worker.allocator.destroy(serialized);
         return;
     };
-    std.debug.print("[workerPostMessageCallback] postMessageFromWorker SUCCESS\n", .{});
 
-    // NOTE: We intentionally do NOT auto-close the worker based on message content.
-    // Per HTML Standard § 10.2, browsers should NEVER inspect message content to
-    // decide on close(). The worker script (testharness.js) is responsible for
-    // calling close() when it's done, not the browser.
+    // Append to pending_messages for deferred dispatch
+    workers.dedicated_worker.DedicatedWorker.appendPendingMessage(
+        dedicated_worker.port_pair.outside_port,
+        msg,
+    ) catch {
+        msg.deinit();
+        return;
+    };
 }
 
 /// V8 callback for close() - terminates the worker
@@ -1809,1030 +826,41 @@ fn importScriptsCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
         const actual_len = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(buf.len));
         if (actual_len <= 0) continue;
 
-        // v8_String_WriteUtf8 returns count INCLUDING null terminator, so subtract 1
-        const url_len: usize = @intCast(actual_len);
-        const url = buf[0 .. url_len - 1];
+        const url = buf[0..@intCast(actual_len)];
 
         // Fetch the script
         // Per HTML Standard § 10.2.4.2 importScripts(urls):
         // "For each url of urls: Let urlRecord be the result of parsing url with worker global scope's url"
-        //
-        // For data: or blob: workers, we use document_base_url as the base for resolving
-        // relative URLs, since data:/blob: URLs cannot be used as bases.
-        const base_url = blk: {
-            // Check if script_url starts with "data:" or "blob:"
-            if (std.mem.startsWith(u8, self.script_url, "data:") or
-                std.mem.startsWith(u8, self.script_url, "blob:"))
-            {
-                // Use document base URL if available
-                break :blk self.document_base_url orelse self.script_url;
-            }
-            break :blk self.script_url;
-        };
-
+        // The worker's script_url is the base for resolving relative URLs
         var fetched_script = script_fetch.fetchWorkerScript(self.allocator, url, .{
             .is_import_scripts = true,
             .worker_type = .classic,
-            .origin = base_url, // Base URL for relative path resolution
+            .origin = self.script_url, // Base URL for relative path resolution
         }) catch |err| {
             std.log.warn("importScripts: failed to fetch '{s}': {}", .{ url, err });
-            // Per HTML Standard § 10.2.4.2 step 6.2:
-            // "If the fetching attempt fails, throw a "NetworkError" DOMException"
-            const error_msg = std.fmt.allocPrint(self.allocator, "Failed to fetch script '{s}'", .{url}) catch {
-                // Fallback: throw generic error
-                throwNetworkError(isolate, v8_context, "Failed to fetch script");
-                return;
-            };
-            defer self.allocator.free(error_msg);
-            throwNetworkError(isolate, v8_context, error_msg);
-            return;
+            // Per spec, throw NetworkError on fetch failure
+            // For now, just continue to next script
+            continue;
         };
         defer fetched_script.deinit();
 
         // Execute the script synchronously
         _ = self.executeScript(fetched_script.source) catch |err| {
             std.log.warn("importScripts: failed to execute '{s}': {}", .{ url, err });
-            // Per HTML Standard, script execution errors should also throw
-            const error_msg = std.fmt.allocPrint(self.allocator, "Failed to execute script '{s}'", .{url}) catch {
-                throwNetworkError(isolate, v8_context, "Failed to execute script");
-                return;
-            };
-            defer self.allocator.free(error_msg);
-            throwNetworkError(isolate, v8_context, error_msg);
-            return;
+            continue;
         };
     }
-}
-
-/// Helper to throw a NetworkError DOMException in V8
-///
-/// Per HTML Standard § 10.2.4.2 importScripts(urls):
-/// "If the fetching attempt fails, throw a 'NetworkError' DOMException"
-fn throwNetworkError(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, message: []const u8) void {
-    // Create error message string
-    const v8_message = v8.ffi.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse {
-        // Fallback: throw generic error
-        const generic = v8.ffi.v8_String_NewFromUtf8(isolate, "NetworkError", 12) orelse return;
-        const exception = v8.ffi.v8_Exception_Error(generic) orelse return;
-        v8.ffi.v8_Isolate_ThrowException(isolate, exception);
-        return;
-    };
-
-    // Create a proper DOMException-like error
-    // For now, we create a standard Error with the message
-    // TODO: Create actual DOMException when DOMException interface is fully wired up
-    _ = context;
-    const exception = v8.ffi.v8_Exception_Error(v8_message) orelse return;
-    v8.ffi.v8_Isolate_ThrowException(isolate, exception);
 }
 
 /// V8 callback for done() - signals test completion (WPT testharness)
 ///
 /// This is called by worker test scripts to signal they're done running tests.
-/// The worker then posts a completion message to the main thread and signals
-/// the worker thread to terminate.
-///
-/// Spec: This is a WPT-specific extension that allows worker tests to signal
-/// completion. After done() is called, the worker should stop processing
-/// and allow the thread to exit cleanly.
+/// The worker then posts a completion message to the main thread.
 fn workerDoneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     _ = info;
-
-    // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse {
-        return;
-    };
-
-    // Close the dedicated worker to signal termination
-    // This sets the closing flag on the worker agent
-    if (self.dedicated_worker) |dedicated_worker| {
-        dedicated_worker.close();
-        std.log.debug("Worker done() called - signaling termination", .{});
-    }
-}
-
-// ============================================================================
-// Timer Callbacks (setTimeout, setInterval, clearTimeout, clearInterval)
-// ============================================================================
-
-/// V8 callback for setTimeout() - schedules a callback after a delay
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
-fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    workerTimerCallback(info, false);
-}
-
-/// V8 callback for setInterval() - schedules a repeating callback
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-setinterval
-fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    workerTimerCallback(info, true);
-}
-
-/// Common implementation for setTimeout and setInterval
-fn workerTimerCallback(info: *const v8.ffi.FunctionCallbackInfo, is_interval: bool) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    const argc = info.v8_FunctionCallbackInfo_Length();
-
-    // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse return;
-
-    // Need at least the handler argument
-    if (argc < 1) {
-        // Return 0 as a timer ID when no arguments
-        const zero = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(zero));
-        return;
-    }
-
-    // Get the handler (first argument) - must be a function
-    const handler_arg = info.get(0);
-    if (!v8.ffi.v8_Value_IsFunction(handler_arg)) {
-        // Per spec, non-function handlers should be coerced to string and eval'd
-        // For simplicity, we return 0 for non-function handlers
-        const zero = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(zero));
-        return;
-    }
-
-    // Get timeout (second argument, optional, defaults to 0)
-    var timeout_ms: i32 = 0;
-    if (argc >= 2) {
-        const timeout_arg = info.get(1);
-        if (v8.ffi.v8_Value_IsNumber(timeout_arg)) {
-            const num = v8.ffi.v8_Value_NumberValue_Raw(timeout_arg);
-            timeout_ms = @intFromFloat(@max(0, num));
-        }
-    }
-
-    // Create a GlobalHandle for the function to prevent GC
-    const global_handle = v8.ffi.v8_Value_ToGlobal(isolate, handler_arg) orelse {
-        const zero = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(zero));
-        return;
-    };
-
-    // Get the V8EventLoop from the worker context (stored directly, not via context_manager)
-    const v8_event_loop = self.event_loop orelse {
-        v8.ffi.v8_Global_Dispose(global_handle);
-        const zero = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(zero));
-        return;
-    };
-
-    // Get the timer interface
-    const timer_interface = v8_event_loop.timerInterface() orelse {
-        v8.ffi.v8_Global_Dispose(global_handle);
-        const zero = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(zero));
-        return;
-    };
-
-    // Create timer callback context
-    const callback_ctx = self.allocator.create(WorkerTimerCallbackContext) catch {
-        v8.ffi.v8_Global_Dispose(global_handle);
-        const zero = v8.ffi.v8_Integer_New(isolate, 0);
-        info.setReturnValue(@ptrCast(zero));
-        return;
-    };
-    callback_ctx.* = .{
-        .function_handle = global_handle,
-        .v8_context = v8_context,
-        .v8_isolate = isolate,
-        .allocator = self.allocator,
-        .is_interval = is_interval,
-        .interval_ms = @intCast(@max(0, timeout_ms)),
-        .worker_ctx = self,
-    };
-
-    // Schedule the timer (both setTimeout and setInterval use setTimeout,
-    // setInterval reschedules itself in the callback)
-    const timer_id = timer_interface.setTimeout(@intCast(@max(0, timeout_ms)), workerTimerFireCallback, callback_ctx);
-
-    callback_ctx.timer_id = timer_id;
-
-    // Return the timer ID
-    const result = v8.ffi.v8_Integer_New(isolate, @intCast(timer_id));
-    info.setReturnValue(@ptrCast(result));
-}
-
-/// Context for worker timer callbacks
-const WorkerTimerCallbackContext = struct {
-    function_handle: *v8.ffi.Value,
-    v8_context: *v8.ffi.Context,
-    v8_isolate: *v8.ffi.Isolate,
-    allocator: Allocator,
-    timer_id: u64 = 0,
-    is_interval: bool,
-    interval_ms: u64,
-    /// Back-reference to the worker context for rescheduling intervals
-    worker_ctx: *WorkerV8Context,
-    /// Flag to indicate if the timer has been cancelled
-    cancelled: bool = false,
-};
-
-/// Timer fire callback - invoked when a timer fires
-fn workerTimerFireCallback(ctx: ?*anyopaque) void {
-    const callback_ctx: *WorkerTimerCallbackContext = @ptrCast(@alignCast(ctx orelse return));
-
-    // Check if timer was cancelled
-    if (callback_ctx.cancelled) {
-        // Clean up and return
-        v8.ffi.v8_Global_Dispose(callback_ctx.function_handle);
-        callback_ctx.allocator.destroy(callback_ctx);
-        return;
-    }
-
-    // Enter isolate and context
-    v8.ffi.v8_Isolate_Enter(callback_ctx.v8_isolate);
-    defer v8.ffi.v8_Isolate_Exit(callback_ctx.v8_isolate);
-
-    v8.ffi.v8_Context_Enter(callback_ctx.v8_context);
-    defer v8.ffi.v8_Context_Exit(callback_ctx.v8_context);
-
-    // Create handle scope
-    const handle_scope = v8.ffi.v8_HandleScope_New(callback_ctx.v8_isolate) orelse return;
-    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Get the function from the global handle
-    const func = v8.ffi.v8_Global_Get(callback_ctx.v8_isolate, callback_ctx.function_handle) orelse return;
-
-    // Get global object as 'this'
-    const global = v8.ffi.v8_Context_Global(callback_ctx.v8_context) orelse return;
-
-    // Call the function with no arguments
-    // Cast the function pointer and use v8_Function_CallWithReceiver which handles null argv
-    _ = v8.ffi.v8_Function_CallWithReceiver(
-        callback_ctx.v8_context,
-        @ptrCast(@alignCast(func)),
-        @ptrCast(global),
-        0,
-        null,
-    );
-
-    // Run microtasks after callback execution
-    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(callback_ctx.v8_isolate);
-
-    // For intervals, reschedule the timer
-    if (callback_ctx.is_interval and !callback_ctx.cancelled) {
-        // Get the timer interface from the worker context (stored directly, not via context_manager)
-        if (callback_ctx.worker_ctx.event_loop) |v8_event_loop| {
-            if (v8_event_loop.timerInterface()) |timer| {
-                const new_id = timer.setTimeout(callback_ctx.interval_ms, workerTimerFireCallback, callback_ctx);
-                callback_ctx.timer_id = new_id;
-            }
-        }
-    } else {
-        // For one-shot timers, clean up the context
-        v8.ffi.v8_Global_Dispose(callback_ctx.function_handle);
-        callback_ctx.allocator.destroy(callback_ctx);
-    }
-}
-
-/// V8 callback for clearTimeout() - cancels a setTimeout timer
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-cleartimeout
-fn workerClearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    workerClearTimerCallback(info);
-}
-
-/// V8 callback for clearInterval() - cancels a setInterval timer
-///
-/// Spec: HTML Standard § 8.6 Timers
-/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-clearinterval
-fn workerClearIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    workerClearTimerCallback(info);
-}
-
-/// Common implementation for clearTimeout and clearInterval
-fn workerClearTimerCallback(info: *const v8.ffi.FunctionCallbackInfo) void {
-    _ = info.v8_FunctionCallbackInfo_GetIsolate();
-    const argc = info.v8_FunctionCallbackInfo_Length();
-
-    // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse return;
-
-    if (argc < 1) return;
-
-    // Get the timer ID
-    const id_arg = info.get(0);
-    if (!v8.ffi.v8_Value_IsNumber(id_arg)) return;
-
-    const timer_id: u64 = @intFromFloat(@max(0, v8.ffi.v8_Value_NumberValue_Raw(id_arg)));
-
-    // Get the V8EventLoop from the worker context (stored directly, not via context_manager)
-    const v8_event_loop = self.event_loop orelse return;
-
-    // Get the timer interface and cancel the timer
-    if (v8_event_loop.timerInterface()) |timer_interface| {
-        timer_interface.clearTimeout(timer_id);
-    }
-}
-
-// ============================================================================
-// Fetch Callback Implementation
-// ============================================================================
-
-/// V8 callback for fetch() - the Fetch API global function
-///
-/// Spec: WHATWG Fetch Standard § 5.6 Fetch method
-/// https://fetch.spec.whatwg.org/#fetch-method
-///
-/// This is a simplified synchronous implementation for workers.
-/// The full async implementation would require integrating with the worker's event loop.
-fn workerFetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    std.debug.print("[workerFetchCallback] ENTRY\n", .{});
-
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        std.debug.print("[workerFetchCallback] no V8 context\n", .{});
-        return;
-    };
-
-    // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse {
-        std.debug.print("[workerFetchCallback] no current_worker_context\n", .{});
-        return;
-    };
-
-    // Get number of arguments - fetch(input, init?)
-    const argc = info.v8_FunctionCallbackInfo_Length();
-    std.debug.print("[workerFetchCallback] argc={d}\n", .{argc});
-
-    if (argc < 1) {
-        // fetch() requires at least one argument (the URL/Request)
-        // Create rejected promise with TypeError
-        const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse return;
-        const type_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch requires at least 1 argument", 35) orelse return;
-        const type_error = v8.ffi.v8_Exception_TypeError(@ptrCast(type_error_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, type_error);
-        const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse return;
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    }
-
-    // Create a Promise to return to JavaScript
-    const resolver = v8.ffi.v8_PromiseResolver_New(v8_context) orelse {
-        std.debug.print("[workerFetchCallback] failed to create Promise resolver\n", .{});
-        return;
-    };
-    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
-        std.debug.print("[workerFetchCallback] failed to get Promise from resolver\n", .{});
-        return;
-    };
-
-    // Get the first argument (URL string or Request object)
-    const input_arg = info.get(0);
-
-    // Convert to string (works for both URL strings and Request.toString())
-    const input_str = v8.ffi.v8_Value_ToString(input_arg, v8_context) orelse {
-        std.debug.print("[workerFetchCallback] failed to convert input to string\n", .{});
-        const type_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to convert input to string", 33) orelse return;
-        const type_error = v8.ffi.v8_Exception_TypeError(@ptrCast(type_error_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, type_error);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    };
-
-    // Get URL string
-    const str_len = v8.ffi.v8_String_Utf8Length(input_str);
-    if (str_len <= 0) {
-        std.debug.print("[workerFetchCallback] empty URL\n", .{});
-        const type_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "URL cannot be empty", 19) orelse return;
-        const type_error = v8.ffi.v8_Exception_TypeError(@ptrCast(type_error_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, type_error);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    }
-
-    var url_buf: [8192]u8 = undefined;
-    const actual_len = v8.ffi.v8_String_WriteUtf8(input_str, &url_buf, @intCast(url_buf.len));
-    if (actual_len <= 0) {
-        std.debug.print("[workerFetchCallback] failed to write URL string\n", .{});
-        const network_error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to read URL", 18) orelse return;
-        const network_error = v8.ffi.v8_Exception_TypeError(@ptrCast(network_error_msg)) orelse return;
-        _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, network_error);
-        info.setReturnValue(@ptrCast(promise));
-        return;
-    }
-
-    // v8_String_WriteUtf8 returns count INCLUDING null terminator, so subtract 1
-    const url_len: usize = @intCast(actual_len - 1);
-    const url = url_buf[0..url_len];
-    std.debug.print("[workerFetchCallback] URL: {s}\n", .{url});
-
-    // Perform synchronous fetch (blocking)
-    // TODO: Make this async by integrating with worker event loop
-    const fetch_result = global_fetch.fetchUrl(self.allocator, url);
-
-    switch (fetch_result) {
-        .response => |response| {
-            std.debug.print("[workerFetchCallback] fetch succeeded\n", .{});
-
-            // Create a simplified Response-like object with basic properties
-            // TODO: Full Response wrapping with WebIDL interface
-            const response_obj = v8.ffi.v8_Object_New(isolate) orelse {
-                var resp = response;
-                resp.deinit();
-                return;
-            };
-
-            // Set response.ok = true
-            const ok_key = v8.ffi.v8_String_NewFromUtf8(isolate, "ok", 2) orelse return;
-            const ok_val = v8.ffi.v8_Boolean_New(isolate, true);
-            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(ok_key), @ptrCast(ok_val));
-
-            // Set response.status = 200
-            const status_key = v8.ffi.v8_String_NewFromUtf8(isolate, "status", 6) orelse return;
-            const status_val = v8.ffi.v8_Number_New(isolate, 200);
-            _ = v8.ffi.v8_Object_Set(response_obj, v8_context, @ptrCast(status_key), @ptrCast(status_val));
-
-            // Resolve the promise with the Response-like object
-            _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_context, @ptrCast(response_obj));
-            info.setReturnValue(@ptrCast(promise));
-
-            // Clean up the internal response
-            var resp = response;
-            resp.deinit();
-        },
-        .err => |err| {
-            std.debug.print("[workerFetchCallback] fetch failed: {}\n", .{err});
-
-            // Create appropriate error based on fetch error type
-            const error_msg = switch (err) {
-                global_fetch.FetchError.TypeError => v8.ffi.v8_String_NewFromUtf8(isolate, "TypeError in fetch", 18),
-                global_fetch.FetchError.NetworkError => v8.ffi.v8_String_NewFromUtf8(isolate, "NetworkError: Failed to fetch", 29),
-                global_fetch.FetchError.AbortError => v8.ffi.v8_String_NewFromUtf8(isolate, "AbortError: The operation was aborted", 37),
-                global_fetch.FetchError.OutOfMemory => v8.ffi.v8_String_NewFromUtf8(isolate, "OutOfMemory during fetch", 24),
-            } orelse return;
-
-            const error_val = switch (err) {
-                global_fetch.FetchError.TypeError => v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return,
-                else => v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return,
-            };
-
-            _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_context, error_val);
-            info.setReturnValue(@ptrCast(promise));
-        },
-    }
-}
-
-// ============================================================================
-// Base64 Callback Implementations (atob/btoa)
-// ============================================================================
-
-/// V8 callback for atob() - decode base64 string to binary string
-///
-/// Spec: WHATWG HTML Standard § 8.3 Base64 utility methods
-/// https://html.spec.whatwg.org/multipage/webappapis.html#atob
-///
-/// Takes a base64-encoded string and returns the decoded binary string.
-/// Throws InvalidCharacterError DOMException if input contains invalid characters.
-fn workerAtobCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-
-    // Get WorkerV8Context from thread-local storage for allocator
-    const self = current_worker_context orelse return;
-
-    // atob requires exactly 1 argument
-    const argc = info.v8_FunctionCallbackInfo_Length();
-    if (argc < 1) {
-        // Throw TypeError: atob requires at least 1 argument
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'atob': 1 argument required", 45) orelse return;
-        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    }
-
-    // Get the input string argument
-    const input_arg = info.get(0);
-    const input_str = v8.ffi.v8_Value_ToString(input_arg, v8_context) orelse {
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to convert argument to string", 36) orelse return;
-        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    };
-
-    // Get the string value
-    const str_len = v8.ffi.v8_String_Utf8Length(input_str);
-    if (str_len < 0) {
-        // Empty string returns empty string
-        info.setReturnValue(@ptrCast(input_str));
-        return;
-    }
-
-    // Read the input string
-    var input_buf: [65536]u8 = undefined; // 64KB max for base64 input
-    const buf_size: usize = @min(@as(usize, @intCast(str_len + 1)), input_buf.len);
-    const actual_len = v8.ffi.v8_String_WriteUtf8(input_str, &input_buf, @intCast(buf_size));
-    if (actual_len <= 0) {
-        // Empty string
-        const empty = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
-        info.setReturnValue(@ptrCast(empty));
-        return;
-    }
-
-    // v8_String_WriteUtf8 returns count INCLUDING null terminator
-    const input_len: usize = @intCast(actual_len - 1);
-    const input = input_buf[0..input_len];
-
-    // Per spec: First validate that input contains only Latin1 characters
-    for (input) |c| {
-        if (c > 0xFF) {
-            // This shouldn't happen with UTF-8 but check anyway
-            const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'atob': The string to be decoded contains characters outside of the Latin1 range.", 99) orelse return;
-            const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-            // Create DOMException with name "InvalidCharacterError"
-            _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-            return;
-        }
-    }
-
-    // Decode base64 using forgiving algorithm
-    const decoded = base64.forgivingBase64Decode(self.allocator, input) catch {
-        // Throw InvalidCharacterError DOMException
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'atob': The string to be decoded is not correctly encoded.", 77) orelse return;
-        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    };
-    defer self.allocator.free(decoded);
-
-    // Create result string - decoded bytes become Latin1 characters
-    const result = v8.ffi.v8_String_NewFromUtf8(isolate, decoded.ptr, @intCast(decoded.len)) orelse return;
-    info.setReturnValue(@ptrCast(result));
-}
-
-/// V8 callback for btoa() - encode binary string to base64 string
-///
-/// Spec: WHATWG HTML Standard § 8.3 Base64 utility methods
-/// https://html.spec.whatwg.org/multipage/webappapis.html#btoa
-///
-/// Takes a binary string (each character must be U+0000 to U+00FF) and returns
-/// the base64-encoded result.
-/// Throws InvalidCharacterError DOMException if input contains characters > U+00FF.
-fn workerBtoaCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-
-    // Get WorkerV8Context from thread-local storage for allocator
-    const self = current_worker_context orelse return;
-
-    // btoa requires exactly 1 argument
-    const argc = info.v8_FunctionCallbackInfo_Length();
-    if (argc < 1) {
-        // Throw TypeError: btoa requires at least 1 argument
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': 1 argument required", 45) orelse return;
-        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    }
-
-    // Get the input string argument
-    const input_arg = info.get(0);
-    const input_str = v8.ffi.v8_Value_ToString(input_arg, v8_context) orelse {
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to convert argument to string", 36) orelse return;
-        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    };
-
-    // Get the string value
-    const str_len = v8.ffi.v8_String_Utf8Length(input_str);
-    if (str_len < 0) {
-        // Empty string returns empty base64 (empty string)
-        info.setReturnValue(@ptrCast(input_str));
-        return;
-    }
-
-    // Read the input string
-    var input_buf: [65536]u8 = undefined; // 64KB max for binary input
-    const buf_size: usize = @min(@as(usize, @intCast(str_len + 1)), input_buf.len);
-    const actual_len = v8.ffi.v8_String_WriteUtf8(input_str, &input_buf, @intCast(buf_size));
-    if (actual_len <= 0) {
-        // Empty string
-        const empty = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse return;
-        info.setReturnValue(@ptrCast(empty));
-        return;
-    }
-
-    // v8_String_WriteUtf8 returns count INCLUDING null terminator
-    const input_len: usize = @intCast(actual_len - 1);
-    const input = input_buf[0..input_len];
-
-    // Per spec: Input must contain only Latin1 characters (U+0000 to U+00FF)
-    // Since we're reading UTF-8 bytes, we need to check for multi-byte sequences
-    // which would indicate characters > U+00FF
-    var i: usize = 0;
-    while (i < input.len) {
-        const c = input[i];
-        if (c > 0x7F) {
-            // This is a multi-byte UTF-8 sequence, meaning the character is > U+007F
-            // We need to decode it to check if it's > U+00FF
-            // For simplicity, if it's a 3+ byte sequence, it's definitely > U+00FF
-            if ((c & 0xE0) == 0xC0) {
-                // 2-byte sequence: U+0080 to U+07FF
-                // Only U+0080 to U+00FF are valid for btoa
-                if (i + 1 >= input.len) {
-                    // Invalid UTF-8
-                    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': The string to be encoded contains characters outside of the Latin1 range.", 99) orelse return;
-                    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-                    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-                    return;
-                }
-                const byte2 = input[i + 1];
-                // Decode: ((c & 0x1F) << 6) | (byte2 & 0x3F)
-                const codepoint = (@as(u16, c & 0x1F) << 6) | @as(u16, byte2 & 0x3F);
-                if (codepoint > 0xFF) {
-                    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': The string to be encoded contains characters outside of the Latin1 range.", 99) orelse return;
-                    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-                    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-                    return;
-                }
-                i += 2;
-            } else {
-                // 3+ byte sequence means U+0800 or higher, definitely > U+00FF
-                const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'btoa': The string to be encoded contains characters outside of the Latin1 range.", 99) orelse return;
-                const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-                _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-                return;
-            }
-        } else {
-            i += 1;
-        }
-    }
-
-    // For btoa, we need to treat the UTF-8 bytes as Latin1 code points
-    // This means we need to convert UTF-8 to Latin1 first
-    var latin1_buf: [65536]u8 = undefined;
-    var latin1_len: usize = 0;
-    i = 0;
-    while (i < input.len and latin1_len < latin1_buf.len) {
-        const c = input[i];
-        if (c <= 0x7F) {
-            latin1_buf[latin1_len] = c;
-            latin1_len += 1;
-            i += 1;
-        } else if ((c & 0xE0) == 0xC0 and i + 1 < input.len) {
-            // 2-byte UTF-8 sequence
-            const byte2 = input[i + 1];
-            const codepoint: u8 = @truncate((@as(u16, c & 0x1F) << 6) | @as(u16, byte2 & 0x3F));
-            latin1_buf[latin1_len] = codepoint;
-            latin1_len += 1;
-            i += 2;
-        } else {
-            // Should have been caught above
-            i += 1;
-        }
-    }
-
-    // Encode to base64
-    const encoded = base64.forgivingBase64Encode(self.allocator, latin1_buf[0..latin1_len]) catch {
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to encode to base64", 26) orelse return;
-        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    };
-    defer self.allocator.free(encoded);
-
-    // Create result string
-    const result = v8.ffi.v8_String_NewFromUtf8(isolate, encoded.ptr, @intCast(encoded.len)) orelse return;
-    info.setReturnValue(@ptrCast(result));
-}
-
-/// V8 callback for structuredClone() - creates a deep copy using the structured clone algorithm
-///
-/// Spec: HTML Standard § 2.7.8: StructuredClone method
-/// https://html.spec.whatwg.org/multipage/structured-data.html#dom-structuredclone
-///
-/// Creates and returns a deep copy of a given value using the structured clone algorithm.
-/// Primitives are returned as-is. Objects are serialized and deserialized to create
-/// independent copies. Functions and Symbols throw DataCloneError.
-fn workerStructuredCloneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // structuredClone requires at least 1 argument (the value to clone)
-    const argc = info.v8_FunctionCallbackInfo_Length();
-    if (argc < 1) {
-        // Per spec, undefined is a valid argument, but we need at least one arg syntactically
-        // Clone undefined and return
-        const undef = v8.ffi.v8_Undefined(isolate) orelse return;
-        info.setReturnValue(@ptrCast(undef));
-        return;
-    }
-
-    // Get the value to clone
-    const value = info.get(0);
-
-    // Check for unclonable types
-    if (v8.ffi.v8_Value_IsFunction(value) or v8.ffi.v8_Value_IsSymbol(value)) {
-        // Functions and Symbols cannot be cloned - throw DataCloneError
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'structuredClone': could not be cloned", 56) orelse return;
-        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    }
-
-    // Use V8's built-in structured clone for objects
-    // This handles circular references, typed arrays, dates, etc.
-    const cloned = v8.ffi.v8_Value_StructuredClone(value) orelse {
-        // Clone failed - likely contains unclonable data
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'structuredClone': could not be cloned", 56) orelse return;
-        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    };
-
-    info.setReturnValue(cloned);
-}
-
-// ============================================================================
-// Web Crypto API Callback Implementations
-// ============================================================================
-
-/// V8 callback for crypto.getRandomValues()
-///
-/// Spec: Web Cryptography API § 10.1 The getRandomValues method
-/// https://w3c.github.io/webcrypto/#Crypto-method-getRandomValues
-///
-/// Fills the provided TypedArray with cryptographically secure random values.
-/// Returns the same array passed in.
-fn workerGetRandomValuesCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // getRandomValues requires exactly 1 argument
-    const argc = info.v8_FunctionCallbackInfo_Length();
-    if (argc < 1) {
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getRandomValues': 1 argument required", 56) orelse return;
-        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    }
-
-    // Get the argument (should be a TypedArray)
-    const array_arg = info.get(0);
-
-    // Check if it's a TypedArray
-    if (!v8.ffi.v8_Value_IsTypedArray(array_arg)) {
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getRandomValues': parameter 1 is not of type 'ArrayBufferView'", 81) orelse return;
-        const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    }
-
-    // Get TypedArray view info
-    const byte_length = v8.ffi.v8_TypedArray_ByteLength(array_arg);
-    const byte_offset = v8.ffi.v8_TypedArray_ByteOffset(array_arg);
-
-    if (byte_length == 0) {
-        // Empty array - just return it
-        info.setReturnValue(array_arg);
-        return;
-    }
-
-    // Check size limit (65536 bytes max per spec)
-    if (byte_length > 65536) {
-        const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "Failed to execute 'getRandomValues': The ArrayBufferView's byte length (exceeds 65536)", 87) orelse return;
-        const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-        _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-        return;
-    }
-
-    // Get the underlying ArrayBuffer
-    const array_buffer = v8.ffi.v8_TypedArray_Buffer(array_arg) orelse {
-        // If we can't get the buffer, just return the array as-is
-        info.setReturnValue(array_arg);
-        return;
-    };
-
-    // Get the data pointer from the ArrayBuffer
-    const buffer_data = v8.ffi.v8_ArrayBuffer_Data(array_buffer) orelse {
-        info.setReturnValue(array_arg);
-        return;
-    };
-
-    // Calculate actual start position with byte offset
-    const buffer: [*]u8 = @ptrCast(buffer_data);
-    const view_start = buffer + byte_offset;
-
-    // Fill with random bytes using Zig's crypto-secure RNG
-    std.crypto.random.bytes(view_start[0..byte_length]);
-
-    // Return the same array
-    info.setReturnValue(array_arg);
-}
-
-/// V8 callback for crypto.randomUUID()
-///
-/// Spec: Web Cryptography API § 10.2 The randomUUID method
-/// https://w3c.github.io/webcrypto/#Crypto-method-randomUUID
-///
-/// Returns a new random UUID (version 4) as a string.
-fn workerRandomUUIDCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Generate 16 random bytes
-    var uuid_bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&uuid_bytes);
-
-    // Set version (4) and variant (RFC 4122)
-    uuid_bytes[6] = (uuid_bytes[6] & 0x0F) | 0x40; // Version 4
-    uuid_bytes[8] = (uuid_bytes[8] & 0x3F) | 0x80; // Variant 1
-
-    // Format as UUID string: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-    var uuid_str: [36]u8 = undefined;
-    const hex_chars = "0123456789abcdef";
-
-    var str_idx: usize = 0;
-    for (uuid_bytes, 0..) |byte, i| {
-        if (i == 4 or i == 6 or i == 8 or i == 10) {
-            uuid_str[str_idx] = '-';
-            str_idx += 1;
-        }
-        uuid_str[str_idx] = hex_chars[byte >> 4];
-        uuid_str[str_idx + 1] = hex_chars[byte & 0x0F];
-        str_idx += 2;
-    }
-
-    // Create V8 string and return
-    const result = v8.ffi.v8_String_NewFromUtf8(isolate, &uuid_str, 36) orelse return;
-    info.setReturnValue(@ptrCast(result));
-}
-
-/// V8 callback for performance.now()
-///
-/// Spec: W3C High Resolution Time § 4.2 The now() method
-/// https://w3c.github.io/hr-time/#dom-performance-now
-///
-/// Returns a DOMHighResTimeStamp representing the time elapsed since the
-/// worker's time origin. The time is coarsened per the HR-Time spec to
-/// mitigate timing side-channel attacks.
-fn workerPerformanceNowCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // Get the worker context from thread-local storage
-    const worker_ctx = current_worker_context orelse {
-        // If no context, return 0 (should not happen in normal operation)
-        const zero = v8.ffi.v8_Number_New(isolate, 0.0);
-        info.setReturnValue(@ptrCast(zero));
-        return;
-    };
-
-    // Get current relative timestamp from time origin
-    // Per HR-Time spec, this is the time elapsed since the worker was created
-    const now_ms = worker_ctx.time_origin.currentRelativeTimestampMs();
-
-    // Create V8 number and return
-    const result = v8.ffi.v8_Number_New(isolate, now_ms);
-    info.setReturnValue(@ptrCast(result));
-}
-
-/// V8 callback for indexedDB.open()
-///
-/// Spec: Indexed Database API 3.0 § 4.1 The open() method
-/// https://w3c.github.io/IndexedDB/#dom-idbfactory-open
-///
-/// Opens a connection to a database. Returns an IDBOpenDBRequest.
-/// This is a placeholder implementation that throws NotSupportedError
-/// until full IndexedDB support is implemented in workers.
-fn workerIndexedDBOpenCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // For now, throw NotSupportedError indicating IndexedDB operations are not yet supported
-    // Full implementation will use the IDBFactory backend from src/storage/indexeddb/
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(
-        isolate,
-        "IndexedDB operations in workers not yet implemented",
-        51,
-    ) orelse return;
-    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-}
-
-/// V8 callback for indexedDB.deleteDatabase()
-///
-/// Spec: Indexed Database API 3.0 § 4.2 The deleteDatabase() method
-/// https://w3c.github.io/IndexedDB/#dom-idbfactory-deletedatabase
-///
-/// Deletes a database. Returns an IDBOpenDBRequest.
-/// This is a placeholder implementation that throws NotSupportedError
-/// until full IndexedDB support is implemented in workers.
-fn workerIndexedDBDeleteCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-
-    // For now, throw NotSupportedError indicating IndexedDB operations are not yet supported
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(
-        isolate,
-        "IndexedDB operations in workers not yet implemented",
-        51,
-    ) orelse return;
-    const error_val = v8.ffi.v8_Exception_Error(@ptrCast(error_msg)) orelse return;
-    _ = v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
-}
-
-// ============================================================================
-// Microtask Callback Implementation
-// ============================================================================
-
-/// Context for worker microtask callbacks
-const WorkerMicrotaskCallbackContext = struct {
-    function_handle: *v8.ffi.Value,
-    v8_context: *v8.ffi.Context,
-    v8_isolate: *v8.ffi.Isolate,
-    allocator: Allocator,
-};
-
-/// Microtask trampoline - invoked by V8 when the microtask executes
-///
-/// Spec: HTML Standard § 8.6 Microtask queuing
-/// https://html.spec.whatwg.org/#perform-a-microtask-checkpoint
-fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
-    const callback_ctx: *WorkerMicrotaskCallbackContext = @ptrCast(@alignCast(data orelse return));
-
-    // Clean up after ourselves regardless of success/failure
-    defer {
-        v8.ffi.v8_Global_Dispose(callback_ctx.function_handle);
-        callback_ctx.allocator.destroy(callback_ctx);
-    }
-
-    // Enter isolate and context
-    v8.ffi.v8_Isolate_Enter(callback_ctx.v8_isolate);
-    defer v8.ffi.v8_Isolate_Exit(callback_ctx.v8_isolate);
-
-    v8.ffi.v8_Context_Enter(callback_ctx.v8_context);
-    defer v8.ffi.v8_Context_Exit(callback_ctx.v8_context);
-
-    // Create handle scope
-    const handle_scope = v8.ffi.v8_HandleScope_New(callback_ctx.v8_isolate) orelse return;
-    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
-
-    // Get the function from the global handle
-    const func = v8.ffi.v8_Global_Get(callback_ctx.v8_isolate, callback_ctx.function_handle) orelse return;
-
-    // Get global object as 'this'
-    const global = v8.ffi.v8_Context_Global(callback_ctx.v8_context) orelse return;
-
-    // Call the function with no arguments
-    _ = v8.ffi.v8_Function_CallWithReceiver(
-        callback_ctx.v8_context,
-        @ptrCast(@alignCast(func)),
-        @ptrCast(global),
-        0,
-        null,
-    );
-}
-
-/// V8 callback for queueMicrotask() - queues a callback to run as a microtask
-///
-/// Spec: HTML Standard § 8.6 Microtask queuing
-/// https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-queuemicrotask
-fn workerQueueMicrotaskCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    const argc = info.v8_FunctionCallbackInfo_Length();
-
-    // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse return;
-
-    // queueMicrotask requires exactly one argument (the callback)
-    if (argc < 1) {
-        return;
-    }
-
-    // Get the callback (first argument) - must be a function
-    const callback_arg = info.get(0);
-    if (!v8.ffi.v8_Value_IsFunction(callback_arg)) {
-        // Per spec, TypeError should be thrown for non-callable
-        // For now, silently return (consistent with timer behavior)
-        return;
-    }
-
-    // Create a GlobalHandle for the function to prevent GC
-    const global_handle = v8.ffi.v8_Value_ToGlobal(isolate, callback_arg) orelse {
-        return;
-    };
-
-    // Allocate context for the microtask callback
-    const callback_ctx = self.allocator.create(WorkerMicrotaskCallbackContext) catch {
-        v8.ffi.v8_Global_Dispose(global_handle);
-        return;
-    };
-
-    callback_ctx.* = .{
-        .function_handle = global_handle,
-        .v8_context = v8_context,
-        .v8_isolate = isolate,
-        .allocator = self.allocator,
-    };
-
-    // Enqueue the microtask via V8
-    const callback_ptr: ?*const anyopaque = @ptrCast(&workerMicrotaskTrampoline);
-    v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_ptr, callback_ctx);
+    // Note: The actual done() function in testharness.js handles posting
+    // the completion message. We just need to have this function exist
+    // so the worker script can call it.
 }
 
 // ============================================================================
@@ -2846,9 +874,6 @@ pub const WorkerV8Error = error{
     StringCreationFailed,
     CompilationFailed,
     ExecutionFailed,
-    ModuleCompilationFailed,
-    ModuleInstantiationFailed,
-    ModuleEvaluationFailed,
     OutOfMemory,
     FunctionTemplateCreateFailed,
     FunctionCreateFailed,

@@ -17,7 +17,6 @@ const HTMLAnchorElement = interfaces.HTMLAnchorElement;
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
 const DOMTokenListImpl = @import("DOMTokenList.zig");
-const HTMLHyperlinkElementUtilsImpl = @import("HTMLHyperlinkElementUtils.zig");
 
 pub const State = HTMLAnchorElement.State;
 
@@ -225,69 +224,69 @@ pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVStrin
 }
 
 /// Getter for href
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_href(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for origin
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_origin(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for protocol
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_protocol(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for username
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_username(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_username(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for password
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_password(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for host
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_host(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for hostname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_hostname(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for port
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_port(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for pathname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_pathname(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for search
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_search(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for hash
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-    return HTMLHyperlinkElementUtilsImpl.get_hash(instance);
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Setter for target
@@ -404,157 +403,71 @@ pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString)
 }
 
 /// Setter for href
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for protocol
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_protocol(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for username
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_username(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for password
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_password(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for host
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_host(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for hostname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_hostname(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for port
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_port(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for pathname
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_pathname(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for search
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_search(instance, value);
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for hash
-/// Delegates to HTMLHyperlinkElementUtils mixin
 pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    return HTMLHyperlinkElementUtilsImpl.set_hash(instance, value);
-}
-
-/// Activation behavior for anchor elements
-/// Spec: https://html.spec.whatwg.org/multipage/links.html#following-hyperlinks-2
-///
-/// This is called when the anchor is clicked and the event is not cancelled.
-/// It implements the "follow the hyperlink" algorithm.
-pub fn activationBehavior(instance: *runtime.Instance) !void {
-    const ctx = instance.ctx;
-    const allocator = ctx.allocator;
-
-    // Get the href attribute value (USVString is []const u8)
-    const href = get_href(instance) catch |err| {
-        std.debug.print("[HTMLAnchorElement] activationBehavior: failed to get href: {}\n", .{err});
-        return;
-    };
-
-    if (href.len == 0) {
-        // No href, nothing to do
-        return;
-    }
-
-    std.debug.print("[HTMLAnchorElement] activationBehavior: href = {s}\n", .{href});
-
-    // Check if this is a javascript: URL
-    if (std.mem.startsWith(u8, href, "javascript:")) {
-        // Execute the javascript: URL
-        try executeJavascriptUrl(instance, href, allocator);
-        return;
-    }
-
-    // For other URLs, we would navigate
-    // TODO: Implement full navigation for http:, https:, etc.
-    std.debug.print("[HTMLAnchorElement] activationBehavior: non-javascript URL navigation not yet implemented\n", .{});
-}
-
-/// Execute a javascript: URL
-/// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#evaluate-a-javascript:-url
-///
-/// 1. Let urlString be the result of running the URL serializer on url.
-/// 2. Let encodedScriptSource be the result of removing the leading "javascript:" from urlString.
-/// 3. Let scriptSource be the UTF-8 decoding of the percent-decoding of encodedScriptSource.
-/// 4. Let settings be targetNavigable's active document's relevant settings object.
-/// 5. Let baseURL be settings's API base URL.
-/// 6. Let script be the result of creating a classic script given scriptSource, settings, baseURL.
-/// 7. Let evaluationStatus be the result of running the classic script script.
-/// 8-13. Handle the result (if string, replace document; otherwise ignore).
-fn executeJavascriptUrl(instance: *runtime.Instance, href: []const u8, allocator: std.mem.Allocator) !void {
     _ = instance;
-
-    // Step 2: Remove the leading "javascript:" prefix
-    const encoded_script_source = href["javascript:".len..];
-
-    std.debug.print("[HTMLAnchorElement] executeJavascriptUrl: encoded = {s}\n", .{encoded_script_source});
-
-    // Step 3: Percent-decode and UTF-8 decode the script source
-    // For now, do a simple percent-decode
-    const script_source = try percentDecode(allocator, encoded_script_source);
-    defer allocator.free(script_source);
-
-    std.debug.print("[HTMLAnchorElement] executeJavascriptUrl: script = {s}\n", .{script_source});
-
-    // Step 6-7: Create and run the script
-    // We need to evaluate this script in the current context
-    const javascript_url_execution = @import("javascript_url_execution.zig");
-    try javascript_url_execution.executeScript(script_source);
-}
-
-/// Simple percent-decoding implementation
-/// Decodes %XX sequences to their byte values
-fn percentDecode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    // Zig 0.15: ArrayList is unmanaged, pass allocator to each method
-    var result: std.ArrayList(u8) = .{};
-    errdefer result.deinit(allocator);
-
-    var i: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%' and i + 2 < input.len) {
-            // Try to parse hex digits
-            const hex = input[i + 1 .. i + 3];
-            if (std.fmt.parseInt(u8, hex, 16)) |byte| {
-                try result.append(allocator, byte);
-                i += 3;
-                continue;
-            } else |_| {
-                // Not valid hex, keep the %
-                try result.append(allocator, input[i]);
-                i += 1;
-            }
-        } else {
-            try result.append(allocator, input[i]);
-            i += 1;
-        }
-    }
-
-    return result.toOwnedSlice(allocator);
+    _ = value;
+    return error.NotImplemented;
 }

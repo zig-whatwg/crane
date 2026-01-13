@@ -27,7 +27,6 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 
-const callback_registry = v8.callback_registry;
 const storage_mod = @import("storage/Storage.zig");
 const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
@@ -67,23 +66,11 @@ pub fn getTimerInterface() ?TimerInterface {
 /// Clear the timer interface reference and clean up ALL pending timer contexts
 /// This properly cancels libuv timers to prevent handle accumulation
 pub fn clearTimerInterface() void {
-    std.debug.print("[clearTimerInterface] CALLED, has_map={}, count={d}\n", .{ timer_contexts != null, if (timer_contexts) |m| m.count() else 0 });
-
-    // CRITICAL: Clean up the global timer registry from WindowOrWorkerGlobalScope first.
-    // This registry tracks setTimeout/setInterval timers from the mixin implementation.
-    // We must cancel these libuv timers BEFORE freeing the callback contexts.
-    impls.WindowOrWorkerGlobalScope.cleanupTimerRegistry(current_timer_interface);
-
     // Clean up any remaining timer contexts (both one-shot and intervals)
     if (timer_contexts) |*map| {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
-            // CRITICAL: Set destroyed flag BEFORE any cleanup to prevent use-after-free.
-            // The libuv uv_close() is async, so a timer callback could still fire
-            // between clearTimeout() and destroy(). The destroyed flag ensures the
-            // callback handler will early-exit instead of accessing freed memory.
-            wrapper.getData().destroyed = true;
             // Cancel the timer at the libuv level to prevent callback from firing
             // and to properly clean up the libuv timer handle
             if (current_timer_interface) |timer| {
@@ -93,9 +80,6 @@ pub fn clearTimerInterface() void {
         }
         map.deinit();
         timer_contexts = null;
-        std.debug.print("[clearTimerInterface] DONE - map freed\n", .{});
-    } else {
-        std.debug.print("[clearTimerInterface] No map to clean up\n", .{});
     }
 
     current_timer_interface = null;
@@ -109,11 +93,6 @@ pub fn clearPendingTimers() void {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
-            // CRITICAL: Set destroyed flag BEFORE any cleanup to prevent use-after-free.
-            // The libuv uv_close() is async, so a timer callback could still fire
-            // between clearTimeout() and destroy(). The destroyed flag ensures the
-            // callback handler will early-exit instead of accessing freed memory.
-            wrapper.getData().destroyed = true;
             // Cancel the timer at the libuv level
             if (current_timer_interface) |timer| {
                 timer.clearTimeout(wrapper.getData().current_timer_id);
@@ -146,14 +125,8 @@ fn unregisterTimerContext(timer_id: TimerId) void {
     if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
             const wrapper = kv.value;
-            const data = wrapper.getData();
-            // CRITICAL: Set destroyed flag BEFORE any cleanup to prevent use-after-free.
-            // The libuv uv_close() is async, so a timer callback could still fire
-            // between clearTimeout() and destroy(). The destroyed flag ensures the
-            // callback handler will early-exit instead of accessing freed memory.
-            data.destroyed = true;
             // Mark as cancelled so interval callbacks know to stop rescheduling
-            data.cancelled = true;
+            wrapper.getData().cancelled = true;
             // Cancel the timer at the libuv level to prevent callback from firing
             if (current_timer_interface) |timer| {
                 timer.clearTimeout(timer_id);
@@ -171,11 +144,15 @@ fn unregisterTimerContext(timer_id: TimerId) void {
 /// V8 Timer Context Data
 ///
 /// Holds the V8 function reference and metadata for timer/interval callbacks.
-/// Uses GlobalHandle to prevent V8 GC from collecting the callback function
-/// before the timer fires.
+/// This works for short-lived tests but could cause issues if V8 GCs
+/// the function before the timer fires. For production use, the V8 FFI
+/// would need to expose v8::Global<v8::Function> creation.
+///
+/// NOTE: This stores raw V8 function pointers without proper persistent handles.
+/// The V8 FFI doesn't currently support Persistent/Global handle creation.
 const V8TimerContextData = struct {
-    /// GlobalHandle to the V8 function (GC-protected!)
-    callback_handle: v8.GlobalHandle,
+    /// Raw pointer to the V8 function (not GC-protected!)
+    callback_fn: *v8.ffi.Function,
     /// V8 isolate
     isolate: *v8.ffi.Isolate,
     /// Whether this is an interval (repeating) timer - affects cleanup
@@ -186,12 +163,6 @@ const V8TimerContextData = struct {
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
-    /// Flag to prevent use-after-free when timer fires during cleanup.
-    /// Set to true BEFORE destroy() is called. Timer handlers check this
-    /// flag and early-exit if true, preventing access to freed memory.
-    /// This addresses the race condition where libuv's uv_close() is async
-    /// but we destroy the wrapper memory synchronously.
-    destroyed: bool = false,
 };
 
 /// Type-safe timer callback wrapper for V8 timer contexts.
@@ -209,17 +180,12 @@ fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, 
         return error.NotAFunction;
     }
 
-    // Create a GlobalHandle to prevent V8 GC from collecting the callback
-    const callback_handle = v8.GlobalHandle.create(isolate, callback_value) orelse {
-        return error.FailedToCreateGlobalHandle;
-    };
-
     const callback_fn = if (is_interval) &v8IntervalHandler else &v8TimerHandler;
     return try V8TimerCallback.create(
         allocator,
         callback_fn,
         .{
-            .callback_handle = callback_handle,
+            .callback_fn = @ptrCast(callback_value),
             .isolate = isolate,
             .is_interval = is_interval,
         },
@@ -228,12 +194,6 @@ fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, 
 
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
 fn v8TimerHandler(data: *V8TimerContextData) void {
-    // CRITICAL: Check destroyed flag FIRST to prevent use-after-free.
-    // If the timer context was destroyed during cleanup (clearTimerInterface,
-    // clearPendingTimers, or unregisterTimerContext), the memory may be freed
-    // but this callback could still fire due to libuv's async uv_close().
-    if (data.destroyed) return;
-
     // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
     if (timer_contexts) |*map| {
         _ = map.remove(data.current_timer_id);
@@ -243,32 +203,12 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
-    // Enter the context before making V8 calls
-    v8.ffi.v8_Context_Enter(context);
-    defer v8.ffi.v8_Context_Exit(context);
-
-    // Get the callback function from GlobalHandle (prevents GC issues)
-    const callback_value = data.callback_handle.get(isolate) orelse return;
-
-    // Verify the callback is still a function (safety check)
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        data.callback_handle.dispose();
-        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
-        wrapper.destroy();
-        return;
-    }
-
-    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
-
-    // Invoke the V8 function
+    // Invoke the V8 function (stored directly, not via persistent handle)
     var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
+    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-
-    // Dispose the GlobalHandle before destroying the wrapper
-    data.callback_handle.dispose();
 
     // Destroy the wrapper - this is a one-shot timer, so clean up after execution
     // Get the wrapper pointer from the data pointer (data is embedded in SelfContainedCallback)
@@ -278,19 +218,11 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
 
 /// Handler function for interval callbacks (invoked via SelfContainedCallback trampoline)
 fn v8IntervalHandler(data: *V8TimerContextData) void {
-    // CRITICAL: Check destroyed flag FIRST to prevent use-after-free.
-    // If the timer context was destroyed during cleanup (clearTimerInterface,
-    // clearPendingTimers, or unregisterTimerContext), the memory may be freed
-    // but this callback could still fire due to libuv's async uv_close().
-    if (data.destroyed) return;
-
     // Check if interval was cancelled
     if (data.cancelled) {
         if (timer_contexts) |*map| {
             _ = map.remove(data.current_timer_id);
         }
-        // Dispose the GlobalHandle when interval is cancelled
-        data.callback_handle.dispose();
         return;
     }
 
@@ -298,24 +230,9 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
     const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
-    // Enter the context before making V8 calls
-    v8.ffi.v8_Context_Enter(context);
-    defer v8.ffi.v8_Context_Exit(context);
-
-    // Get the callback function from GlobalHandle (prevents GC issues)
-    const callback_value = data.callback_handle.get(isolate) orelse return;
-
-    // Verify the callback is still a function (safety check)
-    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
-        data.callback_handle.dispose();
-        return;
-    }
-
-    const callback_fn: *v8.ffi.Function = @ptrCast(callback_value);
-
     // Invoke the V8 function
     var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(callback_fn, context, @ptrCast(global), 0, &empty_args);
+    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
 
     // Run microtasks after the timer callback
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -375,36 +292,6 @@ pub const ContextType = enum {
     shared_worker,
     /// Service worker context
     service_worker,
-    /// AudioWorklet context (Web Audio API)
-    audio_worklet,
-    /// PaintWorklet context (CSS Paint API)
-    paint_worklet,
-    /// AnimationWorklet context (CSS Animation Worklet)
-    animation_worklet,
-    /// LayoutWorklet context (CSS Layout API)
-    layout_worklet,
-    /// ShadowRealm context (TC39 Stage 3 proposal)
-    shadow_realm,
-    /// SharedStorageWorklet context (Shared Storage API)
-    shared_storage_worklet,
-
-    /// Convert to SnapshotContextIndex for multi-context snapshot selection.
-    /// Each context type maps to a pre-created snapshot context with the
-    /// appropriate global scope interfaces already registered.
-    pub fn toSnapshotIndex(self: ContextType) v8.SnapshotContextIndex {
-        return switch (self) {
-            .window => .window,
-            .worker => .dedicated_worker,
-            .shared_worker => .shared_worker,
-            .service_worker => .service_worker,
-            .audio_worklet => .audio_worklet,
-            .paint_worklet => .paint_worklet,
-            .animation_worklet => .animation_worklet,
-            .layout_worklet => .layout_worklet,
-            .shadow_realm => .shadow_realm,
-            .shared_storage_worklet => .shared_storage_worklet,
-        };
-    }
 };
 
 /// V8 Context representing a single page navigation
@@ -426,12 +313,6 @@ pub const Context = struct {
     event_loop: ?*v8.V8EventLoop,
     /// Whether to skip interface binding registration (when using snapshot)
     skip_bindings: bool,
-    /// Network manager for async fetch (owned by Browser)
-    network_manager: ?*anyopaque,
-    /// Certificate trust store for TLS verification (owned by Browser)
-    trust_store: ?*const @import("fetch").network.CertificateTrustStore,
-    /// Realm for this context (holds EnvironmentSettingsObject)
-    realm: ?*@import("runtime").Realm = null,
 
     // Singleton instances for cleanup
     window_instance: ?*runtime.Instance = null,
@@ -457,8 +338,6 @@ pub const Context = struct {
         event_loop: ?*v8.V8EventLoop,
         context_type: ContextType,
         skip_bindings: bool,
-        network_manager: ?*anyopaque,
-        trust_store: ?*const @import("fetch").network.CertificateTrustStore,
     ) !*Context {
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
@@ -476,8 +355,6 @@ pub const Context = struct {
             .initialized = false,
             .event_loop = event_loop,
             .skip_bindings = skip_bindings,
-            .network_manager = network_manager,
-            .trust_store = trust_store,
         };
 
         try ctx.createV8Context();
@@ -500,20 +377,11 @@ pub const Context = struct {
             // FAST PATH: Use snapshot context with interfaces already registered
             // The snapshot contains all WebIDL interfaces pre-registered on the global,
             // so we don't need to call initializeBindings() - saving ~1099 registrations.
-            // Select the correct snapshot context index based on context type.
-            const snapshot_index = self.context_type.toSnapshotIndex();
-            v8_ctx = v8.snapshot_loader.createContextFromSnapshotAt(self.isolate, snapshot_index) orelse {
+            v8_ctx = v8.ffi.v8_Context_NewFromSnapshot(self.isolate) orelse {
                 // Fallback to slow path if snapshot context fails
-                std.debug.print("Warning: Snapshot context at index {} failed, falling back to fresh context\n", .{@intFromEnum(snapshot_index)});
+                std.debug.print("Warning: Snapshot context failed, falling back to fresh context\n", .{});
                 return self.createV8ContextFresh();
             };
-
-            // CRITICAL: Re-register templates in the template registry
-            // The snapshot restores the global object with interface constructors,
-            // but the template registry is empty at runtime. We need to call
-            // hydrateContextFromSnapshot to re-register templates so that
-            // wrapInstanceAsV8Object() can find them for types like MessageEvent.
-            context_manager.hydrateContextFromSnapshot(self.isolate, v8_ctx, snapshot_index.toHelperScope());
         } else {
             // SLOW PATH: Create fresh context without snapshot
             return self.createV8ContextFresh();
@@ -531,15 +399,6 @@ pub const Context = struct {
             }
         };
 
-        // Initialize callback registry for tracking CallbackWrapper instances
-        // This allows proper cleanup of event listeners, promise handlers, etc.
-        callback_registry.init(self.allocator);
-
-        // Initialize the C++ CallbackManager for safe callback handling.
-        // The CallbackManager owns V8 Global handles and ensures callbacks
-        // are properly preserved across HandleScope boundaries.
-        v8.ffi.crane_callback_manager_init(self.isolate);
-
         // Register context with context manager for wrapper caching
         // Pass timer and event loop interfaces so all runtime contexts share the same libuv loop
         const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
@@ -549,37 +408,10 @@ pub const Context = struct {
             return error.ContextRegistrationFailed;
         };
 
-        // Set network manager on runtime context for async fetch()
-        if (self.network_manager) |nm| {
-            runtime_ctx.setNetworkManager(nm);
-        }
-
-        // Set trust store on runtime context for TLS certificate verification
-        if (self.trust_store) |ts| {
-            runtime_ctx.setTrustStore(ts);
-        }
-
-        // Create and set up the Realm for this context
-        // The Realm holds the EnvironmentSettingsObject which contains the API base URL
-        const Realm = @import("runtime").Realm;
-        const realm = try Realm.init(self.allocator, .{
-            .v8_context = v8_ctx,
-            .isolate = self.isolate,
-            .context_type = .window,
-        });
-        runtime_ctx.setRealm(realm);
-        self.realm = realm; // Store for cleanup in deinit
-
-        // Set API base URL on the settings object for relative URL resolution
-        if (realm.getSettingsObject()) |settings| {
-            settings.setApiBaseUrl(self.url, false); // false = not owned, don't free
-        } else |_| {}
-
-        // SNAPSHOT MODE: The snapshot contains V8 builtins AND WebIDL interfaces.
-        // Interfaces are pre-registered in the snapshot with proper external references.
-        // We populate the Zig-side template registry AND reinstall constructors with fresh
-        // callbacks to replace stale snapshot callback pointers.
-        v8.interface_bindings.registerAllTemplatesOnly(self.isolate, v8_ctx);
+        // SNAPSHOT MODE: Skip initializeBindings() - interfaces are already in the snapshot!
+        // However, we still need to populate the Zig-side template registry so that
+        // wrapInstanceAsV8Object() can wrap Document, Navigator, etc. with correct prototypes.
+        v8.interface_bindings.registerAllTemplatesOnly(self.isolate);
 
         // Register namespaces (console, WebAssembly, etc.) which are NOT included in the snapshot.
         v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
@@ -589,228 +421,52 @@ pub const Context = struct {
             return error.NoGlobal;
         };
 
-        // Set up prototype chain based on context type
-        if (self.context_type == .window) {
-            // Set up Window prototype chain
-            const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
-            if (window_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
-                        }
+        // Set up Window prototype chain
+        // Set global's prototype to Window.prototype
+        const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
+        if (window_key) |wk| {
+            if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
+                const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                if (proto_key) |pk| {
+                    if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
+                        _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
                     }
                 }
-            }
-        } else if (self.context_type == .worker) {
-            // Set up DedicatedWorkerGlobalScope prototype chain
-            std.debug.print("Context: Setting up Worker prototype chain...\n", .{});
-            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "DedicatedWorkerGlobalScope", 26);
-            if (worker_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
-                    std.debug.print("Context: Found DedicatedWorkerGlobalScope constructor\n", .{});
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
-                            std.debug.print("Context: Worker prototype set successfully\n", .{});
-                        }
-                    }
-                } else {
-                    std.debug.print("Context: DedicatedWorkerGlobalScope constructor NOT found on global\n", .{});
-                }
-            }
-
-            // Create and bind DedicatedWorkerGlobalScope instance
-            const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
-            const worker_instance = DedicatedWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create worker instance: {}\n", .{err});
-                // Continue without instance binding (will cause crashes if methods called)
-                // We can't easily return error here as we are in a block that doesn't propagate easily?
-                // Actually createV8Context returns !void, so we can return error.
-                return error.ContextCreateFailed;
-            };
-
-            // Store instance in internal field 0
-            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
-
-            // Store WrapperTypeInfo in internal field 1
-            if (v8.dom_type_info.getTypeInfoByName("DedicatedWorkerGlobalScope")) |type_info| {
-                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-            }
-
-            // Register in wrapper cache (needed for event dispatch to find the V8 object)
-            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
-                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
-                cache.set(worker_instance, global, self.isolate) catch {};
-            }
-
-            // Check MessageEvent registration
-            if (v8.template_registry.getTemplate("MessageEvent") == null) {
-                std.debug.print("Context: WARNING - MessageEvent template NOT registered!\n", .{});
-            } else {
-                std.debug.print("Context: MessageEvent template IS registered\n", .{});
-            }
-        } else if (self.context_type == .shared_worker) {
-            // Set up SharedWorkerGlobalScope prototype chain
-            std.debug.print("Context: Setting up SharedWorker prototype chain...\n", .{});
-            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "SharedWorkerGlobalScope", 23);
-            if (worker_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
-                    std.debug.print("Context: Found SharedWorkerGlobalScope constructor\n", .{});
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
-                            std.debug.print("Context: SharedWorker prototype set successfully\n", .{});
-                        }
-                    }
-                } else {
-                    std.debug.print("Context: SharedWorkerGlobalScope constructor NOT found on global\n", .{});
-                }
-            }
-
-            // Create and bind SharedWorkerGlobalScope instance
-            const SharedWorkerGlobalScope = interfaces.SharedWorkerGlobalScope;
-            const worker_instance = SharedWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create shared worker instance: {}\n", .{err});
-                return error.ContextCreateFailed;
-            };
-
-            // Store instance in internal field 0
-            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
-
-            // Store WrapperTypeInfo in internal field 1
-            if (v8.dom_type_info.getTypeInfoByName("SharedWorkerGlobalScope")) |type_info| {
-                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-            }
-
-            // Register in wrapper cache (needed for event dispatch to find the V8 object)
-            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
-                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
-                cache.set(worker_instance, global, self.isolate) catch {};
-            }
-        } else if (self.context_type == .service_worker) {
-            // Set up ServiceWorkerGlobalScope prototype chain
-            std.debug.print("Context: Setting up ServiceWorker prototype chain...\n", .{});
-            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "ServiceWorkerGlobalScope", 24);
-            if (worker_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
-                    std.debug.print("Context: Found ServiceWorkerGlobalScope constructor\n", .{});
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
-                            std.debug.print("Context: ServiceWorker prototype set successfully\n", .{});
-                        }
-                    }
-                } else {
-                    std.debug.print("Context: ServiceWorkerGlobalScope constructor NOT found on global\n", .{});
-                }
-            }
-
-            // Create and bind ServiceWorkerGlobalScope instance
-            const ServiceWorkerGlobalScope = interfaces.ServiceWorkerGlobalScope;
-            const worker_instance = ServiceWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create service worker instance: {}\n", .{err});
-                return error.ContextCreateFailed;
-            };
-
-            // Store instance in internal field 0
-            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
-
-            // Store WrapperTypeInfo in internal field 1
-            if (v8.dom_type_info.getTypeInfoByName("ServiceWorkerGlobalScope")) |type_info| {
-                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-            }
-
-            // Register in wrapper cache (needed for event dispatch to find the V8 object)
-            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
-                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
-                cache.set(worker_instance, global, self.isolate) catch {};
             }
         }
 
-        // For window contexts only: Create and bind Window instance to global object's internal fields
+        // Create and bind Window instance to global object's internal fields
         // This is required for WebIDL method callbacks to extract the Zig instance from `this`
-        if (self.context_type == .window) {
-            const Window = interfaces.Window;
-            const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
-                self.window_instance = null;
-                return;
-            };
-            self.window_instance = window_instance;
+        const Window = interfaces.Window;
+        const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
+            std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
+            self.window_instance = null;
+            return;
+        };
+        self.window_instance = window_instance;
 
-            // CRITICAL: Set the active window on the browsing context
-            // This is required for iframe.parent to return the correct Window.
-            // Without this, the browsing context's active_window is null and
-            // get_parent will return self instead of the actual parent.
-            if (impls.Window.getInternal(window_instance)) |internal| {
-                internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
-            }
+        // Store Window instance in internal field 0
+        v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
 
-            // Store Window instance in internal field 0
-            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
-
-            // Store WrapperTypeInfo in internal field 1 for type-safe unwrapping
-            if (v8.dom_type_info.getTypeInfoByName("Window")) |type_info| {
-                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-            }
-
-            // Bind the V8 global to the Window instance for cross-realm access
-            impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
-
-            // Set isSecureContext based on URL scheme
-            // Per HTML spec, secure contexts include https, wss, file, and localhost
-            const is_secure = self.determineSecureContext();
-            impls.Window.setIsSecureContext(window_instance, is_secure);
-
-            // Register Window in wrapper cache for proper cleanup
-            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
-                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
-                cache.set(window_instance, global, self.isolate) catch {};
-            }
-
-            // CRITICAL: Register Window with context manager so getWindowForContext() works.
-            // This is required for iframe browsing context creation in handleIframeInsertion().
-            context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
-                std.debug.print("Warning: Failed to register Window with context manager: {}\n", .{err});
-            };
-
-            // Register Window properties (document, navigator, etc.) as own properties on the global object.
-            // This is required because the global's prototype is immutable (set via SetImmutableProto),
-            // so we can't inherit properties from Window.prototype through the prototype chain.
-            // This matches how child contexts (iframes) register Window properties.
-            v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
-
-            // Register methods as own properties on the global object.
-            // This includes Window's own methods AND inherited EventTarget methods
-            // (addEventListener, removeEventListener, dispatchEvent).
-            // The global's immutable prototype means we can't rely on prototype chain lookup,
-            // so we must register these methods directly on the global object.
-            v8.interface_bindings.Window.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
-            v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
-
-            // Set up window property (Window-specific)
-            const window_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6) orelse return error.StringCreationFailed;
-            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
+        // Store WrapperTypeInfo in internal field 1 for type-safe unwrapping
+        if (v8.dom_type_info.getTypeInfoByName("Window")) |type_info| {
+            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
         }
 
-        // Set up self and globalThis properties on the global object (shared across all contexts)
-        // Per HTML spec, browsers expose these properties:
-        // - 'window' references the global Window object (same as globalThis in browsers)
-        // - 'self' references the global object (works in both window and worker contexts)
-        // - 'globalThis' is the standard reference to the global object
-        const window_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6) orelse return error.StringCreationFailed;
-        _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
+        // Bind the V8 global to the Window instance for cross-realm access
+        impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
 
-        const self_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4) orelse return error.StringCreationFailed;
-        _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
+        // Register Window in wrapper cache for proper cleanup
+        if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
+            const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
+            cache.set(window_instance, global, self.isolate) catch {};
+        }
 
-        const global_this_prop_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "globalThis", 10) orelse return error.StringCreationFailed;
-        _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(global_this_prop_key), @ptrCast(global));
+        // Register Window properties (document, navigator, etc.) as own properties on the global object.
+        // This is required because the global's prototype is immutable (set via SetImmutableProto),
+        // so we can't inherit properties from Window.prototype through the prototype chain.
+        // This matches how child contexts (iframes) register Window properties.
+        v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
 
         // Set up global aliases FIRST (creates __internal object and accessor properties)
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
@@ -831,11 +487,6 @@ pub const Context = struct {
             }
         }
 
-        // Set up child context globals callback so iframes get setTimeout/setInterval
-        // This callback is invoked by context_manager.createChildContext() when
-        // creating V8 contexts for iframes.
-        context_manager.setChildContextGlobalsCallback(registerTimerGlobalsOnContext);
-
         self.initialized = true;
     }
 
@@ -850,13 +501,6 @@ pub const Context = struct {
         // Per WebIDL spec §3.8, all objects in the global prototype chain must have
         // immutable [[Prototype]]. Object.setPrototypeOf(globalThis, {}) must throw TypeError.
         v8.ffi.v8_ObjectTemplate_SetImmutableProto(global_template);
-
-        // Set named property handler for lazy global constructor installation
-        // When JavaScript accesses `window.MessageEvent` (or any non-core interface),
-        // this handler creates the template on-demand and installs the constructor.
-        // Note: In fresh context mode, all interfaces are registered anyway, so this
-        // is mainly for consistency with the snapshot path.
-        v8.global_constructor_handler.installOnGlobalTemplate(global_template);
 
         // Create V8 context with the global template
         const v8_ctx = v8.ffi.v8_Context_NewWithGlobalTemplate(self.isolate, global_template) orelse {
@@ -873,15 +517,6 @@ pub const Context = struct {
             }
         };
 
-        // Initialize callback registry for tracking CallbackWrapper instances
-        // This allows proper cleanup of event listeners, promise handlers, etc.
-        callback_registry.init(self.allocator);
-
-        // Initialize the C++ CallbackManager for safe callback handling.
-        // The CallbackManager owns V8 Global handles and ensures callbacks
-        // are properly preserved across HandleScope boundaries.
-        v8.ffi.crane_callback_manager_init(self.isolate);
-
         // Register context with context manager for wrapper caching
         const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
         const event_loop_iface = if (self.event_loop) |ev| ev.eventLoop() else null;
@@ -889,11 +524,6 @@ pub const Context = struct {
             std.debug.print("Warning: Context registration failed: {}\n", .{err});
             return error.ContextRegistrationFailed;
         };
-
-        // Set network manager on runtime context for async fetch()
-        if (self.network_manager) |nm| {
-            runtime_ctx.setNetworkManager(nm);
-        }
 
         // SLOW PATH: Register all WebIDL interfaces manually
         // This is required for fresh contexts without snapshot
@@ -907,55 +537,16 @@ pub const Context = struct {
             return error.NoGlobal;
         };
 
-        // Set up prototype chain based on context type
-        if (self.context_type == .window) {
-            // Set up Window prototype chain
-            const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
-            if (window_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
-                        }
+        // Set up Window prototype chain
+        const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
+        if (window_key) |wk| {
+            if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
+                const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
+                if (proto_key) |pk| {
+                    if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
+                        _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
                     }
                 }
-            }
-        } else if (self.context_type == .worker) {
-            // Set up DedicatedWorkerGlobalScope prototype chain
-            // Note: This logic mirrors createV8Context (fast path) to ensure workers using fresh isolates
-            // also get the correct prototype chain.
-            const worker_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "DedicatedWorkerGlobalScope", 26);
-            if (worker_key) |wk| {
-                if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |worker_ctor| {
-                    const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                    if (proto_key) |pk| {
-                        if (v8.ffi.v8_Object_Get(@ptrCast(worker_ctor), v8_ctx, @ptrCast(pk))) |worker_proto| {
-                            _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, worker_proto);
-                        }
-                    }
-                }
-            }
-
-            // Create and bind DedicatedWorkerGlobalScope instance
-            const DedicatedWorkerGlobalScope = interfaces.DedicatedWorkerGlobalScope;
-            const worker_instance = DedicatedWorkerGlobalScope.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create worker instance: {}\n", .{err});
-                return error.ContextCreateFailed;
-            };
-
-            // Store instance in internal field 0
-            v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(worker_instance));
-
-            // Store WrapperTypeInfo in internal field 1
-            if (v8.dom_type_info.getTypeInfoByName("DedicatedWorkerGlobalScope")) |type_info| {
-                v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-            }
-
-            // Register in wrapper cache
-            if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
-                const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
-                cache.set(worker_instance, global, self.isolate) catch {};
             }
         }
 
@@ -968,12 +559,6 @@ pub const Context = struct {
         };
         self.window_instance = window_instance;
 
-        // CRITICAL: Set the active window on the browsing context
-        // This is required for iframe.parent to return the correct Window.
-        if (impls.Window.getInternal(window_instance)) |internal| {
-            internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
-        }
-
         // Store Window instance in internal field 0
         v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
 
@@ -985,22 +570,11 @@ pub const Context = struct {
         // Bind the V8 global to the Window instance
         impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
 
-        // Set isSecureContext based on URL scheme
-        // Per HTML spec, secure contexts include https, wss, file, and localhost
-        const is_secure = self.determineSecureContext();
-        impls.Window.setIsSecureContext(window_instance, is_secure);
-
         // Register Window in wrapper cache
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
             const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(cache_storage));
             cache.set(window_instance, global, self.isolate) catch {};
         }
-
-        // CRITICAL: Register Window with context manager so getWindowForContext() works.
-        // This is required for iframe browsing context creation in handleIframeInsertion().
-        context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
-            std.debug.print("Warning: Failed to register Window with context manager: {}\n", .{err});
-        };
 
         // Register Window properties as own properties on the global object
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
@@ -1019,9 +593,6 @@ pub const Context = struct {
                 setTimerInterface(timer, self.allocator);
             }
         }
-
-        // Set up child context globals callback so iframes get setTimeout/setInterval
-        context_manager.setChildContextGlobalsCallback(registerTimerGlobalsOnContext);
 
         self.initialized = true;
     }
@@ -1081,10 +652,8 @@ pub const Context = struct {
             self.document_instance = doc_instance;
 
             // Link the document to the Window instance so window.document accessor works
-            // Also link the Window to the Document so document.location and document.defaultView work
             if (self.window_instance) |win| {
                 impls.Window.setDocument(win, doc_instance);
-                impls.Document.setDefaultView(doc_instance, win);
             }
 
             const v8_document = v8.template_registry.wrapInstanceAsV8Object(
@@ -1274,26 +843,176 @@ pub const Context = struct {
     }
 
     /// Register common globals (setTimeout, fetch, console, etc.)
-    fn registerCommonGlobals(self: *Context, _: *v8.ffi.Object) !void {
-        // NOTE: setTimeout, clearTimeout, setInterval, and clearInterval are now provided
-        // by the WebIDL WindowOrWorkerGlobalScope mixin (via Window interface).
-        // Previously, callbacks were registered here that overwrote the proper WebIDL bindings,
-        // breaking timer callbacks (e.g., testharness.js completion timers).
-        // The WindowOrWorkerGlobalScope implementation in src/webidl/impls/WindowOrWorkerGlobalScope.zig
-        // provides the actual functionality with proper timer registry integration.
+    fn registerCommonGlobals(self: *Context, global_obj: *v8.ffi.Object) !void {
+        const isolate = self.isolate;
+        const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
-        // NOTE: addEventListener, removeEventListener, and dispatchEvent are now provided
-        // by the WebIDL EventTarget interface (registered via initializeBindingsWithGlobalTemplate).
-        // Previously, NOOP stubs were registered here that overwrote the proper bindings,
-        // breaking all event handling. The EventTarget implementation in src/webidl/impls/EventTarget.zig
-        // provides the actual functionality.
+        // setTimeout
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setTimeout", 10) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
 
-        // NOTE: console is now registered via registerNamespacesGeneric() in createV8Context()
-        // before this function is called. The namespace system provides the actual console
-        // implementation with Zig callbacks. The old JavaScript noop console has been removed.
-        //
-        // Previously, this code created a JavaScript-based noop console that OVERWROTE the
-        // properly registered console namespace, breaking console.log callbacks.
+        // clearTimeout
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearTimeout", 12) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // setInterval
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, setIntervalCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "setInterval", 11) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // clearInterval
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, clearTimeoutCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "clearInterval", 13) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // addEventListener
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, addEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "addEventListener", 16) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // removeEventListener
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, removeEventListenerCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 2);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "removeEventListener", 19) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // dispatchEvent
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, dispatchEventCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "dispatchEvent", 13) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register console object with proper WebIDL namespace semantics
+        // Per WebIDL spec §3.8.1 "Namespace objects":
+        // - The prototype chain is: console -> empty object -> Object.prototype
+        // - The namespace has Symbol.toStringTag = "console" (non-writable, non-enumerable, configurable)
+        // - All console methods are own properties
+        {
+            const console_script =
+                \\(function() {
+                \\  function consoleNoop() {}
+                \\  
+                \\  // Helper to convert label to string per WHATWG Console Standard
+                \\  function convertLabel(label) {
+                \\    if (label === undefined) {
+                \\      return "default";
+                \\    }
+                \\    if (label !== null && typeof label === "object") {
+                \\      return label.toString();
+                \\    }
+                \\    return String(label);
+                \\  }
+                \\  
+                \\  // Internal state for count and time operations
+                \\  var countMap = {};
+                \\  var timerMap = {};
+                \\  
+                \\  // Create the empty prototype object
+                \\  var consoleProto = Object.create(Object.prototype);
+                \\  Object.freeze(consoleProto);
+                \\  
+                \\  // Create console object with the proper prototype chain
+                \\  globalThis.console = Object.create(consoleProto);
+                \\  
+                \\  // Define all console methods as own properties
+                \\  var methods = {
+                \\    log: consoleNoop,
+                \\    warn: consoleNoop,
+                \\    error: consoleNoop,
+                \\    info: consoleNoop,
+                \\    debug: consoleNoop,
+                \\    trace: consoleNoop,
+                \\    dir: consoleNoop,
+                \\    dirxml: consoleNoop,
+                \\    table: consoleNoop,
+                \\    assert: consoleNoop,
+                \\    clear: consoleNoop,
+                \\    group: consoleNoop,
+                \\    groupCollapsed: consoleNoop,
+                \\    groupEnd: consoleNoop,
+                \\  };
+                \\  
+                \\  function createLabelMethod(fn, length) {
+                \\    Object.defineProperty(fn, 'length', { value: length, configurable: true });
+                \\    return fn;
+                \\  }
+                \\  
+                \\  methods.count = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    countMap[key] = (countMap[key] || 0) + 1;
+                \\  }, 0);
+                \\  
+                \\  methods.countReset = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    delete countMap[key];
+                \\  }, 0);
+                \\  
+                \\  methods.time = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    if (!(key in timerMap)) {
+                \\      timerMap[key] = Date.now();
+                \\    }
+                \\  }, 0);
+                \\  
+                \\  methods.timeLog = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\  }, 0);
+                \\  
+                \\  methods.timeEnd = createLabelMethod(function(label) {
+                \\    var key = convertLabel(label);
+                \\    delete timerMap[key];
+                \\  }, 0);
+                \\  
+                \\  for (var name in methods) {
+                \\    Object.defineProperty(globalThis.console, name, {
+                \\      value: methods[name],
+                \\      writable: true,
+                \\      enumerable: true,
+                \\      configurable: true
+                \\    });
+                \\  }
+                \\  
+                \\  // Add Symbol.toStringTag per WebIDL namespace semantics
+                \\  Object.defineProperty(globalThis.console, Symbol.toStringTag, {
+                \\    value: "console",
+                \\    writable: false,
+                \\    enumerable: false,
+                \\    configurable: true
+                \\  });
+                \\})();
+            ;
+            _ = self.evaluateScript(console_script) catch |err| {
+                std.debug.print("Warning: Failed to register console: {}\n", .{err});
+            };
+        }
 
         // Register btoa/atob for base64 encoding/decoding
         {
@@ -1342,8 +1061,24 @@ pub const Context = struct {
             };
         }
 
-        // NOTE: getComputedStyle and fetch are registered via Window.registerMethodsAsOwnOnObject()
-        // which properly delegates to the WebIDL implementations. Do NOT register stubs here.
+        // Register getComputedStyle as a global function
+        // Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, getComputedStyleCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "getComputedStyle", 16) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register fetch() as a global function
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(isolate, fetchCallback, null) orelse return error.FunctionTemplateCreateFailed;
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
+            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch", 5) orelse return error.StringCreateFailed;
+            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
+        }
     }
 
     /// Set up global aliases via JavaScript
@@ -1417,43 +1152,6 @@ pub const Context = struct {
             \\  isShadowRealm: function() { return false; },
             \\};
             ,
-            .audio_worklet, .paint_worklet, .animation_worklet, .layout_worklet, .shared_storage_worklet =>
-            // Worklet context: minimal global scope per Worklet spec
-            // Worklets have a highly restricted execution environment
-            \\function __checkGlobalThis(thisArg, propName) {
-            \\  if (thisArg === null || thisArg === undefined) {
-            \\    return globalThis;
-            \\  }
-            \\  if (thisArg === globalThis) {
-            \\    return globalThis;
-            \\  }
-            \\  throw new TypeError("'" + propName + "' called on an object that does not implement interface WorkletGlobalScope.");
-            \\}
-            \\
-            \\Object.defineProperty(globalThis, 'self', {
-            \\  get: function() { return __checkGlobalThis(this, 'self'); },
-            \\  enumerable: true, configurable: true
-            \\});
-            \\
-            \\// Set up GLOBAL object for WPT tests - WORKLET context
-            \\globalThis.GLOBAL = {
-            \\  isWindow: function() { return false; },
-            \\  isWorker: function() { return false; },
-            \\  isWorklet: function() { return true; },
-            \\  isShadowRealm: function() { return false; },
-            \\};
-            ,
-            .shadow_realm =>
-            // ShadowRealm context: isolated realm per TC39 Stage 3 proposal
-            // ShadowRealms have minimal global scope - no DOM, no I/O
-            // Only pure JavaScript built-ins are available
-            \\// Set up GLOBAL object for WPT tests - SHADOWREALM context
-            \\globalThis.GLOBAL = {
-            \\  isWindow: function() { return false; },
-            \\  isWorker: function() { return false; },
-            \\  isShadowRealm: function() { return true; },
-            \\};
-            ,
         };
 
         _ = self.evaluateScript(setup_script) catch |err| {
@@ -1466,135 +1164,89 @@ pub const Context = struct {
     ///
     /// Navigation flow per HTML Standard:
     /// 1. Fetch URL content
-    /// 2. Detect response content type
-    /// 3. Delegate to appropriate handler (HTML, JSON, plain text, etc.)
-    /// 4. Fire DOMContentLoaded and load events
+    /// 2. Parse HTML into DOM tree
+    /// 3. Execute inline scripts (in document order)
+    /// 4. Fire DOMContentLoaded event
+    /// 5. Fire load event
     pub fn loadPage(self: *Context) !void {
+        const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
         // Step 1: Fetch URL content
-        // For about:blank, return early without fetching (empty document)
-        if (std.mem.eql(u8, self.url, "about:blank")) {
-            return;
-        }
-
         var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
             // Handle navigation errors gracefully
             std.debug.print("Navigation error for {s}: {}\n", .{ self.url, err });
+
+            // For about:blank or errors, just return with empty document
+            if (std.mem.eql(u8, self.url, "about:blank")) {
+                return;
+            }
             return error.NavigationFailed;
         };
         defer result.deinit();
 
-        // Step 2: Detect content type and delegate to appropriate handler
-        if (isHtmlContentType(result.content_type)) {
-            try self.handleHtmlResponse(result.body, result.final_url, v8_ctx);
-        } else if (isJsonContentType(result.content_type)) {
-            try self.handleJsonResponse(result.body);
-        } else if (isTextContentType(result.content_type)) {
-            try self.handleTextResponse(result.body);
-        } else {
-            // Unknown content type - treat as binary/download
-            std.debug.print("Unhandled content type: {s}\n", .{result.content_type});
+        // Step 2: Check if HTML content
+        const is_html = std.mem.indexOf(u8, result.content_type, "text/html") != null or
+            std.mem.indexOf(u8, result.content_type, "application/xhtml") != null;
+
+        if (!is_html) {
+            // For non-HTML content, just set document.body.innerText
+            // This is a simplified approach for now
+            std.debug.print("Non-HTML content type: {s}\n", .{result.content_type});
             return;
         }
+
+        // Step 3: Parse HTML (for script extraction)
+        // Note: We're using a simplified approach here - just extracting scripts
+        // and executing them. Full DOM tree construction would integrate with
+        // the WebIDL Document interface.
+        try self.executeInlineScripts(result.body);
+
+        // Step 4: Fire DOMContentLoaded
+        navigation.fireDOMContentLoaded(isolate, v8_ctx);
+
+        // Step 5: Fire load event
+        navigation.fireLoad(isolate, v8_ctx);
     }
 
-    /// Check if content type is HTML
-    fn isHtmlContentType(content_type: []const u8) bool {
-        return std.mem.indexOf(u8, content_type, "text/html") != null or
-            std.mem.indexOf(u8, content_type, "application/xhtml") != null;
-    }
+    /// Execute inline scripts from HTML content
+    fn executeInlineScripts(self: *Context, html: []const u8) !void {
+        const isolate = self.isolate;
+        const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
-    /// Check if content type is JSON
-    fn isJsonContentType(content_type: []const u8) bool {
-        return std.mem.indexOf(u8, content_type, "application/json") != null or
-            std.mem.indexOf(u8, content_type, "text/json") != null;
-    }
+        // Simple script extractor - find <script>...</script> blocks
+        var pos: usize = 0;
+        while (pos < html.len) {
+            // Find <script
+            const script_start = std.mem.indexOfPos(u8, html, pos, "<script") orelse break;
 
-    /// Check if content type is plain text
-    fn isTextContentType(content_type: []const u8) bool {
-        return std.mem.indexOf(u8, content_type, "text/plain") != null or
-            std.mem.indexOf(u8, content_type, "text/css") != null or
-            std.mem.indexOf(u8, content_type, "text/javascript") != null or
-            std.mem.indexOf(u8, content_type, "application/javascript") != null;
-    }
+            // Find > (end of opening tag)
+            const tag_end = std.mem.indexOfPos(u8, html, script_start, ">") orelse break;
 
-    /// Handle HTML response - parse with full HTML parser including script execution
-    /// The final_url parameter is the actual URL after redirects (with full scheme)
-    fn handleHtmlResponse(self: *Context, html_content: []const u8, final_url: []const u8, v8_ctx: *v8.ffi.Context) !void {
-        std.debug.print("[HTML_RESPONSE] Received {d} bytes of HTML content\n", .{html_content.len});
-        if (html_content.len > 0) {
-            const preview_len = @min(html_content.len, 200);
-            std.debug.print("[HTML_RESPONSE] Preview: {s}\n", .{html_content[0..preview_len]});
+            // Check if it's a src script (external) - skip those for now
+            const tag_attrs = html[script_start..tag_end];
+            if (std.mem.indexOf(u8, tag_attrs, " src=") != null or
+                std.mem.indexOf(u8, tag_attrs, " src =") != null)
+            {
+                // External script - skip for now
+                // TODO: Fetch and execute external scripts
+                pos = tag_end + 1;
+                continue;
+            }
+
+            // Find </script>
+            const script_end = std.mem.indexOfPos(u8, html, tag_end, "</script>") orelse break;
+
+            // Extract script content
+            const script_content = html[tag_end + 1 .. script_end];
+
+            if (script_content.len > 0) {
+                // Execute the script
+                _ = self.evaluateScriptSafe(script_content, isolate, v8_ctx);
+            }
+
+            pos = script_end + 9; // Move past </script>
         }
-
-        // Get runtime context for HTMLParser
-        const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
-            std.debug.print("Failed to get runtime context: {}\n", .{err});
-            return error.NotInitialized;
-        };
-
-        // Get existing document instance
-        const document = self.document_instance orelse {
-            std.debug.print("ERROR: document_instance is null - context must be initialized first\n", .{});
-            return error.NotInitialized;
-        };
-
-        // Update document URL and location object to the actual page URL (after redirects)
-        // This is critical for location.pathname, location.href, etc. to work correctly
-        // in scripts (e.g., WPT testharness.js uses location to identify tests)
-        self.setUrl(final_url) catch |err| {
-            std.debug.print("WARNING: Failed to set URL on location/document: {}\n", .{err});
-        };
-
-        // Parse HTML with full scripting support
-        const HTMLParser = impls.HTMLParser;
-        _ = HTMLParser.parseHTMLWithScripting(
-            self.allocator,
-            runtime_ctx,
-            html_content,
-            .{
-                .scripting_enabled = true,
-                .base_url = final_url,
-                .script_loader = null, // Use default HTTP fetching
-                .existing_document = document,
-                .trust_store = self.trust_store,
-            },
-        ) catch |err| {
-            std.debug.print("HTML parse error: {}\n", .{err});
-            return error.ParseError;
-        };
-
-        // Fire DOMContentLoaded on document
-        // Per spec, set readyState to "interactive" before DOMContentLoaded fires
-        if (self.document_instance) |doc| {
-            impls.Document.setReadyState(doc, ._interactive_);
-            navigation.fireDOMContentLoaded(self.allocator, doc);
-        }
-
-        // Fire load event on window
-        // Per spec, set readyState to "complete" before load event fires
-        if (self.document_instance) |doc| {
-            impls.Document.setReadyState(doc, ._complete_);
-        }
-        if (self.window_instance) |win| {
-            navigation.fireLoad(self.allocator, win);
-        }
-    }
-
-    /// Handle JSON response - set document body with formatted JSON
-    fn handleJsonResponse(self: *Context, json_content: []const u8) !void {
-        // For JSON, we could parse and display, or set as document content
-        // For now, just log it - full implementation would create a JSON viewer
-        _ = self;
-        std.debug.print("JSON response ({d} bytes)\n", .{json_content.len});
-    }
-
-    /// Handle plain text response - set document body with text content
-    fn handleTextResponse(self: *Context, text_content: []const u8) !void {
-        // For text, display in a <pre> element or similar
-        _ = self;
-        std.debug.print("Text response ({d} bytes)\n", .{text_content.len});
     }
 
     /// Evaluate script with error handling (doesn't propagate errors)
@@ -1659,8 +1311,6 @@ pub const Context = struct {
         /// Custom script loader (optional)
         /// If null, external scripts will use default HTTP fetch
         script_loader: ?ScriptLoader = null,
-        /// Certificate trust store for HTTPS script fetching (e.g., WPT self-signed certs)
-        trust_store: ?*const @import("fetch").network.CertificateTrustStore = null,
     };
 
     /// Load and parse HTML content into the document
@@ -1693,6 +1343,7 @@ pub const Context = struct {
     /// // result === "Hello"
     /// ```
     pub fn loadHTML(self: *Context, html_content: []const u8, options: LoadHTMLOptions) !void {
+        const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
         std.debug.print("loadHTML: Browser.Context v8_context={*}\n", .{v8_ctx});
@@ -1751,7 +1402,6 @@ pub const Context = struct {
                 .base_url = options.base_url,
                 .script_loader = script_loader,
                 .existing_document = document,
-                .trust_store = options.trust_store,
             },
         ) catch |err| {
             std.debug.print("HTML parse error: {}\n", .{err});
@@ -1767,13 +1417,11 @@ pub const Context = struct {
 
         // Fire DOMContentLoaded event
         // Per HTML Standard §13.2.7 "The end" step 4
-        navigation.fireDOMContentLoaded(self.allocator, document);
+        navigation.fireDOMContentLoaded(isolate, v8_ctx);
 
         // Fire load event
         // Per HTML Standard §13.2.7 "The end" step 9
-        if (self.window_instance) |win| {
-            navigation.fireLoad(self.allocator, win);
-        }
+        navigation.fireLoad(isolate, v8_ctx);
     }
 
     /// Initialize browsing contexts for all iframes in a document.
@@ -1805,78 +1453,16 @@ pub const Context = struct {
         }
     }
 
-    /// Set the context URL (updates location object, document URL, and API base URL)
+    /// Set the context URL (updates location object)
     fn setUrl(self: *Context, url: []const u8) !void {
         // Update internal URL
         self.allocator.free(self.url);
         self.url = try self.allocator.dupe(u8, url);
 
-        // Update Location object with the new URL
-        // This is required for location.pathname, location.href, etc. to work correctly
-        if (self.location_instance) |loc| {
-            const LocationImpl = impls.Location;
-            try LocationImpl.setURLFromString(loc, url);
-        }
-
-        // Update Document's URL so Worker script resolution works
-        // Worker.fetchWorkerScript uses Document.get_URL() for origin resolution
-        if (self.document_instance) |doc| {
-            const DocumentImpl = impls.Document;
-            if (DocumentImpl.getInternal(doc)) |doc_internal| {
-                if (doc_internal.url.len > 0) {
-                    self.allocator.free(doc_internal.url);
-                }
-                doc_internal.url = self.allocator.dupe(u8, url) catch "";
-            }
-        }
-
-        // Update API base URL in environment settings object
-        // This is critical for fetch() to resolve relative URLs correctly
-        // (e.g., fetch("resources/data.json") needs to resolve against the page URL)
-        if (self.realm) |realm| {
-            if (realm.getSettingsObject()) |settings| {
-                settings.setApiBaseUrl(self.url, false); // false = not owned, don't free
-            } else |_| {}
-        }
-    }
-
-    /// Determine if the current URL represents a secure context
-    /// Per HTML spec, secure contexts include:
-    /// - https:// and wss:// URLs
-    /// - file:// URLs
-    /// - localhost and 127.0.0.1 and [::1] regardless of scheme
-    fn determineSecureContext(self: *Context) bool {
-        // Parse the URL to extract scheme and host
-        const url_str = self.url;
-
-        // Find scheme (everything before "://")
-        const scheme_end = std.mem.indexOf(u8, url_str, "://") orelse {
-            // No scheme found - treat as insecure
-            return false;
-        };
-        const scheme = url_str[0..scheme_end];
-
-        // Check if scheme is inherently secure
-        if (impls.Window.isSecureScheme(scheme)) {
-            return true;
-        }
-
-        // Extract host (after "://" and before "/" or ":" or end)
-        const after_scheme = url_str[scheme_end + 3 ..];
-        var host_end = after_scheme.len;
-
-        // Find end of host (first "/" or ":" for port)
-        if (std.mem.indexOf(u8, after_scheme, "/")) |pos| {
-            host_end = @min(host_end, pos);
-        }
-        if (std.mem.indexOf(u8, after_scheme, ":")) |pos| {
-            host_end = @min(host_end, pos);
-        }
-
-        const host = after_scheme[0..host_end];
-
-        // Check if localhost (secure regardless of scheme)
-        return impls.Window.isSecureLocalhost(host);
+        // Note: Location object URL is set during context initialization
+        // and via JavaScript. Direct impl access would require Location.setHref
+        // which isn't currently exposed. For now, the URL is tracked in Context.url.
+        _ = self.location_instance;
     }
 
     /// Evaluate JavaScript in this context
@@ -1941,14 +1527,6 @@ pub const Context = struct {
         // from firing after the V8 context is disposed
         clearTimerInterface();
 
-        // Clean up all registered CallbackWrappers (EventListener, etc.)
-        // This must happen before V8 context disposal to properly release Global handles
-        callback_registry.deinit();
-
-        // Destroy the C++ CallbackManager (releases all Global handles)
-        // This must happen before V8 context disposal
-        v8.ffi.crane_callback_manager_destroy();
-
         // Clear iframe src load hook to prevent callbacks after context disposal
         impls.HTMLIFrameElement.setIframeSrcLoadHook(null);
 
@@ -1975,12 +1553,6 @@ pub const Context = struct {
             v8.ffi.v8_Context_Exit(ctx);
             v8.ffi.v8_Context_Dispose(ctx);
         }
-
-        // Clean up the Realm (which owns the EnvironmentSettingsObject)
-        if (self.realm) |realm| {
-            realm.deinit();
-        }
-        self.realm = null;
 
         self.allocator.free(self.url);
         self.initialized = false;
@@ -2048,12 +1620,14 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
         return;
     };
 
-    // Use page_allocator for timer wrappers - they must outlive the current arena
-    // because timers fire asynchronously after the current operation completes
-    const timer_allocator = std.heap.page_allocator;
+    const allocator = current_allocator orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
 
     // Create typed timer context wrapper (one-shot timer)
-    const timer_wrapper = createV8TimerContext(timer_allocator, isolate, callback_value, false) catch {
+    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, false) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
@@ -2061,7 +1635,6 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Schedule the timer using TimerInterface with typed callback trampoline
     const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
-
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
@@ -2079,39 +1652,6 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Register the timer context for cleanup tracking (prevents memory leak on deinit)
     registerTimerContext(timer_id, timer_wrapper);
-
-    // DEBUG: Log timer creation with stack trace
-    std.debug.print("[setTimeout] Created timer_id={d}, delay={d}ms\n", .{ timer_id, delay_u64 });
-    if (v8.ffi.v8_StackTrace_CurrentStackTrace(isolate, 10)) |stack_trace| {
-        const frame_count = v8.ffi.v8_StackTrace_GetFrameCount(stack_trace);
-        std.debug.print("[setTimeout] JS Stack ({d} frames):\n", .{frame_count});
-        var i: u32 = 0;
-        while (i < frame_count) : (i += 1) {
-            if (v8.ffi.v8_StackTrace_GetFrame(isolate, stack_trace, i)) |frame| {
-                const line = v8.ffi.v8_StackFrame_GetLineNumber(frame);
-                const col = v8.ffi.v8_StackFrame_GetColumn(frame);
-                if (v8.ffi.v8_StackFrame_GetFunctionName(frame)) |func_name| {
-                    if (v8.ffi.v8_String_ToCString(func_name, isolate)) |name_cstr| {
-                        if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
-                            if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
-                                std.debug.print("  [{d}] {s} at {s}:{d}:{d}\n", .{ i, name_cstr, script_cstr, line, col });
-                            }
-                        } else {
-                            std.debug.print("  [{d}] {s} at <unknown>:{d}:{d}\n", .{ i, name_cstr, line, col });
-                        }
-                    }
-                } else {
-                    if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
-                        if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
-                            std.debug.print("  [{d}] <anonymous> at {s}:{d}:{d}\n", .{ i, script_cstr, line, col });
-                        }
-                    } else {
-                        std.debug.print("  [{d}] <anonymous> at <unknown>:{d}:{d}\n", .{ i, line, col });
-                    }
-                }
-            }
-        }
-    }
 
     // Return timer ID (truncate to i32 for V8 Integer)
     const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
@@ -2158,41 +1698,6 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
         return;
     }
     const timer_id: TimerId = @intFromFloat(timer_id_f64);
-
-    // DEBUG: Log clearTimeout call with stack trace
-    std.debug.print("[clearTimeout] Called with timer_id={d}\n", .{timer_id});
-
-    // Capture and log JavaScript stack trace
-    if (v8.ffi.v8_StackTrace_CurrentStackTrace(isolate, 10)) |stack_trace| {
-        const frame_count = v8.ffi.v8_StackTrace_GetFrameCount(stack_trace);
-        std.debug.print("[clearTimeout] JS Stack ({d} frames):\n", .{frame_count});
-        var i: u32 = 0;
-        while (i < frame_count) : (i += 1) {
-            if (v8.ffi.v8_StackTrace_GetFrame(isolate, stack_trace, i)) |frame| {
-                const line = v8.ffi.v8_StackFrame_GetLineNumber(frame);
-                const col = v8.ffi.v8_StackFrame_GetColumn(frame);
-                if (v8.ffi.v8_StackFrame_GetFunctionName(frame)) |func_name| {
-                    if (v8.ffi.v8_String_ToCString(func_name, isolate)) |name_cstr| {
-                        if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
-                            if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
-                                std.debug.print("  [{d}] {s} at {s}:{d}:{d}\n", .{ i, name_cstr, script_cstr, line, col });
-                            }
-                        } else {
-                            std.debug.print("  [{d}] {s} at <unknown>:{d}:{d}\n", .{ i, name_cstr, line, col });
-                        }
-                    }
-                } else {
-                    if (v8.ffi.v8_StackFrame_GetScriptName(frame)) |script_name| {
-                        if (v8.ffi.v8_String_ToCString(script_name, isolate)) |script_cstr| {
-                            std.debug.print("  [{d}] <anonymous> at {s}:{d}:{d}\n", .{ i, script_cstr, line, col });
-                        }
-                    } else {
-                        std.debug.print("  [{d}] <anonymous> at <unknown>:{d}:{d}\n", .{ i, line, col });
-                    }
-                }
-            }
-        }
-    }
 
     // Get timer interface and cancel the timer
     if (getTimerInterface()) |timer| {
@@ -2251,12 +1756,14 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
         return;
     };
 
-    // Use page_allocator for timer wrappers - they must outlive the current arena
-    // because timers fire asynchronously after the current operation completes
-    const timer_allocator = std.heap.page_allocator;
+    const allocator = current_allocator orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
 
     // Create typed timer context wrapper (interval timer)
-    const timer_wrapper = createV8TimerContext(timer_allocator, isolate, callback_value, true) catch {
+    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, true) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
@@ -2290,38 +1797,103 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     info.setReturnValue(@ptrCast(result));
 }
 
-// NOTE: addEventListenerCallback, removeEventListenerCallback, and dispatchEventCallback
-// have been removed. These were NOOP stubs that overwrote the proper WebIDL EventTarget
-// bindings. The EventTarget implementation in src/webidl/impls/EventTarget.zig now
-// provides the actual functionality via the standard WebIDL interface system.
+fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    if (v8.ffi.v8_Undefined(isolate)) |undef| {
+        info.setReturnValue(undef);
+    }
+}
 
-// NOTE: getComputedStyleCallback, getPropertyValueCallback, and fetchCallback stubs
-// have been removed. These functions are now provided by the proper WebIDL implementations
-// via Window.registerMethodsAsOwnOnObject() which delegates to the Window interface.
+fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    if (v8.ffi.v8_Undefined(isolate)) |undef| {
+        info.setReturnValue(undef);
+    }
+}
 
-// ============================================================================
-// Child Context Globals Registration
-// ============================================================================
+fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+        info.setReturnValue(result);
+    }
+}
 
-/// Register browser-level globals on a child context (iframe).
-/// This is called by context_manager.createChildContext via the
-/// setChildContextGlobalsCallback hook.
-///
-/// This function registers:
-/// - console namespace (not included in snapshot, must be registered at runtime)
-/// - Other namespaces needed for web platform functionality
-///
-/// NOTE: Timer APIs (setTimeout, clearTimeout, setInterval, clearInterval) are now
-/// provided by the WebIDL WindowOrWorkerGlobalScope mixin via the Window interface.
-/// Child contexts receive these via WebIDL bindings.
-pub fn registerTimerGlobalsOnContext(
-    isolate: *v8.ffi.Isolate,
-    v8_ctx: *v8.ffi.Context,
-    global_obj: *v8.ffi.Object,
-) void {
-    _ = global_obj;
+/// getComputedStyle callback - returns CSSStyleDeclaration-like object
+/// Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
+fn getComputedStyleCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Null(isolate)) |null_val| {
+            info.setReturnValue(null_val);
+        }
+        return;
+    };
 
-    // Register namespaces (console, WebAssembly, etc.) which are NOT included in the snapshot.
-    // This is essential for iframe scripts to have access to console.log, etc.
-    v8.interface_bindings.registerNamespacesGeneric(namespaces, @ptrCast(isolate), @ptrCast(v8_ctx));
+    // Create an empty CSSStyleDeclaration-like object
+    // In a full implementation, this would compute styles from the element
+    const style_obj = v8.ffi.v8_Object_New(isolate) orelse {
+        if (v8.ffi.v8_Null(isolate)) |null_val| {
+            info.setReturnValue(null_val);
+        }
+        return;
+    };
+
+    // Add getPropertyValue method
+    const get_prop_template = v8.ffi.v8_FunctionTemplate_New(isolate, getPropertyValueCallback, null) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    const get_prop_func = v8.ffi.v8_FunctionTemplate_GetFunction(get_prop_template, v8_ctx) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    const get_prop_key = v8.ffi.v8_String_NewFromUtf8(isolate, "getPropertyValue", 16) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(get_prop_key), @ptrCast(get_prop_func));
+
+    // Add length property (0 for stub)
+    const length_key = v8.ffi.v8_String_NewFromUtf8(isolate, "length", 6) orelse {
+        info.setReturnValue(@ptrCast(style_obj));
+        return;
+    };
+    const length_val = v8.ffi.v8_Integer_New(isolate, 0);
+    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(length_key), @ptrCast(length_val));
+
+    info.setReturnValue(@ptrCast(style_obj));
+}
+
+/// getPropertyValue helper for CSSStyleDeclaration
+fn getPropertyValueCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    // Return empty string for any property (stub implementation)
+    const empty_str = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    info.setReturnValue(@ptrCast(empty_str));
+}
+
+/// fetch callback - stub implementation that throws TypeError
+/// Full implementation requires HTTP client integration
+fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Throw TypeError indicating fetch is not implemented
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch is not yet implemented", 28) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
 }

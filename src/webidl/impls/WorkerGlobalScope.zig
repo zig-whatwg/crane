@@ -19,9 +19,6 @@ const WorkerGlobalScope = interfaces.WorkerGlobalScope;
 const WorkerLocation = interfaces.WorkerLocation;
 const WorkerNavigator = interfaces.WorkerNavigator;
 
-// Import WindowOrWorkerGlobalScope mixin implementation for fetch delegation
-const WindowOrWorkerGlobalScopeImpl = @import("WindowOrWorkerGlobalScope.zig");
-
 // Import workers infrastructure
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -49,56 +46,6 @@ pub const ImplError = error{
     TypeError,
     OutOfMemory,
 };
-
-/// Check if a scheme is inherently secure
-/// Per https://w3c.github.io/webappsec-secure-contexts/
-fn isSecureScheme(scheme: []const u8) bool {
-    return std.mem.eql(u8, scheme, "https") or
-        std.mem.eql(u8, scheme, "wss") or
-        std.mem.eql(u8, scheme, "file");
-}
-
-/// Check if a host is a secure localhost
-/// Per https://w3c.github.io/webappsec-secure-contexts/
-fn isSecureLocalhost(host: []const u8) bool {
-    return std.mem.eql(u8, host, "localhost") or
-        std.mem.eql(u8, host, "127.0.0.1") or
-        std.mem.eql(u8, host, "::1");
-}
-
-/// Determine if a URL represents a secure context
-/// Secure Contexts spec: https://w3c.github.io/webappsec-secure-contexts/
-fn isSecureContext(url: []const u8) bool {
-    // Check for secure schemes first (fast path)
-    if (std.mem.startsWith(u8, url, "https://") or
-        std.mem.startsWith(u8, url, "wss://") or
-        std.mem.startsWith(u8, url, "file://"))
-    {
-        return true;
-    }
-
-    // For http:// and ws://, check if host is localhost
-    if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "ws://")) {
-        // Extract host from URL: scheme://host[:port][/path]
-        const scheme_end = std.mem.indexOf(u8, url, "://") orelse return false;
-        const host_start = scheme_end + 3;
-        if (host_start >= url.len) return false;
-
-        const rest = url[host_start..];
-        // Find end of host (port separator, path, or end of string)
-        var host_end = rest.len;
-        for (rest, 0..) |c, i| {
-            if (c == ':' or c == '/' or c == '?' or c == '#') {
-                host_end = i;
-                break;
-            }
-        }
-        const host = rest[0..host_end];
-        return isSecureLocalhost(host);
-    }
-
-    return false;
-}
 
 /// Internal state for WorkerGlobalScope implementation
 ///
@@ -217,11 +164,9 @@ pub fn initWithUrl(
     errdefer navigator.deinit();
 
     // Determine if secure context
-    // Secure Contexts spec: https://w3c.github.io/webappsec-secure-contexts/
-    // A context is secure if:
-    // 1. Scheme is https, wss, or file
-    // 2. OR host is localhost, 127.0.0.1, or ::1 (for http/ws)
-    const is_secure = isSecureContext(url);
+    const is_secure = std.mem.startsWith(u8, url, "https://") or
+        std.mem.startsWith(u8, url, "wss://") or
+        std.mem.startsWith(u8, url, "file://");
 
     internal_state.* = .{
         .internal_location = location,
@@ -522,16 +467,10 @@ pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Setter for onerror
-///
-/// Spec: HTML Standard § 10.2.5 "Runtime script errors in documents"
-/// The onerror attribute is an OnErrorEventHandler that receives error events
-/// when uncaught exceptions occur in the worker.
-///
-/// The handler signature is: function(message, filename, lineno, colno, error)
-/// If the handler returns true, the error is considered handled and won't propagate.
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.OnErrorEventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onerror = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for onlanguagechange
@@ -542,31 +481,17 @@ pub fn set_onlanguagechange(instance: *runtime.Instance, value: typedefs.EventHa
 }
 
 /// Setter for onoffline
-///
-/// Spec: HTML Standard § 10.1
-/// "The onoffline event handler is fired when the worker goes offline."
-///
-/// Note: Network connectivity monitoring is platform-dependent. When the
-/// platform detects a network state change, it should fire "offline" or
-/// "online" events at the WorkerGlobalScope. This setter stores the handler
-/// which will be invoked when such events are dispatched.
 pub fn set_onoffline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onoffline = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for ononline
-///
-/// Spec: HTML Standard § 10.1
-/// "The ononline event handler is fired when the worker comes online."
-///
-/// Note: Network connectivity monitoring is platform-dependent. When the
-/// platform detects a network state change, it should fire "offline" or
-/// "online" events at the WorkerGlobalScope. This setter stores the handler
-/// which will be invoked when such events are dispatched.
 pub fn set_ononline(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.ononline = value;
+    _ = instance;
+    _ = value;
+    return error.NotImplemented;
 }
 
 /// Setter for onrejectionhandled
@@ -674,9 +599,41 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
 /// https://html.spec.whatwg.org/#dom-setinterval
 ///
 /// Sets a repeating timer that fires at the specified interval.
-/// Delegates to WindowOrWorkerGlobalScope mixin implementation for proper V8 callback handling.
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    return WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            // Get delay (default to 0 if not provided)
+            const delay_ms: i64 = if (timeout.wasPassed())
+                @intCast(timeout.getValue())
+            else
+                0;
+
+            // TODO: Proper callback conversion
+            // The handler needs to be wrapped to call the JavaScript function.
+            // For now, we create a no-op callback - real implementation needs V8 integration.
+            _ = handler;
+            _ = arguments;
+
+            const timer_id = event_loop.setInterval(
+                &noopTimerCallback,
+                delay_ms,
+                null,
+            ) catch return error.OutOfMemory;
+
+            return @intCast(timer_id);
+        }
+    }
+    return error.NotImplemented;
+}
+
+/// No-op timer callback used as placeholder until proper V8 callback integration
+fn noopTimerCallback(_: ?*anyopaque) void {
+    // TODO: This should invoke the actual JavaScript callback
+    // Real implementation needs:
+    // 1. Store timer_id -> handler mapping
+    // 2. When callback fires, look up handler
+    // 3. Call JavaScript function via V8
 }
 
 /// Operation: createImageBitmap
@@ -693,19 +650,26 @@ pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.Image
 /// https://html.spec.whatwg.org/#dom-clearinterval
 ///
 /// Cancels a repeating timer.
-/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    return WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
+    if (!id.wasPassed()) {
+        return; // No-op if no ID provided
+    }
+
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            event_loop.clearInterval(@intCast(id.getValue()));
+            return;
+        }
+    }
+    return error.NotImplemented;
 }
 
 /// Operation: queueMicrotask
-///
-/// Spec: HTML Standard § 8.6 Microtask queuing
-/// https://html.spec.whatwg.org/#dom-queuemicrotask
-///
-/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    return WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
+    _ = instance;
+    _ = callback;
+    return error.NotImplemented;
 }
 
 /// Operation: structuredClone
@@ -840,9 +804,19 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
 /// https://html.spec.whatwg.org/#dom-cleartimeout
 ///
 /// Cancels a one-shot timer.
-/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    return WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
+    if (!id.wasPassed()) {
+        return; // No-op if no ID provided
+    }
+
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            event_loop.clearTimeout(@intCast(id.getValue()));
+            return;
+        }
+    }
+    return error.NotImplemented;
 }
 
 /// Operation: setTimeout
@@ -851,9 +825,32 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
 /// https://html.spec.whatwg.org/#dom-settimeout
 ///
 /// Sets a one-shot timer that fires after the specified delay.
-/// Delegates to WindowOrWorkerGlobalScope mixin implementation for proper V8 callback handling.
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    return WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        if (internal.event_loop) |event_loop| {
+            // Get delay (default to 0 if not provided)
+            const delay_ms: i64 = if (timeout.wasPassed())
+                @intCast(timeout.getValue())
+            else
+                0;
+
+            // TODO: Proper callback conversion
+            // The handler needs to be wrapped to call the JavaScript function.
+            // For now, we create a no-op callback - real implementation needs V8 integration.
+            _ = handler;
+            _ = arguments;
+
+            const timer_id = event_loop.setTimeout(
+                &noopTimerCallback,
+                delay_ms,
+                null,
+            ) catch return error.OutOfMemory;
+
+            return @intCast(timer_id);
+        }
+    }
+    return error.NotImplemented;
 }
 
 /// Operation: fetch
@@ -870,133 +867,154 @@ pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandl
 /// 5. Return p."
 ///
 /// Implementation:
-/// Per WHATWG Fetch spec, fetch() MUST always return a Promise (never throw synchronously).
-/// Delegates to WindowOrWorkerGlobalScope mixin implementation which handles:
-/// - Promise creation FIRST (before any error-prone operations)
-/// - All errors converted to Promise rejections
-/// - Async networking via AsyncCurlManager
+/// - Creates a V8 Promise to return to JavaScript
+/// - Parses RequestInfo into an InternalRequest
+/// - Executes the fetch algorithm
+/// - Resolves/rejects the Promise with the Response
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    // Delegate to the WindowOrWorkerGlobalScope mixin implementation
-    // which properly returns a Promise and rejects on any errors.
-    return WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
-}
-
-// ============================================================================
-// Network State Change Events
-// ============================================================================
-
-/// Fire an "offline" event at the WorkerGlobalScope.
-///
-/// Spec: HTML Standard § 10.1
-/// "The offline event is fired when the worker goes offline."
-///
-/// This function should be called by the platform layer when network
-/// connectivity is lost. It dispatches an Event to the WorkerGlobalScope,
-/// which will invoke any registered event listeners and the onoffline handler.
-pub fn fireOfflineEvent(instance: *runtime.Instance) void {
-    fireNetworkEvent(instance, "offline", get_onoffline);
-}
-
-/// Fire an "online" event at the WorkerGlobalScope.
-///
-/// Spec: HTML Standard § 10.1
-/// "The online event is fired when the worker comes online."
-///
-/// This function should be called by the platform layer when network
-/// connectivity is restored. It dispatches an Event to the WorkerGlobalScope,
-/// which will invoke any registered event listeners and the ononline handler.
-pub fn fireOnlineEvent(instance: *runtime.Instance) void {
-    fireNetworkEvent(instance, "online", get_ononline);
-}
-
-/// Internal helper to fire network state events
-fn fireNetworkEvent(
-    instance: *runtime.Instance,
-    event_type: []const u8,
-    get_handler: fn (*runtime.Instance) anyerror!typedefs.EventHandler,
-) void {
     const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
+    const internal = state.own._internal orelse return error.NotImplemented;
+    const allocator = internal.allocator;
 
-    // Create Event via interface
-    const Event = interfaces.Event;
-    const event = Event.call_constructor(
-        instance.ctx,
-        runtime.DOMString.initInterned(event_type),
-        webidl.Opt(dictionaries.EventInit).notPassed(),
-    ) catch |err| {
-        std.log.warn("Failed to create {s} event: {s}", .{ event_type, @errorName(err) });
-        return;
+    // Step 1: Get the URL from RequestInfo
+    // RequestInfo is either a URL string or a Request object
+    const url_str: []const u8 = switch (input) {
+        .usvstring => |url| url, // USVString (URL)
+        .request => {
+            // Request object - extract URL
+            // For now, we don't have access to Request's URL directly
+            // This requires the Request interface to expose its URL
+            return error.NotImplemented; // TODO: Extract URL from Request object
+        },
     };
 
-    // Set isTrusted since this is a browser-generated event
-    var ev_state = event.getState(Event.State);
-    ev_state.own.isTrusted = true;
-    ev_state.own.target = instance;
-    ev_state.own.currentTarget = instance;
+    // Step 2: Create InternalRequest
+    // Import fetch module
+    const fetch_mod = @import("fetch");
+    const InternalRequest = fetch_mod.internal.request.InternalRequest;
+    const Response = fetch_mod.Response;
 
-    // Dispatch via EventTarget.dispatchEvent if available
-    // WorkerGlobalScope inherits from EventTarget
-    const EventTarget = interfaces.EventTarget;
-    _ = EventTarget.call_dispatchEvent(instance, event) catch |err| {
-        std.log.warn("Failed to dispatch {s} event: {s}", .{ event_type, @errorName(err) });
-        return;
+    var request = InternalRequest.init(allocator, url_str) catch {
+        return error.OutOfMemory;
     };
+    errdefer request.deinit();
 
-    // Also invoke the legacy handler if set
-    // Get the handler using the provided getter function
-    const handler = get_handler(instance) catch return;
-    _ = handler;
-    _ = internal;
-    // Note: Actually invoking the handler requires V8 integration similar to
-    // Worker.invokeLegacyOnmessageHandler. The EventTarget.dispatchEvent above
-    // handles listeners registered via addEventListener. For the IDL attribute
-    // handler, we would need to call into V8 with the handler GlobalHandle.
-    // This is left as future work when V8 context is available here.
-}
+    // Step 3: Apply init options if provided
+    if (init_data.wasPassed()) {
+        const req_init = init_data.getValue();
 
-// =============================================================================
-// Tests
-// =============================================================================
+        // Apply method
+        if (req_init.method) |method_str| {
+            request.setMethod(method_str) catch {};
+        }
 
-test "isSecureContext - HTTPS is secure" {
-    try std.testing.expect(isSecureContext("https://example.com/path"));
-    try std.testing.expect(isSecureContext("https://example.com:443/path"));
-}
+        // Apply mode
+        if (req_init.mode) |mode| {
+            request.mode = switch (mode) {
+                ._cors_ => .cors,
+                ._no_cors_ => .no_cors,
+                ._same_origin_ => .same_origin,
+                ._navigate_ => .navigate,
+            };
+        }
 
-test "isSecureContext - WSS is secure" {
-    try std.testing.expect(isSecureContext("wss://example.com/socket"));
-}
+        // Apply credentials
+        if (req_init.credentials) |creds| {
+            request.credentials_mode = switch (creds) {
+                ._omit_ => .omit,
+                ._same_origin_ => .same_origin,
+                ._include_ => .include,
+            };
+        }
 
-test "isSecureContext - file:// is secure" {
-    try std.testing.expect(isSecureContext("file:///path/to/file"));
-}
+        // Apply cache mode
+        if (req_init.cache) |cache_mode| {
+            request.cache_mode = switch (cache_mode) {
+                ._default_ => .default,
+                ._no_store_ => .no_store,
+                ._reload_ => .reload,
+                ._no_cache_ => .no_cache,
+                ._force_cache_ => .force_cache,
+                ._only_if_cached_ => .only_if_cached,
+            };
+        }
 
-test "isSecureContext - HTTP localhost is secure" {
-    try std.testing.expect(isSecureContext("http://localhost/path"));
-    try std.testing.expect(isSecureContext("http://localhost:8080/path"));
-    try std.testing.expect(isSecureContext("http://127.0.0.1/path"));
-    try std.testing.expect(isSecureContext("http://127.0.0.1:3000/path"));
-    try std.testing.expect(isSecureContext("http://[::1]/path"));
-    try std.testing.expect(isSecureContext("http://::1/path"));
-}
+        // Apply redirect mode
+        if (req_init.redirect) |redirect_mode| {
+            request.redirect_mode = switch (redirect_mode) {
+                ._follow_ => .follow,
+                ._error_ => .@"error",
+                ._manual_ => .manual,
+            };
+        }
 
-test "isSecureContext - WS localhost is secure" {
-    try std.testing.expect(isSecureContext("ws://localhost/socket"));
-    try std.testing.expect(isSecureContext("ws://127.0.0.1:8080/socket"));
-}
+        // Apply referrer policy
+        if (req_init.referrerPolicy) |ref_policy| {
+            request.referrer_policy = switch (ref_policy) {
+                .__ => .empty,
+                ._no_referrer_ => .no_referrer,
+                ._no_referrer_when_downgrade_ => .no_referrer_when_downgrade,
+                ._same_origin_ => .same_origin,
+                ._origin_ => .origin,
+                ._strict_origin_ => .strict_origin,
+                ._origin_when_cross_origin_ => .origin_when_cross_origin,
+                ._strict_origin_when_cross_origin_ => .strict_origin_when_cross_origin,
+                ._unsafe_url_ => .unsafe_url,
+            };
+        }
 
-test "isSecureContext - HTTP non-localhost is NOT secure" {
-    try std.testing.expect(!isSecureContext("http://example.com/path"));
-    try std.testing.expect(!isSecureContext("http://web-platform.test:8000/path"));
-    try std.testing.expect(!isSecureContext("http://192.168.1.1/path"));
-}
+        // Apply keepalive
+        if (req_init.keepalive) |keepalive| {
+            request.keepalive = keepalive;
+        }
 
-test "isSecureContext - WS non-localhost is NOT secure" {
-    try std.testing.expect(!isSecureContext("ws://example.com/socket"));
-}
+        // Apply integrity
+        if (req_init.integrity) |integrity| {
+            request.integrity_metadata = integrity.asSlice();
+        }
+    }
 
-test "isSecureContext - unknown schemes are NOT secure" {
-    try std.testing.expect(!isSecureContext("ftp://example.com/path"));
-    try std.testing.expect(!isSecureContext("data:text/html,<h1>test</h1>"));
+    // Set origin from worker's settings object
+    if (internal.origin.len > 0) {
+        request.origin = .{ .origin = internal.origin };
+    }
+
+    // Step 4: Execute fetch algorithm
+    // For now, we execute synchronously. Full async requires V8 Promise integration.
+    // The V8 Promise API is available in src/runtime/engines/v8/promise.zig
+    // but requires V8 Isolate and Context which aren't directly accessible here.
+    var fetch_result = fetch_mod.fetch(allocator, request, .{
+        .cross_origin_isolated_capability = internal.cross_origin_isolated,
+    }) catch |err| {
+        request.deinit();
+        return switch (err) {
+            fetch_mod.FetchError.OutOfMemory => error.OutOfMemory,
+            fetch_mod.FetchError.NetworkError => error.NetworkError,
+            fetch_mod.FetchError.AbortError => error.NetworkError,
+        };
+    };
+    defer fetch_result.timing_info.deinit();
+
+    // Request is now consumed
+    request.deinit();
+
+    // Step 5: Create Response WebIDL object from InternalResponse
+    const response = Response.fromInternal(allocator, fetch_result.response) catch {
+        fetch_result.response.deinit();
+        return error.OutOfMemory;
+    };
+    // Note: ownership of fetch_result.response is transferred to Response
+
+    // Return the Response object as opaque pointer
+    // In a full Promise-based implementation, we would:
+    // 1. Create a V8 Promise (Promise(void).init(isolate, context))
+    // 2. Schedule async fetch task on event loop
+    // 3. Return promise.getPromise() cast to *const anyopaque
+    // 4. When fetch completes, resolve promise with Response
+    //
+    // TODO: Return proper WebIDL Response interface instance
+    // response is a Zig Response struct that needs to be wrapped as a WebIDL interface
+    // For now return undefined as placeholder
+    _ = response;
+    return runtime.JSValue.jsUndefined;
 }

@@ -60,8 +60,6 @@ extern "uv" fn uv_is_active(handle: *const uv_handle_t) c_int;
 
 extern "uv" fn uv_loop_size() usize;
 extern "uv" fn uv_handle_size(handle_type: c_int) usize;
-extern "uv" fn uv_now(loop: *uv_loop_t) u64;
-extern "uv" fn uv_update_time(loop: *uv_loop_t) void;
 
 // Handle type constants
 pub const UV_TIMER: c_int = 13;
@@ -159,16 +157,4 @@ pub fn timerToHandle(timer: *uv_timer_t) *uv_handle_t {
 /// Cast a timer handle to a const generic handle.
 pub fn timerToHandleConst(timer: *const uv_timer_t) *const uv_handle_t {
     return @ptrCast(timer);
-}
-
-/// Get the current loop time in milliseconds.
-/// This is the time cached by libuv - it's updated at the start of each loop iteration.
-pub fn now(loop: *uv_loop_t) u64 {
-    return uv_now(loop);
-}
-
-/// Update the loop's internal cached time.
-/// Call this if you need to refresh the time without running the loop.
-pub fn updateTime(loop: *uv_loop_t) void {
-    uv_update_time(loop);
 }

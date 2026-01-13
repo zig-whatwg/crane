@@ -97,9 +97,7 @@ fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
 /// Clean up all ObservableArrayState entries
 /// Called during context teardown to ensure no leaks
 pub fn cleanupAll() void {
-    std.debug.print("[observable_array.cleanupAll] CALLED, has_registry={}\n", .{state_registry != null});
     if (state_registry) |*reg| {
-        std.debug.print("[observable_array.cleanupAll] reg.count={d}\n", .{reg.count()});
         // PHASE 1: Clear all weak callbacks first to prevent them from firing
         // during cleanup. This avoids double-free when GC runs during teardown.
         {

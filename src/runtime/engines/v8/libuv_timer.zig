@@ -94,9 +94,6 @@ pub const LibuvTimerManager = struct {
     /// Flag set when a callback is invoked during poll()
     /// This is used to correctly return whether work was done
     callback_invoked: bool,
-    /// Optional hook called after each timer callback fires.
-    /// Used to poll worker messages between timer callbacks.
-    post_timer_hook: ?*const fn () void,
 
     const Self = @This();
 
@@ -123,7 +120,6 @@ pub const LibuvTimerManager = struct {
             .timers = std.AutoHashMap(TimerId, *TimerContext).init(allocator),
             .initialized = true,
             .callback_invoked = false,
-            .post_timer_hook = null,
         };
 
         return self;
@@ -198,14 +194,6 @@ pub const LibuvTimerManager = struct {
         // Store context in handle's data field
         ctx.handle.data = ctx;
 
-        // Update the loop's cached time before starting the timer.
-        // This is critical! Without this, if the loop has been sitting idle
-        // (e.g., during HTML parsing), its cached time will be stale.
-        // When we later call uv_run(), it updates the loop time to current time,
-        // and timers appear ready immediately because their due_time (calculated
-        // from the stale loop_time) is less than the updated loop_time.
-        libuv.updateTime(self.loop);
-
         // Start the timer
         libuv.timerStart(&ctx.handle, timerCallback, ms, 0) catch {
             libuv.close(libuv.timerToHandle(&ctx.handle), closeCallback);
@@ -263,18 +251,11 @@ pub const LibuvTimerManager = struct {
     /// Run the event loop once (blocking).
     /// This blocks until at least one callback has been invoked, or until
     /// there are no more active handles.
-    /// Returns true if a callback was actually invoked.
+    /// Returns true if there are still active handles.
     pub fn pollBlocking(self: *Self) bool {
         if (!self.initialized) return false;
-
-        // Reset the callback_invoked flag before polling
-        self.callback_invoked = false;
-
-        // UV_RUN_ONCE blocks until at least one callback fires or no more handles
-        _ = libuv.run(self.loop, .UV_RUN_ONCE);
-
-        // Return whether a callback was actually invoked
-        return self.callback_invoked;
+        const result = libuv.run(self.loop, .UV_RUN_ONCE);
+        return result > 0;
     }
 
     /// Get the timer interface for this manager.
@@ -283,13 +264,6 @@ pub const LibuvTimerManager = struct {
             .vtable = &vtable,
             .ctx = self,
         };
-    }
-
-    /// Set a hook function to be called after each timer callback fires.
-    /// This is used to poll worker messages between timer callbacks,
-    /// since UV_RUN_NOWAIT fires all ready timers in a single call.
-    pub fn setPostTimerHook(self: *Self, hook: ?*const fn () void) void {
-        self.post_timer_hook = hook;
     }
 
     // ========================================================================
@@ -321,9 +295,7 @@ fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {
     const ctx: *TimerContext = @ptrCast(@alignCast(handle.data));
 
     // Don't invoke callback if cancelled
-    if (ctx.cancelled) {
-        return;
-    }
+    if (ctx.cancelled) return;
 
     // Mark callback as invoked for poll() return value
     ctx.callback_invoked = true;
@@ -334,11 +306,6 @@ fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {
 
     // Invoke the user's callback
     ctx.callback(ctx.user_data);
-
-    // Call the post-timer hook if set (used to poll worker messages between timers)
-    if (ctx.manager.post_timer_hook) |hook| {
-        hook();
-    }
 
     // Close the handle (will trigger closeCallback)
     libuv.close(libuv.timerToHandle(handle), closeCallback);

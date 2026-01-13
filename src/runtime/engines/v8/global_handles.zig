@@ -1,23 +1,9 @@
 //! V8 Global Handle Management
 //!
 //! This module provides type-safe wrappers for V8 Global handles, which persist
-//! beyond HandleScope lifetimes. This is used for storing JavaScript values
-//! that need to survive after the HandleScope ends.
-//!
-//! ## IMPORTANT: For Event Listener Callbacks, Use CallbackManager Instead
-//!
-//! For storing JavaScript callback functions (event listeners, etc.), use the
-//! CallbackManager API (see callback_wrapper.zig) instead of GlobalHandle.
-//! The CallbackManager provides:
-//! - Safe handle management without FFI boundary issues
-//! - Opaque callback IDs (no V8 handles cross FFI)
-//! - Weak callback support for GC coordination
-//! - Proper cleanup on context destruction
-//!
-//! GlobalHandle is still appropriate for:
-//! - Storing error values
-//! - Storing non-callback values that need to persist
-//! - Stream state values
+//! beyond HandleScope lifetimes. This is essential for storing JavaScript callbacks
+//! (like stream start/write/close/abort callbacks) that need to survive after the
+//! JavaScript constructor returns.
 //!
 //! ## Problem This Solves
 //!
@@ -25,14 +11,14 @@
 //! - **Local<T>**: Stack-bound, invalid after HandleScope ends
 //! - **Global<T>**: Heap-allocated, persists until explicitly disposed
 //!
-//! When extracting a value within a V8 callback handler:
-//! 1. V8 creates a HandleScope for the callback
-//! 2. The value is extracted as a Local<Value>
-//! 3. When the callback returns, the HandleScope is destroyed
+//! When JavaScript code like `new WritableStream({ start: function() {...} })` is executed:
+//! 1. V8 creates a HandleScope for the constructor call
+//! 2. The `start` function is extracted as a Local<Value>
+//! 3. When the constructor returns, the HandleScope is destroyed
 //! 4. The Local<Value> pointer becomes INVALID (dangling pointer!)
 //!
 //! Using GlobalHandle converts the Local to a Global before the HandleScope ends,
-//! preserving the value for later use.
+//! preserving the callback for later invocation.
 //!
 //! ## Usage
 //!

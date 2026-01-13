@@ -661,11 +661,6 @@ fn matchesPseudoClass(
         .Is, .Where => |sel_list| elementMatchesSelectorList(element, sel_list),
         .Has => |_| false, // :has() requires complex relative selector matching
 
-        // Location pseudo-class
-        // :target matches the element whose ID equals the URL fragment identifier
-        // Spec: https://drafts.csswg.org/selectors-4/#target-pseudo
-        .Target => matchesTarget(element),
-
         // State-based pseudo-classes (require runtime state - return false for now)
         .AnyLink,
         .Link,
@@ -805,36 +800,6 @@ fn isLastChild(element: *runtime.Instance) bool {
 
 fn isOnlyChild(element: *runtime.Instance) bool {
     return isFirstChild(element) and isLastChild(element);
-}
-
-/// Match :target pseudo-class
-/// :target matches the element whose ID equals the document's URL fragment identifier
-/// Spec: https://drafts.csswg.org/selectors-4/#target-pseudo
-fn matchesTarget(element: *runtime.Instance) bool {
-    // Get the element's ID
-    const internal = ElementImpl.getInternal(element) orelse return false;
-    const elem_id = internal.id.asSlice();
-    if (elem_id.len == 0) return false;
-
-    // Get the element's owner document
-    const owner_doc = NodeImpl.getOwnerDocument(element) orelse return false;
-
-    // Get the document's URL fragment from its URL
-    const DocumentImpl = @import("Document.zig");
-    const doc_internal = DocumentImpl.getInternal(owner_doc) orelse return false;
-
-    // The document's URL is stored in the document internal state
-    // We need to extract the fragment from the URL
-    const url_str = doc_internal.url;
-    if (url_str.len == 0) return false;
-
-    // Find the fragment in the URL (part after #)
-    const fragment_start = std.mem.indexOf(u8, url_str, "#") orelse return false;
-    const fragment = url_str[fragment_start + 1 ..];
-    if (fragment.len == 0) return false;
-
-    // Compare element ID with URL fragment
-    return std.mem.eql(u8, elem_id, fragment);
 }
 
 fn isFirstOfType(element: *runtime.Instance) bool {

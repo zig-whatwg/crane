@@ -173,12 +173,9 @@ pub fn hasInternal(instance: *Instance) bool {
 /// Warning: This does NOT free the internal state memory.
 /// Only use during shutdown or between test runs.
 pub fn resetRegistry() void {
-    std.debug.print("[internal_state.resetRegistry] CALLED, initialized={}, count={d}\n", .{ registry_initialized, if (registry_initialized) global_registry.count() else 0 });
     if (registry_initialized) {
-        // Use deinit() instead of clearAndFree() to fully release all memory
-        global_registry.deinit();
+        global_registry.clearAndFree();
         registry_initialized = false;
-        std.debug.print("[internal_state.resetRegistry] DONE - registry deinitialized\n", .{});
     }
 }
 

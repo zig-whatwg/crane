@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RdfGraph = @import("RdfGraph.zig").RdfGraph;
+const RdfGraph = @import("interfaces").RdfGraph;
 const USVString = @import("typedefs").USVString;
 
 pub const RdfDataset = struct {
@@ -59,10 +59,13 @@ pub const RdfDataset = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
+        
+        /// Iterable declaration (for Symbol.iterator support)
+        pub const iterable = .{
+            .value_type = "runtime.USVString",
+            .key_type = "RdfGraph",
+        };
     };
 
     pub const State = runtime.FlattenedState(

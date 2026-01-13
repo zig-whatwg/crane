@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("Element.zig").Element;
-const DataTransferItemList = @import("DataTransferItemList.zig").DataTransferItemList;
+const Element = @import("interfaces").Element;
+const DataTransferItemList = @import("interfaces").DataTransferItemList;
 const DOMString = @import("typedefs").DOMString;
-const FileList = @import("FileList.zig").FileList;
+const FileList = @import("interfaces").FileList;
 
 pub const DataTransfer = struct {
     pub const Meta = struct {
@@ -72,9 +72,6 @@ pub const DataTransfer = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

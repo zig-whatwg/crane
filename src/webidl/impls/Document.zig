@@ -308,11 +308,6 @@ pub const InternalState = struct {
     /// This collection has [[IsHTMLDDA]] internal slot (undetectable)
     all_collection: ?*runtime.Instance,
 
-    /// The browsing context's WindowProxy (the document's relevant global object)
-    /// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-document-window
-    /// Returns the Window object when the document has an associated browsing context.
-    default_view: ?*runtime.Instance,
-
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -397,8 +392,6 @@ pub const InternalState = struct {
             .fonts = null,
             // HTMLAllCollection (undetectable legacy object)
             .all_collection = null,
-            // Browsing context window
-            .default_view = null,
         };
     }
 
@@ -874,11 +867,8 @@ pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.
 /// Spec: https://html.spec.whatwg.org/multipage/history.html#dom-document-location
 /// Returns null if the document is not associated with a browsing context
 pub fn get_location(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    // Get Location from the associated Window (defaultView)
-    if (internal.default_view) |window| {
-        return interfaces.Window.get_location(window);
-    }
+    _ = instance;
+    // Location object not yet implemented - return null (no browsing context)
     return null;
 }
 
@@ -1291,40 +1281,9 @@ pub fn get_currentScript(instance: *runtime.Instance) anyerror!?typedefs.HTMLOrS
 ///
 /// Note: In non-browser context, there's no associated window
 pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
-    const internal = getInternal(instance) orelse return null;
-    return internal.default_view;
-}
-
-/// Set the default view (associated Window) for this document
-/// Called by the browser context when associating a document with a window
-pub fn setDefaultView(instance: *runtime.Instance, window: ?*runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    internal.default_view = window;
-}
-
-/// Set the document's ready state
-/// Called by the browser context during page lifecycle transitions
-/// Per spec: "loading" -> "interactive" (DOM ready) -> "complete" (all resources loaded)
-pub fn setReadyState(instance: *runtime.Instance, state: enums.DocumentReadyState) void {
-    const internal = getInternal(instance) orelse return;
-    internal.ready_state = state;
-    std.debug.print("[Document] readyState set to: {s}\n", .{@tagName(state)});
-}
-
-/// Set the document's URL
-/// Called when navigating to a new document (e.g., iframe with data: URL)
-/// Used for :target pseudo-class matching
-pub fn setUrl(instance: *runtime.Instance, url: []const u8) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Free old URL if it was allocated
-    if (internal.url.len > 0) {
-        internal.allocator.free(internal.url);
-    }
-
-    // Duplicate the new URL
-    internal.url = try internal.allocator.dupe(u8, url);
-    std.debug.print("[Document] URL set to: {s}\n", .{internal.url});
+    _ = instance;
+    // No browsing context in server-side/headless context
+    return null;
 }
 
 /// Getter for designMode

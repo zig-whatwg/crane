@@ -147,9 +147,7 @@ pub fn getTemplateStorage(isolate: *v8.Isolate) ?*IsolateTemplates {
 /// - isolate: V8 isolate to cleanup storage for
 /// - allocator: Unused (kept for API compatibility) - storage uses its own allocator
 pub fn cleanupTemplateStorage(isolate: *v8.Isolate, _: std.mem.Allocator) void {
-    const data_ptr = v8.v8_Isolate_GetData(isolate, TEMPLATE_SLOT) orelse {
-        return;
-    };
+    const data_ptr = v8.v8_Isolate_GetData(isolate, TEMPLATE_SLOT) orelse return;
     const storage: *IsolateTemplates = @ptrCast(@alignCast(data_ptr));
 
     // CRITICAL: Use the storage's own allocator, not the passed-in one!

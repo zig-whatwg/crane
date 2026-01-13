@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleValue = @import("CSSStyleValue.zig").CSSStyleValue;
+const CSSStyleValue = @import("interfaces").CSSStyleValue;
 const USVString = @import("typedefs").USVString;
 
 pub const StylePropertyMapReadOnly = struct {
@@ -68,10 +68,13 @@ pub const StylePropertyMapReadOnly = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
+        
+        /// Iterable declaration (for Symbol.iterator support)
+        pub const iterable = .{
+            .value_type = "runtime.USVString",
+            .key_type = "runtime.sequence(CSSStyleValue)",
+        };
     };
 
     pub const State = runtime.FlattenedState(

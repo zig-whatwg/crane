@@ -1068,18 +1068,24 @@ pub fn invokePendingStartCallback(
     const context: *v8.Context = @ptrCast(@alignCast(v8_context));
     const controller_obj: *v8.Object = @ptrCast(@alignCast(controller_v8));
 
-    // Verify the start_global is a function before calling
-    // v8_Value_IsFunction expects Global<Value>*, which start_global.ptr is
-    if (!v8.ffi.v8_Value_IsFunction(start_global.ptr)) {
+    // Get a Local<Value> from the Global handle for this invocation.
+    // The Global handle persists across HandleScope boundaries, so this is safe.
+    const v8_value: *v8.Value = start_global.get(isolate) orelse {
+        // Global handle is empty or invalid - dispose and mark as started
+        v8_engine.disposeOptionalGlobalHandle(&controller_internal.start_algorithm);
+        onWritableStartFulfilledImmediate(controller_internal);
+        return;
+    };
+
+    // Verify the value is a function before calling
+    if (!v8.ffi.v8_Value_IsFunction(v8_value)) {
         // Not a function - dispose and mark as started
         v8_engine.disposeOptionalGlobalHandle(&controller_internal.start_algorithm);
         onWritableStartFulfilledImmediate(controller_internal);
         return;
     }
 
-    // Use the Global handle directly for the function call
-    // v8_Function_Call expects Global<Function>*
-    const func: *v8.Function = @ptrCast(start_global.ptr);
+    const func: *v8.Function = @ptrCast(v8_value);
 
     // Call the V8 function with the controller as argument
     // Use 'undefined' as 'this' since start() is not called as a method
@@ -1089,16 +1095,7 @@ pub fn invokePendingStartCallback(
         onWritableStartFulfilledImmediate(controller_internal);
         return;
     };
-
-    // Convert controller_obj to Global for v8_Function_Call args (expects Global<Value>**)
-    const controller_global = v8.ffi.v8_Value_ToGlobal(isolate, @ptrCast(controller_obj)) orelse {
-        v8_engine.disposeOptionalGlobalHandle(&controller_internal.start_algorithm);
-        onWritableStartFulfilledImmediate(controller_internal);
-        return;
-    };
-    defer v8.ffi.v8_Global_Dispose(controller_global);
-
-    var args = [_]*v8.Value{controller_global};
+    var args = [_]*v8.Value{@ptrCast(controller_obj)};
     const result = v8.ffi.v8_Function_Call(func, context, undefined_recv, 1, &args);
 
     // Dispose the Global handle now that we've invoked it (start is only called once)

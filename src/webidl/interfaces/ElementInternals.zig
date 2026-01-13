@@ -11,17 +11,17 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ARIAMixin = @import("mixins").ARIAMixin;
-const HTMLElement = @import("HTMLElement.zig").HTMLElement;
-const ShadowRoot = @import("ShadowRoot.zig").ShadowRoot;
+const HTMLElement = @import("interfaces").HTMLElement;
+const ShadowRoot = @import("interfaces").ShadowRoot;
 const ValidityStateFlags = @import("dictionaries").ValidityStateFlags;
-const NodeList = @import("NodeList.zig").NodeList;
+const NodeList = @import("interfaces").NodeList;
 const USVString = @import("typedefs").USVString;
-const Element = @import("Element.zig").Element;
-const File = @import("File.zig").File;
-const HTMLFormElement = @import("HTMLFormElement.zig").HTMLFormElement;
-const CustomStateSet = @import("CustomStateSet.zig").CustomStateSet;
-const FormData = @import("FormData.zig").FormData;
-const ValidityState = @import("ValidityState.zig").ValidityState;
+const Element = @import("interfaces").Element;
+const File = @import("interfaces").File;
+const HTMLFormElement = @import("interfaces").HTMLFormElement;
+const CustomStateSet = @import("interfaces").CustomStateSet;
+const FormData = @import("interfaces").FormData;
+const ValidityState = @import("interfaces").ValidityState;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ElementInternals = struct {
@@ -126,7 +126,6 @@ pub const ElementInternals = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "shadowRoot", "get_shadowRoot", null },
             .{ "form", "get_form", null },
             .{ "willValidate", "get_willValidate", null },
             .{ "validity", "get_validity", null },
@@ -189,11 +188,9 @@ pub const ElementInternals = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
+            .{ "shadowRoot", "get_shadowRoot", null },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

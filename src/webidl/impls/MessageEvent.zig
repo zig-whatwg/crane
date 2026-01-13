@@ -25,13 +25,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const MessageEvent = interfaces.MessageEvent;
 
-// V8 engine for Global handle disposal
-// Note: This direct import is needed for proper GC cleanup of MessageEvent.data
-// which stores a V8 Global handle when the event carries JSON-parsed data.
-// Ideally this would go through EngineInterface, but that abstraction doesn't
-// currently support handle disposal.
-const v8_engine = @import("v8");
-
 pub const State = MessageEvent.State;
 
 /// Static sentinel value for "undefined" data - avoids using @ptrFromInt
@@ -59,8 +52,6 @@ pub const InternalState = struct {
     message_data: ?MessageData = null,
     /// Whether we own the binary data (should free on deinit)
     owns_binary: bool = false,
-    /// V8 Global handle for ports array (persists beyond HandleScope)
-    ports_global: v8_engine.OptionalGlobalHandle = null,
 };
 
 /// Initialize instance (creates the instance)
@@ -85,35 +76,7 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-
-    // Clean up state.own.data based on its variant:
-    // - .handle: Dispose V8 Global handle if needs_disposal is true
-    // - .string: Free owned string buffer
-    // This is critical for preventing memory leaks and use-after-free crashes.
-    switch (state.own.data) {
-        .handle => |h| {
-            if (h.needs_disposal) {
-                v8_engine.ffi.v8_Global_Dispose(@ptrCast(h.ptr));
-            }
-        },
-        .string => |s| {
-            if (s.owned and s.data.len > 0) {
-                // String data was cloned in constructor - free it
-                instance.ctx.allocator.free(s.data);
-            }
-        },
-        else => {
-            // Other JSValue variants (undefined, null, boolean, number, instance)
-            // don't require cleanup
-        },
-    }
-
     if (state.own._internal) |internal| {
-        // Dispose the ports Global handle if set
-        if (internal.ports_global) |ports_handle| {
-            ports_handle.dispose();
-        }
-
         if (internal.owns_binary) {
             if (internal.message_data) |data| {
                 switch (data) {
@@ -139,19 +102,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     const state = instance.getState(State);
 
-    // Create internal state for Event (required for flags like dispatch_flag, initialized_flag, path)
-    // This is stored in the Event's part of the state hierarchy (state.base.own._internal)
-    // MessageEvent -> Event, so we use state.base.own._internal
-    const EventImpl = @import("Event.zig");
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const arena = ArenaAllocator.get();
-    const event_internal = try arena.create(EventImpl.InternalState);
-    event_internal.* = EventImpl.InternalState.init(ctx.allocator);
-    state.base.own._internal = event_internal;
-
-    // Set the initialized flag
-    event_internal.initialized_flag = true;
-
     // Initialize base Event attributes (Event fields in state.base.own)
     state.base.own.type = try @"type".clone(ctx.allocator);
     state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
@@ -171,12 +121,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         state.base.own.composed = init_dict.base.composed orelse false;
 
         // MessageEvent-specific properties (in state.own)
-        // Clone the data to take ownership - the original will be freed by freeConvertedValue
-        // after the constructor returns, so we must have our own copy
-        state.own.data = if (init_dict.data) |data|
-            try data.clone(ctx.allocator)
-        else
-            runtime.JSValue.jsUndefined;
+        // Use JSValue.jsUndefined for undefined data
+        state.own.data = init_dict.data orelse runtime.JSValue.jsUndefined;
         state.own.origin = init_dict.origin orelse "";
         state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
         // source and ports require more complex handling
@@ -208,7 +154,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    std.debug.print("[MessageEvent.get_data] state.own.data = {}\n", .{state.own.data});
     return state.own.data;
 }
 
@@ -245,24 +190,13 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// Getter for ports
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-ports
 ///
-/// Returns an array of MessagePort objects representing transferred ports.
-/// For WebSocket, this is always an empty array.
-/// For MessagePort.postMessage with transfer list, this contains the transferred ports.
+/// For WebSocket, this is always an empty frozen array.
+/// This is used by postMessage for transferring MessagePorts.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    std.log.warn("[get_ports] called, ports type: {s}", .{@tagName(state.own.ports)});
-    switch (state.own.ports) {
-        .handle => |h| {
-            std.log.warn("[get_ports] returning handle ptr={*}", .{h.ptr});
-        },
-        .undefined => {
-            std.log.warn("[get_ports] returning undefined", .{});
-        },
-        else => {
-            std.log.warn("[get_ports] returning other type", .{});
-        },
-    }
-    return state.own.ports;
+    _ = instance;
+    // TODO: Return proper frozen array when V8 array creation is available
+    // For now, return undefined - spec requires a frozen array of MessagePort
+    return runtime.JSValue.jsUndefined;
 }
 
 /// Operation: initMessageEvent (legacy)
@@ -322,8 +256,7 @@ pub fn createTextMessageEvent(
 
     // Store the text data as a DOMString (copy for ownership)
     const text_string = try allocator.dupe(u8, text_data);
-    // Create a proper JSValue.string instead of invalid @ptrCast
-    state.own.data = .{ .string = .{ .data = text_string, .owned = true } };
+    state.own.data = @ptrCast(text_string.ptr);
 
     // Set origin (copy for ownership)
     state.own.origin = try allocator.dupe(u8, origin);
@@ -369,9 +302,7 @@ pub fn createBinaryMessageEvent(
 
     // For binary data, the actual conversion to Blob/ArrayBuffer
     // happens in the JS binding layer based on binaryType (MessageEvent fields in state.own)
-    // Create a proper JSValue.string for binary data (will be converted to ArrayBuffer/Blob by caller)
-    const binary_copy = if (owns_data) binary_data else try allocator.dupe(u8, binary_data);
-    state.own.data = .{ .string = .{ .data = binary_copy, .owned = true } };
+    state.own.data = @ptrCast(binary_data.ptr);
 
     // Set origin (copy for ownership)
     state.own.origin = try allocator.dupe(u8, origin_str);
@@ -381,83 +312,7 @@ pub fn createBinaryMessageEvent(
     // Store in internal state
     if (state.own._internal) |internal| {
         internal.message_data = .{ .binary = binary_data };
-        internal.owns_binary = owns_data;
-    }
-
-    return instance;
-}
-
-/// Create a MessageEvent for a MessagePort message (postMessage)
-///
-/// Spec: HTML Standard section 9.4.1
-/// - data: The message payload (any JavaScript value)
-/// - origin: Empty string for ports (per spec)
-/// - source: null for ports
-/// - ports: Array of transferred ports (JSValue containing array, or undefined for empty)
-pub fn createPortMessageEvent(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    data: runtime.JSValue,
-    ports: runtime.JSValue,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Create internal state for Event (required for flags like dispatch_flag, initialized_flag, path)
-    const EventImpl = @import("Event.zig");
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const arena = ArenaAllocator.get();
-    const event_internal = try arena.create(EventImpl.InternalState);
-    event_internal.* = EventImpl.InternalState.init(ctx.allocator);
-    state.base.own._internal = event_internal;
-    event_internal.initialized_flag = true;
-
-    // Set event type to "message" (Event fields in state.base.own)
-    state.base.own.type = try typedefs.DOMString.initDupe(allocator, "message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
-    state.base.own.isTrusted = true; // System-generated event
-    state.base.own.target = null;
-    state.base.own.srcElement = null;
-    state.base.own.currentTarget = null;
-    state.base.own.eventPhase = 0;
-
-    state.base.own.bubbles = false;
-    state.base.own.cancelable = false;
-    state.base.own.composed = false;
-    state.base.own.cancelBubble = false;
-    state.base.own.returnValue = true;
-    state.base.own.defaultPrevented = false;
-
-    // MessageEvent-specific fields (state.own)
-    // Clone the data to take ownership
-    state.own.data = try data.clone(allocator);
-    state.own.origin = ""; // Empty string for ports per spec
-    state.own.lastEventId = runtime.DOMString.initEmpty();
-    state.own.source = null; // null for ports per spec
-
-    // For ports, we need to persist the V8 handle as a Global handle.
-    // The caller has already created a Global handle (in dispatchMessageEventWithPorts),
-    // so we just store the existing Global pointer directly. The Global is heap-allocated
-    // and will persist beyond the caller's scope.
-    std.log.warn("[createPortMessageEvent] ports type: {s}", .{@tagName(ports)});
-    switch (ports) {
-        .handle => |h| {
-            std.log.warn("[createPortMessageEvent] handle.ptr={*}, handle_scope={s}", .{ h.ptr, @tagName(h.handle_scope) });
-
-            // h.ptr is a Global<Value>* that the caller has already created.
-            // Just store it directly - no need to convert Global->Local->Global.
-            // The Global is heap-allocated and persists.
-            state.own.ports = runtime.JSValue{
-                .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope },
-            };
-            std.log.warn("[createPortMessageEvent] ports stored successfully (direct Global reuse)", .{});
-        },
-        else => {
-            std.log.warn("[createPortMessageEvent] non-handle ports type, storing directly", .{});
-            state.own.ports = ports;
-        },
+        internal.owns_data = owns_data;
     }
 
     return instance;

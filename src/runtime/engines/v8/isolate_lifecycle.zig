@@ -223,24 +223,16 @@ fn cleanupIsolateTemplates(isolate: ?*v8.Isolate, allocator: std.mem.Allocator) 
 }
 
 /// Cleanup handler for template registry
-/// Only clears templates for the specific isolate being disposed, not all isolates.
-fn cleanupTemplateRegistry(isolate: ?*v8.Isolate, _: std.mem.Allocator) void {
+fn cleanupTemplateRegistry(_: ?*v8.Isolate, _: std.mem.Allocator) void {
     const template_registry = @import("template_registry.zig");
-    if (isolate) |iso| {
-        // First clear templates for THIS isolate
-        template_registry.clearForIsolate(iso);
-    }
-    // Then fully deinit the registry to free the hashmap storage
-    // This is safe because cleanupAll is called during browser shutdown
-    // when no more isolates will be created
-    template_registry.deinit();
+    template_registry.clear();
 }
 
 /// Validator for template registry
-/// With per-isolate cleanup, we just verify the clear succeeded (always true now)
 fn validateTemplateRegistry() bool {
-    // Per-isolate cleanup always succeeds - nothing to validate globally
-    return true;
+    const template_registry = @import("template_registry.zig");
+    // After clear(), template_count should be 0
+    return template_registry.getTemplate("Document") == null;
 }
 
 /// Cleanup handler for isolate allocator (slot 0)

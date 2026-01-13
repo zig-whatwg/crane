@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Font = @import("Font.zig").Font;
-const Baseline = @import("Baseline.zig").Baseline;
+const Font = @import("interfaces").Font;
+const Baseline = @import("interfaces").Baseline;
 
 pub const FontMetrics = struct {
     pub const Meta = struct {
@@ -80,9 +80,6 @@ pub const FontMetrics = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

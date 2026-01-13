@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUSize64 = @import("typedefs").GPUSize64;
-const GPUBindGroup = @import("GPUBindGroup.zig").GPUBindGroup;
+const GPUBindGroup = @import("interfaces").GPUBindGroup;
 const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const GPUSize32 = @import("typedefs").GPUSize32;
 
@@ -52,9 +52,6 @@ pub const GPUBindingCommandsMixin = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

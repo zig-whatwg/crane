@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const InterestGroupScriptRunnerGlobalScope = @import("InterestGroupScriptRunnerGlobalScope.zig").InterestGroupScriptRunnerGlobalScope;
-const RealTimeReporting = @import("RealTimeReporting.zig").RealTimeReporting;
-const PrivateAggregation = @import("PrivateAggregation.zig").PrivateAggregation;
-const ForDebuggingOnly = @import("ForDebuggingOnly.zig").ForDebuggingOnly;
-const ProtectedAudienceUtilities = @import("ProtectedAudienceUtilities.zig").ProtectedAudienceUtilities;
+const InterestGroupScriptRunnerGlobalScope = @import("interfaces").InterestGroupScriptRunnerGlobalScope;
+const RealTimeReporting = @import("interfaces").RealTimeReporting;
+const PrivateAggregation = @import("interfaces").PrivateAggregation;
+const ForDebuggingOnly = @import("interfaces").ForDebuggingOnly;
+const ProtectedAudienceUtilities = @import("interfaces").ProtectedAudienceUtilities;
 
 pub const InterestGroupBiddingAndScoringScriptRunnerGlobalScope = struct {
     pub const Meta = struct {
@@ -61,9 +61,6 @@ pub const InterestGroupBiddingAndScoringScriptRunnerGlobalScope = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

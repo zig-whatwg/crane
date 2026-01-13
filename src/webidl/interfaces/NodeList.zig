@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("Node.zig").Node;
+const Node = @import("interfaces").Node;
 
 pub const NodeList = struct {
     pub const Meta = struct {
@@ -58,10 +58,13 @@ pub const NodeList = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
+        
+        /// Iterable declaration (for Symbol.iterator support)
+        pub const iterable = .{
+            .value_type = "Node",
+            .key_type = null,
+        };
     };
 
     pub const State = runtime.FlattenedState(

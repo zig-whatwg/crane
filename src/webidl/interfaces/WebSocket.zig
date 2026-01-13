@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Blob = @import("Blob.zig").Blob;
+const Blob = @import("interfaces").Blob;
 const USVString = @import("typedefs").USVString;
 const BinaryType = @import("enums").BinaryType;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const BufferSource = @import("typedefs").BufferSource;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -63,6 +63,14 @@ pub const WebSocket = struct {
             .{ "send", "call_send", 1 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "CONNECTING", "get_CONNECTING" },
+            .{ "OPEN", "get_OPEN" },
+            .{ "CLOSING", "get_CLOSING" },
+            .{ "CLOSED", "get_CLOSED" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "close",
@@ -95,9 +103,6 @@ pub const WebSocket = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

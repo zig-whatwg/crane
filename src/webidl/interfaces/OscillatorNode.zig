@@ -10,21 +10,21 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AudioScheduledSourceNode = @import("AudioScheduledSourceNode.zig").AudioScheduledSourceNode;
+const AudioScheduledSourceNode = @import("interfaces").AudioScheduledSourceNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const BaseAudioContext = @import("BaseAudioContext.zig").BaseAudioContext;
+const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const ChannelCountMode = @import("enums").ChannelCountMode;
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const OscillatorOptions = @import("dictionaries").OscillatorOptions;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const PeriodicWave = @import("PeriodicWave.zig").PeriodicWave;
-const AudioParam = @import("AudioParam.zig").AudioParam;
+const PeriodicWave = @import("interfaces").PeriodicWave;
+const AudioParam = @import("interfaces").AudioParam;
 const OscillatorType = @import("enums").OscillatorType;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const ChannelInterpretation = @import("enums").ChannelInterpretation;
-const AudioNode = @import("AudioNode.zig").AudioNode;
+const AudioNode = @import("interfaces").AudioNode;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -68,6 +68,13 @@ pub const OscillatorNode = struct {
             "dispatchEvent",
             "when",
             "connect",
+            "connect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
             "disconnect",
             "start",
             "stop",
@@ -84,9 +91,6 @@ pub const OscillatorNode = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

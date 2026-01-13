@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRJointSpace = @import("XRJointSpace.zig").XRJointSpace;
+const XRJointSpace = @import("interfaces").XRJointSpace;
 const XRHandJoint = @import("enums").XRHandJoint;
 
 pub const XRHand = struct {
@@ -59,10 +59,13 @@ pub const XRHand = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
+        
+        /// Iterable declaration (for Symbol.iterator support)
+        pub const iterable = .{
+            .value_type = "XRHandJoint",
+            .key_type = "XRJointSpace",
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const NavigationType = @import("enums").NavigationType;
-const NavigationDestination = @import("NavigationDestination.zig").NavigationDestination;
+const NavigationDestination = @import("interfaces").NavigationDestination;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const Element = @import("Element.zig").Element;
-const AbortSignal = @import("AbortSignal.zig").AbortSignal;
+const Element = @import("interfaces").Element;
+const AbortSignal = @import("interfaces").AbortSignal;
 const NavigateEventInit = @import("dictionaries").NavigateEventInit;
 const NavigationInterceptOptions = @import("dictionaries").NavigationInterceptOptions;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const EventInit = @import("dictionaries").EventInit;
-const FormData = @import("FormData.zig").FormData;
+const FormData = @import("interfaces").FormData;
 const DOMString = @import("typedefs").DOMString;
 
 pub const NavigateEvent = struct {
@@ -94,9 +94,6 @@ pub const NavigateEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

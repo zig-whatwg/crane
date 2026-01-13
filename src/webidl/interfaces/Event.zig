@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Event = struct {
@@ -56,6 +56,14 @@ pub const Event = struct {
             .{ "initEvent", "call_initEvent", 1 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "NONE", "get_NONE" },
+            .{ "CAPTURING_PHASE", "get_CAPTURING_PHASE" },
+            .{ "AT_TARGET", "get_AT_TARGET" },
+            .{ "BUBBLING_PHASE", "get_BUBBLING_PHASE" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "composedPath",
@@ -90,9 +98,6 @@ pub const Event = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

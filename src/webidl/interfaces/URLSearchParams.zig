@@ -73,10 +73,13 @@ pub const URLSearchParams = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
+        
+        /// Iterable declaration (for Symbol.iterator support)
+        pub const iterable = .{
+            .value_type = "runtime.USVString",
+            .key_type = "runtime.USVString",
+        };
     };
 
     pub const State = runtime.FlattenedState(

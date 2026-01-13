@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Request = @import("Request.zig").Request;
-const Response = @import("Response.zig").Response;
+const Request = @import("interfaces").Request;
+const Response = @import("interfaces").Response;
 
 pub const BackgroundFetchRecord = struct {
     pub const Meta = struct {
@@ -59,9 +59,6 @@ pub const BackgroundFetchRecord = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

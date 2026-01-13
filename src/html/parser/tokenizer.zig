@@ -781,11 +781,10 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
-        // Per spec: emit <, /, then temporary buffer in order
         self.reconsume = true;
         self.state = .rcdata;
-        try self.token_queue.append(Token{ .character = '/' });
         try self.emitTemporaryBufferAsCharacters();
+        try self.token_queue.append(Token{ .character = '/' });
         return Token{ .character = '<' };
     }
 
@@ -852,11 +851,10 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
-        // Per spec: emit <, /, then temporary buffer in order
         self.reconsume = true;
         self.state = .rawtext;
-        try self.token_queue.append(Token{ .character = '/' });
         try self.emitTemporaryBufferAsCharacters();
+        try self.token_queue.append(Token{ .character = '/' });
         return Token{ .character = '<' };
     }
 
@@ -927,11 +925,10 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
-        // Per spec: emit <, /, then temporary buffer in order
         self.reconsume = true;
         self.state = .script_data;
-        try self.token_queue.append(Token{ .character = '/' });
         try self.emitTemporaryBufferAsCharacters();
+        try self.token_queue.append(Token{ .character = '/' });
         return Token{ .character = '<' };
     }
 
@@ -1100,11 +1097,10 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
-        // Per spec: emit <, /, then temporary buffer in order
         self.reconsume = true;
         self.state = .script_data_escaped;
-        try self.token_queue.append(Token{ .character = '/' });
         try self.emitTemporaryBufferAsCharacters();
+        try self.token_queue.append(Token{ .character = '/' });
         return Token{ .character = '<' };
     }
 

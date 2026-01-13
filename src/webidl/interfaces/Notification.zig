@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const NotificationAction = @import("dictionaries").NotificationAction;
 const NotificationOptions = @import("dictionaries").NotificationOptions;
 const USVString = @import("typedefs").USVString;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const EpochTimeStamp = @import("typedefs").EpochTimeStamp;
 const NotificationPermissionCallback = @import("callbacks").NotificationPermissionCallback;
 const NotificationDirection = @import("enums").NotificationDirection;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const NotificationPermission = @import("enums").NotificationPermission;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
@@ -77,8 +77,14 @@ pub const Notification = struct {
             .{ "close", "call_close", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "requestPermission", "call_static_requestPermission", 0 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "requestPermission",
             "close",
         };
         
@@ -99,8 +105,6 @@ pub const Notification = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onclose", "get_onclose", "set_onclose" },
             .{ "title", "get_title", null },
-            .{ "dir", "get_dir", null },
-            .{ "lang", "get_lang", null },
             .{ "body", "get_body", null },
             .{ "navigate", "get_navigate", null },
             .{ "tag", "get_tag", null },
@@ -118,12 +122,10 @@ pub const Notification = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
+            .{ "dir", "get_dir", null },
+            .{ "lang", "get_lang", null },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "requestPermission", "call_static_requestPermission", 0 },
-        };
         pub const has_constructor = true;
     };
 

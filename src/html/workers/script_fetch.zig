@@ -93,9 +93,6 @@ pub const WorkerScriptFetchOptions = struct {
     credentials: CredentialsMode = .same_origin,
     /// Whether this is for importScripts (stricter rules apply)
     is_import_scripts: bool = false,
-    /// CSP list for checking worker-src/script-src directives
-    /// If null, CSP checks are skipped
-    csp_list: ?*const CspTypes.CSPList = null,
 
     pub const CredentialsMode = enum {
         omit,
@@ -103,10 +100,6 @@ pub const WorkerScriptFetchOptions = struct {
         include,
     };
 };
-
-// Import CSP types for worker-src checking
-const CspTypes = @import("csp").types;
-const CspIntegration = @import("csp").integration;
 
 // ============================================================================
 // Fetched Script Result
@@ -175,29 +168,7 @@ pub fn fetchWorkerScript(
         return WorkerScriptError.InvalidUrl;
     }
 
-    // Step 2: Check CSP worker-src/script-src directive
-    // Per CSP Level 3 § 6.1.2.1: Workers use worker-src, falling back to script-src, then default-src
-    if (options.csp_list) |csp_list| {
-        // Parse URL components for CSP matching
-        const url_components = parseUrlComponents(url);
-        if (url_components) |components| {
-            const csp_result = CspIntegration.shouldBlockFetch(
-                csp_list,
-                components.scheme,
-                components.host,
-                components.port,
-                components.path,
-                .worker, // FetchDestination.worker
-                0, // redirect_count
-            );
-            if (csp_result.blocked) {
-                std.log.warn("[fetchWorkerScript] CSP blocked worker script: {s}", .{url});
-                return WorkerScriptError.CrossOriginNotAllowed;
-            }
-        }
-    }
-
-    // Step 3: Check for special URLs
+    // Step 2: Check for special URLs
     if (std.mem.startsWith(u8, url, "data:")) {
         return handleDataUrl(allocator, url);
     }
@@ -214,14 +185,11 @@ pub fn fetchWorkerScript(
     // Step 4: Handle relative URLs - resolve against base URL or origin
     // This handles: "/path", "./relative", "../parent", "bare-name.js"
     const resolved_url = resolveRelativeUrl(allocator, url, options.origin) catch {
-        std.log.warn("[fetchWorkerScript] resolveRelativeUrl failed with OutOfMemory", .{});
         return WorkerScriptError.OutOfMemory;
     };
     if (resolved_url) |full_url| {
         defer allocator.free(full_url);
         return fetchHttpWorkerScript(allocator, full_url, options);
-    } else {
-        std.log.warn("[fetchWorkerScript] resolveRelativeUrl returned null for url='{s}' origin='{s}'", .{ url, options.origin orelse "(null)" });
     }
 
     // Step 5: Check for import scripts mode (stricter)
@@ -294,75 +262,12 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 }
 
 /// Handle blob: URL for worker scripts
-///
-/// HTML Standard § 10.2.5: Workers can be created from blob: URLs.
-/// The blob URL is resolved via the global BlobURLStore.
-///
-/// ## Process
-/// 1. Resolve the blob URL against the origin
-/// 2. Get the blob data from the store
-/// 3. Read the blob content as text
-/// 4. Return as FetchedScript
 fn handleBlobUrl(allocator: Allocator, url: []const u8) WorkerScriptError!FetchedScript {
-    // Import the blob URL store
-    const file_mod = @import("file");
-
-    // Get the global blob URL store
-    const store = file_mod.getGlobalBlobURLStore() orelse {
-        // No blob URL store available
-        return WorkerScriptError.FetchFailed;
-    };
-
-    // Extract origin from the blob URL
-    // blob:<origin>/<uuid>
-    const origin = extractBlobOrigin(url) orelse {
-        return WorkerScriptError.InvalidUrl;
-    };
-
-    // Resolve the blob URL
-    const blob_data = store.resolve(url, origin) orelse {
-        // Blob not found or wrong origin
-        return WorkerScriptError.FetchFailed;
-    };
-
-    // Get the blob content
-    const content = blob_data.bytes;
-    const mime_type = blob_data.mime_type;
-
-    // Validate content type is JavaScript
-    if (!isJavaScriptMimeType(mime_type)) {
-        return WorkerScriptError.ParseError;
-    }
-
-    // Create FetchedScript
-    return FetchedScript.init(
-        allocator,
-        content,
-        url, // Use the blob URL as the final URL
-        mime_type,
-        true, // Blob URLs are always same-origin
-    ) catch {
-        return WorkerScriptError.OutOfMemory;
-    };
-}
-
-/// Extract origin from a blob: URL
-/// Format: blob:<origin>/<uuid>
-fn extractBlobOrigin(url: []const u8) ?[]const u8 {
-    // Must start with "blob:"
-    if (!std.mem.startsWith(u8, url, "blob:")) {
-        return null;
-    }
-
-    // Find the last '/' to separate origin from UUID
-    const last_slash = std.mem.lastIndexOf(u8, url, "/") orelse return null;
-
-    // Origin is between "blob:" and the last "/"
-    if (last_slash <= 5) { // "blob:" is 5 chars
-        return null;
-    }
-
-    return url[5..last_slash];
+    _ = allocator;
+    _ = url;
+    // Blob URLs require access to the blob store
+    // For now, return an error
+    return WorkerScriptError.FetchFailed;
 }
 
 /// Fetch an HTTP(S) worker script using the fetch module.
@@ -479,58 +384,6 @@ fn extractOrigin(url: []const u8) ?[]const u8 {
         return url[0 .. scheme_end + 3 + ps];
     }
     return url;
-}
-
-/// Parsed URL components for CSP matching
-const UrlComponents = struct {
-    scheme: []const u8,
-    host: []const u8,
-    port: ?u16,
-    path: []const u8,
-};
-
-/// Parse URL into components for CSP matching
-fn parseUrlComponents(url: []const u8) ?UrlComponents {
-    // Find scheme
-    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
-    const scheme = url[0..scheme_end];
-
-    // Find host and port
-    const after_scheme = url[scheme_end + 3 ..];
-    const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
-    const host_port = after_scheme[0..path_start];
-
-    // Parse port if present
-    var host: []const u8 = host_port;
-    var port: ?u16 = null;
-
-    if (std.mem.lastIndexOf(u8, host_port, ":")) |colon_pos| {
-        // Check if this is IPv6 (has brackets)
-        if (std.mem.indexOf(u8, host_port, "]")) |bracket_pos| {
-            // IPv6 address - only consider port after the closing bracket
-            if (colon_pos > bracket_pos) {
-                host = host_port[0..colon_pos];
-                port = std.fmt.parseInt(u16, host_port[colon_pos + 1 ..], 10) catch null;
-            }
-        } else {
-            // IPv4 or hostname - colon separates port
-            host = host_port[0..colon_pos];
-            port = std.fmt.parseInt(u16, host_port[colon_pos + 1 ..], 10) catch null;
-        }
-    }
-
-    // Get path
-    const path = if (path_start < after_scheme.len)
-        after_scheme[path_start..]
-    else
-        "/";
-
-    return UrlComponents{
-        .scheme = scheme,
-        .host = host,
-        .port = port,
-        .path = path,
-    };
 }
 
 /// Resolve a relative URL against a base URL

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const NavigatorLocks = @import("mixins").NavigatorLocks;
-const LockManager = @import("LockManager.zig").LockManager;
+const LockManager = @import("interfaces").LockManager;
 
 pub const SharedStorageWorkletNavigator = struct {
     pub const Meta = struct {
@@ -56,9 +56,6 @@ pub const SharedStorageWorkletNavigator = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

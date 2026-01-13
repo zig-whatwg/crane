@@ -124,8 +124,7 @@ fn countSizeFunction(arguments: []const runtime.JSValue) runtime.JSValue {
 pub fn get_size(instance: *runtime.Instance) anyerror!callbacks.Function {
     _ = instance;
 
-    // Return the count size function as an opaque pointer.
-    // callbacks.Function is *anyopaque for FFI compatibility.
-    // In a full implementation, this would be a global function cached per realm.
-    return @ptrCast(@constCast(&countSizeFunction));
+    // Return the count size function
+    // In a full implementation, this would be a global function cached per realm
+    return &countSizeFunction;
 }

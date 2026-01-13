@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const DOMPoint = @import("DOMPoint.zig").DOMPoint;
+const DOMPoint = @import("interfaces").DOMPoint;
 const DOMMatrixInit = @import("dictionaries").DOMMatrixInit;
-const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
+const DOMMatrix = @import("interfaces").DOMMatrix;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const DOMString = @import("typedefs").DOMString;
 
@@ -85,8 +85,18 @@ pub const DOMMatrixReadOnly = struct {
             .{ "toString", "serialize", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "fromMatrix", "call_static_fromMatrix", 0 },
+            .{ "fromFloat32Array", "call_static_fromFloat32Array", 1 },
+            .{ "fromFloat64Array", "call_static_fromFloat64Array", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "fromMatrix",
+            "fromFloat32Array",
+            "fromFloat64Array",
             "translate",
             "scale",
             "scaleNonUniform",
@@ -143,12 +153,6 @@ pub const DOMMatrixReadOnly = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "fromMatrix", "call_static_fromMatrix", 0 },
-            .{ "fromFloat32Array", "call_static_fromFloat32Array", 1 },
-            .{ "fromFloat64Array", "call_static_fromFloat64Array", 1 },
-        };
         pub const has_constructor = true;
     };
 

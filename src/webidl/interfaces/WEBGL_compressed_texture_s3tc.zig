@@ -39,6 +39,14 @@ pub const WEBGL_compressed_texture_s3tc = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "COMPRESSED_RGB_S3TC_DXT1_EXT", "get_COMPRESSED_RGB_S3TC_DXT1_EXT" },
+            .{ "COMPRESSED_RGBA_S3TC_DXT1_EXT", "get_COMPRESSED_RGBA_S3TC_DXT1_EXT" },
+            .{ "COMPRESSED_RGBA_S3TC_DXT3_EXT", "get_COMPRESSED_RGBA_S3TC_DXT3_EXT" },
+            .{ "COMPRESSED_RGBA_S3TC_DXT5_EXT", "get_COMPRESSED_RGBA_S3TC_DXT5_EXT" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -55,9 +63,6 @@ pub const WEBGL_compressed_texture_s3tc = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

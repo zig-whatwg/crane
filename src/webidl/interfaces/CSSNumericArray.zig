@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSNumericValue = @import("CSSNumericValue.zig").CSSNumericValue;
+const CSSNumericValue = @import("interfaces").CSSNumericValue;
 
 pub const CSSNumericArray = struct {
     pub const Meta = struct {
@@ -61,10 +61,13 @@ pub const CSSNumericArray = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
+        
+        /// Iterable declaration (for Symbol.iterator support)
+        pub const iterable = .{
+            .value_type = "CSSNumericValue",
+            .key_type = null,
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const FileSystemEntryCallback = @import("callbacks").FileSystemEntryCallback;
 const USVString = @import("typedefs").USVString;
-const FileSystem = @import("FileSystem.zig").FileSystem;
+const FileSystem = @import("interfaces").FileSystem;
 const ErrorCallback = @import("callbacks").ErrorCallback;
 
 pub const FileSystemEntry = struct {
@@ -66,9 +66,6 @@ pub const FileSystemEntry = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
