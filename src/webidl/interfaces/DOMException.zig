@@ -39,6 +39,35 @@ pub const DOMException = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "INDEX_SIZE_ERR", "get_INDEX_SIZE_ERR" },
+            .{ "DOMSTRING_SIZE_ERR", "get_DOMSTRING_SIZE_ERR" },
+            .{ "HIERARCHY_REQUEST_ERR", "get_HIERARCHY_REQUEST_ERR" },
+            .{ "WRONG_DOCUMENT_ERR", "get_WRONG_DOCUMENT_ERR" },
+            .{ "INVALID_CHARACTER_ERR", "get_INVALID_CHARACTER_ERR" },
+            .{ "NO_DATA_ALLOWED_ERR", "get_NO_DATA_ALLOWED_ERR" },
+            .{ "NO_MODIFICATION_ALLOWED_ERR", "get_NO_MODIFICATION_ALLOWED_ERR" },
+            .{ "NOT_FOUND_ERR", "get_NOT_FOUND_ERR" },
+            .{ "NOT_SUPPORTED_ERR", "get_NOT_SUPPORTED_ERR" },
+            .{ "INUSE_ATTRIBUTE_ERR", "get_INUSE_ATTRIBUTE_ERR" },
+            .{ "INVALID_STATE_ERR", "get_INVALID_STATE_ERR" },
+            .{ "SYNTAX_ERR", "get_SYNTAX_ERR" },
+            .{ "INVALID_MODIFICATION_ERR", "get_INVALID_MODIFICATION_ERR" },
+            .{ "NAMESPACE_ERR", "get_NAMESPACE_ERR" },
+            .{ "INVALID_ACCESS_ERR", "get_INVALID_ACCESS_ERR" },
+            .{ "VALIDATION_ERR", "get_VALIDATION_ERR" },
+            .{ "TYPE_MISMATCH_ERR", "get_TYPE_MISMATCH_ERR" },
+            .{ "SECURITY_ERR", "get_SECURITY_ERR" },
+            .{ "NETWORK_ERR", "get_NETWORK_ERR" },
+            .{ "ABORT_ERR", "get_ABORT_ERR" },
+            .{ "URL_MISMATCH_ERR", "get_URL_MISMATCH_ERR" },
+            .{ "QUOTA_EXCEEDED_ERR", "get_QUOTA_EXCEEDED_ERR" },
+            .{ "TIMEOUT_ERR", "get_TIMEOUT_ERR" },
+            .{ "INVALID_NODE_TYPE_ERR", "get_INVALID_NODE_TYPE_ERR" },
+            .{ "DATA_CLONE_ERR", "get_DATA_CLONE_ERR" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -58,9 +87,6 @@ pub const DOMException = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

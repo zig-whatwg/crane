@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceEntry = @import("PerformanceEntry.zig").PerformanceEntry;
+const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const LayoutShiftAttribution = @import("LayoutShiftAttribution.zig").LayoutShiftAttribution;
+const LayoutShiftAttribution = @import("interfaces").LayoutShiftAttribution;
 const DOMString = @import("typedefs").DOMString;
 
 pub const LayoutShift = struct {
@@ -65,9 +65,6 @@ pub const LayoutShift = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

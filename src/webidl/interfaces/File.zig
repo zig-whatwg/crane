@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Blob = @import("Blob.zig").Blob;
+const Blob = @import("interfaces").Blob;
 const FilePropertyBag = @import("dictionaries").FilePropertyBag;
 const BlobPart = @import("typedefs").BlobPart;
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const BlobPropertyBag = @import("dictionaries").BlobPropertyBag;
@@ -73,9 +73,6 @@ pub const File = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ResizeObserverCallback = @import("callbacks").ResizeObserverCallback;
-const Element = @import("Element.zig").Element;
+const Element = @import("interfaces").Element;
 const ResizeObserverOptions = @import("dictionaries").ResizeObserverOptions;
 
 pub const ResizeObserver = struct {
@@ -61,9 +61,6 @@ pub const ResizeObserver = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

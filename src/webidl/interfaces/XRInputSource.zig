@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRHandedness = @import("enums").XRHandedness;
-const Gamepad = @import("Gamepad.zig").Gamepad;
-const XRSpace = @import("XRSpace.zig").XRSpace;
-const XRHand = @import("XRHand.zig").XRHand;
+const Gamepad = @import("interfaces").Gamepad;
+const XRSpace = @import("interfaces").XRSpace;
+const XRHand = @import("interfaces").XRHand;
 const XRTargetRayMode = @import("enums").XRTargetRayMode;
 const DOMString = @import("typedefs").DOMString;
 
@@ -73,9 +73,6 @@ pub const XRInputSource = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

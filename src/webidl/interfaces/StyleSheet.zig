@@ -10,14 +10,14 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Element = @import("Element.zig").Element;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const Element = @import("interfaces").Element;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const ProcessingInstruction = @import("ProcessingInstruction.zig").ProcessingInstruction;
-const Node = @import("Node.zig").Node;
+const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
+const Node = @import("interfaces").Node;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
-const MediaList = @import("MediaList.zig").MediaList;
+const MediaList = @import("interfaces").MediaList;
 
 pub const StyleSheet = struct {
     pub const Meta = struct {
@@ -43,6 +43,12 @@ pub const StyleSheet = struct {
             .{ "title", "get_title", null },
             .{ "media", "get_media", "set_media" },
             .{ "disabled", "get_disabled", "set_disabled" },
+        };
+        
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "media", "mediaText" },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -72,9 +78,6 @@ pub const StyleSheet = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
@@ -175,7 +178,6 @@ pub const StyleSheet = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "mediaText", value);
     }
 
