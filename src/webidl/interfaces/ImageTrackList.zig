@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ImageTrack = @import("ImageTrack.zig").ImageTrack;
+const ImageTrack = @import("interfaces").ImageTrack;
 
 pub const ImageTrackList = struct {
     pub const Meta = struct {
@@ -63,9 +63,6 @@ pub const ImageTrackList = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

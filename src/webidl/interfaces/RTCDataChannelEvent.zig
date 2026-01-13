@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
-const RTCDataChannel = @import("RTCDataChannel.zig").RTCDataChannel;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const Event = @import("interfaces").Event;
+const RTCDataChannel = @import("interfaces").RTCDataChannel;
+const EventTarget = @import("interfaces").EventTarget;
 const RTCDataChannelEventInit = @import("dictionaries").RTCDataChannelEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -65,9 +65,6 @@ pub const RTCDataChannelEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

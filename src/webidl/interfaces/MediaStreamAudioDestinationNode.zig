@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AudioNode = @import("AudioNode.zig").AudioNode;
+const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const BaseAudioContext = @import("BaseAudioContext.zig").BaseAudioContext;
+const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const AudioNodeOptions = @import("dictionaries").AudioNodeOptions;
-const AudioContext = @import("AudioContext.zig").AudioContext;
+const AudioContext = @import("interfaces").AudioContext;
 const ChannelCountMode = @import("enums").ChannelCountMode;
-const Event = @import("Event.zig").Event;
-const Observable = @import("Observable.zig").Observable;
-const MediaStream = @import("MediaStream.zig").MediaStream;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
+const MediaStream = @import("interfaces").MediaStream;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
-const AudioParam = @import("AudioParam.zig").AudioParam;
+const EventListener = @import("interfaces").EventListener;
+const AudioParam = @import("interfaces").AudioParam;
 const ChannelInterpretation = @import("enums").ChannelInterpretation;
 const DOMString = @import("typedefs").DOMString;
 
@@ -62,6 +62,13 @@ pub const MediaStreamAudioDestinationNode = struct {
             "dispatchEvent",
             "when",
             "connect",
+            "connect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
             "disconnect",
         };
         
@@ -74,9 +81,6 @@ pub const MediaStreamAudioDestinationNode = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

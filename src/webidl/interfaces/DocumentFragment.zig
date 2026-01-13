@@ -10,20 +10,20 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("Node.zig").Node;
+const Node = @import("interfaces").Node;
 const NonElementParentNode = @import("mixins").NonElementParentNode;
 const ParentNode = @import("mixins").ParentNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Document = @import("Document.zig").Document;
-const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
-const NodeList = @import("NodeList.zig").NodeList;
+const Document = @import("interfaces").Document;
+const HTMLCollection = @import("interfaces").HTMLCollection;
+const NodeList = @import("interfaces").NodeList;
 const USVString = @import("typedefs").USVString;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
-const Element = @import("Element.zig").Element;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const Element = @import("interfaces").Element;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DOMString = @import("typedefs").DOMString;
 
@@ -57,9 +57,9 @@ pub const DocumentFragment = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementById", "call_getElementById", 1 },
-            .{ "prepend", "call_prepend", 0 },
-            .{ "append", "call_append", 0 },
-            .{ "replaceChildren", "call_replaceChildren", 0 },
+            .{ "prepend", "call_prepend", 1 },
+            .{ "append", "call_append", 1 },
+            .{ "replaceChildren", "call_replaceChildren", 1 },
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
@@ -111,10 +111,14 @@ pub const DocumentFragment = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
+        
+        /// Members marked with [Unscopable] extended attribute
+        pub const unscopables = .{
+            "prepend",
+            "append",
+            "replaceChildren",
+        };
     };
 
     pub const State = runtime.FlattenedState(

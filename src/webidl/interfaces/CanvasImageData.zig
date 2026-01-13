@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ImageDataSettings = @import("dictionaries").ImageDataSettings;
-const ImageData = @import("ImageData.zig").ImageData;
+const ImageData = @import("interfaces").ImageData;
 
 pub const CanvasImageData = struct {
     pub const Meta = struct {
@@ -29,7 +29,7 @@ pub const CanvasImageData = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "createImageData", "call_createImageData", 1 },
+            .{ "createImageData", "call_createImageData", 2 },
             .{ "getImageData", "call_getImageData", 4 },
             .{ "putImageData", "call_putImageData", 3 },
         };
@@ -53,9 +53,6 @@ pub const CanvasImageData = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

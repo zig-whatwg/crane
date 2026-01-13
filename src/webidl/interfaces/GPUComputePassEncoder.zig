@@ -18,10 +18,10 @@ const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const GPUSize32 = @import("typedefs").GPUSize32;
 const USVString = @import("typedefs").USVString;
-const GPUBuffer = @import("GPUBuffer.zig").GPUBuffer;
-const GPUComputePipeline = @import("GPUComputePipeline.zig").GPUComputePipeline;
+const GPUBuffer = @import("interfaces").GPUBuffer;
+const GPUComputePipeline = @import("interfaces").GPUComputePipeline;
 const GPUSize64 = @import("typedefs").GPUSize64;
-const GPUBindGroup = @import("GPUBindGroup.zig").GPUBindGroup;
+const GPUBindGroup = @import("interfaces").GPUBindGroup;
 
 pub const GPUComputePassEncoder = struct {
     pub const Meta = struct {
@@ -89,9 +89,6 @@ pub const GPUComputePassEncoder = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

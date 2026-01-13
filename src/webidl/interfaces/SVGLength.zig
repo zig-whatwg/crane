@@ -41,6 +41,21 @@ pub const SVGLength = struct {
             .{ "convertToSpecifiedUnits", "call_convertToSpecifiedUnits", 1 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "SVG_LENGTHTYPE_UNKNOWN", "get_SVG_LENGTHTYPE_UNKNOWN" },
+            .{ "SVG_LENGTHTYPE_NUMBER", "get_SVG_LENGTHTYPE_NUMBER" },
+            .{ "SVG_LENGTHTYPE_PERCENTAGE", "get_SVG_LENGTHTYPE_PERCENTAGE" },
+            .{ "SVG_LENGTHTYPE_EMS", "get_SVG_LENGTHTYPE_EMS" },
+            .{ "SVG_LENGTHTYPE_EXS", "get_SVG_LENGTHTYPE_EXS" },
+            .{ "SVG_LENGTHTYPE_PX", "get_SVG_LENGTHTYPE_PX" },
+            .{ "SVG_LENGTHTYPE_CM", "get_SVG_LENGTHTYPE_CM" },
+            .{ "SVG_LENGTHTYPE_MM", "get_SVG_LENGTHTYPE_MM" },
+            .{ "SVG_LENGTHTYPE_IN", "get_SVG_LENGTHTYPE_IN" },
+            .{ "SVG_LENGTHTYPE_PT", "get_SVG_LENGTHTYPE_PT" },
+            .{ "SVG_LENGTHTYPE_PC", "get_SVG_LENGTHTYPE_PC" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "newValueSpecifiedUnits",
@@ -63,9 +78,6 @@ pub const SVGLength = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

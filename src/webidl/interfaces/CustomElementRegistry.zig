@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ElementDefinitionOptions = @import("dictionaries").ElementDefinitionOptions;
-const Node = @import("Node.zig").Node;
+const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
 const CustomElementConstructor = @import("callbacks").CustomElementConstructor;
 
@@ -66,9 +66,6 @@ pub const CustomElementRegistry = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 
@@ -147,12 +144,7 @@ pub const CustomElementRegistry = struct {
         return try CustomElementRegistryImpl.call_define(instance, name, constructor, options);
     }
 
-    /// Extended attributes: [CEReactions]
     pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-        
         
         return try CustomElementRegistryImpl.call_initialize(instance, root);
     }

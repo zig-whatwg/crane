@@ -27,11 +27,8 @@ pub const InternalState = struct {
     /// Cached StorageManager instance (singleton per Navigator)
     storage_manager: ?*runtime.Instance = null,
 
-    /// Cached ServiceWorkerContainer instance (singleton per Navigator)
-    service_worker_container: ?*runtime.Instance = null,
-
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Cleanup handled by GC
+        // StorageManager cleanup handled by GC
         _ = self;
         _ = allocator;
     }
@@ -216,21 +213,9 @@ pub fn get_managed(instance: *runtime.Instance) anyerror!*runtime.Instance {
 }
 
 /// Getter for serviceWorker
-/// Returns the ServiceWorkerContainer for this navigator
 pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.NotImplemented;
-
-    // Return cached ServiceWorkerContainer if it exists
-    if (internal.service_worker_container) |container| {
-        return container;
-    }
-
-    // Create a new ServiceWorkerContainer for this navigator
-    const ServiceWorkerContainer = interfaces.ServiceWorkerContainer;
-    const container = try ServiceWorkerContainer.init(internal.allocator, instance.ctx);
-    internal.service_worker_container = container;
-    return container;
+    _ = instance;
+    return error.NotImplemented;
 }
 
 /// Getter for ink
@@ -604,28 +589,11 @@ pub fn call_createAuctionNonce(instance: *runtime.Instance) anyerror!runtime.JSV
 }
 
 /// Operation: sendBeacon
-/// Spec: https://w3c.github.io/beacon/#sendbeacon-method
 pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data: webidl.Opt(?typedefs.BodyInit)) anyerror!bool {
     _ = instance;
+    _ = url;
     _ = data;
-
-    // Step 1: Let base be this's relevant settings object's API base URL.
-    // Step 2: Let parsedUrl be the result of the URL parser steps with url and base.
-    // Step 3: If parsedUrl is failure, throw a "TypeError".
-    const api_parser = @import("api_parser");
-    var parsed = api_parser.parseURL(std.heap.page_allocator, url, null) catch {
-        // Per Beacon API spec: "If url is not a valid URL string, throw a TypeError"
-        return error.TypeError;
-    };
-    parsed.deinit(); // Free the parsed URL since we only needed to validate
-
-    // TODO: Implement actual beacon sending
-    // For now, return true to indicate "queued" (no-op)
-    // A full implementation would:
-    // 4. If the result of Is request keepalive policy exhausted? given request is true, return false.
-    // 5. Fetch request.
-    // 6. Return true.
-    return true;
+    return error.NotImplemented;
 }
 
 /// Operation: unregisterProtocolHandler

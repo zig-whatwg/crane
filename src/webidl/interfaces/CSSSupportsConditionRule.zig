@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSGroupingRule = @import("CSSGroupingRule.zig").CSSGroupingRule;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSGroupingRule = @import("interfaces").CSSGroupingRule;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const CSSRule = @import("CSSRule.zig").CSSRule;
+const CSSRule = @import("interfaces").CSSRule;
 const DOMString = @import("typedefs").DOMString;
-const CSSRuleList = @import("CSSRuleList.zig").CSSRuleList;
+const CSSRuleList = @import("interfaces").CSSRuleList;
 
 pub const CSSSupportsConditionRule = struct {
     pub const Meta = struct {
@@ -61,9 +61,6 @@ pub const CSSSupportsConditionRule = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

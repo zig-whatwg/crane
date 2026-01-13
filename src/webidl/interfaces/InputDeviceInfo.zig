@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const MediaDeviceInfo = @import("MediaDeviceInfo.zig").MediaDeviceInfo;
+const MediaDeviceInfo = @import("interfaces").MediaDeviceInfo;
 const MediaDeviceKind = @import("enums").MediaDeviceKind;
 const DOMString = @import("typedefs").DOMString;
 const MediaTrackCapabilities = @import("dictionaries").MediaTrackCapabilities;
@@ -59,9 +59,6 @@ pub const InputDeviceInfo = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

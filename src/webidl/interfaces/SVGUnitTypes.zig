@@ -34,6 +34,13 @@ pub const SVGUnitTypes = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "SVG_UNIT_TYPE_UNKNOWN", "get_SVG_UNIT_TYPE_UNKNOWN" },
+            .{ "SVG_UNIT_TYPE_USERSPACEONUSE", "get_SVG_UNIT_TYPE_USERSPACEONUSE" },
+            .{ "SVG_UNIT_TYPE_OBJECTBOUNDINGBOX", "get_SVG_UNIT_TYPE_OBJECTBOUNDINGBOX" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -50,9 +57,6 @@ pub const SVGUnitTypes = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

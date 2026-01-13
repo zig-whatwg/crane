@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const VideoEncoderEncodeOptions = @import("dictionaries").VideoEncoderEncodeOptions;
 const CodecState = @import("enums").CodecState;
 const VideoEncoderConfig = @import("dictionaries").VideoEncoderConfig;
-const VideoFrame = @import("VideoFrame.zig").VideoFrame;
-const Event = @import("Event.zig").Event;
-const Observable = @import("Observable.zig").Observable;
+const VideoFrame = @import("interfaces").VideoFrame;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
 const VideoEncoderSupport = @import("dictionaries").VideoEncoderSupport;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const VideoEncoderInit = @import("dictionaries").VideoEncoderInit;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
@@ -62,6 +62,11 @@ pub const VideoEncoder = struct {
             .{ "close", "call_close", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "isConfigSupported", "call_static_isConfigSupported", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "configure",
@@ -69,6 +74,7 @@ pub const VideoEncoder = struct {
             "flush",
             "reset",
             "close",
+            "isConfigSupported",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -90,10 +96,6 @@ pub const VideoEncoder = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "isConfigSupported", "call_static_isConfigSupported", 1 },
-        };
         pub const has_constructor = true;
     };
 
