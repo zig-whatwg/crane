@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleProperties = @import("CSSStyleProperties.zig").CSSStyleProperties;
-const CSSStyleDeclaration = @import("CSSStyleDeclaration.zig").CSSStyleDeclaration;
-const StylePropertyMap = @import("StylePropertyMap.zig").StylePropertyMap;
+const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
+const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
+const StylePropertyMap = @import("interfaces").StylePropertyMap;
 
 pub const ElementCSSInlineStyle = struct {
     pub const Meta = struct {
@@ -28,6 +28,12 @@ pub const ElementCSSInlineStyle = struct {
         pub const properties = .{
             .{ "style", "get_style", "set_style" },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
+        };
+        
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "style", "cssText" },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -52,9 +58,6 @@ pub const ElementCSSInlineStyle = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
@@ -122,7 +125,6 @@ pub const ElementCSSInlineStyle = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "cssText", value);
     }
 

@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CredentialCreationOptions = @import("dictionaries").CredentialCreationOptions;
-const Credential = @import("Credential.zig").Credential;
+const Credential = @import("interfaces").Credential;
 const CredentialRequestOptions = @import("dictionaries").CredentialRequestOptions;
 
 pub const CredentialsContainer = struct {
@@ -62,9 +62,6 @@ pub const CredentialsContainer = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

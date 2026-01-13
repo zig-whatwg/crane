@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const TrustedTypePolicyOptions = @import("dictionaries").TrustedTypePolicyOptions;
-const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
-const TrustedScript = @import("TrustedScript.zig").TrustedScript;
-const TrustedTypePolicy = @import("TrustedTypePolicy.zig").TrustedTypePolicy;
+const TrustedHTML = @import("interfaces").TrustedHTML;
+const TrustedScript = @import("interfaces").TrustedScript;
+const TrustedTypePolicy = @import("interfaces").TrustedTypePolicy;
 const DOMString = @import("typedefs").DOMString;
 
 pub const TrustedTypePolicyFactory = struct {
@@ -76,9 +76,6 @@ pub const TrustedTypePolicyFactory = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AudioNode = @import("AudioNode.zig").AudioNode;
+const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const BaseAudioContext = @import("BaseAudioContext.zig").BaseAudioContext;
+const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const ChannelCountMode = @import("enums").ChannelCountMode;
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
-const AudioParam = @import("AudioParam.zig").AudioParam;
+const EventListener = @import("interfaces").EventListener;
+const AudioParam = @import("interfaces").AudioParam;
 const ChannelInterpretation = @import("enums").ChannelInterpretation;
 const DOMString = @import("typedefs").DOMString;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 
 pub const AudioDestinationNode = struct {
     pub const Meta = struct {
@@ -59,6 +59,13 @@ pub const AudioDestinationNode = struct {
             "dispatchEvent",
             "when",
             "connect",
+            "connect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
             "disconnect",
         };
         
@@ -71,9 +78,6 @@ pub const AudioDestinationNode = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -10,20 +10,20 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XMLHttpRequestEventTarget = @import("XMLHttpRequestEventTarget.zig").XMLHttpRequestEventTarget;
-const Document = @import("Document.zig").Document;
+const XMLHttpRequestEventTarget = @import("interfaces").XMLHttpRequestEventTarget;
+const Document = @import("interfaces").Document;
 const XMLHttpRequestResponseType = @import("enums").XMLHttpRequestResponseType;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ByteString = @import("typedefs").ByteString;
 const XMLHttpRequestBodyInit = @import("typedefs").XMLHttpRequestBodyInit;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const XMLHttpRequestUpload = @import("XMLHttpRequestUpload.zig").XMLHttpRequestUpload;
+const XMLHttpRequestUpload = @import("interfaces").XMLHttpRequestUpload;
 const USVString = @import("typedefs").USVString;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const AttributionReportingRequestOptions = @import("dictionaries").AttributionReportingRequestOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const PrivateToken = @import("dictionaries").PrivateToken;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
@@ -77,6 +77,15 @@ pub const XMLHttpRequest = struct {
             .{ "setPrivateToken", "call_setPrivateToken", 1 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "UNSENT", "get_UNSENT" },
+            .{ "OPENED", "get_OPENED" },
+            .{ "HEADERS_RECEIVED", "get_HEADERS_RECEIVED" },
+            .{ "LOADING", "get_LOADING" },
+            .{ "DONE", "get_DONE" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "open",
@@ -118,9 +127,6 @@ pub const XMLHttpRequest = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("Node.zig").Node;
+const Node = @import("interfaces").Node;
 const FontFaceSource = @import("mixins").FontFaceSource;
 const NonElementParentNode = @import("mixins").NonElementParentNode;
 const DocumentOrShadowRoot = @import("mixins").DocumentOrShadowRoot;
@@ -19,73 +19,73 @@ const XPathEvaluatorBase = @import("mixins").XPathEvaluatorBase;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
 const GeometryUtils = @import("mixins").GeometryUtils;
 const HTMLOrSVGScriptElement = @import("typedefs").HTMLOrSVGScriptElement;
-const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
-const HTMLHeadElement = @import("HTMLHeadElement.zig").HTMLHeadElement;
-const FontMetrics = @import("FontMetrics.zig").FontMetrics;
-const NodeIterator = @import("NodeIterator.zig").NodeIterator;
+const HTMLCollection = @import("interfaces").HTMLCollection;
+const HTMLHeadElement = @import("interfaces").HTMLHeadElement;
+const FontMetrics = @import("interfaces").FontMetrics;
+const NodeIterator = @import("interfaces").NodeIterator;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
-const Text = @import("Text.zig").Text;
+const Text = @import("interfaces").Text;
 const GeometryNode = @import("typedefs").GeometryNode;
 const USVString = @import("typedefs").USVString;
-const Element = @import("Element.zig").Element;
-const XPathExpression = @import("XPathExpression.zig").XPathExpression;
+const Element = @import("interfaces").Element;
+const XPathExpression = @import("interfaces").XPathExpression;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
-const XPathResult = @import("XPathResult.zig").XPathResult;
-const Location = @import("Location.zig").Location;
+const XPathResult = @import("interfaces").XPathResult;
+const Location = @import("interfaces").Location;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
-const StyleSheetList = @import("StyleSheetList.zig").StyleSheetList;
-const FragmentDirective = @import("FragmentDirective.zig").FragmentDirective;
-const Comment = @import("Comment.zig").Comment;
-const NamedFlowMap = @import("NamedFlowMap.zig").NamedFlowMap;
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const EventListener = @import("interfaces").EventListener;
+const StyleSheetList = @import("interfaces").StyleSheetList;
+const FragmentDirective = @import("interfaces").FragmentDirective;
+const Comment = @import("interfaces").Comment;
+const NamedFlowMap = @import("interfaces").NamedFlowMap;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
-const StorageAccessHandle = @import("StorageAccessHandle.zig").StorageAccessHandle;
+const StorageAccessHandle = @import("interfaces").StorageAccessHandle;
 const ImportNodeOptions = @import("dictionaries").ImportNodeOptions;
-const DOMImplementation = @import("DOMImplementation.zig").DOMImplementation;
-const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
-const Range = @import("Range.zig").Range;
-const Animation = @import("Animation.zig").Animation;
-const Event = @import("Event.zig").Event;
-const PermissionsPolicy = @import("PermissionsPolicy.zig").PermissionsPolicy;
-const XPathNSResolver = @import("XPathNSResolver.zig").XPathNSResolver;
-const DocumentType = @import("DocumentType.zig").DocumentType;
-const HTMLAllCollection = @import("HTMLAllCollection.zig").HTMLAllCollection;
+const DOMImplementation = @import("interfaces").DOMImplementation;
+const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
+const Event = @import("interfaces").Event;
+const PermissionsPolicy = @import("interfaces").PermissionsPolicy;
+const XPathNSResolver = @import("interfaces").XPathNSResolver;
+const DocumentType = @import("interfaces").DocumentType;
+const HTMLAllCollection = @import("interfaces").HTMLAllCollection;
 const DOMString = @import("typedefs").DOMString;
-const DocumentFragment = @import("DocumentFragment.zig").DocumentFragment;
+const DocumentFragment = @import("interfaces").DocumentFragment;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const FontFaceSet = @import("FontFaceSet.zig").FontFaceSet;
+const FontFaceSet = @import("interfaces").FontFaceSet;
 const BrowsingTopicsOptions = @import("dictionaries").BrowsingTopicsOptions;
-const DOMQuad = @import("DOMQuad.zig").DOMQuad;
-const DOMRectReadOnly = @import("DOMRectReadOnly.zig").DOMRectReadOnly;
+const DOMQuad = @import("interfaces").DOMQuad;
+const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
-const StylePropertyMapReadOnly = @import("StylePropertyMapReadOnly.zig").StylePropertyMapReadOnly;
-const CDATASection = @import("CDATASection.zig").CDATASection;
-const DocumentTimeline = @import("DocumentTimeline.zig").DocumentTimeline;
-const ViewTransition = @import("ViewTransition.zig").ViewTransition;
-const TreeWalker = @import("TreeWalker.zig").TreeWalker;
+const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
+const CDATASection = @import("interfaces").CDATASection;
+const DocumentTimeline = @import("interfaces").DocumentTimeline;
+const ViewTransition = @import("interfaces").ViewTransition;
+const TreeWalker = @import("interfaces").TreeWalker;
 const EventHandler = @import("typedefs").EventHandler;
 const DocumentReadyState = @import("enums").DocumentReadyState;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const HTMLElement = @import("HTMLElement.zig").HTMLElement;
+const HTMLElement = @import("interfaces").HTMLElement;
 const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
-const Attr = @import("Attr.zig").Attr;
-const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
+const Attr = @import("interfaces").Attr;
+const TrustedHTML = @import("interfaces").TrustedHTML;
 const WindowProxy = @import("typedefs").WindowProxy;
-const NodeList = @import("NodeList.zig").NodeList;
+const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const ElementCreationOptions = @import("dictionaries").ElementCreationOptions;
-const DOMPoint = @import("DOMPoint.zig").DOMPoint;
-const Observable = @import("Observable.zig").Observable;
-const CaretPosition = @import("CaretPosition.zig").CaretPosition;
+const DOMPoint = @import("interfaces").DOMPoint;
+const Observable = @import("interfaces").Observable;
+const CaretPosition = @import("interfaces").CaretPosition;
 const CaretPositionFromPointOptions = @import("dictionaries").CaretPositionFromPointOptions;
-const ProcessingInstruction = @import("ProcessingInstruction.zig").ProcessingInstruction;
-const SVGSVGElement = @import("SVGSVGElement.zig").SVGSVGElement;
+const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
+const SVGSVGElement = @import("interfaces").SVGSVGElement;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
-const Selection = @import("Selection.zig").Selection;
-const NodeFilter = @import("NodeFilter.zig").NodeFilter;
+const Selection = @import("interfaces").Selection;
+const NodeFilter = @import("interfaces").NodeFilter;
 const DocumentVisibilityState = @import("enums").DocumentVisibilityState;
 
 pub const Document = struct {
@@ -294,6 +294,28 @@ pub const Document = struct {
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
         };
         
+        /// [PutForwards] attributes: setting the attribute forwards to a property on the value
+        /// Format: { "attrName", "forwardedProperty" }
+        pub const put_forwards_attributes = .{
+            .{ "location", "href" },
+        };
+        
+        /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
+        /// Getters return undefined, setters silently return
+        pub const lenient_this_attributes = .{
+            "onreadystatechange",
+            "onmouseenter",
+            "onmouseleave",
+        };
+        
+        /// [LegacyLenientSetter] attributes: readonly with no-op setters
+        /// Setters silently do nothing (don't throw, don't modify)
+        pub const lenient_setter_attributes = .{
+            "fullscreenEnabled",
+            "fullscreen",
+            "fullscreenElement",
+        };
+        
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getElementsByTagName", "call_getElementsByTagName", 1 },
@@ -329,8 +351,8 @@ pub const Document = struct {
             .{ "getElementsByName", "call_getElementsByName", 1 },
             .{ "open", "call_open", 0 },
             .{ "close", "call_close", 0 },
-            .{ "write", "call_write", 0 },
-            .{ "writeln", "call_writeln", 0 },
+            .{ "write", "call_write", 1 },
+            .{ "writeln", "call_writeln", 1 },
             .{ "hasFocus", "call_hasFocus", 0 },
             .{ "execCommand", "call_execCommand", 1 },
             .{ "queryCommandEnabled", "call_queryCommandEnabled", 1 },
@@ -348,9 +370,9 @@ pub const Document = struct {
             .{ "caretPositionFromPoint", "call_caretPositionFromPoint", 2 },
             .{ "getElementById", "call_getElementById", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
-            .{ "prepend", "call_prepend", 0 },
-            .{ "append", "call_append", 0 },
-            .{ "replaceChildren", "call_replaceChildren", 0 },
+            .{ "prepend", "call_prepend", 1 },
+            .{ "append", "call_append", 1 },
+            .{ "replaceChildren", "call_replaceChildren", 1 },
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
@@ -361,6 +383,11 @@ pub const Document = struct {
             .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
             .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
             .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "parseHTMLUnsafe", "call_static_parseHTMLUnsafe", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -395,6 +422,7 @@ pub const Document = struct {
             "measureElement",
             "measureText",
             "hasUnpartitionedCookieAccess",
+            "parseHTMLUnsafe",
             "getElementsByName",
             "open",
             "close",
@@ -491,7 +519,6 @@ pub const Document = struct {
             .{ "lastModified", "get_lastModified", null },
             .{ "readyState", "get_readyState", null },
             .{ "title", "get_title", "set_title" },
-            .{ "dir", "get_dir", "set_dir" },
             .{ "body", "get_body", "set_body" },
             .{ "head", "get_head", null },
             .{ "images", "get_images", null },
@@ -503,7 +530,6 @@ pub const Document = struct {
             .{ "currentScript", "get_currentScript", null },
             .{ "defaultView", "get_defaultView", null },
             .{ "designMode", "get_designMode", "set_designMode" },
-            .{ "hidden", "get_hidden", null },
             .{ "visibilityState", "get_visibilityState", null },
             .{ "onreadystatechange", "get_onreadystatechange", "set_onreadystatechange" },
             .{ "onvisibilitychange", "get_onvisibilitychange", "set_onvisibilitychange" },
@@ -638,13 +664,19 @@ pub const Document = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
+            .{ "dir", "get_dir", "set_dir" },
+            .{ "hidden", "get_hidden", null },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "parseHTMLUnsafe", "call_static_parseHTMLUnsafe", 1 },
-        };
         pub const has_constructor = true;
+        
+        /// Members marked with [Unscopable] extended attribute
+        pub const unscopables = .{
+            "fullscreen",
+            "prepend",
+            "append",
+            "replaceChildren",
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -1441,7 +1473,6 @@ pub const Document = struct {
         
         // Use JavaScript [[Set]] semantics to set the forwarded property
         // This respects prototype chain and user-defined setters
-        // Note: target is a *Instance, use setPropertyOnInstance
         try runtime.setPropertyOnInstance(target, "href", value);
     }
 

@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLCanvasElement = @import("HTMLCanvasElement.zig").HTMLCanvasElement;
-const OffscreenCanvas = @import("OffscreenCanvas.zig").OffscreenCanvas;
+const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
+const OffscreenCanvas = @import("interfaces").OffscreenCanvas;
 const GPUCanvasConfiguration = @import("dictionaries").GPUCanvasConfiguration;
-const GPUTexture = @import("GPUTexture.zig").GPUTexture;
+const GPUTexture = @import("interfaces").GPUTexture;
 
 pub const GPUCanvasContext = struct {
     pub const Meta = struct {
@@ -68,9 +68,6 @@ pub const GPUCanvasContext = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

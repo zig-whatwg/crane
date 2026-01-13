@@ -10,15 +10,15 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Blob = @import("Blob.zig").Blob;
+const Blob = @import("interfaces").Blob;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const Event = @import("Event.zig").Event;
-const EventListener = @import("EventListener.zig").EventListener;
-const DOMException = @import("DOMException.zig").DOMException;
+const Event = @import("interfaces").Event;
+const EventListener = @import("interfaces").EventListener;
+const DOMException = @import("interfaces").DOMException;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -63,6 +63,13 @@ pub const FileReader = struct {
             .{ "abort", "call_abort", 0 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "EMPTY", "get_EMPTY" },
+            .{ "LOADING", "get_LOADING" },
+            .{ "DONE", "get_DONE" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "readAsArrayBuffer",
@@ -97,9 +104,6 @@ pub const FileReader = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

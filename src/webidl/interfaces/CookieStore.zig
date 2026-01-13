@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CookieStoreGetOptions = @import("dictionaries").CookieStoreGetOptions;
 const CookieStoreDeleteOptions = @import("dictionaries").CookieStoreDeleteOptions;
 const USVString = @import("typedefs").USVString;
 const CookieListItem = @import("dictionaries").CookieListItem;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const CookieList = @import("typedefs").CookieList;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const CookieInit = @import("dictionaries").CookieInit;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
@@ -53,9 +53,9 @@ pub const CookieStore = struct {
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "get", "call_get", 0 },
-            .{ "getAll", "call_getAll", 0 },
-            .{ "set", "call_set", 1 },
+            .{ "get", "call_get", 1 },
+            .{ "getAll", "call_getAll", 1 },
+            .{ "set", "call_set", 2 },
             .{ "delete", "call_delete", 1 },
         };
         
@@ -84,9 +84,6 @@ pub const CookieStore = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

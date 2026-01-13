@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Event = @import("Event.zig").Event;
-const EventTarget = @import("EventTarget.zig").EventTarget;
-const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
+const Event = @import("interfaces").Event;
+const EventTarget = @import("interfaces").EventTarget;
+const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const MediaStreamTrackEventInit = @import("dictionaries").MediaStreamTrackEventInit;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
@@ -65,9 +65,6 @@ pub const MediaStreamTrackEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 
