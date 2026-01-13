@@ -270,6 +270,10 @@ pub const PromiseRejectionTracker = promise_rejection.PromiseRejectionTracker;
 pub const shadow_realm = @import("shadow_realm.zig");
 pub const initializeShadowRealmSupport = shadow_realm.initializeShadowRealmSupport;
 pub const deinitializeShadowRealmSupport = shadow_realm.deinitializeShadowRealmSupport;
+pub const disposeShadowRealm = shadow_realm.disposeShadowRealm;
+pub const disposeShadowRealmsByInitiator = shadow_realm.disposeByInitiator;
+pub const getShadowRealmTrackedCount = shadow_realm.getTrackedCount;
+pub const getShadowRealmTotalCreated = shadow_realm.getTotalCreated;
 
 // Re-export commonly used types for convenience
 pub const Isolate = ffi.Isolate;
