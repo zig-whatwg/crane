@@ -346,10 +346,21 @@ pub const WorkerV8Context = struct {
         // Register this V8 context with the context manager (without isolate).
         // We pass null for isolate since we're managing the event loop ourselves.
         // This still creates a runtime context that WebIDL interfaces can use.
-        _ = context_manager.getOrCreate(context, allocator) catch |err| {
+        var runtime_ctx = context_manager.getOrCreate(context, allocator) catch |err| {
             std.log.err("[WorkerV8Context] Failed to register context: {}", .{err});
             return error.ContextRegistrationFailed;
         };
+
+        // CRITICAL: Set the timer interface on the runtime context.
+        // This is needed for nested worker creation - without this, Worker.call_constructor
+        // sees ctx.timer as null and falls back to synchronous execution which fails.
+        // Workers manage their own event loop, so we set the timer interface from it.
+        if (ev_loop.timerInterface()) |timer_iface| {
+            runtime_ctx.setTimer(timer_iface);
+            std.debug.print("[WorkerV8Context] Set timer interface on runtime context for nested worker support\n", .{});
+        } else {
+            std.debug.print("[WorkerV8Context] WARNING: Event loop has no timer interface\n", .{});
+        }
 
         // Exit worker context/isolate after setup - we'll re-enter when executing scripts
         v8.ffi.v8_Context_Exit(context);
@@ -514,6 +525,41 @@ pub const WorkerV8Context = struct {
 
         std.log.info("[WorkerV8Context] dispatchSelfOnerror() handler returned null/threw", .{});
         return false;
+    }
+
+    /// Send an error event to the parent Worker object via the thread-safe channel.
+    ///
+    /// This queues a WorkerErrorEvent to be dispatched on the parent thread.
+    /// The main thread's event loop will poll and dispatch the error via
+    /// Worker.onerror or addEventListener('error').
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 11
+    /// "Queue a task to fire an event named error at worker."
+    fn sendErrorToParent(
+        self: *Self,
+        message: []const u8,
+        filename: []const u8,
+        lineno: u32,
+        colno: u32,
+    ) void {
+        if (self.dedicated_worker) |dedicated_worker| {
+            if (dedicated_worker.getThreadState()) |thread_state| {
+                const error_event = workers.worker_error.WorkerErrorEvent.init(
+                    self.allocator,
+                    message,
+                    filename,
+                    lineno,
+                    colno,
+                    null, // error_value - TODO: could pass actual V8 exception
+                ) catch |alloc_err| {
+                    std.log.err("[WorkerV8Context] Failed to create error event for parent: {}", .{alloc_err});
+                    return;
+                };
+
+                // Queue error to main thread - it will dispatch and clean up
+                thread_state.setPendingError(error_event);
+            }
+        }
     }
 
     /// Set up basic worker global scope (called during init)
@@ -1269,7 +1315,41 @@ pub const WorkerV8Context = struct {
         const compile_result = v8.ffi.v8_Script_Compile_Safe(self.context, source_str);
         defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
 
-        if (compile_result.error_info != null) {
+        if (compile_result.error_info) |err_info| {
+            // Extract error details from V8
+            const err_msg = err_info.getMessage() orelse "Script compilation failed";
+            const filename = err_info.getResourceName() orelse self.script_url;
+            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+            std.log.err("[WorkerV8Context] Script compilation failed: {s}", .{err_msg});
+            if (err_info.getSourceLine()) |line| {
+                std.log.err("[WorkerV8Context] Source line: {s}", .{line});
+            }
+
+            // HTML Standard § 10.2.5: First dispatch to self.onerror inside the worker
+            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
+
+            if (!error_handled) {
+                // Error was not handled, propagate to parent
+                if (self.dedicated_worker) |dedicated_worker| {
+                    if (dedicated_worker.getThreadState()) |thread_state| {
+                        const error_event = workers.worker_error.WorkerErrorEvent.init(
+                            self.allocator,
+                            err_msg,
+                            filename,
+                            lineno,
+                            colno,
+                            null,
+                        ) catch |alloc_err| {
+                            std.log.err("[WorkerV8Context] Failed to create error event: {}", .{alloc_err});
+                            return error.CompilationFailed;
+                        };
+                        thread_state.setPendingError(error_event);
+                    }
+                }
+            }
+
             return error.CompilationFailed;
         }
 
@@ -1396,18 +1476,29 @@ pub const WorkerV8Context = struct {
 
         // Check for compilation error
         if (compile_result.error_info) |err_info| {
-            // Log the error details
-            if (err_info.message) |msg| {
-                std.log.err("Module compilation error: {s}", .{msg});
+            // Extract error details from V8
+            const err_msg = err_info.getMessage() orelse "Module compilation failed";
+            const filename = err_info.getResourceName() orelse source_url;
+            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+            std.log.err("[WorkerV8Context] Module compilation error: {s}", .{err_msg});
+            if (err_info.getSourceLine()) |line| {
+                std.log.err("[WorkerV8Context] Source line: {s}", .{line});
             }
-            if (err_info.source_line) |line| {
-                std.log.err("Source line: {s}", .{line});
+
+            // Dispatch to self.onerror first, then propagate to parent if not handled
+            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
+            if (!error_handled) {
+                self.sendErrorToParent(err_msg, filename, lineno, colno);
             }
+
             return error.ModuleCompilationFailed;
         }
 
         const module = compile_result.module orelse {
             std.log.err("Module compilation returned null without error", .{});
+            self.sendErrorToParent("Module compilation failed", source_url, 0, 0);
             return error.ModuleCompilationFailed;
         };
 
@@ -1416,14 +1507,24 @@ pub const WorkerV8Context = struct {
         defer v8.ffi.v8_FreeModuleInstantiateResult(instantiate_result);
 
         if (instantiate_result.error_info) |err_info| {
-            if (err_info.message) |msg| {
-                std.log.err("Module instantiation error: {s}", .{msg});
+            const err_msg = err_info.getMessage() orelse "Module instantiation failed";
+            const filename = err_info.getResourceName() orelse source_url;
+            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+            std.log.err("[WorkerV8Context] Module instantiation error: {s}", .{err_msg});
+
+            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
+            if (!error_handled) {
+                self.sendErrorToParent(err_msg, filename, lineno, colno);
             }
+
             return error.ModuleInstantiationFailed;
         }
 
         if (!instantiate_result.success) {
             std.log.err("Module instantiation failed without error details", .{});
+            self.sendErrorToParent("Module instantiation failed", source_url, 0, 0);
             return error.ModuleInstantiationFailed;
         }
 
@@ -1432,9 +1533,18 @@ pub const WorkerV8Context = struct {
         defer v8.ffi.v8_FreeModuleEvaluateResult(evaluate_result);
 
         if (evaluate_result.error_info) |err_info| {
-            if (err_info.message) |msg| {
-                std.log.err("Module evaluation error: {s}", .{msg});
+            const err_msg = err_info.getMessage() orelse "Module evaluation failed";
+            const filename = err_info.getResourceName() orelse source_url;
+            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+            std.log.err("[WorkerV8Context] Module evaluation error: {s}", .{err_msg});
+
+            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
+            if (!error_handled) {
+                self.sendErrorToParent(err_msg, filename, lineno, colno);
             }
+
             return error.ModuleEvaluationFailed;
         }
 
