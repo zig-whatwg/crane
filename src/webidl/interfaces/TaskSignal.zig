@@ -10,15 +10,15 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AbortSignal = @import("AbortSignal.zig").AbortSignal;
+const AbortSignal = @import("interfaces").AbortSignal;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 const TaskPriority = @import("enums").TaskPriority;
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const DOMString = @import("typedefs").DOMString;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const TaskSignalAnyInit = @import("dictionaries").TaskSignalAnyInit;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -51,8 +51,14 @@ pub const TaskSignal = struct {
         pub const methods = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "_any", "call_static__any", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "_any",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -61,6 +67,8 @@ pub const TaskSignal = struct {
             "removeEventListener",
             "dispatchEvent",
             "when",
+            "abort",
+            "timeout",
             "throwIfAborted",
         };
         
@@ -74,10 +82,6 @@ pub const TaskSignal = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "_any", "call_static__any", 1 },
-        };
         pub const has_constructor = false;
     };
 

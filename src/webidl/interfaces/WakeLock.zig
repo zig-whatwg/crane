@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WakeLockSentinel = @import("WakeLockSentinel.zig").WakeLockSentinel;
+const WakeLockSentinel = @import("interfaces").WakeLockSentinel;
 const WakeLockType = @import("enums").WakeLockType;
 
 pub const WakeLock = struct {
@@ -57,9 +57,6 @@ pub const WakeLock = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -15,9 +15,9 @@ const SharedStorageWorkletOptions = @import("dictionaries").SharedStorageWorklet
 const SharedStorageResponse = @import("typedefs").SharedStorageResponse;
 const SharedStorageSetMethodOptions = @import("dictionaries").SharedStorageSetMethodOptions;
 const SharedStorageModifierMethodOptions = @import("dictionaries").SharedStorageModifierMethodOptions;
-const SharedStorageModifierMethod = @import("SharedStorageModifierMethod.zig").SharedStorageModifierMethod;
+const SharedStorageModifierMethod = @import("interfaces").SharedStorageModifierMethod;
 const SharedStorageUrlWithMetadata = @import("dictionaries").SharedStorageUrlWithMetadata;
-const SharedStorageWorklet = @import("SharedStorageWorklet.zig").SharedStorageWorklet;
+const SharedStorageWorklet = @import("interfaces").SharedStorageWorklet;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -91,10 +91,14 @@ pub const SharedStorage = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
+        
+        /// Async iterable declaration (for Symbol.asyncIterator support)
+        pub const async_iterable = .{
+            .value_type = "runtime.DOMString",
+            .key_type = "runtime.DOMString",
+            .options_type = null,
+        };
     };
 
     pub const State = runtime.FlattenedState(

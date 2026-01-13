@@ -32,6 +32,14 @@ pub const CSSValue = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "CSS_INHERIT", "get_CSS_INHERIT" },
+            .{ "CSS_PRIMITIVE_VALUE", "get_CSS_PRIMITIVE_VALUE" },
+            .{ "CSS_VALUE_LIST", "get_CSS_VALUE_LIST" },
+            .{ "CSS_CUSTOM", "get_CSS_CUSTOM" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -50,9 +58,6 @@ pub const CSSValue = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Sensor = @import("Sensor.zig").Sensor;
+const Sensor = @import("interfaces").Sensor;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const ReadOptions = @import("dictionaries").ReadOptions;
 const GeolocationSensorReading = @import("dictionaries").GeolocationSensorReading;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const GeolocationSensorOptions = @import("dictionaries").GeolocationSensorOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -59,8 +59,14 @@ pub const GeolocationSensor = struct {
         pub const methods = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "read", "call_static_read", 0 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "read",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -88,10 +94,6 @@ pub const GeolocationSensor = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "read", "call_static_read", 0 },
-        };
         pub const has_constructor = true;
     };
 

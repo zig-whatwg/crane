@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WorkletGlobalScope = @import("WorkletGlobalScope.zig").WorkletGlobalScope;
+const WorkletGlobalScope = @import("interfaces").WorkletGlobalScope;
 const Function = @import("callbacks").Function;
-const SharedStorageWorkletNavigator = @import("SharedStorageWorkletNavigator.zig").SharedStorageWorkletNavigator;
+const SharedStorageWorkletNavigator = @import("interfaces").SharedStorageWorkletNavigator;
 const DOMString = @import("typedefs").DOMString;
-const SharedStorage = @import("SharedStorage.zig").SharedStorage;
-const PrivateAggregation = @import("PrivateAggregation.zig").PrivateAggregation;
+const SharedStorage = @import("interfaces").SharedStorage;
+const PrivateAggregation = @import("interfaces").PrivateAggregation;
 
 pub const SharedStorageWorkletGlobalScope = struct {
     pub const Meta = struct {
@@ -68,9 +68,6 @@ pub const SharedStorageWorkletGlobalScope = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

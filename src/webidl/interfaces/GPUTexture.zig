@@ -11,12 +11,11 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUObjectBase = @import("mixins").GPUObjectBase;
-const GPUTextureView = @import("GPUTextureView.zig").GPUTextureView;
+const GPUTextureView = @import("interfaces").GPUTextureView;
 const GPUTextureDimension = @import("enums").GPUTextureDimension;
 const GPUSize32Out = @import("typedefs").GPUSize32Out;
 const GPUFlagsConstant = @import("typedefs").GPUFlagsConstant;
 const GPUTextureFormat = @import("enums").GPUTextureFormat;
-const GPUTextureViewDimension = @import("enums").GPUTextureViewDimension;
 const USVString = @import("typedefs").USVString;
 const GPUTextureViewDescriptor = @import("dictionaries").GPUTextureViewDescriptor;
 const GPUIntegerCoordinateOut = @import("typedefs").GPUIntegerCoordinateOut;
@@ -52,7 +51,6 @@ pub const GPUTexture = struct {
             .{ "dimension", "get_dimension", null },
             .{ "format", "get_format", null },
             .{ "usage", "get_usage", null },
-            .{ "textureBindingViewDimension", "get_textureBindingViewDimension", null },
             .{ "label", "get_label", "set_label" },
         };
         
@@ -82,7 +80,6 @@ pub const GPUTexture = struct {
             .{ "dimension", "get_dimension", null },
             .{ "format", "get_format", null },
             .{ "usage", "get_usage", null },
-            .{ "textureBindingViewDimension", "get_textureBindingViewDimension", null },
             .{ "label", "get_label", "set_label" },
         };
         
@@ -90,9 +87,6 @@ pub const GPUTexture = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
@@ -108,10 +102,6 @@ pub const GPUTexture = struct {
             dimension: enums.GPUTextureDimension = undefined,
             format: enums.GPUTextureFormat = undefined,
             usage: typedefs.GPUFlagsConstant = undefined,
-            textureBindingViewDimension: union(enum) {
-                GPUTextureViewDimension: GPUTextureViewDimension,
-                @"undefined": void,
-            } = undefined,
             label: runtime.USVString = undefined,
             _internal: ?*GPUTextureImpl.InternalState = null,
         },
@@ -126,7 +116,6 @@ pub const GPUTexture = struct {
         .get_label = &get_label,
         .get_mipLevelCount = &get_mipLevelCount,
         .get_sampleCount = &get_sampleCount,
-        .get_textureBindingViewDimension = &get_textureBindingViewDimension,
         .get_usage = &get_usage,
         .get_width = &get_width,
 
@@ -190,10 +179,6 @@ pub const GPUTexture = struct {
 
     pub fn get_usage(instance: *runtime.Instance) anyerror!GPUFlagsConstant {
         return try GPUTextureImpl.get_usage(instance);
-    }
-
-    pub fn get_textureBindingViewDimension(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try GPUTextureImpl.get_textureBindingViewDimension(instance);
     }
 
     pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {

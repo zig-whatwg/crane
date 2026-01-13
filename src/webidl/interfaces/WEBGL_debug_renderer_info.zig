@@ -39,6 +39,12 @@ pub const WEBGL_debug_renderer_info = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "UNMASKED_VENDOR_WEBGL", "get_UNMASKED_VENDOR_WEBGL" },
+            .{ "UNMASKED_RENDERER_WEBGL", "get_UNMASKED_RENDERER_WEBGL" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -55,9 +61,6 @@ pub const WEBGL_debug_renderer_info = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

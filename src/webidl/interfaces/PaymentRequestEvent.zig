@@ -10,15 +10,15 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ExtendableEvent = @import("ExtendableEvent.zig").ExtendableEvent;
+const ExtendableEvent = @import("interfaces").ExtendableEvent;
 const PaymentMethodData = @import("dictionaries").PaymentMethodData;
-const WindowClient = @import("WindowClient.zig").WindowClient;
+const WindowClient = @import("interfaces").WindowClient;
 const PaymentShippingOption = @import("dictionaries").PaymentShippingOption;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const PaymentRequestEventInit = @import("dictionaries").PaymentRequestEventInit;
 const USVString = @import("typedefs").USVString;
 const ExtendableEventInit = @import("dictionaries").ExtendableEventInit;
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const PaymentDetailsModifier = @import("dictionaries").PaymentDetailsModifier;
 const EventInit = @import("dictionaries").EventInit;
 const PaymentRequestDetailsUpdate = @import("dictionaries").PaymentRequestDetailsUpdate;
@@ -97,9 +97,6 @@ pub const PaymentRequestEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

@@ -39,6 +39,25 @@ pub const WEBGL_blend_equation_advanced_coherent = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "MULTIPLY", "get_MULTIPLY" },
+            .{ "SCREEN", "get_SCREEN" },
+            .{ "OVERLAY", "get_OVERLAY" },
+            .{ "DARKEN", "get_DARKEN" },
+            .{ "LIGHTEN", "get_LIGHTEN" },
+            .{ "COLORDODGE", "get_COLORDODGE" },
+            .{ "COLORBURN", "get_COLORBURN" },
+            .{ "HARDLIGHT", "get_HARDLIGHT" },
+            .{ "SOFTLIGHT", "get_SOFTLIGHT" },
+            .{ "DIFFERENCE", "get_DIFFERENCE" },
+            .{ "EXCLUSION", "get_EXCLUSION" },
+            .{ "HSL_HUE", "get_HSL_HUE" },
+            .{ "HSL_SATURATION", "get_HSL_SATURATION" },
+            .{ "HSL_COLOR", "get_HSL_COLOR" },
+            .{ "HSL_LUMINOSITY", "get_HSL_LUMINOSITY" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -55,9 +74,6 @@ pub const WEBGL_blend_equation_advanced_coherent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

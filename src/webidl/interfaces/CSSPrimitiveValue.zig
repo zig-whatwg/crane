@@ -10,10 +10,10 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSValue = @import("CSSValue.zig").CSSValue;
-const Counter = @import("Counter.zig").Counter;
-const Rect = @import("Rect.zig").Rect;
-const RGBColor = @import("RGBColor.zig").RGBColor;
+const CSSValue = @import("interfaces").CSSValue;
+const Counter = @import("interfaces").Counter;
+const Rect = @import("interfaces").Rect;
+const RGBColor = @import("interfaces").RGBColor;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CSSPrimitiveValue = struct {
@@ -43,6 +43,36 @@ pub const CSSPrimitiveValue = struct {
             .{ "getRGBColorValue", "call_getRGBColorValue", 0 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "CSS_UNKNOWN", "get_CSS_UNKNOWN" },
+            .{ "CSS_NUMBER", "get_CSS_NUMBER" },
+            .{ "CSS_PERCENTAGE", "get_CSS_PERCENTAGE" },
+            .{ "CSS_EMS", "get_CSS_EMS" },
+            .{ "CSS_EXS", "get_CSS_EXS" },
+            .{ "CSS_PX", "get_CSS_PX" },
+            .{ "CSS_CM", "get_CSS_CM" },
+            .{ "CSS_MM", "get_CSS_MM" },
+            .{ "CSS_IN", "get_CSS_IN" },
+            .{ "CSS_PT", "get_CSS_PT" },
+            .{ "CSS_PC", "get_CSS_PC" },
+            .{ "CSS_DEG", "get_CSS_DEG" },
+            .{ "CSS_RAD", "get_CSS_RAD" },
+            .{ "CSS_GRAD", "get_CSS_GRAD" },
+            .{ "CSS_MS", "get_CSS_MS" },
+            .{ "CSS_S", "get_CSS_S" },
+            .{ "CSS_HZ", "get_CSS_HZ" },
+            .{ "CSS_KHZ", "get_CSS_KHZ" },
+            .{ "CSS_DIMENSION", "get_CSS_DIMENSION" },
+            .{ "CSS_STRING", "get_CSS_STRING" },
+            .{ "CSS_URI", "get_CSS_URI" },
+            .{ "CSS_IDENT", "get_CSS_IDENT" },
+            .{ "CSS_ATTR", "get_CSS_ATTR" },
+            .{ "CSS_COUNTER", "get_CSS_COUNTER" },
+            .{ "CSS_RECT", "get_CSS_RECT" },
+            .{ "CSS_RGBCOLOR", "get_CSS_RGBCOLOR" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setFloatValue",
@@ -67,9 +97,6 @@ pub const CSSPrimitiveValue = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
