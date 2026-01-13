@@ -14,7 +14,7 @@ const MediaSessionPlaybackState = @import("enums").MediaSessionPlaybackState;
 const MediaPositionState = @import("dictionaries").MediaPositionState;
 const MediaSessionActionHandler = @import("callbacks").MediaSessionActionHandler;
 const MediaSessionAction = @import("enums").MediaSessionAction;
-const MediaMetadata = @import("MediaMetadata.zig").MediaMetadata;
+const MediaMetadata = @import("interfaces").MediaMetadata;
 
 pub const MediaSession = struct {
     pub const Meta = struct {
@@ -69,9 +69,6 @@ pub const MediaSession = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

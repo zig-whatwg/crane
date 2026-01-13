@@ -24,12 +24,12 @@ const CanvasPath = @import("mixins").CanvasPath;
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const CanvasFillRule = @import("enums").CanvasFillRule;
-const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
-const CanvasGradient = @import("CanvasGradient.zig").CanvasGradient;
+const DOMMatrix = @import("interfaces").DOMMatrix;
+const CanvasGradient = @import("interfaces").CanvasGradient;
 const CanvasLineCap = @import("enums").CanvasLineCap;
-const CanvasPattern = @import("CanvasPattern.zig").CanvasPattern;
+const CanvasPattern = @import("interfaces").CanvasPattern;
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
-const Path2D = @import("Path2D.zig").Path2D;
+const Path2D = @import("interfaces").Path2D;
 const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
 const DOMString = @import("typedefs").DOMString;
@@ -91,7 +91,7 @@ pub const PaintRenderingContext2D = struct {
             .{ "translate", "call_translate", 2 },
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
-            .{ "setTransform", "call_setTransform", 0 },
+            .{ "setTransform", "call_setTransform", 6 },
             .{ "resetTransform", "call_resetTransform", 0 },
             .{ "createLinearGradient", "call_createLinearGradient", 4 },
             .{ "createRadialGradient", "call_createRadialGradient", 6 },
@@ -189,9 +189,6 @@ pub const PaintRenderingContext2D = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

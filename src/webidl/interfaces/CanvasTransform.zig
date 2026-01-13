@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
-const DOMMatrix = @import("DOMMatrix.zig").DOMMatrix;
+const DOMMatrix = @import("interfaces").DOMMatrix;
 
 pub const CanvasTransform = struct {
     pub const Meta = struct {
@@ -34,7 +34,7 @@ pub const CanvasTransform = struct {
             .{ "translate", "call_translate", 2 },
             .{ "transform", "call_transform", 6 },
             .{ "getTransform", "call_getTransform", 0 },
-            .{ "setTransform", "call_setTransform", 0 },
+            .{ "setTransform", "call_setTransform", 6 },
             .{ "resetTransform", "call_resetTransform", 0 },
         };
         
@@ -61,9 +61,6 @@ pub const CanvasTransform = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

@@ -11,9 +11,9 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRViewGeometry = @import("mixins").XRViewGeometry;
-const XRRigidTransform = @import("XRRigidTransform.zig").XRRigidTransform;
+const XRRigidTransform = @import("interfaces").XRRigidTransform;
 const XREye = @import("enums").XREye;
-const XRCamera = @import("XRCamera.zig").XRCamera;
+const XRCamera = @import("interfaces").XRCamera;
 
 pub const XRView = struct {
     pub const Meta = struct {
@@ -73,9 +73,6 @@ pub const XRView = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

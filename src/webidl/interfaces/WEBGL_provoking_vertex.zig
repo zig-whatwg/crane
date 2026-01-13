@@ -40,6 +40,13 @@ pub const WEBGL_provoking_vertex = struct {
             .{ "provokingVertexWEBGL", "call_provokingVertexWEBGL", 1 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "FIRST_VERTEX_CONVENTION_WEBGL", "get_FIRST_VERTEX_CONVENTION_WEBGL" },
+            .{ "LAST_VERTEX_CONVENTION_WEBGL", "get_LAST_VERTEX_CONVENTION_WEBGL" },
+            .{ "PROVOKING_VERTEX_WEBGL", "get_PROVOKING_VERTEX_WEBGL" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "provokingVertexWEBGL",
@@ -57,9 +64,6 @@ pub const WEBGL_provoking_vertex = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

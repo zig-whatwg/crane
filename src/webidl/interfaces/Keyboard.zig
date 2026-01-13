@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const KeyboardLayoutMap = @import("KeyboardLayoutMap.zig").KeyboardLayoutMap;
+const KeyboardLayoutMap = @import("interfaces").KeyboardLayoutMap;
 const EventHandler = @import("typedefs").EventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const DOMString = @import("typedefs").DOMString;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 
 pub const Keyboard = struct {
     pub const Meta = struct {
@@ -74,9 +74,6 @@ pub const Keyboard = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

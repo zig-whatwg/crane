@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const XRLayer = @import("XRLayer.zig").XRLayer;
+const XRLayer = @import("interfaces").XRLayer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const XRView = @import("XRView.zig").XRView;
-const XRSession = @import("XRSession.zig").XRSession;
-const Event = @import("Event.zig").Event;
-const Observable = @import("Observable.zig").Observable;
-const XRViewport = @import("XRViewport.zig").XRViewport;
-const WebGLFramebuffer = @import("WebGLFramebuffer.zig").WebGLFramebuffer;
+const XRView = @import("interfaces").XRView;
+const XRSession = @import("interfaces").XRSession;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
+const XRViewport = @import("interfaces").XRViewport;
+const WebGLFramebuffer = @import("interfaces").WebGLFramebuffer;
 const XRWebGLLayerInit = @import("dictionaries").XRWebGLLayerInit;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const XRWebGLRenderingContext = @import("typedefs").XRWebGLRenderingContext;
 const DOMString = @import("typedefs").DOMString;
 
@@ -57,9 +57,15 @@ pub const XRWebGLLayer = struct {
             .{ "getViewport", "call_getViewport", 1 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "getNativeFramebufferScaleFactor", "call_static_getNativeFramebufferScaleFactor", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getViewport",
+            "getNativeFramebufferScaleFactor",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -84,10 +90,6 @@ pub const XRWebGLLayer = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "getNativeFramebufferScaleFactor", "call_static_getNativeFramebufferScaleFactor", 1 },
-        };
         pub const has_constructor = true;
     };
 

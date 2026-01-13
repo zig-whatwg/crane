@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const URLSearchParams = @import("URLSearchParams.zig").URLSearchParams;
-const Blob = @import("Blob.zig").Blob;
+const URLSearchParams = @import("interfaces").URLSearchParams;
+const Blob = @import("interfaces").Blob;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
-const MediaSource = @import("MediaSource.zig").MediaSource;
+const MediaSource = @import("interfaces").MediaSource;
 
 pub const URL = struct {
     pub const Meta = struct {
@@ -58,9 +58,21 @@ pub const URL = struct {
             .{ "toString", "get_href", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "parse", "call_static_parse", 1 },
+            .{ "canParse", "call_static_canParse", 1 },
+            .{ "createObjectURL", "call_static_createObjectURL", 1 },
+            .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "parse",
+            "canParse",
             "toJSON",
+            "createObjectURL",
+            "revokeObjectURL",
             "toString",
         };
         
@@ -88,13 +100,6 @@ pub const URL = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "parse", "call_static_parse", 1 },
-            .{ "canParse", "call_static_canParse", 1 },
-            .{ "createObjectURL", "call_static_createObjectURL", 1 },
-            .{ "revokeObjectURL", "call_static_revokeObjectURL", 1 },
-        };
         pub const has_constructor = true;
     };
 

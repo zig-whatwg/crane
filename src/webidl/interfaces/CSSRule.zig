@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -41,6 +41,24 @@ pub const CSSRule = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "STYLE_RULE", "get_STYLE_RULE" },
+            .{ "CHARSET_RULE", "get_CHARSET_RULE" },
+            .{ "IMPORT_RULE", "get_IMPORT_RULE" },
+            .{ "MEDIA_RULE", "get_MEDIA_RULE" },
+            .{ "FONT_FACE_RULE", "get_FONT_FACE_RULE" },
+            .{ "PAGE_RULE", "get_PAGE_RULE" },
+            .{ "MARGIN_RULE", "get_MARGIN_RULE" },
+            .{ "NAMESPACE_RULE", "get_NAMESPACE_RULE" },
+            .{ "UNKNOWN_RULE", "get_UNKNOWN_RULE" },
+            .{ "SUPPORTS_RULE", "get_SUPPORTS_RULE" },
+            .{ "KEYFRAMES_RULE", "get_KEYFRAMES_RULE" },
+            .{ "KEYFRAME_RULE", "get_KEYFRAME_RULE" },
+            .{ "COUNTER_STYLE_RULE", "get_COUNTER_STYLE_RULE" },
+            .{ "FONT_FEATURE_VALUES_RULE", "get_FONT_FEATURE_VALUES_RULE" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -61,9 +79,6 @@ pub const CSSRule = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
