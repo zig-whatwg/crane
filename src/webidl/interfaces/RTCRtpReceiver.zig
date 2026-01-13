@@ -13,10 +13,10 @@ const dictionaries = @import("dictionaries");
 const RTCRtpCapabilities = @import("dictionaries").RTCRtpCapabilities;
 const RTCRtpReceiveParameters = @import("dictionaries").RTCRtpReceiveParameters;
 const RTCRtpSynchronizationSource = @import("dictionaries").RTCRtpSynchronizationSource;
-const RTCStatsReport = @import("RTCStatsReport.zig").RTCStatsReport;
+const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
-const RTCDtlsTransport = @import("RTCDtlsTransport.zig").RTCDtlsTransport;
-const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
+const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
+const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const RTCRtpContributingSource = @import("dictionaries").RTCRtpContributingSource;
 const DOMString = @import("typedefs").DOMString;
@@ -52,8 +52,14 @@ pub const RTCRtpReceiver = struct {
             .{ "getStats", "call_getStats", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "getCapabilities", "call_static_getCapabilities", 1 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "getCapabilities",
             "getParameters",
             "getContributingSources",
             "getSynchronizationSources",
@@ -76,10 +82,6 @@ pub const RTCRtpReceiver = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "getCapabilities", "call_static_getCapabilities", 1 },
-        };
         pub const has_constructor = false;
     };
 

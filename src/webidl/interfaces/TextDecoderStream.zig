@@ -12,9 +12,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const TextDecoderCommon = @import("mixins").TextDecoderCommon;
 const GenericTransformStream = @import("mixins").GenericTransformStream;
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
 const TextDecoderOptions = @import("dictionaries").TextDecoderOptions;
-const WritableStream = @import("WritableStream.zig").WritableStream;
+const WritableStream = @import("interfaces").WritableStream;
 const DOMString = @import("typedefs").DOMString;
 
 pub const TextDecoderStream = struct {
@@ -69,9 +69,6 @@ pub const TextDecoderStream = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("mixins").AbstractWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const USVString = @import("typedefs").USVString;
 const WorkerOptions = @import("dictionaries").WorkerOptions;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
-const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
-const MessagePort = @import("MessagePort.zig").MessagePort;
+const EventListener = @import("interfaces").EventListener;
+const MessagePort = @import("interfaces").MessagePort;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -75,9 +75,6 @@ pub const SharedWorker = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

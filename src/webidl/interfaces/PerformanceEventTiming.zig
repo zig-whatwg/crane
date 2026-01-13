@@ -10,9 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const PerformanceEntry = @import("PerformanceEntry.zig").PerformanceEntry;
+const PerformanceEntry = @import("interfaces").PerformanceEntry;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
-const Node = @import("Node.zig").Node;
+const Node = @import("interfaces").Node;
 const DOMString = @import("typedefs").DOMString;
 
 pub const PerformanceEventTiming = struct {
@@ -69,9 +69,6 @@ pub const PerformanceEventTiming = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

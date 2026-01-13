@@ -10,13 +10,13 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const UIEvent = @import("UIEvent.zig").UIEvent;
+const UIEvent = @import("interfaces").UIEvent;
 const UIEventInit = @import("dictionaries").UIEventInit;
-const Window = @import("Window.zig").Window;
+const Window = @import("interfaces").Window;
 const TouchEventInit = @import("dictionaries").TouchEventInit;
-const EventTarget = @import("EventTarget.zig").EventTarget;
-const TouchList = @import("TouchList.zig").TouchList;
-const InputDeviceCapabilities = @import("InputDeviceCapabilities.zig").InputDeviceCapabilities;
+const EventTarget = @import("interfaces").EventTarget;
+const TouchList = @import("interfaces").TouchList;
+const InputDeviceCapabilities = @import("interfaces").InputDeviceCapabilities;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const EventInit = @import("dictionaries").EventInit;
 const DOMString = @import("typedefs").DOMString;
@@ -83,9 +83,6 @@ pub const TouchEvent = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

@@ -10,17 +10,17 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
+const EventTarget = @import("interfaces").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const IdleOptions = @import("dictionaries").IdleOptions;
 const ScreenIdleState = @import("enums").ScreenIdleState;
 const UserIdleState = @import("enums").UserIdleState;
-const Observable = @import("Observable.zig").Observable;
+const Observable = @import("interfaces").Observable;
 const PermissionState = @import("enums").PermissionState;
-const Event = @import("Event.zig").Event;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -56,8 +56,14 @@ pub const IdleDetector = struct {
             .{ "start", "call_start", 0 },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "requestPermission", "call_static_requestPermission", 0 },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "requestPermission",
             "start",
         };
         
@@ -80,10 +86,6 @@ pub const IdleDetector = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "requestPermission", "call_static_requestPermission", 0 },
-        };
         pub const has_constructor = true;
     };
 

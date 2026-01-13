@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SpeechGrammar = @import("SpeechGrammar.zig").SpeechGrammar;
+const SpeechGrammar = @import("interfaces").SpeechGrammar;
 const DOMString = @import("typedefs").DOMString;
 
 pub const SpeechGrammarList = struct {
@@ -60,9 +60,6 @@ pub const SpeechGrammarList = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

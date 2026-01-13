@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ReadableStream = @import("ReadableStream.zig").ReadableStream;
-const WritableStream = @import("WritableStream.zig").WritableStream;
+const ReadableStream = @import("interfaces").ReadableStream;
+const WritableStream = @import("interfaces").WritableStream;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
 
 pub const TransformStream = struct {
@@ -58,9 +58,6 @@ pub const TransformStream = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

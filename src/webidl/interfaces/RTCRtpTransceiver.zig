@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const RTCRtpCodec = @import("dictionaries").RTCRtpCodec;
-const RTCRtpSender = @import("RTCRtpSender.zig").RTCRtpSender;
-const RTCRtpReceiver = @import("RTCRtpReceiver.zig").RTCRtpReceiver;
+const RTCRtpSender = @import("interfaces").RTCRtpSender;
+const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
 const RTCRtpTransceiverDirection = @import("enums").RTCRtpTransceiverDirection;
 const DOMString = @import("typedefs").DOMString;
 
@@ -69,9 +69,6 @@ pub const RTCRtpTransceiver = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

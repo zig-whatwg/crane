@@ -10,16 +10,16 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const AudioNode = @import("AudioNode.zig").AudioNode;
+const AudioNode = @import("interfaces").AudioNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const BaseAudioContext = @import("BaseAudioContext.zig").BaseAudioContext;
+const BaseAudioContext = @import("interfaces").BaseAudioContext;
 const ChannelCountMode = @import("enums").ChannelCountMode;
-const Event = @import("Event.zig").Event;
-const Observable = @import("Observable.zig").Observable;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
-const AudioParam = @import("AudioParam.zig").AudioParam;
+const EventListener = @import("interfaces").EventListener;
+const AudioParam = @import("interfaces").AudioParam;
 const ChannelInterpretation = @import("enums").ChannelInterpretation;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
@@ -64,6 +64,13 @@ pub const AudioScheduledSourceNode = struct {
             "dispatchEvent",
             "when",
             "connect",
+            "connect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
+            "disconnect",
             "disconnect",
         };
         
@@ -76,9 +83,6 @@ pub const AudioScheduledSourceNode = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
