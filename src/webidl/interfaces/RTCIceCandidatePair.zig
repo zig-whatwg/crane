@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RTCIceCandidate = @import("interfaces").RTCIceCandidate;
+const RTCIceCandidate = @import("RTCIceCandidate.zig").RTCIceCandidate;
 
 pub const RTCIceCandidatePair = struct {
     pub const Meta = struct {
@@ -55,6 +55,9 @@ pub const RTCIceCandidatePair = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

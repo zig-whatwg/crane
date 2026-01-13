@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const RdfTriple = @import("interfaces").RdfTriple;
+const RdfTriple = @import("RdfTriple.zig").RdfTriple;
 
 pub const RdfGraph = struct {
     pub const Meta = struct {
@@ -56,6 +56,9 @@ pub const RdfGraph = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = true;
         
         /// Iterable declaration (for Symbol.iterator support)

@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HandwritingDrawing = @import("interfaces").HandwritingDrawing;
+const HandwritingDrawing = @import("HandwritingDrawing.zig").HandwritingDrawing;
 const HandwritingHints = @import("dictionaries").HandwritingHints;
 
 pub const HandwritingRecognizer = struct {
@@ -57,6 +57,9 @@ pub const HandwritingRecognizer = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

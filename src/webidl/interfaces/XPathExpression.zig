@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Node = @import("interfaces").Node;
-const XPathResult = @import("interfaces").XPathResult;
+const Node = @import("Node.zig").Node;
+const XPathResult = @import("XPathResult.zig").XPathResult;
 
 pub const XPathExpression = struct {
     pub const Meta = struct {
@@ -54,6 +54,9 @@ pub const XPathExpression = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("interfaces").EventTarget;
+const EventTarget = @import("EventTarget.zig").EventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AvailabilityStatus = @import("enums").AvailabilityStatus;
-const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
 const SpeechRecognitionOptions = @import("dictionaries").SpeechRecognitionOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const SpeechGrammarList = @import("interfaces").SpeechGrammarList;
-const EventListener = @import("interfaces").EventListener;
-const SpeechRecognitionPhrase = @import("interfaces").SpeechRecognitionPhrase;
+const SpeechGrammarList = @import("SpeechGrammarList.zig").SpeechGrammarList;
+const EventListener = @import("EventListener.zig").EventListener;
+const SpeechRecognitionPhrase = @import("SpeechRecognitionPhrase.zig").SpeechRecognitionPhrase;
 const DOMString = @import("typedefs").DOMString;
 const EventHandler = @import("typedefs").EventHandler;
 
@@ -71,19 +71,11 @@ pub const SpeechRecognition = struct {
             .{ "abort", "call_abort", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "available", "call_static_available", 1 },
-            .{ "install", "call_static_install", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "start",
             "stop",
             "abort",
-            "available",
-            "install",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -97,6 +89,7 @@ pub const SpeechRecognition = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "grammars", "get_grammars", "set_grammars" },
+            .{ "lang", "get_lang", "set_lang" },
             .{ "continuous", "get_continuous", "set_continuous" },
             .{ "interimResults", "get_interimResults", "set_interimResults" },
             .{ "maxAlternatives", "get_maxAlternatives", "set_maxAlternatives" },
@@ -117,9 +110,13 @@ pub const SpeechRecognition = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "available", "call_static_available", 1 },
+            .{ "install", "call_static_install", 1 },
+        };
         pub const has_constructor = true;
     };
 

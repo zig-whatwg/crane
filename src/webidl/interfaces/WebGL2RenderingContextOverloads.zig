@@ -22,7 +22,7 @@ const GLenum = @import("typedefs").GLenum;
 const GLsizeiptr = @import("typedefs").GLsizeiptr;
 const GLintptr = @import("typedefs").GLintptr;
 const GLsizei = @import("typedefs").GLsizei;
-const WebGLUniformLocation = @import("interfaces").WebGLUniformLocation;
+const WebGLUniformLocation = @import("WebGLUniformLocation.zig").WebGLUniformLocation;
 
 pub const WebGL2RenderingContextOverloads = struct {
     pub const Meta = struct {
@@ -42,10 +42,10 @@ pub const WebGL2RenderingContextOverloads = struct {
         pub const methods = .{
             .{ "bufferData", "call_bufferData", 3 },
             .{ "bufferSubData", "call_bufferSubData", 3 },
-            .{ "texImage2D", "call_texImage2D", 9 },
-            .{ "texSubImage2D", "call_texSubImage2D", 9 },
-            .{ "compressedTexImage2D", "call_compressedTexImage2D", 8 },
-            .{ "compressedTexSubImage2D", "call_compressedTexSubImage2D", 9 },
+            .{ "texImage2D", "call_texImage2D", 6 },
+            .{ "texSubImage2D", "call_texSubImage2D", 7 },
+            .{ "compressedTexImage2D", "call_compressedTexImage2D", 7 },
+            .{ "compressedTexSubImage2D", "call_compressedTexSubImage2D", 8 },
             .{ "uniform1fv", "call_uniform1fv", 2 },
             .{ "uniform2fv", "call_uniform2fv", 2 },
             .{ "uniform3fv", "call_uniform3fv", 2 },
@@ -94,6 +94,9 @@ pub const WebGL2RenderingContextOverloads = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

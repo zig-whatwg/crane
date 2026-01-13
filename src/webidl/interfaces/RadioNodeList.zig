@@ -10,8 +10,8 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const NodeList = @import("interfaces").NodeList;
-const Node = @import("interfaces").Node;
+const NodeList = @import("NodeList.zig").NodeList;
+const Node = @import("Node.zig").Node;
 const DOMString = @import("typedefs").DOMString;
 
 pub const RadioNodeList = struct {
@@ -57,6 +57,9 @@ pub const RadioNodeList = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

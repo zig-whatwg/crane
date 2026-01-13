@@ -10,12 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const WritableStream = @import("interfaces").WritableStream;
+const WritableStream = @import("WritableStream.zig").WritableStream;
 const WebTransportSendStreamStats = @import("dictionaries").WebTransportSendStreamStats;
 const QueuingStrategy = @import("dictionaries").QueuingStrategy;
-const WebTransportWriter = @import("interfaces").WebTransportWriter;
-const WritableStreamDefaultWriter = @import("interfaces").WritableStreamDefaultWriter;
-const WebTransportSendGroup = @import("interfaces").WebTransportSendGroup;
+const WebTransportWriter = @import("WebTransportWriter.zig").WebTransportWriter;
+const WritableStreamDefaultWriter = @import("WritableStreamDefaultWriter.zig").WritableStreamDefaultWriter;
+const WebTransportSendGroup = @import("WebTransportSendGroup.zig").WebTransportSendGroup;
 
 pub const WebTransportSendStream = struct {
     pub const Meta = struct {
@@ -72,6 +72,9 @@ pub const WebTransportSendStream = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

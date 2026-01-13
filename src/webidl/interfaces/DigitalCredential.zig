@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const Credential = @import("interfaces").Credential;
+const Credential = @import("Credential.zig").Credential;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
@@ -42,21 +42,13 @@ pub const DigitalCredential = struct {
             .{ "toJSON", "call_toJSON", 0 },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "userAgentAllowsProtocol", "call_static_userAgentAllowsProtocol", 1 },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "toJSON",
-            "userAgentAllowsProtocol",
         };
         
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
-            "isConditionalMediationAvailable",
-            "willRequestConditionalCreation",
         };
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -69,6 +61,10 @@ pub const DigitalCredential = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "userAgentAllowsProtocol", "call_static_userAgentAllowsProtocol", 1 },
+        };
         pub const has_constructor = false;
     };
 

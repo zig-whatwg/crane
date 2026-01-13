@@ -10,28 +10,28 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const ShadowRoot = @import("interfaces").ShadowRoot;
+const ShadowRoot = @import("ShadowRoot.zig").ShadowRoot;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const Document = @import("interfaces").Document;
+const Document = @import("Document.zig").Document;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
-const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const HTMLCollection = @import("interfaces").HTMLCollection;
+const CSSStyleSheet = @import("CSSStyleSheet.zig").CSSStyleSheet;
+const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 const SlotAssignmentMode = @import("enums").SlotAssignmentMode;
-const TrustedHTML = @import("interfaces").TrustedHTML;
-const Node = @import("interfaces").Node;
-const NodeList = @import("interfaces").NodeList;
+const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
+const Node = @import("Node.zig").Node;
+const NodeList = @import("NodeList.zig").NodeList;
 const USVString = @import("typedefs").USVString;
-const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
-const Element = @import("interfaces").Element;
-const Animation = @import("interfaces").Animation;
+const CustomElementRegistry = @import("CustomElementRegistry.zig").CustomElementRegistry;
+const Observable = @import("Observable.zig").Observable;
+const Event = @import("Event.zig").Event;
+const Element = @import("Element.zig").Element;
+const Animation = @import("Animation.zig").Animation;
 const ShadowRootMode = @import("enums").ShadowRootMode;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("interfaces").EventListener;
+const EventListener = @import("EventListener.zig").EventListener;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
-const StyleSheetList = @import("interfaces").StyleSheetList;
+const StyleSheetList = @import("StyleSheetList.zig").StyleSheetList;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -104,6 +104,9 @@ pub const SVGUseElementShadowRoot = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -41,38 +41,6 @@ pub const WEBGL_compressed_texture_astc = struct {
             .{ "getSupportedProfiles", "call_getSupportedProfiles", 0 },
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "COMPRESSED_RGBA_ASTC_4x4_KHR", "get_COMPRESSED_RGBA_ASTC_4x4_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_5x4_KHR", "get_COMPRESSED_RGBA_ASTC_5x4_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_5x5_KHR", "get_COMPRESSED_RGBA_ASTC_5x5_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_6x5_KHR", "get_COMPRESSED_RGBA_ASTC_6x5_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_6x6_KHR", "get_COMPRESSED_RGBA_ASTC_6x6_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_8x5_KHR", "get_COMPRESSED_RGBA_ASTC_8x5_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_8x6_KHR", "get_COMPRESSED_RGBA_ASTC_8x6_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_8x8_KHR", "get_COMPRESSED_RGBA_ASTC_8x8_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_10x5_KHR", "get_COMPRESSED_RGBA_ASTC_10x5_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_10x6_KHR", "get_COMPRESSED_RGBA_ASTC_10x6_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_10x8_KHR", "get_COMPRESSED_RGBA_ASTC_10x8_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_10x10_KHR", "get_COMPRESSED_RGBA_ASTC_10x10_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_12x10_KHR", "get_COMPRESSED_RGBA_ASTC_12x10_KHR" },
-            .{ "COMPRESSED_RGBA_ASTC_12x12_KHR", "get_COMPRESSED_RGBA_ASTC_12x12_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR" },
-            .{ "COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR", "get_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getSupportedProfiles",
@@ -90,6 +58,9 @@ pub const WEBGL_compressed_texture_astc = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -19,14 +19,14 @@ const GPUIndex32 = @import("typedefs").GPUIndex32;
 const GPUIntegerCoordinate = @import("typedefs").GPUIntegerCoordinate;
 const GPUStencilValue = @import("typedefs").GPUStencilValue;
 const GPUSize32 = @import("typedefs").GPUSize32;
-const GPURenderBundle = @import("interfaces").GPURenderBundle;
+const GPURenderBundle = @import("GPURenderBundle.zig").GPURenderBundle;
 const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
-const GPURenderPipeline = @import("interfaces").GPURenderPipeline;
+const GPURenderPipeline = @import("GPURenderPipeline.zig").GPURenderPipeline;
 const USVString = @import("typedefs").USVString;
 const GPUIndexFormat = @import("enums").GPUIndexFormat;
-const GPUBuffer = @import("interfaces").GPUBuffer;
+const GPUBuffer = @import("GPUBuffer.zig").GPUBuffer;
 const GPUSize64 = @import("typedefs").GPUSize64;
-const GPUBindGroup = @import("interfaces").GPUBindGroup;
+const GPUBindGroup = @import("GPUBindGroup.zig").GPUBindGroup;
 const GPUSignedOffset32 = @import("typedefs").GPUSignedOffset32;
 const GPUColor = @import("typedefs").GPUColor;
 
@@ -119,6 +119,9 @@ pub const GPURenderPassEncoder = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

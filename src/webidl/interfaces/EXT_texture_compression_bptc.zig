@@ -39,14 +39,6 @@ pub const EXT_texture_compression_bptc = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "COMPRESSED_RGBA_BPTC_UNORM_EXT", "get_COMPRESSED_RGBA_BPTC_UNORM_EXT" },
-            .{ "COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT", "get_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT" },
-            .{ "COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT", "get_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT" },
-            .{ "COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT", "get_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -63,6 +55,9 @@ pub const EXT_texture_compression_bptc = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

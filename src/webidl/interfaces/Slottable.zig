@@ -10,7 +10,7 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const HTMLSlotElement = @import("HTMLSlotElement.zig").HTMLSlotElement;
 
 pub const Slottable = struct {
     pub const Meta = struct {
@@ -41,13 +41,16 @@ pub const Slottable = struct {
         
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "assignedSlot", "get_assignedSlot", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
-            .{ "assignedSlot", "get_assignedSlot", null },
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

@@ -39,11 +39,6 @@ pub const KHR_parallel_shader_compile = struct {
         pub const methods = .{
         };
         
-        /// Constants binding hints for V8Interface (JS name, getter fn name)
-        pub const constants = .{
-            .{ "COMPLETION_STATUS_KHR", "get_COMPLETION_STATUS_KHR" },
-        };
-        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -60,6 +55,9 @@ pub const KHR_parallel_shader_compile = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 

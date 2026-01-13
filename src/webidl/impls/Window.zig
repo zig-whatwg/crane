@@ -58,6 +58,12 @@ const storage = @import("storage");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const IDBFactoryBackend = storage.indexeddb.IDBFactory;
 
+// Fetch API support - delegate to WindowOrWorkerGlobalScope mixin
+const fetch_api = @import("fetch");
+const global_fetch = fetch_api.webidl.global_fetch;
+const ResponseImpl = @import("Response.zig");
+const WindowOrWorkerGlobalScopeImpl = @import("WindowOrWorkerGlobalScope.zig");
+
 // Cache Storage types for window.caches
 // TODO: Add service_worker module to impls in build.zig to enable CacheStorage
 // const service_worker_cache = @import("service_worker").cache;
@@ -169,7 +175,9 @@ pub const InternalState = struct {
     cookie_store: ?*runtime.Instance = null,
 
     /// Whether this is a secure context (for SecureContext checks)
-    is_secure_context: bool = true,
+    /// Default to false - Browser Context.zig sets this correctly via setIsSecureContext()
+    /// Secure Contexts spec: https://w3c.github.io/webappsec-secure-contexts/
+    is_secure_context: bool = false,
 
     /// The window's origin string for storage access
     /// Derived from the document's URL
@@ -278,6 +286,31 @@ const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
+}
+
+/// Check if a property name is a "supported property name" per HTML §7.4.
+/// These are names of child browsing contexts (iframes, frames) and named elements
+/// (embed, form, img, object with name attributes that are in the document tree).
+/// Per WebIDL, these named properties are read-only and cannot be set/deleted.
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: []const u8) bool {
+    const internal = getInternal(instance) orelse return false;
+
+    // Check if the name matches a child browsing context name
+    // (e.g., an iframe with name="foo" makes window.foo return that iframe's window)
+    const bc = internal.browsing_context;
+    if (bc.findByTargetName(name)) |_| {
+        return true;
+    }
+
+    // TODO: Also check for named elements in the document:
+    // - embed elements with name attribute
+    // - form elements with name attribute
+    // - img elements with name attribute (that are in a document tree)
+    // - object elements with name attribute
+    // For now, we only check browsing context names.
+    // Full implementation would query the document for these elements.
+
+    return false;
 }
 
 /// Set the Window's origin for storage access.
@@ -639,7 +672,7 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 ///
 /// This enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
-pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
     const children = internal.browsing_context.children.items;
 
@@ -703,10 +736,13 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // If we have a parent context, return its WindowProxy
-    if (internal.browsing_context.parent != null) {
-        // TODO: Look up the Window for the parent context
-        // For now, return null to indicate "return self" per spec
+    // If we have a parent context, return its Window
+    if (internal.browsing_context.parent) |parent_bc| {
+        // Get the active Window from the parent browsing context
+        if (parent_bc.getActiveWindow()) |parent_window_ptr| {
+            const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
+            return getWindowProxy(parent_window);
+        }
     }
 
     // If no parent, return self per spec
@@ -1676,9 +1712,11 @@ pub fn get_onportalactivate(instance: *runtime.Instance) anyerror!typedefs.Event
 }
 
 /// Getter for origin
+/// Returns the origin of this window's associated Document.
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#dom-origin
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return "null";
+    return internal.origin;
 }
 
 /// Getter for isSecureContext
@@ -2678,12 +2716,35 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
 }
 
 /// Operation: postMessage
+/// Per HTML Standard §9.4.3: Posts a message to the target window
+/// This creates a MessageEvent and dispatches it to the target window.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = instance;
-    _ = message;
-    _ = targetOrigin;
-    _ = transfer;
-    return error.NotImplemented;
+    _ = transfer; // TODO: Handle transferables
+    _ = targetOrigin; // TODO: Validate origin
+
+    std.debug.print("[postMessage] Called on window={*}\n", .{instance});
+
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = internal;
+
+    // Get the context from the instance
+    const ctx = instance.ctx;
+    const allocator = ctx.allocator;
+
+    // Create MessageEvent with the message data
+    // createPortMessageEvent already sets type to "message"
+    const MessageEventImpl = @import("MessageEvent.zig");
+    const event = try MessageEventImpl.createPortMessageEvent(
+        allocator,
+        ctx,
+        message,
+        runtime.JSValue.jsUndefined, // No ports for basic postMessage
+    );
+    defer interfaces.MessageEvent.deinit(event);
+
+    // Dispatch the event to the target window (which is the instance we were called on)
+    std.debug.print("[postMessage] Dispatching message event to window={*}\n", .{instance});
+    _ = try interfaces.EventTarget.call_dispatchEvent(instance, event);
 }
 
 /// Operation: showDirectoryPicker
@@ -2750,27 +2811,39 @@ pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(
 }
 
 /// Operation: setTimeout
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_setTimeout(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    std.debug.print("[WINDOW_SETTIMEOUT] Window.call_setTimeout ENTRY - delegating to mixin\n", .{});
+    const result = WindowOrWorkerGlobalScopeImpl.call_setTimeout(instance, handler, timeout, arguments);
+    std.debug.print("[WINDOW_SETTIMEOUT] Window.call_setTimeout result: {any}\n", .{result});
+    return result;
 }
 
 /// Operation: clearInterval
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_clearInterval(instance, id);
 }
 
 /// Operation: fetch
+/// Implements the global fetch() function per WHATWG Fetch Standard.
+/// Spec: https://fetch.spec.whatwg.org/#fetch-method
+///
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation which uses
+/// the async curl manager for non-blocking fetch requests.
 pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.RequestInit)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = input;
-    _ = init_data;
-    return error.NotImplemented;
+    // Delegate to the WindowOrWorkerGlobalScope mixin implementation
+    // which uses AsyncCurlManager for true async fetch
+    return WindowOrWorkerGlobalScopeImpl.call_fetch(instance, input, init_data);
+}
+
+// Helper to get promise object and destroy handle to prevent memory leaks
+fn getPromiseAndCleanup(engine: *const runtime.EngineInterface, promise_handle: *anyopaque, allocator: std.mem.Allocator) runtime.JSValue {
+    const promise_obj = engine.getPromiseObject(promise_handle);
+    if (engine.destroyPromiseHandle) |destroy| {
+        destroy(promise_handle, allocator);
+    }
+    return runtime.JSValue.fromHandle(promise_obj);
 }
 
 /// Operation: blur
@@ -2926,18 +2999,15 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
 }
 
 /// Operation: queueMicrotask
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
 }
 
 /// Operation: structuredClone
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = value;
-    _ = options;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_structuredClone(instance, value, options);
 }
 
 /// Operation: close
@@ -3040,8 +3110,17 @@ pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString)
 
     // Get parameters (defaults per spec)
     const url_str = if (url.wasPassed()) url.getValue() else "about:blank";
-    _ = url_str; // TODO: Navigate to URL
     const target_str: []const u8 = if (target.wasPassed()) target.getValue().asSlice() else "_blank";
+
+    // Per HTML spec step 7.2: If urlRecord is failure, throw a "SyntaxError" DOMException
+    // Empty URL or "about:blank" doesn't need validation
+    if (url_str.len > 0 and !std.mem.eql(u8, url_str, "about:blank")) {
+        const api_parser = @import("api_parser");
+        var parsed = api_parser.parseURL(internal.allocator, url_str, null) catch {
+            return error.SyntaxError;
+        };
+        parsed.deinit();
+    }
     const features_str: []const u8 = if (features.wasPassed()) features.getValue().asSlice() else "";
 
     // Handle special target names per spec
@@ -3054,9 +3133,11 @@ pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString)
     }
     if (std.mem.eql(u8, target_str, "_parent")) {
         // Return parent's window, or self if no parent
-        if (internal.browsing_context.parent != null) {
-            // TODO: Return parent window's proxy
-            return getWindowProxy(instance);
+        if (internal.browsing_context.parent) |parent_bc| {
+            if (parent_bc.getActiveWindow()) |parent_window_ptr| {
+                const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
+                return getWindowProxy(parent_window);
+            }
         }
         return getWindowProxy(instance);
     }
@@ -3155,10 +3236,9 @@ pub fn call_reportError(instance: *runtime.Instance, e: runtime.JSValue) anyerro
 }
 
 /// Operation: clearTimeout
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyerror!void {
-    _ = instance;
-    _ = id;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_clearTimeout(instance, id);
 }
 
 /// Operation: getComputedStyle
@@ -3193,12 +3273,9 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
 }
 
 /// Operation: setInterval
+/// Delegates to WindowOrWorkerGlobalScope mixin implementation.
 pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHandler, timeout: webidl.Opt(i32), arguments: []const runtime.JSValue) anyerror!i32 {
-    _ = instance;
-    _ = handler;
-    _ = timeout;
-    _ = arguments;
-    return error.NotImplemented;
+    return WindowOrWorkerGlobalScopeImpl.call_setInterval(instance, handler, timeout, arguments);
 }
 
 /// Operation: cancelAnimationFrame
@@ -3608,4 +3685,10 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     }
 
     return names.toOwnedSlice(allocator);
+}
+
+pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = name;
+    return error.NotImplemented;
 }

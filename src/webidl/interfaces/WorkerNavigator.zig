@@ -24,21 +24,21 @@ const NavigatorOnLine = @import("mixins").NavigatorOnLine;
 const NavigatorConcurrentHardware = @import("mixins").NavigatorConcurrentHardware;
 const NavigatorBadge = @import("mixins").NavigatorBadge;
 const NavigatorUA = @import("mixins").NavigatorUA;
-const LockManager = @import("interfaces").LockManager;
-const Serial = @import("interfaces").Serial;
-const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
-const HID = @import("interfaces").HID;
-const NetworkInformation = @import("interfaces").NetworkInformation;
-const ML = @import("interfaces").ML;
-const NavigatorUAData = @import("interfaces").NavigatorUAData;
-const GPU = @import("interfaces").GPU;
-const StorageBucketManager = @import("interfaces").StorageBucketManager;
-const USB = @import("interfaces").USB;
-const StorageManager = @import("interfaces").StorageManager;
-const ServiceWorkerContainer = @import("interfaces").ServiceWorkerContainer;
-const MediaCapabilities = @import("interfaces").MediaCapabilities;
+const LockManager = @import("LockManager.zig").LockManager;
+const Serial = @import("Serial.zig").Serial;
+const SmartCardResourceManager = @import("SmartCardResourceManager.zig").SmartCardResourceManager;
+const HID = @import("HID.zig").HID;
+const NetworkInformation = @import("NetworkInformation.zig").NetworkInformation;
+const ML = @import("ML.zig").ML;
+const NavigatorUAData = @import("NavigatorUAData.zig").NavigatorUAData;
+const GPU = @import("GPU.zig").GPU;
+const StorageBucketManager = @import("StorageBucketManager.zig").StorageBucketManager;
+const USB = @import("USB.zig").USB;
+const StorageManager = @import("StorageManager.zig").StorageManager;
+const ServiceWorkerContainer = @import("ServiceWorkerContainer.zig").ServiceWorkerContainer;
+const MediaCapabilities = @import("MediaCapabilities.zig").MediaCapabilities;
 const DOMString = @import("typedefs").DOMString;
-const Permissions = @import("interfaces").Permissions;
+const Permissions = @import("Permissions.zig").Permissions;
 
 pub const WorkerNavigator = struct {
     pub const Meta = struct {
@@ -162,6 +162,9 @@ pub const WorkerNavigator = struct {
         pub const lazy_properties = .{
         };
         
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+        };
         pub const has_constructor = false;
     };
 
