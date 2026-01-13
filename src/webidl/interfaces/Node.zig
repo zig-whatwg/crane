@@ -10,18 +10,18 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
-const Document = @import("Document.zig").Document;
+const EventTarget = @import("interfaces").EventTarget;
+const Document = @import("interfaces").Document;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const NodeList = @import("NodeList.zig").NodeList;
+const NodeList = @import("interfaces").NodeList;
 const USVString = @import("typedefs").USVString;
-const Event = @import("Event.zig").Event;
-const Observable = @import("Observable.zig").Observable;
-const Element = @import("Element.zig").Element;
+const Event = @import("interfaces").Event;
+const Observable = @import("interfaces").Observable;
+const Element = @import("interfaces").Element;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const DOMString = @import("typedefs").DOMString;
 
 pub const Node = struct {
@@ -77,6 +77,28 @@ pub const Node = struct {
             .{ "removeChild", "call_removeChild", 1 },
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "ELEMENT_NODE", "get_ELEMENT_NODE" },
+            .{ "ATTRIBUTE_NODE", "get_ATTRIBUTE_NODE" },
+            .{ "TEXT_NODE", "get_TEXT_NODE" },
+            .{ "CDATA_SECTION_NODE", "get_CDATA_SECTION_NODE" },
+            .{ "ENTITY_REFERENCE_NODE", "get_ENTITY_REFERENCE_NODE" },
+            .{ "ENTITY_NODE", "get_ENTITY_NODE" },
+            .{ "PROCESSING_INSTRUCTION_NODE", "get_PROCESSING_INSTRUCTION_NODE" },
+            .{ "COMMENT_NODE", "get_COMMENT_NODE" },
+            .{ "DOCUMENT_NODE", "get_DOCUMENT_NODE" },
+            .{ "DOCUMENT_TYPE_NODE", "get_DOCUMENT_TYPE_NODE" },
+            .{ "DOCUMENT_FRAGMENT_NODE", "get_DOCUMENT_FRAGMENT_NODE" },
+            .{ "NOTATION_NODE", "get_NOTATION_NODE" },
+            .{ "DOCUMENT_POSITION_DISCONNECTED", "get_DOCUMENT_POSITION_DISCONNECTED" },
+            .{ "DOCUMENT_POSITION_PRECEDING", "get_DOCUMENT_POSITION_PRECEDING" },
+            .{ "DOCUMENT_POSITION_FOLLOWING", "get_DOCUMENT_POSITION_FOLLOWING" },
+            .{ "DOCUMENT_POSITION_CONTAINS", "get_DOCUMENT_POSITION_CONTAINS" },
+            .{ "DOCUMENT_POSITION_CONTAINED_BY", "get_DOCUMENT_POSITION_CONTAINED_BY" },
+            .{ "DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC", "get_DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getRootNode",
@@ -108,9 +130,6 @@ pub const Node = struct {
         pub const eager_properties = .{
             .{ "nodeType", "get_nodeType", null },
             .{ "nodeName", "get_nodeName", null },
-            .{ "baseURI", "get_baseURI", null },
-            .{ "isConnected", "get_isConnected", null },
-            .{ "ownerDocument", "get_ownerDocument", null },
             .{ "parentNode", "get_parentNode", null },
             .{ "parentElement", "get_parentElement", null },
             .{ "childNodes", "get_childNodes", null },
@@ -124,11 +143,11 @@ pub const Node = struct {
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{
+            .{ "baseURI", "get_baseURI", null },
+            .{ "isConnected", "get_isConnected", null },
+            .{ "ownerDocument", "get_ownerDocument", null },
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

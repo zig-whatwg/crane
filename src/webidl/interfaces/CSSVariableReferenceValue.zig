@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const USVString = @import("typedefs").USVString;
-const CSSUnparsedValue = @import("CSSUnparsedValue.zig").CSSUnparsedValue;
+const CSSUnparsedValue = @import("interfaces").CSSUnparsedValue;
 
 pub const CSSVariableReferenceValue = struct {
     pub const Meta = struct {
@@ -61,9 +61,6 @@ pub const CSSVariableReferenceValue = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = true;
     };
 

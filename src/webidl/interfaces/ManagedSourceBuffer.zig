@@ -10,19 +10,19 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const SourceBuffer = @import("SourceBuffer.zig").SourceBuffer;
+const SourceBuffer = @import("interfaces").SourceBuffer;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const AppendMode = @import("enums").AppendMode;
-const AudioTrackList = @import("AudioTrackList.zig").AudioTrackList;
-const TextTrackList = @import("TextTrackList.zig").TextTrackList;
-const Observable = @import("Observable.zig").Observable;
-const TimeRanges = @import("TimeRanges.zig").TimeRanges;
-const Event = @import("Event.zig").Event;
+const AudioTrackList = @import("interfaces").AudioTrackList;
+const TextTrackList = @import("interfaces").TextTrackList;
+const Observable = @import("interfaces").Observable;
+const TimeRanges = @import("interfaces").TimeRanges;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const BufferSource = @import("typedefs").BufferSource;
-const EventListener = @import("EventListener.zig").EventListener;
-const VideoTrackList = @import("VideoTrackList.zig").VideoTrackList;
+const EventListener = @import("interfaces").EventListener;
+const VideoTrackList = @import("interfaces").VideoTrackList;
 const EventHandler = @import("typedefs").EventHandler;
 const DOMString = @import("typedefs").DOMString;
 
@@ -79,9 +79,6 @@ pub const ManagedSourceBuffer = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 

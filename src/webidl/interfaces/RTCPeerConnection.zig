@@ -10,39 +10,39 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const EventTarget = @import("EventTarget.zig").EventTarget;
-const RTCRtpTransceiver = @import("RTCRtpTransceiver.zig").RTCRtpTransceiver;
+const EventTarget = @import("interfaces").EventTarget;
+const RTCRtpTransceiver = @import("interfaces").RTCRtpTransceiver;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const RTCPeerConnectionErrorCallback = @import("callbacks").RTCPeerConnectionErrorCallback;
 const RTCDataChannelInit = @import("dictionaries").RTCDataChannelInit;
-const RTCRtpSender = @import("RTCRtpSender.zig").RTCRtpSender;
-const MediaStreamTrack = @import("MediaStreamTrack.zig").MediaStreamTrack;
+const RTCRtpSender = @import("interfaces").RTCRtpSender;
+const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const RTCIceGatheringState = @import("enums").RTCIceGatheringState;
 const AlgorithmIdentifier = @import("typedefs").AlgorithmIdentifier;
 const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
 const USVString = @import("typedefs").USVString;
 const RTCSignalingState = @import("enums").RTCSignalingState;
 const RTCPeerConnectionState = @import("enums").RTCPeerConnectionState;
-const RTCDataChannel = @import("RTCDataChannel.zig").RTCDataChannel;
-const RTCCertificate = @import("RTCCertificate.zig").RTCCertificate;
-const RTCRtpReceiver = @import("RTCRtpReceiver.zig").RTCRtpReceiver;
-const MediaStream = @import("MediaStream.zig").MediaStream;
+const RTCDataChannel = @import("interfaces").RTCDataChannel;
+const RTCCertificate = @import("interfaces").RTCCertificate;
+const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
+const MediaStream = @import("interfaces").MediaStream;
 const RTCIdentityProviderOptions = @import("dictionaries").RTCIdentityProviderOptions;
-const RTCSctpTransport = @import("RTCSctpTransport.zig").RTCSctpTransport;
+const RTCSctpTransport = @import("interfaces").RTCSctpTransport;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
-const EventListener = @import("EventListener.zig").EventListener;
+const EventListener = @import("interfaces").EventListener;
 const RTCIceConnectionState = @import("enums").RTCIceConnectionState;
 const RTCSessionDescriptionCallback = @import("callbacks").RTCSessionDescriptionCallback;
 const RTCLocalSessionDescriptionInit = @import("dictionaries").RTCLocalSessionDescriptionInit;
 const EventHandler = @import("typedefs").EventHandler;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const VoidFunction = @import("callbacks").VoidFunction;
-const RTCStatsReport = @import("RTCStatsReport.zig").RTCStatsReport;
+const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCSessionDescriptionInit = @import("dictionaries").RTCSessionDescriptionInit;
-const RTCSessionDescription = @import("RTCSessionDescription.zig").RTCSessionDescription;
-const RTCIdentityAssertion = @import("RTCIdentityAssertion.zig").RTCIdentityAssertion;
-const Observable = @import("Observable.zig").Observable;
-const Event = @import("Event.zig").Event;
+const RTCSessionDescription = @import("interfaces").RTCSessionDescription;
+const RTCIdentityAssertion = @import("interfaces").RTCIdentityAssertion;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const RTCConfiguration = @import("dictionaries").RTCConfiguration;
 const RTCOfferOptions = @import("dictionaries").RTCOfferOptions;
 const RTCRtpTransceiverInit = @import("dictionaries").RTCRtpTransceiverInit;
@@ -107,13 +107,18 @@ pub const RTCPeerConnection = struct {
             .{ "getSenders", "call_getSenders", 0 },
             .{ "getReceivers", "call_getReceivers", 0 },
             .{ "getTransceivers", "call_getTransceivers", 0 },
-            .{ "addTrack", "call_addTrack", 1 },
+            .{ "addTrack", "call_addTrack", 2 },
             .{ "removeTrack", "call_removeTrack", 1 },
             .{ "addTransceiver", "call_addTransceiver", 1 },
             .{ "createDataChannel", "call_createDataChannel", 1 },
             .{ "getStats", "call_getStats", 0 },
             .{ "setIdentityProvider", "call_setIdentityProvider", 1 },
             .{ "getIdentityAssertion", "call_getIdentityAssertion", 0 },
+        };
+        
+        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
+        pub const static_methods = .{
+            .{ "generateCertificate", "call_static_generateCertificate", 1 },
         };
         
         /// Methods defined/overridden by this interface
@@ -127,6 +132,7 @@ pub const RTCPeerConnection = struct {
             "getConfiguration",
             "setConfiguration",
             "close",
+            "generateCertificate",
             "getSenders",
             "getReceivers",
             "getTransceivers",
@@ -179,10 +185,6 @@ pub const RTCPeerConnection = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-            .{ "generateCertificate", "call_static_generateCertificate", 1 },
-        };
         pub const has_constructor = true;
     };
 

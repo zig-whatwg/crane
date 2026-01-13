@@ -39,6 +39,18 @@ pub const EXT_texture_norm16 = struct {
         pub const methods = .{
         };
         
+        /// Constants binding hints for V8Interface (JS name, getter fn name)
+        pub const constants = .{
+            .{ "R16_EXT", "get_R16_EXT" },
+            .{ "RG16_EXT", "get_RG16_EXT" },
+            .{ "RGB16_EXT", "get_RGB16_EXT" },
+            .{ "RGBA16_EXT", "get_RGBA16_EXT" },
+            .{ "R16_SNORM_EXT", "get_R16_SNORM_EXT" },
+            .{ "RG16_SNORM_EXT", "get_RG16_SNORM_EXT" },
+            .{ "RGB16_SNORM_EXT", "get_RGB16_SNORM_EXT" },
+            .{ "RGBA16_SNORM_EXT", "get_RGBA16_SNORM_EXT" },
+        };
+        
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
         };
@@ -55,9 +67,6 @@ pub const EXT_texture_norm16 = struct {
         pub const lazy_properties = .{
         };
         
-        /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
-        pub const static_methods = .{
-        };
         pub const has_constructor = false;
     };
 
