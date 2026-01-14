@@ -780,13 +780,15 @@ pub fn V8Interface(comptime Interface: type) type {
                                                 @intCast(method.name.len),
                                             );
                                             if (method_name) |m_name| {
-                                                _ = v8.v8_Object_DefineProperty(
+                                                // Per WebIDL § 3.7.5, iterable methods (entries, keys, values, forEach)
+                                            // are enumerable properties on the prototype
+                                            _ = v8.v8_Object_DefineProperty(
                                                     @ptrCast(proto),
                                                     context,
                                                     @ptrCast(m_name),
                                                     @ptrCast(m_func),
                                                     true, // writable = true
-                                                    false, // enumerable = false
+                                                    true, // enumerable = true (per WebIDL § 3.7.5)
                                                     true, // configurable = true
                                                 );
                                             }
