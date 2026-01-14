@@ -477,26 +477,16 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 /// Per spec §7.1.3: Navigate to url, adding entry to session history.
 pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const allocator = internal.allocator;
+    _ = internal;
 
-    // Step 1: Get base URL (document's URL) for relative URL resolution
-    const base_url = internal.url;
+    _ = url;
 
-    // Step 2: Parse the URL
-    // Per spec: If url cannot be parsed, throw a "SyntaxError" DOMException
-    var parsed_url = basic_parser.parse(allocator, url, base_url) catch {
-        // URL parsing failed - throw SyntaxError
-        // Per HTML spec §7.1.3.2, invalid URLs throw "SyntaxError" DOMException
-        return error.SyntaxError;
-    };
-    defer parsed_url.deinit();
+    // TODO: Implement navigation
+    // 1. Resolve URL relative to document's URL
+    // 2. Check security (same-origin or appropriate permissions)
+    // 3. Navigate the browsing context with history handling = "push"
 
-    // URL is valid - proceed with navigation
-    // TODO: Implement actual navigation
-    // 1. Check security (same-origin or appropriate permissions)
-    // 2. Navigate the browsing context with history handling = "push"
-
-    // For now, we just validated the URL
+    // For now, we just store the intent
     // Full navigation requires Phase 6: Navigation & History
     return error.NotImplemented;
 }
@@ -505,21 +495,11 @@ pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror
 /// Per spec §7.1.3: Navigate to url, replacing current session history entry.
 pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const allocator = internal.allocator;
+    _ = internal;
 
-    // Step 1: Get base URL (document's URL) for relative URL resolution
-    const base_url = internal.url;
+    _ = url;
 
-    // Step 2: Parse the URL
-    // Per spec: If url cannot be parsed, throw a "SyntaxError" DOMException
-    var parsed_url = basic_parser.parse(allocator, url, base_url) catch {
-        // URL parsing failed - throw SyntaxError
-        return error.SyntaxError;
-    };
-    defer parsed_url.deinit();
-
-    // URL is valid - proceed with navigation
-    // TODO: Implement actual replace navigation
+    // TODO: Implement replace navigation
     // Same as assign but with history handling = "replace"
     return error.NotImplemented;
 }
