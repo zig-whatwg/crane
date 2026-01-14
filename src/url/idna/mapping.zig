@@ -29,7 +29,18 @@ pub const Status = enum {
 ///
 /// Parameters:
 /// - `use_std3_ascii_rules`: If true, reject disallowed_std3_* characters
+/// - `lenient`: If true, pass through disallowed characters instead of failing (for toASCII)
 pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii_rules: bool) ![]u8 {
+    return mapStringInternal(allocator, input, use_std3_ascii_rules, false);
+}
+
+/// Apply lenient IDNA mapping for toASCII
+/// Disallowed characters are passed through instead of causing failure (V7 is non-fatal)
+pub fn mapStringLenient(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii_rules: bool) ![]u8 {
+    return mapStringInternal(allocator, input, use_std3_ascii_rules, true);
+}
+
+fn mapStringInternal(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii_rules: bool, lenient: bool) ![]u8 {
     var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
@@ -94,8 +105,14 @@ pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii
                 // Skip this character
             },
             .disallowed => {
-                // Per UTS46/WHATWG URL, disallowed characters MUST cause failure
-                return MappingError.DisallowedCharacter;
+                if (lenient) {
+                    // Per UTS46 test data: V7 errors (disallowed chars) are non-fatal for toASCII
+                    // Pass through the character to be encoded in punycode
+                    try result.appendSlice(input[i .. i + cp_len]);
+                } else {
+                    // Per UTS46/WHATWG URL, disallowed characters cause failure for toUnicode
+                    return MappingError.DisallowedCharacter;
+                }
             },
             .disallowed_std3_valid => {
                 if (use_std3_ascii_rules) {

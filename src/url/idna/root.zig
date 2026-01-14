@@ -140,17 +140,43 @@ fn processLabelToASCII(
         // Try to decode the Punycode
         const punycode_part = normalized[4..];
 
-        // Per UTS46, invalid punycode in xn-- labels MUST fail validation
+        // Per UTS46 test data: P4 (invalid punycode) is non-fatal for toASCII
+        // When decode fails:
+        // - If label is pure ASCII: pass through as-is (e.g., "xn--0" stays "xn--0")
+        // - If label contains non-ASCII: re-encode (e.g., "xn--a-ä" becomes "xn--xn--a--gua")
         const dec = punycode.decode(allocator, punycode_part) catch {
-            return IDNAError.PunycodeError;
+            // Invalid punycode - check if label contains non-ASCII
+            var has_non_ascii = false;
+            for (normalized) |byte| {
+                if (byte >= 0x80) {
+                    has_non_ascii = true;
+                    break;
+                }
+            }
+
+            if (has_non_ascii) {
+                // Contains non-ASCII - re-encode the whole label
+                const encoded = punycode.encode(allocator, normalized) catch {
+                    return IDNAError.PunycodeError;
+                };
+                defer allocator.free(encoded);
+
+                const result = try std.fmt.allocPrint(allocator, "xn--{s}", .{encoded});
+                return result;
+            } else {
+                // Pure ASCII invalid xn-- - pass through as-is
+                return try allocator.dupe(u8, normalized);
+            }
         };
 
         {
             defer allocator.free(dec);
 
-            // Per UTS46, xn-- that decodes to empty string is invalid
+            // Per UTS46, xn-- that decodes to empty string is invalid (P4)
+            // Per UTS46 test data: P4 is non-fatal for toASCII - pass through if pure ASCII
             if (dec.len == 0) {
-                return IDNAError.PunycodeError;
+                // Empty decode result - pass through the original label
+                return try allocator.dupe(u8, normalized);
             }
 
             // UTS46 Validity check 1: decoded result must be NFC normalized
@@ -320,7 +346,8 @@ pub fn domainToASCII(
 ) ![]u8 {
     // Step 0: Map the entire domain first to normalize characters like U+3002 (。) to '.'
     // This is needed so we can properly split the domain into labels
-    const domain_mapped = mapping.mapString(allocator, domain, be_strict) catch {
+    // Use lenient mapping for toASCII: disallowed chars pass through (V7 is non-fatal)
+    const domain_mapped = mapping.mapStringLenient(allocator, domain, be_strict) catch {
         return IDNAError.MappingError;
     };
     defer allocator.free(domain_mapped);
