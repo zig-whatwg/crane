@@ -15,32 +15,27 @@ pub const ValidationError = error{
 ///
 /// Checks:
 /// - Label is not empty
-/// - (if be_strict) Label length is <= 63 characters (A4_2 / VerifyDnsLength)
-/// - (if be_strict) Label doesn't start or end with hyphen (CheckHyphens)
-/// - (if be_strict) Label doesn't have hyphen in positions 3-4 (unless xn--) (V3)
-///
-/// Per WHATWG URL Standard:
-/// - CheckHyphens: be_strict (V3, V4 errors ignored when false)
-/// - VerifyDnsLength: be_strict (A4_1, A4_2 errors ignored when false)
+/// - Label length is <= 63 characters
+/// - (if check_hyphens) Label doesn't start or end with hyphen
+/// - (if check_hyphens) Label doesn't have hyphen in positions 3-4 (unless xn--)
 ///
 /// Parameters:
 /// - `label`: The label to validate
-/// - `be_strict`: If true, enforce hyphen and DNS length restrictions
-pub fn validateLabel(label: []const u8, be_strict: bool) !void {
+/// - `check_hyphens`: If true, enforce UseSTD3ASCIIRules hyphen restrictions
+pub fn validateLabel(label: []const u8, check_hyphens: bool) !void {
     // Empty label
     if (label.len == 0) {
         return ValidationError.EmptyLabel;
     }
 
-    // Skip all checks if not strict
-    // Per URL Standard: CheckHyphens=false and VerifyDnsLength=false when be_strict=false
-    if (!be_strict) {
-        return;
-    }
-
-    // Label too long (A4_2 - only when VerifyDnsLength=true)
+    // Label too long
     if (label.len > 63) {
         return ValidationError.LabelTooLong;
+    }
+
+    // Skip hyphen checks if not strict
+    if (!check_hyphens) {
+        return;
     }
 
     // Label starts with hyphen
