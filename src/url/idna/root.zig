@@ -62,6 +62,25 @@ pub const IDNAError = error{
     OutOfMemory,
 };
 
+/// Check if a label starts with a combining mark (V6 error in UTS46)
+///
+/// Per UTS46 section 4.2.1, a label is invalid if it begins with a combining mark
+/// (a character with combining class > 0).
+fn startsWithCombiningMark(label: []const u8) bool {
+    if (label.len == 0) return false;
+
+    // Get the first code point's length
+    const cp_len = std.unicode.utf8ByteSequenceLength(label[0]) catch return false;
+    if (cp_len > label.len) return false;
+
+    // Decode the first code point
+    const first_cp = std.unicode.utf8Decode(label[0..cp_len]) catch return false;
+
+    // Check combining class
+    const combining_class = unicode_data.lookupCombiningClass(first_cp);
+    return combining_class > 0;
+}
+
 /// Check if a code point is a forbidden domain code point (spec line 253)
 ///
 /// Forbidden domain code points:
@@ -105,6 +124,12 @@ fn processLabelToASCII(
     const normalized = try normalization.normalize(allocator, label);
     defer allocator.free(normalized);
 
+    // V6 check: Label must not start with a combining mark
+    // Per UTS46 section 4.2.1, this is a validity error
+    if (startsWithCombiningMark(normalized)) {
+        return IDNAError.ValidationError;
+    }
+
     // Check if normalized label starts with "xn--"
     // Per UTS46, we need to handle existing Punycode labels specially
     if (normalized.len >= 4 and
@@ -136,6 +161,11 @@ fn processLabelToASCII(
 
             if (!std.mem.eql(u8, dec, nfc_dec)) {
                 return IDNAError.PunycodeError;
+            }
+
+            // V6 check: decoded label must not start with a combining mark
+            if (startsWithCombiningMark(dec)) {
+                return IDNAError.ValidationError;
             }
 
             // UTS46 Validity check 2: decoded result must not contain disallowed or mapped characters

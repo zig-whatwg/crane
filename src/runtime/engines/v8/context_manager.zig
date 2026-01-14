@@ -1887,6 +1887,14 @@ pub fn createChildContext(
         callback(options.isolate, child_context, global);
     }
 
+    // 4f. Install lazy constructors for global interfaces (DOMException, URL, etc.)
+    // This makes interfaces accessible as properties on the global object.
+    // In the main context, this is done by hydrateContextFromSnapshot().
+    // For child contexts, we must explicitly call it since createChildContext()
+    // doesn't go through hydrateContextFromSnapshot().
+    const global_constructor_handler = @import("global_constructor_handler.zig");
+    global_constructor_handler.installLazyConstructorsOnGlobal(child_context);
+
     // 5. Create realm for new context
     // Note: global_object is set to null initially and will be updated below
     // after the Window instance is created
