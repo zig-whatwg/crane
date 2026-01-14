@@ -6005,13 +6005,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
-            // Check if this is a pair iterator (has _entries) or indexed iterator (has _target only)
-            const entries_key = v8.v8_String_NewFromUtf8(isolate, "_entries", 8) orelse return;
-            const entries_val = v8.v8_Object_Get(this_obj, context, @ptrCast(entries_key));
+            // Check if this is a pair iterator (has _isPairIterator flag) or indexed iterator
+            const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return;
+            const pair_flag_val = v8.v8_Object_Get(this_obj, context, @ptrCast(pair_flag_key));
 
-            if (entries_val) |ev| {
-                if (!v8.v8_Value_IsUndefined(@ptrCast(ev))) {
-                    // This is a pair iterator
+            if (pair_flag_val) |fv| {
+                if (v8.v8_Value_IsBoolean(@ptrCast(fv)) and v8.v8_Value_BooleanValue(@ptrCast(fv), isolate)) {
+                    // This is a pair iterator - use live iteration
                     pairIteratorNextCallback(info);
                     return;
                 }
@@ -6061,20 +6061,14 @@ pub fn V8Interface(comptime Interface: type) type {
 
             if (is_pair_iterator) {
                 // This is a pair iterable (like Headers, URLSearchParams, FormData)
-                // Collect entries by calling forEach and building an array
-                const entries_array = collectPairIterableEntries(isolate, context, target) orelse {
-                    // Fallback: store target directly (will return empty)
-                    const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
-                    _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
-                    const entries_key = v8.v8_String_NewFromUtf8(isolate, "_entries", 8) orelse return null;
-                    const empty_array = v8.v8_Array_New(isolate, 0);
-                    _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(entries_key), @ptrCast(empty_array));
-                    return iterator_obj;
-                };
+                // Store reference to target for LIVE iteration (not snapshot)
+                // Per WebIDL spec, iteration should reflect concurrent modifications
+                const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
+                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
 
-                // Store the collected entries array
-                const entries_key = v8.v8_String_NewFromUtf8(isolate, "_entries", 8) orelse return null;
-                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(entries_key), @ptrCast(entries_array));
+                // Mark this as a pair iterator by setting _isPairIterator flag
+                const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return null;
+                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(pair_flag_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
             } else {
                 // This is an indexed iterable (like NodeList, HTMLCollection)
                 // Store reference to target object
@@ -6195,7 +6189,8 @@ pub fn V8Interface(comptime Interface: type) type {
             return entries_array;
         }
 
-        /// next() callback for pair iterator objects (uses pre-collected entries)
+        /// next() callback for pair iterator objects (uses LIVE entries from target)
+        /// Per WebIDL spec, iteration should reflect concurrent modifications
         fn pairIteratorNextCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
@@ -6241,65 +6236,120 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
-            // Get stored state
+            // Get stored state (index, kind, and target)
             const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
             const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
-            const entries_key = v8.v8_String_NewFromUtf8(isolate, "_entries", 8) orelse return;
+            const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
 
             const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key)) orelse return;
             const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key)) orelse return;
-            const entries_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(entries_key)) orelse return;
+            const target_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(target_key)) orelse return;
 
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
             const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context))));
 
-            // Get length of entries array
-            const length = v8.v8_Array_Length(@ptrCast(entries_val));
+            // Get live entries from the target object
+            // This ensures concurrent modifications (like delete during iteration) are reflected
+            const target_obj: *v8.Object = @ptrCast(target_val);
 
             // Create result object { value: ..., done: ... }
             const result_obj = v8.v8_Object_New(isolate) orelse return;
-            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
+            const value_key_str = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
             const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
 
-            if (index >= length) {
-                // Iterator exhausted
-                if (v8.v8_Undefined(isolate)) |undef| {
-                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), undef);
-                }
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-            } else {
-                // Get entry at index (it's a [key, value] array)
-                const entry = v8.v8_Array_Get(v8_context, @ptrCast(entries_val), index) orelse {
+            // Get live entries from the Zig instance
+            // Use comptime check for IterableEntry and getEntriesForIterable
+            if (comptime @hasDecl(Interface, "IterableEntry") and @hasDecl(Interface, "getEntriesForIterable")) {
+                const entries: ?[]const Interface.IterableEntry = entry_blk: {
+                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(target_obj, 0);
+                    if (instance_ptr) |ptr| {
+                        // Safety check: detect use-after-free
+                        const ptr_as_int = @intFromPtr(ptr);
+                        const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+                        const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+                        if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+                            (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+                        {
+                            break :entry_blk null;
+                        }
+                        const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+                        break :entry_blk Interface.getEntriesForIterable(instance);
+                    }
+                    break :entry_blk null;
+                };
+
+                const length: u32 = if (entries) |e| @intCast(e.len) else 0;
+
+                if (index >= length) {
+                    // Iterator exhausted
                     if (v8.v8_Undefined(isolate)) |undef| {
-                        _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), undef);
+                        _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), undef);
                     }
                     _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-                    info.setReturnValue(@ptrCast(result_obj));
-                    return;
-                };
+                } else if (entries) |e| {
+                    // Get entry at current index from live entries
+                    const entry = e[index];
 
-                // Extract key and value from entry
-                const zero_key = v8.v8_Number_New(isolate, 0);
-                const one_key = v8.v8_Number_New(isolate, 1);
-                const key_v8 = v8.v8_Object_Get(@ptrCast(entry), v8_context, @ptrCast(zero_key));
-                const val_v8 = v8.v8_Object_Get(@ptrCast(entry), v8_context, @ptrCast(one_key));
+                    // Convert Zig strings to V8 strings
+                    const key_v8 = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len));
 
-                // Return value based on kind
-                const undef = v8.v8_Undefined(isolate);
-                const result_val: *v8.Value = switch (kind) {
-                    .keys => key_v8 orelse undef orelse return,
-                    .values => val_v8 orelse undef orelse return,
-                    .entries => @ptrCast(entry), // Return the [key, value] pair
-                };
+                    // Handle the value - check if it's a union type or simple string
+                    const ValueType = @TypeOf(entry.value);
+                    const val_v8: ?*v8.Value = val_blk: {
+                        if (@typeInfo(ValueType) == .@"union") {
+                            switch (entry.value) {
+                                .usvstring => |s| {
+                                    break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)));
+                                },
+                                else => break :val_blk null,
+                            }
+                        } else {
+                            break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)));
+                        }
+                    };
 
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), result_val);
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
+                    // Return value based on kind
+                    const undef = v8.v8_Undefined(isolate);
+                    const result_val: *v8.Value = switch (kind) {
+                        .keys => @ptrCast(key_v8 orelse return),
+                        .values => val_v8 orelse undef orelse return,
+                        .entries => result_blk: {
+                            // Create [key, value] pair array
+                            const pair = v8.v8_Array_New(isolate, 2);
+                            if (key_v8) |k| {
+                                _ = v8.v8_Array_Set(pair, v8_context, 0, @ptrCast(k));
+                            }
+                            if (val_v8) |v| {
+                                _ = v8.v8_Array_Set(pair, v8_context, 1, v);
+                            }
+                            break :result_blk @ptrCast(pair);
+                        },
+                    };
 
-                // Increment index
-                const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
-                _ = v8.v8_Object_Set(iterator_obj, v8_context, @ptrCast(index_key), @ptrCast(new_index));
+                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), result_val);
+                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
+
+                    // Increment index
+                    const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
+                    _ = v8.v8_Object_Set(iterator_obj, v8_context, @ptrCast(index_key), @ptrCast(new_index));
+                } else {
+                    // No entries available - done
+                    if (v8.v8_Undefined(isolate)) |undef| {
+                        _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), undef);
+                    }
+                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
+                }
+
+                info.setReturnValue(@ptrCast(result_obj));
+                return;
             }
 
+            // Fallback: interface doesn't have getEntriesForIterable - return done immediately
+            // This shouldn't happen for properly implemented pair iterables
+            if (v8.v8_Undefined(isolate)) |undef| {
+                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), undef);
+            }
+            _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
             info.setReturnValue(@ptrCast(result_obj));
         }
 
