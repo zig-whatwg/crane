@@ -164,9 +164,10 @@ pub fn parseHost(
     const decoded = try percent_encoding.percentDecodeString(allocator, input);
     defer allocator.free(decoded);
 
-    // Step 4.5: Check for forbidden host code points
+    // Step 4.5: Check for forbidden domain code points
+    // Domain hosts (non-opaque) must reject C0 controls, DELETE, %, and forbidden host code points
     for (decoded) |byte| {
-        if (host.isForbiddenHostCodePoint(byte)) {
+        if (host.isForbiddenDomainCodePoint(byte)) {
             if (errors) |errs| {
                 try errs.append(.{ .type = .host_invalid_code_point });
             }
@@ -175,10 +176,24 @@ pub fn parseHost(
     }
 
     // Step 5: Domain to ASCII
+    // Per URL Standard § 3.3 step 3: "domain to ASCII with domain and false"
+    // be_strict=false means UseSTD3ASCIIRules=false, allowing non-LDH chars like !"$&'()*+, etc.
+    // This enables domains like "http://!"$&'()*+,-.;=_`{}~/" to parse successfully
     const ascii_domain = idna.domainToASCII(allocator, decoded, false) catch {
         return HostParseError.InvalidHost;
     };
     defer allocator.free(ascii_domain);
+
+    // Step 6: Check for forbidden domain code points AFTER IDNA processing
+    // IDNA mapping can introduce forbidden characters (e.g., NBSP -> space, fullwidth % -> %)
+    for (ascii_domain) |byte| {
+        if (host.isForbiddenDomainCodePoint(byte)) {
+            if (errors) |errs| {
+                try errs.append(.{ .type = .host_invalid_code_point });
+            }
+            return HostParseError.InvalidHost;
+        }
+    }
 
     // Step 7: Check if ends in number (IPv4)
     if (endsInNumber(ascii_domain)) {

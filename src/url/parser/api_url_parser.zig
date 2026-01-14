@@ -37,12 +37,8 @@ pub fn parseURL(
     input: []const u8,
     base: ?*const URLRecord,
 ) !URLRecord {
-    // Preprocess input per spec (lines 1041-1047)
-    const preprocessed = try preprocessInput(allocator, input);
-    defer allocator.free(preprocessed);
-
-    // Call basic URL parser
-    return basic_parser.parse(allocator, preprocessed, base);
+    // Call basic URL parser (which handles preprocessing internally per spec)
+    return basic_parser.parse(allocator, input, base);
 }
 
 /// Preprocess URL input string per spec
