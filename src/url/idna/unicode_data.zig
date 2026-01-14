@@ -15443,8 +15443,10 @@ pub fn lookupIdnaStatus(cp: u21) struct { status: IdnaStatus, mapping: ?[]const 
     if (cp >= 'a' and cp <= 'z') return .{ .status = .valid, .mapping = null };
     // Non-ASCII: default to valid for now (full IDNA would have complete tables)
     if (cp >= 0x80) return .{ .status = .valid, .mapping = null };
-    // Other ASCII: disallowed
-    return .{ .status = .disallowed, .mapping = null };
+    // Other ASCII (!"#$%&'()*+,/:;<=>?@[\]^_`{|}~, etc.): disallowed_std3_valid
+    // Per UTS #46, these are only disallowed when UseSTD3ASCIIRules=true
+    // The URL Standard calls domain-to-ASCII with be_strict=false, so these pass through
+    return .{ .status = .disallowed_std3_valid, .mapping = null };
 }
 
 /// Look up bidi class for a code point
