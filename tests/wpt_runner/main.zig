@@ -521,6 +521,41 @@ pub const ProgressTracker = struct {
             break :blk false;
         } else false;
 
+        // In verbose mode, always show the test file being run with its status
+        if (self.verbose) {
+            const status_icon = switch (result.status) {
+                .ok => "✓",
+                .@"error" => "✗",
+                .timeout => "⏱",
+            };
+            const status_label = switch (result.status) {
+                .ok => "OK",
+                .@"error" => "ERROR",
+                .timeout => "TIMEOUT",
+            };
+            print("\n[{d}/{d}] {s} {s} - {s}", .{ self.completed, self.total, status_icon, status_label, test_path });
+            if (result.context) |ctx| {
+                print(" [{s}]", .{ctx});
+            }
+            print(" ({d}ms)\n", .{result.duration_ms});
+
+            // Show error message at test level
+            if (result.status == .@"error") {
+                if (result.message) |msg| {
+                    print("  Error: {s}\n", .{msg});
+                }
+            }
+
+            // Show timeout message at test level
+            if (result.status == .timeout) {
+                if (result.message) |msg| {
+                    print("  {s}\n", .{msg});
+                } else {
+                    print("  Test timed out\n", .{});
+                }
+            }
+        }
+
         // Count by test status (only count as error if not expected)
         switch (result.status) {
             .ok => {},
@@ -552,11 +587,20 @@ pub const ProgressTracker = struct {
             } else false;
 
             switch (sub.status) {
-                .pass => self.passed += 1,
+                .pass => {
+                    self.passed += 1;
+                    // In verbose mode, show passing subtests too
+                    if (self.verbose) {
+                        print("  ✓ PASS: {s}\n", .{sub.name});
+                    }
+                },
                 .fail => {
                     if (is_expected_fail) {
                         // Expected failure counts as pass
                         self.passed += 1;
+                        if (self.verbose) {
+                            print("  ✓ XFAIL (expected): {s}\n", .{sub.name});
+                        }
                     } else {
                         self.failed += 1;
                         // Track failures by category
@@ -568,32 +612,40 @@ pub const ProgressTracker = struct {
                             }
                             entry.value_ptr.* += 1;
                         }
-                        // Print failure details in verbose mode
+                        // Always print failure details in verbose mode
                         if (self.verbose) {
-                            print("\n  ✗ FAIL: {s}\n", .{sub.name});
+                            print("  ✗ FAIL: {s}\n", .{sub.name});
                             if (sub.message) |msg| {
                                 print("    Message: {s}\n", .{msg});
                             }
                             if (sub.stack) |stack| {
-                                // Print first 3 lines of stack
-                                var line_count: usize = 0;
+                                // Print full stack trace
+                                print("    Stack trace:\n", .{});
                                 var iter = std.mem.splitScalar(u8, stack, '\n');
                                 while (iter.next()) |line| {
-                                    if (line_count >= 3) {
-                                        print("    ...\n", .{});
-                                        break;
-                                    }
                                     if (line.len > 0) {
-                                        print("    {s}\n", .{line});
-                                        line_count += 1;
+                                        print("      {s}\n", .{line});
                                     }
                                 }
                             }
                         }
                     }
                 },
-                .timeout => self.timeouts += 1,
-                .notrun, .precondition_failed => self.notrun += 1,
+                .timeout => {
+                    self.timeouts += 1;
+                    if (self.verbose) {
+                        print("  ⏱ TIMEOUT: {s}\n", .{sub.name});
+                        if (sub.message) |msg| {
+                            print("    Message: {s}\n", .{msg});
+                        }
+                    }
+                },
+                .notrun, .precondition_failed => {
+                    self.notrun += 1;
+                    if (self.verbose) {
+                        print("  ○ {s}: {s}\n", .{ sub.status.toString(), sub.name });
+                    }
+                },
             }
         }
     }
@@ -606,7 +658,13 @@ pub const ProgressTracker = struct {
     }
 
     /// Print progress with explicit context
+    /// In verbose mode, this is a no-op since recordResultWithExpected prints detailed output
     pub fn printProgressWithContext(self: *ProgressTracker, current_test: []const u8, context: ?[]const u8) void {
+        // In verbose mode, don't print progress here - it's done in recordResultWithExpected
+        if (self.verbose) {
+            return;
+        }
+
         // Build display name with context suffix if present
         var display_buf: [256]u8 = undefined;
         const display_name = if (context) |ctx| blk: {
@@ -614,30 +672,26 @@ pub const ProgressTracker = struct {
             break :blk len;
         } else current_test;
 
-        if (self.verbose) {
-            print("[{d}/{d}] {s}\n", .{ self.completed, self.total, display_name });
-        } else {
-            // Print progress bar on same line
-            const percent = if (self.total > 0) (self.completed * 100) / self.total else 0;
-            const elapsed = self.getElapsedTime();
+        // Print progress bar on same line
+        const percent = if (self.total > 0) (self.completed * 100) / self.total else 0;
+        const elapsed = self.getElapsedTime();
 
-            // Truncate test path if too long
-            const max_path_len: usize = 50;
-            const display_path = if (display_name.len > max_path_len)
-                display_name[display_name.len - max_path_len ..]
-            else
-                display_name;
+        // Truncate test path if too long
+        const max_path_len: usize = 50;
+        const display_path = if (display_name.len > max_path_len)
+            display_name[display_name.len - max_path_len ..]
+        else
+            display_name;
 
-            print("\r[{d}/{d}] {d}% | Pass: {d} | Fail: {d} | Time: {s} | {s}   ", .{
-                self.completed,
-                self.total,
-                percent,
-                self.passed,
-                self.failed,
-                elapsed,
-                display_path,
-            });
-        }
+        print("\r[{d}/{d}] {d}% | Pass: {d} | Fail: {d} | Time: {s} | {s}   ", .{
+            self.completed,
+            self.total,
+            percent,
+            self.passed,
+            self.failed,
+            elapsed,
+            display_path,
+        });
     }
 
     pub fn getElapsedTime(self: *ProgressTracker) []const u8 {
