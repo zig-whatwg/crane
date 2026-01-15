@@ -1240,14 +1240,10 @@ V8FunctionCallResult* v8_Function_Call_Safe(
     int argc,
     Global<Value>** argv
 ) {
-    fprintf(stderr, "[v8_Function_Call_Safe] function=%p, context=%p, recv=%p, argc=%d\n",
-            (void*)function, (void*)context, (void*)recv, argc);
-    
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     if (!function || function->IsEmpty()) {
-        fprintf(stderr, "[v8_Function_Call_Safe] ERROR: function is null or empty\n");
         V8FunctionCallResult* result = new V8FunctionCallResult();
         result->value = nullptr;
         result->error = new V8ErrorInfo();
@@ -1255,13 +1251,10 @@ V8FunctionCallResult* v8_Function_Call_Safe(
         result->error->message = strdup("Function handle is null or empty");
         return result;
     }
-    
+
     Local<Value> fn_value = function->Get(isolate);
-    fprintf(stderr, "[v8_Function_Call_Safe] fn_value.IsEmpty()=%d, IsFunction()=%d\n",
-            fn_value.IsEmpty(), fn_value.IsEmpty() ? 0 : fn_value->IsFunction());
-    
+
     if (!fn_value->IsFunction()) {
-        fprintf(stderr, "[v8_Function_Call_Safe] ERROR: value is not a function\n");
         V8FunctionCallResult* result = new V8FunctionCallResult();
         result->value = nullptr;
         result->error = new V8ErrorInfo();
@@ -7935,7 +7928,13 @@ bool v8_Global_IsEmpty(Global<Value>* global) {
 /// Local handle is valid in the caller's HandleScope. The caller must have
 /// an active HandleScope.
 void* v8_Global_Get(Isolate* isolate, Global<Value>* global) {
-    if (!isolate || !global || global->IsEmpty()) return nullptr;
+    if (!isolate || !global) {
+        return nullptr;
+    }
+
+    if (global->IsEmpty()) {
+        return nullptr;
+    }
 
     // Use EscapableHandleScope so we can return the Local to the caller's scope
     EscapableHandleScope handle_scope(isolate);
@@ -7944,9 +7943,11 @@ void* v8_Global_Get(Isolate* isolate, Global<Value>* global) {
     // Escape the local so it survives this function's HandleScope
     Local<Value> escaped = handle_scope.Escape(local);
 
+    void* result = *reinterpret_cast<void**>(&escaped);
+
     // Return the internal pointer - now valid in caller's HandleScope
     // Use V8's slot-style representation (this is how V8 FFI handles work)
-    return *reinterpret_cast<void**>(&escaped);
+    return result;
 }
 
 /// Convert a Global<Value> to a Global<Function> if it contains a function

@@ -146,6 +146,17 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     state.own.port1 = port1_instance;
     state.own.port2 = port2_instance;
 
+    // Link the WebIDL ports to each other for message dispatch
+    // This allows postMessage on port1 to find port2's onmessage handler
+    const port1_state = port1_instance.getState(MessagePortInterface.State);
+    const port2_state = port2_instance.getState(MessagePortInterface.State);
+    if (port1_state.own._internal) |port1_internal| {
+        port1_internal.entangled_webidl_port = port2_instance;
+    }
+    if (port2_state.own._internal) |port2_internal| {
+        port2_internal.entangled_webidl_port = port1_instance;
+    }
+
     if (state.own._internal) |internal| {
         internal.initialized = true;
     }

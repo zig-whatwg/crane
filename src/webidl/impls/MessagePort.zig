@@ -36,12 +36,17 @@ pub const ImplError = error{
 /// Contains:
 /// - Pointer to streams internal MessagePort for actual message passing
 /// - Event handlers stored as WebIDL callbacks
+/// - Reference to entangled WebIDL port for message dispatch
 pub const InternalState = struct {
     /// Backing implementation from streams internal
     internal_port: *InternalMessagePort,
 
     /// Allocator used for this state
     allocator: std.mem.Allocator,
+
+    /// Reference to the entangled WebIDL MessagePort instance
+    /// Used for dispatching messages to JavaScript handlers
+    entangled_webidl_port: ?*runtime.Instance = null,
 
     pub fn deinit(self: *InternalState) void {
         self.internal_port.deinit();
@@ -189,32 +194,211 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// Operation: postMessage
 /// Spec: § 9.3.2.1 postMessage(message, transfer)
 ///
-/// Posts a message to the entangled port. For Streams transfer, we use
-/// simplified messages with type and value.
+/// Posts a message to the entangled port. Creates a MessageEvent and
+/// dispatches it to the entangled port's onmessage handler.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    _ = transfer; // Transfer semantics simplified for now
+    const v8_engine = @import("v8");
 
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // Convert runtime.JSValue to streams JSValue
-        const msg_value: JSValue = switch (message) {
-            .undefined => JSValue.undefined_value(),
-            .null => JSValue{ .null = {} },
-            .boolean => |b| JSValue{ .boolean = b },
-            .number => |n| JSValue{ .number = n },
-            .string => |s| JSValue{ .string = s.data },
-            .handle => |h| JSValue.fromEnginePtr(internal.allocator, h.ptr) catch {
-                return ImplError.OutOfMemory;
-            },
-            .instance => JSValue{ .object = {} },
-        };
+    const internal = state.own._internal orelse return;
 
-        internal.internal_port.postMessage("chunk", msg_value) catch |err| {
-            return switch (err) {
-                error.PortClosed => ImplError.PortClosed,
-                error.NotEntangled => ImplError.NotEntangled,
-                else => ImplError.OutOfMemory,
-            };
-        };
+    // Check if port is closed
+    if (internal.internal_port.closed) return ImplError.PortClosed;
+
+    // Get the entangled WebIDL port
+    const entangled_port = internal.entangled_webidl_port orelse return ImplError.NotEntangled;
+
+    // Get entangled port's state to check for onmessage handler
+    const entangled_state = entangled_port.getState(State);
+    const entangled_internal = entangled_state.own._internal orelse return;
+
+    // Only dispatch if queue is enabled (set when onmessage is assigned)
+    if (!entangled_internal.internal_port.queue_enabled) return;
+
+    // Get the onmessage handler - check if it's actually set (not undefined/garbage)
+    // The handler is stored as a tagged pointer to a V8 GlobalHandle, but it's stored
+    // in a function pointer type which has strict alignment requirements. We need to
+    // extract the raw address without triggering alignment checks.
+    //
+    // EventHandler type is ?*const fn(...) - we get the raw memory contents as usize
+    // using @as to read the bytes directly, avoiding Zig's alignment checks on optionals.
+    const handler_bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&entangled_state.own.onmessage)).*;
+    const handler_addr: usize = @bitCast(handler_bytes);
+
+    // Check for null (0) - zero-initialized memory
+    if (handler_addr == 0) {
+        return;
     }
+
+    // Extract tag from low 2 bits and untagged address
+    const tag = handler_addr & 0x3;
+    const untagged_addr = handler_addr & ~@as(usize, 0x3);
+
+    // Verify it's a global_handle tag (tag == 1)
+    if (tag != 1) {
+        return; // Not a global_handle tag
+    }
+
+    // Sanity check: verify the untagged address looks like a valid heap pointer
+    // On 64-bit macOS, user-space heap is typically below 0x800000000000
+    // and above some minimum (e.g., 0x100000000)
+    if (untagged_addr < 0x100000000 or untagged_addr > 0x7FFFFFFFFFFF) {
+        return; // Invalid address range - corrupted pointer
+    }
+
+    // Verify alignment - Global<Value>* should be 8-byte aligned
+    if ((untagged_addr & 0x7) != 0) {
+        return; // Misaligned pointer
+    }
+
+    // Get V8 context and isolate
+    const engine_ctx = entangled_port.ctx.engine_ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // The untagged_addr IS the Global<Value>* - we can use it directly with v8_Function_Call_Safe
+    // which expects Global handles
+    const callback_global: *v8_engine.ffi.Value = @ptrFromInt(untagged_addr);
+
+    // Check if it's a function using the Global-accepting version
+    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) {
+        return;
+    }
+
+    // Clone the message using V8's structured clone with transfer
+    // This properly handles ArrayBuffer transfer (copies data, then detaches original)
+    var cloned_message: runtime.JSValue = undefined;
+
+    if (message == .handle) {
+        const msg_handle = message.handle;
+        const v8_value: *v8_engine.ffi.Value = @ptrCast(@alignCast(msg_handle.ptr));
+
+        // Check if we have a transfer list
+        if (transfer == .handle) {
+            const transfer_handle = transfer.handle;
+            const src_ctx = instance.ctx.engine_ctx orelse return;
+            const src_v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(src_ctx));
+
+            const transfer_value: *v8_engine.ffi.Value = @ptrCast(transfer_handle.ptr);
+            if (v8_engine.ffi.v8_Value_IsArray(transfer_value)) {
+                const transfer_array: *v8_engine.ffi.Array = @ptrCast(transfer_value);
+                const length = v8_engine.ffi.v8_Array_Length(transfer_array);
+
+                if (length > 0) {
+                    // Build transfer list for V8
+                    var v8_transfers: [64]*v8_engine.ffi.Value = undefined;
+                    const count = @min(length, 64);
+
+                    for (0..count) |i| {
+                        if (v8_engine.ffi.v8_Array_Get(src_v8_context, transfer_array, @intCast(i))) |item| {
+                            v8_transfers[i] = item;
+                        } else {
+                            return; // Failed to get transfer item
+                        }
+                    }
+
+                    // Use V8's structured clone with transfer
+                    var error_code: c_int = 0;
+                    const cloned = v8_engine.ffi.v8_Value_StructuredCloneWithTransfer(
+                        v8_value,
+                        &v8_transfers,
+                        count,
+                        &error_code,
+                    );
+
+                    if (cloned == null or error_code != 0) {
+                        return; // Clone with transfer failed
+                    }
+
+                    cloned_message = runtime.JSValue{
+                        .handle = .{
+                            .ptr = @ptrCast(cloned.?),
+                            .needs_disposal = true,
+                            .handle_scope = .global,
+                        },
+                    };
+                } else {
+                    // Empty transfer list - use simple clone
+                    const cloned = v8_engine.ffi.v8_Value_StructuredClone(v8_value);
+                    if (cloned == null) {
+                        return; // Clone failed
+                    }
+                    cloned_message = runtime.JSValue{
+                        .handle = .{
+                            .ptr = @ptrCast(cloned.?),
+                            .needs_disposal = true,
+                            .handle_scope = .global,
+                        },
+                    };
+                }
+            } else {
+                // Transfer is not an array - use simple clone
+                const cloned = v8_engine.ffi.v8_Value_StructuredClone(v8_value);
+                if (cloned == null) {
+                    return; // Clone failed
+                }
+                cloned_message = runtime.JSValue{
+                    .handle = .{
+                        .ptr = @ptrCast(cloned.?),
+                        .needs_disposal = true,
+                        .handle_scope = .global,
+                    },
+                };
+            }
+        } else {
+            // No transfer list - use simple structured clone
+            const cloned = v8_engine.ffi.v8_Value_StructuredClone(v8_value);
+            if (cloned == null) {
+                return; // Clone failed
+            }
+            cloned_message = runtime.JSValue{
+                .handle = .{
+                    .ptr = @ptrCast(cloned.?),
+                    .needs_disposal = true,
+                    .handle_scope = .global,
+                },
+            };
+        }
+    } else {
+        // For primitives, just clone directly
+        cloned_message = message.clone(entangled_port.ctx.allocator) catch return;
+    }
+
+    // Create a MessageEvent with the cloned message data
+    const MessageEventInterface = @import("interfaces").MessageEvent;
+    const MessageEventImpl = @import("MessageEvent.zig");
+
+    const msg_event = MessageEventImpl.call_constructor(
+        entangled_port.ctx,
+        runtime.DOMString.initInterned("message"),
+        .notPassed(),
+    ) catch return;
+
+    // Set the message data on the event
+    var msg_event_state = msg_event.getState(MessageEventInterface.State);
+    msg_event_state.own.data = cloned_message;
+
+    // Wrap the event as a V8 object - this returns a Global<Object>*
+    const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
+        msg_event,
+        "MessageEvent",
+        v8_isolate,
+        v8_context,
+    ) catch return;
+
+    // Create undefined value for the receiver
+    const undefined_value = v8_engine.ffi.v8_Undefined(v8_isolate);
+
+    // Call the handler function using the Safe version which takes Global handles
+    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_v8_obj)};
+    const result = v8_engine.ffi.v8_Function_Call_Safe(
+        callback_global, // Global<Value>* function
+        @ptrCast(v8_context), // Global<Context>*
+        @ptrCast(undefined_value), // Global<Value>* receiver
+        1, // argc
+        @ptrCast(&args), // Global<Value>** argv
+    );
+
+    // Clean up the result
+    v8_engine.ffi.v8_FreeFunctionCallResult(result);
 }
