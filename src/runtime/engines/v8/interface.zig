@@ -2051,7 +2051,11 @@ pub fn V8Interface(comptime Interface: type) type {
                         //
                         // IMPORTANT: Getters that return internal references (not newly allocated)
                         // MUST be updated to dupe the string first, or the cleanup will double-free.
-                        const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString or PayloadType == runtime.JSValue);
+                        // NOTE: JSValue is NOT cleaned up here because getters typically return
+                        // internal state references (e.g., MessageEvent.data). Operations that
+                        // allocate new JSValue data (like structuredClone) are cleaned up in
+                        // callMethodWithArgs instead.
+                        const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
 
                         defer if (needs_cleanup) {
                             // Re-validate allocator before cleanup - it could have been invalidated
@@ -2067,16 +2071,6 @@ pub fn V8Interface(comptime Interface: type) type {
                                 } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
                                     if (result.len > 0) {
                                         cleanup_allocator.free(result);
-                                    }
-                                } else if (PayloadType == runtime.JSValue) {
-                                    // Free owned string data in JSValue after V8 conversion
-                                    switch (result) {
-                                        .string => |s| {
-                                            if (s.owned and s.data.len > 0) {
-                                                cleanup_allocator.free(s.data);
-                                            }
-                                        },
-                                        else => {},
                                     }
                                 }
                             }
