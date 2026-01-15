@@ -154,18 +154,82 @@ pub fn call_clearInterval(instance: *runtime.Instance, id: webidl.Opt(i32)) anye
 /// Operation: queueMicrotask
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-queuemicrotask
 ///
-/// TODO: When implementing, the callback MUST be stored as a V8 Global handle.
-/// Unlike setTimeout/setInterval, microtasks execute on the current event loop turn
-/// but still need Global handles since the callback must survive the caller's HandleScope.
-///
-/// Implementation requirements:
-/// 1. Create Global handle for the VoidFunction callback
-/// 2. Queue in microtask queue
-/// 3. Dispose Global handle after callback executes
+/// Queues a microtask to invoke the callback. The callback is a V8 GlobalHandle
+/// (tagged pointer) that will be invoked when the microtask queue is processed.
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
+    const v8_engine = @import("v8");
+    const v8_ffi = v8_engine.ffi;
+    const pointer_tag = v8_engine.pointer_tag;
+
+    // Get the V8 isolate from the context
+    const isolate: *v8_ffi.Isolate = @ptrCast(@alignCast(instance.ctx.engine_ctx orelse return error.NotImplemented));
+
+    // The callback parameter is a tagged pointer to a V8 GlobalHandle (the JS function)
+    // We need to untag it to get the actual pointer
+    const callback_ptr: *const anyopaque = @ptrCast(callback);
+    const untagged = pointer_tag.untagPointer(callback_ptr);
+
+    // Verify it's a global handle (callback functions are always passed as global handles)
+    if (untagged.tag != .global_handle and untagged.tag != .untagged) {
+        return error.NotImplemented;
+    }
+
+    // The untagged pointer is the V8 Global<Value>* (the JS function)
+    const js_function: *v8_ffi.Value = @ptrCast(@alignCast(untagged.ptr));
+
+    // Allocate context for the microtask callback
+    // This will be freed after the microtask executes
+    const ctx = instance.ctx.allocator.create(MicrotaskContext) catch return error.OutOfMemory;
+    ctx.* = .{
+        .js_function = js_function,
+        .isolate = isolate,
+        .allocator = instance.ctx.allocator,
+    };
+
+    // Queue the microtask with V8
+    const callback_fn: ?*const anyopaque = @ptrCast(&microtaskCallback);
+    v8_ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_fn, ctx);
+}
+
+/// Context passed to the microtask callback
+const MicrotaskContext = struct {
+    js_function: *@import("v8").ffi.Value,
+    isolate: *@import("v8").ffi.Isolate,
+    allocator: std.mem.Allocator,
+};
+
+/// Microtask callback that invokes the JS function
+fn microtaskCallback(data: ?*anyopaque) callconv(.C) void {
+    const v8_ffi = @import("v8").ffi;
+
+    const ctx: *MicrotaskContext = @ptrCast(@alignCast(data orelse return));
+    defer ctx.allocator.destroy(ctx);
+
+    // Create a HandleScope for V8 operations
+    const handle_scope = v8_ffi.v8_HandleScope_New(ctx.isolate);
+    defer v8_ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Get the current context
+    const v8_context = v8_ffi.v8_Isolate_GetCurrentContext(ctx.isolate);
+    if (v8_context == null) {
+        // No context, can't call function - dispose the global handle
+        v8_ffi.v8_Value_Dispose(ctx.js_function);
+        return;
+    }
+
+    // Call the function with no arguments and undefined as 'this'
+    const undefined_val = v8_ffi.v8_Undefined(ctx.isolate);
+    var args: [0]*v8_ffi.Value = .{};
+    _ = v8_ffi.v8_Function_CallWithReceiver_Safe(
+        ctx.js_function,
+        v8_context,
+        undefined_val,
+        0,
+        &args,
+    );
+
+    // Dispose the global handle after execution
+    v8_ffi.v8_Value_Dispose(ctx.js_function);
 }
 
 /// Operation: structuredClone

@@ -470,6 +470,15 @@ pub const Context = struct {
         // This matches how child contexts (iframes) register Window properties.
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
 
+        // Register Window methods (queueMicrotask, setTimeout, etc.) as own properties on the global object.
+        // Per WebIDL §3.8: For [Global] interfaces, the global object should have
+        // the interface's operations as own properties (callable functions).
+        v8.interface_bindings.Window.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Also register EventTarget methods (addEventListener, removeEventListener, dispatchEvent)
+        // since Window inherits from EventTarget.
+        v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+
         // Set self/window/frames as data properties equal to global
         // This is critical for testharness.js compatibility: (function(global_scope){...})(self)
         // requires that self === globalThis so that properties set on global_scope become
@@ -595,6 +604,15 @@ pub const Context = struct {
 
         // Register Window properties as own properties on the global object
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Register Window methods (queueMicrotask, setTimeout, etc.) as own properties on the global object.
+        // Per WebIDL §3.8: For [Global] interfaces, the global object should have
+        // the interface's operations as own properties (callable functions).
+        v8.interface_bindings.Window.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Also register EventTarget methods (addEventListener, removeEventListener, dispatchEvent)
+        // since Window inherits from EventTarget.
+        v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
 
         // Set self/window/frames as data properties equal to global
         // This is critical for testharness.js compatibility
