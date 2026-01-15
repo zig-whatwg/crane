@@ -22,9 +22,7 @@
 //!
 //! Options are passed after `--` to zig build wpt:
 //! - `--output=path` - Output directory for results (default: wpt-results/)
-//! - `--log-mach` - Show failure details (WPT-compatible verbose mode)
-//! - `--log-mach-verbose` - Same as --log-mach
-//! - `-v` or `--verbose` - Same as --log-mach
+//! - `--quiet` or `-q` - Minimal output (progress bar only, no individual tests)
 //! - `--parallel=N` - Number of parallel test runners
 //! - `--limit=N` - Run only the first N test files (useful for quick iteration)
 //! - `--pattern=GLOB` - Only run tests matching glob pattern (e.g., "*constructor*")
@@ -70,8 +68,8 @@ pub const Options = struct {
     allocator: std.mem.Allocator,
     /// Output directory for results
     output_dir: []const u8 = "wpt-results",
-    /// Verbose output (--log-mach or -v)
-    verbose: bool = false,
+    /// Verbose output (default: true, use --quiet to disable)
+    verbose: bool = true,
     /// Number of parallel runners (0 = auto)
     parallel: u32 = 0,
     /// WPT root directory
@@ -248,14 +246,9 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
 
         if (std.mem.startsWith(u8, arg, "--output=")) {
             options.output_dir = arg["--output=".len..];
-        } else if (std.mem.eql(u8, arg, "--log-mach") or
-            std.mem.startsWith(u8, arg, "--log-mach=") or
-            std.mem.eql(u8, arg, "--log-mach-verbose") or
-            std.mem.eql(u8, arg, "--verbose") or
-            std.mem.eql(u8, arg, "-v"))
-        {
-            // WPT-compatible: --log-mach enables human-readable output with failure details
-            options.verbose = true;
+        } else if (std.mem.eql(u8, arg, "--quiet") or std.mem.eql(u8, arg, "-q")) {
+            // Quiet mode: minimal output (progress bar only)
+            options.verbose = false;
         } else if (std.mem.startsWith(u8, arg, "--parallel=")) {
             const value = arg["--parallel=".len..];
             options.parallel = std.fmt.parseInt(u32, value, 10) catch 0;
@@ -560,16 +553,11 @@ pub const ProgressTracker = struct {
         // In verbose mode, always show the test file being run with its status
         if (self.verbose) {
             const status_icon = switch (result.status) {
-                .ok => "✓",
-                .@"error" => "✗",
-                .timeout => "⏱",
+                .ok => "✅",
+                .@"error" => "💥",
+                .timeout => "⏰",
             };
-            const status_label = switch (result.status) {
-                .ok => "OK",
-                .@"error" => "ERROR",
-                .timeout => "TIMEOUT",
-            };
-            print("\n[{d}/{d}] {s} {s} - {s}", .{ self.completed, self.total, status_icon, status_label, test_path });
+            print("\n[{d}/{d}] {s} {s}", .{ self.completed, self.total, status_icon, test_path });
             if (result.context) |ctx| {
                 print(" [{s}]", .{ctx});
             }
@@ -578,16 +566,16 @@ pub const ProgressTracker = struct {
             // Show error message at test level
             if (result.status == .@"error") {
                 if (result.message) |msg| {
-                    print("  Error: {s}\n", .{msg});
+                    print("  💬 Error: {s}\n", .{msg});
                 }
             }
 
             // Show timeout message at test level
             if (result.status == .timeout) {
                 if (result.message) |msg| {
-                    print("  {s}\n", .{msg});
+                    print("  💬 {s}\n", .{msg});
                 } else {
-                    print("  Test timed out\n", .{});
+                    print("  💬 Test timed out\n", .{});
                 }
             }
         }
@@ -631,7 +619,7 @@ pub const ProgressTracker = struct {
                     self.passed += 1;
                     // In verbose mode, show passing subtests too
                     if (self.verbose) {
-                        print("  ✓ PASS: {s}\n", .{sub.name});
+                        print("  ├── ✅ {s}\n", .{sub.name});
                     }
                 },
                 .fail => {
@@ -639,7 +627,7 @@ pub const ProgressTracker = struct {
                         // Expected failure counts as pass
                         self.passed += 1;
                         if (self.verbose) {
-                            print("  ✓ XFAIL (expected): {s}\n", .{sub.name});
+                            print("  ├── ✅ (expected fail) {s}\n", .{sub.name});
                         }
                     } else {
                         self.failed += 1;
@@ -664,17 +652,17 @@ pub const ProgressTracker = struct {
                         }
                         // Always print failure details in verbose mode
                         if (self.verbose) {
-                            print("  ✗ FAIL: {s}\n", .{sub.name});
+                            print("  ├── ❌ {s}\n", .{sub.name});
                             if (sub.message) |msg| {
-                                print("    Message: {s}\n", .{msg});
+                                print("  │      📝 {s}\n", .{msg});
                             }
                             if (sub.stack) |stack| {
                                 // Print full stack trace
-                                print("    Stack trace:\n", .{});
+                                print("  │      📍 Stack:\n", .{});
                                 var iter = std.mem.splitScalar(u8, stack, '\n');
                                 while (iter.next()) |line| {
                                     if (line.len > 0) {
-                                        print("      {s}\n", .{line});
+                                        print("  │         {s}\n", .{line});
                                     }
                                 }
                             }
@@ -694,16 +682,16 @@ pub const ProgressTracker = struct {
                     }) catch {};
 
                     if (self.verbose) {
-                        print("  ⏱ TIMEOUT: {s}\n", .{sub.name});
+                        print("  ├── ⏰ {s}\n", .{sub.name});
                         if (sub.message) |msg| {
-                            print("    Message: {s}\n", .{msg});
+                            print("  │      📝 {s}\n", .{msg});
                         }
                     }
                 },
                 .notrun, .precondition_failed => {
                     self.notrun += 1;
                     if (self.verbose) {
-                        print("  ○ {s}: {s}\n", .{ sub.status.toString(), sub.name });
+                        print("  ├── ⚪ ({s}) {s}\n", .{ sub.status.toString(), sub.name });
                     }
                 },
             }
@@ -804,24 +792,19 @@ pub const ProgressTracker = struct {
         // Print detailed failure report first (before summary)
         if (self.failure_details.items.len > 0) {
             print("\n", .{});
-            print("════════════════════════════════════════════════════════════════════════════════\n", .{});
-            print("FAILURE REPORT\n", .{});
-            print("════════════════════════════════════════════════════════════════════════════════\n", .{});
+            print("┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n", .{});
+            print("┃  ❌ FAILURE REPORT                                                           ┃\n", .{});
+            print("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n", .{});
 
             for (self.failure_details.items, 0..) |detail, idx| {
                 // Test file header
                 const status_icon = switch (detail.status) {
-                    .ok => "✓",
-                    .@"error" => "✗",
-                    .timeout => "⏱",
-                };
-                const status_label = switch (detail.status) {
-                    .ok => "OK",
-                    .@"error" => "ERROR",
-                    .timeout => "TIMEOUT",
+                    .ok => "✅",
+                    .@"error" => "💥",
+                    .timeout => "⏰",
                 };
 
-                print("\n{d}. {s} {s}: {s}", .{ idx + 1, status_icon, status_label, detail.test_path });
+                print("\n┌─ {d}. {s} {s}", .{ idx + 1, status_icon, detail.test_path });
                 if (detail.context) |ctx| {
                     print(" [{s}]", .{ctx});
                 }
@@ -829,69 +812,92 @@ pub const ProgressTracker = struct {
 
                 // Show test-level error message
                 if (detail.message) |msg| {
-                    print("   Error: {s}\n", .{msg});
+                    print("│  💬 {s}\n", .{msg});
                 }
 
                 // Show failed/timed-out subtests
                 if (detail.subtests.items.len > 0) {
-                    print("   Subtests:\n", .{});
-                    for (detail.subtests.items) |sub| {
+                    for (detail.subtests.items, 0..) |sub, sub_idx| {
+                        const is_last = sub_idx == detail.subtests.items.len - 1;
+                        const prefix = if (is_last) "└" else "├";
+                        const cont = if (is_last) " " else "│";
+
                         const sub_icon = switch (sub.status) {
-                            .pass => "✓",
-                            .fail => "✗",
-                            .timeout => "⏱",
-                            .notrun, .precondition_failed => "○",
+                            .pass => "✅",
+                            .fail => "❌",
+                            .timeout => "⏰",
+                            .notrun, .precondition_failed => "⚪",
                         };
-                        print("   {s} {s}: {s}\n", .{ sub_icon, sub.status.toString(), sub.name });
+                        print("│  {s}── {s} {s}\n", .{ prefix, sub_icon, sub.name });
 
                         // Show assertion message
                         if (sub.message) |msg| {
-                            print("      Message: {s}\n", .{msg});
+                            print("│  {s}      📝 {s}\n", .{ cont, msg });
                         }
 
                         // Show full stack trace for failures
                         if (sub.stack) |stack| {
-                            print("      Stack trace:\n", .{});
+                            print("│  {s}      📍 Stack trace:\n", .{cont});
                             var iter = std.mem.splitScalar(u8, stack, '\n');
                             while (iter.next()) |line| {
                                 if (line.len > 0) {
-                                    print("        {s}\n", .{line});
+                                    print("│  {s}         {s}\n", .{ cont, line });
                                 }
                             }
                         }
                     }
                 }
+                print("│\n", .{});
             }
-            print("\n════════════════════════════════════════════════════════════════════════════════\n", .{});
         }
 
         // Summary section
-        print("\n================================\n", .{});
-        print("WPT Test Results Summary\n", .{});
-        print("================================\n", .{});
-        print("Test files: {d}\n", .{self.total});
-        print("  Completed: {d}\n", .{self.completed});
-        print("  Errors:    {d}\n", .{self.errors});
-        print("  Timeouts:  {d}\n", .{self.timeouts});
         print("\n", .{});
-        print("Subtests:   {d} / {d}\n", .{ self.passed, total_subtests });
+        print("┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n", .{});
+        print("┃  📊 WPT TEST RESULTS                                                         ┃\n", .{});
+        print("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n", .{});
+        print("\n", .{});
+
+        // Test files section
+        print("  📁 Test Files\n", .{});
+        print("  ├── Total:     {d}\n", .{self.total});
+        print("  ├── Completed: {d}\n", .{self.completed});
+        print("  ├── Errors:    {d}\n", .{self.errors});
+        print("  └── Timeouts:  {d}\n", .{self.timeouts});
+        print("\n", .{});
+
+        // Subtests section
+        print("  🧪 Subtests\n", .{});
         if (total_subtests > 0) {
             const pass_rate = @as(f64, @floatFromInt(self.passed)) / @as(f64, @floatFromInt(total_subtests)) * 100.0;
-            print("  Passed:   {d} ({d:.1}%)\n", .{ self.passed, pass_rate });
+
+            // Create a simple progress bar
+            const bar_width: usize = 20;
+            const filled = @as(usize, @intFromFloat(@as(f64, @floatFromInt(bar_width)) * pass_rate / 100.0));
+            var bar_buf: [20]u8 = undefined;
+            for (0..bar_width) |bi| {
+                bar_buf[bi] = if (bi < filled) '#' else '-';
+            }
+
+            print("  ├── Progress:  [{s}] {d:.1}%\n", .{ bar_buf[0..bar_width], pass_rate });
+            print("  ├── ✅ Passed:  {d}\n", .{self.passed});
+            print("  ├── ❌ Failed:  {d}\n", .{self.failed});
+            print("  ├── ⏰ Timeout: {d}\n", .{self.timeouts});
+            if (self.notrun > 0) {
+                print("  ├── ⚪ Not Run: {d}\n", .{self.notrun});
+            }
+            print("  └── Total:     {d}\n", .{total_subtests});
         } else {
-            print("  Passed:   {d}\n", .{self.passed});
-        }
-        print("  Failed:   {d}\n", .{self.failed});
-        print("  Timeout:  {d}\n", .{self.timeouts});
-        if (self.notrun > 0) {
-            print("  Not Run:  {d}\n", .{self.notrun});
+            print("  └── No subtests executed\n", .{});
         }
         print("\n", .{});
-        print("Duration:   {s}\n", .{elapsed});
+
+        // Duration
+        print("  ⏱️  Duration: {s}\n", .{elapsed});
 
         // Top failing categories
         if (self.failures_by_category.count() > 0) {
-            print("\nTop Failing Categories:\n", .{});
+            print("\n  📉 Top Failing Categories\n", .{});
 
             // Collect and sort by failure count
             var iter = self.failures_by_category.iterator();
@@ -919,13 +925,14 @@ pub const ProgressTracker = struct {
 
             // Print top 5
             const to_print = @min(entry_count, 5);
-            for (entries[0..to_print]) |entry| {
-                print("  {s}/: {d} failures\n", .{ entry.cat, entry.count });
+            for (entries[0..to_print], 0..) |entry, ei| {
+                const prefix = if (ei == to_print - 1) "└" else "├";
+                print("  {s}── {s}/: {d} failures\n", .{ prefix, entry.cat, entry.count });
             }
         }
 
-        print("\nResults written to: {s}\n", .{output_path});
-        print("================================\n", .{});
+        print("\n  📄 Results written to: {s}\n", .{output_path});
+        print("\n", .{});
     }
 };
 
@@ -1247,7 +1254,7 @@ pub fn main() !void {
     }
 
     if (discovery.skipped.items.len > 0) {
-        print("\nSkipped {d} items (use --verbose to see details)\n", .{discovery.skipped.items.len});
+        print("\nSkipped {d} items\n", .{discovery.skipped.items.len});
     }
 
     // Create report
@@ -1281,12 +1288,25 @@ test "parseArgs basic" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
-    const args = [_][]const u8{ "url/", "encoding/", "--verbose" };
+    const args = [_][]const u8{ "url/", "encoding/" };
     var options = try parseArgs(allocator, &args);
     defer options.deinit();
 
     try testing.expectEqual(@as(usize, 2), options.filters.items.len);
+    // Verbose is true by default
     try testing.expect(options.verbose);
+}
+
+test "parseArgs with quiet flag" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "url/", "--quiet" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(usize, 1), options.filters.items.len);
+    try testing.expect(!options.verbose);
 }
 
 test "parseArgs with options" {
