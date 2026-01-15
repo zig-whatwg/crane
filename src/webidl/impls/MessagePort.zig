@@ -269,84 +269,89 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // This properly handles ArrayBuffer transfer (copies data, then detaches original)
     var cloned_message: runtime.JSValue = undefined;
 
+    // Track transferred MessagePorts - store Zig instances (will be wrapped fresh in get_ports)
+    var transferred_port_instances: [16]*runtime.Instance = undefined;
+    var transferred_port_count: usize = 0;
+
+    // Track ArrayBuffers for structured clone transfer
+    var array_buffer_transfers: [64]*v8_engine.ffi.Value = undefined;
+    var array_buffer_count: usize = 0;
+
+    // FIRST: Process transfer list to extract MessagePorts and ArrayBuffers
+    // This must be done regardless of message type, as MessagePorts can be
+    // transferred even when the message itself is a primitive
+    if (transfer == .handle) {
+        const transfer_handle = transfer.handle;
+        const src_ctx = instance.ctx.engine_ctx orelse return;
+        const src_v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(src_ctx));
+
+        const transfer_value: *v8_engine.ffi.Value = @ptrCast(transfer_handle.ptr);
+        if (v8_engine.ffi.v8_Value_IsArray(transfer_value)) {
+            const transfer_array: *v8_engine.ffi.Array = @ptrCast(transfer_value);
+            const length = v8_engine.ffi.v8_Array_Length(transfer_array);
+
+            // Separate MessagePorts from ArrayBuffers in the transfer list
+            for (0..length) |i| {
+                if (v8_engine.ffi.v8_Array_Get(src_v8_context, transfer_array, @intCast(i))) |item| {
+                    if (v8_engine.ffi.v8_Value_IsArrayBuffer(item)) {
+                        // ArrayBuffer - add to transfer list for structured clone
+                        if (array_buffer_count < 64) {
+                            array_buffer_transfers[array_buffer_count] = item;
+                            array_buffer_count += 1;
+                        }
+                    } else if (v8_engine.ffi.v8_Value_IsObject(item)) {
+                        // Check if it's a MessagePort by looking at internal fields
+                        const v8_obj: *v8_engine.ffi.Object = @ptrCast(item);
+                        const field_count = v8_engine.ffi.v8_Object_InternalFieldCount(v8_obj);
+                        if (field_count >= 2) {
+                            // Has internal fields - check if it's a MessagePort
+                            if (v8_engine.wrapper_type_info_mod.getTypeInfo(v8_obj)) |type_info| {
+                                if (std.mem.eql(u8, std.mem.span(type_info.interface_name), "MessagePort")) {
+                                    // It's a MessagePort - extract the Zig instance
+                                    // Instance is stored in internal field 0
+                                    if (v8_engine.ffi.v8_Object_GetAlignedPointerFromInternalField(v8_obj, 0)) |instance_ptr| {
+                                        if (transferred_port_count < 16) {
+                                            transferred_port_instances[transferred_port_count] = @ptrCast(@alignCast(instance_ptr));
+                                            transferred_port_count += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // SECOND: Clone the message appropriately based on type and ArrayBuffer transfers
     if (message == .handle) {
         const msg_handle = message.handle;
         const v8_value: *v8_engine.ffi.Value = @ptrCast(@alignCast(msg_handle.ptr));
 
-        // Check if we have a transfer list
-        if (transfer == .handle) {
-            const transfer_handle = transfer.handle;
-            const src_ctx = instance.ctx.engine_ctx orelse return;
-            const src_v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(src_ctx));
+        // Clone message with ArrayBuffer transfers if needed
+        if (array_buffer_count > 0) {
+            var error_code: c_int = 0;
+            const cloned = v8_engine.ffi.v8_Value_StructuredCloneWithTransfer(
+                v8_value,
+                &array_buffer_transfers,
+                array_buffer_count,
+                &error_code,
+            );
 
-            const transfer_value: *v8_engine.ffi.Value = @ptrCast(transfer_handle.ptr);
-            if (v8_engine.ffi.v8_Value_IsArray(transfer_value)) {
-                const transfer_array: *v8_engine.ffi.Array = @ptrCast(transfer_value);
-                const length = v8_engine.ffi.v8_Array_Length(transfer_array);
-
-                if (length > 0) {
-                    // Build transfer list for V8
-                    var v8_transfers: [64]*v8_engine.ffi.Value = undefined;
-                    const count = @min(length, 64);
-
-                    for (0..count) |i| {
-                        if (v8_engine.ffi.v8_Array_Get(src_v8_context, transfer_array, @intCast(i))) |item| {
-                            v8_transfers[i] = item;
-                        } else {
-                            return; // Failed to get transfer item
-                        }
-                    }
-
-                    // Use V8's structured clone with transfer
-                    var error_code: c_int = 0;
-                    const cloned = v8_engine.ffi.v8_Value_StructuredCloneWithTransfer(
-                        v8_value,
-                        &v8_transfers,
-                        count,
-                        &error_code,
-                    );
-
-                    if (cloned == null or error_code != 0) {
-                        return; // Clone with transfer failed
-                    }
-
-                    cloned_message = runtime.JSValue{
-                        .handle = .{
-                            .ptr = @ptrCast(cloned.?),
-                            .needs_disposal = true,
-                            .handle_scope = .global,
-                        },
-                    };
-                } else {
-                    // Empty transfer list - use simple clone
-                    const cloned = v8_engine.ffi.v8_Value_StructuredClone(v8_value);
-                    if (cloned == null) {
-                        return; // Clone failed
-                    }
-                    cloned_message = runtime.JSValue{
-                        .handle = .{
-                            .ptr = @ptrCast(cloned.?),
-                            .needs_disposal = true,
-                            .handle_scope = .global,
-                        },
-                    };
-                }
-            } else {
-                // Transfer is not an array - use simple clone
-                const cloned = v8_engine.ffi.v8_Value_StructuredClone(v8_value);
-                if (cloned == null) {
-                    return; // Clone failed
-                }
-                cloned_message = runtime.JSValue{
-                    .handle = .{
-                        .ptr = @ptrCast(cloned.?),
-                        .needs_disposal = true,
-                        .handle_scope = .global,
-                    },
-                };
+            if (cloned == null or error_code != 0) {
+                return; // Clone with transfer failed
             }
+
+            cloned_message = runtime.JSValue{
+                .handle = .{
+                    .ptr = @ptrCast(cloned.?),
+                    .needs_disposal = true,
+                    .handle_scope = .global,
+                },
+            };
         } else {
-            // No transfer list - use simple structured clone
+            // No ArrayBuffers to transfer - use simple clone
             const cloned = v8_engine.ffi.v8_Value_StructuredClone(v8_value);
             if (cloned == null) {
                 return; // Clone failed
@@ -377,6 +382,22 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Set the message data on the event
     var msg_event_state = msg_event.getState(MessageEventInterface.State);
     msg_event_state.own.data = cloned_message;
+
+    // Set the target to the receiving port (entangled_port)
+    // This is per DOM spec: when an event is dispatched, its target should be set
+    msg_event_state.base.own.target = entangled_port;
+    msg_event_state.base.own.currentTarget = entangled_port;
+
+    // Store the transferred port instances in the MessageEvent's internal state
+    // The get_ports getter will wrap them fresh when accessed, ensuring correct prototype chain
+    if (msg_event_state.own._internal) |msg_internal| {
+        msg_internal.transferred_port_count = transferred_port_count;
+        for (0..transferred_port_count) |i| {
+            msg_internal.transferred_ports[i] = transferred_port_instances[i];
+        }
+    }
+    // Also set ports to undefined initially (get_ports will create the array on access)
+    msg_event_state.own.ports = runtime.JSValue.jsUndefined;
 
     // Wrap the event as a V8 object - this returns a Global<Object>*
     const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(

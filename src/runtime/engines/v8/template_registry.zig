@@ -246,6 +246,21 @@ pub fn wrapInstanceAsV8Object(
 
             // Cache hit? Return existing wrapper (same V8 object)
             if (cache.get(instance)) |cached_wrapper| {
+                // IMPORTANT: Still update the prototype chain on cached wrappers
+                // This ensures instanceof works even for wrappers created before the fix
+                // Create null-terminated string for C function
+                var cached_name_buf: [256]u8 = undefined;
+                const cached_name_z = cached_blk: {
+                    if (interface_name.len >= cached_name_buf.len) break :cached_blk null;
+                    @memcpy(cached_name_buf[0..interface_name.len], interface_name);
+                    cached_name_buf[interface_name.len] = 0;
+                    break :cached_blk @as([*:0]const u8, @ptrCast(&cached_name_buf));
+                };
+                const cached_global_proto = if (cached_name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
+                if (cached_global_proto) |prototype| {
+                    _ = v8.v8_Object_SetPrototype(cached_wrapper, context, @ptrCast(prototype));
+                }
+
                 return cached_wrapper;
             }
         }
@@ -271,6 +286,33 @@ pub fn wrapInstanceAsV8Object(
     const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
         return error.ObjectCreationFailed;
     };
+
+    // CRITICAL: Set up the prototype chain for instanceof to work correctly!
+    // ObjectTemplate::NewInstance() doesn't automatically set the prototype chain.
+    // We need to manually set __proto__ to the SAME prototype that's on the global constructor.
+    //
+    // GetPrototypeObject calls GetFunction() which creates a NEW function with a DIFFERENT
+    // prototype. For instanceof to work, we need the prototype from globalThis.InterfaceName.
+    //
+    // Create null-terminated string for C function
+    var name_buf: [256]u8 = undefined;
+    const name_z = blk: {
+        if (interface_name.len >= name_buf.len) break :blk null;
+        @memcpy(name_buf[0..interface_name.len], interface_name);
+        name_buf[interface_name.len] = 0;
+        break :blk @as([*:0]const u8, @ptrCast(&name_buf));
+    };
+
+    // Get the prototype from the global object - this is the SAME prototype that JavaScript sees
+    const global_proto = if (name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
+    if (global_proto) |prototype| {
+        _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
+    } else {
+        // Fall back to GetPrototypeObject for interfaces not exposed on global
+        if (v8.v8_FunctionTemplate_GetPrototypeObject(template, context)) |prototype| {
+            _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
+        }
+    }
 
     // Store the Zig instance in internal field 0
     v8.v8_Object_SetAlignedPointerInInternalField(

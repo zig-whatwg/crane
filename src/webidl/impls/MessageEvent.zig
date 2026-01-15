@@ -52,6 +52,11 @@ pub const InternalState = struct {
     message_data: ?MessageData = null,
     /// Whether we own the binary data (should free on deinit)
     owns_binary: bool = false,
+    /// Transferred MessagePort instances (stored as Zig instances, not V8 objects)
+    /// These get wrapped fresh when get_ports is called to ensure correct prototype chain
+    transferred_ports: [16]*runtime.Instance = undefined,
+    /// Number of transferred ports
+    transferred_port_count: usize = 0,
 };
 
 /// Initialize instance (creates the instance)
@@ -200,13 +205,46 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// Getter for ports
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-ports
 ///
+/// Returns the array of transferred MessagePorts.
 /// For WebSocket, this is always an empty frozen array.
-/// This is used by postMessage for transferring MessagePorts.
+/// For postMessage with port transfer, contains the transferred ports.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    // TODO: Return proper frozen array when V8 array creation is available
-    // For now, return undefined - spec requires a frozen array of MessagePort
-    return runtime.JSValue.jsUndefined;
+    const state = instance.getState(State);
+
+    // Check if we have transferred ports stored in internal state
+    if (state.own._internal) |internal| {
+        if (internal.transferred_port_count > 0) {
+            const v8_engine = @import("v8");
+
+            const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return runtime.JSValue.jsUndefined;
+            const v8_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return runtime.JSValue.jsUndefined;
+
+            // Create array with correct size
+            const ports_array = v8_engine.ffi.v8_Array_New(v8_isolate, @intCast(internal.transferred_port_count));
+
+            // Wrap each transferred port and add to array
+            for (0..internal.transferred_port_count) |i| {
+                const port_instance = internal.transferred_ports[i];
+
+                const v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
+                    port_instance,
+                    "MessagePort",
+                    v8_isolate,
+                    v8_context,
+                ) catch {
+                    continue;
+                };
+
+                _ = v8_engine.ffi.v8_Array_Set(ports_array, v8_context, @intCast(i), @ptrCast(v8_obj));
+            }
+
+            // Return the array containing the wrapped port(s)
+            return runtime.JSValue.fromHandle(@ptrCast(ports_array));
+        }
+    }
+
+    // Fall back to the stored ports value (may be an array or undefined)
+    return state.own.ports;
 }
 
 /// Operation: initMessageEvent (legacy)

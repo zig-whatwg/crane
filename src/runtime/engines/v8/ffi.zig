@@ -1435,6 +1435,13 @@ pub extern fn v8_FunctionTemplate_PrototypeTemplate(tpl: *FunctionTemplate) *Obj
 /// doesn't automatically link to the FunctionTemplate's prototype, so we need to get
 /// the prototype object and set it manually.
 pub extern fn v8_FunctionTemplate_GetPrototypeObject(tpl: *FunctionTemplate, context: *Context) ?*Object;
+
+/// Get the prototype object by looking up the constructor from the global object.
+/// This ensures we get the SAME prototype that JavaScript sees on globalThis.ConstructorName.prototype.
+/// This is necessary for `instanceof` to work correctly, because GetPrototypeObject creates a new
+/// function from the template which has a different prototype object.
+pub extern fn v8_GetGlobalPrototype(context: *Context, constructor_name: [*:0]const u8) ?*Object;
+
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetPrototypeProviderTemplate(self: *FunctionTemplate, provider: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;

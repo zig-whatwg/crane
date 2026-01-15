@@ -3960,18 +3960,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return null);
                     },
                     .handle => |h| blk: {
-                        // Handle scope determines how to convert:
-                        // - Global handles are Global<Value>* and must be dereferenced via v8_Global_Get
-                        //   to obtain the actual Local<Value> that can be used in V8 APIs
-                        // - Local handles can be returned directly (they're already Local<Value>*)
-                        if (h.handle_scope == .global) {
-                            // Global<Value>* - must dereference to get Local<Value>*
-                            const local = v8.v8_Global_Get(isolate, @ptrCast(h.ptr));
-                            break :blk if (local) |l| @ptrCast(l) else v8.v8_Undefined(isolate);
-                        } else {
-                            // Local handle - can be returned directly
-                            break :blk @ptrCast(h.ptr);
-                        }
+                        // IMPORTANT: Both setReturnValue variants (FunctionCallbackInfo and
+                        // PropertyCallbackInfo) expect Global<Value>* and handle dereferencing
+                        // internally. We must NOT call v8_Global_Get here - that would cause
+                        // double-dereferencing when setReturnValue calls ->Get().
+                        //
+                        // - Global handles: Return directly (setReturnValue will dereference)
+                        // - Local handles: Also return directly (use SetReturnValueLocal if needed)
+                        //
+                        // Note: Most return values from FFI functions (v8_String_NewFromUtf8,
+                        // v8_Array_NewInContext, wrapInstanceAsV8Object, etc.) are Global handles.
+                        break :blk @ptrCast(h.ptr);
                     },
                     .instance => |i| blk: {
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse break :blk null;

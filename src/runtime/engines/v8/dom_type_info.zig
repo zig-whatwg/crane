@@ -317,6 +317,30 @@ pub const URLSearchParams_type_info = WrapperTypeInfo{
 };
 
 // ============================================================================
+// MessagePort and MessageChannel (HTML messaging)
+// ============================================================================
+
+pub const MessagePort_type_info = WrapperTypeInfo{
+    .interface_name = "MessagePort",
+    .parent = &EventTarget_type_info, // MessagePort is an EventTarget
+    .this_tag = 1220,
+    .max_subclass_tag = 1220, // Leaf node
+    .wrapper_class_id = .object,
+    .idl_definition_kind = .interface,
+    .install_template_fn = placeholderInstall,
+};
+
+pub const MessageChannel_type_info = WrapperTypeInfo{
+    .interface_name = "MessageChannel",
+    .parent = null, // MessageChannel is NOT an EventTarget
+    .this_tag = 1230,
+    .max_subclass_tag = 1230, // Leaf node
+    .wrapper_class_id = .object,
+    .idl_definition_kind = .interface,
+    .install_template_fn = placeholderInstall,
+};
+
+// ============================================================================
 // Helper functions
 // ============================================================================
 
@@ -345,6 +369,8 @@ pub fn getTypeInfoByName(name: []const u8) ?*const WrapperTypeInfo {
         &CustomEvent_type_info,
         &URL_type_info,
         &URLSearchParams_type_info,
+        &MessagePort_type_info,
+        &MessageChannel_type_info,
     };
 
     for (type_infos) |info| {

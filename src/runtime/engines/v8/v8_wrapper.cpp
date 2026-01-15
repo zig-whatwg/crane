@@ -3077,11 +3077,11 @@ Global<Value>* v8_Array_Get(Global<Context>* context, Global<Array>* arr, uint32
 bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Context> local_context = context->Get(isolate);
     Local<Array> local_arr = arr->Get(isolate);
     Local<Value> local_value = value->Get(isolate);
-    
+
     Maybe<bool> result = local_arr->Set(local_context, index, local_value);
     return result.FromMaybe(false);
 }
@@ -4049,30 +4049,70 @@ void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
 Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>* tpl, Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
-    
+
     // Get the function from the template
     MaybeLocal<Function> maybe_fn = local_tpl->GetFunction(ctx);
     if (maybe_fn.IsEmpty()) {
         return nullptr;
     }
-    
+
     Local<Function> fn = maybe_fn.ToLocalChecked();
-    
+
     // Get the "prototype" property from the function
     Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
     MaybeLocal<Value> maybe_proto = fn->Get(ctx, prototype_str);
     if (maybe_proto.IsEmpty()) {
         return nullptr;
     }
-    
+
     Local<Value> proto_val = maybe_proto.ToLocalChecked();
     if (!proto_val->IsObject()) {
         return nullptr;
     }
-    
+
+    Local<Object> proto_obj = proto_val.As<Object>();
+    return trackHandle(new Global<Object>(isolate, proto_obj));
+}
+
+// Get the prototype object by looking up the constructor from the global object.
+// This ensures we get the SAME prototype that JavaScript sees on globalThis.ConstructorName.prototype.
+// This is necessary for `instanceof` to work correctly.
+Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* constructor_name) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> global = ctx->Global();
+
+    // Get the constructor from global (e.g., globalThis.MessagePort)
+    Local<String> name_str = String::NewFromUtf8(isolate, constructor_name).ToLocalChecked();
+    MaybeLocal<Value> maybe_constructor = global->Get(ctx, name_str);
+    if (maybe_constructor.IsEmpty()) {
+        return nullptr;
+    }
+
+    Local<Value> constructor_val = maybe_constructor.ToLocalChecked();
+    if (!constructor_val->IsFunction()) {
+        return nullptr;
+    }
+
+    Local<Function> constructor = constructor_val.As<Function>();
+
+    // Get the "prototype" property from the constructor
+    Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
+    MaybeLocal<Value> maybe_proto = constructor->Get(ctx, prototype_str);
+    if (maybe_proto.IsEmpty()) {
+        return nullptr;
+    }
+
+    Local<Value> proto_val = maybe_proto.ToLocalChecked();
+    if (!proto_val->IsObject()) {
+        return nullptr;
+    }
+
     Local<Object> proto_obj = proto_val.As<Object>();
     return trackHandle(new Global<Object>(isolate, proto_obj));
 }
