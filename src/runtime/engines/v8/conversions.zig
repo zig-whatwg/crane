@@ -1163,9 +1163,17 @@ pub fn fromV8Value(
             }
         }
 
-        // No valid WrapperTypeInfo - this is a native JS object (URL, Date, etc.),
-        // not a WebIDL-wrapped platform object. Do NOT try to extract instance.
-        return ConversionError.TypeError;
+        // FALLBACK: No valid WrapperTypeInfo stored, but the object might still be a valid
+        // WebIDL-wrapped object from our bindings. This happens when:
+        // 1. The wrapper_type_info_registry.getWrapperTypeInfoByName() is a stub (returns null)
+        // 2. The constructor fell back to setInstance() instead of setInstanceWithTypeInfo()
+        //
+        // Try to extract the instance from slot 0. This is safe because:
+        // - Native JS objects won't have anything in internal fields
+        // - Our constructor always stores the instance in slot 0
+        return interface_mod.getInstance(runtime.Instance, object) orelse {
+            return ConversionError.TypeError;
+        };
     }
 
     // Handle function pointers (callbacks)

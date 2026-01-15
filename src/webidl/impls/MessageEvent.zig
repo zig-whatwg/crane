@@ -122,7 +122,12 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
         // MessageEvent-specific properties (in state.own)
         // Use JSValue.jsUndefined for undefined data
-        state.own.data = init_dict.data orelse runtime.JSValue.jsUndefined;
+        // IMPORTANT: Clone the JSValue to take ownership. The argument cleanup code
+        // will free the original string buffer after the constructor returns.
+        state.own.data = if (init_dict.data) |data|
+            try data.clone(ctx.allocator)
+        else
+            runtime.JSValue.jsUndefined;
         state.own.origin = init_dict.origin orelse "";
         state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
         // source and ports require more complex handling

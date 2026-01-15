@@ -480,6 +480,40 @@ pub const JSValue = union(enum) {
         }
         self.* = jsUndefined;
     }
+
+    /// Create a deep copy of this JSValue.
+    ///
+    /// For string variants, this allocates a new buffer and copies the string data.
+    /// For other variants (primitives, handles, instances), this returns a shallow copy.
+    ///
+    /// **IMPORTANT**: When storing a JSValue passed as an argument (e.g., in constructors),
+    /// you MUST call clone() to take ownership. The argument cleanup code will free
+    /// the original string buffer after the function returns.
+    ///
+    /// ## Example
+    /// ```zig
+    /// pub fn call_constructor(ctx: runtime.Context, eventInit: MessageEventInit) !*Instance {
+    ///     // Clone the JSValue to take ownership before argument cleanup frees it
+    ///     state.own.data = try eventInit.data.clone(ctx.allocator);
+    /// }
+    /// ```
+    pub fn clone(self: JSValue, allocator: std.mem.Allocator) error{OutOfMemory}!JSValue {
+        return switch (self) {
+            .string => |s| blk: {
+                if (s.data.len == 0) {
+                    // Empty strings don't need allocation
+                    break :blk JSValue{ .string = .{ .data = "", .owned = false } };
+                }
+                // Allocate a new buffer and copy the string data
+                const new_buffer = try allocator.dupe(u8, s.data);
+                break :blk JSValue{ .string = .{ .data = new_buffer, .owned = true } };
+            },
+            // Primitives, handles, and instances can be copied directly
+            // (primitives are value types, handles/instances are references that
+            // are managed externally)
+            else => self,
+        };
+    }
 };
 
 /// Optional JSValue - used for WebIDL optional parameters
