@@ -49,6 +49,7 @@ pub const FontFaceSet = struct {
             .{ "onloadingerror", "get_onloadingerror", "set_onloadingerror" },
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
+            .{ "size", "get_size", null },
         };
         
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -84,6 +85,7 @@ pub const FontFaceSet = struct {
             .{ "onloadingerror", "get_onloadingerror", "set_onloadingerror" },
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
+            .{ "size", "get_size", null },
         };
         
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -102,6 +104,7 @@ pub const FontFaceSet = struct {
             onloadingerror: typedefs.EventHandler = undefined,
             ready: runtime.JSValue = undefined,
             status: enums.FontFaceSetLoadStatus = undefined,
+            size: u32 = undefined,
             _internal: ?*FontFaceSetImpl.InternalState = null,
         },
     );
@@ -116,6 +119,7 @@ pub const FontFaceSet = struct {
         .get_onloadingdone = &get_onloadingdone,
         .get_onloadingerror = &get_onloadingerror,
         .get_ready = &get_ready,
+        .get_size = &get_size,
         .get_status = &get_status,
 
         .set_onloading = &set_onloading,
@@ -183,6 +187,10 @@ pub const FontFaceSet = struct {
 
     pub fn get_status(instance: *runtime.Instance) anyerror!FontFaceSetLoadStatus {
         return try FontFaceSetImpl.get_status(instance);
+    }
+
+    pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
+        return try FontFaceSetImpl.get_size(instance);
     }
 
     pub fn call_delete(instance: *runtime.Instance, font: *runtime.Instance) anyerror!bool {

@@ -224,3 +224,27 @@ pub fn get_maxComputeWorkgroupsPerDimension(instance: *runtime.Instance) anyerro
     _ = instance;
     return error.NotImplemented;
 }
+
+/// Getter for maxStorageBuffersInVertexStage
+pub fn get_maxStorageBuffersInVertexStage(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for maxStorageBuffersInFragmentStage
+pub fn get_maxStorageBuffersInFragmentStage(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for maxStorageTexturesInVertexStage
+pub fn get_maxStorageTexturesInVertexStage(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for maxStorageTexturesInFragmentStage
+pub fn get_maxStorageTexturesInFragmentStage(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    return error.NotImplemented;
+}

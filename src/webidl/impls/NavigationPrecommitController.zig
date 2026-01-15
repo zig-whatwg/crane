@@ -40,6 +40,13 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
+/// Operation: addHandler
+pub fn call_addHandler(instance: *runtime.Instance, handler: callbacks.NavigationInterceptHandler) anyerror!void {
+    _ = instance;
+    _ = handler;
+    return error.NotImplemented;
+}
+
 /// Operation: redirect
 pub fn call_redirect(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(dictionaries.NavigationNavigateOptions)) anyerror!void {
     _ = instance;

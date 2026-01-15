@@ -757,8 +757,6 @@ fn v8InvokeStreamCallback(
         return EngineError.TypeError;
     }
 
-    const callback_fn: *ffi.Function = @ptrCast(callback_value);
-
     // Build arguments array
     var args: [2]*ffi.Value = undefined;
     var arg_count: usize = 0;
@@ -780,9 +778,10 @@ fn v8InvokeStreamCallback(
         return EngineError.OperationFailed;
 
     // Call the function using safe variant with TryCatch
+    // Note: callback_value is already verified to be a function at line 756
     const args_ptr: [*]*ffi.Value = &args;
     const call_result = ffi.v8_Function_Call_Safe(
-        callback_fn,
+        callback_value,
         context,
         this_val,
         @intCast(arg_count),

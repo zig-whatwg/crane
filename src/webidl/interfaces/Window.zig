@@ -348,6 +348,7 @@ pub const Window = struct {
             .{ "getSelection", "call_getSelection", 0 },
             .{ "getScreenDetails", "call_getScreenDetails", 0 },
             .{ "getComputedStyle", "call_getComputedStyle", 1 },
+            .{ "item", "call_item", 1 },
             .{ "fetchLater", "call_fetchLater", 1 },
             .{ "captureEvents", "call_captureEvents", 0 },
             .{ "releaseEvents", "call_releaseEvents", 0 },
@@ -397,6 +398,7 @@ pub const Window = struct {
             "getSelection",
             "getScreenDetails",
             "getComputedStyle",
+            "item",
             "fetchLater",
             "captureEvents",
             "releaseEvents",
@@ -1246,6 +1248,7 @@ pub const Window = struct {
         .call_getDigitalGoodsService = &call_getDigitalGoodsService,
         .call_getScreenDetails = &call_getScreenDetails,
         .call_getSelection = &call_getSelection,
+        .call_item = &call_item,
         .call_matchMedia = &call_matchMedia,
         .call_moveBy = &call_moveBy,
         .call_moveTo = &call_moveTo,
@@ -3251,6 +3254,11 @@ pub const Window = struct {
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         
         return try WindowImpl.call_scroll(instance, options);
+    }
+
+    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?WindowProxy {
+        
+        return try WindowImpl.call_item(instance, index);
     }
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)

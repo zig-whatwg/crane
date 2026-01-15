@@ -135,3 +135,11 @@ pub fn call_check(instance: *runtime.Instance, font: typedefs.CSSOMString, text:
     _ = text;
     return error.NotImplemented;
 }
+
+/// Getter for size (from setlike<FontFace>)
+/// Returns the number of fonts in the set.
+pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
+    _ = instance;
+    // Stub: Return 0 since we have no fonts loaded
+    return 0;
+}

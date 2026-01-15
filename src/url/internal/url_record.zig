@@ -66,9 +66,15 @@ pub const URLRecord = struct {
     query_start: u32,
     query_len: u32,
 
+    /// Whether URL has a query component (even if empty)
+    has_query: bool = false,
+
     /// Fragment offset/length (spec line 817) - null if fragment_len == 0
     fragment_start: u32,
     fragment_len: u32,
+
+    /// Whether URL has a fragment component (even if empty)
+    has_fragment: bool = false,
 
     /// Blob URL entry (spec line 819) - null or a blob URL entry
     /// Used for blob: URLs to cache the object and origin

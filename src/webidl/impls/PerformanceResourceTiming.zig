@@ -189,6 +189,30 @@ pub fn get_serverTiming(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return error.NotImplemented;
 }
 
+/// Getter for workerRouterEvaluationStart
+pub fn get_workerRouterEvaluationStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for workerCacheLookupStart
+pub fn get_workerCacheLookupStart(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for workerMatchedRouterSource
+pub fn get_workerMatchedRouterSource(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
+/// Getter for workerFinalRouterSource
+pub fn get_workerFinalRouterSource(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    _ = instance;
+    return error.NotImplemented;
+}
+
 /// Operation: toJSON
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceResourceTiming.PerformanceResourceTimingToJSON {
     _ = instance;

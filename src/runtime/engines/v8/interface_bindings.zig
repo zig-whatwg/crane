@@ -288,12 +288,10 @@ pub fn registerAllTemplatesOnly(
             const template = Binding.createTemplate(isolate);
             template_registry.register(decl.name, template, isolate);
 
-            // Skip reinstallation for URL - it needs to keep the same Function object
-            // from the snapshot so webkitURL === URL works (LegacyWindowAlias requirement)
-            // URL callbacks work because external references are registered deterministically
-            if (comptime std.mem.eql(u8, decl.name, "URL")) {
-                continue;
-            }
+            // NOTE: Previously skipped URL reinstallation for LegacyWindowAlias (webkitURL === URL).
+            // However, this caused callbacks to not work after snapshot restore.
+            // Now reinstall URL like other interfaces.
+            // webkitURL alias is handled separately in registerLegacyInterfaceAliases().
 
             // CRITICAL: Reinstall constructor on global to replace stale snapshot version
             // This ensures `new Worker()` etc. invoke our Zig callbacks, not stale pointers

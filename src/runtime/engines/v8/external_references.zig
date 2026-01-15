@@ -157,6 +157,31 @@ pub fn isRegisteredRuntime(callback: v8.FunctionCallback) bool {
     return false;
 }
 
+/// Registration context types for manifest tracking
+pub const RegistrationContextType = enum {
+    interface_constructor,
+    interface_property_getter,
+    interface_property_setter,
+    interface_method,
+    interface_static_method,
+    interface_indexed_getter,
+    interface_indexed_setter,
+    interface_indexed_property,
+    interface_named_getter,
+    interface_named_setter,
+    interface_named_property,
+    interface_iterator,
+    namespace_method,
+    namespace_property_getter,
+};
+
+/// Set the current registration context for manifest/debugging purposes
+/// This is a no-op stub - can be expanded for debugging/manifest generation
+pub fn setRegistrationContext(_: []const u8, _: RegistrationContextType) void {
+    // No-op: This can be used for manifest generation or debugging
+    // The interface_name and context_type can be logged or recorded
+}
+
 // ============================================================================
 // Comptime Collection - Deterministic External Reference Collection
 // ============================================================================

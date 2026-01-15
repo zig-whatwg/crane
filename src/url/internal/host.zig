@@ -85,3 +85,11 @@ pub fn isForbiddenHostCodePoint(cp: u21) bool {
         else => false,
     };
 }
+
+/// Forbidden domain code point (spec line 310)
+/// Includes forbidden host code points plus C0 controls, DELETE, and percent
+pub fn isForbiddenDomainCodePoint(byte: u8) bool {
+    // C0 controls (0x00-0x1F), DELETE (0x7F), percent (%), and forbidden host code points
+    if (byte <= 0x1F or byte == 0x7F or byte == '%') return true;
+    return isForbiddenHostCodePoint(byte);
+}

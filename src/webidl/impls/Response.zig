@@ -76,6 +76,31 @@ pub fn init(
     return instance;
 }
 
+/// Create a Response from an existing InternalResponse
+/// This is used by fetch() to wrap the result in a WebIDL Response
+pub fn fromInternalResponse(
+    allocator: std.mem.Allocator,
+    response: *InternalResponse,
+    ctx: runtime.Context,
+) !*runtime.Instance {
+    const instance = try runtime.Instance.init(allocator, State, &Response.vtable, ctx);
+    errdefer runtime.Instance.deinit(instance);
+
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .allocator = allocator,
+        .response = response,
+        .headers_cache = null,
+    };
+
+    const state = instance.getState(State);
+    state.own._internal = internal;
+
+    return instance;
+}
+
 /// Deinitialize - clean up owned resources only
 /// NOTE: Do NOT call runtime.Instance.deinit() here!
 /// The GC integration layer (gc_integration.onObjectFreed) handles:

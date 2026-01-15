@@ -117,6 +117,12 @@ pub fn get_activationStart(instance: *runtime.Instance) anyerror!typedefs.DOMHig
     return error.NotImplemented;
 }
 
+/// Getter for confidence
+pub fn get_confidence(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    _ = instance;
+    return error.NotImplemented;
+}
+
 /// Operation: toJSON
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.PerformanceNavigationTiming.PerformanceNavigationTimingToJSON {
     _ = instance;
