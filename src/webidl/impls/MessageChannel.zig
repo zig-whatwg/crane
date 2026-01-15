@@ -70,16 +70,19 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
 
-    // Clean up the owned MessagePort instances
-    // The ports were created by MessageChannel.call_constructor() and are owned by this channel.
-    // They are NOT registered with the V8 wrapper cache (since they're created via initWithInternal(),
-    // not via a JS constructor), so we must explicitly call their deinit.
+    // Clean up internal state only - NOT the ports!
+    //
+    // IMPORTANT: Do NOT call deinit on port1/port2 here!
+    // When the getter (get_port1/get_port2) returns the port instance to JavaScript,
+    // the port gets wrapped in a V8 object and cached in the wrapper_cache.
+    // The GC/wrapper_cache will call MessagePort.deinit() when appropriate.
+    // Calling deinit here causes double-free because:
+    // 1. GC/wrapper_cache calls MessagePort.deinit() when cleaning up cached wrappers
+    // 2. Then MessageChannel.deinit() would try to deinit the same ports again
+    //
+    // This follows Chromium/Blink's pattern where MessageChannel uses Member<MessagePort>
+    // (GC-traced pointers) and relies on the GC to manage port lifetimes.
     if (state.own._internal) |internal| {
-        if (internal.initialized) {
-            // Both ports exist if initialized is true
-            MessagePortInterface.deinit(state.own.port1);
-            MessagePortInterface.deinit(state.own.port2);
-        }
         internal.allocator.destroy(internal);
     }
 
