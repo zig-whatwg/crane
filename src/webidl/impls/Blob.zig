@@ -108,30 +108,106 @@ pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSVa
         }
         break :blk .transparent;
     };
+    _ = endings_mode; // TODO: Apply endings conversion to strings
 
     // Get MIME type from options
     const mime_type: []const u8 = if (options.wasPassed() and options.value.type != null) options.value.type.?.asSlice() else "";
 
     // Process blob parts if provided
-    // The blobParts parameter comes as an opaque pointer to a sequence
-    // For now, we'll handle the case where it might be null/empty
     const bytes: []const u8 = blk: {
-        // Check if blobParts is actually provided (non-null pointer to valid data)
-        // In the WebIDL binding, an empty sequence would still be a valid pointer
-        // We need to handle this carefully - for now treat as potentially empty
+        if (!blobParts.wasPassed()) {
+            break :blk "";
+        }
 
-        // Try to interpret as a slice of BlobPart
-        // The actual structure depends on how the V8 binding passes this
-        // For safety, we'll create empty bytes if we can't process it
-        _ = blobParts;
-        _ = endings_mode;
+        const js_value = blobParts.value;
 
-        // TODO: Full BlobPart processing requires V8 integration to extract
-        // the actual parts. For now, create empty blob.
-        // When V8 integration is complete, this will iterate through blobParts
-        // and call file.algorithms.processBlobParts()
-        break :blk "";
+        // Must be a handle to a V8 value
+        if (js_value != .handle) {
+            break :blk "";
+        }
+
+        const handle = js_value.handle;
+        const v8_value: *v8.Value = @ptrCast(@alignCast(handle.ptr));
+
+        // Check if it's an array
+        if (!v8.v8_Value_IsArray(v8_value)) {
+            break :blk "";
+        }
+
+        const v8_array: *v8.Array = @ptrCast(v8_value);
+        const length = v8.v8_Array_Length(v8_array);
+
+        if (length == 0) {
+            break :blk "";
+        }
+
+        // Get V8 context
+        const isolate = v8.v8_Isolate_GetCurrent() orelse break :blk "";
+        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse break :blk "";
+
+        // First pass: calculate total size needed
+        var total_size: usize = 0;
+        for (0..length) |i| {
+            const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
+
+            if (v8.v8_Value_IsString(elem)) {
+                const str: *v8.String = @ptrCast(elem);
+                total_size += @as(usize, @intCast(v8.v8_String_Utf8Length(str)));
+            } else if (v8.v8_Value_IsArrayBuffer(elem)) {
+                const ab: *v8.ArrayBuffer = @ptrCast(elem);
+                total_size += v8.v8_ArrayBuffer_ByteLength(ab);
+            } else if (v8.v8_Value_IsArrayBufferView(elem)) {
+                total_size += v8.v8_TypedArray_ByteLength(elem);
+            }
+        }
+
+        if (total_size == 0) {
+            break :blk "";
+        }
+
+        // Allocate buffer for all bytes
+        const buffer = ctx.allocator.alloc(u8, total_size) catch break :blk "";
+
+        // Second pass: copy bytes
+        var offset: usize = 0;
+        for (0..length) |i| {
+            const elem = v8.v8_Array_Get(v8_context, v8_array, @intCast(i)) orelse continue;
+
+            if (v8.v8_Value_IsString(elem)) {
+                const str: *v8.String = @ptrCast(elem);
+                const utf8_len = v8.v8_String_Utf8Length(str);
+                if (utf8_len > 0) {
+                    _ = v8.v8_String_WriteUtf8(str, buffer[offset..].ptr, utf8_len);
+                    offset += @as(usize, @intCast(utf8_len));
+                }
+            } else if (v8.v8_Value_IsArrayBuffer(elem)) {
+                const ab: *v8.ArrayBuffer = @ptrCast(elem);
+                const byte_length = v8.v8_ArrayBuffer_ByteLength(ab);
+                if (byte_length > 0) {
+                    if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
+                        const data: [*]const u8 = @ptrCast(data_ptr);
+                        @memcpy(buffer[offset..][0..byte_length], data[0..byte_length]);
+                        offset += byte_length;
+                    }
+                }
+            } else if (v8.v8_Value_IsArrayBufferView(elem)) {
+                if (v8.v8_TypedArray_Buffer(elem)) |ab| {
+                    const byte_offset = v8.v8_TypedArray_ByteOffset(elem);
+                    const byte_length = v8.v8_TypedArray_ByteLength(elem);
+                    if (byte_length > 0) {
+                        if (v8.v8_ArrayBuffer_Data(ab)) |data_ptr| {
+                            const data: [*]const u8 = @ptrCast(data_ptr);
+                            @memcpy(buffer[offset..][0..byte_length], data[byte_offset..][0..byte_length]);
+                            offset += byte_length;
+                        }
+                    }
+                }
+            }
+        }
+
+        break :blk buffer;
     };
+    defer if (bytes.len > 0) ctx.allocator.free(bytes);
 
     // Create the internal BlobData
     const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
@@ -281,39 +357,29 @@ pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webi
 /// 4. Return the result of transforming promise with UTF-8 decode.
 pub fn call_text(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const allocator = internal.allocator;
-
-    // Get event loop from context
-    const ev_loop = instance.ctx.getEventLoop() catch return error.InvalidState;
-
-    // Create promise that resolves with string
-    const promise = AsyncPromise([]const u8).init(allocator, ev_loop) catch return error.OutOfMemory;
 
     // For Blob.text(), we synchronously read bytes and decode as UTF-8
     // Per spec, text() always uses UTF-8 (unlike FileReader.readAsText which can use other encodings)
     const bytes = internal.blob_data.bytes;
 
-    // UTF-8 decode - for valid UTF-8, just use bytes directly
-    // For invalid UTF-8, we'd need replacement character handling
-    // Since blob data is already stored as-is, we just pass through
-    // (Full spec compliance would validate/replace invalid sequences)
-
-    // Fulfill immediately since blob bytes are already in memory
-    promise.fulfill(bytes);
-
-    // Get V8 context for promise conversion
+    // Get V8 context for promise creation
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
 
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        []const u8,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
+    // Create a V8 string from the bytes (UTF-8 decode)
+    const v8_string = if (bytes.len > 0)
+        v8.v8_String_NewFromUtf8(isolate, bytes.ptr, @intCast(bytes.len)) orelse return error.OutOfMemory
+    else
+        v8.v8_String_Empty(isolate) orelse return error.OutOfMemory;
+
+    // Create a resolved promise with the string
+    const resolver = v8.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
+    const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
+
+    // Resolve with the string
+    _ = v8.v8_PromiseResolver_Resolve(resolver, context, @ptrCast(v8_string));
+
+    return runtime.JSValue.fromPromise(@ptrCast(promise));
 }
 
 /// Operation: stream
@@ -526,35 +592,33 @@ pub fn call_bytes(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// 4. Return the result of transforming promise to create ArrayBuffer from bytes.
 pub fn call_arrayBuffer(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const allocator = internal.allocator;
-
-    // Get event loop from context
-    const ev_loop = instance.ctx.getEventLoop() catch return error.InvalidState;
-
-    // Create promise that resolves with bytes (ArrayBuffer contents)
-    // Note: The actual ArrayBuffer wrapper would be created by the V8 binding layer
-    // Here we just return the raw bytes that would populate the ArrayBuffer
-    const promise = AsyncPromise([]const u8).init(allocator, ev_loop) catch return error.OutOfMemory;
 
     // Get blob bytes
     const bytes = internal.blob_data.bytes;
 
-    // Fulfill immediately since blob bytes are already in memory
-    promise.fulfill(bytes);
-
-    // Get V8 context for promise conversion
+    // Get V8 context for promise creation
     const isolate = v8.v8_Isolate_GetCurrent() orelse return error.InvalidState;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return error.InvalidState;
 
-    // Convert Zig AsyncPromise to V8 Promise
-    const v8_promise = try promise_utils.asyncPromiseToV8(
-        []const u8,
-        std.heap.c_allocator,
-        isolate,
-        context,
-        promise,
-    );
-    return runtime.JSValue.fromPromise(@ptrCast(v8_promise));
+    // Create a V8 ArrayBuffer with the blob bytes
+    const array_buffer = v8.v8_ArrayBuffer_New(isolate, bytes.len) orelse return error.OutOfMemory;
+
+    // Copy bytes into the ArrayBuffer
+    if (bytes.len > 0) {
+        if (v8.v8_ArrayBuffer_Data(array_buffer)) |data_ptr| {
+            const dest: [*]u8 = @ptrCast(data_ptr);
+            @memcpy(dest[0..bytes.len], bytes);
+        }
+    }
+
+    // Create a resolved promise with the ArrayBuffer
+    const resolver = v8.v8_PromiseResolver_New(context) orelse return error.OutOfMemory;
+    const promise = v8.v8_PromiseResolver_GetPromise(resolver) orelse return error.OutOfMemory;
+
+    // Resolve with the ArrayBuffer
+    _ = v8.v8_PromiseResolver_Resolve(resolver, context, @ptrCast(array_buffer));
+
+    return runtime.JSValue.fromPromise(@ptrCast(promise));
 }
 
 // ============================================================================
