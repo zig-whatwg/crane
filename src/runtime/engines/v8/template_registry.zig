@@ -579,6 +579,15 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "FormData";
     }
 
+    // Message passing types
+    if (inst_vtable == &interfaces.MessageChannel.vtable) {
+        return "MessageChannel";
+    }
+
+    if (inst_vtable == &interfaces.MessagePort.vtable) {
+        return "MessagePort";
+    }
+
     // Streams types
     if (inst_vtable == &interfaces.ReadableStream.vtable) {
         return "ReadableStream";
