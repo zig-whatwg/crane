@@ -2479,6 +2479,15 @@ pub fn V8Interface(comptime Interface: type) type {
             // Note: If a method stores the callback (e.g., addEventListener), it must
             // clone/reference it before returning, as we free it here.
             if (T == *runtime.CallbackWrapper) return true;
+            // Generic slice types (sequences) - allocated by fromV8Sequence
+            // This handles []const JSValue, []const DOMString, etc.
+            if (@typeInfo(T) == .pointer) {
+                const ptr_info = @typeInfo(T).pointer;
+                if (ptr_info.size == .slice) {
+                    // All slices from fromV8Sequence are allocated and need cleanup
+                    return true;
+                }
+            }
             // Zig optional variants
             if (@typeInfo(T) == .optional) {
                 const Child = @typeInfo(T).optional.child;
@@ -2522,6 +2531,20 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Only free if it's not the static empty slice and has content
                 if (arg.len > 0 and arg.ptr != static_empty_u8.ptr) {
                     allocator.free(arg);
+                }
+            } else if (@typeInfo(T) == .pointer and @typeInfo(T).pointer.size == .slice) {
+                // Generic slice types (sequences) - allocated by fromV8Sequence
+                // First free each element if needed, then free the slice itself
+                const ElemType = @typeInfo(T).pointer.child;
+                if (comptime needsArgCleanup(ElemType)) {
+                    for (arg) |elem| {
+                        freeConvertedArg(ElemType, allocator, elem);
+                    }
+                }
+                // Free the slice itself (cast away const for freeing)
+                if (arg.len > 0) {
+                    const mutable_ptr: [*]ElemType = @constCast(arg.ptr);
+                    allocator.free(mutable_ptr[0..arg.len]);
                 }
             } else if (T == runtime.DOMString) {
                 // DOMString is a tagged union - only free if owned
