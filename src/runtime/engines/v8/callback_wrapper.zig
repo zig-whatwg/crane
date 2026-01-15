@@ -174,6 +174,18 @@ pub const CallbackWrapper = struct {
         return null;
     }
 
+    /// Get the underlying V8 Global<Value>* for identity comparison
+    /// This allows comparing two CallbackWrappers by their underlying V8 function
+    pub fn getGlobalValuePtr(self: *const CallbackWrapper) ?*v8.Value {
+        if (self.callback_function_global) |handle| {
+            return handle.ptr;
+        }
+        if (self.callback_object_global) |handle| {
+            return handle.ptr;
+        }
+        return null;
+    }
+
     /// Invoke the callback with no arguments
     pub fn call0(self: *CallbackWrapper, context: *v8.Context) ?*v8.Value {
         return self.callN(context, &.{});

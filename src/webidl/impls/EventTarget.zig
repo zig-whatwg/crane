@@ -93,15 +93,13 @@ pub const InternalState = struct {
 
                 // Clean up callback wrapper (disposes Global handles)
                 // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
-                // Skip V8 cleanup during final runtime shutdown when isolate is disposed
                 //
-                // TODO: Temporarily disabled callback disposal due to Global handle corruption
-                // that causes crashes. The root cause needs investigation - the Global<Value>
-                // objects have corrupted internal slot() pointers, suggesting either:
-                // 1. Double-free of Global handles
-                // 2. Memory corruption from elsewhere
-                // 3. V8 GC issue with handle management
-                // For now, we leak these handles to avoid crashes during cleanup.
+                // NOTE: Callback disposal during cleanup is disabled because V8's internal
+                // Global handle slot gets corrupted at some point, causing crashes when
+                // calling Reset(). The callback identity fix (using StrictEquals) works
+                // correctly for addEventListener/removeEventListener, but the underlying
+                // corruption during browser shutdown needs further investigation.
+                // For now, we leak these handles during cleanup to avoid crashes.
                 _ = cleanup_v8_resources;
                 _ = listener.callback;
             }
@@ -285,11 +283,23 @@ fn defaultPassiveValue(@"type": []const u8, event_target: *runtime.Instance) boo
     return false;
 }
 
-/// Compare two callbacks for equality (by reference)
+/// Compare two callbacks for equality by V8 function identity
+/// The callbacks are stored as ?*runtime.Instance but are actually *CallbackWrapper
 fn callbackEquals(a: ?*runtime.Instance, b: ?*runtime.Instance) bool {
     if (a == null and b == null) return true;
     if (a == null or b == null) return false;
-    return a.? == b.?;
+
+    // Cast to CallbackWrapper to access the underlying V8 function
+    const v8_engine = @import("v8");
+    const wrapper_a: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(a.?));
+    const wrapper_b: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(b.?));
+
+    // Get the underlying V8 Global<Value>* for each callback
+    const value_a = wrapper_a.getGlobalValuePtr() orelse return false;
+    const value_b = wrapper_b.getGlobalValuePtr() orelse return false;
+
+    // Use V8's StrictEquals to compare the underlying JavaScript functions
+    return v8_engine.v8_Value_StrictEquals(value_a, value_b);
 }
 
 /// DOM §2.7 - add an event listener
@@ -331,9 +341,17 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
     if (!already_exists) {
         try list.append(updated_listener);
     } else {
-        // Listener already exists - free the duplicated type string to avoid leak
+        // Listener already exists - clean up the duplicate resources
+        // Free the duplicated type string
         var listener_type = updated_listener.type;
         listener_type.deinit(internal.allocator);
+
+        // Also dispose the CallbackWrapper since we're not storing it
+        if (updated_listener.callback) |callback_instance| {
+            const v8_engine = @import("v8");
+            const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+            callback_wrapper.deinit();
+        }
     }
 
     // Step 6: If listener's signal is not null, add abort steps
@@ -440,6 +458,14 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 /// Operation: removeEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
+    // Get the raw callback wrapper for later cleanup (before any unwrapping)
+    const raw_callback_wrapper: ?*runtime.CallbackWrapper = if (callback) |cb_opt| cb_opt else null;
+
+    // Ensure we always dispose the comparison callback wrapper when done
+    defer if (raw_callback_wrapper) |wrapper| {
+        wrapper.deinit();
+    };
+
     const internal = getInternalFromRegistry(instance) orelse return;
 
     // Flatten options

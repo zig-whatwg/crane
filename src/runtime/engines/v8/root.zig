@@ -265,6 +265,9 @@ pub const String = ffi.String;
 pub const Symbol = ffi.Symbol;
 pub const FunctionCallbackInfo = ffi.FunctionCallbackInfo;
 
+// Re-export FFI functions needed for callback identity comparison
+pub const v8_Value_StrictEquals = ffi.v8_Value_StrictEquals;
+
 // Re-export main initialization function
 // NOTE: Commented out because bindings is not available
 // pub const initializeNamespaces = bindings.initializeNamespaces;
