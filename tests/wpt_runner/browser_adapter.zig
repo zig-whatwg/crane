@@ -41,10 +41,8 @@ const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
 
-// Browser module for HTTP navigation
+// Browser module for context type mapping
 const browser = @import("browser");
-const navigation = browser.navigation;
-const Context = browser.Context;
 
 /// Adapter that provides browser-aligned WPT test execution
 /// with fresh context per test (matching real browser behavior)
@@ -153,34 +151,39 @@ pub const BrowserAdapter = struct {
         return result;
     }
 
-    /// Run an HTML WPT test
+    /// Run an HTML WPT test via HTTP navigation
     ///
     /// For .html tests, this method:
-    /// 1. Creates a fresh V8 context
-    /// 2. Loads testharness.js
-    /// 3. Parses the HTML content and builds a real DOM tree
-    /// 4. Scripts execute during parsing (in document order)
-    /// 5. Fires DOMContentLoaded after parsing
-    /// 6. Waits for test completion
+    /// 1. Builds HTTP URL from test_path
+    /// 2. Creates a fresh V8 context (navigates to URL)
+    /// 3. Loads testharness.js
+    /// 4. Fetches test HTML via HTTP
+    /// 5. Parses the HTML content and builds a real DOM tree
+    /// 6. Scripts execute during parsing (in document order)
+    /// 7. Waits for test completion
     ///
-    /// This enables tests that use document.querySelector() to find
-    /// elements that were parsed from the HTML.
+    /// This mimics real browser behavior where all content is fetched over the network.
     pub fn runHTMLTest(
         self: *BrowserAdapter,
         test_path: []const u8,
-        html_content: []const u8,
         timeout: config.Timeout,
         context_type: test_parser.GlobalType,
     ) !test_harness.TestResult {
-        const ctx_type = mapContextType(context_type);
+        _ = context_type; // URL determines context type
+
+        // Build HTTP URL from test path
+        const test_url = try std.fmt.allocPrint(self.allocator, "http://web-platform.test:8000/{s}", .{test_path});
+        defer self.allocator.free(test_url);
+
         const timeout_ms = timeout.toMillis();
 
+        // Use window context for HTML parsing - test URL determines actual execution context
+        // (e.g., .any.worker.html spawns a Worker internally)
         const result = self.wpt_browser.runHTMLTest(
             test_path,
-            html_content,
-            test_path, // Use test_path as base URL
+            test_url,
             timeout_ms,
-            ctx_type,
+            .window,
         ) catch |err| {
             // Convert error to TestResult
             var error_result = try test_harness.TestResult.init(self.allocator, test_path);
@@ -193,27 +196,23 @@ pub const BrowserAdapter = struct {
         return result;
     }
 
-    /// Run an HTML WPT test with an explicit base URL
+    /// Run an HTML WPT test with an explicit HTTP URL
     ///
-    /// This variant allows specifying the base URL for resolving relative script URLs.
-    /// Used when tests are fetched from HTTP and we need proper URL resolution.
-    pub fn runHTMLTestWithBaseUrl(
+    /// This variant allows specifying the full HTTP URL for fetching the test.
+    /// Used when running tests via runTestFromUrl.
+    pub fn runHTMLTestWithUrl(
         self: *BrowserAdapter,
         test_path: []const u8,
-        html_content: []const u8,
+        test_url: []const u8,
         timeout: config.Timeout,
-        context_type: test_parser.GlobalType,
-        base_url: []const u8,
     ) !test_harness.TestResult {
-        const ctx_type = mapContextType(context_type);
         const timeout_ms = timeout.toMillis();
 
         const result = self.wpt_browser.runHTMLTest(
             test_path,
-            html_content,
-            base_url,
+            test_url,
             timeout_ms,
-            ctx_type,
+            .window,
         ) catch |err| {
             // Convert error to TestResult
             var error_result = try test_harness.TestResult.init(self.allocator, test_path);
@@ -226,13 +225,14 @@ pub const BrowserAdapter = struct {
         return result;
     }
 
-    /// Run a WPT test by fetching it from an HTTP URL
+    /// Run a WPT test via HTTP URL
     ///
     /// This method:
-    /// 1. Fetches the test HTML from the WPT server via HTTP
-    /// 2. Creates a fresh V8 context (always window context for HTML parsing)
-    /// 3. Parses and executes the fetched HTML
-    /// 4. Waits for test completion
+    /// 1. Navigates browser to test URL
+    /// 2. Browser fetches test HTML via HTTP
+    /// 3. Loads testharness.js
+    /// 4. Parses and executes the fetched HTML
+    /// 5. Waits for test completion
     ///
     /// For .any.js tests, the WPT server generates HTML wrappers:
     /// - test.any.html - runs test directly in window
@@ -250,26 +250,7 @@ pub const BrowserAdapter = struct {
     ) !test_harness.TestResult {
         _ = context_type; // URL already encodes the context (e.g., .any.worker.html)
 
-        // Fetch the test HTML from the WPT server
-        var fetch_result = navigation.fetchUrl(self.allocator, test_url, .{}) catch |err| {
-            var result = try test_harness.TestResult.init(self.allocator, test_path);
-            result.status = .@"error";
-            result.message = try std.fmt.allocPrint(self.allocator, "Failed to fetch test from {s}: {}", .{ test_url, err });
-            return result;
-        };
-        defer fetch_result.deinit();
-
-        // Check for successful response
-        if (fetch_result.status_code >= 400) {
-            var result = try test_harness.TestResult.init(self.allocator, test_path);
-            result.status = .@"error";
-            result.message = try std.fmt.allocPrint(self.allocator, "HTTP {d} fetching {s}", .{ fetch_result.status_code, test_url });
-            return result;
-        }
-
-        // Always parse HTML in window context - the URL determines the actual test context
-        // (e.g., .any.worker.html will spawn a Worker internally)
-        // Pass the full URL as base_url so relative script URLs can be resolved
-        return self.runHTMLTestWithBaseUrl(test_path, fetch_result.body, timeout, .window, test_url);
+        // Delegate to runHTMLTestWithUrl - browser handles the HTTP fetch
+        return self.runHTMLTestWithUrl(test_path, test_url, timeout);
     }
 };

@@ -334,6 +334,14 @@ pub const Browser = struct {
         self.allocator.destroy(self);
     }
 
+    /// Navigation options
+    pub const NavigateOptions = struct {
+        /// If true, skip loading the page (caller will load manually)
+        skip_load: bool = false,
+        /// Optional script loader for external scripts during HTML parsing
+        script_loader: ?Context.ScriptLoader = null,
+    };
+
     /// Navigate to a URL
     ///
     /// This destroys the current V8 context (if any) and creates a new one.
@@ -343,10 +351,20 @@ pub const Browser = struct {
     /// 1. Destroy current V8 context (if any)
     /// 2. Create new V8 context
     /// 3. Register browser globals (skipped if using snapshot)
-    /// 4. Fetch URL content
+    /// 4. Fetch URL content via HTTP
     /// 5. Parse HTML and execute scripts
     /// 6. Fire DOMContentLoaded and load events
     pub fn navigate(self: *Browser, url: []const u8, context_type: context_mod.ContextType) !void {
+        return self.navigateWithOptions(url, context_type, .{});
+    }
+
+    /// Navigate to a URL with options
+    pub fn navigateWithOptions(
+        self: *Browser,
+        url: []const u8,
+        context_type: context_mod.ContextType,
+        options: NavigateOptions,
+    ) !void {
         const isolate = self.isolate orelse return error.NotInitialized;
 
         // Destroy current context if any
@@ -375,7 +393,11 @@ pub const Browser = struct {
         self.current_context = ctx;
 
         // Navigation loading is handled by Context.loadPage()
-        try ctx.loadPage();
+        if (!options.skip_load) {
+            try ctx.loadPageWithOptions(.{
+                .script_loader = options.script_loader,
+            });
+        }
     }
 
     /// Reload the current page

@@ -1532,6 +1532,14 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("fetch", fetch_mod);
     browser_mod.addImport("impls", impls_mod);
 
+    // WebDriver module - W3C WebDriver protocol implementation for wptrunner
+    const webdriver_mod = b.addModule("webdriver", .{
+        .root_source_file = b.path("src/webdriver/root.zig"),
+        .target = target,
+    });
+    webdriver_mod.addImport("v8", v8_mod);
+    webdriver_mod.addImport("browser", browser_mod);
+
     // Intl module - ECMA-402 Internationalization APIs (pure Zig ICU replacement)
     const intl_mod = b.addModule("intl", .{
         .root_source_file = b.path("src/intl/root.zig"),
@@ -1541,6 +1549,9 @@ pub fn build(b: *std.Build) void {
 
     // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
     v8_mod.addImport("intl", intl_mod);
+
+    // V8 module needs fetch for ES module loading from HTTP URLs
+    v8_mod.addImport("fetch", fetch_mod);
 
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
@@ -2387,10 +2398,11 @@ pub fn build(b: *std.Build) void {
     }
 
     // ---- Crane Executable (crane) ----
+    // WebDriver browser for wptrunner integration
     const crane_exe = b.addExecutable(.{
         .name = "crane",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/repl.zig"),
+            .root_source_file = b.path("src/webdriver/main.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -2403,6 +2415,7 @@ pub fn build(b: *std.Build) void {
     crane_exe.root_module.addImport("namespaces", namespaces_mod);
     crane_exe.root_module.addImport("browser", browser_mod);
     crane_exe.root_module.addImport("fetch", fetch_mod);
+    crane_exe.root_module.addImport("webdriver", webdriver_mod);
 
     // Add V8 C++ wrapper
     crane_exe.addCSourceFile(.{
@@ -2456,6 +2469,10 @@ pub fn build(b: *std.Build) void {
 
     browser_step.dependOn(&install_crane_lib.step);
     browser_step.dependOn(&install_crane_exe.step);
+
+    // Add "crane" as an alias for browser step (WebDriver-controlled browser)
+    const crane_step = b.step("crane", "Build Crane WebDriver browser (alias for 'browser')");
+    crane_step.dependOn(&install_crane_exe.step);
 
     // ========================================================================
     // IDL PARSER TOOL
@@ -2848,9 +2865,26 @@ pub fn build(b: *std.Build) void {
         "Show verbose output for each test",
     ) orelse false;
 
+    // Add step to clear WPT ports before running
+    // WPT uses ports: HTTP 8000-8003, HTTPS 8443-8446
+    const clear_ports = b.addSystemCommand(&.{
+        "sh",
+        "-c",
+        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446; do
+        \\  pid=$(lsof -ti :$port 2>/dev/null)
+        \\  if [ -n "$pid" ]; then
+        \\    echo "Killing process $pid on port $port"
+        \\    kill -9 $pid 2>/dev/null || true
+        \\  fi
+        \\done
+        \\echo "WPT ports cleared"
+        ,
+    });
+
     // Add run step for WPT runner
     const run_wpt = b.addRunArtifact(wpt_runner_exe);
     run_wpt.step.dependOn(b.getInstallStep());
+    run_wpt.step.dependOn(&clear_ports.step); // Clear ports first
 
     // Pass build options as command-line arguments
     run_wpt.addArg(b.fmt("--output={s}", .{wpt_output}));

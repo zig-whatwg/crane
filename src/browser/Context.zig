@@ -26,6 +26,7 @@ const v8 = @import("v8");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
+const fetch = @import("fetch");
 
 const storage_mod = @import("storage/Storage.zig");
 const Storage = storage_mod.Storage;
@@ -411,7 +412,7 @@ pub const Context = struct {
         // SNAPSHOT MODE: Skip initializeBindings() - interfaces are already in the snapshot!
         // However, we still need to populate the Zig-side template registry so that
         // wrapInstanceAsV8Object() can wrap Document, Navigator, etc. with correct prototypes.
-        v8.interface_bindings.registerAllTemplatesOnly(self.isolate);
+        v8.interface_bindings.registerAllTemplatesOnly(self.isolate, v8_ctx);
 
         // Register namespaces (console, WebAssembly, etc.) which are NOT included in the snapshot.
         v8.interface_bindings.registerNamespacesGeneric(namespaces, self.isolate, v8_ctx);
@@ -467,6 +468,21 @@ pub const Context = struct {
         // so we can't inherit properties from Window.prototype through the prototype chain.
         // This matches how child contexts (iframes) register Window properties.
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Set self/window/frames as data properties equal to global
+        // This is critical for testharness.js compatibility: (function(global_scope){...})(self)
+        // requires that self === globalThis so that properties set on global_scope become
+        // accessible as global variables. These are skipped in registerPropertiesAsOwnOnObject
+        // because they need to be data properties (not accessors) for object identity.
+        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4)) |self_prop_key| {
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
+        }
+        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6)) |window_prop_key| {
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
+        }
+        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "frames", 6)) |frames_prop_key| {
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
+        }
 
         // Set up global aliases FIRST (creates __internal object and accessor properties)
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
@@ -578,6 +594,18 @@ pub const Context = struct {
 
         // Register Window properties as own properties on the global object
         v8.interface_bindings.Window.registerPropertiesAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Set self/window/frames as data properties equal to global
+        // This is critical for testharness.js compatibility
+        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "self", 4)) |self_prop_key| {
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
+        }
+        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "window", 6)) |window_prop_key| {
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
+        }
+        if (v8.ffi.v8_String_NewFromUtf8(self.isolate, "frames", 6)) |frames_prop_key| {
+            _ = v8.ffi.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
+        }
 
         // Set up global aliases
         self.setupGlobalAliases() catch |err| {
@@ -1160,27 +1188,35 @@ pub const Context = struct {
         };
     }
 
+    /// Options for loadPage
+    pub const LoadPageOptions = struct {
+        /// Optional script loader for external scripts
+        script_loader: ?ScriptLoader = null,
+    };
+
     /// Load page content (fetch, parse, execute)
     ///
     /// Navigation flow per HTML Standard:
-    /// 1. Fetch URL content
+    /// 1. Fetch URL content via HTTP
     /// 2. Parse HTML into DOM tree
-    /// 3. Execute inline scripts (in document order)
+    /// 3. Execute inline and external scripts (in document order)
     /// 4. Fire DOMContentLoaded event
     /// 5. Fire load event
     pub fn loadPage(self: *Context) !void {
-        const isolate = self.isolate;
-        const v8_ctx = self.v8_context orelse return error.NotInitialized;
+        return self.loadPageWithOptions(.{});
+    }
 
-        // Step 1: Fetch URL content
+    /// Load page content with options
+    pub fn loadPageWithOptions(self: *Context, options: LoadPageOptions) !void {
+        // For about:blank, just return with empty document
+        if (std.mem.eql(u8, self.url, "about:blank")) {
+            return;
+        }
+
+        // Step 1: Fetch URL content via HTTP
         var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
             // Handle navigation errors gracefully
             std.debug.print("Navigation error for {s}: {}\n", .{ self.url, err });
-
-            // For about:blank or errors, just return with empty document
-            if (std.mem.eql(u8, self.url, "about:blank")) {
-                return;
-            }
             return error.NavigationFailed;
         };
         defer result.deinit();
@@ -1196,17 +1232,13 @@ pub const Context = struct {
             return;
         }
 
-        // Step 3: Parse HTML (for script extraction)
-        // Note: We're using a simplified approach here - just extracting scripts
-        // and executing them. Full DOM tree construction would integrate with
-        // the WebIDL Document interface.
-        try self.executeInlineScripts(result.body);
-
-        // Step 4: Fire DOMContentLoaded
-        navigation.fireDOMContentLoaded(isolate, v8_ctx);
-
-        // Step 5: Fire load event
-        navigation.fireLoad(isolate, v8_ctx);
+        // Step 3-5: Parse HTML and execute scripts using loadHTML
+        // This uses the full HTML parser with proper script loading
+        try self.loadHTML(result.body, .{
+            .base_url = self.url,
+            .scripting_enabled = true,
+            .script_loader = options.script_loader,
+        });
     }
 
     /// Execute inline scripts from HTML content
@@ -1877,13 +1909,118 @@ fn getPropertyValueCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
     info.setReturnValue(@ptrCast(empty_str));
 }
 
-/// fetch callback - stub implementation that throws TypeError
-/// Full implementation requires HTTP client integration
+/// fetch callback - implements the global fetch() function
+/// Per Fetch spec: https://fetch.spec.whatwg.org/#fetch-method
 fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        throwTypeError(isolate, info, "No context available");
+        return;
+    };
 
-    // Throw TypeError indicating fetch is not implemented
-    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, "fetch is not yet implemented", 28) orelse {
+    // Get allocator from thread-local storage
+    const allocator = current_allocator orelse {
+        throwTypeError(isolate, info, "No allocator available");
+        return;
+    };
+
+    // Create a Promise to return
+    const resolver = v8.ffi.v8_PromiseResolver_New(v8_ctx) orelse {
+        throwTypeError(isolate, info, "Failed to create promise");
+        return;
+    };
+    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
+        throwTypeError(isolate, info, "Failed to get promise");
+        return;
+    };
+
+    // Return the promise early - we'll resolve/reject it after fetch completes
+    info.setReturnValue(@ptrCast(promise));
+
+    // Check for URL argument
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': 1 argument required, but only 0 present.");
+        return;
+    }
+
+    // Get URL from first argument
+    const url_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsString(url_value)) {
+        // TODO: Handle Request object input
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': URL must be a string");
+        return;
+    }
+
+    // Convert V8 string to Zig string
+    const url_str = v8.ffi.v8_Value_ToString(url_value, v8_ctx) orelse {
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to convert URL to string");
+        return;
+    };
+    const url_len = v8.ffi.v8_String_Utf8Length(url_str);
+    if (url_len <= 0 or url_len > 65536) {
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Invalid URL length");
+        return;
+    }
+
+    const url_buffer = allocator.alloc(u8, @intCast(url_len)) catch {
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Out of memory");
+        return;
+    };
+    defer allocator.free(url_buffer);
+
+    const written = v8.ffi.v8_String_WriteUtf8(url_str, url_buffer.ptr, @intCast(url_len));
+    if (written <= 0) {
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to read URL string");
+        return;
+    }
+    const url_slice = url_buffer[0..@intCast(written)];
+
+    // Create internal request
+    const internal_request = fetch.internal.InternalRequest.init(allocator, url_slice) catch {
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create request");
+        return;
+    };
+    defer internal_request.deinit();
+
+    // Execute fetch algorithm (synchronous for now)
+    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
+        const err_msg = switch (err) {
+            fetch.algorithms.FetchError.NetworkError => "NetworkError: Failed to fetch",
+            fetch.algorithms.FetchError.AbortError => "AbortError: Fetch aborted",
+            fetch.algorithms.FetchError.OutOfMemory => "OutOfMemory",
+        };
+        rejectWithTypeError(isolate, v8_ctx, resolver, err_msg);
+        return;
+    };
+    defer fetch_result.timing_info.deinit();
+
+    // Create runtime context for Response creation
+    var ctx_data = runtime.createNullContext(allocator) catch {
+        fetch_result.response.deinit();
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create context");
+        return;
+    };
+    defer ctx_data.deinit();
+
+    // Create Response WebIDL wrapper from internal response
+    const ResponseImpl = impls.Response;
+    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, &ctx_data) catch {
+        fetch_result.response.deinit();
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create Response object");
+        return;
+    };
+    // Note: response_instance now owns fetch_result.response, don't deinit it separately
+
+    // Wrap the Response instance for V8
+    const response_js = v8.conversions.instanceToV8(isolate, response_instance);
+
+    // Resolve the promise with the Response
+    _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_ctx, response_js);
+}
+
+/// Helper to throw TypeError
+fn throwTypeError(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, msg: []const u8) void {
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse {
         if (v8.ffi.v8_Undefined(isolate)) |undef| {
             info.setReturnValue(undef);
         }
@@ -1896,4 +2033,11 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
         return;
     };
     v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+}
+
+/// Helper to reject a promise with TypeError
+fn rejectWithTypeError(isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, resolver: *v8.ffi.PromiseResolver, msg: []const u8) void {
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return;
+    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_ctx, error_val);
 }

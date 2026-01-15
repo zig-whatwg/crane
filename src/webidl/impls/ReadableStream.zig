@@ -3470,8 +3470,83 @@ fn setUpReadableStreamDefaultControllerInternal(
     internal.controller = controller;
 }
 
+/// ReadableStream.from(asyncIterable) static method
+///
+/// Spec: https://streams.spec.whatwg.org/#rs-from
+///
+/// Creates a ReadableStream from an async iterable object.
+/// Steps:
+/// 1. Let iteratorRecord be ? GetIterator(asyncIterable, async)
+/// 2. Let stream be ! CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm)
+/// 3. Return stream
 pub fn call_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = asyncIterable;
-    return error.NotImplemented;
+    // The 'instance' parameter is the constructor function, not needed for static method
+    const ctx = instance.ctx;
+    const allocator = ctx.getAllocator();
+
+    // Get the async iterable value as a V8 pointer
+    const async_iterable_ptr = asyncIterable.toAnyopaque() orelse return error.TypeError;
+
+    // Step 1: Get iterator from async iterable
+    // Spec: Let iteratorRecord be ? GetIterator(asyncIterable, async)
+    const iterator_record = IteratorRecord.fromAsyncIterable(
+        allocator,
+        ctx,
+        async_iterable_ptr,
+    ) catch |err| {
+        // TypeError if not an async iterable
+        if (err == error.TypeError) return error.TypeError;
+        if (err == error.NoV8Engine or err == error.NoV8Context) return error.InvalidState;
+        return err;
+    };
+    errdefer iterator_record.deinit();
+
+    // Step 2: Create pull algorithm
+    // The pull algorithm will iterate through the async iterable
+    const pull_algorithm = try from_iterable.createPullAlgorithm(allocator, iterator_record);
+    errdefer pull_algorithm.destroy(allocator);
+
+    // Cancel algorithm - use null for now since the pull algorithm owns the iterator
+    // and will clean it up when the stream is destroyed. In the future, we could
+    // implement proper cancel that calls iterator.return(reason).
+    const cancel_algorithm: ?*Algorithm = null;
+
+    // Step 3: Create the stream
+    // Use the same pattern as the constructor but with our algorithms
+    const loop = try ctx.getEventLoop();
+
+    // Create stream instance
+    const stream_instance = try init(allocator, State, &ReadableStream.vtable, ctx);
+    errdefer deinit(stream_instance);
+
+    const state = stream_instance.getState(State);
+
+    // Create internal state
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = InternalState{
+        .controller = undefined, // Will be set by SetUp
+        .reader = .none,
+        .state = .readable,
+        .stored_error = .none,
+        .detached = false,
+        .disturbed = false,
+        .event_loop = loop,
+        .allocator = allocator,
+    };
+
+    state.own._internal = internal;
+
+    // Set up default controller with our algorithms
+    // Use the internal helper that takes Algorithm pointers directly
+    try setUpReadableStreamDefaultControllerInternal(
+        stream_instance,
+        internal,
+        pull_algorithm,
+        cancel_algorithm,
+        1.0, // High water mark
+    );
+
+    return stream_instance;
 }
