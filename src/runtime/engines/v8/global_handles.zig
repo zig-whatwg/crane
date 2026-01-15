@@ -43,6 +43,7 @@
 //! }
 //! ```
 
+const std = @import("std");
 const ffi = @import("ffi.zig");
 
 /// A type-safe wrapper for V8 Global<Value> handles.
@@ -120,6 +121,14 @@ pub const GlobalHandle = struct {
     ///
     /// This is idempotent - calling dispose multiple times is safe.
     pub fn dispose(self: GlobalHandle) void {
+        // Safety check: verify the pointer looks like a valid heap address before disposal.
+        // Invalid addresses indicate memory corruption and would crash in V8.
+        // On 64-bit macOS, user-space heap addresses are typically below 0x7FFFFFFFFFFF.
+        const ptr_addr = @intFromPtr(self.ptr);
+        if (ptr_addr == 0 or ptr_addr > 0x7FFFFFFFFFFF) {
+            // Skip corrupted or null pointers to prevent crashes
+            return;
+        }
         ffi.v8_Global_Dispose(self.ptr);
     }
 

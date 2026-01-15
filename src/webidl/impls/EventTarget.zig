@@ -94,14 +94,16 @@ pub const InternalState = struct {
                 // Clean up callback wrapper (disposes Global handles)
                 // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
                 // Skip V8 cleanup during final runtime shutdown when isolate is disposed
-                if (cleanup_v8_resources) {
-                    if (listener.callback) |callback_instance| {
-                        // Get the CallbackWrapper and deinit it to dispose Global handles
-                        const v8_engine = @import("v8");
-                        const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                        callback_wrapper.deinit();
-                    }
-                }
+                //
+                // TODO: Temporarily disabled callback disposal due to Global handle corruption
+                // that causes crashes. The root cause needs investigation - the Global<Value>
+                // objects have corrupted internal slot() pointers, suggesting either:
+                // 1. Double-free of Global handles
+                // 2. Memory corruption from elsewhere
+                // 3. V8 GC issue with handle management
+                // For now, we leak these handles to avoid crashes during cleanup.
+                _ = cleanup_v8_resources;
+                _ = listener.callback;
             }
             list.deinit();
             self.allocator.destroy(list);

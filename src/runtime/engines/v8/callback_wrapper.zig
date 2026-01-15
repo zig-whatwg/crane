@@ -144,6 +144,7 @@ pub const CallbackWrapper = struct {
     /// Clean up the callback wrapper and dispose Global handles
     pub fn deinit(self: *CallbackWrapper) void {
         // Dispose Global handles to allow V8 GC to collect the underlying values
+        // Safety checks are now in GlobalHandle.dispose()
         if (self.callback_function_global) |handle| {
             handle.dispose();
         }

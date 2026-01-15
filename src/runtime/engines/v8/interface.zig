@@ -387,11 +387,6 @@ pub fn V8Interface(comptime Interface: type) type {
             // Set registration context for manifest tracking
             ext_refs.setRegistrationContext(interface_name, .interface_constructor);
 
-            // Debug: Log which interface is registering callbacks
-            if (comptime std.mem.eql(u8, interface_name, "MessageEvent")) {
-                debug.print("[registerExternalReferences] Registering callbacks for MessageEvent\n", .{});
-            }
-
             // Register constructor/non-constructor callback
             if (has_constructor) {
                 ext_refs.registerCallbackRuntime(constructorCallback);
@@ -600,17 +595,8 @@ pub fn V8Interface(comptime Interface: type) type {
         ) void {
             @setEvalBranchQuota(10000); // Raise branch limit for multiple inline loops
 
-            // Debug: Track when Worker constructor is being reinstalled
-            if (std.mem.eql(u8, global_name, "Worker")) {
-                std.debug.print("[REINSTALL] Creating fresh Worker template and installing on global\n", .{});
-            }
-
             const template = createTemplate(isolate);
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
-
-            if (std.mem.eql(u8, global_name, "Worker")) {
-                std.debug.print("[REINSTALL] Worker template={?}, constructor={?}\n", .{ template, constructor });
-            }
 
             // Register template in template_registry for wrapInstanceAsV8Object()
             template_registry.register(global_name, template, isolate);
@@ -625,7 +611,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // - writable: true
             // - enumerable: false (not in for...in loops or Object.keys)
             // - configurable: true
-            const success = v8.v8_Object_DefineProperty(
+            _ = v8.v8_Object_DefineProperty(
                 global,
                 context,
                 @ptrCast(key_str),
@@ -634,10 +620,6 @@ pub fn V8Interface(comptime Interface: type) type {
                 false, // enumerable = false (per WebIDL spec)
                 true, // configurable = true
             );
-
-            if (std.mem.eql(u8, global_name, "Worker")) {
-                std.debug.print("[REINSTALL] Worker DefineProperty success={}\n", .{success});
-            }
 
             // NOTE: V8 LIMITATION - Constructor Property Enumeration Order
             //
@@ -1185,10 +1167,6 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate_alloc = @import("isolate_allocator.zig");
             const isolate_templates = @import("isolate_templates.zig");
 
-            if (std.mem.eql(u8, interface_name, "Worker")) {
-                std.debug.print("[TEMPLATE] Creating FRESH Worker template (bypassing cache)\n", .{});
-            }
-
             // Create the template
             const template = createTemplateCore(isolate);
 
@@ -1247,11 +1225,6 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Create function template - only with constructor callback if interface is constructible
             const ctor_callback: ?v8.FunctionCallback = if (has_constructor) constructorCallback else nonConstructorCallback;
-
-            // Debug: Verify callback pointer for Worker
-            if (std.mem.eql(u8, interface_name, "Worker")) {
-                std.debug.print("[TEMPLATE] Creating Worker FunctionTemplate with callback={?}\n", .{ctor_callback});
-            }
 
             const template = v8.v8_FunctionTemplate_New(
                 isolate,
@@ -1439,9 +1412,6 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // Use SetAccessorProperty instead of SetAccessor to create visible descriptors
                 // This makes the getter/setter appear in Object.getOwnPropertyDescriptor
-                if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-                    std.debug.print("[ME-REG] Registering accessor '{s}' with getter_cb={?*}\n", .{ prop_name, getter_cb });
-                }
                 v8.v8_ObjectTemplate_SetAccessorProperty(
                     proto_tmpl,
                     prop_name_str,
@@ -1761,9 +1731,6 @@ pub fn V8Interface(comptime Interface: type) type {
                     // This is called on every property access, so must be zero-cost when disabled
                     debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ iface_name, getter_name });
 
-                    // TEMP: Runtime debug to trace if V8 is calling us
-                    std.debug.print("[PROP-GET] {s}.{s} called\n", .{ iface_name, getter_name });
-
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
 
@@ -1917,17 +1884,8 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Use comptime-generated registry which has ALL interfaces
                                 const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
                                 if (wrapper_type_info_registry.getWrapperTypeInfoByName(interface_name)) |expected_type| {
-                                    if (comptime std.mem.eql(u8, iface_name, "MessageEvent")) {
-                                        std.debug.print("[PropertyGetterCallback] MessageEvent.{s}: checking getInstanceTypeSafe\n", .{getter_name});
-                                    }
                                     if (getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
-                                        if (comptime std.mem.eql(u8, iface_name, "MessageEvent")) {
-                                            std.debug.print("[PropertyGetterCallback] MessageEvent.{s}: got instance {*}\n", .{ getter_name, inst });
-                                        }
                                         break :blk @ptrCast(inst);
-                                    }
-                                    if (comptime std.mem.eql(u8, iface_name, "MessageEvent")) {
-                                        std.debug.print("[PropertyGetterCallback] MessageEvent.{s}: getInstanceTypeSafe returned null\n", .{getter_name});
                                     }
                                     // Type check failed - not an instance of this interface
                                     if (is_lenient_this) {
@@ -1944,8 +1902,20 @@ pub fn V8Interface(comptime Interface: type) type {
                                         // WrapperTypeInfo is present - use it for type checking
                                         // Per WebIDL spec: "If the this value is null or undefined, or is not a
                                         // platform object that implements the interface, then throw a TypeError"
-                                        if (std.mem.eql(u8, stored_type_info.getName(), interface_name)) {
-                                            // Type matches - get instance pointer from slot 0
+                                        //
+                                        // IMPORTANT: Check inheritance chain, not just exact match!
+                                        // E.g., if getter is on Node.prototype and this is HTMLDivElement,
+                                        // we need to check if HTMLDivElement inherits from Node.
+                                        var current_type: ?*const WrapperTypeInfo = stored_type_info;
+                                        const type_matches = while (current_type) |type_info| {
+                                            if (std.mem.eql(u8, type_info.getName(), interface_name)) {
+                                                break true;
+                                            }
+                                            current_type = type_info.parent;
+                                        } else false;
+
+                                        if (type_matches) {
+                                            // Type matches (including inheritance) - get instance pointer from slot 0
                                             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
                                             if (instance_ptr != null) {
                                                 break :blk instance_ptr;
@@ -1955,9 +1925,6 @@ pub fn V8Interface(comptime Interface: type) type {
                                     } else {
                                         // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
                                         const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                                        if (comptime std.mem.eql(u8, iface_name, "MessageEvent")) {
-                                            std.log.warn("[PropertyGetterCallback] MessageEvent.{s}: legacy path, instance_ptr={?*}", .{ getter_name, instance_ptr });
-                                        }
                                         if (instance_ptr != null) {
                                             break :blk instance_ptr;
                                         }
@@ -2357,8 +2324,20 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
                                 if (getWrapperTypeInfo(this_obj)) |stored_type_info| {
                                     // WrapperTypeInfo is present - use it for type checking
-                                    if (std.mem.eql(u8, stored_type_info.getName(), interface_name)) {
-                                        // Type matches - get instance using legacy getInstance
+                                    //
+                                    // IMPORTANT: Check inheritance chain, not just exact match!
+                                    // E.g., if method is on Node.prototype and this is HTMLDivElement,
+                                    // we need to check if HTMLDivElement inherits from Node.
+                                    var current_type: ?*const WrapperTypeInfo = stored_type_info;
+                                    const type_matches = while (current_type) |type_info| {
+                                        if (std.mem.eql(u8, type_info.getName(), interface_name)) {
+                                            break true;
+                                        }
+                                        current_type = type_info.parent;
+                                    } else false;
+
+                                    if (type_matches) {
+                                        // Type matches (including inheritance) - get instance using legacy getInstance
                                         if (getInstance(runtime.Instance, this_obj)) |inst| {
                                             break :blk inst;
                                         }
@@ -6722,8 +6701,20 @@ pub fn V8Interface(comptime Interface: type) type {
                                     // WrapperTypeInfo is present - use it for type checking
                                     // Per WebIDL spec: "If the this value is null or undefined, or is not a
                                     // platform object that implements the interface, then throw a TypeError"
-                                    if (std.mem.eql(u8, stored_type_info.getName(), interface_name)) {
-                                        // Type matches - get instance pointer from slot 0
+                                    //
+                                    // IMPORTANT: Check inheritance chain, not just exact match!
+                                    // E.g., if setter is on Node.prototype and this is HTMLDivElement,
+                                    // we need to check if HTMLDivElement inherits from Node.
+                                    var current_type: ?*const WrapperTypeInfo = stored_type_info;
+                                    const type_matches = while (current_type) |type_info| {
+                                        if (std.mem.eql(u8, type_info.getName(), interface_name)) {
+                                            break true;
+                                        }
+                                        current_type = type_info.parent;
+                                    } else false;
+
+                                    if (type_matches) {
+                                        // Type matches (including inheritance) - get instance pointer from slot 0
                                         const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
                                         if (instance_ptr != null) {
                                             break :blk instance_ptr;
