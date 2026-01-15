@@ -2051,7 +2051,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         //
                         // IMPORTANT: Getters that return internal references (not newly allocated)
                         // MUST be updated to dupe the string first, or the cleanup will double-free.
-                        const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
+                        const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString or PayloadType == runtime.JSValue);
 
                         defer if (needs_cleanup) {
                             // Re-validate allocator before cleanup - it could have been invalidated
@@ -2067,6 +2067,16 @@ pub fn V8Interface(comptime Interface: type) type {
                                 } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
                                     if (result.len > 0) {
                                         cleanup_allocator.free(result);
+                                    }
+                                } else if (PayloadType == runtime.JSValue) {
+                                    // Free owned string data in JSValue after V8 conversion
+                                    switch (result) {
+                                        .string => |s| {
+                                            if (s.owned and s.data.len > 0) {
+                                                cleanup_allocator.free(s.data);
+                                            }
+                                        },
+                                        else => {},
                                     }
                                 }
                             }
@@ -2861,9 +2871,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // Static strings (empty string "") have len=0 and won't be freed.
             // Handles both optional and non-optional string types.
             // Also handles sequences (arrays) of strings.
+            // Also handles JSValue with owned strings.
             const needs_string_cleanup = comptime (InnerType == runtime.USVString or
                 InnerType == []const u8 or
-                InnerType == runtime.DOMString);
+                InnerType == runtime.DOMString or
+                InnerType == runtime.JSValue);
             const needs_sequence_cleanup = comptime (is_sequence and
                 (ElementType == []const u8 or ElementType == runtime.USVString));
             const is_optional = comptime (@typeInfo(PayloadType) == .optional);
@@ -2889,6 +2901,29 @@ pub fn V8Interface(comptime Interface: type) type {
                     } else {
                         if (zig_result.len > 0) {
                             instance.ctx.allocator.free(zig_result);
+                        }
+                    }
+                } else if (InnerType == runtime.JSValue) {
+                    // Free owned string data in JSValue after V8 conversion
+                    if (is_optional) {
+                        if (zig_result) |value| {
+                            switch (value) {
+                                .string => |s| {
+                                    if (s.owned and s.data.len > 0) {
+                                        instance.ctx.allocator.free(s.data);
+                                    }
+                                },
+                                else => {},
+                            }
+                        }
+                    } else {
+                        switch (zig_result) {
+                            .string => |s| {
+                                if (s.owned and s.data.len > 0) {
+                                    instance.ctx.allocator.free(s.data);
+                                }
+                            },
+                            else => {},
                         }
                     }
                 }

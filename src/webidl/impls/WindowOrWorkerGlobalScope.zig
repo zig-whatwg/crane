@@ -234,11 +234,96 @@ fn microtaskCallback(data: ?*anyopaque) callconv(.c) void {
 }
 
 /// Operation: structuredClone
+/// Spec: https://html.spec.whatwg.org/multipage/structured-data.html#dom-structuredclone
+///
+/// Creates a deep clone of a value using the structured clone algorithm.
+/// Handles circular references, Date, RegExp, Map, Set, ArrayBuffer, etc.
+/// Throws DataCloneError for non-cloneable values like functions and symbols.
 pub fn call_structuredClone(instance: *runtime.Instance, value: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = value;
-    _ = options;
-    return error.NotImplemented;
+    const v8_ffi = @import("v8").ffi;
+
+    // For primitives (undefined, null, boolean, number), return them directly
+    // For value types that are passed as handles (strings, objects), use V8's clone
+    switch (value) {
+        .undefined => return runtime.JSValue.jsUndefined,
+        .null => return runtime.JSValue.jsNull,
+        .boolean => |b| return runtime.JSValue.fromBoolean(b),
+        .number => |n| return runtime.JSValue.fromNumber(n),
+        .string => |s| {
+            // Clone the string data since input argument data may be freed after return.
+            // The returned string is owned and will be freed after conversion to V8.
+            const cloned_data = instance.ctx.allocator.dupe(u8, s.data) catch return error.OutOfMemory;
+            return runtime.JSValue{ .string = .{
+                .data = cloned_data,
+                .owned = true,
+            } };
+        },
+        .handle => |h| {
+            // For objects/functions/etc, use V8's structured clone
+            const v8_value: *v8_ffi.Value = @ptrCast(@alignCast(h.ptr));
+
+            // Check if we have a transfer list in options
+            if (options.was_passed and options.value.transfer != null) {
+                const transfer_list = options.value.transfer.?;
+                if (transfer_list.len > 0) {
+                    // Build transfer list for V8
+                    var v8_transfers: [64]*v8_ffi.Value = undefined; // Max 64 transfers
+                    const count = @min(transfer_list.len, 64);
+
+                    for (0..count) |i| {
+                        switch (transfer_list[i]) {
+                            .handle => |th| {
+                                v8_transfers[i] = @ptrCast(@alignCast(th.ptr));
+                            },
+                            else => {
+                                // Non-object in transfer list is a DataCloneError
+                                return error.DataCloneError;
+                            },
+                        }
+                    }
+
+                    var error_code: c_int = 0;
+                    const cloned = v8_ffi.v8_Value_StructuredCloneWithTransfer(
+                        v8_value,
+                        &v8_transfers,
+                        count,
+                        &error_code,
+                    );
+
+                    if (cloned == null or error_code != 0) {
+                        return error.DataCloneError;
+                    }
+
+                    return runtime.JSValue{
+                        .handle = .{
+                            .ptr = @ptrCast(cloned.?),
+                            .needs_disposal = true,
+                            .handle_scope = .global,
+                        },
+                    };
+                }
+            }
+
+            // No transfer list, use simple clone
+            const cloned = v8_ffi.v8_Value_StructuredClone(v8_value);
+            if (cloned == null) {
+                // Clone failed - value contains non-cloneable types (functions, symbols, etc.)
+                return error.DataCloneError;
+            }
+
+            return runtime.JSValue{
+                .handle = .{
+                    .ptr = @ptrCast(cloned.?),
+                    .needs_disposal = true,
+                    .handle_scope = .global,
+                },
+            };
+        },
+        .instance => {
+            // Zig instances cannot be cloned
+            return error.DataCloneError;
+        },
+    }
 }
 
 /// Operation: setTimeout
