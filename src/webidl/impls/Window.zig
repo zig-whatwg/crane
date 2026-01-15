@@ -32,6 +32,9 @@ const Window = interfaces.Window;
 // Window inherits from EventTarget per WebIDL
 const EventTargetImpl = @import("EventTarget.zig");
 
+// Import WindowOrWorkerGlobalScope mixin impl for shared global methods
+const WindowOrWorkerGlobalScopeImpl = @import("WindowOrWorkerGlobalScope.zig");
+
 // HTML Window infrastructure modules (html_core - interface-free)
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
@@ -2926,10 +2929,10 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
 }
 
 /// Operation: queueMicrotask
+/// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-queuemicrotask
 pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.VoidFunction) anyerror!void {
-    _ = instance;
-    _ = callback;
-    return error.NotImplemented;
+    // Delegate to WindowOrWorkerGlobalScope mixin implementation
+    return WindowOrWorkerGlobalScopeImpl.call_queueMicrotask(instance, callback);
 }
 
 /// Operation: structuredClone
