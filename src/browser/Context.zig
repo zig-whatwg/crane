@@ -24,6 +24,7 @@
 const std = @import("std");
 const v8 = @import("v8");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const interfaces = @import("interfaces");
 const namespaces = @import("namespaces");
 const fetch = @import("fetch");
@@ -938,109 +939,9 @@ pub const Context = struct {
             _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
         }
 
-        // Register console object with proper WebIDL namespace semantics
-        // Per WebIDL spec §3.8.1 "Namespace objects":
-        // - The prototype chain is: console -> empty object -> Object.prototype
-        // - The namespace has Symbol.toStringTag = "console" (non-writable, non-enumerable, configurable)
-        // - All console methods are own properties
-        {
-            const console_script =
-                \\(function() {
-                \\  function consoleNoop() {}
-                \\  
-                \\  // Helper to convert label to string per WHATWG Console Standard
-                \\  function convertLabel(label) {
-                \\    if (label === undefined) {
-                \\      return "default";
-                \\    }
-                \\    if (label !== null && typeof label === "object") {
-                \\      return label.toString();
-                \\    }
-                \\    return String(label);
-                \\  }
-                \\  
-                \\  // Internal state for count and time operations
-                \\  var countMap = {};
-                \\  var timerMap = {};
-                \\  
-                \\  // Create the empty prototype object
-                \\  var consoleProto = Object.create(Object.prototype);
-                \\  Object.freeze(consoleProto);
-                \\  
-                \\  // Create console object with the proper prototype chain
-                \\  globalThis.console = Object.create(consoleProto);
-                \\  
-                \\  // Define all console methods as own properties
-                \\  var methods = {
-                \\    log: consoleNoop,
-                \\    warn: consoleNoop,
-                \\    error: consoleNoop,
-                \\    info: consoleNoop,
-                \\    debug: consoleNoop,
-                \\    trace: consoleNoop,
-                \\    dir: consoleNoop,
-                \\    dirxml: consoleNoop,
-                \\    table: consoleNoop,
-                \\    assert: consoleNoop,
-                \\    clear: consoleNoop,
-                \\    group: consoleNoop,
-                \\    groupCollapsed: consoleNoop,
-                \\    groupEnd: consoleNoop,
-                \\  };
-                \\  
-                \\  function createLabelMethod(fn, length) {
-                \\    Object.defineProperty(fn, 'length', { value: length, configurable: true });
-                \\    return fn;
-                \\  }
-                \\  
-                \\  methods.count = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    countMap[key] = (countMap[key] || 0) + 1;
-                \\  }, 0);
-                \\  
-                \\  methods.countReset = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    delete countMap[key];
-                \\  }, 0);
-                \\  
-                \\  methods.time = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    if (!(key in timerMap)) {
-                \\      timerMap[key] = Date.now();
-                \\    }
-                \\  }, 0);
-                \\  
-                \\  methods.timeLog = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\  }, 0);
-                \\  
-                \\  methods.timeEnd = createLabelMethod(function(label) {
-                \\    var key = convertLabel(label);
-                \\    delete timerMap[key];
-                \\  }, 0);
-                \\  
-                \\  for (var name in methods) {
-                \\    Object.defineProperty(globalThis.console, name, {
-                \\      value: methods[name],
-                \\      writable: true,
-                \\      enumerable: true,
-                \\      configurable: true
-                \\    });
-                \\  }
-                \\  
-                \\  // Add Symbol.toStringTag per WebIDL namespace semantics
-                \\  Object.defineProperty(globalThis.console, Symbol.toStringTag, {
-                \\    value: "console",
-                \\    writable: false,
-                \\    enumerable: false,
-                \\    configurable: true
-                \\  });
-                \\})();
-            ;
-            _ = self.evaluateScript(console_script) catch |err| {
-                std.debug.print("Warning: Failed to register console: {}\n", .{err});
-            };
-        }
+        // NOTE: console object is registered via WebIDL namespace binding in snapshot
+        // (see bindings.zig initializeNamespaces -> Console.registerGlobal)
+        // The native binding provides proper console.log/error/etc with output to stderr
 
         // Register btoa/atob for base64 encoding/decoding
         {
@@ -1829,24 +1730,225 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     info.setReturnValue(@ptrCast(result));
 }
 
+/// addEventListener callback - delegates to EventTarget WebIDL implementation
+/// Per DOM spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
 fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (v8.ffi.v8_Undefined(isolate)) |undef| {
-        info.setReturnValue(undef);
-    }
+
+    // Return undefined by default
+    const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
+    info.setReturnValue(return_undefined);
+
+    // Get V8 context
+    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get global object (which has the window instance)
+    const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return;
+
+    // Get window instance from internal field 0
+    const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
+    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+
+    // Need at least type and callback arguments
+    if (info.v8_FunctionCallbackInfo_Length() < 2) return;
+
+    // Get type argument (first arg)
+    const type_arg = info.v8_FunctionCallbackInfo_GetArgument(0);
+    if (!v8.ffi.v8_Value_IsString(@ptrCast(type_arg))) return;
+    const type_str: *v8.ffi.String = @ptrCast(type_arg);
+
+    // Convert V8 string to DOMString
+    const type_length = v8.ffi.v8_String_Utf8Length(type_str);
+    if (type_length <= 0) return;
+    const allocator = std.heap.page_allocator;
+    const type_buffer = allocator.alloc(u8, @intCast(type_length)) catch return;
+    defer allocator.free(type_buffer);
+    _ = v8.ffi.v8_String_WriteUtf8(type_str, type_buffer.ptr, @intCast(type_length));
+    const event_type = runtime.DOMString.initOwned(type_buffer);
+
+    // Get callback argument (second arg)
+    const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
+    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) return;
+
+    // Create V8 CallbackWrapper from the callback value
+    const v8_wrapper = v8.callback_wrapper_mod.createFromV8Value(
+        allocator,
+        isolate,
+        v8_ctx,
+        @ptrCast(callback_arg),
+        "handleEvent",
+    ) catch return orelse return;
+
+    // Create runtime.CallbackWrapper that wraps the V8 callback
+    // (per conversions.zig pattern for proper engine interface setup)
+    const runtime_wrapper = allocator.create(runtime.CallbackWrapper) catch {
+        v8_wrapper.deinit();
+        return;
+    };
+    runtime_wrapper.* = .{
+        .engine_handle = v8_wrapper,
+        .engine = &v8.v8_engine_interface,
+        .engine_ctx = v8_ctx,
+        .allocator = allocator,
+    };
+
+    // Call the EventTarget implementation with double-optional callback
+    const EventTargetImpl = impls.EventTarget;
+    EventTargetImpl.call_addEventListener(
+        window_instance,
+        event_type,
+        @as(?*runtime.CallbackWrapper, runtime_wrapper),
+        webidl.Opt(runtime.JSValue).notPassed(),
+    ) catch |err| {
+        std.debug.print("[addEventListener] Error: {}\n", .{err});
+        runtime_wrapper.deinit();
+        allocator.destroy(runtime_wrapper);
+    };
 }
 
+/// removeEventListener callback - delegates to EventTarget WebIDL implementation
+/// Per DOM spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (v8.ffi.v8_Undefined(isolate)) |undef| {
-        info.setReturnValue(undef);
-    }
+
+    // Return undefined by default
+    const return_undefined = v8.ffi.v8_Undefined(isolate) orelse return;
+    info.setReturnValue(return_undefined);
+
+    // Get V8 context
+    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get global object (which has the window instance)
+    const global = v8.ffi.v8_Context_Global(v8_ctx) orelse return;
+
+    // Get window instance from internal field 0
+    const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return;
+    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+
+    // Need at least type and callback arguments
+    if (info.v8_FunctionCallbackInfo_Length() < 2) return;
+
+    // Get type argument (first arg)
+    const type_arg = info.v8_FunctionCallbackInfo_GetArgument(0);
+    if (!v8.ffi.v8_Value_IsString(@ptrCast(type_arg))) return;
+    const type_str: *v8.ffi.String = @ptrCast(type_arg);
+
+    // Convert V8 string to DOMString
+    const type_length = v8.ffi.v8_String_Utf8Length(type_str);
+    if (type_length <= 0) return;
+    const allocator = std.heap.page_allocator;
+    const type_buffer = allocator.alloc(u8, @intCast(type_length)) catch return;
+    defer allocator.free(type_buffer);
+    _ = v8.ffi.v8_String_WriteUtf8(type_str, type_buffer.ptr, @intCast(type_length));
+    const event_type = runtime.DOMString.initOwned(type_buffer);
+
+    // Get callback argument (second arg)
+    const callback_arg = info.v8_FunctionCallbackInfo_GetArgument(1);
+    if (v8.ffi.v8_Value_IsNullOrUndefined(@ptrCast(callback_arg))) return;
+
+    // Create V8 CallbackWrapper from the callback value for comparison
+    const v8_wrapper = v8.callback_wrapper_mod.createFromV8Value(
+        allocator,
+        isolate,
+        v8_ctx,
+        @ptrCast(callback_arg),
+        "handleEvent",
+    ) catch return orelse return;
+
+    // Create runtime.CallbackWrapper that wraps the V8 callback
+    const runtime_wrapper = allocator.create(runtime.CallbackWrapper) catch {
+        v8_wrapper.deinit();
+        return;
+    };
+    runtime_wrapper.* = .{
+        .engine_handle = v8_wrapper,
+        .engine = &v8.v8_engine_interface,
+        .engine_ctx = v8_ctx,
+        .allocator = allocator,
+    };
+
+    // Call the EventTarget implementation with double-optional callback
+    const EventTargetImpl = impls.EventTarget;
+    EventTargetImpl.call_removeEventListener(
+        window_instance,
+        event_type,
+        @as(?*runtime.CallbackWrapper, runtime_wrapper),
+        webidl.Opt(runtime.JSValue).notPassed(),
+    ) catch |err| {
+        std.debug.print("[removeEventListener] Error: {}\n", .{err});
+    };
+    // Note: removeEventListener cleans up its own callback wrapper via deinit
 }
 
+/// dispatchEvent callback - delegates to EventTarget WebIDL implementation
+/// Per DOM spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
 fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
-        info.setReturnValue(result);
+
+    // Get V8 context
+    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+
+    // Get global object (which has the window instance)
+    const global = v8.ffi.v8_Context_Global(v8_ctx) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+
+    // Get window instance from internal field 0
+    const window_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+    const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+
+    // Need at least event argument
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    }
+
+    // Get event argument (first arg)
+    const event_arg = info.v8_FunctionCallbackInfo_GetArgument(0);
+    if (!v8.ffi.v8_Value_IsObject(@ptrCast(event_arg))) {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    }
+
+    // Get Event instance from internal field 0
+    const event_obj: *v8.ffi.Object = @ptrCast(event_arg);
+    const event_ptr = v8.ffi.v8_Object_GetAlignedPointerFromInternalField(event_obj, 0) orelse {
+        if (v8.ffi.v8_Boolean_New(isolate, true)) |result| {
+            info.setReturnValue(result);
+        }
+        return;
+    };
+    const event_instance: *runtime.Instance = @ptrCast(@alignCast(event_ptr));
+
+    // Call the EventTarget implementation
+    const EventTargetImpl = impls.EventTarget;
+    const result = EventTargetImpl.call_dispatchEvent(window_instance, event_instance) catch {
+        if (v8.ffi.v8_Boolean_New(isolate, false)) |res| {
+            info.setReturnValue(res);
+        }
+        return;
+    };
+
+    // Return result
+    if (v8.ffi.v8_Boolean_New(isolate, result)) |res| {
+        info.setReturnValue(res);
     }
 }
 

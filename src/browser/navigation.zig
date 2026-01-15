@@ -459,9 +459,9 @@ pub fn fireLoad(
         \\    }
         \\    // Also invoke window.onload IDL attribute if set
         \\    if (typeof window.onload === 'function') {
-        \\      try { 
+        \\      try {
         \\        window.onload(event);
-        \\      } catch(e) { 
+        \\      } catch(e) {
         \\        console.error('Error in onload:', e);
         \\      }
         \\    }

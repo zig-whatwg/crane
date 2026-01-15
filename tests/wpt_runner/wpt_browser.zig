@@ -386,20 +386,24 @@ pub const WptBrowser = struct {
             \\  // Store test results for collection
             \\  window.__wpt_results = null;
             \\  window.__wpt_complete = false;
-            \\  
+            \\
             \\  // Register completion callback
             \\  add_completion_callback(function(tests, harness_status) {
-            \\    window.__wpt_results = {
-            \\      status: harness_status.status,
-            \\      message: harness_status.message || null,
-            \\      tests: tests.map(function(t) {
-            \\        return {
-            \\          name: t.name,
-            \\          status: t.status,
-            \\          message: t.message || null
-            \\        };
-            \\      })
-            \\    };
+            \\    try {
+            \\      window.__wpt_results = {
+            \\        status: harness_status ? harness_status.status : 0,
+            \\        message: harness_status ? (harness_status.message || null) : null,
+            \\        tests: (tests || []).map(function(t) {
+            \\          return {
+            \\            name: t.name,
+            \\            status: t.status,
+            \\            message: t.message || null
+            \\          };
+            \\        })
+            \\      };
+            \\    } catch (e) {
+            \\      window.__wpt_results = { status: 1, message: e.toString(), tests: [] };
+            \\    }
             \\    window.__wpt_complete = true;
             \\  });
             \\})();
@@ -411,10 +415,37 @@ pub const WptBrowser = struct {
     fn waitForCompletion(self: *WptBrowser, ctx: *Context, timeout_ms: u64, test_path: []const u8) !test_harness.TestResult {
         const start_time = std.time.milliTimestamp();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
+        var iteration: u32 = 0;
+        var last_debug: i64 = start_time;
 
         while (std.time.milliTimestamp() < deadline) {
             // Run event loop for a short period
             self.browser.runEventLoop(10) catch {};
+            iteration += 1;
+
+            // Debug output every 1000ms
+            const now = std.time.milliTimestamp();
+            if (now - last_debug >= 1000) {
+                last_debug = now;
+                const elapsed: u64 = @intCast(now - start_time);
+                std.debug.print("[WPT DEBUG] Iteration {}, elapsed {}ms - checking state...\n", .{ iteration, elapsed });
+
+                // Check testharness state via JS
+                const debug_script =
+                    \\(function() {
+                    \\  var state = {
+                    \\    complete: window.__wpt_complete,
+                    \\    all_loaded: typeof test_environment !== 'undefined' ? test_environment.all_loaded : 'N/A',
+                    \\    tests_count: typeof tests !== 'undefined' ? tests.tests.length : 'N/A',
+                    \\    num_pending: typeof tests !== 'undefined' ? tests.num_pending : 'N/A',
+                    \\    all_done: typeof tests !== 'undefined' && typeof tests.all_done === 'function' ? tests.all_done() : 'N/A'
+                    \\  };
+                    \\  console.log('[WPT DEBUG STATE] ' + JSON.stringify(state));
+                    \\  return JSON.stringify(state);
+                    \\})();
+                ;
+                _ = ctx.evaluateScript(debug_script) catch {};
+            }
 
             // Check if test is complete
             const complete_result = ctx.evaluateScript("window.__wpt_complete") catch continue;
@@ -426,6 +457,24 @@ pub const WptBrowser = struct {
                 }
             }
         }
+
+        // Timeout - print final state
+        std.debug.print("[WPT DEBUG] TIMEOUT - printing final state\n", .{});
+        const final_debug_script =
+            \\(function() {
+            \\  console.log('[WPT FINAL] window.__wpt_complete: ' + window.__wpt_complete);
+            \\  if (typeof test_environment !== 'undefined') {
+            \\    console.log('[WPT FINAL] test_environment.all_loaded: ' + test_environment.all_loaded);
+            \\  }
+            \\  if (typeof tests !== 'undefined') {
+            \\    console.log('[WPT FINAL] tests.tests.length: ' + tests.tests.length);
+            \\    console.log('[WPT FINAL] tests.num_pending: ' + tests.num_pending);
+            \\    console.log('[WPT FINAL] tests.all_done(): ' + tests.all_done());
+            \\    console.log('[WPT FINAL] tests.phase: ' + tests.phase);
+            \\  }
+            \\})();
+        ;
+        _ = ctx.evaluateScript(final_debug_script) catch {};
 
         // Timeout
         const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));

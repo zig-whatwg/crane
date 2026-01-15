@@ -284,19 +284,25 @@ fn defaultPassiveValue(@"type": []const u8, event_target: *runtime.Instance) boo
 }
 
 /// Compare two callbacks for equality by V8 function identity
-/// The callbacks are stored as ?*runtime.Instance but are actually *CallbackWrapper
+/// The callbacks are stored as ?*runtime.Instance but are actually *runtime.CallbackWrapper
+/// which contains engine_handle pointing to the actual V8 CallbackWrapper
 fn callbackEquals(a: ?*runtime.Instance, b: ?*runtime.Instance) bool {
     if (a == null and b == null) return true;
     if (a == null or b == null) return false;
 
-    // Cast to CallbackWrapper to access the underlying V8 function
+    // The stored pointers are actually *runtime.CallbackWrapper (not V8 wrappers directly)
+    // runtime.CallbackWrapper contains engine_handle which is the V8 CallbackWrapper
+    const runtime_wrapper_a: *const runtime.CallbackWrapper = @ptrCast(@alignCast(a.?));
+    const runtime_wrapper_b: *const runtime.CallbackWrapper = @ptrCast(@alignCast(b.?));
+
+    // Get the V8 engine wrappers from the engine_handle field
     const v8_engine = @import("v8");
-    const wrapper_a: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(a.?));
-    const wrapper_b: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(b.?));
+    const v8_wrapper_a: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(runtime_wrapper_a.engine_handle));
+    const v8_wrapper_b: *const v8_engine.CallbackWrapper = @ptrCast(@alignCast(runtime_wrapper_b.engine_handle));
 
     // Get the underlying V8 Global<Value>* for each callback
-    const value_a = wrapper_a.getGlobalValuePtr() orelse return false;
-    const value_b = wrapper_b.getGlobalValuePtr() orelse return false;
+    const value_a = v8_wrapper_a.getGlobalValuePtr() orelse return false;
+    const value_b = v8_wrapper_b.getGlobalValuePtr() orelse return false;
 
     // Use V8's StrictEquals to compare the underlying JavaScript functions
     return v8_engine.v8_Value_StrictEquals(value_a, value_b);
@@ -348,9 +354,9 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
 
         // Also dispose the CallbackWrapper since we're not storing it
         if (updated_listener.callback) |callback_instance| {
-            const v8_engine = @import("v8");
-            const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-            callback_wrapper.deinit();
+            // The stored callback is actually a *runtime.CallbackWrapper
+            const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+            runtime_wrapper.deinit();
         }
     }
 
@@ -381,11 +387,10 @@ fn removeAnEventListener(internal: *InternalState, listener: EventListenerRecord
             existing.removed = true;
 
             // Clean up the callback wrapper to dispose Global handles
-            // The callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper
+            // The callback is stored as ?*runtime.Instance but is actually a *runtime.CallbackWrapper
             if (existing.callback) |callback_instance| {
-                const v8_engine = @import("v8");
-                const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
-                callback_wrapper.deinit();
+                const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+                runtime_wrapper.deinit();
             }
 
             // Free the type DOMString
@@ -514,6 +519,7 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 
     // Get internal state if available
     const internal = getInternalFromRegistry(instance);
+
     if (internal) |int| {
         // Set event's target
         EventImpl.setTarget(event, instance);
@@ -529,10 +535,9 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
             {
                 // Actually invoke the callback
                 if (listener.callback) |callback_instance| {
-                    // Cast callback Instance to CallbackWrapper
-                    // (the callback is stored as ?*runtime.Instance but is actually a *CallbackWrapper)
+                    // The callback is stored as ?*runtime.Instance but is actually a *runtime.CallbackWrapper
+                    const runtime_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
                     const v8_engine = @import("v8");
-                    const callback_wrapper: *v8_engine.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
 
                     // Get the V8 context from the instance context
                     if (instance.ctx.engine_ctx) |engine_ctx| {
@@ -553,7 +558,11 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
                         };
 
                         // Invoke the callback with the event as an argument
-                        _ = callback_wrapper.call1(v8_context, @ptrCast(event_v8_obj));
+                        // Use the runtime wrapper's invoke method which delegates to the engine
+                        _ = runtime_wrapper.invoke1(@ptrCast(event_v8_obj)) catch {
+                            // If callback invocation fails, continue to next listener
+                            continue;
+                        };
                     }
                 }
 

@@ -1531,6 +1531,7 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("namespaces", namespaces_mod);
     browser_mod.addImport("fetch", fetch_mod);
     browser_mod.addImport("impls", impls_mod);
+    browser_mod.addImport("webidl", webidl_mod);
 
     // WebDriver module - W3C WebDriver protocol implementation for wptrunner
     const webdriver_mod = b.addModule("webdriver", .{
