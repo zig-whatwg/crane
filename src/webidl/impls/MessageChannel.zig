@@ -40,6 +40,14 @@ pub const InternalState = struct {
 
     /// Flag indicating if ports have been created
     initialized: bool,
+
+    /// Flag indicating if port1 has been exposed to JavaScript (wrapped in V8)
+    /// If true, GC owns the port's lifetime. If false, MessageChannel owns it.
+    port1_exposed: bool = false,
+
+    /// Flag indicating if port2 has been exposed to JavaScript (wrapped in V8)
+    /// If true, GC owns the port's lifetime. If false, MessageChannel owns it.
+    port2_exposed: bool = false,
 };
 
 /// Initialize instance (creates the instance)
@@ -70,19 +78,27 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
 
-    // Clean up internal state only - NOT the ports!
+    // Handle port cleanup based on whether they were exposed to JavaScript
     //
-    // IMPORTANT: Do NOT call deinit on port1/port2 here!
-    // When the getter (get_port1/get_port2) returns the port instance to JavaScript,
-    // the port gets wrapped in a V8 object and cached in the wrapper_cache.
-    // The GC/wrapper_cache will call MessagePort.deinit() when appropriate.
-    // Calling deinit here causes double-free because:
-    // 1. GC/wrapper_cache calls MessagePort.deinit() when cleaning up cached wrappers
-    // 2. Then MessageChannel.deinit() would try to deinit the same ports again
+    // OWNERSHIP MODEL:
+    // - When get_port1/get_port2 is called, the port gets wrapped in a V8 object
+    //   and cached in the wrapper_cache. At that point, GC owns the port's lifetime.
+    // - If a port was NEVER accessed (never exposed to JS), MessageChannel still
+    //   owns it and must clean it up to avoid memory leaks.
     //
     // This follows Chromium/Blink's pattern where MessageChannel uses Member<MessagePort>
-    // (GC-traced pointers) and relies on the GC to manage port lifetimes.
+    // (GC-traced pointers), but we must handle the case where ports are never accessed.
     if (state.own._internal) |internal| {
+        if (internal.initialized) {
+            // Clean up port1 only if it was never exposed to JavaScript
+            if (!internal.port1_exposed) {
+                MessagePortInterface.deinit(state.own.port1);
+            }
+            // Clean up port2 only if it was never exposed to JavaScript
+            if (!internal.port2_exposed) {
+                MessagePortInterface.deinit(state.own.port2);
+            }
+        }
         internal.allocator.destroy(internal);
     }
 
@@ -141,6 +157,10 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Spec: The port1 getter steps are to return this's port 1.
 pub fn get_port1(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
+    // Mark port1 as exposed to JavaScript - GC now owns its lifetime
+    if (state.own._internal) |internal| {
+        internal.port1_exposed = true;
+    }
     return state.own.port1;
 }
 
@@ -148,5 +168,9 @@ pub fn get_port1(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Spec: The port2 getter steps are to return this's port 2.
 pub fn get_port2(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
+    // Mark port2 as exposed to JavaScript - GC now owns its lifetime
+    if (state.own._internal) |internal| {
+        internal.port2_exposed = true;
+    }
     return state.own.port2;
 }

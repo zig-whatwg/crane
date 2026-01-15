@@ -75,7 +75,12 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
+    var state = instance.getState(State);
+
+    // Clean up the cloned JSValue data (if it's an owned string)
+    // This was cloned in call_constructor to take ownership using ctx.allocator
+    state.own.data.deinit(instance.ctx.allocator);
+
     if (state.own._internal) |internal| {
         if (internal.owns_binary) {
             if (internal.message_data) |data| {

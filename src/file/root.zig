@@ -90,6 +90,35 @@ pub const BlobURLStore = @import("blob_url_store.zig").BlobURLStore;
 pub const BlobURLEntry = @import("blob_url_store.zig").BlobURLEntry;
 
 // ============================================================================
+// Global Store Access
+// ============================================================================
+
+/// Global blob URL store singleton (initialized per-context)
+var global_blob_store: ?*BlobURLStore = null;
+
+/// Get the global blob URL store, if initialized.
+/// Returns null if not yet initialized.
+pub fn getGlobalBlobURLStore() ?*BlobURLStore {
+    return global_blob_store;
+}
+
+/// Set the global blob URL store.
+/// Called during context initialization.
+pub fn setGlobalBlobURLStore(store: ?*BlobURLStore) void {
+    global_blob_store = store;
+}
+
+/// Deinitialize and free the global blob URL store.
+/// Called during context cleanup to prevent memory leaks.
+pub fn deinitGlobalBlobURLStore(allocator: std.mem.Allocator) void {
+    if (global_blob_store) |store| {
+        store.deinit();
+        allocator.destroy(store);
+        global_blob_store = null;
+    }
+}
+
+// ============================================================================
 // Algorithms
 // ============================================================================
 

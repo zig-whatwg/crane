@@ -1275,6 +1275,14 @@ pub fn main() !void {
     const storage = @import("storage");
     storage.deinitGlobalStorageShed(allocator);
 
+    // Clean up global blob URL store
+    const file_mod = @import("file");
+    file_mod.deinitGlobalBlobURLStore(allocator);
+
+    // Clean up timer backend
+    const platform_mod = @import("platform");
+    platform_mod.timer_backend.deinitDefault();
+
     // Finish and write report
     report.finish();
 

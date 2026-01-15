@@ -2815,6 +2815,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "dictionaries", .module = dictionaries_mod },
                 // Storage module for cleanup
                 .{ .name = "storage", .module = storage_mod },
+                // File module for blob URL store cleanup
+                .{ .name = "file", .module = file_mod },
             },
         }),
     });
