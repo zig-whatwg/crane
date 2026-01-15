@@ -477,6 +477,35 @@ fn globMatch(str: []const u8, pattern: []const u8) bool {
     return p_idx == pattern.len;
 }
 
+/// Stored failure detail for final report
+const FailureDetail = struct {
+    test_path: []const u8,
+    context: ?[]const u8,
+    status: test_harness.HarnessStatus,
+    message: ?[]const u8,
+    duration_ms: u64,
+    subtests: std.ArrayList(SubtestFailure),
+
+    const SubtestFailure = struct {
+        name: []const u8,
+        status: test_harness.TestStatus,
+        message: ?[]const u8,
+        stack: ?[]const u8,
+    };
+
+    fn deinit(self: *FailureDetail, allocator: std.mem.Allocator) void {
+        allocator.free(self.test_path);
+        if (self.context) |ctx| allocator.free(ctx);
+        if (self.message) |msg| allocator.free(msg);
+        for (self.subtests.items) |*sub| {
+            allocator.free(sub.name);
+            if (sub.message) |msg| allocator.free(msg);
+            if (sub.stack) |stk| allocator.free(stk);
+        }
+        self.subtests.deinit(allocator);
+    }
+};
+
 /// Progress tracker for test execution
 pub const ProgressTracker = struct {
     allocator: std.mem.Allocator,
@@ -491,6 +520,8 @@ pub const ProgressTracker = struct {
     verbose: bool,
     /// Failures by category for summary
     failures_by_category: std.StringHashMap(usize),
+    /// Detailed failure records for final report
+    failure_details: std.ArrayList(FailureDetail),
 
     pub fn init(allocator: std.mem.Allocator, total: usize, verbose: bool) ProgressTracker {
         return ProgressTracker{
@@ -499,11 +530,16 @@ pub const ProgressTracker = struct {
             .start_time = std.time.milliTimestamp(),
             .verbose = verbose,
             .failures_by_category = std.StringHashMap(usize).init(allocator),
+            .failure_details = .{},
         };
     }
 
     pub fn deinit(self: *ProgressTracker) void {
         self.failures_by_category.deinit();
+        for (self.failure_details.items) |*detail| {
+            detail.deinit(self.allocator);
+        }
+        self.failure_details.deinit(self.allocator);
     }
 
     pub fn recordResult(self: *ProgressTracker, test_path: []const u8, result: test_harness.TestResult) void {
@@ -567,6 +603,10 @@ pub const ProgressTracker = struct {
             .timeout => self.timeouts += 1,
         }
 
+        // Track if this test has any failures for the final report
+        var has_failures = result.status != .ok;
+        var failure_subtests: std.ArrayList(FailureDetail.SubtestFailure) = .{};
+
         // Count ALL subtests including notrun/precondition_failed
         for (result.subtests.items) |sub| {
             // Check if this is an expected failure
@@ -603,6 +643,16 @@ pub const ProgressTracker = struct {
                         }
                     } else {
                         self.failed += 1;
+                        has_failures = true;
+
+                        // Store failure for final report
+                        failure_subtests.append(self.allocator, .{
+                            .name = self.allocator.dupe(u8, sub.name) catch sub.name,
+                            .status = sub.status,
+                            .message = if (sub.message) |msg| self.allocator.dupe(u8, msg) catch null else null,
+                            .stack = if (sub.stack) |stk| self.allocator.dupe(u8, stk) catch null else null,
+                        }) catch {};
+
                         // Track failures by category
                         if (std.mem.indexOf(u8, test_path, "/")) |sep_pos| {
                             const category = test_path[0..sep_pos];
@@ -633,6 +683,16 @@ pub const ProgressTracker = struct {
                 },
                 .timeout => {
                     self.timeouts += 1;
+                    has_failures = true;
+
+                    // Store timeout for final report
+                    failure_subtests.append(self.allocator, .{
+                        .name = self.allocator.dupe(u8, sub.name) catch sub.name,
+                        .status = sub.status,
+                        .message = if (sub.message) |msg| self.allocator.dupe(u8, msg) catch null else null,
+                        .stack = null,
+                    }) catch {};
+
                     if (self.verbose) {
                         print("  ⏱ TIMEOUT: {s}\n", .{sub.name});
                         if (sub.message) |msg| {
@@ -647,6 +707,29 @@ pub const ProgressTracker = struct {
                     }
                 },
             }
+        }
+
+        // Store failure detail for final report (if there were any failures)
+        if (has_failures) {
+            self.failure_details.append(self.allocator, .{
+                .test_path = self.allocator.dupe(u8, test_path) catch test_path,
+                .context = if (result.context) |ctx| self.allocator.dupe(u8, ctx) catch null else null,
+                .status = result.status,
+                .message = if (result.message) |msg| self.allocator.dupe(u8, msg) catch null else null,
+                .duration_ms = result.duration_ms,
+                .subtests = failure_subtests,
+            }) catch {
+                // If we can't store, at least clean up subtests
+                for (failure_subtests.items) |*sub| {
+                    self.allocator.free(sub.name);
+                    if (sub.message) |msg| self.allocator.free(msg);
+                    if (sub.stack) |stk| self.allocator.free(stk);
+                }
+                failure_subtests.deinit(self.allocator);
+            };
+        } else {
+            // No failures, clean up the empty list
+            failure_subtests.deinit(self.allocator);
         }
     }
 
@@ -718,8 +801,73 @@ pub const ProgressTracker = struct {
         const elapsed = self.getElapsedTime();
         const total_subtests = self.passed + self.failed + self.timeouts + self.notrun;
 
+        // Print detailed failure report first (before summary)
+        if (self.failure_details.items.len > 0) {
+            print("\n", .{});
+            print("════════════════════════════════════════════════════════════════════════════════\n", .{});
+            print("FAILURE REPORT\n", .{});
+            print("════════════════════════════════════════════════════════════════════════════════\n", .{});
+
+            for (self.failure_details.items, 0..) |detail, idx| {
+                // Test file header
+                const status_icon = switch (detail.status) {
+                    .ok => "✓",
+                    .@"error" => "✗",
+                    .timeout => "⏱",
+                };
+                const status_label = switch (detail.status) {
+                    .ok => "OK",
+                    .@"error" => "ERROR",
+                    .timeout => "TIMEOUT",
+                };
+
+                print("\n{d}. {s} {s}: {s}", .{ idx + 1, status_icon, status_label, detail.test_path });
+                if (detail.context) |ctx| {
+                    print(" [{s}]", .{ctx});
+                }
+                print(" ({d}ms)\n", .{detail.duration_ms});
+
+                // Show test-level error message
+                if (detail.message) |msg| {
+                    print("   Error: {s}\n", .{msg});
+                }
+
+                // Show failed/timed-out subtests
+                if (detail.subtests.items.len > 0) {
+                    print("   Subtests:\n", .{});
+                    for (detail.subtests.items) |sub| {
+                        const sub_icon = switch (sub.status) {
+                            .pass => "✓",
+                            .fail => "✗",
+                            .timeout => "⏱",
+                            .notrun, .precondition_failed => "○",
+                        };
+                        print("   {s} {s}: {s}\n", .{ sub_icon, sub.status.toString(), sub.name });
+
+                        // Show assertion message
+                        if (sub.message) |msg| {
+                            print("      Message: {s}\n", .{msg});
+                        }
+
+                        // Show full stack trace for failures
+                        if (sub.stack) |stack| {
+                            print("      Stack trace:\n", .{});
+                            var iter = std.mem.splitScalar(u8, stack, '\n');
+                            while (iter.next()) |line| {
+                                if (line.len > 0) {
+                                    print("        {s}\n", .{line});
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            print("\n════════════════════════════════════════════════════════════════════════════════\n", .{});
+        }
+
+        // Summary section
         print("\n================================\n", .{});
-        print("WPT Test Results\n", .{});
+        print("WPT Test Results Summary\n", .{});
         print("================================\n", .{});
         print("Test files: {d}\n", .{self.total});
         print("  Completed: {d}\n", .{self.completed});
