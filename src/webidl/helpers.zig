@@ -1,7 +1,7 @@
 //! WebIDL Runtime Helpers
 //!
 //! Utilities for querying WebIDL metadata at runtime using the generated
-//! __webidl__ metadata from the codegen system.
+//! Meta struct from the codegen system.
 //!
 //! Spec: https://webidl.spec.whatwg.org/
 
@@ -13,7 +13,7 @@ pub const GlobalScope = enum {
     /// Window global (browsers)
     Window,
 
-    /// Worker global (Web Workers)
+    /// Worker global (Web Workers - matches any worker type)
     Worker,
 
     /// Worklet global (Audio/Paint/Layout worklets)
@@ -42,49 +42,99 @@ pub const GlobalScope = enum {
     pub fn toString(self: GlobalScope) []const u8 {
         return @tagName(self);
     }
+
+    /// Check if this scope matches a given exposure identifier
+    /// Handles the inheritance: DedicatedWorker matches "Worker", "DedicatedWorker"
+    pub fn matchesExposure(self: GlobalScope, identifier: []const u8) bool {
+        // Direct match
+        if (std.mem.eql(u8, identifier, self.toString())) {
+            return true;
+        }
+
+        // Worker inheritance: [Exposed=Worker] applies to all worker types
+        if (std.mem.eql(u8, identifier, "Worker")) {
+            return switch (self) {
+                .Worker, .DedicatedWorker, .SharedWorker, .ServiceWorker => true,
+                else => false,
+            };
+        }
+
+        return false;
+    }
 };
 
 /// Check if an interface/namespace is exposed in a given global scope
 ///
+/// Works with the generated Meta struct format:
+/// - Meta.exposed_in_all_contexts: bool (for [Exposed=*])
+/// - Meta.extended_attributes: tuple of .{ .name, .value } structs
+///
 /// Usage:
 /// ```zig
-/// const EventTarget = @import("dom").EventTarget;
+/// const EventTarget = @import("interfaces").EventTarget;
 /// const exposed = isExposedIn(EventTarget, .Window); // true ([Exposed=*])
 ///
-/// const ReadableStream = @import("streams").ReadableStream;
-/// const exposed_in_worker = isExposedIn(ReadableStream, .Worker); // true ([Exposed=*])
+/// const ReadableStream = @import("interfaces").ReadableStream;
+/// const exposed_in_worker = isExposedIn(ReadableStream, .DedicatedWorker); // true ([Exposed=*])
 /// ```
 pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
+    // Check if type has Meta struct (generated interface format)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
+
+        // Fast path: check exposed_in_all_contexts flag first
+        if (@hasDecl(Meta, "exposed_in_all_contexts")) {
+            if (Meta.exposed_in_all_contexts) {
+                return true;
+            }
+        }
+
+        // Check extended_attributes for [Exposed] attribute
+        if (@hasDecl(Meta, "extended_attributes")) {
+            return checkExposedAttribute(Meta.extended_attributes, scope);
+        }
+
+        // No exposure info found in Meta - default not exposed
         return false;
     }
 
-    const metadata = T.__webidl__;
+    // Legacy: Check if type has __webidl__ metadata (old format)
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        if (@hasDecl(@TypeOf(metadata), "extended_attrs")) {
+            return checkExposedAttribute(metadata.extended_attrs, scope);
+        }
+    }
 
+    return false;
+}
+
+/// Helper to check [Exposed] attribute in an extended_attributes tuple
+fn checkExposedAttribute(comptime attrs: anytype, scope: GlobalScope) bool {
     // Iterate through extended attributes looking for [Exposed]
-    inline for (metadata.extended_attrs) |attr| {
+    inline for (attrs) |attr| {
         if (comptime !std.mem.eql(u8, attr.name, "Exposed")) {
             continue;
         }
 
-        // Check the value type - could be .wildcard, .{ .identifier = ... }, or .{ .identifier_list = ... }
+        // Check the value type
         const ValueType = @TypeOf(attr.value);
+        const value_info = @typeInfo(ValueType);
 
-        // [Exposed=*] - exposed in all globals (value is enum literal .wildcard)
-        if (ValueType == @TypeOf(.wildcard)) {
-            return true;
+        // [Exposed=*] - check if value is the wildcard identifier
+        if (value_info == .@"struct" and @hasField(ValueType, "identifier")) {
+            const identifier = attr.value.identifier;
+            if (std.mem.eql(u8, identifier, "*")) {
+                return true; // Exposed in all contexts
+            }
+            // [Exposed=Window] or [Exposed=Worker] - single identifier
+            return scope.matchesExposure(identifier);
         }
 
-        // [Exposed=Window] - single identifier (value is struct with identifier field)
-        if (@hasField(ValueType, "identifier")) {
-            return std.mem.eql(u8, attr.value.identifier, scope.toString());
-        }
-
-        // [Exposed=(Window,Worker)] - list of identifiers (value is struct with identifier_list field)
-        if (@hasField(ValueType, "identifier_list")) {
+        // [Exposed=(Window,Worker)] - list of identifiers
+        if (value_info == .@"struct" and @hasField(ValueType, "identifier_list")) {
             for (attr.value.identifier_list) |id| {
-                if (std.mem.eql(u8, id, scope.toString())) {
+                if (scope.matchesExposure(id)) {
                     return true;
                 }
             }
@@ -102,49 +152,51 @@ pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
 ///
 /// Usage:
 /// ```zig
-/// const ReadableStream = @import("streams").ReadableStream;
+/// const ReadableStream = @import("interfaces").ReadableStream;
 /// const can_transfer = isTransferable(ReadableStream); // true ([Transferable])
 ///
-/// const Event = @import("dom").Event;
+/// const Event = @import("interfaces").Event;
 /// const not_transferable = isTransferable(Event); // false (no [Transferable])
 /// ```
 pub fn isTransferable(comptime T: type) bool {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
-        return false;
-    }
-
-    const metadata = T.__webidl__;
-
-    // Look for [Transferable] attribute
-    inline for (metadata.extended_attrs) |attr| {
-        if (comptime std.mem.eql(u8, attr.name, "Transferable")) {
-            return true;
-        }
-    }
-
-    return false;
+    return hasExtendedAttribute(T, "Transferable");
 }
 
 /// Check if an interface is serializable (can be cloned via structured clone)
 ///
 /// Usage:
 /// ```zig
-/// const DOMException = @import("webidl").DOMException;
+/// const DOMException = @import("interfaces").DOMException;
 /// const can_serialize = isSerializable(DOMException); // depends on [Serializable]
 /// ```
 pub fn isSerializable(comptime T: type) bool {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
+    return hasExtendedAttribute(T, "Serializable");
+}
+
+/// Helper to check if a type has a specific extended attribute
+fn hasExtendedAttribute(comptime T: type, comptime attr_name: []const u8) bool {
+    // Check Meta.extended_attributes (new format)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
+        if (@hasDecl(Meta, "extended_attributes")) {
+            inline for (Meta.extended_attributes) |attr| {
+                if (comptime std.mem.eql(u8, attr.name, attr_name)) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
-    const metadata = T.__webidl__;
-
-    // Look for [Serializable] attribute
-    inline for (metadata.extended_attrs) |attr| {
-        if (comptime std.mem.eql(u8, attr.name, "Serializable")) {
-            return true;
+    // Legacy: Check __webidl__.extended_attrs
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        if (@hasDecl(@TypeOf(metadata), "extended_attrs")) {
+            inline for (metadata.extended_attrs) |attr| {
+                if (comptime std.mem.eql(u8, attr.name, attr_name)) {
+                    return true;
+                }
+            }
         }
     }
 
@@ -154,54 +206,70 @@ pub fn isSerializable(comptime T: type) bool {
 /// Get all global scope names where an interface is exposed
 ///
 /// Returns a list of global scope identifiers (e.g., ["Window", "Worker"])
-/// Returns empty slice if not exposed anywhere or no [Exposed] attribute.
+/// Returns null for [Exposed=*] (exposed everywhere) or no [Exposed] attribute.
 ///
 /// Usage:
 /// ```zig
-/// const EventTarget = @import("dom").EventTarget;
+/// const EventTarget = @import("interfaces").EventTarget;
 /// const globals = getGlobalNames(EventTarget);
 /// // Returns null for [Exposed=*] (exposed everywhere)
 ///
-/// const Node = @import("dom").Node;
+/// const Node = @import("interfaces").Node;
 /// const window_only = getGlobalNames(Node);
 /// // Returns &.{"Window"} for [Exposed=Window]
 /// ```
 pub fn getGlobalNames(comptime T: type) ?[]const []const u8 {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
+    // Check Meta.extended_attributes (new format)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
+
+        // Fast path: exposed in all contexts
+        if (@hasDecl(Meta, "exposed_in_all_contexts") and Meta.exposed_in_all_contexts) {
+            return null; // null means "all contexts"
+        }
+
+        if (@hasDecl(Meta, "extended_attributes")) {
+            return getGlobalNamesFromAttrs(Meta.extended_attributes);
+        }
         return null;
     }
 
-    const metadata = T.__webidl__;
+    // Legacy: Check __webidl__.extended_attrs
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        if (@hasDecl(@TypeOf(metadata), "extended_attrs")) {
+            return getGlobalNamesFromAttrs(metadata.extended_attrs);
+        }
+    }
 
-    // Look for [Exposed] attribute
-    inline for (metadata.extended_attrs) |attr| {
+    return null;
+}
+
+/// Helper to extract global names from extended attributes
+fn getGlobalNamesFromAttrs(comptime attrs: anytype) ?[]const []const u8 {
+    inline for (attrs) |attr| {
         if (comptime !std.mem.eql(u8, attr.name, "Exposed")) {
             continue;
         }
 
-        // Check the value type - could be .wildcard, .{ .identifier = ... }, or .{ .identifier_list = ... }
         const ValueType = @TypeOf(attr.value);
+        const value_info = @typeInfo(ValueType);
 
-        // [Exposed=*] - return null to indicate "all globals" (value is enum literal .wildcard)
-        if (ValueType == @TypeOf(.wildcard)) {
-            return null;
+        if (value_info == .@"struct" and @hasField(ValueType, "identifier")) {
+            const identifier = attr.value.identifier;
+            if (std.mem.eql(u8, identifier, "*")) {
+                return null; // Exposed in all contexts
+            }
+            return &.{identifier};
         }
 
-        // [Exposed=Window] - single identifier (return as single-element slice)
-        if (@hasField(ValueType, "identifier")) {
-            return &.{attr.value.identifier};
-        }
-
-        // [Exposed=(Window,Worker)] - list of identifiers
-        if (@hasField(ValueType, "identifier_list")) {
+        if (value_info == .@"struct" and @hasField(ValueType, "identifier_list")) {
             return attr.value.identifier_list;
         }
 
         return null;
     }
 
-    // No [Exposed] attribute
     return null;
 }
 
@@ -211,74 +279,135 @@ pub fn getGlobalNames(comptime T: type) ?[]const []const u8 {
 ///
 /// Usage:
 /// ```zig
-/// const Element = @import("dom").Element;
+/// const Element = @import("interfaces").Element;
 /// const parent = getParent(Element); // "Node"
 ///
-/// const EventTarget = @import("dom").EventTarget;
+/// const EventTarget = @import("interfaces").EventTarget;
 /// const no_parent = getParent(EventTarget); // null
 /// ```
 pub fn getParent(comptime T: type) ?[]const u8 {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
+    // Check Meta.BaseType (new format - it's a type, not a string)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
+        if (@hasDecl(Meta, "BaseType")) {
+            if (Meta.BaseType) |BaseType| {
+                // BaseType is a type, return its name
+                if (@hasDecl(BaseType, "Meta") and @hasDecl(BaseType.Meta, "name")) {
+                    return BaseType.Meta.name;
+                }
+            }
+        }
         return null;
     }
 
-    const metadata = T.__webidl__;
-    return metadata.parent;
+    // Legacy: Check __webidl__.parent
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        if (@hasDecl(@TypeOf(metadata), "parent")) {
+            return metadata.parent;
+        }
+    }
+
+    return null;
 }
 
 /// Check if an interface is a namespace (static-only API)
 ///
 /// Usage:
 /// ```zig
-/// const Console = @import("console").console;
-/// const is_ns = isNamespace(Console); // true
+/// const console = @import("namespaces").console;
+/// const is_ns = isNamespace(console); // true
 /// ```
 pub fn isNamespace(comptime T: type) bool {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
+    // Check Meta.is_namespace or similar flag (new format)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
+        // Namespaces typically don't have has_constructor and don't have BaseType
+        // Check for namespace-specific indicators
+        if (@hasDecl(Meta, "is_namespace")) {
+            return Meta.is_namespace;
+        }
+        // Heuristic: namespaces have no constructor and no instances
+        if (@hasDecl(Meta, "has_constructor") and !Meta.has_constructor) {
+            // Further check: namespaces typically don't have State
+            if (!@hasDecl(T, "State")) {
+                return true;
+            }
+        }
         return false;
     }
 
-    const metadata = T.__webidl__;
-    return metadata.kind == .namespace;
+    // Legacy: Check __webidl__.kind
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        if (@hasDecl(@TypeOf(metadata), "kind")) {
+            return metadata.kind == .namespace;
+        }
+    }
+
+    return false;
 }
 
 /// Check if a type is a WebIDL interface (type-based check)
 ///
 /// Usage:
 /// ```zig
-/// const EventTarget = @import("dom").EventTarget;
+/// const EventTarget = @import("interfaces").EventTarget;
 /// const is_iface = isInterfaceType(EventTarget); // true
 /// ```
 ///
 /// Note: This checks if a TYPE is a WebIDL interface at comptime.
 /// For runtime value checking, use interfaces.isInterface(value).
 pub fn isInterfaceType(comptime T: type) bool {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
+    // Check if has Meta with interface indicators (new format)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
+        // Interfaces have is_mixin = false and typically have name
+        if (@hasDecl(Meta, "is_mixin") and !Meta.is_mixin) {
+            if (@hasDecl(Meta, "name")) {
+                return true;
+            }
+        }
         return false;
     }
 
-    const metadata = T.__webidl__;
-    return metadata.kind == .interface;
+    // Legacy: Check __webidl__.kind
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        if (@hasDecl(@TypeOf(metadata), "kind")) {
+            return metadata.kind == .interface;
+        }
+    }
+
+    return false;
 }
 
 /// Check if a type is a WebIDL mixin
 ///
 /// Usage:
 /// ```zig
-/// const ParentNode = @import("dom").ParentNode;
+/// const ParentNode = @import("mixins").ParentNode;
 /// const is_mix = isMixin(ParentNode); // true
 /// ```
 pub fn isMixin(comptime T: type) bool {
-    // Check if type has __webidl__ metadata
-    if (!@hasDecl(T, "__webidl__")) {
+    // Check Meta.is_mixin (new format)
+    if (@hasDecl(T, "Meta")) {
+        const Meta = T.Meta;
+        if (@hasDecl(Meta, "is_mixin")) {
+            return Meta.is_mixin;
+        }
         return false;
     }
 
-    const metadata = T.__webidl__;
-    return metadata.kind == .mixin;
+    // Legacy: Check __webidl__.kind
+    if (@hasDecl(T, "__webidl__")) {
+        const metadata = T.__webidl__;
+        if (@hasDecl(@TypeOf(metadata), "kind")) {
+            return metadata.kind == .mixin;
+        }
+    }
+
+    return false;
 }
 
 // ============================================================================

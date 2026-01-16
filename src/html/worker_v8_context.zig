@@ -41,6 +41,12 @@ const runtime = @import("runtime");
 // V8Interface for registering constructors
 const V8Interface = v8.V8Interface;
 
+// Interface bindings for automatic [Exposed] attribute handling
+const interface_bindings = v8.interface_bindings;
+
+// WebIDL helpers for GlobalScope enum
+const webidl = @import("webidl");
+
 // Interfaces needed in worker context
 const interfaces = @import("interfaces");
 
@@ -1004,11 +1010,20 @@ pub const WorkerV8Context = struct {
         }
 
         // ====================================================================
-        // Fetch API - fetch(), Request, Response, Headers
+        // Register ALL interfaces exposed to DedicatedWorker scope
+        // Per WebIDL [Exposed] attribute filtering
+        // This automatically includes: Request, Response, Headers, TextEncoder,
+        // TextDecoder, Blob, File, FileReader, FileReaderSync, Crypto, SubtleCrypto,
+        // and all other [Exposed=Worker] or [Exposed=*] interfaces
+        // ====================================================================
+        interface_bindings.installForScope(self.isolate, self.context, .DedicatedWorker);
+
+        // ====================================================================
+        // Worker-specific fetch() callback
+        // The fetch() function needs a worker-specific callback to access the
+        // worker context for proper request/response handling
         // Per Fetch spec: https://fetch.spec.whatwg.org/
         // ====================================================================
-
-        // Register fetch() as a global function
         {
             const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerFetchCallback, null) orelse {
                 return error.FunctionTemplateCreateFailed;
@@ -1021,70 +1036,6 @@ pub const WorkerV8Context = struct {
                 return error.StringCreationFailed;
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
-        }
-
-        // Register Request constructor
-        {
-            const RequestBinding = V8Interface(interfaces.Request);
-            RequestBinding.registerGlobal(self.isolate, self.context, "Request");
-        }
-
-        // Register Response constructor
-        {
-            const ResponseBinding = V8Interface(interfaces.Response);
-            ResponseBinding.registerGlobal(self.isolate, self.context, "Response");
-        }
-
-        // Register Headers constructor
-        {
-            const HeadersBinding = V8Interface(interfaces.Headers);
-            HeadersBinding.registerGlobal(self.isolate, self.context, "Headers");
-        }
-
-        // ====================================================================
-        // Encoding API - TextEncoder, TextDecoder
-        // Per Encoding spec: https://encoding.spec.whatwg.org/
-        // ====================================================================
-
-        // Register TextEncoder constructor
-        {
-            const TextEncoderBinding = V8Interface(interfaces.TextEncoder);
-            TextEncoderBinding.registerGlobal(self.isolate, self.context, "TextEncoder");
-        }
-
-        // Register TextDecoder constructor
-        {
-            const TextDecoderBinding = V8Interface(interfaces.TextDecoder);
-            TextDecoderBinding.registerGlobal(self.isolate, self.context, "TextDecoder");
-        }
-
-        // ====================================================================
-        // File API - Blob, File, FileReader, FileReaderSync
-        // Per File API spec: https://w3c.github.io/FileAPI/
-        // ====================================================================
-
-        // Register Blob constructor
-        {
-            const BlobBinding = V8Interface(interfaces.Blob);
-            BlobBinding.registerGlobal(self.isolate, self.context, "Blob");
-        }
-
-        // Register File constructor
-        {
-            const FileBinding = V8Interface(interfaces.File);
-            FileBinding.registerGlobal(self.isolate, self.context, "File");
-        }
-
-        // Register FileReader constructor
-        {
-            const FileReaderBinding = V8Interface(interfaces.FileReader);
-            FileReaderBinding.registerGlobal(self.isolate, self.context, "FileReader");
-        }
-
-        // Register FileReaderSync constructor (Worker-specific synchronous API)
-        {
-            const FileReaderSyncBinding = V8Interface(interfaces.FileReaderSync);
-            FileReaderSyncBinding.registerGlobal(self.isolate, self.context, "FileReaderSync");
         }
 
         // ====================================================================
@@ -1134,6 +1085,86 @@ pub const WorkerV8Context = struct {
                 \\})();
             ;
             _ = try self.executeScriptInternal(btoa_atob_script);
+        }
+
+        // ====================================================================
+        // Crypto API - crypto object (WindowOrWorkerGlobalScope)
+        // Per Web Crypto spec: https://w3c.github.io/webcrypto/
+        // Part of WindowOrWorkerGlobalScope mixin
+        // Note: This is a polyfill until native Zig crypto is fully implemented
+        // ====================================================================
+        {
+            const crypto_script =
+                \\(function() {
+                \\  // SubtleCrypto placeholder for crypto.subtle
+                \\  var subtle = {
+                \\    encrypt: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    decrypt: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    sign: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    verify: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    digest: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    generateKey: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    deriveKey: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    deriveBits: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    importKey: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    exportKey: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    wrapKey: function() { return Promise.reject(new Error('Not implemented')); },
+                \\    unwrapKey: function() { return Promise.reject(new Error('Not implemented')); }
+                \\  };
+                \\
+                \\  // Crypto object with getRandomValues and randomUUID
+                \\  globalThis.crypto = {
+                \\    subtle: subtle,
+                \\    getRandomValues: function(array) {
+                \\      // Simple PRNG for testing (not cryptographically secure)
+                \\      // Production should use native crypto
+                \\      if (!(array instanceof Int8Array || array instanceof Uint8Array ||
+                \\            array instanceof Int16Array || array instanceof Uint16Array ||
+                \\            array instanceof Int32Array || array instanceof Uint32Array ||
+                \\            array instanceof Uint8ClampedArray || array instanceof BigInt64Array ||
+                \\            array instanceof BigUint64Array)) {
+                \\        throw new TypeError('Argument must be an integer typed array');
+                \\      }
+                \\      for (var i = 0; i < array.length; i++) {
+                \\        array[i] = Math.floor(Math.random() * 256);
+                \\      }
+                \\      return array;
+                \\    },
+                \\    randomUUID: function() {
+                \\      // RFC 4122 version 4 UUID
+                \\      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                \\        var r = Math.random() * 16 | 0;
+                \\        var v = c === 'x' ? r : (r & 0x3 | 0x8);
+                \\        return v.toString(16);
+                \\      });
+                \\    }
+                \\  };
+                \\})();
+            ;
+            _ = try self.executeScriptInternal(crypto_script);
+        }
+
+        // ====================================================================
+        // Performance API - performance object (WindowOrWorkerGlobalScope)
+        // Per High Resolution Time spec: https://w3c.github.io/hr-time/
+        // Part of WindowOrWorkerGlobalScope mixin
+        // ====================================================================
+        {
+            const performance_script =
+                \\(function() {
+                \\  var timeOrigin = Date.now();
+                \\  globalThis.performance = {
+                \\    timeOrigin: timeOrigin,
+                \\    now: function() {
+                \\      return Date.now() - timeOrigin;
+                \\    },
+                \\    toJSON: function() {
+                \\      return { timeOrigin: this.timeOrigin };
+                \\    }
+                \\  };
+                \\})();
+            ;
+            _ = try self.executeScriptInternal(performance_script);
         }
     }
 
