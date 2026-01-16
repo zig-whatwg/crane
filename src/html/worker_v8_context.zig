@@ -44,6 +44,10 @@ const V8Interface = v8.V8Interface;
 // Interfaces needed in worker context
 const interfaces = @import("interfaces");
 
+// Fetch API support
+const fetch = @import("fetch");
+const impls = @import("impls");
+
 // Worker types from html_core
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -69,9 +73,17 @@ threadlocal var current_worker_context: ?*WorkerV8Context = null;
 // Thread-local storage for timer interface (set by caller before worker operations)
 threadlocal var current_worker_timer_interface: ?runtime.TimerInterface = null;
 
+// Thread-local storage for allocator (used by V8 callbacks like fetch)
+threadlocal var current_worker_allocator: ?Allocator = null;
+
 /// Get the current timer interface (for internal use)
 fn getTimerInterface() ?runtime.TimerInterface {
     return current_worker_timer_interface;
+}
+
+/// Get the current allocator (for internal use by V8 callbacks)
+fn getWorkerAllocator() ?Allocator {
+    return current_worker_allocator;
 }
 
 // ============================================================================
@@ -990,6 +1002,44 @@ pub const WorkerV8Context = struct {
             ;
             _ = try self.executeScriptInternal(navigator_script);
         }
+
+        // ====================================================================
+        // Fetch API - fetch(), Request, Response, Headers
+        // Per Fetch spec: https://fetch.spec.whatwg.org/
+        // ====================================================================
+
+        // Register fetch() as a global function
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerFetchCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "fetch", 5) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register Request constructor
+        {
+            const RequestBinding = V8Interface(interfaces.Request);
+            RequestBinding.registerGlobal(self.isolate, self.context, "Request");
+        }
+
+        // Register Response constructor
+        {
+            const ResponseBinding = V8Interface(interfaces.Response);
+            ResponseBinding.registerGlobal(self.isolate, self.context, "Response");
+        }
+
+        // Register Headers constructor
+        {
+            const HeadersBinding = V8Interface(interfaces.Headers);
+            HeadersBinding.registerGlobal(self.isolate, self.context, "Headers");
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -1813,6 +1863,144 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
         msg.deinit();
         return;
     };
+}
+
+// ============================================================================
+// Worker Fetch API Support
+// ============================================================================
+
+/// Helper to throw TypeError in worker context
+fn workerThrowTypeError(isolate: *v8.ffi.Isolate, info: *const v8.ffi.FunctionCallbackInfo, msg: []const u8) void {
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef| {
+            info.setReturnValue(undef);
+        }
+        return;
+    };
+    v8.ffi.v8_Isolate_ThrowException(isolate, error_val);
+}
+
+/// Helper to reject a promise with TypeError in worker context
+fn workerRejectWithTypeError(isolate: *v8.ffi.Isolate, v8_ctx: *v8.ffi.Context, resolver: *v8.ffi.PromiseResolver, msg: []const u8) void {
+    const error_msg = v8.ffi.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return;
+    const error_val = v8.ffi.v8_Exception_TypeError(@ptrCast(error_msg)) orelse return;
+    _ = v8.ffi.v8_PromiseResolver_Reject(resolver, v8_ctx, error_val);
+}
+
+/// Worker fetch callback - implements the global fetch() function for workers
+/// Per Fetch spec: https://fetch.spec.whatwg.org/#fetch-method
+fn workerFetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        workerThrowTypeError(isolate, info, "No context available");
+        return;
+    };
+
+    // Get allocator from worker context
+    const worker_ctx = current_worker_context orelse {
+        workerThrowTypeError(isolate, info, "No worker context available");
+        return;
+    };
+    const allocator = worker_ctx.allocator;
+
+    // Create a Promise to return
+    const resolver = v8.ffi.v8_PromiseResolver_New(v8_ctx) orelse {
+        workerThrowTypeError(isolate, info, "Failed to create promise");
+        return;
+    };
+    const promise = v8.ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
+        workerThrowTypeError(isolate, info, "Failed to get promise");
+        return;
+    };
+
+    // Return the promise early - we'll resolve/reject it after fetch completes
+    info.setReturnValue(@ptrCast(promise));
+
+    // Check for URL argument
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': 1 argument required, but only 0 present.");
+        return;
+    }
+
+    // Get URL from first argument
+    const url_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsString(url_value)) {
+        // TODO: Handle Request object input
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to execute 'fetch': URL must be a string");
+        return;
+    }
+
+    // Convert V8 string to Zig string
+    const url_str = v8.ffi.v8_Value_ToString(url_value, v8_ctx) orelse {
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to convert URL to string");
+        return;
+    };
+    const url_len = v8.ffi.v8_String_Utf8Length(url_str);
+    if (url_len <= 0 or url_len > 65536) {
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Invalid URL length");
+        return;
+    }
+
+    const url_buffer = allocator.alloc(u8, @intCast(url_len)) catch {
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Out of memory");
+        return;
+    };
+    defer allocator.free(url_buffer);
+
+    const written = v8.ffi.v8_String_WriteUtf8(url_str, url_buffer.ptr, @intCast(url_len));
+    if (written <= 0) {
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to read URL string");
+        return;
+    }
+    const url_slice = url_buffer[0..@intCast(written)];
+
+    // Create internal request
+    const internal_request = fetch.internal.InternalRequest.init(allocator, url_slice) catch {
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create request");
+        return;
+    };
+    defer internal_request.deinit();
+
+    // Execute fetch algorithm (synchronous for now)
+    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
+        const err_msg = switch (err) {
+            fetch.algorithms.FetchError.NetworkError => "NetworkError: Failed to fetch",
+            fetch.algorithms.FetchError.AbortError => "AbortError: Fetch aborted",
+            fetch.algorithms.FetchError.OutOfMemory => "OutOfMemory",
+        };
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, err_msg);
+        return;
+    };
+    defer fetch_result.timing_info.deinit();
+
+    // Create runtime context for Response creation
+    var ctx_data = runtime.createNullContext(allocator) catch {
+        fetch_result.response.deinit();
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create context");
+        return;
+    };
+    defer ctx_data.deinit();
+
+    // Create Response WebIDL wrapper from internal response
+    const ResponseImpl = impls.Response;
+    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, &ctx_data) catch {
+        fetch_result.response.deinit();
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create Response object");
+        return;
+    };
+    // Note: response_instance now owns fetch_result.response, don't deinit it separately
+
+    // Wrap the Response instance for V8
+    const response_js = v8.conversions.instanceToV8(isolate, response_instance);
+
+    // Resolve the promise with the Response
+    _ = v8.ffi.v8_PromiseResolver_Resolve(resolver, v8_ctx, response_js);
 }
 
 /// V8 callback for close() - terminates the worker
