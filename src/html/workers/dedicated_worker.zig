@@ -82,6 +82,11 @@ pub const DedicatedWorker = struct {
     /// This is set by the WebIDL layer to dispatch MessageEvents
     on_inside_message: ?*const fn (*DedicatedWorker, *QueuedMessage) void = null,
 
+    /// Error handler callback for uncaught exceptions in the worker
+    /// Called when an error is thrown and not handled by self.onerror
+    /// Spec: HTML Standard § 10.2.5 step 11 - "Queue a task to fire an event named error at worker"
+    on_error: ?*const fn (*DedicatedWorker, *WorkerErrorEvent) void = null,
+
     /// User data for callbacks (e.g., reference to WebIDL Worker instance)
     /// This allows callbacks to access the higher-level Worker object.
     user_data: ?*anyopaque = null,
@@ -180,6 +185,29 @@ pub const DedicatedWorker = struct {
         self.on_inside_message = handler;
         // Now set up the inside port callback
         self.port_pair.inside_port.setOnMessage(handleInsidePortMessage, self);
+    }
+
+    /// Set the parent error callback for uncaught exceptions in the worker
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 11
+    /// "Queue a task to fire an event named error at worker."
+    ///
+    /// The handler should create an ErrorEvent and dispatch it to the Worker object.
+    pub fn setParentErrorCallback(self: *DedicatedWorker, handler: *const fn (*DedicatedWorker, *WorkerErrorEvent) void) void {
+        self.on_error = handler;
+    }
+
+    /// Fire an error event to the parent context
+    ///
+    /// This is called when an uncaught error occurs in the worker and
+    /// self.onerror didn't handle it.
+    pub fn fireErrorToParent(self: *DedicatedWorker, error_event: *WorkerErrorEvent) void {
+        if (self.on_error) |handler| {
+            handler(self, error_event);
+        } else {
+            // No error handler - just clean up the event
+            error_event.deinit();
+        }
     }
 
     /// Clean up resources.

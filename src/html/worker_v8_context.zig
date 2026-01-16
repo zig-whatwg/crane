@@ -1732,24 +1732,41 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
 ///
 /// Spec: HTML Standard § 10.2.4.1 close()
 /// https://html.spec.whatwg.org/#dom-dedicatedworkerglobalscope-close
+///
+/// Per the spec, close() sets the closing flag which prevents new tasks from being
+/// added. However, messages already posted BEFORE close() (via postMessage) should
+/// still be delivered. This is achieved by:
+/// 1. Flushing pending messages to the port queue BEFORE setting the closing flag
+/// 2. Scheduling a message dispatch callback to ensure delivery
 fn workerCloseCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     _ = info;
 
     // Get WorkerV8Context from thread-local storage
-    const self = current_worker_context orelse {
-        std.log.warn("workerCloseCallback: no current_worker_context", .{});
-        return;
-    };
+    const self = current_worker_context orelse return;
 
     // Get the DedicatedWorker to close
-    const dedicated_worker = self.dedicated_worker orelse {
-        std.log.warn("workerCloseCallback: no dedicated_worker set", .{});
-        return;
-    };
+    const dedicated_worker = self.dedicated_worker orelse return;
 
-    // Close the worker
+    // CRITICAL: Flush any pending messages BEFORE closing
+    // Messages posted before close() (e.g., "before" in Phase 16.1 test) are stored
+    // in the threadlocal pending_messages queue. We must move them to the port's
+    // message_queue before close() stops the event loop, otherwise they'll never
+    // be delivered.
+    DedicatedWorker.flushPendingMessages();
+
+    // Schedule a message dispatch callback if there are messages in the queue
+    // This ensures messages are delivered even though close() will stop the
+    // worker's event loop. The dispatch happens on the main thread's timer.
+    const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
+
+    if (queue_len > 0) {
+        if (getTimerInterface()) |timer| {
+            _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
+        }
+    }
+
+    // Now close the worker - this sets the closing flag and stops the event loop
     dedicated_worker.close();
-    std.log.debug("Worker close() called", .{});
 }
 
 /// V8 callback for importScripts(...urls) - loads and executes scripts synchronously

@@ -618,7 +618,9 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 /// on the outside_port (worker → main thread direction).
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
     // Get the Worker instance from user_data stored in DedicatedWorker
-    const user_data = dedicated_worker.getUserData() orelse return;
+    const user_data = dedicated_worker.getUserData() orelse {
+        return;
+    };
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
 
     // Dispatch the message event to onmessage handler
@@ -850,7 +852,6 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // Check if this is V8-serialized data (from cross-isolate transfer with ArrayBuffers)
     if (msg.data.type == .v8_serialized) {
         const v8_serialized = msg.data.data.v8_serialized;
-        std.log.info("[Worker.dispatchMessageEvent] V8 serialized data: {} bytes, {} transferred ArrayBuffers", .{ v8_serialized.serialized_bytes.len, v8_serialized.transferred_arraybuffers.len });
 
         // Build ArrayBufferTransferData array from the transferred data
         var arraybuffer_data: [64]v8_engine.ffi.ArrayBufferTransferData = undefined;
@@ -876,8 +877,6 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
 
         if (v8_data == null or error_code != 0) {
             std.log.warn("Worker.dispatchMessageEvent: V8 deserialization failed with error code {}", .{error_code});
-        } else {
-            std.log.info("[Worker.dispatchMessageEvent] V8 deserialization successful", .{});
         }
     }
 
@@ -1058,6 +1057,8 @@ fn invokeMessageListeners(
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
         _ = v8_engine.ffi.v8_Function_Call(global_func, v8_context, @ptrCast(undefined_recv), 1, &args);
+    } else {
+        std.log.warn("[invokeMessageListeners] No onmessage handler set!", .{});
     }
 }
 
@@ -1154,8 +1155,6 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 
     // Step 2: Serialize with transfer using cross-isolate API
     if (array_buffer_count > 0) {
-        std.log.info("[Worker.call_postMessage] Transfer path: {} ArrayBuffers to transfer", .{array_buffer_count});
-
         // Use V8 cross-isolate serialization with ArrayBuffer transfer
         var arraybuffer_data: [64]v8_engine.ffi.ArrayBufferTransferData = undefined;
         var serialized_size: usize = 0;
@@ -1171,10 +1170,8 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
         );
 
         if (serialized_bytes == null or error_code != 0) {
-            std.log.err("[Worker.call_postMessage] Serialization failed: error_code={}", .{error_code});
             return error.SerializationFailed;
         }
-        std.log.info("[Worker.call_postMessage] Serialized {} bytes", .{serialized_size});
 
         // Copy the serialized bytes to Zig-managed memory
         const bytes_copy = try allocator.alloc(u8, serialized_size);
