@@ -8879,6 +8879,261 @@ static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context>
     return new_context;
 }
 
+// ============================================================================
+// Cross-Isolate Structured Clone (for Worker transfer)
+// ============================================================================
+//
+// These functions support transferring ArrayBuffers between V8 isolates.
+// Unlike v8_Value_StructuredCloneWithTransfer (which serializes+deserializes
+// in the same isolate), these functions:
+// 1. SerializeWithTransfer: Serialize to bytes, detach ArrayBuffers, return bytes
+// 2. DeserializeWithTransfer: Deserialize bytes in current isolate, create new ArrayBuffers
+//
+// This is how Chromium and Node.js handle cross-thread/cross-isolate messaging.
+
+extern "C" {
+
+/// Data structure for ArrayBuffer transfer (passed across isolate boundary)
+struct ArrayBufferTransferData {
+    void* data;
+    size_t size;
+};
+
+/// Serialize a V8 value with ArrayBuffer transfer, returning raw bytes.
+///
+/// This function:
+/// 1. Copies ArrayBuffer data before detaching (so it survives detach)
+/// 2. Serializes the value using V8 ValueSerializer with transfer markers
+/// 3. Detaches the original ArrayBuffers (making byteLength = 0)
+/// 4. Returns the serialized bytes for cross-isolate transfer
+///
+/// @param value - The value to serialize
+/// @param transfer_list - Array of ArrayBuffer Global handles to transfer
+/// @param transfer_count - Number of ArrayBuffers to transfer
+/// @param out_size - OUTPUT: Size of serialized data
+/// @param out_arraybuffer_data - OUTPUT: Array of ArrayBufferTransferData (caller provides)
+/// @param error_code - OUTPUT: 0=success, 1=DataCloneError, 2=other error
+/// @return Pointer to serialized data (caller must free with v8_Free_SerializedBuffer)
+uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
+    Global<Value>* value,
+    Global<Value>** transfer_list,
+    size_t transfer_count,
+    size_t* out_size,
+    ArrayBufferTransferData* out_arraybuffer_data,
+    int* error_code
+) {
+    if (error_code) *error_code = 0;
+    if (out_size) *out_size = 0;
+
+    if (!value || value->IsEmpty()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    Local<Value> val = value->Get(isolate);
+
+    // Step 1: Collect and validate ArrayBuffers, copy their data
+    std::set<void*> seen_buffers;
+    std::vector<Local<ArrayBuffer>> array_buffers_to_transfer;
+    std::vector<std::pair<void*, size_t>> copied_data;  // Data copied before detach
+
+    for (size_t i = 0; i < transfer_count; i++) {
+        if (!transfer_list[i] || transfer_list[i]->IsEmpty()) {
+            if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+
+        Local<Value> transfer_val = transfer_list[i]->Get(isolate);
+
+        if (!transfer_val->IsArrayBuffer()) {
+            if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+
+        Local<ArrayBuffer> ab = transfer_val.As<ArrayBuffer>();
+
+        // Check for duplicate
+        std::shared_ptr<BackingStore> backing_store = ab->GetBackingStore();
+        void* data_ptr = backing_store ? backing_store->Data() : nullptr;
+
+        if (seen_buffers.find(data_ptr) != seen_buffers.end()) {
+            if (error_code) *error_code = 1;  // DataCloneError - duplicate
+            return nullptr;
+        }
+        seen_buffers.insert(data_ptr);
+
+        // Check if already detached
+        if (ab->WasDetached()) {
+            if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+
+        // Copy data BEFORE serialization/detach
+        size_t byte_length = backing_store ? backing_store->ByteLength() : 0;
+        void* data_copy = nullptr;
+        if (byte_length > 0 && data_ptr) {
+            data_copy = malloc(byte_length);
+            if (!data_copy) {
+                // Clean up previous allocations
+                for (auto& d : copied_data) {
+                    if (d.first) free(d.first);
+                }
+                if (error_code) *error_code = 2;  // Out of memory
+                return nullptr;
+            }
+            memcpy(data_copy, data_ptr, byte_length);
+        }
+
+        array_buffers_to_transfer.push_back(ab);
+        copied_data.push_back({data_copy, byte_length});
+
+        // Fill out the output arraybuffer data
+        if (out_arraybuffer_data) {
+            out_arraybuffer_data[i].data = data_copy;
+            out_arraybuffer_data[i].size = byte_length;
+        }
+    }
+
+    // Step 2: Serialize the value using V8's ValueSerializer
+    ValueSerializer serializer(isolate);
+    serializer.WriteHeader();
+
+    // Register ArrayBuffers for transfer (tells V8 to use transfer IDs)
+    for (size_t i = 0; i < array_buffers_to_transfer.size(); i++) {
+        serializer.TransferArrayBuffer(static_cast<uint32_t>(i), array_buffers_to_transfer[i]);
+    }
+
+    Maybe<bool> write_result = serializer.WriteValue(ctx, val);
+    if (write_result.IsNothing() || !write_result.FromJust()) {
+        // Serialization failed - clean up copied data
+        for (auto& d : copied_data) {
+            if (d.first) free(d.first);
+        }
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // Get the serialized data
+    std::pair<uint8_t*, size_t> buffer = serializer.Release();
+    uint8_t* data = buffer.first;
+    size_t size = buffer.second;
+
+    if (data == nullptr || size == 0) {
+        for (auto& d : copied_data) {
+            if (d.first) free(d.first);
+        }
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // Step 3: Detach the original ArrayBuffers
+    // This makes buffer.byteLength === 0 in JavaScript
+    for (auto& ab : array_buffers_to_transfer) {
+        ab->Detach(Local<Value>());
+    }
+
+    *out_size = size;
+    return data;
+}
+
+/// Deserialize V8 structured clone data with ArrayBuffer transfer.
+///
+/// This function is called in the DESTINATION isolate to recreate values.
+///
+/// @param serialized_data - The serialized bytes from v8_Value_SerializeWithTransfer_CrossIsolate
+/// @param serialized_size - Size of serialized data
+/// @param arraybuffer_data - Array of ArrayBuffer data to recreate
+/// @param arraybuffer_count - Number of ArrayBuffers to recreate
+/// @param error_code - OUTPUT: 0=success, 1=DataCloneError, 2=other error
+/// @return Global<Value>* to the deserialized value in current isolate
+Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
+    const uint8_t* serialized_data,
+    size_t serialized_size,
+    const ArrayBufferTransferData* arraybuffer_data,
+    size_t arraybuffer_count,
+    int* error_code
+) {
+    if (error_code) *error_code = 0;
+
+    if (!serialized_data || serialized_size == 0) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (ctx.IsEmpty()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // Create ValueDeserializer
+    ValueDeserializer deserializer(isolate, serialized_data, serialized_size);
+
+    // Create new ArrayBuffers in this isolate from the transferred data
+    std::vector<Local<ArrayBuffer>> transferred_buffers;
+    for (size_t i = 0; i < arraybuffer_count; i++) {
+        size_t byte_length = arraybuffer_data[i].size;
+
+        // Create new ArrayBuffer with copied data
+        Local<ArrayBuffer> ab = ArrayBuffer::New(isolate, byte_length);
+        if (byte_length > 0 && arraybuffer_data[i].data && ab->GetBackingStore()) {
+            memcpy(ab->GetBackingStore()->Data(), arraybuffer_data[i].data, byte_length);
+        }
+
+        deserializer.TransferArrayBuffer(static_cast<uint32_t>(i), ab);
+        transferred_buffers.push_back(ab);
+    }
+
+    // Read header
+    Maybe<bool> header_result = deserializer.ReadHeader(ctx);
+    if (header_result.IsNothing() || !header_result.FromJust()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    // Read the value
+    MaybeLocal<Value> result = deserializer.ReadValue(ctx);
+    if (result.IsEmpty()) {
+        if (error_code) *error_code = 2;
+        return nullptr;
+    }
+
+    Local<Value> deserialized = result.ToLocalChecked();
+    return trackHandle(new Global<Value>(isolate, deserialized));
+}
+
+/// Free serialized buffer from v8_Value_SerializeWithTransfer_CrossIsolate
+void v8_Free_SerializedBuffer(uint8_t* buffer) {
+    if (buffer) {
+        free(buffer);
+    }
+}
+
+/// Free ArrayBuffer transfer data (the copied data from source isolate)
+void v8_Free_ArrayBufferTransferData(ArrayBufferTransferData* data, size_t count) {
+    if (data) {
+        for (size_t i = 0; i < count; i++) {
+            if (data[i].data) {
+                free(data[i].data);
+            }
+        }
+    }
+}
+
+} // extern "C" - Cross-Isolate Structured Clone
+
 extern "C" {
 
 /// Set the ShadowRealm context creation callback

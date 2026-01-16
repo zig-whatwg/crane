@@ -350,6 +350,12 @@ fn structuredDeserializeInternal(
             } };
         },
 
+        // V8 serialized data - should be deserialized by V8 directly, not this Zig deserializer
+        .v8_serialized => {
+            allocator.destroy(value);
+            return CloneError.DeserializeError;
+        },
+
         // Transferable-only types - should not appear in regular deserialization
         .message_port,
         .readable_stream,

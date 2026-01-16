@@ -54,6 +54,8 @@ const WorkerV8Context = html_full.WorkerV8Context;
 
 // Import structured clone for message passing
 const structured_clone = html_core.structured_clone;
+const V8SerializedData = structured_clone.types.V8SerializedData;
+const TransferredArrayBufferData = structured_clone.types.TransferredArrayBufferData;
 
 // Import MessagePort for communication
 const message_port_internal = @import("streams_internal");
@@ -662,12 +664,45 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // 2. The C++ wrapper functions also create their own HandleScopes
     // 3. Creating a HeapHandleScope here seems to cause issues with V8's internal tracking
 
-    // Get the message data - check if it's a JSON string from worker
-    // The worker sends JSON-serialized messages for cross-isolate safety
+    // Get the message data - check the serialization type
     var v8_data: ?*v8_engine.ffi.Value = null;
 
-    // Check the serialized value type
-    if (msg.data.type == .primitive) {
+    // Check if this is V8-serialized data (from cross-isolate transfer with ArrayBuffers)
+    if (msg.data.type == .v8_serialized) {
+        const v8_serialized = msg.data.data.v8_serialized;
+        std.log.info("[Worker.dispatchMessageEvent] V8 serialized data: {} bytes, {} transferred ArrayBuffers", .{ v8_serialized.serialized_bytes.len, v8_serialized.transferred_arraybuffers.len });
+
+        // Build ArrayBufferTransferData array from the transferred data
+        var arraybuffer_data: [64]v8_engine.ffi.ArrayBufferTransferData = undefined;
+        const ab_count = @min(v8_serialized.transferred_arraybuffers.len, 64);
+
+        for (0..ab_count) |i| {
+            const transferred = v8_serialized.transferred_arraybuffers[i];
+            arraybuffer_data[i] = .{
+                .data = if (transferred.data.len > 0) transferred.data.ptr else null,
+                .size = transferred.byte_length,
+            };
+        }
+
+        // Deserialize using cross-isolate API
+        var error_code: i32 = 0;
+        v8_data = v8_engine.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(
+            v8_serialized.serialized_bytes.ptr,
+            v8_serialized.serialized_bytes.len,
+            &arraybuffer_data,
+            ab_count,
+            &error_code,
+        );
+
+        if (v8_data == null or error_code != 0) {
+            std.log.warn("Worker.dispatchMessageEvent: V8 deserialization failed with error code {}", .{error_code});
+        } else {
+            std.log.info("[Worker.dispatchMessageEvent] V8 deserialization successful", .{});
+        }
+    }
+
+    // Check for JSON-serialized primitives (from postMessage without transfer)
+    if (v8_data == null and msg.data.type == .primitive) {
         switch (msg.data.data.primitive) {
             .string => |json_str| {
                 // JSON string from worker - parse it in main context
@@ -870,9 +905,15 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 ///
 /// The message is serialized using the structured clone algorithm and
 /// sent to the worker's message queue.
+///
+/// For cross-isolate transfer (Worker runs in separate V8 isolate):
+/// 1. Extract ArrayBuffers from transfer list
+/// 2. Serialize message to bytes (V8 ValueSerializer)
+/// 3. Copy ArrayBuffer data before detaching
+/// 4. Detach original ArrayBuffers
+/// 5. Pass serialized bytes + ArrayBuffer data to worker
+/// 6. Worker deserializes in its own isolate
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    _ = transfer; // TODO: Handle transfer list
-
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
     if (internal.terminated) {
@@ -887,18 +928,14 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoEngine;
 
-    // Convert JSValue to V8 Local value for serialization
+    // Convert JSValue to V8 Value* for serialization
     const v8_value: *v8_engine.ffi.Value = switch (message) {
         .handle => |h| blk: {
-            // Check if it's a global or local handle
             if (h.handle_scope == .global) {
-                // Global handle - need to dereference to get local value
-                // Cast anyopaque ptr to Value ptr for v8_Global_Get
                 const global_ptr: *v8_engine.ffi.Value = @ptrCast(@alignCast(h.ptr));
                 const local_result = v8_engine.ffi.v8_Global_Get(isolate, global_ptr) orelse return error.NoValue;
                 break :blk @ptrCast(@alignCast(local_result));
             } else {
-                // Local handle - cast directly
                 break :blk @ptrCast(@alignCast(h.ptr));
             }
         },
@@ -907,55 +944,163 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
         .boolean => |b| v8_engine.ffi.v8_Boolean_New(isolate, b) orelse return error.NoValue,
         .number => |n| @ptrCast(v8_engine.ffi.v8_Number_New(isolate, n)),
         .string => |s| @ptrCast(v8_engine.ffi.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return error.NoValue),
-        .instance => return error.UnsupportedValueType, // Can't serialize instances
+        .instance => return error.UnsupportedValueType,
     };
 
-    // Get required size for JSON buffer
-    var dummy_buf: [1]u8 = undefined;
-    const required_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
-        v8_context,
-        v8_value,
-        &dummy_buf,
-        0,
-    );
-    if (required_size <= 0) return error.SerializationFailed;
+    // Step 1: Extract ArrayBuffers from transfer list
+    var array_buffer_transfers: [64]*v8_engine.ffi.Value = undefined;
+    var array_buffer_count: usize = 0;
 
-    // Allocate buffer and stringify
-    const json_buffer = try allocator.alloc(u8, @intCast(required_size + 1));
-    defer allocator.free(json_buffer);
+    if (transfer == .handle) {
+        const transfer_handle = transfer.handle;
+        const transfer_value: *v8_engine.ffi.Value = @ptrCast(@alignCast(transfer_handle.ptr));
 
-    const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
-        v8_context,
-        v8_value,
-        json_buffer.ptr,
-        @intCast(json_buffer.len),
-    );
-    if (written <= 0) return error.SerializationFailed;
+        if (v8_engine.ffi.v8_Value_IsArray(transfer_value)) {
+            const transfer_array: *v8_engine.ffi.Array = @ptrCast(transfer_value);
+            const length = v8_engine.ffi.v8_Array_Length(transfer_array);
 
-    const json_str = json_buffer[0..@intCast(written)];
+            for (0..length) |i| {
+                if (v8_engine.ffi.v8_Array_Get(v8_context, transfer_array, @intCast(i))) |item| {
+                    if (v8_engine.ffi.v8_Value_IsArrayBuffer(item)) {
+                        if (array_buffer_count < 64) {
+                            array_buffer_transfers[array_buffer_count] = item;
+                            array_buffer_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-    // Create SerializedValue with the JSON string
-    const serialized = try allocator.create(SerializedValue);
-    errdefer allocator.destroy(serialized);
+    // Step 2: Serialize with transfer using cross-isolate API
+    if (array_buffer_count > 0) {
+        std.log.info("[Worker.call_postMessage] Transfer path: {} ArrayBuffers to transfer", .{array_buffer_count});
 
-    // Copy the JSON string for the serialized value
-    const json_copy = try allocator.dupe(u8, json_str);
-    errdefer allocator.free(json_copy);
+        // Use V8 cross-isolate serialization with ArrayBuffer transfer
+        var arraybuffer_data: [64]v8_engine.ffi.ArrayBufferTransferData = undefined;
+        var serialized_size: usize = 0;
+        var error_code: i32 = 0;
 
-    serialized.* = .{
-        .type = .primitive,
-        .allocator = allocator,
-        .data = .{ .primitive = .{ .string = json_copy } },
-    };
+        const serialized_bytes = v8_engine.ffi.v8_Value_SerializeWithTransfer_CrossIsolate(
+            v8_value,
+            &array_buffer_transfers,
+            array_buffer_count,
+            &serialized_size,
+            &arraybuffer_data,
+            &error_code,
+        );
 
-    // Post to the worker's inside port (via outside_port.postMessage which entangles)
-    worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-        serialized.deinit();
-        allocator.destroy(serialized);
-        return switch (err) {
-            error.PortClosed => error.WorkerClosed,
-            error.NotEntangled => error.WorkerClosed,
-            else => error.PostMessageFailed,
+        if (serialized_bytes == null or error_code != 0) {
+            std.log.err("[Worker.call_postMessage] Serialization failed: error_code={}", .{error_code});
+            return error.SerializationFailed;
+        }
+        std.log.info("[Worker.call_postMessage] Serialized {} bytes", .{serialized_size});
+
+        // Copy the serialized bytes to Zig-managed memory
+        const bytes_copy = try allocator.alloc(u8, serialized_size);
+        errdefer allocator.free(bytes_copy);
+        @memcpy(bytes_copy, serialized_bytes.?[0..serialized_size]);
+
+        // Free the V8-allocated serialized buffer
+        v8_engine.ffi.v8_Free_SerializedBuffer(serialized_bytes.?);
+
+        // Copy the ArrayBuffer data to Zig-managed memory
+        const transferred_abs = try allocator.alloc(TransferredArrayBufferData, array_buffer_count);
+        errdefer {
+            for (transferred_abs) |ab| {
+                allocator.free(ab.data);
+            }
+            allocator.free(transferred_abs);
+        }
+
+        for (0..array_buffer_count) |i| {
+            const ab_data = arraybuffer_data[i];
+            if (ab_data.size > 0 and ab_data.data != null) {
+                const data_slice: [*]u8 = @ptrCast(ab_data.data.?);
+                transferred_abs[i] = .{
+                    .data = try allocator.dupe(u8, data_slice[0..ab_data.size]),
+                    .byte_length = ab_data.size,
+                };
+            } else {
+                transferred_abs[i] = .{
+                    .data = &[_]u8{},
+                    .byte_length = 0,
+                };
+            }
+        }
+
+        // Free the C-allocated ArrayBuffer data (we've copied it)
+        v8_engine.ffi.v8_Free_ArrayBufferTransferData(&arraybuffer_data, array_buffer_count);
+
+        // Create SerializedValue with V8 serialized data
+        const serialized = try allocator.create(SerializedValue);
+        errdefer allocator.destroy(serialized);
+
+        serialized.* = .{
+            .type = .v8_serialized,
+            .allocator = allocator,
+            .data = .{
+                .v8_serialized = .{
+                    .serialized_bytes = bytes_copy,
+                    .transferred_arraybuffers = transferred_abs,
+                },
+            },
         };
-    };
+
+        // Post to the worker's inside port
+        worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+            serialized.deinit();
+            allocator.destroy(serialized);
+            return switch (err) {
+                error.PortClosed => error.WorkerClosed,
+                error.NotEntangled => error.WorkerClosed,
+                else => error.PostMessageFailed,
+            };
+        };
+    } else {
+        // No transfer list - use JSON serialization (simpler, works for primitives)
+        var dummy_buf: [1]u8 = undefined;
+        const required_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
+            v8_context,
+            v8_value,
+            &dummy_buf,
+            0,
+        );
+        if (required_size <= 0) return error.SerializationFailed;
+
+        const json_buffer = try allocator.alloc(u8, @intCast(required_size + 1));
+        defer allocator.free(json_buffer);
+
+        const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
+            v8_context,
+            v8_value,
+            json_buffer.ptr,
+            @intCast(json_buffer.len),
+        );
+        if (written <= 0) return error.SerializationFailed;
+
+        const json_str = json_buffer[0..@intCast(written)];
+
+        const serialized = try allocator.create(SerializedValue);
+        errdefer allocator.destroy(serialized);
+
+        const json_copy = try allocator.dupe(u8, json_str);
+        errdefer allocator.free(json_copy);
+
+        serialized.* = .{
+            .type = .primitive,
+            .allocator = allocator,
+            .data = .{ .primitive = .{ .string = json_copy } },
+        };
+
+        worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+            serialized.deinit();
+            allocator.destroy(serialized);
+            return switch (err) {
+                error.PortClosed => error.WorkerClosed,
+                error.NotEntangled => error.WorkerClosed,
+                else => error.PostMessageFailed,
+            };
+        };
+    }
 }

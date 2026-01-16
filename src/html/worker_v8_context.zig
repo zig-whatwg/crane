@@ -567,6 +567,36 @@ pub const WorkerV8Context = struct {
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(origin_key), @ptrCast(origin_value));
         }
+
+        // Set up navigator object (WorkerNavigator)
+        // Per HTML Standard § 10.2.6 WorkerNavigator
+        // Includes NavigatorID, NavigatorLanguage, NavigatorOnLine, NavigatorConcurrentHardware
+        {
+            const navigator_script =
+                \\(function() {
+                \\  globalThis.navigator = {
+                \\    // NavigatorID mixin
+                \\    userAgent: 'Crane/1.0',
+                \\    appCodeName: 'Mozilla',
+                \\    appName: 'Netscape',
+                \\    appVersion: '5.0',
+                \\    platform: 'Zig',
+                \\    product: 'Gecko',
+                \\    productSub: '20030107',
+                \\    vendor: '',
+                \\    vendorSub: '',
+                \\    // NavigatorLanguage mixin
+                \\    language: 'en-US',
+                \\    languages: ['en-US', 'en'],
+                \\    // NavigatorOnLine mixin
+                \\    onLine: true,
+                \\    // NavigatorConcurrentHardware mixin
+                \\    hardwareConcurrency: 1
+                \\  };
+                \\})();
+            ;
+            _ = try self.executeScriptInternal(navigator_script);
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
@@ -639,9 +669,19 @@ pub const WorkerV8Context = struct {
     ///
     /// This function calls self.onmessage(event) entirely via JavaScript to avoid
     /// V8 FFI handle type mismatches between Global and Local handles.
+    ///
+    /// For v8_serialized messages (from cross-isolate ArrayBuffer transfers), we use
+    /// V8's ValueDeserializer to reconstruct the ArrayBuffer in this isolate.
     fn dispatchMessageToWorkerInternal(self: *Self, msg: *workers.message_channel.QueuedMessage) void {
-        // Deserialize message data to JSON string
         const serialized = msg.data;
+
+        // Handle v8_serialized messages (cross-isolate ArrayBuffer transfers)
+        if (serialized.type == .v8_serialized) {
+            self.dispatchV8SerializedMessage(serialized);
+            return;
+        }
+
+        // Deserialize message data to JSON string for other types
         const json_str: []const u8 = switch (serialized.type) {
             .primitive => switch (serialized.data.primitive) {
                 .string => |s| s,
@@ -680,6 +720,102 @@ pub const WorkerV8Context = struct {
 
         const run_result = v8.ffi.v8_Script_Run_Safe(self.context, compile_result.script.?);
         defer v8.ffi.v8_FreeScriptRunResult(run_result);
+
+        // Run microtasks after handler
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+    }
+
+    /// Dispatch a v8_serialized message using cross-isolate deserialization
+    ///
+    /// This handles messages that contain transferred ArrayBuffers. The data was
+    /// serialized in the main isolate and needs to be deserialized in this worker's isolate.
+    fn dispatchV8SerializedMessage(self: *Self, serialized: *workers.message_channel.SerializedValue) void {
+        const v8_data = serialized.data.v8_serialized;
+
+        // Build ArrayBufferTransferData array for deserialization
+        var arraybuffer_data: [64]v8.ffi.ArrayBufferTransferData = undefined;
+        const ab_count = @min(v8_data.transferred_arraybuffers.len, 64);
+
+        for (0..ab_count) |i| {
+            const transferred = v8_data.transferred_arraybuffers[i];
+            arraybuffer_data[i] = .{
+                .data = if (transferred.data.len > 0) transferred.data.ptr else null,
+                .size = transferred.byte_length,
+            };
+        }
+
+        // Deserialize using cross-isolate API in this worker's isolate
+        var error_code: i32 = 0;
+        const v8_value = v8.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(
+            v8_data.serialized_bytes.ptr,
+            v8_data.serialized_bytes.len,
+            &arraybuffer_data,
+            ab_count,
+            &error_code,
+        );
+
+        if (v8_value == null or error_code != 0) {
+            std.log.warn("[Worker] dispatchV8SerializedMessage: deserialization failed with error {}", .{error_code});
+            return;
+        }
+
+        // Get global object for calling onmessage
+        const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
+            std.log.warn("[Worker] dispatchV8SerializedMessage: no global object", .{});
+            return;
+        };
+
+        // Get self.onmessage property
+        const onmessage_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "onmessage", 9) orelse return;
+        const onmessage_val = v8.ffi.v8_Object_Get(global_obj, self.context, @ptrCast(onmessage_key)) orelse return;
+
+        // Check if onmessage is a function
+        // NOTE: v8_Object_Get returns Global<Value>*, so use non-Local type check
+        const onmessage_val_ptr: *v8.ffi.Value = @ptrCast(onmessage_val);
+        if (!v8.ffi.v8_Value_IsFunction(onmessage_val_ptr)) {
+            return;
+        }
+
+        // Create a simple event object with 'data' property using JavaScript
+        // The deserialized v8_value is the ArrayBuffer we need to pass as event.data
+        const event_script =
+            \\(function(data) {
+            \\  return { data: data, type: 'message', target: self, currentTarget: self };
+            \\})
+        ;
+        const event_source = v8.ffi.v8_String_NewFromUtf8(self.isolate, event_script.ptr, @intCast(event_script.len)) orelse return;
+        const compile_result = v8.ffi.v8_Script_Compile_Safe(self.context, event_source);
+        defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
+
+        if (compile_result.script == null) return;
+
+        const run_result = v8.ffi.v8_Script_Run_Safe(self.context, compile_result.script.?);
+        defer v8.ffi.v8_FreeScriptRunResult(run_result);
+
+        const event_factory = run_result.value orelse return;
+
+        // Call the factory function with the deserialized data to create event object
+        var factory_args = [_]*v8.ffi.Value{v8_value.?};
+        const event_obj = v8.ffi.v8_Function_Call(
+            @ptrCast(event_factory),
+            self.context,
+            @ptrCast(global_obj),
+            1,
+            &factory_args,
+        ) orelse {
+            std.log.warn("[Worker] dispatchV8SerializedMessage: failed to create event object", .{});
+            return;
+        };
+
+        // Call onmessage(event)
+        var args = [_]*v8.ffi.Value{event_obj};
+        _ = v8.ffi.v8_Function_Call(
+            @ptrCast(onmessage_val),
+            self.context,
+            @ptrCast(global_obj),
+            1,
+            &args,
+        );
 
         // Run microtasks after handler
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);

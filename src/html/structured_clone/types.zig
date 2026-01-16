@@ -44,6 +44,9 @@ pub const CloneError = error{
 ///
 /// Per HTML Standard §2.7.3, the [[Type]] field identifies the serialized value type.
 pub const SerializationType = enum {
+    // V8 serialized bytes (for cross-isolate Worker transfer)
+    v8_serialized,
+
     // Primitives (step 4)
     primitive,
 
@@ -212,6 +215,9 @@ pub const SerializedValue = struct {
     data: SerializedData,
 
     pub const SerializedData = union(SerializationType) {
+        // V8 serialized bytes (for cross-isolate Worker transfer)
+        v8_serialized: V8SerializedData,
+
         // Primitives
         primitive: PrimitiveValue,
 
@@ -277,6 +283,16 @@ pub const SerializedValue = struct {
 
     pub fn deinit(self: *SerializedValue) void {
         switch (self.data) {
+            .v8_serialized => |v8| {
+                // Free V8 serialized bytes
+                self.allocator.free(v8.serialized_bytes);
+                // Free each transferred ArrayBuffer's data
+                for (v8.transferred_arraybuffers) |ab| {
+                    self.allocator.free(ab.data);
+                }
+                // Free the ArrayBuffer array itself
+                self.allocator.free(v8.transferred_arraybuffers);
+            },
             .primitive => |p| {
                 if (p == .string) {
                     self.allocator.free(p.string);
@@ -359,6 +375,23 @@ pub const SerializedValue = struct {
 pub const RegExpData = struct {
     source: []const u8,
     flags: []const u8,
+};
+
+/// V8 serialized data for cross-isolate transfer (Worker messaging)
+/// This holds V8 ValueSerializer output bytes plus transferred ArrayBuffer data.
+pub const V8SerializedData = struct {
+    /// V8 serialized bytes (from ValueSerializer)
+    serialized_bytes: []u8,
+    /// Transferred ArrayBuffer data (copied before detach)
+    transferred_arraybuffers: []TransferredArrayBufferData,
+};
+
+/// Data for a single transferred ArrayBuffer
+pub const TransferredArrayBufferData = struct {
+    /// Copied data from the source ArrayBuffer
+    data: []u8,
+    /// Original byte length
+    byte_length: usize,
 };
 
 /// ArrayBuffer serialization data

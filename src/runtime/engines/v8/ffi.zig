@@ -775,6 +775,59 @@ pub extern fn v8_Value_StructuredCloneWithTransfer(
     error_code: *c_int,
 ) ?*Value;
 
+// Cross-Isolate Structured Clone (for Worker transfer)
+// These functions support transferring ArrayBuffers between V8 isolates.
+// Unlike v8_Value_StructuredCloneWithTransfer (which serializes+deserializes in the same isolate),
+// these functions separate the serialize and deserialize steps for cross-isolate transfer.
+
+/// Data structure for ArrayBuffer transfer (passed across isolate boundary)
+pub const ArrayBufferTransferData = extern struct {
+    data: ?*anyopaque,
+    size: usize,
+};
+
+/// Serialize a V8 value with ArrayBuffer transfer, returning raw bytes.
+/// This copies ArrayBuffer data, serializes the value, then detaches original ArrayBuffers.
+/// Parameters:
+///   value: The value to serialize
+///   transfer_list: Array of ArrayBuffer Value* to transfer
+///   transfer_count: Number of ArrayBuffers to transfer
+///   out_size: OUTPUT - Size of serialized data
+///   out_arraybuffer_data: OUTPUT - Array of ArrayBufferTransferData (caller provides, filled with copied data)
+///   error_code: OUTPUT - 0=success, 1=DataCloneError, 2=other error
+/// Returns: Pointer to serialized data (caller must free with v8_Free_SerializedBuffer)
+pub extern fn v8_Value_SerializeWithTransfer_CrossIsolate(
+    value: *Value,
+    transfer_list: [*]*Value,
+    transfer_count: usize,
+    out_size: *usize,
+    out_arraybuffer_data: [*]ArrayBufferTransferData,
+    error_code: *c_int,
+) ?[*]u8;
+
+/// Deserialize V8 structured clone data with ArrayBuffer transfer.
+/// This is called in the DESTINATION isolate to recreate values.
+/// Parameters:
+///   serialized_data: The serialized bytes from v8_Value_SerializeWithTransfer_CrossIsolate
+///   serialized_size: Size of serialized data
+///   arraybuffer_data: Array of ArrayBuffer data to recreate
+///   arraybuffer_count: Number of ArrayBuffers to recreate
+///   error_code: OUTPUT - 0=success, 1=DataCloneError, 2=other error
+/// Returns: Global<Value>* to the deserialized value in current isolate
+pub extern fn v8_Value_DeserializeWithTransfer_CrossIsolate(
+    serialized_data: [*]const u8,
+    serialized_size: usize,
+    arraybuffer_data: [*]const ArrayBufferTransferData,
+    arraybuffer_count: usize,
+    error_code: *c_int,
+) ?*Value;
+
+/// Free serialized buffer from v8_Value_SerializeWithTransfer_CrossIsolate
+pub extern fn v8_Free_SerializedBuffer(buffer: [*]u8) void;
+
+/// Free ArrayBuffer transfer data (the copied data from source isolate)
+pub extern fn v8_Free_ArrayBufferTransferData(data: [*]ArrayBufferTransferData, count: usize) void;
+
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
 pub extern fn v8_Value_IsFunction_Local(value_ptr: *anyopaque) bool;
