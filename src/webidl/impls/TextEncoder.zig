@@ -318,18 +318,46 @@ const Uint8ArrayDescriptor = extern struct {
     len: usize,
 };
 
-/// Create a Uint8Array descriptor for V8 bindings
-/// The descriptor is allocated and the pointer is returned as runtime.JSValue
+/// Create a V8 Uint8Array from the given data
+/// The data is copied into the ArrayBuffer backing store and ownership is transferred to V8
 fn createUint8ArrayDescriptor(allocator: std.mem.Allocator, data: []const u8) !runtime.JSValue {
-    // TODO: Return proper V8 Uint8Array - need typed array creation utility
-    // For now, free any allocated data to prevent memory leaks
-    // The data is unused since we can't create a real Uint8Array yet
+    // Get V8 isolate
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse {
+        // Free the data since we can't use it
+        if (data.len > 0) {
+            allocator.free(@constCast(data));
+        }
+        return error.OutOfMemory;
+    };
+
+    // Create ArrayBuffer with the required size
+    const array_buffer = ffi.v8_ArrayBuffer_New(isolate, data.len) orelse {
+        if (data.len > 0) {
+            allocator.free(@constCast(data));
+        }
+        return error.OutOfMemory;
+    };
+
+    // Copy data into the ArrayBuffer's backing store
     if (data.len > 0) {
-        // Only free if it's not a static string (like "")
-        // Since callers allocate with allocator.dupe, we need to free it
+        const buffer_data = ffi.v8_ArrayBuffer_Data(array_buffer) orelse {
+            allocator.free(@constCast(data));
+            return error.OutOfMemory;
+        };
+        const dest: [*]u8 = @ptrCast(buffer_data);
+        @memcpy(dest[0..data.len], data);
+
+        // Free the original data since it's been copied
         allocator.free(@constCast(data));
     }
-    return runtime.JSValue.jsUndefined;
+
+    // Create Uint8Array view over the ArrayBuffer
+    const uint8_array = ffi.v8_Uint8Array_New(isolate, array_buffer, 0, data.len) orelse {
+        return error.OutOfMemory;
+    };
+
+    // Return as JSValue - tag the pointer appropriately
+    return runtime.JSValue.fromAnyopaque(@ptrCast(uint8_array));
 }
 
 /// Extract the byte buffer from a Uint8Array opaque pointer (tagged V8 Value)
