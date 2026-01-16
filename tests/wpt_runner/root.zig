@@ -57,6 +57,7 @@ pub const result_reporter = @import("result_reporter.zig");
 pub const http_server = @import("http_server.zig");
 pub const browser_adapter = @import("browser_adapter.zig");
 pub const wpt_server = @import("wpt_server.zig");
+pub const manifest = @import("manifest.zig");
 
 // Re-export main entry point
 pub const main = @import("main.zig").main;
@@ -65,6 +66,8 @@ pub const main = @import("main.zig").main;
 pub const HttpServer = http_server.HttpServer;
 pub const ServerConfig = http_server.ServerConfig;
 pub const WptServer = wpt_server.WptServer;
+pub const Manifest = manifest.Manifest;
+pub const loadManifest = manifest.loadManifest;
 
 test "wpt_runner module compiles" {
     const std = @import("std");

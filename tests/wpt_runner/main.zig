@@ -34,6 +34,7 @@ const test_harness = @import("test_harness.zig");
 const browser_adapter = @import("browser_adapter.zig");
 const result_reporter = @import("result_reporter.zig");
 const wpt_server = @import("wpt_server.zig");
+const wpt_manifest = @import("manifest.zig");
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -283,29 +284,60 @@ fn isTestFile(path: []const u8) bool {
 }
 
 /// Discover test files in WPT tree
+///
+/// Uses the official WPT MANIFEST.json to resolve test URLs to source files.
+/// This follows the standard WPT approach where virtual test URLs like
+/// "url/url-searchparams.any.html" are mapped to their source files like
+/// "url/url-searchparams.any.js" through the manifest.
 pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryResult {
     var result = DiscoveryResult.init(allocator);
     errdefer result.deinit();
 
-    // If specific files are specified, just verify they exist and return them
+    // If specific files are specified, resolve them through the manifest
     if (options.specific_files.items.len > 0) {
+        // Load the WPT manifest for URL resolution
+        var manifest = try wpt_manifest.loadManifest(allocator, options.wpt_root);
+        defer manifest.deinit();
+
         for (options.specific_files.items) |file_path| {
             const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, file_path });
             defer allocator.free(full_path);
 
-            // Check if file exists
-            std.fs.cwd().access(full_path, .{}) catch {
-                print("Warning: Test file not found: {s}\n", .{file_path});
-                continue;
-            };
+            // First, check if the file exists directly (source file or real HTML)
+            if (std.fs.cwd().access(full_path, .{})) |_| {
+                const file_type = config.FileType.fromPath(file_path);
+                if (file_type == .unknown) {
+                    print("Warning: Unknown test file type: {s}\n", .{file_path});
+                    continue;
+                }
+                try result.addTestFile(file_path, file_type);
+            } else |_| {
+                // File doesn't exist - check if it's a virtual test URL in the manifest
+                // WPT generates virtual URLs like .any.html from .any.js source files
+                if (manifest.resolveUrlToSource(file_path)) |source_path| {
+                    // Verify the source file exists
+                    const source_full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, source_path });
+                    defer allocator.free(source_full_path);
 
-            const file_type = config.FileType.fromPath(file_path);
-            if (file_type == .unknown) {
-                print("Warning: Unknown test file type: {s}\n", .{file_path});
-                continue;
+                    std.fs.cwd().access(source_full_path, .{}) catch {
+                        print("Warning: Source file not found: {s} (for test URL: {s})\n", .{ source_path, file_path });
+                        continue;
+                    };
+
+                    const file_type = config.FileType.fromPath(source_path);
+                    if (file_type == .unknown) {
+                        print("Warning: Unknown test file type: {s}\n", .{source_path});
+                        continue;
+                    }
+
+                    // Use the source file path
+                    try result.addTestFile(source_path, file_type);
+                    print("Resolved test URL '{s}' to source file '{s}'\n", .{ file_path, source_path });
+                } else {
+                    print("Warning: Test file not found: {s}\n", .{file_path});
+                    print("  (Not in MANIFEST.json - run 'wpt manifest' to update)\n", .{});
+                }
             }
-
-            try result.addTestFile(file_path, file_type);
         }
         return result;
     }
