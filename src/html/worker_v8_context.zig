@@ -147,6 +147,75 @@ fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
     }
 }
 
+// ============================================================================
+// Worker Microtask Support (queueMicrotask)
+// ============================================================================
+
+/// Context for worker microtasks queued via queueMicrotask()
+const WorkerMicrotaskContext = struct {
+    /// V8 Global handle to the callback function
+    callback_global: *v8.ffi.Value,
+    /// The isolate this microtask belongs to
+    isolate: *v8.ffi.Isolate,
+    /// The context for execution
+    context: *v8.ffi.Context,
+    /// Allocator for cleanup
+    allocator: Allocator,
+    /// Pointer to the WorkerV8Context for setting current_worker_context
+    worker_v8_context: *WorkerV8Context,
+};
+
+/// Microtask trampoline - invoked by V8's microtask queue during PerformMicrotaskCheckpoint
+fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
+    const ctx: *WorkerMicrotaskContext = @ptrCast(@alignCast(data orelse return));
+    defer ctx.allocator.destroy(ctx);
+
+    // CRITICAL: Set current_worker_context so that callbacks like postMessage
+    // can access the correct worker context. Save and restore the previous context.
+    const prev_context = current_worker_context;
+    current_worker_context = ctx.worker_v8_context;
+    defer current_worker_context = prev_context;
+
+    // Create HandleScope for V8 operations
+    const handle_scope = v8.ffi.v8_HandleScope_New(ctx.isolate);
+    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Get the callback function from the Global handle
+    const callback_fn = v8.ffi.v8_Global_Get(ctx.isolate, ctx.callback_global) orelse {
+        v8.ffi.v8_Global_Dispose(ctx.callback_global);
+        return;
+    };
+    defer v8.ffi.v8_Global_Dispose(ctx.callback_global);
+
+    // Get global object for 'this'
+    const global_obj = v8.ffi.v8_Context_Global(ctx.context) orelse return;
+
+    // Call the callback function with no arguments
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(
+        @ptrCast(callback_fn),
+        ctx.context,
+        @ptrCast(global_obj),
+        0,
+        &empty_args,
+    );
+
+    // CRITICAL: Flush pending messages to the port queue
+    // Messages posted by the microtask callback (via postMessage) are buffered in
+    // threadlocal pending_messages. Without this flush, they never reach the
+    // outside port's message_queue and the main thread never receives them.
+    DedicatedWorker.flushPendingMessages();
+
+    // Schedule message dispatch if there are messages in the outside port queue
+    if (ctx.worker_v8_context.dedicated_worker) |dedicated_worker| {
+        if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
+            if (getTimerInterface()) |timer| {
+                _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
+            }
+        }
+    }
+}
+
 /// Callback to dispatch worker messages in the main thread context.
 /// This is scheduled after worker timer callbacks flush messages to ensure
 /// messages are processed in a clean V8 HandleScope state.
@@ -723,6 +792,21 @@ pub const WorkerV8Context = struct {
                 return error.FunctionCreateFailed;
             };
             const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "done", 4) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register queueMicrotask() - queues a microtask callback
+        // Per HTML Standard § 8.1.7 - Integration with the JavaScript job queue
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerQueueMicrotaskCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "queueMicrotask", 14) orelse {
                 return error.StringCreationFailed;
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
@@ -1581,6 +1665,57 @@ fn workerDoneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     // Note: The actual done() function in testharness.js handles posting
     // the completion message. We just need to have this function exist
     // so the worker script can call it.
+}
+
+/// V8 callback for queueMicrotask() in worker global scope
+/// Per HTML Standard § 8.1.7 - Integration with the JavaScript job queue
+fn workerQueueMicrotaskCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get the callback function (first argument)
+    // Per spec, queueMicrotask requires exactly one argument that must be callable
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        // Throw TypeError: callback is required
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "queueMicrotask requires a callback function", 44) orelse return;
+        const exc = v8.ffi.v8_Exception_TypeError(@ptrCast(msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        return;
+    }
+
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        // Throw TypeError: argument is not a function
+        const msg = v8.ffi.v8_String_NewFromUtf8(isolate, "queueMicrotask argument must be a function", 42) orelse return;
+        const exc = v8.ffi.v8_Exception_TypeError(@ptrCast(msg)) orelse return;
+        v8.ffi.v8_Isolate_ThrowException(isolate, exc);
+        return;
+    }
+
+    // Get the worker context
+    const worker_ctx = current_worker_context orelse return;
+
+    // Create Global handle for the callback function
+    const callback_global = v8.ffi.v8_Value_ToGlobal(isolate, callback_value) orelse return;
+
+    // Allocate microtask context
+    const ctx = worker_ctx.allocator.create(WorkerMicrotaskContext) catch {
+        v8.ffi.v8_Global_Dispose(callback_global);
+        return;
+    };
+
+    ctx.* = .{
+        .callback_global = callback_global,
+        .isolate = isolate,
+        .context = v8_context,
+        .allocator = worker_ctx.allocator,
+        .worker_v8_context = worker_ctx,
+    };
+
+    // Enqueue the microtask with V8
+    // V8 will invoke workerMicrotaskTrampoline during the next PerformMicrotaskCheckpoint
+    const callback_fn: ?*const anyopaque = @ptrCast(&workerMicrotaskTrampoline);
+    v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_fn, ctx);
 }
 
 /// Dispatch a MessageEvent to the worker's self.onmessage handler
