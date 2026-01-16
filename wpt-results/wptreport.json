@@ -7,14 +7,14 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768559668756,
-  "time_end": 1768559679499,
+  "time_start": 1768564134857,
+  "time_end": 1768564136186,
   "results": [
     {
       "test": "crane/basic.html",
-      "status": "TIMEOUT",
+      "status": "OK",
       "message": null,
-      "duration": 9539,
+      "duration": 22,
       "subtests": [
         {"name": "Phase 1.1: Basic constructors exist", "status": "PASS", "message": null},
         {"name": "Phase 1.2: Function constructor works", "status": "PASS", "message": null},
@@ -84,8 +84,9 @@
         {"name": "Phase 12.2: Worker has WorkerGlobalScope", "status": "PASS", "message": null},
         {"name": "Phase 12.3: Worker self is DedicatedWorkerGlobalScope", "status": "PASS", "message": null},
         {"name": "Phase 12.4: Worker has location", "status": "PASS", "message": null},
-        {"name": "Phase 12.5: Worker has navigator", "status": "PASS", "message": null},
-        {"name": "Phase 13.1: Worker setTimeout works", "status": "TIMEOUT", "message": "Test timed out"}
+        {"name": "Phase 12.5: Worker hasaaa navigator", "status": "PASS", "message": null},
+        {"name": "Phase 13.1: Worker setTimeout works", "status": "PASS", "message": null},
+        {"name": "Phase 13.2: Worker setInterval and clearInterval work", "status": "PASS", "message": null}
       ]
     }
   ]
