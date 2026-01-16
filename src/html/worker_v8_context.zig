@@ -709,28 +709,9 @@ pub const WorkerV8Context = struct {
         ;
         _ = try self.executeScript(global_script);
 
-        // Set up DedicatedWorkerGlobalScope constructor for testharness.js detection
-        // testharness.js checks: 'DedicatedWorkerGlobalScope' in global_scope &&
-        //                        global_scope instanceof DedicatedWorkerGlobalScope
-        // We create a constructor and make self an instance of it
-        const worker_scope_script =
-            \\(function() {
-            \\  // Create DedicatedWorkerGlobalScope constructor
-            \\  function DedicatedWorkerGlobalScope() {}
-            \\  globalThis.DedicatedWorkerGlobalScope = DedicatedWorkerGlobalScope;
-            \\
-            \\  // Make the global object (self) have DedicatedWorkerGlobalScope.prototype in its chain
-            \\  // This makes `self instanceof DedicatedWorkerGlobalScope` return true
-            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, Object.getPrototypeOf(globalThis));
-            \\  Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
-            \\
-            \\  // Also add WorkerGlobalScope as a fallback
-            \\  function WorkerGlobalScope() {}
-            \\  globalThis.WorkerGlobalScope = WorkerGlobalScope;
-            \\  Object.setPrototypeOf(DedicatedWorkerGlobalScope.prototype, WorkerGlobalScope.prototype);
-            \\})();
-        ;
-        _ = try self.executeScript(worker_scope_script);
+        // NOTE: DedicatedWorkerGlobalScope and WorkerGlobalScope constructors are set up
+        // AFTER installForScope() is called, so that Symbol.hasInstance can be added
+        // to the real WebIDL interface constructors. See the worker_scope_script below.
 
         // Set up console object (no-op implementation for workers)
         const console_script =
@@ -1017,6 +998,44 @@ pub const WorkerV8Context = struct {
         // and all other [Exposed=Worker] or [Exposed=*] interfaces
         // ====================================================================
         interface_bindings.installForScope(self.isolate, self.context, .DedicatedWorker);
+
+        // ====================================================================
+        // Set up WorkerGlobalScope and DedicatedWorkerGlobalScope for instanceof
+        // Per HTML spec, the global object in a worker should be an instance of
+        // DedicatedWorkerGlobalScope. We use Symbol.hasInstance to make this work:
+        // - self instanceof DedicatedWorkerGlobalScope === true
+        // - self instanceof WorkerGlobalScope === true
+        //
+        // This MUST run AFTER installForScope() because installForScope registers
+        // the real WebIDL constructors, and we need to add Symbol.hasInstance to them.
+        // If the constructors don't exist yet, we create them.
+        // ====================================================================
+        {
+            const worker_scope_script =
+                \\(function() {
+                \\  // Helper to add Symbol.hasInstance to an existing or new constructor
+                \\  function setupGlobalScopeConstructor(name) {
+                \\    var ctor = globalThis[name];
+                \\    if (typeof ctor !== 'function') {
+                \\      // Create a new constructor if it doesn't exist
+                \\      ctor = function() {};
+                \\      globalThis[name] = ctor;
+                \\    }
+                \\    // Add Symbol.hasInstance to make instanceof work with globalThis/self
+                \\    Object.defineProperty(ctor, Symbol.hasInstance, {
+                \\      value: function(obj) { return obj === globalThis || obj === self; },
+                \\      writable: false,
+                \\      configurable: true
+                \\    });
+                \\  }
+                \\
+                \\  // Set up both WorkerGlobalScope and DedicatedWorkerGlobalScope
+                \\  setupGlobalScopeConstructor('WorkerGlobalScope');
+                \\  setupGlobalScopeConstructor('DedicatedWorkerGlobalScope');
+                \\})();
+            ;
+            _ = try self.executeScriptInternal(worker_scope_script);
+        }
 
         // ====================================================================
         // Worker-specific fetch() callback
