@@ -1086,6 +1086,55 @@ pub const WorkerV8Context = struct {
             const FileReaderSyncBinding = V8Interface(interfaces.FileReaderSync);
             FileReaderSyncBinding.registerGlobal(self.isolate, self.context, "FileReaderSync");
         }
+
+        // ====================================================================
+        // Base64 functions - btoa, atob
+        // Per HTML spec: https://html.spec.whatwg.org/#dom-btoa
+        // Part of WindowOrWorkerGlobalScope mixin
+        // ====================================================================
+        {
+            const btoa_atob_script =
+                \\(function() {
+                \\  // btoa: binary string to base64
+                \\  globalThis.btoa = function(str) {
+                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                \\    var result = '';
+                \\    var i = 0;
+                \\    while (i < str.length) {
+                \\      var a = str.charCodeAt(i++) || 0;
+                \\      var b = str.charCodeAt(i++) || 0;
+                \\      var c = str.charCodeAt(i++) || 0;
+                \\      var triplet = (a << 16) | (b << 8) | c;
+                \\      result += chars[(triplet >> 18) & 63];
+                \\      result += chars[(triplet >> 12) & 63];
+                \\      result += (i > str.length + 1) ? '=' : chars[(triplet >> 6) & 63];
+                \\      result += (i > str.length) ? '=' : chars[triplet & 63];
+                \\    }
+                \\    return result;
+                \\  };
+                \\
+                \\  // atob: base64 to binary string
+                \\  globalThis.atob = function(str) {
+                \\    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                \\    str = str.replace(/=+$/, '');
+                \\    var result = '';
+                \\    var i = 0;
+                \\    while (i < str.length) {
+                \\      var a = chars.indexOf(str[i++]);
+                \\      var b = chars.indexOf(str[i++]);
+                \\      var c = chars.indexOf(str[i++]);
+                \\      var d = chars.indexOf(str[i++]);
+                \\      var triplet = (a << 18) | (b << 12) | (c << 6) | d;
+                \\      result += String.fromCharCode((triplet >> 16) & 255);
+                \\      if (c !== -1) result += String.fromCharCode((triplet >> 8) & 255);
+                \\      if (d !== -1) result += String.fromCharCode(triplet & 255);
+                \\    }
+                \\    return result;
+                \\  };
+                \\})();
+            ;
+            _ = try self.executeScriptInternal(btoa_atob_script);
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
