@@ -1040,6 +1040,23 @@ pub const WorkerV8Context = struct {
             const HeadersBinding = V8Interface(interfaces.Headers);
             HeadersBinding.registerGlobal(self.isolate, self.context, "Headers");
         }
+
+        // ====================================================================
+        // Encoding API - TextEncoder, TextDecoder
+        // Per Encoding spec: https://encoding.spec.whatwg.org/
+        // ====================================================================
+
+        // Register TextEncoder constructor
+        {
+            const TextEncoderBinding = V8Interface(interfaces.TextEncoder);
+            TextEncoderBinding.registerGlobal(self.isolate, self.context, "TextEncoder");
+        }
+
+        // Register TextDecoder constructor
+        {
+            const TextDecoderBinding = V8Interface(interfaces.TextDecoder);
+            TextDecoderBinding.registerGlobal(self.isolate, self.context, "TextDecoder");
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
