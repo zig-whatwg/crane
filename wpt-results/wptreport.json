@@ -7,14 +7,14 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768564134857,
-  "time_end": 1768564136186,
+  "time_start": 1768564846259,
+  "time_end": 1768564847464,
   "results": [
     {
       "test": "crane/basic.html",
       "status": "OK",
       "message": null,
-      "duration": 22,
+      "duration": 23,
       "subtests": [
         {"name": "Phase 1.1: Basic constructors exist", "status": "PASS", "message": null},
         {"name": "Phase 1.2: Function constructor works", "status": "PASS", "message": null},
@@ -86,7 +86,10 @@
         {"name": "Phase 12.4: Worker has location", "status": "PASS", "message": null},
         {"name": "Phase 12.5: Worker hasaaa navigator", "status": "PASS", "message": null},
         {"name": "Phase 13.1: Worker setTimeout works", "status": "PASS", "message": null},
-        {"name": "Phase 13.2: Worker setInterval and clearInterval work", "status": "PASS", "message": null}
+        {"name": "Phase 13.2: Worker setInterval and clearInterval work", "status": "PASS", "message": null},
+        {"name": "Phase 14.1: Worker Promises work", "status": "PASS", "message": null},
+        {"name": "Phase 14.2: Worker microtask ordering correct", "status": "PASS", "message": null},
+        {"name": "Phase 14.3: Worker queueMicrotask works", "status": "PASS", "message": null}
       ]
     }
   ]
