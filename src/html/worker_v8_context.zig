@@ -1094,7 +1094,8 @@ pub const WorkerV8Context = struct {
                 \\      var b = chars.indexOf(str[i++]);
                 \\      var c = chars.indexOf(str[i++]);
                 \\      var d = chars.indexOf(str[i++]);
-                \\      var triplet = (a << 18) | (b << 12) | (c << 6) | d;
+                \\      // Use 0 instead of -1 in triplet calculation to prevent corruption
+                \\      var triplet = (a << 18) | (b << 12) | ((c === -1 ? 0 : c) << 6) | (d === -1 ? 0 : d);
                 \\      result += String.fromCharCode((triplet >> 16) & 255);
                 \\      if (c !== -1) result += String.fromCharCode((triplet >> 8) & 255);
                 \\      if (d !== -1) result += String.fromCharCode(triplet & 255);
