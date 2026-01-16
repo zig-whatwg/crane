@@ -1057,6 +1057,35 @@ pub const WorkerV8Context = struct {
             const TextDecoderBinding = V8Interface(interfaces.TextDecoder);
             TextDecoderBinding.registerGlobal(self.isolate, self.context, "TextDecoder");
         }
+
+        // ====================================================================
+        // File API - Blob, File, FileReader, FileReaderSync
+        // Per File API spec: https://w3c.github.io/FileAPI/
+        // ====================================================================
+
+        // Register Blob constructor
+        {
+            const BlobBinding = V8Interface(interfaces.Blob);
+            BlobBinding.registerGlobal(self.isolate, self.context, "Blob");
+        }
+
+        // Register File constructor
+        {
+            const FileBinding = V8Interface(interfaces.File);
+            FileBinding.registerGlobal(self.isolate, self.context, "File");
+        }
+
+        // Register FileReader constructor
+        {
+            const FileReaderBinding = V8Interface(interfaces.FileReader);
+            FileReaderBinding.registerGlobal(self.isolate, self.context, "FileReader");
+        }
+
+        // Register FileReaderSync constructor (Worker-specific synchronous API)
+        {
+            const FileReaderSyncBinding = V8Interface(interfaces.FileReaderSync);
+            FileReaderSyncBinding.registerGlobal(self.isolate, self.context, "FileReaderSync");
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
