@@ -1185,6 +1185,40 @@ pub const WorkerV8Context = struct {
             ;
             _ = try self.executeScriptInternal(performance_script);
         }
+
+        // ====================================================================
+        // IndexedDB API - indexedDB object (WindowOrWorkerGlobalScope)
+        // Per IndexedDB spec: https://w3c.github.io/IndexedDB/
+        // Part of WindowOrWorkerGlobalScope mixin
+        // Note: This is a polyfill stub until native IndexedDB is implemented
+        // ====================================================================
+        {
+            const indexeddb_script =
+                \\(function() {
+                \\  // IDBFactory stub - the indexedDB global is an instance of this
+                \\  function IDBFactory() {}
+                \\  IDBFactory.prototype.open = function(name, version) {
+                \\    return Promise.reject(new Error('IndexedDB not implemented'));
+                \\  };
+                \\  IDBFactory.prototype.deleteDatabase = function(name) {
+                \\    return Promise.reject(new Error('IndexedDB not implemented'));
+                \\  };
+                \\  IDBFactory.prototype.databases = function() {
+                \\    return Promise.resolve([]);
+                \\  };
+                \\  IDBFactory.prototype.cmp = function(a, b) {
+                \\    if (a < b) return -1;
+                \\    if (a > b) return 1;
+                \\    return 0;
+                \\  };
+                \\  globalThis.IDBFactory = IDBFactory;
+                \\
+                \\  // Create the indexedDB global instance
+                \\  globalThis.indexedDB = new IDBFactory();
+                \\})();
+            ;
+            _ = try self.executeScriptInternal(indexeddb_script);
+        }
     }
 
     /// Get the engine context pointer for WorkerContext.setEngineContext()
