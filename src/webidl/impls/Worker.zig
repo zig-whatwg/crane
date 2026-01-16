@@ -57,6 +57,10 @@ const WorkerV8Context = html_full.WorkerV8Context;
 const structured_clone = html_core.structured_clone;
 const V8SerializedData = structured_clone.types.V8SerializedData;
 const TransferredArrayBufferData = structured_clone.types.TransferredArrayBufferData;
+const TransferredPortData = structured_clone.types.TransferredPortData;
+
+// Import MessagePort impl for port transfer
+const MessagePortImpl = @import("MessagePort.zig");
 
 // Import MessagePort for communication
 const message_port_internal = @import("streams_internal");
@@ -1113,9 +1117,13 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
         .instance => return error.UnsupportedValueType,
     };
 
-    // Step 1: Extract ArrayBuffers from transfer list
+    // Step 1: Extract ArrayBuffers and MessagePorts from transfer list
     var array_buffer_transfers: [64]*v8_engine.ffi.Value = undefined;
     var array_buffer_count: usize = 0;
+
+    // MessagePort transfers - store the internal port pointers
+    var port_transfers: [16]*MessagePortImpl.InternalState = undefined;
+    var port_count: usize = 0;
 
     if (transfer == .handle) {
         const transfer_handle = transfer.handle;
@@ -1127,10 +1135,47 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 
             for (0..length) |i| {
                 if (v8_engine.ffi.v8_Array_Get(v8_context, transfer_array, @intCast(i))) |item| {
+                    // Check for ArrayBuffer
                     if (v8_engine.ffi.v8_Value_IsArrayBuffer(item)) {
                         if (array_buffer_count < 64) {
                             array_buffer_transfers[array_buffer_count] = item;
                             array_buffer_count += 1;
+                        }
+                    }
+                    // Check for MessagePort - must be a WebIDL object with MessagePort vtable
+                    else if (v8_engine.ffi.v8_Value_IsObject(item)) {
+                        const obj: *v8_engine.ffi.Object = @ptrCast(item);
+                        // Get internal field 0 (runtime.Instance pointer)
+                        if (v8_engine.ffi.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |ptr| {
+                            const port_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+                            // Check if vtable matches MessagePort
+                            if (port_instance.vtable == &interfaces.MessagePort.vtable) {
+                                if (port_count < 16) {
+                                    // Get the MessagePort state and internal port
+                                    const port_state = port_instance.getState(interfaces.MessagePort.State);
+                                    if (port_state.own._internal) |port_internal| {
+                                        // Store the internal state for transfer
+                                        port_transfers[port_count] = port_internal;
+                                        port_count += 1;
+
+                                        // Per HTML Standard § 9.4.4: transferred ports are disentangled
+                                        // from their WebIDL layer but KEEP internal entanglement for
+                                        // message routing. The internal entangled_port must remain
+                                        // intact so messages can flow between the ports.
+                                        //
+                                        // Clear WebIDL entanglement (source wrapper becomes neutered)
+                                        // but don't call internal_port.disentangle()
+                                        port_internal.entangled_webidl_port = null;
+
+                                        // Mark the internal port as transferred for cross-isolate messaging
+                                        port_internal.internal_port.transferred = true;
+
+                                        // Mark source as no longer owning the port
+                                        // Ownership transfers to the destination
+                                        port_internal.owns_port = false;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1139,7 +1184,8 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     }
 
     // Step 2: Serialize with transfer using cross-isolate API
-    if (array_buffer_count > 0) {
+    // Use V8 serialization if we have ArrayBuffers or MessagePorts to transfer
+    if (array_buffer_count > 0 or port_count > 0) {
         // Use V8 cross-isolate serialization with ArrayBuffer transfer
         var arraybuffer_data: [64]v8_engine.ffi.ArrayBufferTransferData = undefined;
         var serialized_size: usize = 0;
@@ -1194,6 +1240,18 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
         // Free the C-allocated ArrayBuffer data (we've copied it)
         v8_engine.ffi.v8_Free_ArrayBufferTransferData(&arraybuffer_data, array_buffer_count);
 
+        // Step 3: Copy transferred MessagePort data
+        const transferred_ports: []TransferredPortData = if (port_count > 0) blk: {
+            const ports = try allocator.alloc(TransferredPortData, port_count);
+            errdefer allocator.free(ports);
+            for (0..port_count) |i| {
+                ports[i] = .{
+                    .internal_port = port_transfers[i].internal_port,
+                };
+            }
+            break :blk ports;
+        } else &[_]TransferredPortData{};
+
         // Create SerializedValue with V8 serialized data
         const serialized = try allocator.create(SerializedValue);
         errdefer allocator.destroy(serialized);
@@ -1205,6 +1263,7 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
                 .v8_serialized = .{
                     .serialized_bytes = bytes_copy,
                     .transferred_arraybuffers = transferred_abs,
+                    .transferred_ports = transferred_ports,
                 },
             },
         };

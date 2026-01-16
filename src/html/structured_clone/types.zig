@@ -292,6 +292,11 @@ pub const SerializedValue = struct {
                 }
                 // Free the ArrayBuffer array itself
                 self.allocator.free(v8.transferred_arraybuffers);
+                // Free the transferred ports array (port objects are NOT freed here -
+                // they're transferred to the destination realm and owned there)
+                if (v8.transferred_ports.len > 0) {
+                    self.allocator.free(v8.transferred_ports);
+                }
             },
             .primitive => |p| {
                 if (p == .string) {
@@ -378,12 +383,22 @@ pub const RegExpData = struct {
 };
 
 /// V8 serialized data for cross-isolate transfer (Worker messaging)
-/// This holds V8 ValueSerializer output bytes plus transferred ArrayBuffer data.
+/// This holds V8 ValueSerializer output bytes plus transferred ArrayBuffer/MessagePort data.
 pub const V8SerializedData = struct {
     /// V8 serialized bytes (from ValueSerializer)
     serialized_bytes: []u8,
     /// Transferred ArrayBuffer data (copied before detach)
     transferred_arraybuffers: []TransferredArrayBufferData,
+    /// Transferred MessagePort instances (disentangled from original)
+    transferred_ports: []TransferredPortData = &[_]TransferredPortData{},
+};
+
+/// Data for a single transferred MessagePort
+/// Per HTML Standard § 9.4.4, transferred ports are disentangled and
+/// re-entangled in the destination realm.
+pub const TransferredPortData = struct {
+    /// The internal MessagePort pointer (to be wrapped in destination realm)
+    internal_port: *anyopaque,
 };
 
 /// Data for a single transferred ArrayBuffer

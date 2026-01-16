@@ -31,6 +31,51 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+/// Context for timer-based cross-isolate message dispatch
+/// Stored in the internal port's callback_user_data when onmessage is set
+const MessagePortDispatchContext = struct {
+    /// The WebIDL MessagePort instance to dispatch to
+    instance: *runtime.Instance,
+    /// Allocator for creating timer contexts
+    allocator: std.mem.Allocator,
+    /// Timer interface for scheduling dispatch on main event loop
+    timer: ?runtime.TimerInterface,
+
+    pub fn init(allocator: std.mem.Allocator, instance: *runtime.Instance, timer: ?runtime.TimerInterface) !*MessagePortDispatchContext {
+        const ctx = try allocator.create(MessagePortDispatchContext);
+        ctx.* = .{
+            .instance = instance,
+            .allocator = allocator,
+            .timer = timer,
+        };
+        return ctx;
+    }
+
+    pub fn deinit(self: *MessagePortDispatchContext) void {
+        self.allocator.destroy(self);
+    }
+};
+
+/// Context for timer callback - holds just the instance pointer
+/// This is allocated per-dispatch and freed by the callback
+const TimerDispatchContext = struct {
+    instance: *runtime.Instance,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, instance: *runtime.Instance) !*TimerDispatchContext {
+        const ctx = try allocator.create(TimerDispatchContext);
+        ctx.* = .{
+            .instance = instance,
+            .allocator = allocator,
+        };
+        return ctx;
+    }
+
+    pub fn deinit(self: *TimerDispatchContext) void {
+        self.allocator.destroy(self);
+    }
+};
+
 /// Internal state for MessagePort implementation
 ///
 /// Contains:
@@ -48,8 +93,24 @@ pub const InternalState = struct {
     /// Used for dispatching messages to JavaScript handlers
     entangled_webidl_port: ?*runtime.Instance = null,
 
+    /// Whether this InternalState owns the internal_port
+    /// Set to false when port is transferred away (disentangled for transfer)
+    owns_port: bool = true,
+
     pub fn deinit(self: *InternalState) void {
-        self.internal_port.deinit();
+        // Clean up the dispatch context if we created one
+        if (self.internal_port.callback_user_data) |user_data| {
+            const dispatch_ctx: *MessagePortDispatchContext = @ptrCast(@alignCast(user_data));
+            dispatch_ctx.deinit();
+            self.internal_port.callback_user_data = null;
+            self.internal_port.on_serialized_message = null;
+        }
+
+        // Only deinit the port if we own it
+        // When a port is transferred, ownership moves to the destination
+        if (self.owns_port) {
+            self.internal_port.deinit();
+        }
     }
 };
 
@@ -150,6 +211,44 @@ pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) an
     state.own.onclose = value;
 }
 
+/// Timer callback for cross-isolate message dispatch
+/// This runs on the main event loop and is safe to dispatch from
+fn timerDispatchCallback(context_ptr: ?*anyopaque) void {
+    const timer_ctx: *TimerDispatchContext = @ptrCast(@alignCast(context_ptr orelse return));
+    defer timer_ctx.deinit();
+
+    const instance = timer_ctx.instance;
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        std.log.info("[MessagePort] Timer callback: dispatching pending messages", .{});
+        dispatchPendingSerializedMessages(instance, internal);
+    }
+}
+
+/// Callback function for when serialized messages are queued
+/// This gets called from the internal MessagePort when a cross-isolate message arrives
+/// Instead of dispatching directly (which may be in wrong V8 context), schedule a timer
+fn onSerializedMessageCallback(internal_port: *InternalMessagePort) void {
+    // Get the dispatch context which contains the instance and timer interface
+    if (internal_port.callback_user_data) |user_data| {
+        const dispatch_ctx: *MessagePortDispatchContext = @ptrCast(@alignCast(user_data));
+
+        // Schedule a timer callback to dispatch on the main event loop
+        if (dispatch_ctx.timer) |timer| {
+            // Create a timer context for this dispatch
+            const timer_ctx = TimerDispatchContext.init(dispatch_ctx.allocator, dispatch_ctx.instance) catch {
+                std.log.warn("[MessagePort] Failed to allocate timer dispatch context", .{});
+                return;
+            };
+
+            std.log.info("[MessagePort] Scheduling timer callback for cross-isolate dispatch", .{});
+            _ = timer.setTimeout(0, timerDispatchCallback, timer_ctx);
+        } else {
+            std.log.warn("[MessagePort] No timer interface for cross-isolate dispatch", .{});
+        }
+    }
+}
+
 /// Setter for onmessage
 /// Spec: § 9.3.2.1 Setting onmessage implicitly calls start()
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
@@ -159,6 +258,174 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
     // Per spec, setting onmessage implicitly enables the port's message queue
     if (state.own._internal) |internal| {
         internal.internal_port.enableQueue();
+
+        // Set up callback for when serialized messages arrive (cross-isolate messages)
+        // Create dispatch context with timer interface for scheduling on main event loop
+        if (internal.internal_port.callback_user_data == null) {
+            // Get the timer interface from the runtime context
+            const timer = instance.ctx.getOptionalTimer();
+            std.log.info("[MessagePort] Setting up cross-isolate callback, timer available: {}", .{timer != null});
+
+            // Create the dispatch context
+            const dispatch_ctx = MessagePortDispatchContext.init(internal.allocator, instance, timer) catch |err| {
+                std.log.warn("[MessagePort] Failed to create dispatch context: {}", .{err});
+                return;
+            };
+
+            internal.internal_port.on_serialized_message = onSerializedMessageCallback;
+            internal.internal_port.callback_user_data = dispatch_ctx;
+        }
+
+        // Check for pending cross-isolate messages and dispatch them
+        // This handles the case where messages were queued before the handler was set
+        dispatchPendingSerializedMessages(instance, internal);
+    }
+}
+
+/// Dispatch pending serialized messages from the cross-isolate queue
+/// Called when onmessage is set to process any messages that arrived before the handler
+fn dispatchPendingSerializedMessages(instance: *runtime.Instance, internal: *InternalState) void {
+    const v8_engine = @import("v8");
+
+    // Get V8 context and isolate
+    const engine_ctx = instance.ctx.engine_ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
+
+    // Get the onmessage handler
+    const state = instance.getState(State);
+    const handler_bytes = @as(*const [@sizeOf(typedefs.EventHandler)]u8, @ptrCast(&state.own.onmessage)).*;
+    const handler_addr: usize = @bitCast(handler_bytes);
+
+    if (handler_addr == 0) return;
+
+    const tag = handler_addr & 0x3;
+    const untagged_addr = handler_addr & ~@as(usize, 0x3);
+    if (tag != 1) return;
+    if (untagged_addr < 0x100000000 or untagged_addr > 0x7FFFFFFFFFFF) return;
+    if ((untagged_addr & 0x7) != 0) return;
+
+    const callback_global: *v8_engine.ffi.Value = @ptrFromInt(untagged_addr);
+    if (!v8_engine.ffi.v8_Value_IsFunction(callback_global)) return;
+
+    // Process all pending serialized messages
+    var dispatch_count: usize = 0;
+    while (internal.internal_port.popSerializedMessage()) |serialized_msg| {
+        defer serialized_msg.deinit();
+        dispatch_count += 1;
+
+        // Deserialize the message
+        var data_value: ?*v8_engine.ffi.Value = null;
+
+        // Check if it's our custom format or V8 structured clone
+        if (serialized_msg.data.len > 0 and serialized_msg.data[0] < 0x10) {
+            // Custom format: first byte is type marker (0x00-0x0F)
+            const type_marker = serialized_msg.data[0];
+            switch (type_marker) {
+                0x00 => {
+                    // Null/undefined
+                    data_value = v8_engine.ffi.v8_Undefined(v8_isolate);
+                },
+                0x01 => {
+                    // String: [type][4 bytes len][data]
+                    if (serialized_msg.data.len >= 5) {
+                        const str_len = @as(u32, @bitCast(serialized_msg.data[1..5].*));
+                        if (serialized_msg.data.len >= 5 + str_len) {
+                            const str_data = serialized_msg.data[5..][0..str_len];
+                            data_value = @ptrCast(v8_engine.ffi.v8_String_NewFromUtf8(v8_isolate, str_data.ptr, @intCast(str_len)));
+                        }
+                    }
+                },
+                0x02 => {
+                    // Number: [type][8 bytes f64]
+                    if (serialized_msg.data.len >= 9) {
+                        const num: f64 = @bitCast(serialized_msg.data[1..9].*);
+                        data_value = @ptrCast(v8_engine.ffi.v8_Number_New(v8_isolate, num));
+                    }
+                },
+                0x03 => {
+                    // Boolean: [type][1 byte value]
+                    if (serialized_msg.data.len >= 2) {
+                        const bool_val = serialized_msg.data[1] != 0;
+                        data_value = v8_engine.ffi.v8_Boolean_New(v8_isolate, bool_val);
+                    }
+                },
+                else => {},
+            }
+            std.log.info("[MessagePort] Custom deserialization: type={}, data_value={*}", .{ type_marker, data_value });
+        } else {
+            // V8 structured clone format
+            var error_code: c_int = 0;
+            var empty_arraybuffer: [0]v8_engine.ffi.ArrayBufferTransferData = undefined;
+            data_value = v8_engine.ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(
+                serialized_msg.data.ptr,
+                serialized_msg.data.len,
+                &empty_arraybuffer,
+                0,
+                &error_code,
+            );
+
+            if (data_value == null or error_code != 0) {
+                std.log.warn("[MessagePort] Failed to deserialize V8 structured clone: error_code={}", .{error_code});
+            }
+        }
+
+        if (data_value == null) {
+            std.log.warn("[MessagePort] Failed to deserialize cross-isolate message", .{});
+            continue;
+        }
+
+        // Create a MessageEvent
+        const MessageEventInterface = interfaces.MessageEvent;
+        const MessageEventImpl = @import("MessageEvent.zig");
+
+        const msg_event = MessageEventImpl.call_constructor(
+            instance.ctx,
+            runtime.DOMString.initInterned("message"),
+            .notPassed(),
+        ) catch {
+            std.log.warn("[MessagePort] Failed to create MessageEvent", .{});
+            continue;
+        };
+
+        // Set the message data
+        var msg_event_state = msg_event.getState(MessageEventInterface.State);
+        msg_event_state.own.data = runtime.JSValue{
+            .handle = .{
+                .ptr = @ptrCast(data_value.?),
+                .needs_disposal = true,
+                .handle_scope = .global,
+            },
+        };
+        msg_event_state.base.own.target = instance;
+        msg_event_state.base.own.currentTarget = instance;
+
+        // Wrap the event as a V8 object
+        const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
+            msg_event,
+            "MessageEvent",
+            v8_isolate,
+            v8_context,
+        ) catch {
+            std.log.warn("[MessagePort] Failed to wrap MessageEvent", .{});
+            continue;
+        };
+
+        // Call the handler
+        const undefined_value = v8_engine.ffi.v8_Undefined(v8_isolate);
+        var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_v8_obj)};
+        const result = v8_engine.ffi.v8_Function_Call_Safe(
+            callback_global,
+            @ptrCast(v8_context),
+            @ptrCast(undefined_value),
+            1,
+            @ptrCast(&args),
+        );
+        v8_engine.ffi.v8_FreeFunctionCallResult(result);
+    }
+
+    if (dispatch_count > 0) {
+        std.log.info("[MessagePort] Dispatched {} pending cross-isolate messages", .{dispatch_count});
     }
 }
 
@@ -191,6 +458,108 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     }
 }
 
+/// Post message for cross-isolate delivery
+/// Used when WebIDL entanglement is broken but internal entanglement exists
+/// (i.e., when communicating with a port transferred to a worker)
+fn postMessageCrossIsolate(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    const v8_engine = @import("v8");
+    _ = transfer; // TODO: handle transfer list for cross-isolate
+
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+
+    // Get the current V8 context for serialization
+    const engine_ctx = instance.ctx.engine_ctx orelse return;
+    _ = engine_ctx;
+
+    // Serialize the message for cross-isolate transfer
+    var serialized_bytes: ?[]u8 = null;
+
+    // Debug: Log message type
+    std.log.info("[MessagePort] postMessageCrossIsolate: message type = {}", .{@as(std.meta.Tag(@TypeOf(message)), message)});
+
+    if (message == .handle) {
+        const msg_handle = message.handle;
+        const v8_value: *v8_engine.ffi.Value = @ptrCast(@alignCast(msg_handle.ptr));
+
+        var serialized_size: usize = 0;
+        var error_code: c_int = 0;
+        var empty_transfer: [0]*v8_engine.ffi.Value = undefined;
+        var empty_arraybuffer: [0]v8_engine.ffi.ArrayBufferTransferData = undefined;
+
+        // Use simple serialization (no transfer for now)
+        const bytes_ptr = v8_engine.ffi.v8_Value_SerializeWithTransfer_CrossIsolate(
+            v8_value,
+            &empty_transfer,
+            0,
+            &serialized_size,
+            &empty_arraybuffer,
+            &error_code,
+        );
+
+        std.log.info("[MessagePort] V8 serialization: bytes_ptr={*}, size={}, error_code={}", .{ bytes_ptr, serialized_size, error_code });
+        if (bytes_ptr != null and error_code == 0) {
+            // Copy the bytes to our allocator
+            serialized_bytes = try internal.allocator.alloc(u8, serialized_size);
+            @memcpy(serialized_bytes.?, bytes_ptr.?[0..serialized_size]);
+            v8_engine.ffi.v8_Free_SerializedBuffer(bytes_ptr.?);
+            std.log.info("[MessagePort] V8 serialization succeeded: {} bytes", .{serialized_size});
+        } else {
+            std.log.warn("[MessagePort] V8 serialization failed: error_code={}", .{error_code});
+        }
+    } else {
+        // For non-handle values (primitives), we need to create a simple serialization
+        // For now, let's handle common primitives
+        var buf: [64]u8 = undefined;
+        var len: usize = 0;
+
+        switch (message) {
+            .string => |s| {
+                // Serialize as a string marker + length + data
+                // Simple format: [1 byte type][4 bytes len][data]
+                const str_data = s.data;
+                const total_len = 5 + str_data.len;
+                if (total_len <= buf.len) {
+                    buf[0] = 0x01; // String type
+                    const str_len: u32 = @intCast(str_data.len);
+                    buf[1..5].* = @bitCast(str_len);
+                    @memcpy(buf[5..][0..str_data.len], str_data);
+                    len = total_len;
+                }
+            },
+            .number => |n| {
+                // Serialize as number marker + f64
+                buf[0] = 0x02; // Number type
+                const num_bytes: [8]u8 = @bitCast(n);
+                buf[1..9].* = num_bytes;
+                len = 9;
+            },
+            .boolean => |b| {
+                buf[0] = 0x03; // Boolean type
+                buf[1] = if (b) 1 else 0;
+                len = 2;
+            },
+            else => {
+                // For undefined/null, use a marker
+                buf[0] = 0x00; // Null/undefined type
+                len = 1;
+            },
+        }
+
+        if (len > 0) {
+            serialized_bytes = try internal.allocator.alloc(u8, len);
+            @memcpy(serialized_bytes.?, buf[0..len]);
+        }
+    }
+
+    // Queue the serialized message to the entangled port
+    if (serialized_bytes) |bytes| {
+        defer internal.allocator.free(bytes);
+        try internal.internal_port.postSerializedMessage(bytes);
+        std.log.info("[MessagePort] Queued cross-isolate message: {} bytes", .{bytes.len});
+    }
+}
+
 /// Operation: postMessage
 /// Spec: § 9.3.2.1 postMessage(message, transfer)
 ///
@@ -205,12 +574,30 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Check if port is closed
     if (internal.internal_port.closed) return ImplError.PortClosed;
 
-    // Get the entangled WebIDL port
-    const entangled_port = internal.entangled_webidl_port orelse return ImplError.NotEntangled;
+    // Check for cross-isolate case: WebIDL entanglement is broken but internal entanglement exists
+    // This happens when a port is transferred to a worker
+    if (internal.entangled_webidl_port == null) {
+        // Check if internal entanglement exists (cross-isolate)
+        if (internal.internal_port.entangled_port != null) {
+            // Cross-isolate messaging: serialize and queue for the other isolate
+            return postMessageCrossIsolate(instance, message, transfer);
+        }
+        return ImplError.NotEntangled;
+    }
 
-    // Get entangled port's state to check for onmessage handler
+    // Check the entangled port's state
+    const entangled_port = internal.entangled_webidl_port.?;
     const entangled_state = entangled_port.getState(State);
     const entangled_internal = entangled_state.own._internal orelse return;
+
+    // Check if the entangled port has been transferred to another isolate
+    // If so, use cross-isolate messaging instead of direct WebIDL dispatch
+    if (entangled_internal.internal_port.transferred) {
+        // The entangled port was transferred - use cross-isolate messaging
+        return postMessageCrossIsolate(instance, message, transfer);
+    }
+
+    // Same-isolate case: direct WebIDL dispatch
 
     // Only dispatch if queue is enabled (set when onmessage is assigned)
     if (!entangled_internal.internal_port.queue_enabled) return;

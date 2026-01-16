@@ -48,6 +48,13 @@ const interfaces = @import("interfaces");
 const html_core = @import("html_core");
 const workers = html_core.workers;
 const WorkerContext = workers.WorkerContext;
+
+// Structured clone types for MessagePort transfer
+const structured_clone = html_core.structured_clone;
+const TransferredPortData = structured_clone.types.TransferredPortData;
+
+// MessagePort impl for creating wrappers in worker context
+const MessagePortImpl = @import("impls").MessagePort;
 const EngineCallbacks = workers.worker_context.EngineCallbacks;
 const WorkerType = workers.WorkerType;
 const DedicatedWorker = workers.DedicatedWorker;
@@ -412,6 +419,10 @@ pub const WorkerV8Context = struct {
     /// Flag to prevent double-deinit (deinit can be called from Worker.deinit and disposeContextCallback)
     is_deinitialized: bool = false,
 
+    /// Runtime context for WebIDL operations (MessagePort, etc.)
+    /// This is heap-allocated because Context = *ContextData
+    runtime_ctx_data: ?*runtime.ContextData = null,
+
     const Self = @This();
 
     /// Set the timer interface for worker operations.
@@ -464,12 +475,23 @@ pub const WorkerV8Context = struct {
         // Enter the context for setup
         v8.ffi.v8_Context_Enter(context);
 
+        // Create runtime context for WebIDL operations
+        const runtime_ctx_data = try allocator.create(runtime.ContextData);
+        errdefer allocator.destroy(runtime_ctx_data);
+        runtime_ctx_data.* = try runtime.ContextData.init(allocator, .{
+            .engine_ctx = @ptrCast(context),
+            .realm_info = .{
+                .context_type = .dedicated_worker,
+            },
+        });
+
         self.* = .{
             .isolate = isolate,
             .context = context,
             .script_url = url_copy,
             .worker_type = worker_type,
             .allocator = allocator,
+            .runtime_ctx_data = runtime_ctx_data,
         };
 
         // CRITICAL: Create HandleScope for V8 handle allocation during setup
@@ -521,6 +543,12 @@ pub const WorkerV8Context = struct {
         // - Track worker isolates separately from main isolate
         // - Dispose worker isolates BEFORE main isolate
         // - Or run workers in actual separate threads with their own cleanup
+
+        // Clean up runtime context
+        if (self.runtime_ctx_data) |ctx_data| {
+            ctx_data.deinit();
+            self.allocator.destroy(ctx_data);
+        }
 
         // Free Zig allocations only
         self.allocator.free(self.script_url);
@@ -613,6 +641,16 @@ pub const WorkerV8Context = struct {
         // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessageEvent : Event { ... }
         const MessageEvent = V8Interface(interfaces.MessageEvent);
         MessageEvent.registerGlobal(self.isolate, self.context, "MessageEvent");
+
+        // Register MessagePort interface (needed for port transfer)
+        // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessagePort : EventTarget { ... }
+        const MessagePort = V8Interface(interfaces.MessagePort);
+        MessagePort.registerGlobal(self.isolate, self.context, "MessagePort");
+
+        // Register MessageChannel interface (for creating port pairs)
+        // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessageChannel { ... }
+        const MessageChannel = V8Interface(interfaces.MessageChannel);
+        MessageChannel.registerGlobal(self.isolate, self.context, "MessageChannel");
     }
 
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
@@ -1131,11 +1169,60 @@ pub const WorkerV8Context = struct {
             return;
         }
 
-        // Create a simple event object with 'data' property using JavaScript
-        // The deserialized v8_value is the ArrayBuffer we need to pass as event.data
+        // Create ports array from transferred MessagePorts
+        // Per HTML Standard § 9.4.4: create new MessagePort wrappers in destination realm
+        const port_count = v8_data.transferred_ports.len;
+        std.log.info("[Worker] dispatchV8SerializedMessage: transferred_ports.len = {}", .{port_count});
+
+        const ports_array: *v8.ffi.Value = if (port_count > 0) blk: {
+            // Create V8 array for ports
+            const arr = v8.ffi.v8_Array_New(self.isolate, @intCast(port_count));
+
+            for (v8_data.transferred_ports, 0..) |port_data, i| {
+                std.log.info("[Worker] Creating MessagePort wrapper for port {}", .{i});
+                // Get the worker's runtime context
+                const runtime_ctx = self.runtime_ctx_data orelse {
+                    std.log.warn("[Worker] No runtime context for MessagePort creation", .{});
+                    continue;
+                };
+
+                // Create new WebIDL MessagePort wrapper in this isolate
+                // Use initWithInternal to wrap the existing internal port
+                // Pass the internal port pointer (will be cast to correct type by initWithInternal)
+                const port_instance = MessagePortImpl.initWithInternal(
+                    self.allocator,
+                    interfaces.MessagePort.State,
+                    &interfaces.MessagePort.vtable,
+                    runtime_ctx,
+                    @ptrCast(@alignCast(port_data.internal_port)),
+                ) catch {
+                    std.log.warn("[Worker] Failed to create MessagePort wrapper", .{});
+                    continue;
+                };
+
+                // Wrap the instance as a V8 object using template registry
+                const port_v8_obj = v8.template_registry.wrapInstanceAsV8Object(
+                    port_instance,
+                    "MessagePort",
+                    self.isolate,
+                    self.context,
+                ) catch {
+                    std.log.warn("[Worker] Failed to wrap MessagePort as V8 object", .{});
+                    continue;
+                };
+
+                // Add to array
+                _ = v8.ffi.v8_Array_Set(@ptrCast(arr), self.context, @intCast(i), @ptrCast(port_v8_obj));
+            }
+
+            break :blk @ptrCast(arr);
+        } else @ptrCast(v8.ffi.v8_Array_New(self.isolate, 0));
+
+        // Create a simple event object with 'data' and 'ports' properties using JavaScript
+        // The deserialized v8_value is the data we need to pass as event.data
         const event_script =
-            \\(function(data) {
-            \\  return { data: data, type: 'message', target: self, currentTarget: self };
+            \\(function(data, ports) {
+            \\  return { data: data, type: 'message', target: self, currentTarget: self, ports: ports };
             \\})
         ;
         const event_source = v8.ffi.v8_String_NewFromUtf8(self.isolate, event_script.ptr, @intCast(event_script.len)) orelse return;
@@ -1149,13 +1236,13 @@ pub const WorkerV8Context = struct {
 
         const event_factory = run_result.value orelse return;
 
-        // Call the factory function with the deserialized data to create event object
-        var factory_args = [_]*v8.ffi.Value{v8_value.?};
+        // Call the factory function with deserialized data and ports array
+        var factory_args = [_]*v8.ffi.Value{ v8_value.?, ports_array };
         const event_obj = v8.ffi.v8_Function_Call(
             @ptrCast(event_factory),
             self.context,
             @ptrCast(global_obj),
-            1,
+            2,
             &factory_args,
         ) orelse {
             std.log.warn("[Worker] dispatchV8SerializedMessage: failed to create event object", .{});
