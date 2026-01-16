@@ -548,6 +548,11 @@ pub const DedicatedWorker = struct {
         pending_messages.clearRetainingCapacity();
     }
 
+    /// Get the count of pending messages (for debugging).
+    pub fn getPendingMessageCount() usize {
+        return pending_messages.items.len;
+    }
+
     /// Set the message handler for messages received from the worker.
     ///
     /// This is called when the worker sends a message via postMessage().

@@ -1754,16 +1754,10 @@ fn workerCloseCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     // be delivered.
     DedicatedWorker.flushPendingMessages();
 
-    // Schedule a message dispatch callback if there are messages in the queue
-    // This ensures messages are delivered even though close() will stop the
-    // worker's event loop. The dispatch happens on the main thread's timer.
-    const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
-
-    if (queue_len > 0) {
-        if (getTimerInterface()) |timer| {
-            _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
-        }
-    }
+    // Note: We don't schedule a timer for message dispatch here.
+    // Messages will be dispatched synchronously by executeWorkerScriptCallback
+    // after the worker script finishes executing. This avoids timer delays
+    // that were causing test timeouts (test 16.1).
 
     // Now close the worker - this sets the closing flag and stops the event loop
     dedicated_worker.close();

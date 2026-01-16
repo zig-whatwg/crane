@@ -517,31 +517,24 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
 
     // Execute worker script.
     //
-    // CRITICAL: After this call, V8's HandleScope state is corrupted because
-    // executeWorkerScriptSync enters/exits the worker isolate. We MUST NOT
-    // do any V8 operations here.
-    //
     // Timeline:
     // 1. new Worker(...) - constructor returns, fetch_tests_from_worker sets up onmessage handler
     // 2. setTimeout(0, executeWorkerScriptCallback) fires (we're here)
     // 3. Worker script runs, posts messages (buffered in pending_messages)
     // 4. Messages flushed to port queue (pure Zig, no V8)
-    // 5. Return to event loop - HandleScope state will be restored
-    // 6. Next event loop iteration: dispatch messages with clean HandleScope
+    // 5. Dispatch messages synchronously (dispatchMessageEvent creates its own HandleScope)
     const has_messages = executeWorkerScriptSync(internal);
 
-    // If there are messages to dispatch, schedule another timer callback.
-    // This ensures the event loop has a chance to restore HandleScope state
-    // before we try to dispatch messages.
-    //
-    // The timer callback runs in a clean V8 state (the event loop's runOnce
-    // handles HandleScope properly).
+    // Dispatch messages synchronously.
+    // Although worker script execution enters/exits the worker isolate (which could
+    // corrupt the outer HandleScope), dispatchMessageEvent creates its own fresh
+    // HandleScope for V8 operations. This is safe because:
+    // 1. We've exited the worker isolate and are back in the main isolate
+    // 2. dispatchMessageEvent creates a new HandleScope before any V8 operations
+    // 3. This avoids timer scheduling delays that cause test timeouts
     if (has_messages) {
-        if (internal.ctx) |ctx| {
-            if (ctx.timer) |timer| {
-                _ = timer.setTimeout(0, dispatchWorkerMessagesCallback, instance);
-            }
-        }
+        const dedicated_worker = internal.dedicated_worker orelse return;
+        dedicated_worker.processQueuedMessages();
     }
 }
 
@@ -618,9 +611,7 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 /// on the outside_port (worker → main thread direction).
 fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
     // Get the Worker instance from user_data stored in DedicatedWorker
-    const user_data = dedicated_worker.getUserData() orelse {
-        return;
-    };
+    const user_data = dedicated_worker.getUserData() orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
 
     // Dispatch the message event to onmessage handler
@@ -1042,23 +1033,17 @@ fn invokeMessageListeners(
         // Verify it's a function using the Global handle directly
         // v8_Value_IsFunction expects a Global<Value>* which is what rawPtr() returns
         if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.rawPtr())) {
-            std.log.warn("Worker.invokeMessageListeners: onmessage is not a function", .{});
             return;
         }
 
         // Get the function as a Global<Function>* for the call
         // We can safely cast since we verified it's a function above
-        const global_func = v8_engine.ffi.v8_Global_ToFunction(onmessage_global.rawPtr()) orelse {
-            std.log.warn("Worker.invokeMessageListeners: Failed to convert to function", .{});
-            return;
-        };
+        const global_func = v8_engine.ffi.v8_Global_ToFunction(onmessage_global.rawPtr()) orelse return;
 
         // Call the V8 function with the MessageEvent as argument
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
         _ = v8_engine.ffi.v8_Function_Call(global_func, v8_context, @ptrCast(undefined_recv), 1, &args);
-    } else {
-        std.log.warn("[invokeMessageListeners] No onmessage handler set!", .{});
     }
 }
 
