@@ -43,7 +43,9 @@ const DedicatedWorker = workers.DedicatedWorker;
 const WorkerOptions = workers.WorkerOptions;
 const WorkerType = workers.WorkerType;
 const RequestCredentials = workers.RequestCredentials;
-const QueuedMessage = workers.message_channel.QueuedMessage;
+const message_channel = workers.message_channel;
+const QueuedMessage = message_channel.QueuedMessage;
+const SerializedValue = message_channel.SerializedValue;
 const WorkerContext = workers.WorkerContext;
 
 // Import html module for WorkerV8Context (has interface access, unlike html_core)
@@ -869,18 +871,91 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 /// The message is serialized using the structured clone algorithm and
 /// sent to the worker's message queue.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    _ = transfer; // TODO: Handle transfer list
+
     const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.terminated) {
-            return; // Worker is terminated, ignore message
-        }
-        if (internal.dedicated_worker) |worker| {
-            // Post message to the dedicated worker
-            // The dedicated worker will handle serialization and dispatch
-            // Convert JSValue to anyopaque for the internal API
-            const message_ptr = message.toAnyopaque() orelse return error.TypeError;
-            const transfer_ptr = transfer.toAnyopaque() orelse return error.TypeError;
-            try worker.postMessage(message_ptr, transfer_ptr);
-        }
+    const internal = state.own._internal orelse return;
+    if (internal.terminated) {
+        return; // Worker is terminated, ignore message
     }
+    const worker = internal.dedicated_worker orelse return;
+    const allocator = internal.allocator;
+
+    // Get V8 context and isolate for serialization
+    const ctx = instance.ctx;
+    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
+    const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return error.NoEngine;
+
+    // Convert JSValue to V8 Local value for serialization
+    const v8_value: *v8_engine.ffi.Value = switch (message) {
+        .handle => |h| blk: {
+            // Check if it's a global or local handle
+            if (h.handle_scope == .global) {
+                // Global handle - need to dereference to get local value
+                // Cast anyopaque ptr to Value ptr for v8_Global_Get
+                const global_ptr: *v8_engine.ffi.Value = @ptrCast(@alignCast(h.ptr));
+                const local_result = v8_engine.ffi.v8_Global_Get(isolate, global_ptr) orelse return error.NoValue;
+                break :blk @ptrCast(@alignCast(local_result));
+            } else {
+                // Local handle - cast directly
+                break :blk @ptrCast(@alignCast(h.ptr));
+            }
+        },
+        .undefined => v8_engine.ffi.v8_Undefined(isolate) orelse return error.NoValue,
+        .null => v8_engine.ffi.v8_Null(isolate) orelse return error.NoValue,
+        .boolean => |b| v8_engine.ffi.v8_Boolean_New(isolate, b) orelse return error.NoValue,
+        .number => |n| @ptrCast(v8_engine.ffi.v8_Number_New(isolate, n)),
+        .string => |s| @ptrCast(v8_engine.ffi.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return error.NoValue),
+        .instance => return error.UnsupportedValueType, // Can't serialize instances
+    };
+
+    // Get required size for JSON buffer
+    var dummy_buf: [1]u8 = undefined;
+    const required_size = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
+        v8_context,
+        v8_value,
+        &dummy_buf,
+        0,
+    );
+    if (required_size <= 0) return error.SerializationFailed;
+
+    // Allocate buffer and stringify
+    const json_buffer = try allocator.alloc(u8, @intCast(required_size + 1));
+    defer allocator.free(json_buffer);
+
+    const written = v8_engine.ffi.v8_JSON_Stringify_ToBuffer(
+        v8_context,
+        v8_value,
+        json_buffer.ptr,
+        @intCast(json_buffer.len),
+    );
+    if (written <= 0) return error.SerializationFailed;
+
+    const json_str = json_buffer[0..@intCast(written)];
+
+    // Create SerializedValue with the JSON string
+    const serialized = try allocator.create(SerializedValue);
+    errdefer allocator.destroy(serialized);
+
+    // Copy the JSON string for the serialized value
+    const json_copy = try allocator.dupe(u8, json_str);
+    errdefer allocator.free(json_copy);
+
+    serialized.* = .{
+        .type = .primitive,
+        .allocator = allocator,
+        .data = .{ .primitive = .{ .string = json_copy } },
+    };
+
+    // Post to the worker's inside port (via outside_port.postMessage which entangles)
+    worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+        serialized.deinit();
+        allocator.destroy(serialized);
+        return switch (err) {
+            error.PortClosed => error.WorkerClosed,
+            error.NotEntangled => error.WorkerClosed,
+            else => error.PostMessageFailed,
+        };
+    };
 }

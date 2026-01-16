@@ -582,6 +582,35 @@ pub const DedicatedWorker = struct {
         }
     }
 
+    /// Process queued messages on the inside port (main thread → worker).
+    ///
+    /// This should be called from within the worker's V8 context after the
+    /// worker script has executed and set up its onmessage handler.
+    ///
+    /// Spec: HTML Standard § 10.2.3
+    /// "When a message is received on the inside port, the user agent must
+    /// queue a global task on the messaging task source to fire an event
+    /// named message at the WorkerGlobalScope object."
+    ///
+    /// Returns the number of messages processed.
+    pub fn processInsidePortMessages(self: *DedicatedWorker) usize {
+        const inside_port = self.port_pair.inside_port;
+        var count: usize = 0;
+
+        while (inside_port.message_queue.items.len > 0) {
+            const msg = inside_port.message_queue.orderedRemove(0);
+
+            if (inside_port.on_message) |handler| {
+                handler(inside_port, msg, inside_port.on_message_context);
+            }
+            // Clean up message after handler returns
+            msg.deinit();
+            count += 1;
+        }
+
+        return count;
+    }
+
     /// Close the worker from inside.
     ///
     /// Spec: HTML Standard § 10.2.4.1

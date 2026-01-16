@@ -589,6 +589,9 @@ pub const WorkerV8Context = struct {
     }
 
     /// Execute a script in this worker's context
+    ///
+    /// This also processes any pending incoming messages after script execution,
+    /// allowing the worker's onmessage handler to be invoked.
     pub fn executeScript(self: *Self, source: []const u8) !?*anyopaque {
         // Enter worker's isolate and context for script execution
         v8.ffi.v8_Isolate_Enter(self.isolate);
@@ -611,7 +614,75 @@ pub const WorkerV8Context = struct {
         current_worker_context = self;
         defer current_worker_context = prev_context;
 
-        return self.executeScriptInternal(source);
+        const result = try self.executeScriptInternal(source);
+
+        // Process any incoming messages from the main thread
+        // This allows the worker's onmessage handler (set up by the script) to run
+        self.processIncomingMessagesInternal();
+
+        return result;
+    }
+
+    /// Process incoming messages - internal version (already in isolate context)
+    fn processIncomingMessagesInternal(self: *Self) void {
+        const dedicated_worker = self.dedicated_worker orelse return;
+        const inside_port = dedicated_worker.port_pair.inside_port;
+
+        while (inside_port.message_queue.items.len > 0) {
+            const msg = inside_port.message_queue.orderedRemove(0);
+            dispatchMessageToWorkerInternal(self, msg);
+            msg.deinit();
+        }
+    }
+
+    /// Dispatch message to worker's onmessage - internal version (already in isolate context)
+    ///
+    /// This function calls self.onmessage(event) entirely via JavaScript to avoid
+    /// V8 FFI handle type mismatches between Global and Local handles.
+    fn dispatchMessageToWorkerInternal(self: *Self, msg: *workers.message_channel.QueuedMessage) void {
+        // Deserialize message data to JSON string
+        const serialized = msg.data;
+        const json_str: []const u8 = switch (serialized.type) {
+            .primitive => switch (serialized.data.primitive) {
+                .string => |s| s,
+                .undefined => "undefined",
+                .null => "null",
+                .boolean => |b| if (b) "true" else "false",
+                .number => "0", // TODO: Proper number serialization
+                .bigint => "0", // TODO: Proper bigint serialization
+            },
+            .string_object => serialized.data.string_object, // Boxed String
+            else => return, // Can't convert complex types to simple string
+        };
+
+        // Build JavaScript code that calls self.onmessage with the data
+        // This avoids FFI handle type issues by doing everything in JavaScript
+        var script_buf: [4096]u8 = undefined;
+        const script = std.fmt.bufPrint(&script_buf,
+            \\(function() {{
+            \\  if (typeof self.onmessage === 'function') {{
+            \\    var data = {s};
+            \\    var event = {{ data: data, type: 'message', target: self, currentTarget: self }};
+            \\    self.onmessage(event);
+            \\    return true;
+            \\  }}
+            \\  return false;
+            \\}})()
+        , .{json_str}) catch return;
+
+        // Compile and run the script
+        const src = v8.ffi.v8_String_NewFromUtf8(self.isolate, script.ptr, @intCast(script.len)) orelse return;
+
+        const compile_result = v8.ffi.v8_Script_Compile_Safe(self.context, src);
+        defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
+
+        if (compile_result.script == null) return;
+
+        const run_result = v8.ffi.v8_Script_Run_Safe(self.context, compile_result.script.?);
+        defer v8.ffi.v8_FreeScriptRunResult(run_result);
+
+        // Run microtasks after handler
+        v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
     }
 
     /// Execute a script - internal version that assumes context is already entered
@@ -867,6 +938,128 @@ fn workerDoneCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
     // Note: The actual done() function in testharness.js handles posting
     // the completion message. We just need to have this function exist
     // so the worker script can call it.
+}
+
+/// Dispatch a MessageEvent to the worker's self.onmessage handler
+///
+/// This is called when processing messages from the main thread (inside_port).
+/// It deserializes the message data and calls the JavaScript onmessage handler.
+///
+/// The function must be called from within the worker's V8 isolate context.
+pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.message_channel.QueuedMessage) void {
+    const isolate = worker_ctx.isolate;
+    const context = worker_ctx.context;
+
+    // Create HandleScope for V8 operations
+    const handle_scope = v8.ffi.v8_HandleScope_New(isolate);
+    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Get global object
+    const global_obj = v8.ffi.v8_Context_Global(context) orelse return;
+
+    // Get self.onmessage property
+    const onmessage_key = v8.ffi.v8_String_NewFromUtf8(isolate, "onmessage", 9) orelse return;
+    const onmessage_val = v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(onmessage_key)) orelse return;
+
+    // Check if onmessage is a function
+    if (!v8.ffi.v8_Value_IsFunction_Local(@ptrCast(onmessage_val))) {
+        return;
+    }
+
+    // Deserialize message data to JSON string
+    const serialized = msg.data;
+    const json_str = switch (serialized.type) {
+        .primitive => switch (serialized.data.primitive) {
+            .string => |s| s,
+            .undefined => "undefined",
+            .null => "null",
+            .boolean => |b| if (b) "true" else "false",
+            .number => "0", // TODO: Proper number serialization
+        },
+        .string => serialized.data.string_value,
+        else => return, // Can't convert complex types to simple string
+    };
+
+    // Create the message data as a V8 value by parsing the JSON
+    const data_value = blk: {
+        // Try to parse as JSON first
+        const json_v8_str = v8.ffi.v8_String_NewFromUtf8(isolate, json_str.ptr, @intCast(json_str.len)) orelse break :blk null;
+        const parsed = v8.ffi.v8_JSON_Parse(context, @ptrCast(json_v8_str));
+        if (parsed != null) break :blk parsed;
+        // If not valid JSON, use as string literal
+        break :blk @as(?*v8.ffi.Value, @ptrCast(json_v8_str));
+    } orelse return;
+
+    // Create a simple event object with 'data' property
+    // For now, use a plain object instead of full MessageEvent
+    const event_script =
+        \\(function(data) {
+        \\  return { data: data, type: 'message', target: self, currentTarget: self };
+        \\})
+    ;
+    const event_source = v8.ffi.v8_String_NewFromUtf8(isolate, event_script.ptr, @intCast(event_script.len)) orelse return;
+    const compile_result = v8.ffi.v8_Script_Compile_Safe(context, event_source);
+    defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
+
+    if (compile_result.script == null) return;
+
+    const run_result = v8.ffi.v8_Script_Run_Safe(context, compile_result.script.?);
+    defer v8.ffi.v8_FreeScriptRunResult(run_result);
+
+    const event_factory = run_result.value orelse return;
+
+    // Call the factory function with data to create event object
+    var factory_args = [_]*v8.ffi.Value{data_value};
+    const event_obj = v8.ffi.v8_Function_Call(
+        @ptrCast(event_factory),
+        context,
+        @ptrCast(global_obj),
+        1,
+        &factory_args,
+    ) orelse return;
+
+    // Call onmessage(event)
+    var args = [_]*v8.ffi.Value{event_obj};
+    _ = v8.ffi.v8_Function_Call(
+        @ptrCast(onmessage_val),
+        context,
+        @ptrCast(global_obj),
+        1,
+        &args,
+    );
+
+    // Run microtasks after handler
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+}
+
+/// Process incoming messages from the main thread
+///
+/// This should be called from within the worker's V8 context after
+/// the worker script has set up its onmessage handler.
+pub fn processIncomingMessages(worker_ctx: *WorkerV8Context) void {
+    const dedicated_worker = worker_ctx.dedicated_worker orelse return;
+
+    // Enter the worker's isolate and context
+    v8.ffi.v8_Isolate_Enter(worker_ctx.isolate);
+    v8.ffi.v8_Context_Enter(worker_ctx.context);
+    defer {
+        v8.ffi.v8_Context_Exit(worker_ctx.context);
+        v8.ffi.v8_Isolate_Exit(worker_ctx.isolate);
+    }
+
+    // Set current_worker_context for any callbacks
+    const prev_context = current_worker_context;
+    current_worker_context = worker_ctx;
+    defer current_worker_context = prev_context;
+
+    // Process messages - directly iterate over the queue
+    const inside_port = dedicated_worker.port_pair.inside_port;
+
+    while (inside_port.message_queue.items.len > 0) {
+        const msg = inside_port.message_queue.orderedRemove(0);
+        dispatchMessageToWorker(worker_ctx, msg);
+        msg.deinit();
+    }
 }
 
 // ============================================================================
