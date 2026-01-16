@@ -847,10 +847,10 @@ pub fn fromV8Value(
             return runtime.JSValue{ .string = .{ .data = buffer, .owned = true } };
         }
 
-        // For objects/functions/etc., the value IS already a Global handle
-        // (from v8_FunctionCallbackInfo_GetArgument which creates and tracks a Global)
-        // Just store it directly - no need to persist again
-        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
+        // For objects/functions/etc., store as a LOCAL handle.
+        // The pointer from v8_FunctionCallbackInfo_GetArgument is a Local<Value>*,
+        // NOT a Global<Value>*. This is critical for correct usage in impl code.
+        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value), .handle_scope = .local } };
     }
 
     // Handle unions (for constructor overloading and type unions)
