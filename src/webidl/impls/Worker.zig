@@ -44,6 +44,7 @@ const WorkerOptions = workers.WorkerOptions;
 const WorkerType = workers.WorkerType;
 const RequestCredentials = workers.RequestCredentials;
 const message_channel = workers.message_channel;
+const WorkerErrorEvent = workers.worker_error.WorkerErrorEvent;
 const QueuedMessage = message_channel.QueuedMessage;
 const SerializedValue = message_channel.SerializedValue;
 const WorkerContext = workers.WorkerContext;
@@ -280,6 +281,11 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // and we dispatch to the onmessage handler.
         dedicated_worker.setOnMessage(handleMessageFromWorkerCallback);
 
+        // Set up error handler to receive errors from worker
+        // When an uncaught error occurs in the worker and self.onerror doesn't handle it,
+        // the error is dispatched to worker.onerror in the parent context.
+        dedicated_worker.setParentErrorCallback(handleErrorFromWorkerCallback);
+
         // Enable message dispatch on outside port
         // Messages are queued until start() is called
         dedicated_worker.startMessageQueue();
@@ -439,7 +445,13 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
         v8_engine.disposeOptionalGlobalHandle(&internal.onerror_handle);
-        internal.onerror_handle = extractEventHandler(@ptrCast(value));
+        // Properly unwrap the optional before casting to extract the tagged pointer
+        if (value) |v| {
+            const casted: *const anyopaque = @ptrCast(v);
+            internal.onerror_handle = extractEventHandler(casted);
+        } else {
+            internal.onerror_handle = null;
+        }
     }
 }
 
@@ -463,7 +475,8 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
         v8_engine.disposeOptionalGlobalHandle(&internal.onmessage_handle);
-        internal.onmessage_handle = extractEventHandler(@ptrCast(value));
+        // Properly unwrap the optional before casting to extract the tagged pointer
+        internal.onmessage_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
 
         // Process any messages that were queued before the handler was set
         // This ensures messages posted by the worker during script execution
@@ -483,7 +496,8 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
         v8_engine.disposeOptionalGlobalHandle(&internal.onmessageerror_handle);
-        internal.onmessageerror_handle = extractEventHandler(@ptrCast(value));
+        // Properly unwrap the optional before casting to extract the tagged pointer
+        internal.onmessageerror_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
     }
 }
 
@@ -609,6 +623,166 @@ fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *Que
 
     // Dispatch the message event to onmessage handler
     dispatchMessageEvent(instance, msg);
+}
+
+/// Callback to handle errors from the worker
+///
+/// This is called by DedicatedWorker when an uncaught error occurs in the worker
+/// and self.onerror didn't handle it. We create an ErrorEvent and dispatch it
+/// to the Worker object's onerror handler.
+///
+/// Spec: HTML Standard § 10.2.5 step 11
+/// "Queue a task to fire an event named error at worker."
+fn handleErrorFromWorkerCallback(dedicated_worker: *DedicatedWorker, error_event: *WorkerErrorEvent) void {
+    // Get the Worker instance from user_data stored in DedicatedWorker
+    const user_data = dedicated_worker.getUserData() orelse {
+        error_event.deinit();
+        return;
+    };
+    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
+
+    // Dispatch the error event to onerror handler
+    dispatchWorkerErrorEvent(instance, error_event);
+}
+
+/// Dispatch an ErrorEvent to the Worker's error handlers
+///
+/// This creates an ErrorEvent with the error details and invokes:
+/// 1. All registered "error" event listeners (via addEventListener)
+/// 2. The onerror EventHandler if set
+///
+/// Per HTML Standard, if the error is not cancelled (preventDefault not called),
+/// the error should propagate to the global error handler.
+fn dispatchWorkerErrorEvent(instance: *runtime.Instance, error_event: *WorkerErrorEvent) void {
+    defer error_event.deinit();
+
+    // Get internal state with GlobalHandle and isolate
+    const internal = getInternal(instance) orelse return;
+
+    // Get isolate and V8 context
+    const isolate = internal.isolate orelse return;
+    const ctx = internal.ctx orelse return;
+    const v8_context: *v8_engine.ffi.Context = ctx.getEngineContextAs(v8_engine.ffi.Context) orelse return;
+
+    // Check current isolate state and enter if needed
+    const current_isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
+    const need_enter_isolate = (current_isolate == null) or (current_isolate != isolate);
+    if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Enter(isolate);
+    }
+    defer if (need_enter_isolate) {
+        v8_engine.ffi.v8_Isolate_Exit(isolate);
+    };
+
+    // Verify we have a valid context, enter if needed
+    const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
+    const need_enter_context = (current_context == null) or (current_context != v8_context);
+    if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Enter(v8_context);
+    }
+    defer if (need_enter_context) {
+        v8_engine.ffi.v8_Context_Exit(v8_context);
+    };
+
+    // Create a HandleScope for V8 operations
+    // V8 requires a HandleScope when creating Local handles (from v8_Global_Get, etc.)
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Create V8 ErrorEvent object
+    // Per HTML Standard § 7.2.2 The ErrorEvent interface
+    const error_event_js = createV8ErrorEvent(isolate, v8_context, error_event) orelse return;
+
+    // Get onerror handler from internal state
+    if (internal.onerror_handle) |handler_global| {
+        // handler_global.ptr is already a Global<Value>* - pass it directly to v8_Value_IsFunction
+        // which expects Global<Value>* (the FFI type is *Value but maps to Global<Value>* in C++)
+        const handler: *v8_engine.ffi.Value = @ptrCast(handler_global.ptr);
+
+        // Check if it's a function
+        if (v8_engine.ffi.v8_Value_IsFunction(handler)) {
+            const handler_fn: *v8_engine.ffi.Function = @ptrCast(handler_global.ptr);
+            const global_obj = v8_engine.ffi.v8_Context_Global(v8_context) orelse return;
+
+            // Call onerror handler with the ErrorEvent as argument
+            // error_event_js is already a Global<Object>* from v8_Function_NewInstance
+            // No need to convert - just cast to *Value for v8_Function_Call
+            var args = [1]*v8_engine.ffi.Value{error_event_js};
+            _ = v8_engine.ffi.v8_Function_Call(
+                handler_fn,
+                v8_context,
+                @ptrCast(global_obj),
+                1,
+                &args,
+            );
+        }
+    }
+
+    // TODO: Also dispatch to event listeners via EventTarget.dispatchEvent
+    // This would handle addEventListener('error', ...) but requires creating a proper
+    // ErrorEvent instance. For now, the onerror property handler is handled above.
+}
+
+/// Create a V8 ErrorEvent object from WorkerErrorEvent data
+/// Creates a proper ErrorEvent instance by calling the ErrorEvent constructor
+fn createV8ErrorEvent(isolate: *v8_engine.ffi.Isolate, context: *v8_engine.ffi.Context, error_event: *WorkerErrorEvent) ?*v8_engine.ffi.Value {
+    // Get the global object to access ErrorEvent constructor
+    const global_obj = v8_engine.ffi.v8_Context_Global(context) orelse return null;
+
+    // Get ErrorEvent constructor from global
+    const error_event_name = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "ErrorEvent", 10) orelse return null;
+    const error_event_ctor_value = v8_engine.ffi.v8_Object_Get(global_obj, context, @ptrCast(error_event_name)) orelse return null;
+
+    // Check if it's a function (constructor) - use Global version since v8_Object_Get returns Global*
+    if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(error_event_ctor_value))) {
+        return null;
+    }
+    const error_event_ctor: *v8_engine.ffi.Function = @ptrCast(@alignCast(error_event_ctor_value));
+
+    // Create the ErrorEventInit dictionary
+    const init_dict = v8_engine.ffi.v8_Object_New(isolate) orelse return null;
+
+    // Set message
+    const message_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "message", 7) orelse return null;
+    const message_val = v8_engine.ffi.v8_String_NewFromUtf8(isolate, error_event.message.ptr, @intCast(error_event.message.len)) orelse return null;
+    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(message_key), @ptrCast(message_val));
+
+    // Set filename
+    const filename_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "filename", 8) orelse return null;
+    const filename_val = v8_engine.ffi.v8_String_NewFromUtf8(isolate, error_event.filename.ptr, @intCast(error_event.filename.len)) orelse return null;
+    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(filename_key), @ptrCast(filename_val));
+
+    // Set lineno
+    const lineno_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "lineno", 6) orelse return null;
+    const lineno_val = v8_engine.ffi.v8_Integer_New(isolate, @intCast(error_event.lineno));
+    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(lineno_key), @ptrCast(lineno_val));
+
+    // Set colno
+    const colno_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "colno", 5) orelse return null;
+    const colno_val = v8_engine.ffi.v8_Integer_New(isolate, @intCast(error_event.colno));
+    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(colno_key), @ptrCast(colno_val));
+
+    // Set error to an Error object
+    const error_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "error", 5) orelse return null;
+    const error_obj = v8_engine.ffi.v8_Exception_ErrorInContext(context, message_val) orelse return null;
+    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(error_key), error_obj);
+
+    // Set cancelable = true (error events can be cancelled with preventDefault)
+    const cancelable_key = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "cancelable", 10) orelse return null;
+    const cancelable_val = v8_engine.ffi.v8_Boolean_New(isolate, true) orelse return null;
+    _ = v8_engine.ffi.v8_Object_Set(init_dict, context, @ptrCast(cancelable_key), cancelable_val);
+
+    // Create event type string "error"
+    const type_str = v8_engine.ffi.v8_String_NewFromUtf8(isolate, "error", 5) orelse return null;
+
+    // Call ErrorEvent constructor: new ErrorEvent("error", initDict)
+    var args = [2]*v8_engine.ffi.Value{ @ptrCast(type_str), @ptrCast(init_dict) };
+    const event_obj = v8_engine.ffi.v8_Function_NewInstance(error_event_ctor, context, 2, &args) orelse {
+        std.log.warn("[createV8ErrorEvent] Failed to create ErrorEvent instance", .{});
+        return null;
+    };
+
+    return @ptrCast(event_obj);
 }
 
 /// Dispatch a MessageEvent to the Worker's message handlers

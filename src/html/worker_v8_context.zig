@@ -216,6 +216,28 @@ fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     }
 }
 
+// ============================================================================
+// Worker Error Handling Support
+// ============================================================================
+
+/// Callback to dispatch worker error events to the parent context.
+/// This is scheduled after an error occurs in the worker and self.onerror
+/// didn't handle it.
+fn workerErrorDispatchCallback(context_ptr: ?*anyopaque) void {
+    const error_ctx: *WorkerErrorDispatchContext = @ptrCast(@alignCast(context_ptr orelse return));
+    defer error_ctx.allocator.destroy(error_ctx);
+
+    // Fire the error event to the parent Worker object
+    error_ctx.dedicated_worker.fireErrorToParent(error_ctx.error_event);
+}
+
+/// Context for scheduling error dispatch to parent
+const WorkerErrorDispatchContext = struct {
+    dedicated_worker: *DedicatedWorker,
+    error_event: *workers.worker_error.WorkerErrorEvent,
+    allocator: Allocator,
+};
+
 /// Callback to dispatch worker messages in the main thread context.
 /// This is scheduled after worker timer callbacks flush messages to ensure
 /// messages are processed in a clean V8 HandleScope state.
@@ -1154,6 +1176,125 @@ pub const WorkerV8Context = struct {
         v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
     }
 
+    /// Dispatch error to self.onerror handler (OnErrorEventHandler)
+    ///
+    /// Spec: HTML Standard § 10.1.5.1 "Report the error"
+    /// https://html.spec.whatwg.org/#report-the-error
+    ///
+    /// The OnErrorEventHandler receives 5 arguments:
+    ///   1. message (DOMString) - the error message
+    ///   2. filename (USVString) - the script URL
+    ///   3. lineno (unsigned long) - the line number
+    ///   4. colno (unsigned long) - the column number
+    ///   5. error (Error) - the Error object
+    ///
+    /// If the handler returns true, the error is considered handled and
+    /// should NOT propagate to the parent Worker object.
+    ///
+    /// Returns true if the handler was called and returned true (error handled).
+    /// Returns false if handler not set, not callable, returned false, or threw.
+    fn dispatchSelfOnerror(
+        self: *Self,
+        message: []const u8,
+        filename: []const u8,
+        lineno: u32,
+        colno: u32,
+    ) bool {
+        // Get the global object
+        const global = v8.ffi.v8_Context_Global(self.context) orelse return false;
+
+        // Get the "onerror" property from global (self.onerror)
+        const onerror_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "onerror", 7) orelse return false;
+        const onerror_value = v8.ffi.v8_Object_Get(global, self.context, @ptrCast(onerror_key)) orelse return false;
+
+        // Check if it's a function
+        if (!v8.ffi.v8_Value_IsFunction(onerror_value)) {
+            return false;
+        }
+
+        // Create the 5 arguments for OnErrorEventHandler:
+        // 1. message (string)
+        const msg_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, message.ptr, @intCast(message.len)) orelse return false;
+
+        // 2. filename (string)
+        const filename_str = v8.ffi.v8_String_NewFromUtf8(self.isolate, filename.ptr, @intCast(filename.len)) orelse return false;
+
+        // 3. lineno (number)
+        const lineno_num = v8.ffi.v8_Integer_New(self.isolate, @intCast(lineno));
+
+        // 4. colno (number)
+        const colno_num = v8.ffi.v8_Integer_New(self.isolate, @intCast(colno));
+
+        // 5. error (Error object) - create an Error with the message
+        const error_obj = v8.ffi.v8_Exception_ErrorInContext(self.context, msg_str) orelse return false;
+
+        // Build args array
+        var args = [5]*v8.ffi.Value{
+            @ptrCast(msg_str),
+            @ptrCast(filename_str),
+            @ptrCast(lineno_num),
+            @ptrCast(colno_num),
+            error_obj,
+        };
+
+        // Call the onerror function with global as 'this'
+        const onerror_fn: *v8.ffi.Function = @ptrCast(onerror_value);
+        const result = v8.ffi.v8_Function_Call(onerror_fn, self.context, @ptrCast(global), 5, &args);
+
+        // Check if result is truthy (true means error was handled)
+        if (result) |r| {
+            return v8.ffi.v8_Value_BooleanValue(r, self.isolate);
+        }
+
+        return false;
+    }
+
+    /// Send an error event to the parent Worker object via the callback mechanism.
+    ///
+    /// This schedules a WorkerErrorEvent to be dispatched on the parent thread.
+    /// The main thread's event loop will dispatch the error via Worker.onerror
+    /// or addEventListener('error').
+    ///
+    /// Spec: HTML Standard § 10.2.5 step 11
+    /// "Queue a task to fire an event named error at worker."
+    fn sendErrorToParent(
+        self: *Self,
+        message: []const u8,
+        filename: []const u8,
+        lineno: u32,
+        colno: u32,
+    ) void {
+        const dedicated_worker = self.dedicated_worker orelse return;
+
+        // Create error event data
+        const error_event = workers.worker_error.WorkerErrorEvent.init(
+            self.allocator,
+            message,
+            filename,
+            lineno,
+            colno,
+            null, // error_value - V8 value doesn't cross isolate boundary safely
+        ) catch return;
+
+        // Schedule error dispatch to parent thread via timer (0ms)
+        // This ensures we're in the main isolate context when dispatching
+        if (getTimerInterface()) |timer| {
+            const dispatch_ctx = self.allocator.create(WorkerErrorDispatchContext) catch {
+                error_event.deinit();
+                return;
+            };
+            dispatch_ctx.* = .{
+                .dedicated_worker = dedicated_worker,
+                .error_event = error_event,
+                .allocator = self.allocator,
+            };
+            _ = timer.setTimeout(0, workerErrorDispatchCallback, dispatch_ctx);
+        } else {
+            // No timer interface, dispatch synchronously (may not be ideal but better than dropping)
+            dedicated_worker.fireErrorToParent(error_event);
+        }
+    }
+
     /// Execute a script - internal version that assumes context is already entered
     fn executeScriptInternal(self: *Self, source: []const u8) !?*anyopaque {
         // Create V8 string from source
@@ -1170,12 +1311,22 @@ pub const WorkerV8Context = struct {
         defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
 
         if (compile_result.error_info) |err_info| {
-            if (err_info.getMessage()) |msg| {
-                std.log.err("[Worker] Script compilation failed: {s}", .{msg});
-            }
+            const err_msg = err_info.getMessage() orelse "Script compilation failed";
+            const filename = err_info.getResourceName() orelse self.script_url;
+            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+            std.log.err("[Worker] Script compilation failed: {s}", .{err_msg});
             if (err_info.getStackTrace()) |st| {
                 std.log.err("[Worker] Stack trace: {s}", .{st});
             }
+
+            // Dispatch to self.onerror first, then propagate to parent if not handled
+            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
+            if (!error_handled) {
+                self.sendErrorToParent(err_msg, filename, lineno, colno);
+            }
+
             return error.CompilationFailed;
         }
 
@@ -1186,12 +1337,22 @@ pub const WorkerV8Context = struct {
         defer v8.ffi.v8_FreeScriptRunResult(run_result);
 
         if (run_result.error_info) |err_info| {
-            if (err_info.getMessage()) |msg| {
-                std.log.err("[Worker] Script execution failed: {s}", .{msg});
-            }
+            const err_msg = err_info.getMessage() orelse "Script execution failed";
+            const filename = err_info.getResourceName() orelse self.script_url;
+            const lineno: u32 = if (err_info.line_number >= 0) @intCast(err_info.line_number) else 0;
+            const colno: u32 = if (err_info.column_number >= 0) @intCast(err_info.column_number) else 0;
+
+            std.log.err("[Worker] Script execution failed: {s}", .{err_msg});
             if (err_info.getStackTrace()) |st| {
                 std.log.err("[Worker] Stack trace: {s}", .{st});
             }
+
+            // Dispatch to self.onerror first, then propagate to parent if not handled
+            const error_handled = self.dispatchSelfOnerror(err_msg, filename, lineno, colno);
+            if (!error_handled) {
+                self.sendErrorToParent(err_msg, filename, lineno, colno);
+            }
+
             return error.ExecutionFailed;
         }
 

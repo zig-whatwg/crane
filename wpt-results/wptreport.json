@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768564846259,
-  "time_end": 1768564847464,
+  "time_start": 1768569697583,
+  "time_end": 1768569698914,
   "results": [
     {
       "test": "crane/basic.html",
@@ -89,7 +89,9 @@
         {"name": "Phase 13.2: Worker setInterval and clearInterval work", "status": "PASS", "message": null},
         {"name": "Phase 14.1: Worker Promises work", "status": "PASS", "message": null},
         {"name": "Phase 14.2: Worker microtask ordering correct", "status": "PASS", "message": null},
-        {"name": "Phase 14.3: Worker queueMicrotask works", "status": "PASS", "message": null}
+        {"name": "Phase 14.3: Worker queueMicrotask works", "status": "PASS", "message": null},
+        {"name": "Phase 15.1: Worker errors propagate to parent", "status": "PASS", "message": null},
+        {"name": "Phase 15.2: Worker self.onerror works", "status": "PASS", "message": null}
       ]
     }
   ]
