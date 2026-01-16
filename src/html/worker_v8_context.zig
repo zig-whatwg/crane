@@ -59,6 +59,189 @@ const EngineContext = workers.worker_context.EngineContext;
 // Thread-local storage for current worker context (used by V8 callbacks)
 threadlocal var current_worker_context: ?*WorkerV8Context = null;
 
+// Thread-local storage for timer interface (set by caller before worker operations)
+threadlocal var current_worker_timer_interface: ?runtime.TimerInterface = null;
+
+/// Get the current timer interface (for internal use)
+fn getTimerInterface() ?runtime.TimerInterface {
+    return current_worker_timer_interface;
+}
+
+// ============================================================================
+// Worker Timer Support
+// ============================================================================
+
+/// Timer context for tracking pending timers
+const WorkerTimerContext = struct {
+    /// V8 Global handle to the callback function
+    callback_global: *v8.ffi.Value,
+    /// The isolate this timer belongs to
+    isolate: *v8.ffi.Isolate,
+    /// The context for execution
+    context: *v8.ffi.Context,
+    /// Current timer ID (may change on reschedule for intervals)
+    current_timer_id: runtime.TimerId,
+    /// Whether this is an interval (repeating) timer
+    is_interval: bool,
+    /// Interval delay in milliseconds (for rescheduling)
+    interval_delay_ms: u64,
+    /// Allocator for cleanup
+    allocator: Allocator,
+    /// Whether this timer has been cancelled
+    cancelled: bool,
+    /// Pointer to the WorkerV8Context for setting current_worker_context
+    worker_v8_context: *WorkerV8Context,
+};
+
+/// Thread-local storage for worker timer contexts
+threadlocal var worker_timer_contexts: ?std.AutoHashMap(runtime.TimerId, *WorkerTimerContext) = null;
+
+/// Initialize worker timer storage
+fn initWorkerTimerStorage(allocator: Allocator) void {
+    if (worker_timer_contexts == null) {
+        worker_timer_contexts = std.AutoHashMap(runtime.TimerId, *WorkerTimerContext).init(allocator);
+    }
+}
+
+/// Clean up all worker timer contexts
+fn cleanupWorkerTimerContexts() void {
+    if (worker_timer_contexts) |*map| {
+        var iter = map.iterator();
+        while (iter.next()) |entry| {
+            const ctx = entry.value_ptr.*;
+            // Cancel the timer at the libuv level
+            if (getTimerInterface()) |timer| {
+                timer.clearTimeout(ctx.current_timer_id);
+            }
+            // Dispose the V8 Global handle
+            v8.ffi.v8_Global_Dispose(ctx.callback_global);
+            ctx.allocator.destroy(ctx);
+        }
+        map.deinit();
+        worker_timer_contexts = null;
+    }
+}
+
+/// Register a timer context for tracking
+fn registerWorkerTimerContext(timer_id: runtime.TimerId, ctx: *WorkerTimerContext) void {
+    if (worker_timer_contexts) |*map| {
+        map.put(timer_id, ctx) catch {};
+    }
+}
+
+/// Unregister a timer context (marks as cancelled, cleanup happens in callback)
+fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
+    if (worker_timer_contexts) |*map| {
+        if (map.get(timer_id)) |ctx| {
+            ctx.cancelled = true;
+            // Cancel the timer at the libuv level
+            if (getTimerInterface()) |timer| {
+                timer.clearTimeout(timer_id);
+            }
+        }
+        if (map.fetchRemove(timer_id)) |kv| {
+            const ctx = kv.value;
+            v8.ffi.v8_Global_Dispose(ctx.callback_global);
+            ctx.allocator.destroy(ctx);
+        }
+    }
+}
+
+/// Callback to dispatch worker messages in the main thread context.
+/// This is scheduled after worker timer callbacks flush messages to ensure
+/// messages are processed in a clean V8 HandleScope state.
+fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
+    const dedicated_worker: *DedicatedWorker = @ptrCast(@alignCast(context_ptr orelse return));
+
+    // Process queued messages - this invokes the Worker's onmessage handler
+    // We're now in the main isolate context with clean HandleScope state
+    dedicated_worker.processQueuedMessages();
+}
+
+/// Timer callback trampoline - invoked by the timer manager
+fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
+    const ctx: *WorkerTimerContext = @ptrCast(@alignCast(context_ptr orelse return));
+
+    // Check if the timer was cancelled
+    if (ctx.cancelled) return;
+
+    // CRITICAL: Set current_worker_context so that callbacks like postMessage
+    // can access the correct worker context. Save and restore the previous context.
+    const prev_context = current_worker_context;
+    current_worker_context = ctx.worker_v8_context;
+    defer current_worker_context = prev_context;
+
+    // Enter the worker's isolate and context
+    v8.ffi.v8_Isolate_Enter(ctx.isolate);
+    v8.ffi.v8_Context_Enter(ctx.context);
+    defer {
+        v8.ffi.v8_Context_Exit(ctx.context);
+        v8.ffi.v8_Isolate_Exit(ctx.isolate);
+    }
+
+    // Create HandleScope for V8 operations
+    const handle_scope = v8.ffi.v8_HandleScope_New(ctx.isolate);
+    defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Get the callback function from the Global handle
+    const callback_fn = v8.ffi.v8_Global_Get(ctx.isolate, ctx.callback_global) orelse return;
+
+    // Get global object for 'this'
+    const global_obj = v8.ffi.v8_Context_Global(ctx.context) orelse return;
+
+    // Call the callback function
+    var empty_args: [1]*v8.ffi.Value = undefined;
+    _ = v8.ffi.v8_Function_Call(
+        @ptrCast(callback_fn),
+        ctx.context,
+        @ptrCast(global_obj),
+        0,
+        &empty_args,
+    );
+
+    // Run microtasks after callback
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(ctx.isolate);
+
+    // CRITICAL: Flush pending messages to the port queue
+    // Messages posted by the timer callback (via postMessage) are buffered in
+    // threadlocal pending_messages. Without this flush, they never reach the
+    // outside port's message_queue and the main thread never receives them.
+    DedicatedWorker.flushPendingMessages();
+
+    // Schedule message dispatch if there are messages in the outside port queue
+    // This ensures the main thread's event loop processes the messages
+    if (ctx.worker_v8_context.dedicated_worker) |dedicated_worker| {
+        if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
+            if (getTimerInterface()) |timer| {
+                // Schedule a 0ms timer to dispatch messages in the next event loop iteration
+                // This ensures we're back in the main isolate context when dispatching
+                _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
+            }
+        }
+    }
+
+    // For intervals, reschedule the timer
+    if (ctx.is_interval and !ctx.cancelled) {
+        if (getTimerInterface()) |timer| {
+            // Unregister the old timer ID from tracking
+            if (worker_timer_contexts) |*map| {
+                _ = map.remove(ctx.current_timer_id);
+            }
+
+            // Schedule the next interval
+            const new_timer_id = timer.setTimeout(ctx.interval_delay_ms, workerTimerTrampoline, ctx);
+            if (new_timer_id != 0) {
+                ctx.current_timer_id = new_timer_id;
+                // Re-register with the new timer ID
+                registerWorkerTimerContext(new_timer_id, ctx);
+            }
+        }
+    } else {
+        // For one-shot timers, clean up after execution
+        unregisterWorkerTimerContext(ctx.current_timer_id);
+    }
+}
+
 /// Check if a URL indicates a secure context for worker
 /// Per WPT convention, tests with .https. or .h2. in the filename should be treated
 /// as secure contexts. Plain HTTP localhost is NOT considered secure for WPT tests
@@ -139,6 +322,13 @@ pub const WorkerV8Context = struct {
     is_deinitialized: bool = false,
 
     const Self = @This();
+
+    /// Set the timer interface for worker operations.
+    /// This should be called by the browser/runtime before creating or using workers.
+    /// The timer interface is stored in thread-local storage and shared across all workers.
+    pub fn setTimerInterface(timer: runtime.TimerInterface) void {
+        current_worker_timer_interface = timer;
+    }
 
     /// Create a new V8 context for a worker
     ///
@@ -226,6 +416,9 @@ pub const WorkerV8Context = struct {
             return;
         }
         self.is_deinitialized = true;
+
+        // Clean up worker timer contexts (cancels pending timers, frees memory)
+        cleanupWorkerTimerContexts();
 
         // TODO: Proper cleanup of worker isolate/context
         // Currently we skip V8 cleanup because:
@@ -460,6 +653,62 @@ pub const WorkerV8Context = struct {
                 return error.FunctionCreateFailed;
             };
             const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "importScripts", 13) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register setTimeout() - schedules a one-shot timer
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetTimeoutCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setTimeout", 10) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register clearTimeout() - cancels a one-shot timer
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearTimeoutCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearTimeout", 12) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register setInterval() - schedules a repeating timer
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerSetIntervalCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "setInterval", 11) orelse {
+                return error.StringCreationFailed;
+            };
+            _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
+        }
+
+        // Register clearInterval() - cancels a repeating timer
+        {
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerClearTimeoutCallback, null) orelse {
+                return error.FunctionTemplateCreateFailed;
+            };
+            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
+                return error.FunctionCreateFailed;
+            };
+            const key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "clearInterval", 13) orelse {
                 return error.StringCreationFailed;
             };
             _ = v8.ffi.v8_Object_Set(global_obj, self.context, @ptrCast(key), @ptrCast(func));
@@ -836,7 +1085,13 @@ pub const WorkerV8Context = struct {
         const compile_result = v8.ffi.v8_Script_Compile_Safe(self.context, source_str);
         defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
 
-        if (compile_result.error_info != null) {
+        if (compile_result.error_info) |err_info| {
+            if (err_info.getMessage()) |msg| {
+                std.log.err("[Worker] Script compilation failed: {s}", .{msg});
+            }
+            if (err_info.getStackTrace()) |st| {
+                std.log.err("[Worker] Stack trace: {s}", .{st});
+            }
             return error.CompilationFailed;
         }
 
@@ -846,7 +1101,13 @@ pub const WorkerV8Context = struct {
         const run_result = v8.ffi.v8_Script_Run_Safe(self.context, script);
         defer v8.ffi.v8_FreeScriptRunResult(run_result);
 
-        if (run_result.error_info != null) {
+        if (run_result.error_info) |err_info| {
+            if (err_info.getMessage()) |msg| {
+                std.log.err("[Worker] Script execution failed: {s}", .{msg});
+            }
+            if (err_info.getStackTrace()) |st| {
+                std.log.err("[Worker] Stack trace: {s}", .{st});
+            }
             return error.ExecutionFailed;
         }
 
@@ -900,6 +1161,252 @@ fn disposeContextCallback(engine_ctx: *EngineContext) void {
 // ============================================================================
 // V8 Callbacks for Worker Global Functions
 // ============================================================================
+
+// ============================================================================
+// V8 Timer Callbacks
+// ============================================================================
+
+/// V8 callback for setTimeout() - schedules a one-shot timer
+fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get the callback function (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Get delay (second argument, default 0)
+    var delay_ms: i64 = 0;
+    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
+        const delay_value = info.get(1);
+        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
+            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, v8_context);
+            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0) {
+                delay_ms = @intFromFloat(delay_f64);
+            }
+        }
+    }
+
+    // Get the worker context
+    const worker_ctx = current_worker_context orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Get the timer interface from the browser context (shares libuv event loop)
+    const timer = getTimerInterface() orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Initialize timer storage if needed
+    initWorkerTimerStorage(worker_ctx.allocator);
+
+    // Create Global handle for the callback function
+    const callback_global = v8.ffi.v8_Value_ToGlobal(isolate, callback_value) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Allocate timer context
+    const timer_ctx = worker_ctx.allocator.create(WorkerTimerContext) catch {
+        v8.ffi.v8_Global_Dispose(callback_global);
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    timer_ctx.* = .{
+        .callback_global = callback_global,
+        .isolate = isolate,
+        .context = v8_context,
+        .current_timer_id = 0, // Will be updated after scheduling
+        .is_interval = false,
+        .interval_delay_ms = 0,
+        .allocator = worker_ctx.allocator,
+        .cancelled = false,
+        .worker_v8_context = worker_ctx,
+    };
+
+    // Schedule the timer using the browser's libuv-backed timer interface
+    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
+
+    if (timer_id == 0) {
+        v8.ffi.v8_Global_Dispose(callback_global);
+        worker_ctx.allocator.destroy(timer_ctx);
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Update the timer_id in the context for cleanup tracking
+    timer_ctx.current_timer_id = timer_id;
+
+    // Register for tracking
+    registerWorkerTimerContext(timer_id, timer_ctx);
+
+    // Return timer ID
+    const result = v8.ffi.v8_Integer_New(isolate, @intCast(@as(u32, @truncate(timer_id))));
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// V8 callback for setInterval() - schedules a repeating timer
+fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+
+    // Get the callback function (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    const callback_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Get delay (second argument, default 0)
+    var delay_ms: i64 = 0;
+    if (info.v8_FunctionCallbackInfo_Length() >= 2) {
+        const delay_value = info.get(1);
+        if (v8.ffi.v8_Value_IsNumber(delay_value)) {
+            const delay_f64 = v8.ffi.v8_Value_NumberValue(delay_value, v8_context);
+            if (!std.math.isNan(delay_f64) and !std.math.isInf(delay_f64) and delay_f64 >= 0) {
+                delay_ms = @intFromFloat(delay_f64);
+            }
+        }
+    }
+
+    // Get the worker context
+    const worker_ctx = current_worker_context orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Get the timer interface from the browser context (shares libuv event loop)
+    const timer = getTimerInterface() orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Initialize timer storage if needed
+    initWorkerTimerStorage(worker_ctx.allocator);
+
+    // Create Global handle for the callback function
+    const callback_global = v8.ffi.v8_Value_ToGlobal(isolate, callback_value) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    // Allocate timer context
+    const timer_ctx = worker_ctx.allocator.create(WorkerTimerContext) catch {
+        v8.ffi.v8_Global_Dispose(callback_global);
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
+    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+
+    timer_ctx.* = .{
+        .callback_global = callback_global,
+        .isolate = isolate,
+        .context = v8_context,
+        .current_timer_id = 0, // Will be updated after scheduling
+        .is_interval = true,
+        .interval_delay_ms = delay_u64,
+        .allocator = worker_ctx.allocator,
+        .cancelled = false,
+        .worker_v8_context = worker_ctx,
+    };
+
+    // Schedule the timer using the browser's libuv-backed timer interface
+    const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
+
+    if (timer_id == 0) {
+        v8.ffi.v8_Global_Dispose(callback_global);
+        worker_ctx.allocator.destroy(timer_ctx);
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    }
+
+    // Update the timer_id in the context for cleanup tracking
+    timer_ctx.current_timer_id = timer_id;
+
+    // Register for tracking
+    registerWorkerTimerContext(timer_id, timer_ctx);
+
+    // Return timer ID
+    const result = v8.ffi.v8_Integer_New(isolate, @intCast(timer_id));
+    info.setReturnValue(@ptrCast(result));
+}
+
+/// V8 callback for clearTimeout() / clearInterval() - cancels a timer
+fn workerClearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
+    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
+
+    // Get timer ID (first argument)
+    if (info.v8_FunctionCallbackInfo_Length() < 1) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const id_value = info.get(0);
+    if (!v8.ffi.v8_Value_IsNumber(id_value)) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    };
+
+    const timer_id_f64 = v8.ffi.v8_Value_NumberValue(id_value, v8_context);
+    if (std.math.isNan(timer_id_f64) or std.math.isInf(timer_id_f64) or timer_id_f64 < 0) {
+        if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+            info.setReturnValue(undef_value);
+        }
+        return;
+    }
+
+    const timer_id: runtime.TimerId = @intFromFloat(timer_id_f64);
+
+    // Clean up the timer context (this also cancels via browser_context timer interface)
+    unregisterWorkerTimerContext(timer_id);
+
+    if (v8.ffi.v8_Undefined(isolate)) |undef_value| {
+        info.setReturnValue(undef_value);
+    }
+}
 
 /// V8 callback for postMessage() - sends message to main thread
 ///

@@ -330,6 +330,12 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
             return instance;
         }
 
+        // Set up the timer interface for worker timers (setTimeout, setInterval)
+        // The worker timers use the same libuv-backed timer interface as the main browser
+        if (ctx.timer) |timer| {
+            WorkerV8Context.setTimerInterface(timer);
+        }
+
         // Set up DedicatedWorkerGlobalScope with proper globals
         // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
         v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
