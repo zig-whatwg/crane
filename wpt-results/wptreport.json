@@ -7,14 +7,14 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768569697583,
-  "time_end": 1768569698914,
+  "time_start": 1768588763669,
+  "time_end": 1768588765002,
   "results": [
     {
       "test": "crane/basic.html",
       "status": "OK",
       "message": null,
-      "duration": 23,
+      "duration": 33,
       "subtests": [
         {"name": "Phase 1.1: Basic constructors exist", "status": "PASS", "message": null},
         {"name": "Phase 1.2: Function constructor works", "status": "PASS", "message": null},
@@ -91,7 +91,11 @@
         {"name": "Phase 14.2: Worker microtask ordering correct", "status": "PASS", "message": null},
         {"name": "Phase 14.3: Worker queueMicrotask works", "status": "PASS", "message": null},
         {"name": "Phase 15.1: Worker errors propagate to parent", "status": "PASS", "message": null},
-        {"name": "Phase 15.2: Worker self.onerror works", "status": "PASS", "message": null}
+        {"name": "Phase 15.2: Worker self.onerror works", "status": "PASS", "message": null},
+        {"name": "Phase 16.1: Worker close() exists and can be called", "status": "PASS", "message": null},
+        {"name": "Phase 17.1: Multiple workers can run concurrently", "status": "PASS", "message": null},
+        {"name": "Phase 18.1: Worker name option works", "status": "PASS", "message": null},
+        {"name": "Phase 19.1: Worker can receive and use MessagePort", "status": "PASS", "message": null}
       ]
     }
   ]
