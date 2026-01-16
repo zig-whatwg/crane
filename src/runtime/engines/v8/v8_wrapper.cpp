@@ -3993,6 +3993,9 @@ void v8_FunctionTemplate_SetClassName(Global<FunctionTemplate>* tpl, Global<Stri
 
 Global<ObjectTemplate>* v8_FunctionTemplate_InstanceTemplate(Global<FunctionTemplate>* tpl) {
     Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) {
+        return nullptr;
+    }
     HandleScope handle_scope(isolate);
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
     Local<ObjectTemplate> instance_tpl = local_tpl->InstanceTemplate();
@@ -8189,13 +8192,13 @@ class HeapHandleScope : public HandleScope {
     HeapHandleScope(Isolate* isolate) : HandleScope() {
         Initialize(isolate);
     }
-    
+
     // Override base class's private new/delete with public versions
     // This is valid C++ - derived class can expose hidden base class members
     static void* operator new(size_t size) {
         return ::operator new(size);
     }
-    
+
     static void operator delete(void* ptr) {
         ::operator delete(ptr);
     }

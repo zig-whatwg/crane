@@ -119,6 +119,33 @@ pub fn deinitGlobalBlobURLStore(allocator: std.mem.Allocator) void {
 }
 
 // ============================================================================
+// Document Origin for Blob URLs
+// ============================================================================
+
+/// Thread-local storage for the current document origin.
+/// Used by URL.createObjectURL to associate blobs with the correct origin.
+/// This enables same-origin validation when blobs are resolved.
+threadlocal var current_document_origin: ?[]const u8 = null;
+
+/// Set the document origin for blob URL operations.
+/// This should be called by the browser context before executing scripts
+/// that might create blob URLs (URL.createObjectURL).
+pub fn setDocumentOrigin(origin: []const u8) void {
+    current_document_origin = origin;
+}
+
+/// Get the current document origin for blob URL operations.
+/// Returns null if no origin has been set.
+pub fn getDocumentOrigin() ?[]const u8 {
+    return current_document_origin;
+}
+
+/// Clear the document origin (for cleanup after context destruction).
+pub fn clearDocumentOrigin() void {
+    current_document_origin = null;
+}
+
+// ============================================================================
 // Algorithms
 // ============================================================================
 

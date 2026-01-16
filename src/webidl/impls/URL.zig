@@ -889,7 +889,7 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
 
     // Get origin from context (use "null" origin for file:// or opaque origins)
     // Per spec, the origin is the serialization of the entry settings object's origin
-    const origin = "null"; // Default to "null" origin for now
+    const origin = file_mod.getDocumentOrigin() orelse "null";
 
     // Create the blob URL
     const blob_url = try store.createObjectURL(blob_internal.blob_data, origin);

@@ -398,6 +398,44 @@ pub fn setPropertyOnInstance(target: *Instance, property_name: []const u8, value
     try setProperty(engine_ctx, target_wrapper, property_name, value_slice);
 }
 
+/// Set a property on a JSValue target using JavaScript [[Set]] semantics
+///
+/// This is used by [PutForwards] extended attribute when the getter returns a JSValue
+/// (as opposed to an Instance). Per WebIDL spec §4.3.10: setting the attribute forwards
+/// the assignment to a property on the attribute's current value.
+///
+/// Arguments:
+///   - ctx_instance: A runtime.Instance used to obtain the engine context
+///   - target: The target JSValue (must be a handle to a V8 object)
+///   - property_name: Name of the property to set (e.g., "cssText")
+///   - value: String value to assign
+///
+/// Errors:
+///   - error.NoEngine if no JS engine is configured
+///   - error.TypeError if target is not an object handle
+///   - error.OperationFailed if [[Set]] returns false
+pub fn setPropertyOnJSValue(ctx_instance: *Instance, target: JSValue, property_name: []const u8, value: DOMString) !void {
+    // Get context from the instance
+    const ctx = ctx_instance.ctx;
+
+    // Get the engine interface
+    const engine = ctx.getEngine() orelse return error.NoEngine;
+
+    // Get the engine context
+    const engine_ctx = ctx.getEngineContext() orelse return error.NoEngine;
+
+    // Extract the V8 object handle from the JSValue
+    const target_wrapper = switch (target) {
+        .handle => |h| h.ptr,
+        else => return error.TypeError, // JSValue must be a handle for [PutForwards]
+    };
+
+    // Use engine's setPropertyOnObject to set the property with [[Set]] semantics
+    const setProperty = engine.setPropertyOnObject orelse return error.NoEngine;
+    const value_slice = value.asSlice();
+    try setProperty(engine_ctx, target_wrapper, property_name, value_slice);
+}
+
 /// Define an own property on a runtime.Instance using JavaScript [[DefineOwnProperty]] semantics
 ///
 /// This is used by [Replaceable] extended attribute to create own properties that shadow

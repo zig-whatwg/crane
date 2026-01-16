@@ -244,7 +244,6 @@ pub const RTCDataChannelState = @import("RTCDataChannelState.zig").RTCDataChanne
 pub const RTCDegradationPreference = @import("RTCDegradationPreference.zig").RTCDegradationPreference;
 pub const RTCDtlsRole = @import("RTCDtlsRole.zig").RTCDtlsRole;
 pub const RTCDtlsTransportState = @import("RTCDtlsTransportState.zig").RTCDtlsTransportState;
-pub const RTCEncodedVideoFrameType = @import("RTCEncodedVideoFrameType.zig").RTCEncodedVideoFrameType;
 pub const RTCErrorDetailType = @import("RTCErrorDetailType.zig").RTCErrorDetailType;
 pub const RTCErrorDetailTypeIdp = @import("RTCErrorDetailTypeIdp.zig").RTCErrorDetailTypeIdp;
 pub const RTCIceCandidateType = @import("RTCIceCandidateType.zig").RTCIceCandidateType;

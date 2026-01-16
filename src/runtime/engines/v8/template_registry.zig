@@ -182,14 +182,32 @@ pub fn register(
     }
 }
 
-/// Get a registered FunctionTemplate by interface name
+/// Get a registered FunctionTemplate by interface name for the current isolate
+///
+/// IMPORTANT: Templates are isolate-specific! This function only returns
+/// templates that were registered for the current V8 isolate.
+/// This is critical for multi-isolate scenarios (Workers, etc.).
 pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
+    const current_isolate = v8.v8_Isolate_GetCurrent();
+    return getTemplateForIsolate(interface_name, current_isolate);
+}
+
+/// Get a registered FunctionTemplate by interface name for a specific isolate
+///
+/// Templates are isolate-specific in V8. A Global<FunctionTemplate> created
+/// in one isolate cannot be used in another isolate. This function ensures
+/// we only return templates that match the specified isolate.
+pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) ?*v8.FunctionTemplate {
     ensureInitialized();
+
+    // If no isolate provided, can't match
+    if (isolate == null) return null;
 
     // Only iterate over registered templates, not the full array
     for (templates[0..template_count]) |entry| {
         if (entry) |e| {
-            if (std.mem.eql(u8, e.name, interface_name)) {
+            // Must match BOTH name AND isolate
+            if (std.mem.eql(u8, e.name, interface_name) and e.isolate == isolate.?) {
                 return e.template;
             }
         }
@@ -271,9 +289,17 @@ pub fn wrapInstanceAsV8Object(
     // ========================================
 
     // Look up the FunctionTemplate for this interface
-    const template = getTemplate(interface_name) orelse {
-        // Template not registered - this shouldn't happen for core interfaces
-        // but can happen for interfaces not yet implemented
+    // First try the template registry (for templates already registered for this isolate)
+    // Then fall back to on-demand creation for interfaces not yet registered
+    const template = getTemplate(interface_name) orelse blk: {
+        // Template not registered for this isolate - try on-demand creation
+        // This handles multi-isolate scenarios (Workers) where templates are isolate-specific
+        const interface_bindings = @import("interface_bindings.zig");
+        const created_template = interface_bindings.createTemplateOnDemandByName(interface_name, isolate);
+        if (created_template) |t| {
+            break :blk t;
+        }
+        // Template still not found - interface not implemented or not registered
         return error.TemplateNotRegistered;
     };
 

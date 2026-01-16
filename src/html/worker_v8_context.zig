@@ -605,6 +605,12 @@ pub const WorkerV8Context = struct {
         const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
         defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
+        // Set current_worker_context so V8 callbacks (like postMessage) can access it
+        // This allows workerPostMessageCallback to get the DedicatedWorker reference
+        const prev_context = current_worker_context;
+        current_worker_context = self;
+        defer current_worker_context = prev_context;
+
         return self.executeScriptInternal(source);
     }
 

@@ -556,7 +556,6 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
 
     // Execute the script in worker context
     // The worker's executeScript() enters/exits its own isolate and creates its own HandleScope.
-    // After this returns, V8's HandleScope state for the main isolate is corrupted.
     dedicated_worker.executeScript(script) catch |err| {
         std.log.warn("Failed to execute worker script: {}", .{err});
     };
@@ -646,12 +645,6 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         v8_engine.ffi.v8_Isolate_Exit(isolate);
     };
 
-    // Create HandleScope for V8 handle allocation
-    // This is CRITICAL when called from a timer callback where there's no
-    // existing HandleScope (unlike when called from JavaScript execution).
-    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
-    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
-
     // Verify we have a valid context, enter if needed
     const current_context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate);
     const need_enter_context = (current_context == null) or (current_context != v8_context);
@@ -661,6 +654,11 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     defer if (need_enter_context) {
         v8_engine.ffi.v8_Context_Exit(v8_context);
     };
+
+    // NOTE: We don't create our own HandleScope here because:
+    // 1. runOnce already creates a HandleScope that covers all timer callbacks
+    // 2. The C++ wrapper functions also create their own HandleScopes
+    // 3. Creating a HeapHandleScope here seems to cause issues with V8's internal tracking
 
     // Get the message data - check if it's a JSON string from worker
     // The worker sends JSON-serialized messages for cross-isolate safety
@@ -825,23 +823,24 @@ fn invokeMessageListeners(
 
     // Step 2: Invoke the onmessage handler if set
     if (internal.onmessage_handle) |onmessage_global| {
-        // Retrieve Local handle from Global handle
-        const local_value = onmessage_global.get(isolate) orelse {
-            std.log.warn("Worker.invokeMessageListeners: Failed to get Local from GlobalHandle", .{});
-            return;
-        };
-
-        // Verify it's a function
-        if (!v8_engine.ffi.v8_Value_IsFunction(@ptrCast(local_value))) {
+        // Verify it's a function using the Global handle directly
+        // v8_Value_IsFunction expects a Global<Value>* which is what rawPtr() returns
+        if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.rawPtr())) {
             std.log.warn("Worker.invokeMessageListeners: onmessage is not a function", .{});
             return;
         }
-        const function: *v8_engine.ffi.Function = @ptrCast(local_value);
+
+        // Get the function as a Global<Function>* for the call
+        // We can safely cast since we verified it's a function above
+        const global_func = v8_engine.ffi.v8_Global_ToFunction(onmessage_global.rawPtr()) orelse {
+            std.log.warn("Worker.invokeMessageListeners: Failed to convert to function", .{});
+            return;
+        };
 
         // Call the V8 function with the MessageEvent as argument
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-        _ = v8_engine.ffi.v8_Function_Call(function, v8_context, @ptrCast(undefined_recv), 1, &args);
+        _ = v8_engine.ffi.v8_Function_Call(global_func, v8_context, @ptrCast(undefined_recv), 1, &args);
     }
 }
 

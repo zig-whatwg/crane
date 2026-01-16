@@ -39,9 +39,47 @@ const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
 const navigation = browser_mod.navigation;
 
+// File module for blob URL store access
+const file = @import("file");
+
+// HTML workers module for blob resolver registration
+const html = @import("html");
+const workers = html.workers;
+
 const test_harness = @import("test_harness.zig");
 const test_parser = @import("test_parser.zig");
 const config = @import("config.zig");
+
+/// WPT test origin - all tests run on this origin
+const WPT_ORIGIN = "http://web-platform.test:8000";
+
+/// Blob URL resolver callback for Web Workers.
+/// This function is registered with the workers module to resolve blob: URLs
+/// when Workers are created with blob URLs (e.g., new Worker(URL.createObjectURL(blob))).
+///
+/// Per HTML spec, blob URLs are same-origin with their creating context.
+/// This resolver accesses the global BlobURLStore to look up blobs.
+fn resolveBlobUrl(_: std.mem.Allocator, url: []const u8, origin: []const u8) ?workers.BlobResolveResult {
+    // Get the global blob URL store
+    const store = file.getGlobalBlobURLStore() orelse {
+        std.debug.print("resolveBlobUrl: No global blob URL store available\n", .{});
+        return null;
+    };
+
+    // Resolve the blob URL (handles same-origin validation)
+    const blob_data = store.resolve(url, origin) orelse {
+        std.debug.print("resolveBlobUrl: Blob not found for URL: {s} (origin: {s})\n", .{ url, origin });
+        return null;
+    };
+
+    // Return the blob data without copying (BlobData is persistent)
+    // Note: BlobData uses mime_type field (not content_type)
+    return .{
+        .bytes = blob_data.bytes,
+        .content_type = blob_data.mime_type,
+        .owns_bytes = false, // BlobURLStore owns the data
+    };
+}
 
 /// Apply WPT URL rewrites (matching wpt serve behavior from tools/serve/serve.py)
 /// These rewrites map friendly URLs to the actual file locations
@@ -88,6 +126,11 @@ pub const WptBrowser = struct {
             .tests_run = 0,
         };
 
+        // Register the blob URL resolver for Web Workers.
+        // This allows Workers created with blob URLs (new Worker(URL.createObjectURL(blob)))
+        // to resolve their script content from the BlobURLStore.
+        workers.setBlobResolver(resolveBlobUrl);
+
         // Pre-load testharness.js for efficiency
         self.testharness_js = self.loadWptScript("resources/testharness.js") catch null;
         self.testharnessreport_js = self.loadWptScript("resources/testharnessreport.js") catch null;
@@ -97,6 +140,11 @@ pub const WptBrowser = struct {
 
     /// Cleanup
     pub fn deinit(self: *WptBrowser) void {
+        // Clear the blob resolver and document origin registrations
+        workers.clearBlobResolver();
+        workers.clearDocumentOrigin();
+        file.clearDocumentOrigin();
+
         if (self.testharness_js) |js| {
             self.allocator.free(js);
         }
@@ -114,17 +162,17 @@ pub const WptBrowser = struct {
         defer self.allocator.free(full_path);
 
         // Use cwd-relative open since wpt_root may not be absolute
-        const file = std.fs.cwd().openFile(full_path, .{}) catch |err| {
+        const script_file = std.fs.cwd().openFile(full_path, .{}) catch |err| {
             std.debug.print("Failed to open WPT script: {s} - {}\n", .{ full_path, err });
             return err;
         };
-        defer file.close();
+        defer script_file.close();
 
-        const stat = try file.stat();
+        const stat = try script_file.stat();
         const content = try self.allocator.alloc(u8, stat.size);
         errdefer self.allocator.free(content);
 
-        const bytes_read = try file.readAll(content);
+        const bytes_read = try script_file.readAll(content);
         if (bytes_read != stat.size) {
             return error.IncompleteRead;
         }
@@ -162,6 +210,13 @@ pub const WptBrowser = struct {
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
+
+        // Set the document origin for blob URL operations.
+        // Both URL.createObjectURL (to store blobs with the correct origin)
+        // and Workers (to resolve blob URLs with same-origin validation)
+        // need to know the current document origin.
+        file.setDocumentOrigin(WPT_ORIGIN);
+        workers.setDocumentOrigin(WPT_ORIGIN);
 
         // Load testharness.js
         try self.loadTestHarness(ctx);
@@ -208,6 +263,13 @@ pub const WptBrowser = struct {
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
+
+        // Set the document origin for blob URL operations.
+        // Both URL.createObjectURL (to store blobs with the correct origin)
+        // and Workers (to resolve blob URLs with same-origin validation)
+        // need to know the current document origin.
+        file.setDocumentOrigin(WPT_ORIGIN);
+        workers.setDocumentOrigin(WPT_ORIGIN);
 
         // Load testharness.js BEFORE loading the page
         // This ensures testharness globals are available when scripts in HTML execute

@@ -134,6 +134,13 @@ pub const setDocumentOrigin = script_fetch.setDocumentOrigin;
 pub const getDocumentOrigin = script_fetch.getDocumentOrigin;
 pub const clearDocumentOrigin = script_fetch.clearDocumentOrigin;
 
+// Blob URL Resolution (callback-based to avoid circular dependencies)
+pub const BlobResolveResult = script_fetch.BlobResolveResult;
+pub const BlobResolverFn = script_fetch.BlobResolverFn;
+pub const setBlobResolver = script_fetch.setBlobResolver;
+pub const getBlobResolver = script_fetch.getBlobResolver;
+pub const clearBlobResolver = script_fetch.clearBlobResolver;
+
 // Message Channel (postMessage/MessageEvent)
 pub const message_channel = @import("message_channel.zig");
 pub const WorkerPortPair = message_channel.WorkerPortPair;

@@ -55,6 +55,57 @@ pub fn clearDocumentOrigin() void {
 }
 
 // ============================================================================
+// Blob URL Resolution Callback
+// ============================================================================
+
+/// Result of resolving a blob URL
+pub const BlobResolveResult = struct {
+    /// The blob's bytes
+    bytes: []const u8,
+    /// The blob's MIME type
+    content_type: []const u8,
+    /// Whether we own the bytes (caller should free)
+    owns_bytes: bool,
+};
+
+/// Callback function type for resolving blob URLs.
+/// This allows external code (with access to the file module) to register
+/// a resolver that can access the BlobURLStore.
+///
+/// Parameters:
+///   - allocator: Allocator for any needed allocations
+///   - url: The full blob URL (e.g., "blob:http://localhost:8000/uuid")
+///   - origin: The requesting origin for same-origin validation
+///
+/// Returns: BlobResolveResult with blob bytes and content type, or null if not found
+pub const BlobResolverFn = *const fn (
+    allocator: Allocator,
+    url: []const u8,
+    origin: []const u8,
+) ?BlobResolveResult;
+
+/// Thread-local storage for the blob resolver callback.
+/// Set by browser context initialization when it has access to the file module.
+threadlocal var blob_resolver_callback: ?BlobResolverFn = null;
+
+/// Register a blob resolver callback.
+/// This should be called by the browser context during initialization,
+/// when it has access to the file module's BlobURLStore.
+pub fn setBlobResolver(resolver: BlobResolverFn) void {
+    blob_resolver_callback = resolver;
+}
+
+/// Get the currently registered blob resolver.
+pub fn getBlobResolver() ?BlobResolverFn {
+    return blob_resolver_callback;
+}
+
+/// Clear the blob resolver (for cleanup).
+pub fn clearBlobResolver() void {
+    blob_resolver_callback = null;
+}
+
+// ============================================================================
 // Worker Script Fetch Errors
 // ============================================================================
 
@@ -262,12 +313,72 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 }
 
 /// Handle blob: URL for worker scripts
+///
+/// Per HTML Standard § 10.2.5 and Fetch Standard § 4.3:
+/// - Blob URLs must be same-origin with the requesting context
+/// - The blob URL entry is used to obtain the blob object
+/// - Returns the blob's bytes as the script source
+///
+/// This uses a callback-based approach to access the BlobURLStore,
+/// which is registered by the browser context during initialization.
+/// This design avoids circular module dependencies (html_core cannot import file).
 fn handleBlobUrl(allocator: Allocator, url: []const u8) WorkerScriptError!FetchedScript {
-    _ = allocator;
-    _ = url;
-    // Blob URLs require access to the blob store
-    // For now, return an error
-    return WorkerScriptError.FetchFailed;
+    // Get the blob resolver callback
+    const resolver = blob_resolver_callback orelse {
+        // No resolver registered - blob URL resolution not available
+        std.log.warn("handleBlobUrl: No blob resolver registered", .{});
+        return WorkerScriptError.FetchFailed;
+    };
+
+    // Get the requesting origin for same-origin validation
+    // Per spec, the origin comes from the creating context (document or worker)
+    const origin = current_document_origin orelse {
+        std.log.warn("handleBlobUrl: No document origin set for blob URL resolution", .{});
+        return WorkerScriptError.FetchFailed;
+    };
+
+    // Call the resolver to get the blob data
+    // The resolver handles:
+    // 1. Looking up the blob URL in the BlobURLStore
+    // 2. Validating same-origin policy
+    // 3. Returning the blob's bytes and content type
+    const result = resolver(allocator, url, origin) orelse {
+        // Blob URL not found or cross-origin access denied
+        std.log.warn("handleBlobUrl: Blob URL not found or access denied: {s}", .{url});
+        return WorkerScriptError.FetchFailed;
+    };
+
+    // Validate content type is JavaScript
+    // Per HTML spec, worker scripts must be JavaScript MIME type
+    if (!isJavaScriptMimeType(result.content_type)) {
+        std.log.warn("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{result.content_type});
+        if (result.owns_bytes) {
+            allocator.free(@constCast(result.bytes));
+        }
+        return WorkerScriptError.ParseError;
+    }
+
+    // Create FetchedScript from blob data
+    // Note: FetchedScript.init duplicates the source, so we free our copy after if owned
+    const fetched = FetchedScript.init(
+        allocator,
+        result.bytes,
+        url, // Blob URL is the final URL
+        result.content_type,
+        true, // Blob URLs are always same-origin (enforced by resolver)
+    ) catch {
+        if (result.owns_bytes) {
+            allocator.free(@constCast(result.bytes));
+        }
+        return WorkerScriptError.OutOfMemory;
+    };
+
+    // Free the original bytes if we own them (FetchedScript made a copy)
+    if (result.owns_bytes) {
+        allocator.free(@constCast(result.bytes));
+    }
+
+    return fetched;
 }
 
 /// Fetch an HTTP(S) worker script using the fetch module.

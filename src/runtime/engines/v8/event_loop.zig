@@ -375,10 +375,6 @@ pub const V8EventLoop = struct {
         defer self.in_run_once = false;
 
         // CRITICAL: Create HandleScope for V8 operations.
-        // Timer callbacks and task callbacks may do V8 operations (creating objects,
-        // invoking functions, etc.). V8 requires an active HandleScope for these.
-        // This is the single entry point for all async work, so protecting it here
-        // covers all timer callbacks, task callbacks, and microtask processing.
         const handle_scope = v8_ffi.v8_HandleScope_New(self.isolate);
         defer v8_ffi.v8_HandleScope_Dispose(handle_scope);
 

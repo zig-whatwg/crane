@@ -3073,7 +3073,14 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("        \n");
             try writer.writeAll("        // Use JavaScript [[Set]] semantics to set the forwarded property\n");
             try writer.writeAll("        // This respects prototype chain and user-defined setters\n");
-            try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
+            // Check if getter returns JSValue (which wraps V8 objects directly) vs Instance
+            // If JSValue, use setPropertyOnJSValue which handles V8 handles
+            // If Instance, use setPropertyOnInstance which wraps the instance first
+            if (std.mem.eql(u8, return_type, "runtime.JSValue")) {
+                try writer.print("        try runtime.setPropertyOnJSValue(instance, target, \"{s}\", value);\n", .{forwarded_property});
+            } else {
+                try writer.print("        try runtime.setPropertyOnInstance(target, \"{s}\", value);\n", .{forwarded_property});
+            }
             try writer.writeAll("    }\n\n");
         } else if (is_replaceable) {
             // [Replaceable] setter - creates an own property on the object

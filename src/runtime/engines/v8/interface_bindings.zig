@@ -1244,11 +1244,6 @@ pub fn createTemplateOnDemandByName(
                 return null;
             }
 
-            // Debug: Log on-demand template creation
-            if (std.mem.eql(u8, interface_name, "MessageEvent")) {
-                std.debug.print("[ON-DEMAND] Creating MessageEvent template on-demand\n", .{});
-            }
-
             // Create the template
             const Binding = V8Interface(InterfaceType);
             const template = Binding.createTemplate(isolate);
