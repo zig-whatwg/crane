@@ -2115,17 +2115,17 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     };
     defer fetch_result.timing_info.deinit();
 
-    // Create runtime context for Response creation
-    var ctx_data = runtime.createNullContext(allocator) catch {
+    // Get the runtime context from context_manager (properly managed, tied to V8 context)
+    // This ensures the context lives as long as the V8 context and has engine support
+    const runtime_ctx = context_manager.getOrCreateWithIsolate(v8_ctx, isolate, allocator) catch {
         fetch_result.response.deinit();
-        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create context");
+        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to get runtime context");
         return;
     };
-    defer ctx_data.deinit();
 
     // Create Response WebIDL wrapper from internal response
     const ResponseImpl = impls.Response;
-    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, &ctx_data) catch {
+    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, runtime_ctx) catch {
         fetch_result.response.deinit();
         rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create Response object");
         return;

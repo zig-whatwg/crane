@@ -36,6 +36,7 @@ const Allocator = std.mem.Allocator;
 
 // V8 FFI through runtime module
 const v8 = @import("v8");
+const context_manager = v8.context_manager;
 const runtime = @import("runtime");
 
 // V8Interface for registering constructors
@@ -2260,17 +2261,17 @@ fn workerFetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
     };
     defer fetch_result.timing_info.deinit();
 
-    // Create runtime context for Response creation
-    var ctx_data = runtime.createNullContext(allocator) catch {
+    // Get the runtime context from context_manager (properly managed, tied to V8 context)
+    // This ensures the context lives as long as the V8 context and has engine support
+    const runtime_ctx = context_manager.getOrCreateWithIsolate(v8_ctx, isolate, allocator) catch {
         fetch_result.response.deinit();
-        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create context");
+        workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to get runtime context");
         return;
     };
-    defer ctx_data.deinit();
 
     // Create Response WebIDL wrapper from internal response
     const ResponseImpl = impls.Response;
-    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, &ctx_data) catch {
+    const response_instance = ResponseImpl.fromInternalResponse(allocator, fetch_result.response, runtime_ctx) catch {
         fetch_result.response.deinit();
         workerRejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create Response object");
         return;
