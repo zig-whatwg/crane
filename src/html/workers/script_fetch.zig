@@ -323,6 +323,8 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 /// which is registered by the browser context during initialization.
 /// This design avoids circular module dependencies (html_core cannot import file).
 fn handleBlobUrl(allocator: Allocator, url: []const u8) WorkerScriptError!FetchedScript {
+    std.log.debug("handleBlobUrl: resolving URL: {s}", .{url});
+
     // Get the blob resolver callback
     const resolver = blob_resolver_callback orelse {
         // No resolver registered - blob URL resolution not available
@@ -330,12 +332,16 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
         return WorkerScriptError.FetchFailed;
     };
 
+    std.log.debug("handleBlobUrl: blob resolver callback is set", .{});
+
     // Get the requesting origin for same-origin validation
     // Per spec, the origin comes from the creating context (document or worker)
     const origin = current_document_origin orelse {
         std.log.warn("handleBlobUrl: No document origin set for blob URL resolution", .{});
         return WorkerScriptError.FetchFailed;
     };
+
+    std.log.debug("handleBlobUrl: requesting with origin: {s}", .{origin});
 
     // Call the resolver to get the blob data
     // The resolver handles:

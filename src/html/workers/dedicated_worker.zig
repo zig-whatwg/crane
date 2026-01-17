@@ -548,6 +548,36 @@ pub const DedicatedWorker = struct {
         pending_messages.clearRetainingCapacity();
     }
 
+    /// Flush pending messages and return the unique ports that received messages.
+    /// This allows callers to process messages on all affected ports.
+    pub fn flushPendingMessagesAndGetPorts(allocator: std.mem.Allocator) !std.ArrayListUnmanaged(*message_channel.WorkerPort) {
+        var ports = std.ArrayListUnmanaged(*message_channel.WorkerPort){};
+        errdefer ports.deinit(allocator);
+
+        for (pending_messages.items) |pending| {
+            // Append message to the port's message queue
+            pending.port.message_queue.append(pending.port.allocator, pending.msg) catch {
+                // Clean up message if append fails
+                pending.msg.deinit();
+                continue;
+            };
+
+            // Track unique ports
+            var found = false;
+            for (ports.items) |p| {
+                if (p == pending.port) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                try ports.append(allocator, pending.port);
+            }
+        }
+        pending_messages.clearRetainingCapacity();
+        return ports;
+    }
+
     /// Get the count of pending messages (for debugging).
     pub fn getPendingMessageCount() usize {
         return pending_messages.items.len;

@@ -257,139 +257,39 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     var state = instance.getState(State);
     state.own._internal = internal_state;
 
-    // Try to create the DedicatedWorker using the global timer backend
-    // The timer backend is portable (uses std.time) and works on all platforms
-    if (platform.getDefaultTimerBackend(ctx.allocator)) |timer_backend| {
-        const dedicated_worker = DedicatedWorker.init(
-            ctx.allocator,
-            timer_backend,
-            url_copy,
-            .{
-                .name = name_copy,
-                .worker_type = worker_type,
-                .credentials = credentials,
-            },
-        ) catch |err| {
-            // Log error but don't fail - worker will be in "not started" state
-            std.log.warn("Failed to create DedicatedWorker: {}", .{err});
-            return instance;
-        };
-        internal_state.dedicated_worker = dedicated_worker;
+    // CRITICAL: Defer ALL worker creation to a timer callback!
+    // For nested workers (Worker created from within another Worker),
+    // entering/exiting the worker isolate during the constructor corrupts
+    // the calling isolate's HandleScope state, causing V8 crashes.
+    //
+    // Solution: The constructor only stores parameters and schedules
+    // the actual worker creation for later via setTimeout(0).
+    // This runs after:
+    // 1. The constructor returns and V8 wraps the instance
+    // 2. The calling script finishes
+    // 3. The event loop runs the scheduled task
+    //
+    // Per HTML Standard § 10.2.5 "Run a worker": worker creation is asynchronous
+    //
+    // For nested workers, ctx.timer may be null (context lookup may fail to find
+    // the registered worker context with timer). In this case, we fall back to
+    // the thread-local timer which was set when the parent worker's context was
+    // set up. This timer remains available during the parent worker's script
+    // execution, which is when nested workers are created.
+    const timer = ctx.timer orelse WorkerV8Context.getTimerInterface();
 
-        // Store reference to Worker instance for message callbacks
-        // This allows handleMessageFromWorkerCallback to find the Worker
-        dedicated_worker.setUserData(instance);
-
-        // Set up message handler on outside port to receive messages from worker
-        // When the worker calls postMessage(), the message arrives at outside_port
-        // and we dispatch to the onmessage handler.
-        dedicated_worker.setOnMessage(handleMessageFromWorkerCallback);
-
-        // Set up error handler to receive errors from worker
-        // When an uncaught error occurs in the worker and self.onerror doesn't handle it,
-        // the error is dispatched to worker.onerror in the parent context.
-        dedicated_worker.setParentErrorCallback(handleErrorFromWorkerCallback);
-
-        // Enable message dispatch on outside port
-        // Messages are queued until start() is called
-        dedicated_worker.startMessageQueue();
-
-        // Fetch the worker script FIRST to get the resolved URL
-        // Per HTML Standard § 10.2.5 "Run a worker": resolve URL before creating context
-        // For WPT tests, scripts are fetched from the WPT server or resolved as data: URLs
-        const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
-            .worker_type = worker_type,
-            .origin = null,
-        }) catch |err| {
-            // Log error but don't fail construction - worker enters error state
-            // Per spec, errors during script fetch should fire an error event
-            std.log.warn("Failed to fetch worker script: {}", .{err});
-            return instance;
-        };
-        // Don't defer deinit yet - we need to use final_url for V8Context
-
-        // Create V8 context for worker execution using the RESOLVED URL
-        // This creates a separate V8 isolate for the worker with its own context
-        // Using fetched_script.final_url ensures importScripts can resolve relative paths
-        const v8_context = WorkerV8Context.init(
-            ctx.allocator,
-            fetched_script.final_url, // Use resolved URL, not original relative URL
-            worker_type,
-        ) catch |err| {
-            std.log.warn("Failed to create WorkerV8Context: {}", .{err});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        };
-        internal_state.v8_context = v8_context;
-
-        // IMPORTANT: Create the WorkerContext FIRST before wiring up engine context
-        // This calls agent.startWithContext() which creates the worker_context
-        dedicated_worker.startWithContext() catch |err| {
-            std.log.warn("Failed to start worker context: {}", .{err});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        };
-
-        // Now wire up the V8 context to the WorkerAgent's WorkerContext
-        // This connects the engine callbacks (compileAndRunScript, etc.) to V8 FFI
-        if (dedicated_worker.agent.worker_context) |worker_ctx| {
-            worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
-        } else {
-            std.log.warn("WorkerContext not created after startWithContext", .{});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        }
-
-        // Set up the timer interface for worker timers (setTimeout, setInterval)
-        // The worker timers use the same libuv-backed timer interface as the main browser
-        if (ctx.timer) |timer| {
-            WorkerV8Context.setTimerInterface(timer);
-        }
-
-        // Set up DedicatedWorkerGlobalScope with proper globals
-        // This adds self.GLOBAL, postMessage, close, importScripts, console, etc.
-        v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
-            std.log.warn("Failed to set up worker global scope: {}", .{err});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        };
-
-        // Start the worker's message queue so messages can be dispatched
-        dedicated_worker.startWorkerMessageQueue();
-
-        // Store the fetched script source in internal state for deferred execution
-        // We need to copy the source because fetched_script will be freed
-        const script_source_copy = ctx.allocator.dupe(u8, fetched_script.source) catch |err| {
-            std.log.warn("Failed to copy worker script source: {}", .{err});
-            @constCast(&fetched_script).deinit();
-            return instance;
-        };
-        internal_state.pending_script = script_source_copy;
-
-        // Clean up fetched script metadata (source is copied)
-        @constCast(&fetched_script).deinit();
-
-        // CRITICAL: DO NOT execute worker script inside the constructor!
-        // Entering/exiting the worker isolate during constructor execution
-        // corrupts the main isolate's HandleScope state, causing V8 crashes.
-        //
-        // Instead, schedule worker script execution via setTimeout(0).
-        // This runs after:
-        // 1. The constructor returns and V8 wraps the instance
-        // 2. JavaScript continues (e.g., fetch_tests_from_worker sets up handlers)
-        // 3. The current script finishes
-        // 4. The event loop runs the scheduled task
-        if (ctx.timer) |timer| {
-            _ = timer.setTimeout(0, executeWorkerScriptCallback, instance);
-        } else {
-            // No timer available - fall back to synchronous execution
-            // WARNING: This may cause crashes due to HandleScope issues
-            std.log.warn("Worker: no timer available, executing script synchronously (may crash)", .{});
-            _ = executeWorkerScriptSync(internal_state);
-        }
-    } else |_| {
-        // Timer backend initialization failed - worker remains in "not started" state
-        std.log.warn("TimerBackend not available, worker will not start", .{});
+    if (timer) |t| {
+        // Use 1ms delay instead of 0 to ensure the callback fires in a
+        // FUTURE event loop iteration, not the current one. With 0 delay,
+        // the callback might fire immediately when the event loop is polled
+        // during the parent worker's script execution, causing HandleScope
+        // corruption when we enter the nested worker's isolate.
+        _ = t.setTimeout(1, initializeWorkerCallback, instance);
+    } else {
+        // No timer available - fall back to synchronous initialization
+        // WARNING: This may cause crashes for nested workers
+        std.log.warn("Worker: no timer available, using synchronous initialization", .{});
+        initializeWorkerSync(internal_state, ctx);
     }
 
     return instance;
@@ -505,6 +405,152 @@ pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHand
     }
 }
 
+/// Timer callback for initializing the worker (deferred from constructor)
+///
+/// CRITICAL: ALL worker creation is deferred to this callback for nested workers.
+/// Entering/exiting the worker isolate during a constructor disrupts the calling
+/// isolate's HandleScope state, causing V8 crashes.
+///
+/// This callback does all the heavy work:
+/// 1. Creates DedicatedWorker with timer backend
+/// 2. Fetches and resolves the script URL
+/// 3. Creates WorkerV8Context (new isolate)
+/// 4. Sets up DedicatedWorkerGlobalScope
+/// 5. Schedules script execution
+fn initializeWorkerCallback(user_data: ?*anyopaque) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
+    const internal = getInternal(instance) orelse return;
+
+    // Get the stored context - we need it for timer operations
+    const ctx = internal.ctx orelse {
+        std.log.warn("Worker: no runtime context available for deferred initialization", .{});
+        return;
+    };
+    initializeWorkerSync(internal, ctx);
+}
+
+/// Initialize worker synchronously (internal helper)
+/// Called from either initializeWorkerCallback or synchronous fallback
+///
+/// This does all the heavy work that was previously in the constructor:
+/// - Creates DedicatedWorker
+/// - Fetches script
+/// - Creates V8 context (enters/exits worker isolate)
+/// - Sets up global scope
+/// - Schedules script execution
+fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
+    const allocator = internal.allocator;
+    const url = internal.script_url;
+    const name = internal.name;
+    const worker_type = internal.worker_type;
+    const credentials = internal.credentials;
+
+    // Try to create the DedicatedWorker using the global timer backend
+    const timer_backend = platform.getDefaultTimerBackend(allocator) catch |err| {
+        std.log.warn("TimerBackend not available: {}, worker will not start", .{err});
+        return;
+    };
+
+    const dedicated_worker = DedicatedWorker.init(
+        allocator,
+        timer_backend,
+        url,
+        .{
+            .name = name,
+            .worker_type = worker_type,
+            .credentials = credentials,
+        },
+    ) catch |err| {
+        std.log.warn("Failed to create DedicatedWorker: {}", .{err});
+        return;
+    };
+    internal.dedicated_worker = dedicated_worker;
+
+    // Store reference to Worker instance for message callbacks
+    dedicated_worker.setUserData(internal.worker_instance);
+
+    // Set up message handler on outside port to receive messages from worker
+    dedicated_worker.setOnMessage(handleMessageFromWorkerCallback);
+
+    // Set up error handler to receive errors from worker
+    dedicated_worker.setParentErrorCallback(handleErrorFromWorkerCallback);
+
+    // Enable message dispatch on outside port
+    dedicated_worker.startMessageQueue();
+
+    // Fetch the worker script
+    const fetched_script = workers.fetchWorkerScript(allocator, url, .{
+        .worker_type = worker_type,
+        .origin = null,
+    }) catch |err| {
+        std.log.warn("Failed to fetch worker script: {}", .{err});
+        return;
+    };
+
+    // Create V8 context for worker execution
+    const v8_context = WorkerV8Context.init(
+        allocator,
+        fetched_script.final_url,
+        worker_type,
+    ) catch |err| {
+        std.log.warn("Failed to create WorkerV8Context: {}", .{err});
+        @constCast(&fetched_script).deinit();
+        return;
+    };
+    internal.v8_context = v8_context;
+
+    // Create the WorkerContext
+    dedicated_worker.startWithContext() catch |err| {
+        std.log.warn("Failed to start worker context: {}", .{err});
+        @constCast(&fetched_script).deinit();
+        return;
+    };
+
+    // Wire up the V8 context to the WorkerAgent's WorkerContext
+    if (dedicated_worker.agent.worker_context) |worker_ctx| {
+        worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
+    } else {
+        std.log.warn("WorkerContext not created after startWithContext", .{});
+        @constCast(&fetched_script).deinit();
+        return;
+    }
+
+    // Set up the timer interface for worker timers
+    if (ctx.timer) |timer| {
+        WorkerV8Context.setTimerInterface(timer);
+    }
+
+    // Set up DedicatedWorkerGlobalScope with proper globals
+    v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
+        std.log.warn("Failed to set up worker global scope: {}", .{err});
+        @constCast(&fetched_script).deinit();
+        return;
+    };
+
+    // Start the worker's message queue
+    dedicated_worker.startWorkerMessageQueue();
+
+    // Store the fetched script source for execution
+    const script_source_copy = allocator.dupe(u8, fetched_script.source) catch |err| {
+        std.log.warn("Failed to copy worker script source: {}", .{err});
+        @constCast(&fetched_script).deinit();
+        return;
+    };
+    internal.pending_script = script_source_copy;
+
+    // Clean up fetched script metadata
+    @constCast(&fetched_script).deinit();
+
+    // Schedule script execution (also deferred to avoid HandleScope issues)
+    // Use 1ms delay to ensure execution happens in a future event loop iteration
+    if (ctx.timer) |timer| {
+        _ = timer.setTimeout(1, executeWorkerScriptCallback, internal.worker_instance);
+    } else {
+        // No timer - execute synchronously (WARNING: may corrupt HandleScope)
+        _ = executeWorkerScriptSync(internal);
+    }
+}
+
 /// Timer callback for executing the worker script (deferred from constructor)
 ///
 /// CRITICAL: Worker script execution is deferred to this callback to avoid
@@ -539,6 +585,54 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     if (has_messages) {
         const dedicated_worker = internal.dedicated_worker orelse return;
         dedicated_worker.processQueuedMessages();
+
+        // CRITICAL: Message handlers may have posted NEW messages via self.postMessage().
+        // For nested workers, the outer worker's onmessage handler calling self.postMessage()
+        // will queue messages in pending_messages. These may go to DIFFERENT worker ports!
+        //
+        // Example flow:
+        // 1. Inner worker: self.postMessage("from inner") → queued in pending_messages
+        // 2. flushPendingMessages() → moved to inner worker's outside_port.message_queue
+        // 3. processQueuedMessages() → dispatches to outer worker's onmessage
+        // 4. Outer worker's onmessage: self.postMessage("outer received: ...")
+        //    → queued in pending_messages for OUTER worker's outside_port
+        // 5. We need to flush and process ALL affected ports!
+        processAllPendingMessages(internal);
+    }
+}
+
+/// Process all pending messages across all worker ports.
+/// This handles the case where message handlers post to different workers.
+fn processAllPendingMessages(initial_internal: *InternalState) void {
+    // Keep processing until no more messages are pending
+    var iterations: usize = 0;
+    const max_iterations: usize = 100; // Prevent infinite loops
+
+    while (iterations < max_iterations) {
+        iterations += 1;
+
+        // Flush pending messages and get the ports that received them
+        var affected_ports = DedicatedWorker.flushPendingMessagesAndGetPorts(initial_internal.allocator) catch return;
+        defer affected_ports.deinit(initial_internal.allocator);
+
+        if (affected_ports.items.len == 0) {
+            break; // No more pending messages
+        }
+
+        // Process messages on each affected port
+        for (affected_ports.items) |port| {
+            while (port.message_queue.items.len > 0) {
+                const queued_msg = port.message_queue.orderedRemove(0);
+                if (port.on_message) |handler| {
+                    handler(port, queued_msg, port.on_message_context);
+                }
+                queued_msg.deinit();
+            }
+        }
+    }
+
+    if (iterations >= max_iterations) {
+        std.log.warn("processAllPendingMessages: hit max iterations", .{});
     }
 }
 
@@ -836,10 +930,14 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         v8_engine.ffi.v8_Context_Exit(v8_context);
     };
 
-    // NOTE: We don't create our own HandleScope here because:
-    // 1. runOnce already creates a HandleScope that covers all timer callbacks
-    // 2. The C++ wrapper functions also create their own HandleScopes
-    // 3. Creating a HeapHandleScope here seems to cause issues with V8's internal tracking
+    // CRITICAL: Create HandleScope for V8 operations.
+    // We need our own HandleScope because:
+    // 1. Timer callbacks may enter/exit different isolates (worker isolates)
+    // 2. The outer HandleScope from runOnce was removed to avoid HandleScope
+    //    corruption during cross-isolate transitions
+    // 3. Each V8 operation needs a valid HandleScope for the current isolate
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate);
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
 
     // Get the message data - check the serialization type
     var v8_data: ?*v8_engine.ffi.Value = null;

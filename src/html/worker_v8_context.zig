@@ -82,14 +82,28 @@ threadlocal var current_worker_timer_interface: ?runtime.TimerInterface = null;
 // Thread-local storage for allocator (used by V8 callbacks like fetch)
 threadlocal var current_worker_allocator: ?Allocator = null;
 
-/// Get the current timer interface (for internal use)
-fn getTimerInterface() ?runtime.TimerInterface {
-    return current_worker_timer_interface;
-}
-
 /// Get the current allocator (for internal use by V8 callbacks)
 fn getWorkerAllocator() ?Allocator {
     return current_worker_allocator;
+}
+
+/// Set the current worker context (for use by external code before invoking worker callbacks)
+///
+/// This MUST be called before invoking any JavaScript callback that might call
+/// worker-specific functions like postMessage(). The callback uses this thread-local
+/// to route messages to the correct worker.
+///
+/// For nested workers, this is critical:
+/// - When inner worker's message handler runs in outer worker's context,
+///   the callback must know to route self.postMessage() to the outer worker
+/// - Without this, messages would go to the wrong worker's port
+pub fn setCurrentWorkerContext(ctx: ?*WorkerV8Context) void {
+    current_worker_context = ctx;
+}
+
+/// Get the current worker context (for internal use)
+pub fn getCurrentWorkerContext() ?*WorkerV8Context {
+    return current_worker_context;
 }
 
 // ============================================================================
@@ -135,7 +149,7 @@ fn cleanupWorkerTimerContexts() void {
         while (iter.next()) |entry| {
             const ctx = entry.value_ptr.*;
             // Cancel the timer at the libuv level
-            if (getTimerInterface()) |timer| {
+            if (WorkerV8Context.getTimerInterface()) |timer| {
                 timer.clearTimeout(ctx.current_timer_id);
             }
             // Dispose the V8 Global handle
@@ -160,7 +174,7 @@ fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
         if (map.get(timer_id)) |ctx| {
             ctx.cancelled = true;
             // Cancel the timer at the libuv level
-            if (getTimerInterface()) |timer| {
+            if (WorkerV8Context.getTimerInterface()) |timer| {
                 timer.clearTimeout(timer_id);
             }
         }
@@ -234,7 +248,7 @@ fn workerMicrotaskTrampoline(data: ?*anyopaque) callconv(.c) void {
     // Schedule message dispatch if there are messages in the outside port queue
     if (ctx.worker_v8_context.dedicated_worker) |dedicated_worker| {
         if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
-            if (getTimerInterface()) |timer| {
+            if (WorkerV8Context.getTimerInterface()) |timer| {
                 _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
             }
         }
@@ -328,7 +342,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     // This ensures the main thread's event loop processes the messages
     if (ctx.worker_v8_context.dedicated_worker) |dedicated_worker| {
         if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
-            if (getTimerInterface()) |timer| {
+            if (WorkerV8Context.getTimerInterface()) |timer| {
                 // Schedule a 0ms timer to dispatch messages in the next event loop iteration
                 // This ensures we're back in the main isolate context when dispatching
                 _ = timer.setTimeout(0, workerMessageDispatchCallback, dedicated_worker);
@@ -338,7 +352,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // For intervals, reschedule the timer
     if (ctx.is_interval and !ctx.cancelled) {
-        if (getTimerInterface()) |timer| {
+        if (WorkerV8Context.getTimerInterface()) |timer| {
             // Unregister the old timer ID from tracking
             if (worker_timer_contexts) |*map| {
                 _ = map.remove(ctx.current_timer_id);
@@ -448,6 +462,18 @@ pub const WorkerV8Context = struct {
     /// The timer interface is stored in thread-local storage and shared across all workers.
     pub fn setTimerInterface(timer: runtime.TimerInterface) void {
         current_worker_timer_interface = timer;
+    }
+
+    /// Get the current timer interface from thread-local storage.
+    ///
+    /// This is used for nested workers: when a Worker is created from within another
+    /// Worker, the nested Worker's constructor can use the parent worker's timer
+    /// (stored in thread-local storage) to schedule deferred initialization.
+    ///
+    /// The timer is set via setTimerInterface() when a worker context is set up.
+    /// It remains available for the duration of the worker's script execution.
+    pub fn getTimerInterface() ?runtime.TimerInterface {
+        return current_worker_timer_interface;
     }
 
     /// Create a new V8 context for a worker
@@ -669,6 +695,17 @@ pub const WorkerV8Context = struct {
         // WebIDL: [Exposed=(Window,Worker,AudioWorklet)] interface MessageChannel { ... }
         const MessageChannel = V8Interface(interfaces.MessageChannel);
         MessageChannel.registerGlobal(self.isolate, self.context, "MessageChannel");
+
+        // Register Worker interface (for nested workers)
+        // WebIDL: [Exposed=(Window,DedicatedWorker,SharedWorker)] interface Worker : EventTarget { ... }
+        // Per HTML Standard § 10.2.3: Workers can create other Workers (nested workers)
+        const Worker = V8Interface(interfaces.Worker);
+        Worker.registerGlobal(self.isolate, self.context, "Worker");
+
+        // Register Blob interface (needed for blob URL creation in nested workers)
+        // WebIDL: [Exposed=(Window,Worker)] interface Blob { ... }
+        const Blob = V8Interface(interfaces.Blob);
+        Blob.registerGlobal(self.isolate, self.context, "Blob");
     }
 
     /// Set up full DedicatedWorkerGlobalScope with all required APIs
@@ -693,6 +730,31 @@ pub const WorkerV8Context = struct {
             v8.ffi.v8_Context_Exit(self.context);
             v8.ffi.v8_Isolate_Exit(self.isolate);
         }
+
+        // Create HandleScope for V8 operations (required for context manager registration)
+        const handle_scope = v8.ffi.v8_HandleScope_New(self.isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+        // Update our local runtime_ctx_data to have the timer from thread-local storage
+        // This ensures that nested Worker constructors have access to the timer
+        // Per HTML Standard § 10.2.3: Workers can create other Workers (nested workers)
+        const timer_interface = WorkerV8Context.getTimerInterface();
+        if (self.runtime_ctx_data) |ctx_data| {
+            ctx_data.timer = timer_interface;
+        }
+
+        // CRITICAL: Register worker's V8 context with the context manager
+        // This enables nested Workers to find the parent worker's context with timer support
+        // when their constructor calls getOrCreateWithIsolate().
+        // Per HTML Standard § 10.2.3: Workers can create other Workers (nested workers)
+        _ = v8.context_manager.getOrCreateWithExternalEventLoop(
+            self.context,
+            timer_interface,
+            null, // Event loop not needed - workers use thread-local timers
+            self.allocator,
+        ) catch |err| {
+            std.log.warn("Failed to register worker context with context manager: {}", .{err});
+        };
 
         const global_obj = v8.ffi.v8_Context_Global(self.context) orelse {
             return error.NoGlobalObject;
@@ -745,8 +807,15 @@ pub const WorkerV8Context = struct {
         current_worker_context = self;
 
         // Register postMessage() - sends message to main thread
+        // CRITICAL: Pass `self` as callback data so the callback always uses the
+        // correct worker context, even for nested workers where the thread-local
+        // current_worker_context might point to a different worker.
         {
-            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerPostMessageCallback, null) orelse {
+            // Store self pointer in a V8 External value to pass to the callback
+            const external = v8.ffi.v8_External_New(self.isolate, @ptrCast(self)) orelse {
+                return error.ExternalCreationFailed;
+            };
+            const template = v8.ffi.v8_FunctionTemplate_New(self.isolate, workerPostMessageCallback, @ptrCast(external)) orelse {
                 return error.FunctionTemplateCreateFailed;
             };
             const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, self.context) orelse {
@@ -1243,6 +1312,12 @@ pub const WorkerV8Context = struct {
         return @ptrCast(self);
     }
 
+    /// Get the underlying V8 context pointer
+    /// Used for registering with the context manager to support nested workers
+    pub fn getV8Context(self: *Self) *v8.ffi.Context {
+        return self.context;
+    }
+
     /// Get the engine callbacks for WorkerContext.setEngineContext()
     pub fn getCallbacks(self: *const Self) EngineCallbacks {
         _ = self;
@@ -1610,7 +1685,7 @@ pub const WorkerV8Context = struct {
 
         // Schedule error dispatch to parent thread via timer (0ms)
         // This ensures we're in the main isolate context when dispatching
-        if (getTimerInterface()) |timer| {
+        if (WorkerV8Context.getTimerInterface()) |timer| {
             const dispatch_ctx = self.allocator.create(WorkerErrorDispatchContext) catch {
                 error_event.deinit();
                 return;
@@ -1782,7 +1857,7 @@ fn workerSetTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
     };
 
     // Get the timer interface from the browser context (shares libuv event loop)
-    const timer = getTimerInterface() orelse {
+    const timer = WorkerV8Context.getTimerInterface() orelse {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
@@ -1880,7 +1955,7 @@ fn workerSetIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     };
 
     // Get the timer interface from the browser context (shares libuv event loop)
-    const timer = getTimerInterface() orelse {
+    const timer = WorkerV8Context.getTimerInterface() orelse {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
@@ -2003,6 +2078,16 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     if (argc < 1) return;
     const message_arg = info.get(0);
 
+    // CRITICAL: Get WorkerV8Context from callback data, NOT from thread-local.
+    // For nested workers, the thread-local current_worker_context may point to
+    // the wrong worker (e.g., inner worker instead of outer worker).
+    // The callback data was set when this postMessage function was created,
+    // so it always points to the correct worker.
+    const data = info.getData();
+    // The callback data is a V8 External containing our WorkerV8Context pointer
+    const worker_ctx_ptr = v8.ffi.v8_External_Value(@ptrCast(data));
+    const self: ?*WorkerV8Context = if (worker_ctx_ptr) |ptr| @ptrCast(@alignCast(ptr)) else null;
+
     // Get required size for JSON buffer
     var dummy_buf: [1]u8 = undefined;
     const required_size = v8.ffi.v8_JSON_Stringify_ToBuffer(
@@ -2016,9 +2101,10 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     // Allocate buffer dynamically based on required size and stringify again
     // The "complete" message from testharness.js can be quite large (9000+ bytes)
     // containing all test results, so we need dynamic allocation.
-    const self = current_worker_context orelse return;
-    const json_buffer = self.allocator.alloc(u8, @intCast(required_size + 1)) catch return;
-    defer self.allocator.free(json_buffer);
+    // NOTE: `self` is now obtained from callback data (see above), not current_worker_context
+    const worker_ctx = self orelse return;
+    const json_buffer = worker_ctx.allocator.alloc(u8, @intCast(required_size + 1)) catch return;
+    defer worker_ctx.allocator.free(json_buffer);
 
     const written = v8.ffi.v8_JSON_Stringify_ToBuffer(
         v8_context,
@@ -2029,7 +2115,7 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     if (written <= 0) return;
 
     const json_str = json_buffer[0..@intCast(written)];
-    const dedicated_worker = self.dedicated_worker orelse return;
+    const dedicated_worker = worker_ctx.dedicated_worker orelse return;
 
     // Check agent state
     if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {

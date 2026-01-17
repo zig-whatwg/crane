@@ -374,14 +374,18 @@ pub const V8EventLoop = struct {
         self.in_run_once = true;
         defer self.in_run_once = false;
 
-        // CRITICAL: Create HandleScope for V8 operations.
-        const handle_scope = v8_ffi.v8_HandleScope_New(self.isolate);
-        defer v8_ffi.v8_HandleScope_Dispose(handle_scope);
+        // NOTE: We do NOT create a HandleScope here that spans the entire function.
+        // Timer callbacks may enter/exit different isolates (worker isolates),
+        // and having a HandleScope for the main isolate active while operating
+        // in a worker isolate corrupts V8's HandleScope tracking. Instead, we
+        // create scoped HandleScopes only for operations that need them.
 
         var did_work = false;
 
         // Step 1: Poll libuv for ready timer callbacks
-        // This processes any timers that have fired
+        // This processes any timers that have fired.
+        // Timer callbacks manage their own V8 state (isolate enter/exit, HandleScopes)
+        // so we don't need a HandleScope here.
         if (self.timer_manager) |mgr| {
             const timer_callback_invoked = mgr.poll();
             if (timer_callback_invoked) {
@@ -390,6 +394,8 @@ pub const V8EventLoop = struct {
         }
 
         // Step 2: Run all pending microtasks (including any queued by timer callbacks)
+        // PerformMicrotaskCheckpoint needs to be in the correct isolate context.
+        // The C++ wrapper handles HandleScope internally.
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
         // V8 doesn't tell us if microtasks ran, but we assume they might have
