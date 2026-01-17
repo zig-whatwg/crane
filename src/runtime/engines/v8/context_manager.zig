@@ -94,6 +94,10 @@ pub const ContextEntry = struct {
 
     /// Whether we own the document_url memory
     owns_document_url: bool = false,
+
+    // NOTE: Module caching field was removed because V8's HostImportModuleDynamically
+    // callback doesn't provide the target realm context for ShadowRealm imports.
+    // See detailed comment in handleDynamicImport.
 };
 
 /// Thread-local context manager state
@@ -853,6 +857,9 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // Clean up children list
             entry.children.deinit(entry.allocator);
 
+            // NOTE: Module cache cleanup removed - caching disabled
+            // (see handleDynamicImport comment)
+
             ctx_data.deinit();
         }
     }
@@ -958,11 +965,39 @@ fn handleDynamicImport(
     };
     defer if (resolved_url.ptr != specifier.ptr) allocator.free(resolved_url);
 
+    // Module caching is DISABLED for now.
+    //
+    // V8's HostImportModuleDynamically callback receives the calling context,
+    // not the target context for ShadowRealm imports. This means:
+    // - ShadowRealm.prototype.importValue() passes the main window context
+    // - All ShadowRealms would share the same module cache (incorrect)
+    //
+    // Per TC39 ShadowRealm spec, each realm should have independent module
+    // instances. Without access to the target realm's context, we cannot
+    // properly cache modules per-realm.
+    //
+    // TODO: Implement proper per-realm module caching when V8 provides
+    // access to the target realm context in the callback.
+    //
+    // For now, each import() creates a fresh module, ensuring realm isolation
+    // at the cost of performance (no caching between multiple imports of the
+    // same module within the same realm).
+
     // Determine how to fetch the module based on URL scheme
     var source: []const u8 = undefined;
     var source_needs_free = false;
 
-    if (std.mem.startsWith(u8, resolved_url, "http://") or
+    if (std.mem.startsWith(u8, resolved_url, "data:")) {
+        // Data URL - extract content directly from the URL
+        // Format: data:[<mediatype>][;base64],<data>
+        const data_content = parseDataUrl(allocator, resolved_url) catch |err| {
+            std.log.err("[DYN_IMPORT] Failed to parse data URL: {}", .{err});
+            resolver.reject("Failed to parse data URL");
+            return;
+        };
+        source = data_content;
+        source_needs_free = true;
+    } else if (std.mem.startsWith(u8, resolved_url, "http://") or
         std.mem.startsWith(u8, resolved_url, "https://"))
     {
         // HTTP/HTTPS URL - use fetch to retrieve the module
@@ -1062,8 +1097,13 @@ fn handleDynamicImport(
         return;
     };
 
+    // Module caching disabled - see comment at start of function
     resolver.resolve(namespace);
 }
+
+// NOTE: Module caching (cacheModule function) was removed because V8's
+// HostImportModuleDynamically callback doesn't provide the target realm
+// context for ShadowRealm imports. See detailed comment in handleDynamicImport.
 
 /// Resolve a module specifier to a URL
 fn resolveModuleSpecifier(
@@ -1138,6 +1178,102 @@ fn resolveModuleSpecifier(
     // Bare specifier - would need import map resolution
     // For now, return as-is (will likely fail)
     return specifier;
+}
+
+/// Parse a data URL and return the decoded content
+///
+/// Supports both URL-encoded and base64-encoded data URLs:
+/// - data:text/javascript;charset=utf-8,<URL-encoded data>
+/// - data:text/javascript;base64,<base64 data>
+///
+/// Spec: https://datatracker.ietf.org/doc/html/rfc2397
+fn parseDataUrl(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {
+    // Find the comma that separates metadata from data
+    const comma_pos = std.mem.indexOf(u8, url, ",") orelse return error.InvalidDataUrl;
+    const metadata = url[5..comma_pos]; // Skip "data:"
+    const encoded_data = url[comma_pos + 1 ..];
+
+    // Check if base64 encoded
+    const is_base64 = std.mem.indexOf(u8, metadata, ";base64") != null;
+
+    if (is_base64) {
+        // Base64 decode
+        const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(encoded_data) catch return error.InvalidBase64;
+        const decoded = try allocator.alloc(u8, decoded_len);
+        errdefer allocator.free(decoded);
+
+        std.base64.standard.Decoder.decode(decoded, encoded_data) catch return error.InvalidBase64;
+        return decoded;
+    } else {
+        // URL decode (percent-encoded)
+        return try urlDecode(allocator, encoded_data);
+    }
+}
+
+/// Decode a URL-encoded (percent-encoded) string
+fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
+    // Count the actual size needed
+    var decoded_len: usize = 0;
+    var i: usize = 0;
+    while (i < encoded.len) {
+        if (encoded[i] == '%' and i + 2 < encoded.len) {
+            i += 3;
+        } else if (encoded[i] == '+') {
+            i += 1;
+        } else {
+            i += 1;
+        }
+        decoded_len += 1;
+    }
+
+    const result = try allocator.alloc(u8, decoded_len);
+    errdefer allocator.free(result);
+
+    i = 0;
+    var j: usize = 0;
+    while (i < encoded.len) {
+        if (encoded[i] == '%' and i + 2 < encoded.len) {
+            // Decode percent-encoded character
+            const high = hexCharToValue(encoded[i + 1]) orelse {
+                result[j] = encoded[i];
+                i += 1;
+                j += 1;
+                continue;
+            };
+            const low = hexCharToValue(encoded[i + 2]) orelse {
+                result[j] = encoded[i];
+                i += 1;
+                j += 1;
+                continue;
+            };
+            result[j] = (high << 4) | low;
+            i += 3;
+            j += 1;
+        } else if (encoded[i] == '+') {
+            // Plus sign represents space in query strings
+            result[j] = ' ';
+            i += 1;
+            j += 1;
+        } else {
+            result[j] = encoded[i];
+            i += 1;
+            j += 1;
+        }
+    }
+
+    // Resize if needed (shouldn't happen with correct counting)
+    if (j != decoded_len) {
+        return allocator.realloc(result, j) catch result[0..j];
+    }
+    return result;
+}
+
+/// Convert a hex character to its numeric value
+fn hexCharToValue(c: u8) ?u8 {
+    if (c >= '0' and c <= '9') return c - '0';
+    if (c >= 'a' and c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' and c <= 'F') return c - 'A' + 10;
+    return null;
 }
 
 // ============================================================================
