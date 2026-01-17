@@ -382,6 +382,18 @@ pub const Browser = struct {
             old_ctx.deinit();
             self.allocator.destroy(old_ctx);
             self.current_context = null;
+
+            // Run event loop briefly to process any pending timer close callbacks
+            // This prevents stale timer callbacks from interfering with new contexts
+            if (self.event_loop) |event_loop| {
+                // Run until no more pending callbacks (with safety limit)
+                var drain_iterations: u32 = 0;
+                const max_drain: u32 = 100;
+                while (drain_iterations < max_drain) : (drain_iterations += 1) {
+                    const had_callback = event_loop.eventLoop().runOnce();
+                    if (!had_callback) break;
+                }
+            }
         }
 
         // Create new context

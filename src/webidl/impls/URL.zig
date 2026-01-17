@@ -637,6 +637,7 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
     // Step 2: If empty, set query to null
     if (value.len == 0) {
         internal.url_record.query_len = 0;
+        internal.url_record.has_query = false; // null query
         // Step 2.2: Empty this's query object's list
         try updateQueryObjectList(internal, "");
         return;
@@ -648,7 +649,11 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
     else
         value;
 
-    // Step 4-5: Parse with query state override
+    // Step 4: Set url's query to the empty string (per spec, before parsing)
+    // This ensures has_query is true even if input is empty (e.g., value was just "?")
+    internal.url_record.has_query = true;
+
+    // Step 5: Basic URL parse input with query state override
     _ = basic_parser.parseWithStateOverride(
         internal.allocator,
         input,
@@ -700,6 +705,7 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     // Step 1: If empty, set fragment to null
     if (value.len == 0) {
         internal.url_record.fragment_len = 0;
+        internal.url_record.has_fragment = false; // null fragment
         return;
     }
 
@@ -709,7 +715,11 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     else
         value;
 
-    // Step 3-4: Parse with fragment state override
+    // Step 3: Set url's fragment to the empty string (per spec, before parsing)
+    // This ensures has_fragment is true even if input is empty (e.g., value was just "#")
+    internal.url_record.has_fragment = true;
+
+    // Step 4: Parse with fragment state override
     _ = basic_parser.parseWithStateOverride(
         internal.allocator,
         input,

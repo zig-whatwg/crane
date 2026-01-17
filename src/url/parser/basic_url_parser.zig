@@ -1005,6 +1005,17 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (ctx.buffer.items().len > 0) {
             // Step 2.1.1 (line 1290): Parse port
             const port = std.fmt.parseInt(u16, ctx.buffer.items(), 10) catch {
+                // Port number overflow (e.g., 65536)
+                // When state override is given (setter mode), browser behavior is to:
+                // - Keep the host change (already applied in host state)
+                // - Not update the port (leave it unchanged)
+                // - Return successfully
+                // This matches WPT test expectations for "Port numbers are 16 bit integers"
+                if (ctx.hasStateOverride()) {
+                    ctx.buffer.clear();
+                    ctx.state_override_complete = true;
+                    return;
+                }
                 return ParseError.PortOutOfRange;
             };
 
@@ -1026,9 +1037,14 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
             }
         }
 
-        // Step 2.2 (line 1300): If state override is given, return failure
+        // Step 2.2 (line 1300): If state override is given, then return
+        // NOTE: This is a successful return, NOT a failure!
+        // Per spec: "If state override is given, then return."
+        // When the host setter is called with "example.com:invalid", the port buffer
+        // is empty (no valid digits), so we return successfully without changing the port.
         if (ctx.hasStateOverride()) {
-            return ParseError.PortInvalid;
+            ctx.state_override_complete = true;
+            return;
         }
 
         // Step 2.3 (line 1302): Set state to path start, decrease pointer
@@ -1181,17 +1197,20 @@ fn pathStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
         return;
     }
 
-    // Spec step 2-3: Handle ? and #
-    if (c) |char| {
-        if (char == '?') {
-            ctx.has_query = true;
-            ctx.state = .query;
-            return;
-        }
-        if (char == '#') {
-            ctx.has_fragment = true;
-            ctx.state = .fragment;
-            return;
+    // Spec step 2-3: Handle ? and # ONLY when state override is NOT given
+    // Per spec: "Otherwise, if state override is not given and c is U+003F (?)"
+    if (!ctx.hasStateOverride()) {
+        if (c) |char| {
+            if (char == '?') {
+                ctx.has_query = true;
+                ctx.state = .query;
+                return;
+            }
+            if (char == '#') {
+                ctx.has_fragment = true;
+                ctx.state = .fragment;
+                return;
+            }
         }
     }
 

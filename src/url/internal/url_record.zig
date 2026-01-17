@@ -98,14 +98,16 @@ pub const URLRecord = struct {
     }
 
     /// Get query string (spec line 815) - null if no query
+    /// Returns empty string "" if has_query is true but query_len is 0
     pub fn query(self: *const URLRecord) ?[]const u8 {
-        if (self.query_len == 0) return null;
+        if (!self.has_query) return null;
         return self.buffer[self.query_start .. self.query_start + self.query_len];
     }
 
     /// Get fragment string (spec line 817) - null if no fragment
+    /// Returns empty string "" if has_fragment is true but fragment_len is 0
     pub fn fragment(self: *const URLRecord) ?[]const u8 {
-        if (self.fragment_len == 0) return null;
+        if (!self.has_fragment) return null;
         return self.buffer[self.fragment_start .. self.fragment_start + self.fragment_len];
     }
 

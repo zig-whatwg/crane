@@ -3069,16 +3069,21 @@ pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString)
     }
 
     // Parse the features string to determine if this should be a popup
-    const is_popup = parseWindowFeatures(features_str);
+    _ = parseWindowFeatures(features_str);
 
-    // For _blank or named targets, create auxiliary browsing context
-    var new_ctx = try BrowsingContext.initAuxiliary(internal.allocator, internal.browsing_context, is_popup);
-    if (target_str.len > 0 and target_str[0] != '_') {
-        try new_ctx.setTargetName(target_str);
-    }
+    // TODO: Implement proper window.open() with new browsing context
+    // For now, we don't create an auxiliary browsing context because:
+    // 1. We would need to create a proper Window instance to own it
+    // 2. We would need to track child windows for proper cleanup
+    // 3. Just returning the opener's proxy is sufficient for basic tests
+    //
+    // When properly implementing window.open():
+    // - Create auxiliary browsing context
+    // - Create Window instance that owns the context
+    // - Track in parent's child list for cleanup
+    // - Return the new window's WindowProxy
 
-    // TODO: Create a proper Window instance for the new context
-    // For now, return the opener's WindowProxy as a stub
+    // Return the opener's WindowProxy as a stub
     // This allows tests that just check "window.open returns something" to pass
     return getWindowProxy(instance);
 }
