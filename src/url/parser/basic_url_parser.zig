@@ -1167,6 +1167,12 @@ fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
         if (ctx.buffer.items().len == 0) {
             ctx.host = Host.empty;
+            // Per spec: If state override is given, return immediately
+            // Don't transition to path_start when in setter mode
+            if (ctx.hasStateOverride()) {
+                ctx.state_override_complete = true;
+                return;
+            }
             ctx.state = .path_start;
             return;
         }
@@ -1180,6 +1186,12 @@ fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
             ctx.host = host;
         }
         ctx.buffer.clear();
+        // Per spec: If state override is given, return immediately
+        // Don't transition to path_start when in setter mode
+        if (ctx.hasStateOverride()) {
+            ctx.state_override_complete = true;
+            return;
+        }
         ctx.state = .path_start;
         return;
     }

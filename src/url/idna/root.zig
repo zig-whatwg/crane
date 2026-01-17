@@ -140,6 +140,13 @@ fn processLabelToASCII(
         // Try to decode the Punycode
         const punycode_part = normalized[4..];
 
+        // Empty punycode part (just "xn--" with nothing after) is invalid
+        // Per WHATWG URL spec: IgnoreInvalidPunycode is false for domain-to-ASCII
+        // This catches cases like "xn--" which should cause the host setter to fail
+        if (punycode_part.len == 0) {
+            return IDNAError.PunycodeError;
+        }
+
         // Per UTS46 test data: P4 (invalid punycode) is non-fatal for toASCII
         // When decode fails:
         // - If label is pure ASCII: pass through as-is (e.g., "xn--0" stays "xn--0")
