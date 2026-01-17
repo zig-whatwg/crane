@@ -202,6 +202,13 @@ pub const Browser = struct {
             }
         };
 
+        // Initialize ShadowRealm support (TC39 Stage 3 proposal)
+        // This registers the HostCreateShadowRealmContextCallback with V8 so that
+        // JavaScript `new ShadowRealm()` creates properly isolated execution contexts.
+        v8.initializeShadowRealmSupport(isolate, allocator) catch |err| {
+            std.debug.print("Warning: Failed to initialize ShadowRealm support: {}\n", .{err});
+        };
+
         // Create storage subsystem
         const storage = try Storage.init(allocator, config.storage_root, config.persist_storage);
         errdefer storage.deinit();
@@ -306,6 +313,9 @@ pub const Browser = struct {
             // DOM node internal states may use the isolate's allocator, which gets
             // freed by cleanupAll(). We must clean them up while allocators are valid.
             impls.cleanup.cleanupAllDomRegistries();
+
+            // Clean up ShadowRealm tracked contexts before isolate disposal
+            v8.deinitializeShadowRealmSupport();
 
             // Central cleanup - calls all registered handlers in priority order
             // This includes: isolate_templates, template_registry, context_manager, etc.

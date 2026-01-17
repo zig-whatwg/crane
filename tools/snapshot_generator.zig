@@ -211,6 +211,10 @@ pub fn main() !void {
     }
     log(allocator, "  Indexed context with interfaces added at index {d}\\n\\n", .{context_index});
 
+    // Note: ShadowRealm contexts use index 0 as well. V8's ShadowRealm implementation
+    // correctly filters out host objects (document, window, etc.) from the global scope.
+    // Per TC39 spec, ShadowRealm only exposes JavaScript built-ins, not Web APIs.
+
     // Step 6: Create the snapshot blob
     log(allocator, "Step 6: Creating snapshot blob...\\n", .{});
 

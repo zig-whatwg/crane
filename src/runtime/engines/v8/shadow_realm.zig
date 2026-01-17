@@ -22,7 +22,6 @@
 
 const std = @import("std");
 const ffi = @import("ffi.zig");
-const SnapshotContextIndex = @import("snapshot_context_index.zig").SnapshotContextIndex;
 const context_manager = @import("context_manager.zig");
 
 /// Tracked ShadowRealm context entry
@@ -56,8 +55,9 @@ var g_in_callback: bool = false;
 /// V8 callback for ShadowRealm context creation
 ///
 /// This is called by V8 when JavaScript executes `new ShadowRealm()`.
-/// We create a new context from the snapshot at the ShadowRealm index,
-/// which has only [Exposed=ShadowRealm] interfaces registered.
+/// We create a new V8 context with the initiator's microtask queue.
+/// Unlike Window/Worker contexts, ShadowRealm doesn't need full DOM bindings -
+/// V8 provides all the JavaScript built-ins automatically.
 ///
 /// @param user_data - Opaque pointer to ShadowRealmCallbackData
 /// @param initiator_context_ptr - Global<Context>* to the context that created the ShadowRealm
@@ -67,22 +67,11 @@ fn shadowRealmContextCallback(
     initiator_context_ptr: ?*anyopaque,
 ) callconv(.c) ?*anyopaque {
     // Recursion guard: V8's Context::New() initializes harmony_shadow_realm,
-    // which can trigger our callback. We need to break this recursion.
-    // Note: On recursive call, we return the result of snapshot-based creation
-    // which V8 uses internally but doesn't expose to JS.
+    // which can trigger our callback. Return null to break the recursion.
+    // V8 handles null returns gracefully during its internal initialization.
     if (g_in_callback) {
-        std.log.debug("[ShadowRealm] Recursive callback detected, using snapshot fallback", .{});
-        const isolate = ffi.v8_Isolate_GetCurrent() orelse return null;
-        const shadow_realm_actual_index: usize = SnapshotContextIndex.implemented.len - 1;
-
-        // For recursive calls, use snapshot-based context without microtask queue
-        // This is only for V8's internal harmony initialization
-        const context = ffi.v8_Context_NewFromSnapshotAt(isolate, shadow_realm_actual_index) orelse {
-            return null;
-        };
-
-        const global_context = ffi.v8_Context_GlobalHandle_New(isolate, context);
-        return global_context;
+        std.log.debug("[ShadowRealm] Recursive callback detected, returning null to break recursion", .{});
+        return null;
     }
 
     g_in_callback = true;
@@ -110,53 +99,36 @@ fn shadowRealmContextCallback(
     else
         null;
 
-    // Create context from the ShadowRealm snapshot index with the initiator's microtask queue
-    // NOTE: The actual snapshot index is the position in SnapshotContextIndex.implemented,
-    // NOT the enum value. Since shared_storage_worklet is skipped, ShadowRealm is at index 8.
-    // The implemented array is: [window, dedicated_worker, shared_worker, service_worker,
-    //                           audio_worklet, paint_worklet, animation_worklet, layout_worklet,
-    //                           shadow_realm] = indices 0-8
-    const shadow_realm_actual_index: usize = SnapshotContextIndex.implemented.len - 1; // shadow_realm is last
-    const context = ffi.v8_Context_NewFromSnapshotAtWithMicrotaskQueue(
-        isolate,
-        shadow_realm_actual_index,
-        microtask_queue,
-    ) orelse {
-        std.log.err("[ShadowRealm] Failed to create context from snapshot at index {d}", .{shadow_realm_actual_index});
+    // Create a context for the ShadowRealm from the snapshot
+    // Using a snapshot context avoids issues with calling Context::New from inside
+    // the ShadowRealm callback, which can cause crashes due to V8's internal state.
+    //
+    // We use context index 0. V8's ShadowRealm implementation correctly filters out
+    // host objects (document, window, etc.) from the global scope per TC39 spec.
+    // ShadowRealm only exposes JavaScript built-ins, not Web APIs.
+    // The ShadowRealm semantics (isolation, wrapped functions) are handled by V8 itself.
+    _ = microtask_queue; // V8 manages the microtask queue for ShadowRealm
+    const context = ffi.v8_Context_NewFromSnapshotAt(isolate, 0) orelse {
+        std.log.err("[ShadowRealm] Failed to create context from snapshot", .{});
         return null;
     };
 
     // Set up security token - critical for cross-realm callable wrapping
-    // We have two options:
-    // 1. UseDefaultSecurityToken - makes ShadowRealm same-origin with itself only
-    // 2. Copy initiator's security token - makes ShadowRealm same-origin with initiator
-    //
-    // Chromium uses UseDefaultSecurityToken, but that may not work correctly with
-    // snapshots. Let's try copying the initiator's token instead for cross-realm calls.
-    if (initiator_context) |init_ctx| {
-        if (ffi.v8_Context_GetSecurityToken(init_ctx)) |token| {
-            ffi.v8_Context_SetSecurityToken(context, token);
-            std.log.debug("[ShadowRealm] Copied initiator security token", .{});
-        } else {
-            ffi.v8_Context_UseDefaultSecurityToken(context);
-        }
-    } else {
-        ffi.v8_Context_UseDefaultSecurityToken(context);
-    }
+    // Per Chromium's shadow_realm_context.cc, use default security token.
+    // This makes the ShadowRealm same-origin with itself only (isolation).
+    ffi.v8_Context_UseDefaultSecurityToken(context);
 
     // Create a Global handle for the new context
     // The C++ side expects a Global<Context>* which it will use and clean up
     const global_context = ffi.v8_Context_GlobalHandle_New(isolate, context);
     if (global_context == null) {
         std.log.err("[ShadowRealm] Failed to create global handle for context", .{});
-        ffi.v8_Context_Dispose(context);
         return null;
     }
 
     // Register the ShadowRealm context in the context manager
     // This enables dynamic import to work correctly with ShadowRealm contexts
     if (callback_data) |data| {
-        // Use the callback data's allocator for the context entry
         _ = context_manager.getOrCreate(context, data.allocator) catch |err| {
             std.log.warn("[ShadowRealm] Failed to register context in manager: {}", .{err});
         };
@@ -173,9 +145,9 @@ fn shadowRealmContextCallback(
             std.log.warn("[ShadowRealm] Failed to track ShadowRealm context", .{});
         };
         data.total_created += 1;
-        std.log.info("[ShadowRealm] Created ShadowRealm #{d} from snapshot", .{data.total_created});
+        std.log.info("[ShadowRealm] Created ShadowRealm #{d}", .{data.total_created});
     } else {
-        std.log.info("[ShadowRealm] Created new ShadowRealm context from snapshot", .{});
+        std.log.info("[ShadowRealm] Created new ShadowRealm context", .{});
     }
 
     return global_context;

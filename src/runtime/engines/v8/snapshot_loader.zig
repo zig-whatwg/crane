@@ -57,7 +57,10 @@ var tracked_snapshot_allocator: ?std.mem.Allocator = null;
 ///
 /// Note: --no-random-gc was removed as it's not a valid V8 flag in current versions.
 /// The --predictable flag already handles deterministic behavior.
-pub const SNAPSHOT_V8_FLAGS = "--hash-seed=0 --predictable";
+///
+/// --harmony-shadow-realm enables the TC39 Stage 3 ShadowRealm proposal which provides
+/// isolated JavaScript execution environments with their own global objects.
+pub const SNAPSHOT_V8_FLAGS = "--hash-seed=0 --predictable --harmony-shadow-realm";
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

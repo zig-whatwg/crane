@@ -7578,6 +7578,10 @@ Global<Context>* v8_Context_NewFromSnapshotAtWithMicrotaskQueue(
 /// @param isolate - V8 isolate
 /// @param microtask_queue - The microtask queue to use (usually from the initiator context)
 /// @return New fresh context, or nullptr on failure
+/// Recursion guard for Context::NewWithMicrotaskQueue
+/// This prevents crashes when ShadowRealm callback triggers context creation
+static thread_local bool g_in_context_new = false;
+
 Global<Context>* v8_Context_NewWithMicrotaskQueue(
     Isolate* isolate,
     MicrotaskQueue* microtask_queue) {
@@ -7585,6 +7589,23 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
         fprintf(stderr, "[v8_Context_NewWithMicrotaskQueue] ERROR: isolate is null\n");
         return nullptr;
     }
+
+    // Recursion guard: If we're already creating a context (e.g., from ShadowRealm callback),
+    // create a simple context without the microtask queue to break the recursion.
+    if (g_in_context_new) {
+        fprintf(stderr, "[v8_Context_NewWithMicrotaskQueue] Recursive call detected, using simple context\n");
+        Isolate::Scope isolate_scope(isolate);
+        HandleScope handle_scope(isolate);
+
+        // Create a minimal context without triggering ShadowRealm setup
+        Local<Context> context = Context::New(isolate);
+        if (context.IsEmpty()) {
+            return nullptr;
+        }
+        return trackHandle(new Global<Context>(isolate, context));
+    }
+
+    g_in_context_new = true;
 
     // Enter the isolate before creating context
     Isolate::Scope isolate_scope(isolate);
@@ -7603,6 +7624,8 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
         MaybeLocal<Value>(),  // global_object
         DeserializeInternalFieldsCallback(),  // no deserializer needed for fresh context
         microtask_queue);
+
+    g_in_context_new = false;
 
     if (context.IsEmpty()) {
         fprintf(stderr, "[v8_Context_NewWithMicrotaskQueue] ERROR: Context::New failed\n");
@@ -8842,13 +8865,27 @@ struct ShadowRealmCallbackData {
 /// Global storage for ShadowRealm callback
 static ShadowRealmCallbackData* g_shadow_realm_callback = nullptr;
 
+/// Recursion guard for ShadowRealm callback
+/// V8's Context::New() can trigger this callback during harmony_shadow_realm initialization
+static thread_local bool g_in_shadow_realm_callback = false;
+
 /// V8 internal callback for ShadowRealm context creation
 /// This is called by V8 when JavaScript code executes `new ShadowRealm()`
 static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context> initiator_context) {
+    // Recursion guard: V8's Context::New() can trigger this callback
+    // during internal harmony_shadow_realm initialization.
+    // Return empty to break the recursion - V8 handles this gracefully.
+    if (g_in_shadow_realm_callback) {
+        return MaybeLocal<Context>();
+    }
+
+    g_in_shadow_realm_callback = true;
+
     Isolate* isolate = initiator_context->GetIsolate();
 
     if (!g_shadow_realm_callback || !g_shadow_realm_callback->callback) {
         // No callback registered - return empty to signal failure
+        g_in_shadow_realm_callback = false;
         return MaybeLocal<Context>();
     }
 
@@ -8866,6 +8903,7 @@ static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context>
 
     if (!result) {
         // Zig callback returned null - context creation failed
+        g_in_shadow_realm_callback = false;
         return MaybeLocal<Context>();
     }
 
@@ -8876,6 +8914,7 @@ static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context>
     // The caller owns the Global handle, they'll clean it up
     // V8 will keep the Local alive as needed
 
+    g_in_shadow_realm_callback = false;
     return new_context;
 }
 

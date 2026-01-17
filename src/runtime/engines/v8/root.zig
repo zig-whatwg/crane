@@ -275,6 +275,12 @@ pub const v8_Value_StrictEquals = ffi.v8_Value_StrictEquals;
 /// WindowProperties exotic object implementation
 pub const window_properties = @import("window_properties.zig");
 
+/// ShadowRealm Support - TC39 Stage 3 proposal (V8 harmony feature)
+/// Implements HostCreateShadowRealmContextCallback for isolated JavaScript execution
+pub const shadow_realm = @import("shadow_realm.zig");
+pub const initializeShadowRealmSupport = shadow_realm.initializeShadowRealmSupport;
+pub const deinitializeShadowRealmSupport = shadow_realm.deinitializeShadowRealmSupport;
+
 test "v8 module compiles" {
     const testing = @import("std").testing;
     testing.refAllDecls(@This());
