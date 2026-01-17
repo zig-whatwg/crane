@@ -109,7 +109,7 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSVa
     }
 
     // Get the V8 handle for sequence/record conversion
-    const v8_handle_ptr = value.asEngineHandle() orelse {
+    const engine_handle = value.getEngineHandle() orelse {
         // No V8 handle, can't iterate - return empty
         return initWithString(ctx.allocator, ctx, "");
     };
@@ -119,8 +119,14 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(runtime.JSVa
     const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return initWithString(ctx.allocator, ctx, "");
     const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return initWithString(ctx.allocator, ctx, "");
 
-    // The handle is a Global<Value>*, we need to get the local Value*
-    const v8_handle: *v8.Value = @ptrCast(v8.ffi.v8_Global_Get(isolate, @ptrCast(v8_handle_ptr)) orelse return initWithString(ctx.allocator, ctx, ""));
+    // Get the V8 Value pointer - depends on handle scope
+    const v8_handle: *v8.Value = if (engine_handle.handle_scope == .local) blk: {
+        // Local handle - the pointer is already the Value*
+        break :blk @ptrCast(engine_handle.ptr);
+    } else blk: {
+        // Global handle - need to get the local Value* from Global<Value>*
+        break :blk @ptrCast(v8.ffi.v8_Global_Get(isolate, @ptrCast(engine_handle.ptr)) orelse return initWithString(ctx.allocator, ctx, ""));
+    };
 
     // Import conversion helpers
     const conv = v8.conversions;

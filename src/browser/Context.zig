@@ -1308,6 +1308,11 @@ pub const Context = struct {
 
         std.debug.print("loadHTML: runtime_ctx engine_ctx={*}\n", .{runtime_ctx.getEngineContext()});
 
+        // Set the document URL in context_manager for fetch relative URL resolution
+        context_manager.setDocumentUrl(v8_ctx, options.base_url) catch |err| {
+            std.debug.print("Warning: Failed to set document URL: {}\n", .{err});
+        };
+
         // Update location object with the document's URL
         try self.setUrl(options.base_url);
 
@@ -2096,8 +2101,45 @@ fn fetchCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
     }
     const url_slice = url_buffer[0..@intCast(written)];
 
+    // Resolve relative URLs against the document URL
+    var resolved_url: []const u8 = url_slice;
+    var resolved_url_owned = false;
+    defer if (resolved_url_owned) allocator.free(resolved_url);
+
+    if (std.mem.indexOf(u8, url_slice, "://") == null) {
+        // Relative URL - resolve against document URL
+        if (context_manager.getDocumentUrl(v8_ctx)) |doc_url| {
+            // Find the last slash to get the base directory
+            if (std.mem.lastIndexOf(u8, doc_url, "/")) |last_slash| {
+                // Special handling for root-relative URLs
+                if (url_slice.len > 0 and url_slice[0] == '/') {
+                    // Extract origin (scheme + host) from document URL
+                    if (std.mem.indexOf(u8, doc_url, "://")) |scheme_end| {
+                        const after_scheme = doc_url[scheme_end + 3 ..];
+                        if (std.mem.indexOf(u8, after_scheme, "/")) |host_end| {
+                            const origin = doc_url[0 .. scheme_end + 3 + host_end];
+                            resolved_url = std.fmt.allocPrint(allocator, "{s}{s}", .{ origin, url_slice }) catch {
+                                rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to resolve URL");
+                                return;
+                            };
+                            resolved_url_owned = true;
+                        }
+                    }
+                } else {
+                    // Relative path - append to base directory
+                    const base_dir = doc_url[0 .. last_slash + 1];
+                    resolved_url = std.fmt.allocPrint(allocator, "{s}{s}", .{ base_dir, url_slice }) catch {
+                        rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to resolve URL");
+                        return;
+                    };
+                    resolved_url_owned = true;
+                }
+            }
+        }
+    }
+
     // Create internal request
-    const internal_request = fetch.internal.InternalRequest.init(allocator, url_slice) catch {
+    const internal_request = fetch.internal.InternalRequest.init(allocator, resolved_url) catch {
         rejectWithTypeError(isolate, v8_ctx, resolver, "Failed to create request");
         return;
     };

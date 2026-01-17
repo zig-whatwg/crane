@@ -276,6 +276,14 @@ pub fn deinit() void {
                 coordinator.cleanupPhase(.context_data);
                 ctx_data.deinit();
             }
+
+            // Clean up document URL if we own it
+            if (entry.owns_document_url) {
+                if (entry.document_url) |url| {
+                    entry.allocator.free(url);
+                }
+            }
+
             // Free the heap-allocated entry itself
             state.allocator.destroy(entry);
         }
@@ -861,6 +869,13 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // (see handleDynamicImport comment)
 
             ctx_data.deinit();
+        }
+
+        // Clean up document URL if we own it
+        if (entry.owns_document_url) {
+            if (entry.document_url) |url| {
+                entry.allocator.free(url);
+            }
         }
     }
 }
@@ -2294,7 +2309,14 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         ctx_data.deinit();
     }
 
-    // 6. Remove from context map and free the heap-allocated entry
+    // 6. Clean up document URL if we own it
+    if (entry.owns_document_url) {
+        if (entry.document_url) |url| {
+            entry.allocator.free(url);
+        }
+    }
+
+    // 7. Remove from context map and free the heap-allocated entry
     _ = state.contexts.remove(key);
     state.allocator.destroy(entry);
 }
