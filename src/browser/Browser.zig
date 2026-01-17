@@ -383,31 +383,24 @@ pub const Browser = struct {
             self.allocator.destroy(old_ctx);
             self.current_context = null;
 
-            // Force V8 garbage collection to clean up any lingering references
-            // This helps prevent timer callbacks from holding onto disposed context objects
+            // Drain all pending timer close callbacks first
+            // When timers are cancelled in Context.deinit(), libuv schedules close callbacks.
+            // These MUST be processed before GC can clean up timer-related V8 objects.
+            if (self.event_loop) |event_loop| {
+                _ = event_loop.drainCloseCallbacks();
+            }
+
+            // Aggressive GC to clean up disposed context objects
+            // Per Chrome's WindowProxy lifecycle, we call ContextDisposedNotification
+            // which tells V8 a context was disposed and helps GC. Then we force GC
+            // multiple times to ensure all weak handles and garbage are collected.
+            // This is critical for sequential test execution to prevent heap growth.
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
             v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-
-            // Run event loop to process any pending timer close callbacks
-            // This prevents stale timer callbacks from interfering with new contexts
-            // We use a high iteration limit to handle accumulated timers from many tests
-            if (self.event_loop) |event_loop| {
-                var drain_iterations: u32 = 0;
-                const max_drain: u32 = 10000; // Higher limit for accumulated timers
-                var consecutive_empty: u32 = 0;
-
-                while (drain_iterations < max_drain) : (drain_iterations += 1) {
-                    const had_callback = event_loop.eventLoop().runOnce();
-                    if (!had_callback) {
-                        consecutive_empty += 1;
-                        // Confirm event loop is truly empty with multiple checks
-                        // This handles cases where timers might be scheduled asynchronously
-                        if (consecutive_empty >= 3) break;
-                    } else {
-                        consecutive_empty = 0;
-                    }
-                }
-            }
+            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+            // Third GC pass for any objects revived during weak callbacks
+            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
         }
 
         // Create new context

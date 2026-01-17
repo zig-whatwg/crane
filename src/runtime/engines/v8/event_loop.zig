@@ -229,6 +229,34 @@ pub const V8EventLoop = struct {
         return null;
     }
 
+    /// Drain all pending timer close callbacks.
+    ///
+    /// When timers are cancelled via clearTimeout(), libuv schedules close callbacks
+    /// that must be processed for the handles to be fully released. This method
+    /// runs the event loop until all pending timer close callbacks have executed.
+    ///
+    /// Returns the number of iterations needed to drain all callbacks.
+    ///
+    /// Example:
+    /// ```zig
+    /// // After cancelling many timers, ensure they're fully cleaned up
+    /// const iterations = v8_loop.drainCloseCallbacks();
+    /// ```
+    pub fn drainCloseCallbacks(self: *Self) u32 {
+        if (self.timer_manager) |mgr| {
+            return mgr.drainCloseCallbacks();
+        }
+        return 0;
+    }
+
+    /// Get the count of pending timers (including those being closed).
+    pub fn getPendingTimerCount(self: *Self) usize {
+        if (self.timer_manager) |mgr| {
+            return mgr.getPendingCount();
+        }
+        return 0;
+    }
+
     /// Get an EventLoop interface for this V8 loop
     ///
     /// This returns an EventLoop that can be used with async promise APIs.

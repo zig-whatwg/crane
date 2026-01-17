@@ -674,6 +674,23 @@ pub extern fn v8_Context_NewWithGlobalConstructor(isolate: *Isolate, global_cons
 pub extern fn v8_Context_Dispose(context: *Context) void;
 pub extern fn v8_Context_Enter(context: *Context) void;
 pub extern fn v8_Context_Exit(context: *Context) void;
+
+// Context disposal functions (Chrome-style lifecycle management)
+/// Detach the global object from the context.
+/// Per Chrome's WindowProxy lifecycle, this is called during navigation to break
+/// the link between the context and its global proxy.
+pub extern fn v8_Context_DetachGlobal(context: *Context) void;
+
+/// Notify V8 that a context has been disposed.
+/// Per Chrome's LocalWindowProxy::DisposeContext, this hints to V8's GC that
+/// a context is no longer needed.
+pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, force_gc: bool) c_int;
+
+/// Get the real global object (not the global proxy) from a context.
+/// V8 uses a split global architecture: the global proxy is what JavaScript sees,
+/// but the real global object (with internal fields) is its prototype.
+pub extern fn v8_Context_GetRealGlobal(context: *Context) ?*Object;
+
 pub extern fn v8_Context_Global(context: *Context) ?*Object;
 pub extern fn v8_Context_GetRawAddress(context: *Context) ?*anyopaque;
 pub extern fn v8_Context_SetSecurityToken(context: *Context, token: *Value) void;

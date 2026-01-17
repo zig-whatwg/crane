@@ -266,6 +266,29 @@ pub const LibuvTimerManager = struct {
         };
     }
 
+    /// Get the count of pending timers (including those being closed).
+    /// Used for drain loops to ensure all close callbacks are processed.
+    pub fn getPendingCount(self: *Self) usize {
+        return self.timers.count();
+    }
+
+    /// Drain all pending close callbacks by running the loop until empty.
+    /// This ensures all timer handles are properly closed before continuing.
+    /// Returns the number of iterations needed to drain.
+    pub fn drainCloseCallbacks(self: *Self) u32 {
+        if (!self.initialized) return 0;
+
+        var iterations: u32 = 0;
+        const max_iterations: u32 = 1000; // Safety limit
+
+        // Keep running until all timers are removed (close callbacks processed)
+        while (self.timers.count() > 0 and iterations < max_iterations) : (iterations += 1) {
+            _ = libuv.run(self.loop, .UV_RUN_ONCE);
+        }
+
+        return iterations;
+    }
+
     // ========================================================================
     // VTable Implementation
     // ========================================================================

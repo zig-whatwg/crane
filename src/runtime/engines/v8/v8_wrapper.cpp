@@ -1746,6 +1746,77 @@ void v8_Context_Exit(Global<Context>* context) {
     local_context->Exit();
 }
 
+// ============================================================================
+// Context Disposal Functions (Chrome-style lifecycle management)
+// ============================================================================
+
+/// Detach the global object from the context.
+///
+/// Per Chrome's WindowProxy lifecycle, this is called during navigation to break
+/// the link between the context and its global proxy. The global proxy is preserved
+/// and can be reused with a new context on the next navigation.
+///
+/// This is step 1 of Chrome's context disposal sequence:
+/// 1. DetachGlobal() - break context/global link
+/// 2. Exit context
+/// 3. ContextDisposedNotification() - hint GC
+/// 4. Release persistent handle
+///
+/// @param context - The context to detach global from
+void v8_Context_DetachGlobal(Global<Context>* context) {
+    if (!context) return;
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    local_context->DetachGlobal();
+}
+
+/// Notify V8 that a context has been disposed.
+///
+/// Per Chrome's LocalWindowProxy::DisposeContext, this is called after detaching
+/// the global and exiting the context to hint to V8's garbage collector that
+/// a context is no longer needed. This helps V8 clean up context-associated
+/// objects more eagerly.
+///
+/// @param isolate - The V8 isolate
+/// @param force_gc - If true, perform a full GC immediately (for testing)
+/// @return int - Result from V8 (number of disposed contexts in queue)
+int v8_Isolate_ContextDisposedNotification(Isolate* isolate, bool force_gc) {
+    if (!isolate) return 0;
+    return isolate->ContextDisposedNotification(force_gc);
+}
+
+/// Get the real global object (not the global proxy) from a context.
+///
+/// V8 uses a split global architecture: the global proxy is what JavaScript sees
+/// as `globalThis`, but the real global object (with internal fields) is its
+/// prototype. This function returns the real global object.
+///
+/// Per Chrome's V8BindingDesign: The global proxy has 0 internal fields.
+/// Internal fields are set on the real global object (prototype of proxy).
+///
+/// @param context - The context to get real global from
+/// @return Global<Object>* - The real global object (caller owns), or nullptr
+Global<Object>* v8_Context_GetRealGlobal(Global<Context>* context) {
+    if (!context) return nullptr;
+
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+
+    // Get the global proxy
+    Local<Object> global_proxy = local_context->Global();
+
+    // Get the prototype, which is the real global object
+    Local<Value> proto = global_proxy->GetPrototype();
+    if (proto.IsEmpty() || !proto->IsObject()) {
+        return nullptr;
+    }
+
+    return trackHandle(new Global<Object>(isolate, proto.As<Object>()));
+}
+
 Global<Object>* v8_Context_Global(Global<Context>* context) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

@@ -35,6 +35,13 @@ const navigation = @import("navigation.zig");
 const context_manager = v8.context_manager;
 const impls = @import("impls");
 
+// Threadlocal state cleanup modules
+const dom_mod = @import("dom");
+const html_mod = @import("html");
+const custom_elements = html_mod.custom_elements;
+const mutation_observer_algorithms = dom_mod.mutation_observer_algorithms;
+const instance_lifecycle = runtime.instance_lifecycle;
+
 // Timer support
 const TimerInterface = runtime.TimerInterface;
 const TimerId = runtime.TimerId;
@@ -1478,7 +1485,30 @@ pub const Context = struct {
     }
 
     /// Deinitialize the context
+    ///
+    /// This implements Chrome's context disposal sequence from LocalWindowProxy::DisposeContext:
+    /// 1. Cancel all pending timers (prevents callbacks after disposal)
+    /// 2. Clear singleton references
+    /// 3. Remove from context manager (cleans up wrapper cache)
+    /// 4. DetachGlobal() - break context/global link (Chrome pattern)
+    /// 5. Exit context
+    /// 6. ContextDisposedNotification() - hint GC (Chrome pattern)
+    /// 7. Dispose context handle
     pub fn deinit(self: *Context) void {
+        // Clean up threadlocal state that accumulates across context navigations.
+        // These must be cleaned up to prevent state accumulation that causes
+        // timeouts in sequential test execution.
+
+        // Clean up custom elements threadlocal state (reactions_stack, element_reaction_queues)
+        custom_elements.deinitThreadLocalState();
+
+        // Clean up mutation observer threadlocal state (global_agent)
+        mutation_observer_algorithms.resetAgent();
+
+        // Clear instance lifecycle registry entries
+        // (the registry itself persists but entries for this context's instances should be cleaned)
+        instance_lifecycle.clearAll();
+
         // Clear timer interface and cancel all pending timers
         // This must happen before context manager deinit to prevent callbacks
         // from firing after the V8 context is disposed
@@ -1506,8 +1536,27 @@ pub const Context = struct {
         if (self.v8_context) |ctx| {
             context_manager.removeContext(ctx);
 
-            // Exit and dispose V8 context
+            // Chrome-style context disposal sequence:
+            // Per Chrome's LocalWindowProxy::DisposeContext, we must:
+            // 1. Detach global to break the context/global proxy link
+            // 2. Exit the context
+            // 3. Notify V8 that a context was disposed (helps GC)
+            // 4. Release the persistent handle
+
+            // Step 1: Detach global object from context
+            // This breaks the link between the context and its global proxy,
+            // preventing JavaScript from accessing the context's global scope
+            v8.ffi.v8_Context_DetachGlobal(ctx);
+
+            // Step 2: Exit context
             v8.ffi.v8_Context_Exit(ctx);
+
+            // Step 3: Notify V8 that a context has been disposed
+            // This hints to V8's garbage collector that context-associated objects
+            // can be collected more eagerly. force_gc=false for normal operation.
+            _ = v8.ffi.v8_Isolate_ContextDisposedNotification(self.isolate, false);
+
+            // Step 4: Dispose the persistent context handle
             v8.ffi.v8_Context_Dispose(ctx);
         }
 
