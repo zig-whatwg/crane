@@ -134,12 +134,12 @@ pub const InternalState = struct {
         // Clean up integration
         self.integration.deinit();
 
-        // Clean up sandbox_token_list DOMTokenList if it was created
-        // This is a lazily-created [SameObject] instance that owns resources
-        if (self.sandbox_token_list) |token_list| {
-            DOMTokenList.deinit(token_list);
-            self.sandbox_token_list = null;
-        }
+        // NOTE: Do NOT call DOMTokenList.deinit() on sandbox_token_list here.
+        // The [SameObject] DOMTokenList instances are managed by the V8 wrapper cache.
+        // During context cleanup, the wrapper cache iterates all instances and calls
+        // their deinit. If we also call deinit here, we get a double-free crash.
+        // Just clear the pointer to avoid dangling references.
+        self.sandbox_token_list = null;
 
         // Free cached strings
         inline for (@typeInfo(InternalState).@"struct".fields) |field| {
@@ -372,6 +372,10 @@ fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
 /// for the nested browsing context. This WindowProxy provides access to the
 /// Window object in the iframe's realm.
 ///
+/// IMPORTANT: Per spec, contentWindow returns null if the iframe is not connected
+/// (not inserted into the document). The content navigable is only created when
+/// the iframe element is inserted into the DOM via the "post-connection steps".
+///
 /// Phase 4 (Window-as-V8-Global): The Window instance IS bound to the V8 global
 /// object, enabling proper cross-realm access:
 /// - `iframe.contentWindow.DOMRectReadOnly` returns the constructor
@@ -379,6 +383,16 @@ fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
 /// - Cross-realm toJSON tests pass (result objects use the method's realm)
 pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return null;
+
+    // Per HTML spec: If the iframe is not connected (not in the document),
+    // there is no content navigable, so contentWindow must return null.
+    // The content navigable is only created during "post-connection steps"
+    // when the iframe is inserted into the DOM.
+    const NodeImpl = @import("Node.zig");
+    const is_connected = NodeImpl.get_isConnected(instance) catch false;
+    if (!is_connected) {
+        return null;
+    }
 
     // Ensure the realm and V8 context are created (lazy initialization)
     // This creates a child V8 context with all interface bindings
@@ -521,12 +535,24 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
 /// this's content navigable's active document if this is same origin-domain;
 /// otherwise null."
 ///
+/// IMPORTANT: Per spec, contentDocument returns null if the iframe is not connected
+/// (not inserted into the document). The content navigable is only created when
+/// the iframe element is inserted into the DOM.
+///
 /// This getter delegates to contentWindow first to ensure the V8 context and
 /// Document are lazily created if needed. Per spec, every browsing context
 /// has an active document, so if the iframe is connected to the DOM, it should
 /// have a Document.
 pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
+
+    // Per HTML spec: If the iframe is not connected (not in the document),
+    // there is no content navigable, so contentDocument must return null.
+    const NodeImpl = @import("Node.zig");
+    const is_connected = NodeImpl.get_isConnected(instance) catch false;
+    if (!is_connected) {
+        return null;
+    }
 
     // 1. Ensure the V8 context and Document exist by accessing contentWindow.
     //    Per spec, contentWindow triggers lazy creation of the browsing context,
