@@ -23,13 +23,14 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const HTMLIFrameElement = interfaces.HTMLIFrameElement;
 const DOMTokenList = interfaces.DOMTokenList;
 const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 // Import html_core for IFrameIntegration (interface-free module)
 const html_core = @import("html_core");
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const InternalStateAccessor = webidl.utils.InternalStateAccessor;
 const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
 const SandboxFlags = html_core.SandboxFlags;
@@ -272,6 +273,57 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
         return null;
     };
 
+    // Per HTML spec, about:blank documents must have a basic HTML structure:
+    // <html><head></head><body></body></html>
+    // This is required because browsers always create these elements for any HTML document.
+    const DocumentImpl = @import("Document.zig");
+    const NodeImpl = @import("Node.zig");
+
+    // Create html element (HTMLHtmlElement)
+    const html_element = DocumentImpl.call_createElement(
+        document_instance,
+        runtime.DOMString.initInterned("html"),
+        webidl.Opt(runtime.JSValue).notPassed(),
+    ) catch {
+        return document_instance; // Continue with empty document if element creation fails
+    };
+
+    // Create head element (HTMLHeadElement)
+    const head_element = DocumentImpl.call_createElement(
+        document_instance,
+        runtime.DOMString.initInterned("head"),
+        webidl.Opt(runtime.JSValue).notPassed(),
+    ) catch {
+        return document_instance;
+    };
+
+    // Create body element (HTMLBodyElement)
+    const body_element = DocumentImpl.call_createElement(
+        document_instance,
+        runtime.DOMString.initInterned("body"),
+        webidl.Opt(runtime.JSValue).notPassed(),
+    ) catch {
+        return document_instance;
+    };
+
+    // Append head to html
+    _ = NodeImpl.call_appendChild(html_element, head_element) catch {
+        return document_instance;
+    };
+
+    // Append body to html
+    _ = NodeImpl.call_appendChild(html_element, body_element) catch {
+        return document_instance;
+    };
+
+    // Append html to document
+    _ = NodeImpl.call_appendChild(document_instance, html_element) catch {
+        return document_instance;
+    };
+
+    // Set the document element (html) on the Document
+    DocumentImpl.setDocumentElement(document_instance, html_element);
+
     // Create the V8 wrapper for the Document in the child context.
     // This is critical for cross-context access: when the parent context accesses
     // iframe.contentDocument, we return this pre-created wrapper instead of creating
@@ -302,7 +354,6 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Store the wrapper on the Document for cross-context access
-    const DocumentImpl = @import("Document.zig");
     DocumentImpl.setBoundV8Wrapper(document_instance, v8_wrapper);
 
     // Get the active window for this browsing context to associate with the document
