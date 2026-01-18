@@ -254,6 +254,20 @@ pub fn wrapInstanceAsV8Object(
     }
 
     // ========================================
+    // SPECIAL CASE: Document instances with bound V8 wrapper
+    // ========================================
+    // Documents for iframes are created in the child context. When accessed
+    // from the parent context (iframe.contentDocument), we need to return
+    // the wrapper created in the child context to avoid callback corruption.
+    if (std.mem.eql(u8, interface_name, "Document")) {
+        const DocumentImpl = @import("impls").Document;
+        if (DocumentImpl.getBoundV8Wrapper(instance)) |bound_wrapper| {
+            // Return the bound wrapper directly
+            return @ptrCast(bound_wrapper);
+        }
+    }
+
+    // ========================================
     // CACHE LOOKUP: Check if we already have a wrapper for this instance
     // ========================================
     const ctx_mgr = @import("context_manager.zig");

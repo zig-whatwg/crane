@@ -492,6 +492,12 @@ pub const IFrameIntegration = struct {
         // Create the WindowProxy
         self.window_proxy = WindowProxy.init(self.allocator, nested_ctx);
 
+        // Set the document origin on the WindowProxy
+        // For about:blank (no src), the iframe inherits the container's origin
+        if (self.window_proxy) |*proxy| {
+            proxy.setDocumentOrigin(self.container_origin);
+        }
+
         // Update state
         if (self.state == .uninitialized) {
             self.state = .creating_initial_document;

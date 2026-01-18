@@ -214,15 +214,96 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
     }
 }
 
+/// Parse an origin string (e.g., "http://localhost:8000") into an Origin struct.
+/// Returns an opaque origin for invalid or "null" strings.
+fn parseOriginFromString(origin_str: []const u8) Origin {
+    // "null" means opaque origin
+    if (std.mem.eql(u8, origin_str, "null")) {
+        return Origin.createOpaque();
+    }
+
+    // Parse "http://host:port" format
+    if (std.mem.startsWith(u8, origin_str, "http://")) {
+        const rest = origin_str[7..]; // Skip "http://"
+        const host_port_end = std.mem.indexOf(u8, rest, "/") orelse rest.len;
+        const host_port = rest[0..host_port_end];
+
+        // Check for port
+        if (std.mem.lastIndexOf(u8, host_port, ":")) |colon_idx| {
+            const host = host_port[0..colon_idx];
+            const port_str = host_port[colon_idx + 1 ..];
+            const port = std.fmt.parseInt(u16, port_str, 10) catch 80;
+            return Origin.init("http", host, port);
+        }
+        return Origin.init("http", host_port, 80);
+    }
+
+    // Parse "https://host:port" format
+    if (std.mem.startsWith(u8, origin_str, "https://")) {
+        const rest = origin_str[8..]; // Skip "https://"
+        const host_port_end = std.mem.indexOf(u8, rest, "/") orelse rest.len;
+        const host_port = rest[0..host_port_end];
+
+        // Check for port
+        if (std.mem.lastIndexOf(u8, host_port, ":")) |colon_idx| {
+            const host = host_port[0..colon_idx];
+            const port_str = host_port[colon_idx + 1 ..];
+            const port = std.fmt.parseInt(u16, port_str, 10) catch 443;
+            return Origin.init("https", host, port);
+        }
+        return Origin.init("https", host_port, 443);
+    }
+
+    // Unknown format - return opaque
+    return Origin.createOpaque();
+}
+
 /// Document creation callback for iframe navigation
 /// Called when navigateToSrcDoc or navigateToSrc needs to create a Document instance.
 /// Parameters: (runtime_context, browsing_context) -> document_instance
 fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext) ?*anyopaque {
-    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse return null));
+    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse {
+        return null;
+    }));
     const allocator = runtime_ctx.allocator;
 
     // Create a Document instance using the WebIDL interface
-    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch return null;
+    const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch {
+        return null;
+    };
+
+    // Create the V8 wrapper for the Document in the child context.
+    // This is critical for cross-context access: when the parent context accesses
+    // iframe.contentDocument, we return this pre-created wrapper instead of creating
+    // a new one in the parent context. This avoids callback corruption issues where
+    // the callbacks are registered for the wrong context.
+    const child_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(runtime_ctx.engine_ctx orelse {
+        return null;
+    }));
+
+    // Get the current isolate
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
+        return null;
+    };
+
+    // Enter the child context to create the wrapper
+    v8.ffi.v8_Context_Enter(child_v8_ctx);
+    defer v8.ffi.v8_Context_Exit(child_v8_ctx);
+
+    // Create the V8 wrapper in the child context using template_registry
+    const v8_wrapper = v8.template_registry.wrapInstanceAsV8Object(
+        document_instance,
+        "Document",
+        isolate,
+        child_v8_ctx,
+    ) catch {
+        // Continue without wrapper - will create on demand (may have issues)
+        return document_instance;
+    };
+
+    // Store the wrapper on the Document for cross-context access
+    const DocumentImpl = @import("Document.zig");
+    DocumentImpl.setBoundV8Wrapper(document_instance, v8_wrapper);
 
     // Get the active window for this browsing context to associate with the document
     if (browsing_ctx_ptr.getActiveWindow()) |window_ptr| {
@@ -242,15 +323,8 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
 /// Called by IFrameIntegration.executeScriptsInTree to execute scripts in the iframe's V8 context.
 /// Parameters: (engine_context as v8.Context*, script_source) -> void
 fn executeIframeScript(engine_ctx: ?*anyopaque, source: []const u8) void {
-    std.debug.print("[iframe] executeIframeScript callback called, source len: {d}\n", .{source.len});
-    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx orelse {
-        std.debug.print("[iframe] executeIframeScript: no engine_ctx\n", .{});
-        return;
-    }));
-    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
-        std.debug.print("[iframe] executeIframeScript: no isolate\n", .{});
-        return;
-    };
+    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx orelse return));
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return;
 
     if (source.len == 0) return;
 
@@ -259,37 +333,17 @@ fn executeIframeScript(engine_ctx: ?*anyopaque, source: []const u8) void {
     defer v8.ffi.v8_Context_Exit(v8_ctx);
 
     // Create V8 string from source
-    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse {
-        std.debug.print("[iframe] Failed to create V8 string for script\n", .{});
-        return;
-    };
+    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return;
     defer v8.ffi.v8_String_Dispose(source_str);
 
     // Compile the script
-    const compiled = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse {
-        // Log compile error
-        const exception = v8.ffi.v8_TryCatch_Exception(v8_ctx);
-        if (exception) |exc| {
-            const exc_str = v8.ffi.v8_Value_ToString(exc, v8_ctx);
-            if (exc_str) |str| {
-                var buf: [512]u8 = undefined;
-                const len = v8.ffi.v8_String_Utf8Length(str);
-                const write_len: usize = @min(@as(usize, @intCast(len)), buf.len - 1);
-                _ = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(write_len));
-                std.debug.print("[iframe] Script compile error: {s}\n", .{buf[0..write_len]});
-            }
-        }
-        return;
-    };
+    const compiled = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse return;
 
     // Run the script
-    std.debug.print("[iframe] Running compiled script\n", .{});
     _ = v8.ffi.v8_Script_Run(v8_ctx, compiled);
-    std.debug.print("[iframe] Script run complete\n", .{});
 
     // Run microtasks (for Promise resolution, etc.)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
-    std.debug.print("[iframe] Microtasks checkpoint done\n", .{});
 }
 
 /// Location URL update callback for iframes
@@ -308,9 +362,7 @@ fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
 
     // Update Location's URL
     const LocationImpl = @import("Location.zig");
-    LocationImpl.setURLFromString(location, url) catch {
-        std.debug.print("[iframe] Failed to set Location URL: {s}\n", .{url});
-    };
+    LocationImpl.setURLFromString(location, url) catch {};
 }
 
 /// Getter for contentWindow
@@ -369,6 +421,15 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
+        // Set the container_origin from the parent window's origin.
+        // This is required for same-origin checks in contentDocument.
+        // Per spec, the container origin is the origin of the parent document.
+        // The Window stores its origin as a string (e.g., "http://localhost:8000"),
+        // so we need to parse it into an Origin struct.
+        const parent_origin_str = parent_window_internal.origin;
+        const parent_origin = parseOriginFromString(parent_origin_str);
+        internal.integration.container_origin = parent_origin;
+
         // Ensure the iframe's browsing context exists (lazy creation)
         const existing_bc = internal.integration.ensureBrowsingContext(
             @ptrCast(parent_window_internal.browsing_context),
@@ -413,6 +474,27 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         // Set script execution callbacks (for script execution in iframe documents)
         internal.integration.execute_script_callback = &executeIframeScript;
         internal.integration.update_location_callback = &updateIframeLocation;
+
+        // CRITICAL: Associate the iframe's browsing context with the Window.
+        // createChildContext ignores existing_browsing_context (disabled for crash investigation),
+        // so the Window was created with its own new browsing context. We need to:
+        // 1. Replace the Window's browsing context with the iframe's browsing context
+        // 2. Set this Window as the active window on the iframe's browsing context
+        // This is required for contentDocument to work - createDocumentForIframe calls
+        // browsing_ctx.getActiveWindow() which must return this Window.
+        if (entry.window_instance) |window_instance| {
+            // Use the already-imported WindowImpl from earlier in this function
+            const WinImpl = @import("Window.zig");
+            WinImpl.replaceBrowsingContext(window_instance, @ptrCast(existing_bc));
+        }
+
+        // Create the initial about:blank Document for the iframe.
+        // Per HTML spec §7.5.1, every browsing context has an active document.
+        // For about:blank, the document is created immediately when the browsing
+        // context is created, not through navigation.
+        // We call the createDocumentForIframe callback directly to create and
+        // associate the Document with the browsing context.
+        _ = createDocumentForIframe(@ptrCast(&entry.runtime_ctx), existing_bc);
     }
 
     // Return the Window instance from the child context
@@ -438,31 +520,44 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
 /// Per HTML Standard §4.8.5: "The contentDocument getter steps are to return
 /// this's content navigable's active document if this is same origin-domain;
 /// otherwise null."
+///
+/// This getter delegates to contentWindow first to ensure the V8 context and
+/// Document are lazily created if needed. Per spec, every browsing context
+/// has an active document, so if the iframe is connected to the DOM, it should
+/// have a Document.
 pub fn get_contentDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
 
-    // 1. If no content navigable (browsing context), return null
+    // 1. Ensure the V8 context and Document exist by accessing contentWindow.
+    //    Per spec, contentWindow triggers lazy creation of the browsing context,
+    //    Window, and Document for a connected iframe. This is necessary because
+    //    about:blank Documents are created when the context is initialized, not
+    //    through navigation.
+    _ = try get_contentWindow(instance);
+
+    // 2. If no content navigable (browsing context), return null
     const browsing_ctx = internal.integration.browsing_context orelse return null;
 
-    // 2. Get the active document from the browsing context
+    // 3. Get the active document from the browsing context
     // BrowsingContext stores it as *anyopaque to avoid module conflicts,
     // so we cast it back to *runtime.Instance here.
     const document_ptr = browsing_ctx.getActiveDocument() orelse return null;
     const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
 
-    // 3. Get accessor origin - for WPT tests and same-origin scenarios,
+    // 4. Get accessor origin - for WPT tests and same-origin scenarios,
     //    we use the container document's origin as the accessor origin.
     //    In a full implementation, this would come from the incumbent settings object.
     //    Since we're in the same execution context (WPT tests are same-origin),
     //    we use the container origin which is already stored in the integration.
     const accessor_origin = internal.integration.container_origin;
 
-    // 4. Check same origin-domain access
-    if (!internal.integration.isContentDocumentAccessible(accessor_origin)) {
+    // 5. Check same origin-domain access
+    const is_accessible = internal.integration.isContentDocumentAccessible(accessor_origin);
+    if (!is_accessible) {
         return null;
     }
 
-    // 5. Return the document
+    // 6. Return the document
     return document;
 }
 
@@ -490,7 +585,6 @@ pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// For WPT tests, we check if an external hook is registered to handle relative
 /// and HTTP URLs. This allows the WPT runner to load content from its file system.
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    std.debug.print("[iframe] set_src called with: {s}\n", .{value[0..@min(value.len, 80)]});
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Free old value

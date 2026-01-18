@@ -4279,6 +4279,89 @@ static void WindowHasInstanceCallback(const FunctionCallbackInfo<Value>& info) {
     info.GetReturnValue().Set(is_window);
 }
 
+// Custom [Symbol.hasInstance] callback for Document that checks internal type info
+// instead of relying on prototype chain identity (which V8 snapshots don't preserve).
+// This is needed for cross-realm Document access (iframe.contentDocument instanceof Document).
+static void DocumentHasInstanceCallback(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+
+    if (info.Length() < 1) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    Local<Value> arg = info[0];
+    if (!arg->IsObject()) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    Local<Object> obj = arg.As<Object>();
+
+    // Check if this object has the Document type info in internal field 1
+    int field_count = obj->InternalFieldCount();
+    if (field_count < 2) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    void* type_info = obj->GetAlignedPointerFromInternalField(1);
+    if (type_info == nullptr) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    // Check if the type info indicates this is a Document
+    struct WrapperTypeInfo {
+        const char* interface_name;
+    };
+    const WrapperTypeInfo* wrapper_info = static_cast<const WrapperTypeInfo*>(type_info);
+    bool is_document = (strcmp(wrapper_info->interface_name, "Document") == 0);
+
+    info.GetReturnValue().Set(is_document);
+}
+
+// Patch Document[Symbol.hasInstance] to use custom type checking instead of prototype chain.
+// This is needed because cross-realm Document access (iframe.contentDocument) returns
+// a Document from a different context with a different prototype chain.
+void v8_PatchDocumentInstanceOf(Isolate* isolate, Global<Context>* context, Global<Object>* global) {
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Object> global_obj = global->Get(isolate);
+
+    // Get the Document constructor
+    Local<String> document_key = String::NewFromUtf8Literal(isolate, "Document");
+    MaybeLocal<Value> maybe_document = global_obj->Get(ctx, document_key);
+    if (maybe_document.IsEmpty()) {
+        return;
+    }
+
+    Local<Value> document_val = maybe_document.ToLocalChecked();
+    if (!document_val->IsFunction()) {
+        return;
+    }
+
+    Local<Function> document_ctor = document_val.As<Function>();
+
+    // Get Symbol.hasInstance
+    Local<Symbol> has_instance_symbol = Symbol::GetHasInstance(isolate);
+
+    // Create our custom hasInstance function
+    Local<FunctionTemplate> has_instance_tmpl = FunctionTemplate::New(isolate, DocumentHasInstanceCallback);
+    Local<Function> has_instance_fn = has_instance_tmpl->GetFunction(ctx).ToLocalChecked();
+
+    // Define Document[Symbol.hasInstance] = our custom function
+    document_ctor->DefineOwnProperty(
+        ctx,
+        has_instance_symbol,
+        has_instance_fn,
+        static_cast<PropertyAttribute>(v8::ReadOnly | v8::DontEnum | v8::DontDelete)
+    );
+}
+
 // Patch Window[Symbol.hasInstance] to use custom type checking instead of prototype chain.
 // This is needed because V8 snapshots don't preserve the identity between Function.prototype
 // and objects in the prototype chain.

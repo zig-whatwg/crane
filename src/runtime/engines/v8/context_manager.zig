@@ -225,21 +225,10 @@ pub fn deinit() void {
                 // Clean up Window instance and its Document FIRST
                 // This cleans up the DOM tree, and each Node.deinit removes itself
                 // from the wrapper cache to prevent double-free.
+                // NOTE: Do NOT call Window.deinit here - the Window is also in the wrapper cache
+                // and will be cleaned up when the wrapper cache is deinitialized.
+                // Calling deinit here causes double-free.
                 coordinator.cleanupPhase(.dom_tree);
-                if (entry.window_instance) |window| {
-                    const interfaces = @import("interfaces");
-                    const WindowImpl = @import("impls").Window;
-
-                    // Clean up Document instance first (owns the entire DOM tree)
-                    if (WindowImpl.getInternal(window)) |internal| {
-                        if (internal.document) |doc| {
-                            interfaces.Document.deinit(doc);
-                            internal.document = null;
-                        }
-                    }
-
-                    interfaces.Window.deinit(window);
-                }
 
                 // Phase: Wrapper Cache cleanup
                 // Clean up V8 wrapper cache WITH callbacks
@@ -825,21 +814,10 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // Clean up Window and Document (DOM tree) before wrapper cache
             // This is critical: DOM nodes remove themselves from the wrapper cache
             // during deinit, so we must clean them up first
+            // NOTE: Do NOT call Window.deinit here - the Window is also in the wrapper cache
+            // and will be cleaned up when the wrapper cache is deinitialized.
+            // Calling deinit here causes double-free.
             coordinator.cleanupPhase(.dom_tree);
-            if (entry.window_instance) |window| {
-                const interfaces = @import("interfaces");
-                const WindowImpl = @import("impls").Window;
-
-                // Clean up Document instance first (owns the entire DOM tree)
-                if (WindowImpl.getInternal(window)) |internal| {
-                    if (internal.document) |doc| {
-                        interfaces.Document.deinit(doc);
-                        internal.document = null;
-                    }
-                }
-
-                interfaces.Window.deinit(window);
-            }
 
             // Clean up V8 wrapper cache
             // Now safe because DOM nodes already removed themselves
@@ -1337,9 +1315,9 @@ fn createWindowBoundToGlobal(
         @ptrCast(window_instance),
     );
 
-    // Use comptime-generated registry which has ALL interfaces
-    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
-    if (wrapper_type_info_registry.getWrapperTypeInfoByName("Window")) |type_info| {
+    // Use dom_type_info which has the actual type info definitions
+    const dom_type_info = @import("dom_type_info.zig");
+    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(
             global,
             1,
@@ -1642,10 +1620,10 @@ fn createWindowForExistingBrowsingContext(
     WindowImpl.setDocument(window_instance, document_instance);
 
     // 9. Bind Window to global (internal fields + wrapper cache)
-    // Use comptime-generated registry which has ALL interfaces
-    const wrapper_type_info_registry_2 = @import("wrapper_type_info_registry.zig");
+    // Use dom_type_info which has the actual type info definitions
+    const dom_type_info_2 = @import("dom_type_info.zig");
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
-    if (wrapper_type_info_registry_2.getWrapperTypeInfoByName("Window")) |type_info| {
+    if (dom_type_info_2.getTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
     }
     WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
@@ -1982,6 +1960,20 @@ pub fn createChildContext(
         }
     }
 
+    // 4b-bis. Patch Window[Symbol.hasInstance] for cross-context instanceof checks.
+    // V8 snapshots don't preserve the identity between Function.prototype and
+    // objects in the prototype chain. So after snapshot restore, Window.prototype
+    // is a different object than what's in global's prototype chain.
+    // This custom Symbol.hasInstance checks the internal type info instead,
+    // which IS correctly preserved in snapshots.
+    v8.v8_PatchWindowInstanceOf(options.isolate, child_context, global);
+
+    // 4b-bis2. Patch Document[Symbol.hasInstance] for cross-context instanceof checks.
+    // When iframe.contentDocument is accessed from the parent context, the returned
+    // Document is from the child context with a different prototype chain.
+    // This custom Symbol.hasInstance checks the internal type info instead.
+    v8.v8_PatchDocumentInstanceOf(options.isolate, child_context, global);
+
     // 4c. Register Window properties as OWN properties on the global object
     // This is required for cross-realm WPT compliance:
     // `Object.getOwnPropertyDescriptor(iframe.contentWindow, "name")` must return
@@ -2039,7 +2031,13 @@ pub fn createChildContext(
         callback(options.isolate, child_context, global);
     }
 
-    // 4f. Install lazy constructors for global interfaces (DOMException, URL, etc.)
+    // 4f1. Register templates with fresh callbacks for this child context.
+    // After snapshot restore, the template callbacks are stale (point to old addresses).
+    // We must call registerAllTemplatesOnly to create fresh templates with valid callbacks.
+    // Without this, accessing interfaces (like Document) in the child context crashes.
+    interface_bindings.registerAllTemplatesOnly(options.isolate, child_context);
+
+    // 4f2. Install lazy constructors for global interfaces (DOMException, URL, etc.)
     // This makes interfaces accessible as properties on the global object.
     // In the main context, this is done by hydrateContextFromSnapshot().
     // For child contexts, we must explicitly call it since createChildContext()
@@ -2122,60 +2120,8 @@ pub fn createChildContext(
     realm.setGlobalObject(window_instance);
 
     // 8b. Handle browsing context for the Window
-    const WindowImpl = @import("impls").Window;
-
-    if (options.existing_browsing_context) |existing_bc| {
-        // An existing browsing context was provided (from iframe's IFrameIntegration).
-        // Replace the auto-created one with the existing one.
-        // This is necessary because:
-        // - IFrameIntegration.onInsertedIntoDocument() already created a child browsing context
-        //   and added it to the parent's children list
-        // - Window.init() creates its own top-level browsing context
-        // - We need to use the iframe's existing one so frames[index] works correctly
-        WindowImpl.replaceBrowsingContext(window_instance, existing_bc);
-    } else {
-        // No existing browsing context provided - link the auto-created one to parent.
-        // This enables `window.frames[0]` to work by adding the child to parent's children list.
-        // Without this, the child Window's browsing context is orphaned (created as top-level).
-        if (parent_entry.window_instance) |parent_window| {
-            // Get parent Window's browsing context
-            if (WindowImpl.getInternal(parent_window)) |parent_internal| {
-                // Get child Window's browsing context
-                if (WindowImpl.getInternal(window_instance)) |child_internal| {
-                    // Link child to parent
-                    const parent_bc = parent_internal.browsing_context;
-                    const child_bc = child_internal.browsing_context;
-
-                    // Set parent reference and add to parent's children list
-                    child_bc.parent = parent_bc;
-                    parent_bc.children.append(parent_bc.allocator, child_bc) catch {
-                        // Best effort - if this fails, frames[n] just won't work
-                        // but contentWindow will still work via the context_manager path
-                    };
-                }
-            }
-        }
-    }
-
-    // 8c. Create and set a Document for this iframe window
-    // Per HTML spec, every Window must have an associated Document.
-    // For cross-realm tests, properties like `iframe.contentWindow.document` must work.
-    const interfaces = @import("interfaces");
-    const document_instance = try interfaces.Document.init(allocator, runtime_ctx);
-    WindowImpl.setDocument(window_instance, document_instance);
-
-    // 8d. Create and set a Location for this iframe window
-    // Per HTML spec, every Window must have an associated Location.
-    // For WPT tests like data-uri-fragment.html, script in iframe needs `location.hash`.
-    const location_instance = try interfaces.Location.init(allocator, runtime_ctx);
-    WindowImpl.setLocation(window_instance, location_instance);
-
-    // 8e. Set the Document on the BrowsingContext so that contentDocument works.
-    // HTMLIFrameElement.get_contentDocument() calls browsing_context.getActiveDocument(),
-    // so we MUST set it here. Without this, contentDocument returns null.
-    if (WindowImpl.getInternal(window_instance)) |win_internal| {
-        win_internal.browsing_context.setActiveDocument(document_instance, window_instance);
-    }
+    // NOTE: All iframe-specific setup temporarily disabled for crash investigation
+    _ = options.existing_browsing_context;
 
     // 9. Heap-allocate the entry so it doesn't move when HashMap rehashes
     const child_entry = try state.allocator.create(ContextEntry);
@@ -2199,19 +2145,8 @@ pub fn createChildContext(
     try state.contexts.put(child_key, child_entry);
 
     // 10. Fix up instance.ctx pointers that were created with stack-local ctx_data
-    // The window_instance, document_instance, and location_instance have ctx pointing
-    // to stack-local ctx_data, but now ctx_data has been copied into the heap-allocated
-    // child_entry. Update them to point to the stable location.
+    // NOTE: Document and Location creation temporarily disabled for crash investigation
     window_instance.ctx = &child_entry.runtime_ctx;
-    document_instance.ctx = &child_entry.runtime_ctx;
-    location_instance.ctx = &child_entry.runtime_ctx;
-
-    // 10b. Initialize document with standard HTML structure (html > head + body)
-    // Per HTML spec, a new browsing context's document should have this structure
-    // to ensure document.body, document.head, and document.documentElement work.
-    // NOTE: This must happen AFTER the context is registered in the map (step 9)
-    // because element creation uses wrapper cache which needs context lookup.
-    initializeIframeDocumentStructure(allocator, &child_entry.runtime_ctx, document_instance);
 
     // 11. Link to parent's children list
     try parent_entry.children.append(allocator, child_entry);
@@ -2281,20 +2216,9 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
         // This MUST happen before wrapper cache cleanup to avoid use-after-free:
         // if wrapper cache iterates children before parents, it would free child
         // nodes, then when parent.deinit walks first_child, those nodes are already freed.
-        if (entry.window_instance) |window| {
-            const interfaces = @import("interfaces");
-            const WindowImpl = @import("impls").Window;
-
-            // Clean up Document instance first (owns the entire DOM tree)
-            if (WindowImpl.getInternal(window)) |internal| {
-                if (internal.document) |doc| {
-                    interfaces.Document.deinit(doc);
-                    internal.document = null;
-                }
-            }
-
-            interfaces.Window.deinit(window);
-        }
+        // NOTE: Do NOT call Window.deinit here - the Window is also in the wrapper cache
+        // and will be cleaned up when the wrapper cache is deinitialized.
+        // Calling deinit here causes double-free.
 
         // Clean up V8 wrapper cache WITH callbacks
         // Now safe to call deinit() because:
@@ -2381,15 +2305,43 @@ pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
 /// This is used by HTMLIFrameElement.get_contentWindow to return the
 /// correct Window for cross-realm access.
 ///
+/// For browser contexts created outside context_manager (e.g., main browser context),
+/// falls back to getting the Window from the global object's internal field 0,
+/// following the Chromium pattern where Window is stored in the global's internal field.
+///
 /// Thread safety: Thread-local, no synchronization needed
 pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
-    const state = &(manager_state orelse return null);
+    // First check contexts managed by context_manager
+    if (manager_state) |*state| {
+        const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse {
+            // Fallback to getting Window from global's internal field
+            return getWindowFromGlobalInternalField(v8_ctx);
+        };
+        const key = @intFromPtr(raw_addr);
 
-    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
-    const key = @intFromPtr(raw_addr);
+        if (state.contexts.get(key)) |entry| {
+            // Return window_instance if it's set
+            if (entry.window_instance) |window| {
+                return window;
+            }
+            // Entry exists but window_instance is null - fallback to internal field
+            return getWindowFromGlobalInternalField(v8_ctx);
+        }
+    }
 
-    if (state.contexts.get(key)) |entry| {
-        return entry.window_instance;
+    // Context not registered - fallback to getting Window from global's internal field
+    // This handles Browser contexts created via Context.zig which store Window in internal field 0
+    return getWindowFromGlobalInternalField(v8_ctx);
+}
+
+/// Helper to get Window from V8 global's internal field 0.
+/// This follows the Chromium pattern where Window instance is stored in the
+/// global object's internal field.
+fn getWindowFromGlobalInternalField(v8_ctx: *v8.Context) ?*runtime.Instance {
+    const global = v8.v8_Context_Global(v8_ctx) orelse return null;
+    const window_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0);
+    if (window_ptr) |ptr| {
+        return @ptrCast(@alignCast(ptr));
     }
     return null;
 }
@@ -2664,6 +2616,12 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
         return error.NoGlobal;
     };
 
+    // 7b. Patch Document[Symbol.hasInstance] for cross-context instanceof checks.
+    // When iframe.contentDocument is accessed from this context, the returned
+    // Document is from the child context with a different prototype chain.
+    // This custom Symbol.hasInstance checks the internal type info instead.
+    v8.v8_PatchDocumentInstanceOf(isolate, v8_ctx, global);
+
     // 8. Set up Window prototype chain: global → Window.prototype
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
     if (window_key) |wk| {
@@ -2684,10 +2642,10 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
 
     // 10. Bind Window instance to global object's internal fields
     // Field 0: instance pointer, Field 1: type info pointer
-    // Use comptime-generated registry which has ALL interfaces
-    const wrapper_type_info_registry_3 = @import("wrapper_type_info_registry.zig");
+    // Use dom_type_info which has the actual type info definitions
+    const dom_type_info_3 = @import("dom_type_info.zig");
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
-    if (wrapper_type_info_registry_3.getWrapperTypeInfoByName("Window")) |type_info| {
+    if (dom_type_info_3.getTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
     }
 

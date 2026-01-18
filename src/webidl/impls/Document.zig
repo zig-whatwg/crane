@@ -308,6 +308,13 @@ pub const InternalState = struct {
     /// This collection has [[IsHTMLDDA]] internal slot (undetectable)
     all_collection: ?*runtime.Instance,
 
+    /// V8 wrapper for this Document, created in the Document's owning context.
+    /// Used for cross-context access (e.g., iframe.contentDocument from parent).
+    /// When a Document is accessed from a different context than where it was created,
+    /// we return this pre-created wrapper instead of creating a new one in the
+    /// accessing context, which avoids callback corruption issues.
+    bound_v8_wrapper: ?*anyopaque = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -581,6 +588,22 @@ pub fn init(
 /// Alias for getInternal for backward compatibility
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
+}
+
+/// Set the V8 wrapper for this Document (created in the Document's owning context).
+/// This should be called immediately after creating the Document, before returning
+/// it to any other context. The wrapper ensures cross-context access works correctly.
+pub fn setBoundV8Wrapper(instance: *runtime.Instance, v8_wrapper: *anyopaque) void {
+    if (getInternalState(instance)) |internal| {
+        internal.bound_v8_wrapper = v8_wrapper;
+    }
+}
+
+/// Get the V8 wrapper for this Document if one was pre-created.
+/// Returns null if no wrapper was set (Document will be wrapped on demand).
+pub fn getBoundV8Wrapper(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternalState(instance) orelse return null;
+    return internal.bound_v8_wrapper;
 }
 
 /// Deinitialize instance

@@ -466,6 +466,12 @@ pub const Context = struct {
         // correctly preserved in the snapshot.
         v8.ffi.v8_PatchWindowInstanceOf(self.isolate, v8_ctx, global);
 
+        // Patch Document[Symbol.hasInstance] for cross-context instanceof checks.
+        // When iframe.contentDocument is accessed from this context, the returned
+        // Document is from the child context with a different prototype chain.
+        // This custom Symbol.hasInstance checks the internal type info instead.
+        v8.ffi.v8_PatchDocumentInstanceOf(self.isolate, v8_ctx, global);
+
         // Create and bind Window instance to global object's internal fields
         // This is required for WebIDL method callbacks to extract the Zig instance from `this`
         const Window = interfaces.Window;
@@ -486,6 +492,9 @@ pub const Context = struct {
 
         // Bind the V8 global to the Window instance for cross-realm access
         impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+
+        // NOTE: Window is stored in global's internal field 0, so context_manager.getWindowForContext()
+        // can find it via getWindowFromGlobalInternalField() fallback. No need to call setWindowForContext().
 
         // Register Window in wrapper cache for proper cleanup
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
@@ -624,6 +633,9 @@ pub const Context = struct {
 
         // Bind the V8 global to the Window instance
         impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+
+        // NOTE: Window is stored in global's internal field 0, so context_manager.getWindowForContext()
+        // can find it via getWindowFromGlobalInternalField() fallback. No need to call setWindowForContext().
 
         // Register Window in wrapper cache
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
