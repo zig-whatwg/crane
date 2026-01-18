@@ -2205,23 +2205,42 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
                                 break :comptime_convert v8_converted;
+                            } else if (PayloadType == @import("typedefs").EventHandler) {
+                                // EventHandler explicit check - tagged pointer to V8 GlobalHandle
+                                // This is redundant with isOptionalCallbackType but ensures explicit matching
+                                if (result) |tagged_ptr| {
+                                    const ptr_tag = @import("pointer_tag.zig");
+                                    // Cast function pointer to *const anyopaque for untagging
+                                    // The pointer has tag bits set in low 2 bits
+                                    const ptr_addr: usize = @intFromPtr(tagged_ptr);
+                                    const raw_ptr: *const anyopaque = @ptrFromInt(ptr_addr);
+                                    const untagged = ptr_tag.untagPointer(raw_ptr);
+
+                                    if (untagged.tag == .global_handle) {
+                                        // Return the Global<Value>* directly - setReturnValue expects a Global pointer
+                                        // DO NOT call handle.get() - that returns a Local which is the wrong type
+                                        break :comptime_convert @ptrCast(@alignCast(untagged.ptr));
+                                    }
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                } else {
+                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                }
                             } else if (comptime isOptionalCallbackType(PayloadType)) {
                                 // Optional callback type (like EventHandler = ?*const fn(...))
                                 // These are stored as tagged pointers to V8 GlobalHandles
                                 // Per WebIDL spec, null EventHandler should return JavaScript null
                                 if (result) |tagged_ptr| {
-                                    // Untag the pointer to get the GlobalHandle
                                     const ptr_tag = @import("pointer_tag.zig");
-                                    const untagged = ptr_tag.untagPointer(@ptrCast(tagged_ptr));
+                                    // Cast function pointer to *const anyopaque for untagging
+                                    // The pointer has tag bits set in low 2 bits
+                                    const ptr_addr: usize = @intFromPtr(tagged_ptr);
+                                    const raw_ptr: *const anyopaque = @ptrFromInt(ptr_addr);
+                                    const untagged = ptr_tag.untagPointer(raw_ptr);
 
                                     if (untagged.tag == .global_handle) {
-                                        // This is a GlobalHandle - we need to call v8_Global_Get to get the actual V8 value
-                                        // The untagged.ptr is the Global<Value>* handle, NOT the value itself
-                                        const global_handles_mod = @import("global_handles.zig");
-                                        const handle = global_handles_mod.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };
-                                        if (handle.get(isolate_inner)) |local_value| {
-                                            break :comptime_convert local_value;
-                                        }
+                                        // Return the Global<Value>* directly - setReturnValue expects a Global pointer
+                                        // DO NOT call handle.get() - that returns a Local which is the wrong type
+                                        break :comptime_convert @ptrCast(@alignCast(untagged.ptr));
                                     }
                                     // Fallback: return null if we can't extract the V8 value
                                     break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;

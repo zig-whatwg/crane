@@ -277,10 +277,14 @@ fn runRemovingStepsRecursive(node: anytype, old_parent: anytype) void {
 
 /// Recursively set the is_connected flag for a node and all its descendants
 /// Called during insert (connected=true) and remove (connected=false) operations
+/// Uses sibling pointers instead of child_nodes.items() for safety during tree construction
 fn setConnectedRecursive(node: anytype, connected: bool) void {
     node.is_connected = connected;
-    for (node.child_nodes.items()) |child| {
-        setConnectedRecursive(child, connected);
+    // Use first_child/next_sibling which are always safely initialized to null
+    var child = node.first_child;
+    while (child) |c| {
+        setConnectedRecursive(c, connected);
+        child = c.next_sibling;
     }
 }
 

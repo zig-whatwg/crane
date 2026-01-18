@@ -599,15 +599,8 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     const html_internal = HTMLElementImpl.getInternalState(instance) orelse return;
 
     // Look up the event handler for this event type
-    const handler = html_internal.event_handlers.get(event_type_str.asSlice()) orelse return;
-
-    // handler is ?callbacks.EventHandlerNonNull which is ?*const fn(...)
-    // When set from JavaScript, this is actually a tagged pointer to a GlobalHandle
-    const handler_ptr = handler orelse return;
-
-    // The handler_ptr is a function pointer type, but it's actually a tagged GlobalHandle
-    // We need to get the raw pointer address
-    const raw_ptr: *const anyopaque = @ptrCast(handler_ptr);
+    // NOTE: event_handlers now stores *anyopaque to preserve tagged pointer bits
+    const raw_ptr = html_internal.event_handlers.get(event_type_str.asSlice()) orelse return;
 
     // Untag the pointer to get the GlobalHandle
     const untagged = pointer_tag.untagPointer(raw_ptr);

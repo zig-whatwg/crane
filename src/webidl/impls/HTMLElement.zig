@@ -77,7 +77,10 @@ pub const InternalState = struct {
     // === Event Handlers (GlobalEventHandlers mixin) ===
     /// Event handler storage using handler name as key
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes
-    event_handlers: std.StringHashMap(typedefs.EventHandler),
+    /// NOTE: We use *anyopaque instead of typedefs.EventHandler because the V8 GlobalHandle
+    /// pointers are stored with tag bits in the low 2 bits. Function pointer types have
+    /// alignment requirements that would strip these tag bits. Using *anyopaque preserves them.
+    event_handlers: std.StringHashMap(*anyopaque),
 
     // === Style ===
     /// Cached inline CSSStyleDeclaration for this element
@@ -93,7 +96,7 @@ pub const InternalState = struct {
             .element_internals = null,
             .internals_attached = false,
             .is_dragging = false,
-            .event_handlers = std.StringHashMap(typedefs.EventHandler).init(allocator),
+            .event_handlers = std.StringHashMap(*anyopaque).init(allocator),
             .style_declaration = null,
         };
     }
@@ -525,16 +528,35 @@ pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Inst
 // =============================================================================
 
 /// Helper to get an event handler from internal state
+/// NOTE: We store handlers as *anyopaque to preserve tagged pointer bits, then cast back.
+/// The stored pointer may have tag bits set in the low 2 bits for V8 GlobalHandle identification.
 fn getEventHandler(instance: *runtime.Instance, name: []const u8) typedefs.EventHandler {
     const internal = getInternalState(instance) orelse return null;
-    return internal.event_handlers.get(name) orelse null;
+    const raw_ptr = internal.event_handlers.get(name) orelse return null;
+    // Cast the *anyopaque address directly to a function pointer.
+    // The stored pointer may have tag bits set (for V8 GlobalHandle identification),
+    // which is intentional - the interface layer will untag before using.
+    //
+    // We use a packed struct to bypass Zig's alignment checks.
+    // This is the same technique used in conversions.zig for similar conversions.
+    // This is safe because the tagged pointer will be untagged in interface.zig
+    // before any actual dereferencing occurs.
+    const addr: usize = @intFromPtr(raw_ptr);
+    const NonNullHandler = @typeInfo(typedefs.EventHandler).optional.child;
+    const PackedPtr = packed struct { ptr: NonNullHandler };
+    const packed_val: PackedPtr = @bitCast(addr);
+    return packed_val.ptr;
 }
 
 /// Helper to set an event handler in internal state
+/// NOTE: We store handlers as *anyopaque to preserve tagged pointer bits.
 fn setEventHandler(instance: *runtime.Instance, name: []const u8, handler: typedefs.EventHandler) !void {
     const internal = getInternalState(instance) orelse return error.InvalidStateError;
-    if (handler) |_| {
-        try internal.event_handlers.put(name, handler);
+    if (handler) |h| {
+        // Cast to *anyopaque to preserve tagged pointer bits
+        // Function pointer types have alignment requirements that would strip tag bits
+        const raw_ptr: *anyopaque = @ptrCast(@constCast(h));
+        try internal.event_handlers.put(name, raw_ptr);
     } else {
         _ = internal.event_handlers.remove(name);
     }

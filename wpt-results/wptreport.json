@@ -7,20 +7,27 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768698066011,
-  "time_end": 1768698067437,
+  "time_start": 1768703576279,
+  "time_end": 1768703577792,
   "results": [
     {
       "test": "crane/iframe.basic.html",
       "status": "OK",
       "message": null,
-      "duration": 51,
+      "duration": 52,
       "subtests": [
         {"name": "Phase 1.1: document exists", "status": "PASS", "message": null},
         {"name": "Phase 1.2: document.createElement exists", "status": "PASS", "message": null},
         {"name": "Phase 1.3: document.createElement works", "status": "PASS", "message": null},
         {"name": "Phase 1.4: document.body exists", "status": "PASS", "message": null},
-        {"name": "Phase 1.5: appendChild method exists", "status": "PASS", "message": null}
+        {"name": "Phase 1.5: appendChild method exists", "status": "PASS", "message": null},
+        {"name": "Phase 1.6: appendChild works", "status": "PASS", "message": null},
+        {"name": "Phase 1.7: setAttribute and getAttribute work", "status": "PASS", "message": null},
+        {"name": "Phase 1.8: Elements can be added to document", "status": "PASS", "message": null},
+        {"name": "Phase 2.1: Event constructors exist", "status": "PASS", "message": null},
+        {"name": "Phase 2.2: EventTarget methods exist on elements", "status": "PASS", "message": null},
+        {"name": "Phase 2.3: addEventListener and dispatchEvent work", "status": "PASS", "message": null},
+        {"name": "Phase 2.4: onload property exists on elements", "status": "PASS", "message": null}
       ]
     }
   ]
