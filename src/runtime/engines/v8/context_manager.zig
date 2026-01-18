@@ -626,10 +626,11 @@ pub fn hydrateContextFromSnapshot(
     // Use inline for to convert runtime scope to comptime for installForScope
     inline for (std.meta.fields(helpers.GlobalScope)) |field| {
         if (scope == @field(helpers.GlobalScope, field.name)) {
-            // V8 snapshots don't preserve lazy data properties on the global proxy.
-            // We must re-install them after context restoration (matches Chromium's pattern).
-            const global_constructor_handler = @import("global_constructor_handler.zig");
-            global_constructor_handler.installLazyConstructorsOnGlobal(v8_ctx);
+            // NOTE: Do NOT call installLazyConstructorsOnGlobal here!
+            // The snapshot already contains all WebIDL constructors registered via initializeBindings().
+            // Installing lazy getters would OVERWRITE the snapshot's constructors with fresh ones,
+            // breaking prototype chain identity (instanceof checks would fail because the prototype
+            // objects would be different from those in the snapshot).
 
             // Register legacy interface aliases (e.g., webkitURL = URL)
             // V8 snapshots don't preserve object property sets on the global,
@@ -637,12 +638,12 @@ pub fn hydrateContextFromSnapshot(
             const interface_bindings = @import("interface_bindings.zig");
             interface_bindings.registerLegacyInterfaceAliases(isolate, v8_ctx);
 
-            // NOTE: Accessor callback reinstallation is NO LONGER NEEDED after whatwg-41la6.
-            // The Chromium pattern fix (calling GetFunction before NewInstance in template_registry.zig)
-            // ensures prototype chains are materialized correctly during snapshot creation.
-            // Accessors set on PrototypeTemplate are preserved through snapshot restore.
+            // NOTE: Do NOT call setupConstructorInheritance here!
+            // The snapshot already contains properly configured prototype chains set up during
+            // snapshot creation via FunctionTemplate::Inherit(). Re-calling this would create
+            // new templates and potentially break the prototype chain identity.
 
-            std.debug.print("[HYDRATE-SNAPSHOT] Context hydrated with lazy constructors and legacy aliases, scope={s}\n", .{@tagName(scope)});
+            std.debug.print("[HYDRATE-SNAPSHOT] Context hydrated with legacy aliases, scope={s}\n", .{@tagName(scope)});
             return;
         }
     }
@@ -2163,7 +2164,13 @@ pub fn createChildContext(
     const document_instance = try interfaces.Document.init(allocator, runtime_ctx);
     WindowImpl.setDocument(window_instance, document_instance);
 
-    // 8d. Set the Document on the BrowsingContext so that contentDocument works.
+    // 8d. Create and set a Location for this iframe window
+    // Per HTML spec, every Window must have an associated Location.
+    // For WPT tests like data-uri-fragment.html, script in iframe needs `location.hash`.
+    const location_instance = try interfaces.Location.init(allocator, runtime_ctx);
+    WindowImpl.setLocation(window_instance, location_instance);
+
+    // 8e. Set the Document on the BrowsingContext so that contentDocument works.
     // HTMLIFrameElement.get_contentDocument() calls browsing_context.getActiveDocument(),
     // so we MUST set it here. Without this, contentDocument returns null.
     if (WindowImpl.getInternal(window_instance)) |win_internal| {
@@ -2192,11 +2199,12 @@ pub fn createChildContext(
     try state.contexts.put(child_key, child_entry);
 
     // 10. Fix up instance.ctx pointers that were created with stack-local ctx_data
-    // The window_instance and document_instance have ctx pointing to stack-local ctx_data,
-    // but now ctx_data has been copied into the heap-allocated child_entry.
-    // Update them to point to the stable location.
+    // The window_instance, document_instance, and location_instance have ctx pointing
+    // to stack-local ctx_data, but now ctx_data has been copied into the heap-allocated
+    // child_entry. Update them to point to the stable location.
     window_instance.ctx = &child_entry.runtime_ctx;
     document_instance.ctx = &child_entry.runtime_ctx;
+    location_instance.ctx = &child_entry.runtime_ctx;
 
     // 10b. Initialize document with standard HTML structure (html > head + body)
     // Per HTML spec, a new browsing context's document should have this structure

@@ -384,41 +384,49 @@ pub const WptBrowser = struct {
 
     /// Load testharness.js and testharnessreport.js into the context
     fn loadTestHarness(self: *WptBrowser, ctx: *Context) !void {
-        std.debug.print("loadTestHarness: Loading testharness.js...\n", .{});
-        std.debug.print("loadTestHarness: Browser.Context v8_context={*}\n", .{ctx.v8_context});
+        _ = ctx.v8_context; // Suppress unused warning
 
-        // DEBUG: Check if 'self' is defined before loading testharness.js
-        const self_check =
+        // CRITICAL CHECK: Verify no state leaked from previous context
+        // If any of these exist, we have a state leak!
+        const leak_check =
             \\(function() {
-            \\  console.log('self type: ' + typeof self);
-            \\  console.log('self === window: ' + (self === window));
-            \\  console.log('self === globalThis: ' + (self === globalThis));
-            \\  if (typeof self === 'number') {
-            \\    console.log('ERROR: self is a number! value=' + self);
+            \\  var leaks = [];
+            \\  if (typeof window.__wpt_complete !== 'undefined') leaks.push('__wpt_complete=' + window.__wpt_complete);
+            \\  if (typeof window.__wpt_results !== 'undefined') leaks.push('__wpt_results exists');
+            \\  if (typeof test === 'function') leaks.push('test() already defined');
+            \\  if (typeof Tests !== 'undefined') leaks.push('Tests object exists');
+            \\  if (leaks.length > 0) {
+            \\    console.log('[LEAK DETECTED] Previous test state found: ' + leaks.join(', '));
+            \\    return 'LEAKED: ' + leaks.join(', ');
             \\  }
-            \\  return typeof self;
+            \\  return 'CLEAN';
             \\})();
         ;
-        _ = ctx.evaluateScript(self_check) catch |err| {
-            std.debug.print("loadTestHarness: self check error: {}\n", .{err});
+        const leak_result = ctx.evaluateScript(leak_check) catch |err| {
+            std.debug.print("[loadTestHarness] Leak check error: {}\n", .{err});
+            return err;
         };
+        if (leak_result) |val| {
+            const leak_str = self.v8StringToZig(val) catch null;
+            if (leak_str) |s| {
+                defer self.allocator.free(s);
+                // Only print if there's a leak
+                if (!std.mem.eql(u8, s, "CLEAN")) {
+                    std.debug.print("[loadTestHarness] !!! STATE LEAK DETECTED: {s} !!!\n", .{s});
+                }
+            }
+        }
 
         // Load testharness.js
         if (self.testharness_js) |js| {
-            std.debug.print("loadTestHarness: testharness.js content length: {d}\n", .{js.len});
             _ = try ctx.evaluateScript(js);
-            std.debug.print("loadTestHarness: testharness.js executed successfully\n", .{});
         } else {
-            std.debug.print("loadTestHarness: testharness.js content is null!\n", .{});
             return error.TestHarnessNotFound;
         }
 
         // Load testharnessreport.js
         if (self.testharnessreport_js) |js| {
-            std.debug.print("loadTestHarness: testharnessreport.js content length: {d}\n", .{js.len});
             _ = try ctx.evaluateScript(js);
-        } else {
-            std.debug.print("loadTestHarness: testharnessreport.js content is null\n", .{});
         }
 
         // Verify testharness.js loaded correctly by checking for globals
@@ -432,15 +440,10 @@ pub const WptBrowser = struct {
             \\}
             \\'GLOBALS_VERIFIED';
         ;
-        const verify_result = ctx.evaluateScript(verify_script) catch |err| {
+        _ = ctx.evaluateScript(verify_script) catch |err| {
             std.debug.print("ERROR: testharness.js verification failed: {}\n", .{err});
             return error.TestHarnessLoadFailed;
         };
-        if (verify_result != null) {
-            std.debug.print("loadTestHarness: Globals verified successfully!\n", .{});
-        } else {
-            std.debug.print("loadTestHarness: Verify script returned null\n", .{});
-        }
 
         // Set up completion callback to capture results
         const setup_script =
@@ -473,41 +476,37 @@ pub const WptBrowser = struct {
         _ = try ctx.evaluateScript(setup_script);
     }
 
-    /// Wait for test completion by polling __wpt_complete
+    /// Wait for test completion with proper blocking.
+    ///
+    /// This uses the new blocking event loop to efficiently wait for test completion.
+    /// The test signals completion by setting `window.__wpt_complete = true`.
+    ///
+    /// @param ctx The browser context
+    /// @param timeout_ms Maximum time to wait for completion
+    /// @param test_path Test path for error reporting
+    /// @return TestResult with test results or timeout status
     fn waitForCompletion(self: *WptBrowser, ctx: *Context, timeout_ms: u64, test_path: []const u8) !test_harness.TestResult {
         const start_time = std.time.milliTimestamp();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
-        var iteration: u32 = 0;
-        var last_debug: i64 = start_time;
 
-        while (std.time.milliTimestamp() < deadline) {
-            // Run event loop for a short period
-            self.browser.runEventLoop(10) catch {};
-            iteration += 1;
+        // Polling interval for completion check
+        // With proper blocking, we can use a longer interval while still being responsive
+        // to timer events (blocking wakes on timer fire)
+        const check_interval_ms: u64 = 50;
 
-            // Debug output every 1000ms
+        while (true) {
             const now = std.time.milliTimestamp();
-            if (now - last_debug >= 1000) {
-                last_debug = now;
-                const elapsed: u64 = @intCast(now - start_time);
-                std.debug.print("[WPT DEBUG] Iteration {}, elapsed {}ms - checking state...\n", .{ iteration, elapsed });
-
-                // Check testharness state via JS
-                const debug_script =
-                    \\(function() {
-                    \\  var state = {
-                    \\    complete: window.__wpt_complete,
-                    \\    all_loaded: typeof test_environment !== 'undefined' ? test_environment.all_loaded : 'N/A',
-                    \\    tests_count: typeof tests !== 'undefined' ? tests.tests.length : 'N/A',
-                    \\    num_pending: typeof tests !== 'undefined' ? tests.num_pending : 'N/A',
-                    \\    all_done: typeof tests !== 'undefined' && typeof tests.all_done === 'function' ? tests.all_done() : 'N/A'
-                    \\  };
-                    \\  console.log('[WPT DEBUG STATE] ' + JSON.stringify(state));
-                    \\  return JSON.stringify(state);
-                    \\})();
-                ;
-                _ = ctx.evaluateScript(debug_script) catch {};
+            if (now >= deadline) {
+                break;
             }
+
+            // Calculate how long to block
+            const remaining: u64 = @intCast(deadline - now);
+            const wait_time = @min(remaining, check_interval_ms);
+
+            // Block on event loop - this runs timer callbacks, I/O, etc.
+            // Uses efficient libuv blocking, waking when timers fire
+            _ = self.browser.runEventLoopBlocking(wait_time) catch {};
 
             // Check if test is complete
             const complete_result = ctx.evaluateScript("window.__wpt_complete") catch continue;
@@ -519,24 +518,6 @@ pub const WptBrowser = struct {
                 }
             }
         }
-
-        // Timeout - print final state
-        std.debug.print("[WPT DEBUG] TIMEOUT - printing final state\n", .{});
-        const final_debug_script =
-            \\(function() {
-            \\  console.log('[WPT FINAL] window.__wpt_complete: ' + window.__wpt_complete);
-            \\  if (typeof test_environment !== 'undefined') {
-            \\    console.log('[WPT FINAL] test_environment.all_loaded: ' + test_environment.all_loaded);
-            \\  }
-            \\  if (typeof tests !== 'undefined') {
-            \\    console.log('[WPT FINAL] tests.tests.length: ' + tests.tests.length);
-            \\    console.log('[WPT FINAL] tests.num_pending: ' + tests.num_pending);
-            \\    console.log('[WPT FINAL] tests.all_done(): ' + tests.all_done());
-            \\    console.log('[WPT FINAL] tests.phase: ' + tests.phase);
-            \\  }
-            \\})();
-        ;
-        _ = ctx.evaluateScript(final_debug_script) catch {};
 
         // Timeout
         const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));

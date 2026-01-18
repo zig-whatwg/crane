@@ -164,6 +164,8 @@ const V8TimerContextData = struct {
     callback_fn: *v8.ffi.Function,
     /// V8 isolate
     isolate: *v8.ffi.Isolate,
+    /// V8 context (needed because timer callbacks fire outside of active context)
+    v8_context: *v8.ffi.Context,
     /// Whether this is an interval (repeating) timer - affects cleanup
     is_interval: bool,
     /// For intervals: the delay in ms for rescheduling
@@ -183,7 +185,7 @@ const V8TimerContextData = struct {
 const V8TimerCallback = SelfContainedWorkCallback(V8TimerContextData);
 
 /// Create a new V8 timer context wrapper
-fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, callback_value: *v8.ffi.Value, is_interval: bool) !*V8TimerCallback {
+fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, v8_context: *v8.ffi.Context, callback_value: *v8.ffi.Value, is_interval: bool) !*V8TimerCallback {
     // Verify it's a function
     if (!v8.ffi.v8_Value_IsFunction(callback_value)) {
         return error.NotAFunction;
@@ -196,6 +198,7 @@ fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, 
         .{
             .callback_fn = @ptrCast(callback_value),
             .isolate = isolate,
+            .v8_context = v8_context,
             .is_interval = is_interval,
         },
     );
@@ -203,18 +206,31 @@ fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, 
 
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
 fn v8TimerHandler(data: *V8TimerContextData) void {
+    std.debug.print("[v8TimerHandler] Timer callback FIRED for id={}\n", .{data.current_timer_id});
+
     // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
     if (timer_contexts) |*map| {
         _ = map.remove(data.current_timer_id);
     }
 
     const isolate = data.isolate;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
-    const global = v8.ffi.v8_Context_Global(context) orelse return;
+    const context = data.v8_context;
+
+    // Enter the V8 context before invoking the callback
+    // Timer callbacks fire from the event loop when no context is active
+    v8.ffi.v8_Context_Enter(context);
+    defer v8.ffi.v8_Context_Exit(context);
+
+    const global = v8.ffi.v8_Context_Global(context) orelse {
+        std.debug.print("[v8TimerHandler] ERROR: Failed to get global object\n", .{});
+        return;
+    };
 
     // Invoke the V8 function (stored directly, not via persistent handle)
+    std.debug.print("[v8TimerHandler] Invoking callback function\n", .{});
     var empty_args: [1]*v8.ffi.Value = undefined;
     _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    std.debug.print("[v8TimerHandler] Callback completed\n", .{});
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -236,7 +252,13 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
     }
 
     const isolate = data.isolate;
-    const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    const context = data.v8_context;
+
+    // Enter the V8 context before invoking the callback
+    // Timer callbacks fire from the event loop when no context is active
+    v8.ffi.v8_Context_Enter(context);
+    defer v8.ffi.v8_Context_Exit(context);
+
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
     // Invoke the V8 function
@@ -331,6 +353,9 @@ pub const Context = struct {
     history_instance: ?*runtime.Instance = null,
     performance_instance: ?*runtime.Instance = null,
 
+    // Debug counter for tracking context lifecycle
+    var context_id_counter: u32 = 0;
+
     /// Initialize a new Context
     ///
     /// Creates a V8 context within the existing isolate and registers all
@@ -348,6 +373,12 @@ pub const Context = struct {
         context_type: ContextType,
         skip_bindings: bool,
     ) !*Context {
+        context_id_counter += 1;
+        const ctx_id = context_id_counter;
+        std.debug.print("\n[Context.init] === Creating context #{d} ===\n", .{ctx_id});
+        std.debug.print("[Context.init] URL: {s}\n", .{url});
+        std.debug.print("[Context.init] Isolate: {*}\n", .{isolate});
+
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
 
@@ -1141,12 +1172,18 @@ pub const Context = struct {
         }
 
         // Step 1: Fetch URL content via HTTP
+        std.debug.print("[loadPageWithOptions] Fetching URL: {s}\n", .{self.url});
         var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
             // Handle navigation errors gracefully
             std.debug.print("Navigation error for {s}: {}\n", .{ self.url, err });
             return error.NavigationFailed;
         };
         defer result.deinit();
+
+        std.debug.print("[loadPageWithOptions] Fetched {d} bytes, content_type: {s}\n", .{ result.body.len, result.content_type });
+        // Log first 500 chars of HTML for debugging
+        const preview_len = @min(result.body.len, 500);
+        std.debug.print("[loadPageWithOptions] HTML preview: {s}\n", .{result.body[0..preview_len]});
 
         // Step 2: Check if HTML content
         const is_html = std.mem.indexOf(u8, result.content_type, "text/html") != null or
@@ -1399,6 +1436,7 @@ pub const Context = struct {
             document,
             runtime.DOMString.initInterned("iframe"),
         );
+        defer interfaces.HTMLCollection.deinit(iframes);
 
         // Get the collection length
         const length = try interfaces.HTMLCollection.get_length(iframes);
@@ -1420,8 +1458,17 @@ pub const Context = struct {
     /// Set the context URL (updates location object)
     fn setUrl(self: *Context, url: []const u8) !void {
         // Update internal URL
+        // IMPORTANT: Check if url points to self.url (same slice) to avoid use-after-free.
+        // This can happen when loadHTML is called with base_url = self.url
+        if (url.ptr == self.url.ptr) {
+            // URL is already set to this value, nothing to do
+            return;
+        }
+        // Duplicate first, then free old to avoid use-after-free if url somehow
+        // references memory that would be affected by the free
+        const new_url = try self.allocator.dupe(u8, url);
         self.allocator.free(self.url);
-        self.url = try self.allocator.dupe(u8, url);
+        self.url = new_url;
 
         // Note: Location object URL is set during context initialization
         // and via JavaScript. Direct impl access would require Location.setHref
@@ -1495,6 +1542,10 @@ pub const Context = struct {
     /// 6. ContextDisposedNotification() - hint GC (Chrome pattern)
     /// 7. Dispose context handle
     pub fn deinit(self: *Context) void {
+        std.debug.print("\n[Context.deinit] === Destroying context ===\n", .{});
+        std.debug.print("[Context.deinit] URL: {s}\n", .{self.url});
+        std.debug.print("[Context.deinit] V8 Context: {?*}\n", .{self.v8_context});
+
         // Clean up threadlocal state that accumulates across context navigations.
         // These must be cleaned up to prevent state accumulation that causes
         // timeouts in sequential test execution.
@@ -1553,8 +1604,9 @@ pub const Context = struct {
 
             // Step 3: Notify V8 that a context has been disposed
             // This hints to V8's garbage collector that context-associated objects
-            // can be collected more eagerly. force_gc=false for normal operation.
-            _ = v8.ffi.v8_Isolate_ContextDisposedNotification(self.isolate, false);
+            // can be collected more eagerly. force_gc=true for aggressive cleanup
+            // which is needed for sequential test execution.
+            _ = v8.ffi.v8_Isolate_ContextDisposedNotification(self.isolate, true);
 
             // Step 4: Dispose the persistent context handle
             v8.ffi.v8_Context_Dispose(ctx);
@@ -1607,6 +1659,7 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Get timer interface from thread-local storage
     const timer = getTimerInterface() orelse {
+        std.debug.print("[setTimeout] ERROR: No timer interface available!\n", .{});
         // Fallback: execute immediately if no timer interface
         const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
             const result = v8.ffi.v8_Integer_New(isolate, 0);
@@ -1632,8 +1685,15 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
         return;
     };
 
+    // Get the current V8 context - needed for timer callback execution
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
     // Create typed timer context wrapper (one-shot timer)
-    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, false) catch {
+    const timer_wrapper = createV8TimerContext(allocator, isolate, v8_context, callback_value, false) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
@@ -1641,17 +1701,20 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Schedule the timer using TimerInterface with typed callback trampoline
     const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    std.debug.print("[setTimeout] Creating timer with delay {}ms\n", .{delay_u64});
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
         timer_wrapper.eraseForFFI(),
     );
     if (timer_id == 0) {
+        std.debug.print("[setTimeout] ERROR: Timer creation failed (id=0)\n", .{});
         timer_wrapper.destroy();
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     }
+    std.debug.print("[setTimeout] Timer created successfully, id={}\n", .{timer_id});
 
     // Store the timer ID in the context so the callback can unregister it
     timer_wrapper.getData().current_timer_id = timer_id;
@@ -1768,8 +1831,15 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
         return;
     };
 
+    // Get the current V8 context - needed for interval callback execution
+    const v8_context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        const result = v8.ffi.v8_Integer_New(isolate, 0);
+        info.setReturnValue(@ptrCast(result));
+        return;
+    };
+
     // Create typed timer context wrapper (interval timer)
-    const timer_wrapper = createV8TimerContext(allocator, isolate, callback_value, true) catch {
+    const timer_wrapper = createV8TimerContext(allocator, isolate, v8_context, callback_value, true) catch {
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;

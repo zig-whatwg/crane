@@ -181,6 +181,12 @@ pub const CURLOPT_NOPROXY = c.CURLOPT_NOPROXY;
 /// HTTP version to use
 pub const CURLOPT_HTTP_VERSION = c.CURLOPT_HTTP_VERSION;
 
+// Connection reuse
+/// Force close connection after request (1 = close, 0 = reuse if possible)
+pub const CURLOPT_FORBID_REUSE = c.CURLOPT_FORBID_REUSE;
+/// Close connection if fresh connection (1 = close, 0 = keep)
+pub const CURLOPT_FRESH_CONNECT = c.CURLOPT_FRESH_CONNECT;
+
 // Encoding/compression
 /// Accept-Encoding header (empty = all supported)
 pub const CURLOPT_ACCEPT_ENCODING = c.CURLOPT_ACCEPT_ENCODING;

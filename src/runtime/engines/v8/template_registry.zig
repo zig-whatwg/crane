@@ -145,17 +145,17 @@ pub fn clear() void {
 /// Called by V8Interface.registerGlobal after creating the template.
 /// This allows later wrapping of instances via wrapInstanceAsV8Object.
 ///
-/// **Snapshot Mode**: When `snapshot_mode` is true, templates are NOT registered.
-/// This prevents storing Global handles that would cause V8's
-/// "CheckGlobalAndEternalHandles failed" error during snapshot creation.
+/// **Snapshot Mode**: When `snapshot_mode` is true, templates ARE still registered
+/// for deduplication purposes (ensuring parent templates are reused). The Global
+/// handles will be cleared by v8_Snapshot_ClearGlobalHandles() before CreateBlob().
+/// After snapshot creation, the registry should be cleared via clear().
 pub fn register(
     interface_name: []const u8,
     template: *v8.FunctionTemplate,
     isolate: *v8.Isolate,
 ) void {
-    // In snapshot mode, don't cache templates - they're not needed for snapshot creation
-    // and would cause V8 to complain about Global handles
-    if (snapshot_mode) return;
+    // NOTE: We register even in snapshot_mode for deduplication of parent templates.
+    // The handles will be cleared by v8_Snapshot_ClearGlobalHandles() before CreateBlob().
 
     ensureInitialized();
 

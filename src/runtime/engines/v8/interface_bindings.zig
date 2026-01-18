@@ -283,18 +283,23 @@ pub fn registerAllTemplatesOnly(
             };
             if (has_legacy_namespace) continue;
 
-            // Create template with fresh callbacks and register it
+            // CRITICAL: Check if template already exists before creating.
+            // Parent templates may have been created during a child's createTemplate() call.
+            // If we create a new template unconditionally, we'd break prototype chain identity:
+            // - HTMLDivElement.createTemplate() creates and registers HTMLElement template
+            // - Later, when processing HTMLElement, we'd create a DIFFERENT template
+            // - globalThis.HTMLElement.prototype would differ from HTMLDivElement's parent prototype
+            // - This breaks `div instanceof HTMLElement`
             const Binding = V8Interface(InterfaceType);
-            const template = Binding.createTemplate(isolate);
-            template_registry.register(decl.name, template, isolate);
+            const existing = template_registry.getTemplate(decl.name);
+            if (existing == null) {
+                const template = Binding.createTemplate(isolate);
+                template_registry.register(decl.name, template, isolate);
+            }
 
-            // NOTE: Previously skipped URL reinstallation for LegacyWindowAlias (webkitURL === URL).
-            // However, this caused callbacks to not work after snapshot restore.
-            // Now reinstall URL like other interfaces.
-            // webkitURL alias is handled separately in registerLegacyInterfaceAliases().
-
-            // CRITICAL: Reinstall constructor on global to replace stale snapshot version
-            // This ensures `new Worker()` etc. invoke our Zig callbacks, not stale pointers
+            // CRITICAL: Reinstall constructor on global to ensure fresh callbacks.
+            // This ensures `new Worker()` etc. invoke our Zig callbacks, not stale pointers.
+            // registerGlobalFast uses the template from the registry, so prototype identity is preserved.
             Binding.registerGlobalFast(isolate, context, global, decl.name);
         }
     }
@@ -1087,10 +1092,20 @@ pub fn setupConstructorInheritance(
                     // Get parent interface name from its Meta.name field
                     const parent_name = comptime ParentType.Meta.name;
 
-                    // Set child.__proto__ = parent
+                    // Set child.__proto__ = parent (constructor inheritance)
+                    // AND child.prototype.__proto__ = parent.prototype (prototype chain for instanceof)
                     if (GetConstructor.call(isolate, global.?, context, decl.name)) |child_ctor| {
                         if (GetConstructor.call(isolate, global.?, context, parent_name)) |parent_ctor| {
+                            // Constructor inheritance: HTMLDivElement.__proto__ = HTMLElement
                             setProto(child_ctor, parent_ctor, context);
+
+                            // Prototype chain for instanceof: HTMLDivElement.prototype.__proto__ = HTMLElement.prototype
+                            // This is CRITICAL for `div instanceof HTMLElement` to return true
+                            if (GetPrototype.call(isolate, child_ctor, context)) |child_proto| {
+                                if (GetPrototype.call(isolate, parent_ctor, context)) |parent_proto| {
+                                    setProto(child_proto, parent_proto, context);
+                                }
+                            }
                         }
                     }
                 }

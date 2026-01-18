@@ -70,6 +70,7 @@ pub const globalCleanup = curl_backend.globalCleanup;
 pub const ConnectionPool = connection_pool.ConnectionPool;
 pub const getGlobalPool = connection_pool.getGlobalPool;
 pub const cleanupGlobalPool = connection_pool.cleanupGlobalPool;
+pub const resetGlobalPool = connection_pool.resetGlobalPool;
 
 // Re-export streaming types
 pub const StreamingSource = streaming_source.StreamingSource;

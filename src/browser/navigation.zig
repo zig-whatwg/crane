@@ -299,6 +299,12 @@ fn fetchHttpUrl(
     const response = result.response;
     defer response.deinit();
 
+    // Debug: Log response details
+    std.debug.print("[fetchHttpUrl] Response status: {d}, has_body: {}\n", .{ response.status, response.body != null });
+    if (response.body) |b| {
+        std.debug.print("[fetchHttpUrl] Body bytes: {d}\n", .{b.getBytes().len});
+    }
+
     // Extract body
     const body = if (response.body) |b| blk: {
         const data = b.getBytes();

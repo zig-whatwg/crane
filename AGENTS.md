@@ -164,6 +164,275 @@ test "Encoding - UTF-8 decode" {
 
 ---
 
+## Dynamic Skill Loading System
+
+This project uses a **dynamic skill loading system** where the LLM should:
+1. **Analyze the task** to determine which skills are required
+2. **Load only the necessary skills** by reading their SKILL.md files
+3. **Apply the skill knowledge** during task execution
+4. **Unload skills** from working memory when no longer needed
+
+### Available Skills
+
+| Skill | Load When | Description |
+|-------|-----------|-------------|
+| **commit_workflow** | Committing code, managing git history | Incremental commit strategy - commit after each feature completion |
+| **communication_protocol** | ALWAYS (every interaction) | Ask clarifying questions when requirements are ambiguous |
+| **temporary_files** | ALWAYS (every interaction) | All AI-generated temporary files go to `tmp/` directory |
+| **oneshot** | User explicitly requests "oneshot [task]" | Complete uninterrupted execution of entire task/epic with final summary only |
+| **pre_commit_checks** | Before committing code | Automated format/build/test checks before every commit |
+| **zig** | Writing/refactoring Zig code | Universal Zig best practices, memory management, testing, documentation |
+| **cpp** | Writing/refactoring C++ code, V8 FFI wrappers | Modern C++ (C++17/C++20), RAII, V8 API patterns, FFI boundaries |
+| **monorepo_navigation** | Finding dependencies across specs | Navigate monorepo structure, locate spec implementations |
+| **dependency_mocking** | Creating temporary mocks for unimplemented specs | Temporary mocks with clear markers for missing dependencies |
+| **webidl_codegen** | Working with WebIDL code generation | WebIDL code generation system, interface/namespace/mixin definitions |
+
+### Skill Loading Protocol
+
+**Before starting any task:**
+
+1. **Identify required skills** based on task type:
+   - User says "oneshot [task]" → Load `oneshot` skill (takes over execution)
+   - Zig code changes → Load `zig` skill
+   - C++ code changes (V8 wrappers) → Load `cpp` skill
+   - Git operations → Load `commit_workflow` skill
+   - Ambiguous requirements → `communication_protocol` (always active)
+   - Temporary files → `temporary_files` (always active)
+   - Pre-commit → Load `pre_commit_checks` skill
+   - Finding dependencies → Load `monorepo_navigation` skill
+   - Mocking unimplemented specs → Load `dependency_mocking` skill
+   - WebIDL codegen → Load `webidl_codegen` skill
+
+2. **Load skills** by reading the appropriate SKILL.md file:
+   ```
+   Read: skills/<skill_name>/SKILL.md
+   ```
+   
+   **IMPORTANT**: When loading a skill, the LLM MUST announce it in the chat response:
+   ```
+   🔧 Loading skill: <skill_name>
+   ```
+
+3. **Apply skill knowledge** during task execution
+
+4. **Unload skills** when done:
+   - Keep only relevant skills in working memory
+   - Unload skills that are no longer needed for current task
+   - Communication protocol and temporary_files are ALWAYS active (never unload)
+   
+   **IMPORTANT**: When unloading a skill, the LLM MUST announce it in the chat response:
+   ```
+   ✓ Unloading skill: <skill_name>
+   ```
+
+### Skill Usage Decision Tree
+
+```
+Task received
+    ↓
+Analyze task type
+    ↓
+┌──────────────────────────────────────┐
+│ Did user say "oneshot [task]"?       │ → YES → Load: oneshot (takes over execution)
+└──────────────────────────────────────┘
+    ↓ NO
+┌──────────────────────────────┐
+│ Is this Zig code?            │ → YES → Load: zig
+└──────────────────────────────┘
+    ↓ ALSO CHECK
+┌──────────────────────────────┐
+│ Is this C++ code (V8 FFI)?  │ → YES → Load: cpp
+└──────────────────────────────┘
+    ↓ ALSO CHECK
+┌──────────────────────────────┐
+│ Is this a git commit?        │ → YES → Load: commit_workflow, pre_commit_checks
+└──────────────────────────────┘
+    ↓ ALSO CHECK
+┌──────────────────────────────┐
+│ Need to find dependencies?   │ → YES → Load: monorepo_navigation
+└──────────────────────────────┘
+    ↓ ALSO CHECK
+┌──────────────────────────────┐
+│ Need to mock dependencies?   │ → YES → Load: dependency_mocking
+└──────────────────────────────┘
+    ↓ ALSO CHECK
+┌──────────────────────────────┐
+│ Working with WebIDL codegen? │ → YES → Load: webidl_codegen
+└──────────────────────────────┘
+    ↓ ALSO CHECK
+┌──────────────────────────────┐
+│ Are requirements unclear?    │ → YES → Use: communication_protocol (already loaded)
+└──────────────────────────────┘
+    ↓
+Execute task with loaded skills
+    ↓
+Task complete
+    ↓
+Unload skills no longer needed
+```
+
+### Skill Combinations
+
+Common task scenarios and their skill requirements:
+
+| Task Scenario | Skills to Load |
+|---------------|----------------|
+| **Oneshot execution** | `oneshot` (then loads others as needed: `zig`, `cpp`, `commit_workflow`, etc.) |
+| **Implement new WHATWG spec feature** | `zig`, `monorepo_navigation` |
+| **Implement V8 FFI wrapper** | `cpp` |
+| **Add V8 TypedArray API** | `cpp`, `zig` (for FFI bindings) |
+| **Fix bug in Zig code** | `zig` |
+| **Fix bug in C++ wrapper** | `cpp` |
+| **Commit code** | `commit_workflow`, `pre_commit_checks` |
+| **Clarify requirements** | `communication_protocol` (always active) |
+| **Write Zig tests** | `zig` |
+| **Refactor Zig code** | `zig`, `commit_workflow` |
+| **Refactor C++ code** | `cpp`, `commit_workflow` |
+| **Mock unimplemented dependency** | `dependency_mocking`, `zig` |
+| **Work with WebIDL codegen** | `webidl_codegen`, `zig` |
+| **Find cross-spec dependencies** | `monorepo_navigation` |
+
+### Example Workflow
+
+**Scenario**: User asks to "implement a new URL parser function"
+
+**LLM Response:**
+
+```
+I'll implement a new URL parser function for you.
+
+🔧 Loading skill: commit_workflow
+🔧 Loading skill: zig
+
+First, let me create an issue to track this work...
+
+Now I'll implement the parser function following Zig best practices...
+[Implements code using zig skill]
+
+Writing comprehensive tests...
+[Writes tests using zig skill]
+
+Updating issue progress...
+
+The implementation is complete. Now let me commit the changes.
+
+✓ Unloading skill: zig
+🔧 Loading skill: commit_workflow
+🔧 Loading skill: pre_commit_checks
+
+Running pre-commit checks...
+[Executes format, build, test]
+
+Committing changes...
+[Creates commit using commit_workflow]
+
+✓ Unloading skill: commit_workflow
+✓ Unloading skill: pre_commit_checks
+
+Closing the issue...
+
+
+✅ URL parser function implemented, tested, and committed!
+```
+
+### Example Workflow: Oneshot Execution
+
+**Scenario**: User asks to "oneshot bd-42" (a feature to implement URL host parser)
+
+**LLM Response:**
+
+```
+🔧 Loading skill: oneshot
+🔧 Loading skill: zig
+🔧 Loading skill: monorepo_navigation
+
+# Oneshot Execution Summary: Implement URL Host Parser
+
+## Completed Work
+
+✅ **Core Parser**
+- Implemented host parsing state machine
+- Added IPv4, IPv6, and domain parsing
+- Committed in: "feat(url): implement host parser state machine"
+
+✅ **Infra Integration**
+- Integrated Infra primitives for string handling
+- Committed in: "feat(url): integrate Infra primitives in host parser"
+
+✅ **Error Handling**
+- Added ParseError with spec-compliant messages
+- Committed in: "feat(url): add host parse error handling"
+
+✅ **Tests**
+- Added 64 comprehensive test cases covering all host types
+- Committed in: "test(url): add comprehensive host parser tests"
+
+✅ **Documentation**
+- Added inline docs with WHATWG URL spec references
+- Committed in: "docs(url): document host parser with spec citations"
+
+## Commits Made
+
+- abc1234: feat(url): implement host parser state machine
+- def5678: feat(url): integrate Infra primitives in host parser
+- ghi9012: feat(url): add host parse error handling
+- jkl3456: test(url): add comprehensive host parser tests
+- mno7890: docs(url): document host parser with spec citations
+
+## Incomplete Work
+
+None - all planned work completed.
+
+## Statistics
+
+- **Total features completed**: 5
+- **Total commits**: 5
+- **Tests added**: 64
+- **Files modified**: 4
+- **Lines of code**: +1247/-45
+
+## Issue Status
+
+- **Issue**: bd-42
+- **Final status**: closed
+- **Completion**: 100%
+
+✓ Unloading skill: oneshot
+✓ Unloading skill: zig
+✓ Unloading skill: monorepo_navigation
+
+✅ URL host parser implemented, tested, and committed!
+```
+
+### Skill Loading Commands
+
+**To load a skill:**
+```
+Read the SKILL.md file for that skill to understand the complete workflow and patterns.
+```
+
+**To reference quick usage:**
+```
+Read the USAGE.md file for quick reference on when to use the skill.
+```
+
+**To unload a skill:**
+```
+Remove skill knowledge from working memory when no longer relevant to current task.
+```
+
+### Important Notes
+
+- **Communication protocol and temporary_files** are ALWAYS active - never need loading/unloading (no announcement needed)
+- **Load skills lazily** - only when needed
+- **Unload proactively** - free up working memory
+- **Combine skills** when tasks require multiple areas of expertise
+- **Reload if needed** - Can reload a skill if task requirements change
+- **Always announce** - Use `🔧 Loading skill: <name>` and `✓ Unloading skill: <name>` in chat responses
+- **Transparency** - Skill loading/unloading announcements help users understand the LLM's decision-making process
+
+---
+
 ## WHATWG Specifications
 
 **Specifications are organized in the `specs/` directory:**
@@ -203,7 +472,7 @@ WHATWG specifications frequently reference each other:
 - **Fetch** depends on: URL, Streams, Infra, WebIDL, MIME Sniff
 - **Console** depends on: WebIDL
 
-**Finding Dependencies**: Check `src/` for existing implementations or create temporary mocks for unimplemented specs.
+**Finding Dependencies**: Use the `monorepo_navigation` skill to locate implementations in `src/` or create temporary mocks for unimplemented specs.
 
 ## Memory Management
 
@@ -253,7 +522,7 @@ Before every commit, these checks MUST pass:
 
 **Automation Level**: **Recommended but Optional**
 
-- **Recommended**: Install pre-commit hooks to automate checks
+- **Recommended**: Install pre-commit hooks to automate checks (see `skills/pre_commit_checks/SKILL.md`)
 - **Acceptable**: Run checks manually before each commit
 - **Not Acceptable**: Commit without running checks
 
@@ -268,6 +537,8 @@ zig build test || exit 1
 EOF
 chmod +x .git/hooks/pre-commit
 ```
+
+See `skills/pre_commit_checks/SKILL.md` for complete setup guide.
 
 
 ### Managing AI-Generated Documents
@@ -343,220 +614,52 @@ WHATWG specs underpin all web platform functionality. Optimize for performance w
 When a spec depends on another spec, check `src/` for implementation. If not implemented, create a temporary mock with clear markers. Never skip dependency handling.
 
 ### 9. **All Temporary Files Go to tmp/** ⭐
-**DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it.
+**DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it. See `skills/temporary_files/SKILL.md` for complete policy.
 
-### 10. **Use Compile-Time Debug Logging** ⭐
-**ALWAYS use the `debug` module for debug output instead of `std.debug.print`.**
+### 10. **NEVER Modify Generated Files Directly** ⭐⭐⭐
+**Files in `src/webidl/` subdirectories (interfaces/, typedefs/, dictionaries/, callbacks/) are code-generated outputs. NEVER make direct changes to them unless explicitly directed by the user.**
 
-The project has a compile-time configurable debug system that completely eliminates debug output from release builds. This means you can leave debug statements in the code - they have zero runtime cost when disabled.
+**General Rule:**
+- Generated files in `src/webidl/interfaces/`, `src/webidl/typedefs/`, etc. are automatically generated by the codegen system
+- Changes MUST be made to the codegen source files in `src/webidl/codegen/` or the source IDL files
+- After updating codegen, regenerate ALL files with: `zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/`
 
-**How to use:**
-```zig
-const debug = @import("root").debug;
+**Exception for Bug Fix Experimentation ONLY:**
+1. ✅ You MAY temporarily edit a generated file to quickly test/experiment with a bug fix
+2. ⚠️ Once the fix is working, you MUST:
+   - Update the codegen source files to produce that same fix
+   - Regenerate ALL generated files: `zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/`
+   - The codegen will overwrite your temporary edits (this validates the codegen works correctly)
+   - Rerun all tests to verify the codegen changes worked properly
+3. ❌ NEVER commit manual/temporary edits to generated files
+4. ❌ NEVER leave generated files in a manually-edited state
 
-// Basic debug output (general scope)
-debug.print("Processing: {s}\n", .{item});
+**Committing Generated Files:**
+- ✅ **DO commit generated files** when they are properly regenerated by codegen
+- ❌ **DO NOT commit manual edits** to generated files
+- Generated files in `src/webidl/` subdirectories should be committed to version control
+- Generated files change when codegen logic changes or IDL files are updated
 
-// Scoped debug output (filtered by -Ddebug-scope)
-debug.scoped(.v8).print("V8 context: {*}\n", .{ctx});
-debug.scoped(.webidl).print("Interface: {s}\n", .{name});
-debug.scoped(.dom).print("Node: {d}\n", .{node_type});
-```
-
-**Available scopes:** `v8`, `webidl`, `dom`, `css`, `html`, `url`, `encoding`, `streams`, `fetch`, `runtime`, `gc`, `wpt`, `general`
-
-**How to compile with debug output:**
-```bash
-# Enable all debug output
-zig build -Ddebug=true
-
-# Enable only specific scopes (reduces token count)
-zig build -Ddebug=true -Ddebug-scope=v8
-zig build -Ddebug=true -Ddebug-scope=webidl,dom
-
-# Run tests with debug output
-zig build test -Ddebug=true -Ddebug-scope=v8
-```
-
-**When debugging:**
-1. Add `debug.scoped(.scope).print()` statements as needed
-2. Compile with `-Ddebug=true -Ddebug-scope=<scope>` to see output
-3. Leave the debug statements in place - they cost nothing when disabled
-4. Use specific scopes to reduce noise and token count
-
-**DO NOT use `std.debug.print` directly** - always use the debug module so output can be controlled at compile time.
-
-### 11. **NEVER Modify Generated Files Directly** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
-
-```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   🛑🛑🛑 FULL STOP - READ THIS ENTIRE SECTION BEFORE ANY EDIT 🛑🛑🛑        ║
-║                                                                              ║
-║   This rule exists because it has been VIOLATED and caused WASTED WORK.     ║
-║   The violation was REVERTED. Do not repeat the same mistake.               ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-```
-
-## 🚨 STOP! READ THIS BEFORE TOUCHING ANY FILE IN src/webidl/ 🚨
-
-**This is an ABSOLUTE, INVIOLABLE rule. There are NO exceptions. NO workarounds. NO "just this once."**
-
-**Files in `src/webidl/` subdirectories (interfaces/, typedefs/, dictionaries/, callbacks/, enums/, mixins/) are code-generated outputs. You MUST NEVER edit them directly. PERIOD.**
-
-### ⚠️ MANDATORY PATH CHECK - DO THIS FIRST ⚠️
-
-**BEFORE using the Edit tool on ANY .zig file, you MUST:**
-
-```
-Step 1: Look at the file path
-Step 2: Does the path contain ANY of these?
-        - src/webidl/interfaces/
-        - src/webidl/typedefs/
-        - src/webidl/dictionaries/
-        - src/webidl/callbacks/
-        - src/webidl/enums/
-        - src/webidl/mixins/
-        
-Step 3: If YES to ANY → 🛑 STOP IMMEDIATELY. DO NOT EDIT.
-        If NO → Proceed to Pre-Edit Checklist below.
-```
-
-**This path check is NON-NEGOTIABLE. Do it EVERY TIME before ANY edit.**
-
-### Historical Violations (Learn From These Mistakes)
-
-**2025-12-07 Violation (REVERTED in commit ca618b9df):**
-- Agent directly edited `src/webidl/interfaces/HTMLScriptElement.zig` adding ~20 delegate methods
-- Agent directly edited `src/webidl/interfaces/Document.zig` adding `isScriptingEnabled` delegate
-- Agent directly edited `src/webidl/interfaces/ReadableStream.zig` fixing callback signatures
-- Agent directly edited `src/webidl/interfaces/WritableStream.zig` fixing callback signatures
-- Agent directly edited `src/webidl/interfaces/Response.zig` fixing `call_json_static`
-- **Result**: ALL changes had to be reverted. ALL work was wasted. User had to explain the rule.
-- **Root cause**: Agent rationalized "it's just a quick fix" and "I'll fix codegen after"
-
-**DO NOT ADD TO THIS LIST. Learn from it.**
-
-### Pre-Edit Checklist (MANDATORY - After Path Check)
-
-**Before editing ANY file, you MUST ask yourself:**
-
-1. **Is this file in `src/webidl/interfaces/`, `src/webidl/typedefs/`, `src/webidl/dictionaries/`, `src/webidl/callbacks/`, `src/webidl/enums/`, or `src/webidl/mixins/`?**
-   - **YES** → ❌ **STOP. DO NOT EDIT.** Go to codegen instead.
-   - **NO** → Proceed with caution, verify it's not generated.
-
-2. **Does the file have a header comment saying "AUTO-GENERATED"?**
-   - **YES** → ❌ **STOP. DO NOT EDIT.** Go to codegen instead.
-   - **NO** → May be safe to edit, but verify.
-
-3. **Am I trying to add a "quick fix" or "delegate method" directly?**
-   - **YES** → ❌ **STOP. This is EXACTLY the violation this rule prevents.** Go to codegen.
-   - **NO** → Verify you're editing the right file.
-
-### What To Do Instead
-
-**When you need to change generated interface behavior:**
-
-1. **Identify the codegen source** in `src/webidl/codegen/`
-2. **Modify the codegen** to produce the desired output
-3. **Regenerate ALL files**: `zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/`
-4. **Verify the change** appears in the regenerated files
-5. **Commit BOTH** the codegen changes AND the regenerated files
-
-**When you need internal/non-IDL methods:**
-
-1. **Add support to codegen** for "internal methods" or "extension points"
-2. **Or create a separate non-generated module** that interfaces import
-3. **NEVER add methods directly to generated interface files**
-
-### Generated File Directories (NEVER EDIT DIRECTLY)
-
-```
-src/webidl/
-├── interfaces/    ❌ GENERATED - DO NOT EDIT - EVER - NO EXCEPTIONS
-├── typedefs/      ❌ GENERATED - DO NOT EDIT - EVER - NO EXCEPTIONS
-├── dictionaries/  ❌ GENERATED - DO NOT EDIT - EVER - NO EXCEPTIONS
-├── callbacks/     ❌ GENERATED - DO NOT EDIT - EVER - NO EXCEPTIONS
-├── enums/         ❌ GENERATED - DO NOT EDIT - EVER - NO EXCEPTIONS
-├── mixins/        ❌ GENERATED - DO NOT EDIT - EVER - NO EXCEPTIONS
-├── codegen/       ✅ EDIT THIS - Source of truth
-├── impls/         ✅ EDIT THIS - Custom implementations
-└── impls_tmp/     ⚠️ REFERENCE ONLY - Gitignored stubs
-```
-
-### Why This Rule Is ABSOLUTE
-
-1. **Generated files are overwritten** on every codegen run - your edits WILL be lost
-2. **Manual edits create drift** between codegen and actual files - causes subtle bugs
-3. **The codegen is the source of truth** - diverging from it breaks the entire system
-4. **This has already caused problems** - manual edits were made and had to be reverted (see above)
-5. **There is NO valid reason** to edit generated files directly - EVER
-6. **The "quick fix" mentality is the problem** - it feels faster but creates more work
-
-### NO EXCEPTIONS MEANS NO EXCEPTIONS
-
-**"But I just need to add one method..."** → ❌ NO. Update codegen. (This exact rationalization caused the 2025-12-07 violation)
-
-**"But it's faster to edit directly..."** → ❌ NO. The revert will waste more time. (Proven by 2025-12-07 violation)
-
-**"But the codegen doesn't support this yet..."** → ❌ NO. Add support to codegen first.
-
-**"But I'll update codegen right after..."** → ❌ NO. Update codegen FIRST, then regenerate. (This exact rationalization caused the 2025-12-07 violation)
-
-**"But the user needs this fix urgently..."** → ❌ NO. Explain the constraint and fix codegen.
-
-**"But I already started editing..."** → ❌ STOP. Undo. Go to codegen. Do not continue.
-
-**"But it's just fixing a typo/signature..."** → ❌ NO. Even small changes go through codegen.
-
-### Psychological Safeguards
-
-**Before ANY edit to src/webidl/, say out loud (or in your response):**
-
-> "I am about to edit [filename]. Let me verify this is NOT a generated file."
-> "Path check: [full path] - does it contain interfaces/, typedefs/, dictionaries/, callbacks/, enums/, or mixins/?"
-> "Result: [SAFE TO EDIT / STOP - GENERATED FILE]"
-
-**If you feel the urge to "just quickly fix" a generated file:**
-
-1. STOP
-2. Recognize this is the exact thought pattern that causes violations
-3. Take a breath
-4. Go to codegen instead
-5. Thank yourself later when the fix actually persists
-
-### Codegen Command
-
+**Codegen Command:**
 ```bash
 zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 ```
 
-### Correct Workflow
+**Why This Matters:**
+- Generated files are overwritten on every codegen run
+- Manual edits to generated files will be lost
+- The codegen is the source of truth for all generated code
+- All improvements must flow through the codegen system
 
-1. Identify what change is needed in generated output
-2. **VERIFY** the target file is in `src/webidl/codegen/` (NOT interfaces/, etc.)
-3. Modify the codegen to produce the desired output
-4. Run codegen to regenerate ALL files
-5. Verify the generated files have the correct changes
-6. Run tests to verify everything works
-7. Commit codegen changes AND regenerated files together
+**Workflow:**
+1. Identify bug in generated file
+2. Create temporary fix in generated file to test (OPTIONAL - only for experimentation)
+3. Update codegen source files with the fix
+4. Run: `zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/`
+5. Verify tests pass
+6. Commit codegen changes AND regenerated files together
 
-### If You Violate This Rule
-
-1. Your changes WILL be reverted (just like 2025-12-07)
-2. You will need to redo the work correctly through codegen
-3. Time will be wasted (yours and the user's)
-4. This section will be updated with your violation as a historical example
-5. The user will lose trust in your ability to follow rules
-
-**REMEMBER: When in doubt, DO NOT EDIT. Ask first.**
-
-**REMEMBER: The fastest way to make a change is the CORRECT way - through codegen.**
-
-**REMEMBER: You have already violated this rule once. Do not do it again.**
-
-### 12. **Implementation Files (impls/) Workflow** ⭐⭐⭐
+### 11. **Implementation Files (impls/) Workflow** ⭐⭐⭐
 
 **Implementation files in `src/webidl/impls/` contain CUSTOM CODE and are NOT overwritten by codegen.**
 
@@ -597,7 +700,7 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 - Allows diffing to see what changed in interface signatures
 - Keeps generated stubs separate from canonical implementations
 
-### 13. **NEVER Call Impls Directly from External Code** ⭐⭐⭐
+### 12. **NEVER Call Impls Directly from External Code** ⭐⭐⭐
 
 **External code MUST call through interfaces, NEVER directly call impls.**
 
@@ -605,7 +708,7 @@ zig build codegen -- specs/idl/ specs/supplementary/ --dest-root src/webidl/
 - **Interfaces** (`src/webidl/interfaces/`) - The public API that external code uses
 - **Impls** (`src/webidl/impls/`) - Internal implementations that manage state and logic
 - Only interfaces can call impls (via delegation)
-- Impls can call their OWN internal methods, but must use interfaces for OTHER types (see Golden Rule #13)
+- Impls can call other impls when implementing algorithms
 
 **Correct Pattern:**
 ```zig
@@ -666,7 +769,7 @@ HTMLScriptElement.prepareTheScriptElement(element);
 
 See epic `whatwg-jwgc` for the refactoring plan.
 
-### 14. **Impls MUST Call Interfaces, NOT Other Impls** ⭐⭐⭐
+### 13. **Impls MUST Call Interfaces, NOT Other Impls** ⭐⭐⭐
 
 **When an impl needs to use another type, it MUST call through the interface, namespace, or mixin - NEVER import another impl directly.**
 
@@ -674,42 +777,6 @@ See epic `whatwg-jwgc` for the refactoring plan.
 - An impl can call its OWN internal methods (same file)
 - An impl MUST use interfaces/namespaces/mixins to interact with OTHER types
 - This ensures proper encapsulation and allows interfaces to add cross-cutting concerns
-
-**Critical: Inheritance Deinit Chain**
-
-When implementing a subclass, the `deinit` function MUST call the parent's deinit through the **interface**, not the impl:
-
-```zig
-// src/webidl/impls/Element.zig
-const interfaces = @import("interfaces");
-const Node = interfaces.Node;  // Parent interface for deinit chain
-
-pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up Element's own resources
-    if (Registry.get(instance)) |internal| {
-        internal.deinit();
-    }
-    Registry.remove(instance);
-    
-    // ✅ CORRECT: Call parent deinit through interface
-    Node.deinit(instance);
-}
-```
-
-```zig
-// ❌ WRONG: Calling parent impl directly
-const NodeImpl = @import("Node.zig");
-
-pub fn deinit(instance: *runtime.Instance) void {
-    // ...cleanup...
-    NodeImpl.deinit(instance);  // ❌ WRONG - bypasses interface
-}
-```
-
-**Note on init vs deinit:**
-- `init` may call parent impl directly (for StateType comptime parameter)
-- `deinit` MUST always call parent through interface
-- Use `errdefer ParentInterface.deinit(instance)` in init functions
 
 **Correct Pattern:**
 ```zig
@@ -745,253 +812,13 @@ pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
 - Direct impl calls bypass these important behaviors
 - Maintains consistent API surface throughout the codebase
 - Allows interfaces to evolve independently of impls
-- **Inheritance chain cleanup requires going through interfaces to ensure proper resource cleanup**
 
-**Inheritance Chains That Must Follow This Pattern:**
-- EventTarget → Node → Element → HTMLElement → specific HTML elements
-- EventTarget → Node → CharacterData → Text/Comment
-- EventTarget → Node → Document
-- Event → CustomEvent, ErrorEvent, ProgressEvent, MessageEvent, etc.
+**Scope of Violation (53 files, 245 instances):**
+- DOM impls: Document, Element, Node, Attr, CharacterData, etc.
+- Streams impls: ReadableStream, WritableStream, TransformStream, controllers, readers
+- Other impls: HTMLParser, Range, Selection, Request, Response, etc.
 
 See epic `whatwg-jwgc` for the full list and refactoring plan.
-
-### 15. **NEVER Import V8 Directly - Use Runtime Abstraction** ⭐⭐⭐
-
-**All JavaScript engine access MUST go through `src/runtime/` abstractions. NEVER import `v8` directly in impl files.**
-
-**Architecture:**
-- `src/runtime/` provides engine-agnostic interfaces
-- Impl files use `runtime.Context`, `runtime.Instance`, and related abstractions
-- The runtime layer handles V8-specific details internally
-- This allows future support for other JS engines (JavaScriptCore, SpiderMonkey)
-
-**Correct Pattern:**
-```zig
-// src/webidl/impls/SomeInterface.zig
-const runtime = @import("runtime");
-
-pub fn someMethod(instance: *runtime.Instance, callback: runtime.Callback) !void {
-    const ctx = instance.ctx;
-    // Use runtime abstractions for JS engine operations
-    try ctx.invokeCallback(callback, args);
-}
-```
-
-**Wrong Pattern:**
-```zig
-// src/webidl/impls/SomeInterface.zig
-const v8 = @import("v8");  // ❌ NEVER do this!
-
-pub fn someMethod(instance: *runtime.Instance, callback: v8.JSValue) !void {
-    // ❌ Direct V8 usage bypasses abstraction
-    const isolate = v8.v8_Isolate_GetCurrent();
-    // ...
-}
-```
-
-**When You Encounter Violations:**
-If you find code that imports `v8` directly in impl files:
-1. ✅ Refactor to use `runtime` abstractions
-2. ✅ If needed abstraction doesn't exist, add it to `src/runtime/`
-3. ✅ Update the impl to use the new abstraction
-4. ❌ NEVER leave direct V8 imports in impl files
-
-**Why This Matters:**
-- **Engine Independence**: Enables future support for JSC, SpiderMonkey, etc.
-- **Testability**: Runtime abstractions can be mocked for unit tests
-- **Encapsulation**: V8-specific quirks are isolated in runtime layer
-- **Maintainability**: Engine upgrades only affect runtime layer, not all impls
-
-**Allowed V8 Imports:**
-- `src/runtime/engines/v8/*.zig` - V8 engine implementation files
-- `tests/v8/*.zig` - V8-specific test files
-- Build/tooling scripts
-
-**Violations to Refactor:**
-Run this to find violations:
-```bash
-rg "^const v8 = @import" src/webidl/impls/ --type zig
-```
-
-### 16. **NEVER Use Function::NewInstance() for Wrapping Zig Instances** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
-
-```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   🛑🛑🛑 ABSOLUTE PROHIBITION - NO EXCEPTIONS - EVER 🛑🛑🛑                  ║
-║                                                                              ║
-║   This rule exists because it was VIOLATED REPEATEDLY, wasting HOURS        ║
-║   of debugging time on a fundamentally wrong approach.                      ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-```
-
-**When wrapping existing Zig instances in V8 objects, ALWAYS use `InstanceTemplate()->NewInstance()`.**
-
-**NEVER use `Function::NewInstance()` for this purpose.**
-
-**Why This Rule Exists:**
-
-Chromium/Blink wraps millions of C++ DOM objects using `InstanceTemplate()->NewInstance()` and their prototype chain works correctly. This is **empirical proof** that the API works.
-
-**The Mistake That Was Made (REPEATEDLY):**
-1. V8 documentation mentions `Function::NewInstance()` sets up prototype chains
-2. Agent incorrectly concluded `InstanceTemplate()->NewInstance()` doesn't work
-3. Agent implemented `Function::NewInstance()` with complex "wrapper mode" mechanism
-4. Implementation caused segfaults and memory corruption
-5. Agent was told to revert, then made the SAME mistake again
-6. This cycle repeated multiple times, wasting hours
-
-**The Truth:**
-- Chromium uses `InstanceTemplate()->NewInstance()` - this is FACT
-- If our prototype chain isn't working, the bug is in OUR code, not V8
-- The issue is likely in template configuration, inheritance setup, or method registration
-- NOT in the choice of `InstanceTemplate()->NewInstance()` vs `Function::NewInstance()`
-
-**What To Do When Prototype Chain Doesn't Work:**
-
-1. ✅ Investigate how we configure `FunctionTemplate`
-2. ✅ Check if `FunctionTemplate::Inherit()` is called correctly
-3. ✅ Verify methods are registered on `PrototypeTemplate()`
-4. ✅ Compare our template setup with Chromium's
-5. ❌ **NEVER** switch to `Function::NewInstance()` - this is NOT the solution
-
-**Correct Pattern (What We Use):**
-```zig
-// Get InstanceTemplate from FunctionTemplate
-const instance_template = v8.v8_FunctionTemplate_InstanceTemplate(template);
-
-// Create object - this IS the correct V8 API
-const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context);
-```
-
-**FORBIDDEN Pattern (NEVER DO THIS):**
-```zig
-// ❌ NEVER use Function::NewInstance() for wrapping existing instances
-const func = v8.v8_FunctionTemplate_GetFunction(template, context);
-const v8_object = v8.v8_Function_NewInstance(func, context, 0, null);  // ❌ WRONG
-```
-
-**If You Feel Tempted to Use Function::NewInstance():**
-
-1. STOP
-2. Re-read this rule
-3. Remember: Chromium uses `InstanceTemplate()->NewInstance()` and it works
-4. The bug is in OUR template configuration, not V8's API
-5. Investigate template setup instead
-
-**NO EXCEPTIONS. NO "JUST THIS ONCE." NO "BUT THE V8 DOCS SAY..."**
-
-The Chromium codebase is the authoritative reference, not V8 documentation snippets taken out of context.
-
-### 17. **WPT Tests MUST Run Through the Browser - NO SHORTCUTS** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
-
-```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   🛑🛑🛑 WPT TESTS ARE BROWSER CONFORMANCE TESTS 🛑🛑🛑                      ║
-║                                                                              ║
-║   They MUST exercise the actual browser implementation, not shortcuts.      ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-```
-
-**WPT (Web Platform Tests) exist to verify browser conformance.** They must run through the ACTUAL browser implementation, exercising the real code paths that a web page would use.
-
-**What a Real Browser Does:**
-1. Navigates to a URL
-2. Receives HTML from the server via HTTP
-3. Parses the HTML
-4. When it encounters `<script src="...">`, it fetches the script via HTTP and executes it
-5. Scripts execute in document order via the HTML parser's script execution mechanism
-6. The DOM is built as parsing progresses
-
-**FORBIDDEN Shortcuts:**
-- ❌ **Pre-loading testharness.js via direct script injection** before HTML parsing
-- ❌ **Bypassing the HTTP server** by reading files directly
-- ❌ **Injecting scripts via `evaluateScript()`** instead of letting the HTML parser handle `<script>` tags
-- ❌ **Skipping script tags** because "they're already loaded"
-- ❌ **Any mechanism that avoids exercising the real browser code paths**
-
-**Why This Matters:**
-1. **The point of WPT is to test the browser** - shortcuts defeat the purpose
-2. **Script loading order bugs** only manifest when scripts load via HTML parsing
-3. **Context and scope issues** only appear when the real code path is used
-4. **If tests pass via shortcuts but fail in real browsers, we've tested nothing**
-
-**Correct WPT Runner Architecture:**
-```
-1. Start WPT HTTP server (`wpt serve`)
-2. For each test:
-   a. Browser navigates to test URL (e.g., http://localhost:8000/webidl/foo.html)
-   b. Browser fetches HTML via HTTP
-   c. HTML parser parses the document
-   d. HTML parser encounters <script src="/resources/testharness.js">
-   e. Browser fetches testharness.js via HTTP
-   f. Browser executes testharness.js via the script execution pipeline
-   g. HTML parser continues, encounters test script
-   h. Browser fetches and executes test script
-   i. Results are collected
-```
-
-**Signs You're Using Shortcuts (RED FLAGS):**
-- `ctx.evaluateScript(testharness_js)` called BEFORE `loadHTML()`
-- Scripts loaded from filesystem instead of HTTP
-- `scriptLoaderCallback` that skips certain scripts
-- Any code path that doesn't go through the HTML parser's script execution
-
-**The Test:**
-If you can make tests pass by injecting scripts directly, but they fail when running through the actual HTML parsing and script loading pipeline, **the browser is broken and must be fixed**.
-
-**NO EXCEPTIONS. Fix the browser, don't work around it.**
-
-### 18. **NEVER Disable Snapshots as a Workaround** ⭐⭐⭐ ABSOLUTE RULE ⭐⭐⭐
-
-```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   🛑🛑🛑 SNAPSHOTS ARE CRITICAL INFRASTRUCTURE 🛑🛑🛑                        ║
-║                                                                              ║
-║   If snapshots are broken, FIX THE SNAPSHOT ISSUE - do NOT disable them.    ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-```
-
-**V8 snapshots provide:**
-- Fast startup (~2ms vs ~40ms without snapshots)
-- Pre-registered WebIDL interfaces
-- Production-quality initialization path
-
-**When snapshots are broken:**
-1. ✅ **FIX THE SNAPSHOT LOADING CODE** - The bug is in our code, not V8
-2. ✅ **Debug the snapshot generator** - Check `tools/snapshot_generator.zig`
-3. ✅ **Debug the snapshot loader** - Check `src/runtime/engines/v8/snapshot_loader.zig`
-4. ✅ **Check external references** - Must match between creation and loading
-5. ❌ **NEVER set `snapshot_path: ""`** to disable snapshots
-6. ❌ **NEVER skip snapshot loading** "temporarily" to test other features
-7. ❌ **NEVER bypass the snapshot code path** in any way
-
-**Why This Rule Exists:**
-
-This rule was added because the agent REPEATEDLY tried to "temporarily disable" snapshots to work around the `rehashability` assertion failure. This is wrong because:
-
-1. **It hides the real bug** - The snapshot issue must be fixed, not avoided
-2. **It breaks production behavior** - WPT tests must exercise the production code path
-3. **It creates false positives** - Tests might pass without snapshots but fail with them
-4. **It wastes time** - The "temporary" workaround becomes permanent tech debt
-
-**If You Feel Tempted to Disable Snapshots:**
-
-1. STOP
-2. The snapshot issue IS the priority
-3. Fix `whatwg-6ge6s` or create a new issue if needed
-4. Debug the actual problem in v8_wrapper.cpp or snapshot_generator.zig
-5. Never take the "quick" path of disabling snapshots
-
-**Historical Violations:**
-- 2025-12-21: Agent tried to add `snapshot_path: ""` to wpt_browser.zig to bypass broken snapshot loading. Reverted immediately.
-
-**NO EXCEPTIONS. NO "JUST FOR TESTING." NO "TEMPORARY." FIX THE SNAPSHOT BUG.**
 
 ---
 
@@ -1034,8 +861,8 @@ This rule was added because the agent REPEATEDLY tried to "temporarily disable" 
 1. **Identify context** - Determine which spec you're implementing (from file path or task description)
 2. **Read spec** - Load complete spec from `specs/whatwg/[spec-name]/` or relevant spec directory
 3. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
-4. **Check dependencies** - Find required specs in `src/`
-5. **Handle missing dependencies** - Create temporary mocks if needed
+4. **Check dependencies** - Use `monorepo_navigation` skill to find required specs in `src/`
+5. **Handle missing dependencies** - Create temporary mocks if needed using `dependency_mocking` skill
 6. **Write tests first** - Test all algorithm steps and edge cases
 7. **Implement precisely** - Follow spec steps exactly, numbered comments
 8. **Document** - Inline docs with spec references (do this BEFORE committing)
@@ -1157,6 +984,32 @@ pub const SpecError = error{
 ## File Organization
 
 ```
+skills/
+├── whatwg/                  # ⭐ WHATWG spec reading + Zig implementation
+│   ├── USAGE.md             # When to use (autodiscovery)
+│   └── SKILL.md             # Complete documentation
+├── zig/                     # ⭐ Modern Zig: quality, performance, testing, docs
+│   ├── USAGE.md             # When to use (autodiscovery)
+│   └── SKILL.md             # Complete documentation
+├── communication_protocol/  # ⭐ Ask clarifying questions when unclear
+│   ├── USAGE.md             # When to use (autodiscovery)
+│   └── SKILL.md             # Complete documentation
+├── browser_benchmarking/    # Benchmarking strategies
+│   ├── USAGE.md             # When to use (autodiscovery)
+│   └── SKILL.md             # Complete documentation
+├── pre_commit_checks/       # Automated quality checks
+│   ├── USAGE.md             # When to use (autodiscovery)
+│   └── SKILL.md             # Complete documentation
+├── monorepo_navigation/     # ⭐ Finding dependencies in monorepo
+│   ├── USAGE.md             # When to use (autodiscovery)
+│   └── SKILL.md             # Complete documentation
+├── dependency_mocking/      # ⭐ Creating temporary mocks
+│   ├── USAGE.md             # When to use (autodiscovery)
+│   └── SKILL.md             # Complete documentation
+└── webidl_codegen/          # ⭐ WebIDL code generation
+    ├── USAGE.md             # When to use (autodiscovery)
+    └── SKILL.md             # Complete documentation
+
 specs/                       # Complete WHATWG specifications
 ├── whatwg/                  # WHATWG spec markdown files
 │   ├── html/                # HTML Standard files
@@ -1207,6 +1060,8 @@ Root:
 **CRITICAL: Temporary files MUST go into `tmp/` directory, NOT project root.**
 
 **DEFAULT BEHAVIOR: ALL AI-generated documents go to `tmp/` unless user explicitly requests otherwise.**
+
+**See `skills/temporary_files/SKILL.md` for complete policy and detailed guidelines.**
 
 ### Quick Summary
 
@@ -1358,7 +1213,6 @@ CONTRIBUTING.md                      # ✅ Project documentation
 - **Modifying generated files directly** (changes must go through codegen source files)
 - **Calling impls directly from external code** (must go through interfaces - see Golden Rule #12)
 - **Impls calling other impls directly** (must go through interfaces - see Golden Rule #13)
-- **Importing V8 directly in impl files** (must use runtime abstractions - see Golden Rule #14)
 
 ---
 
@@ -1369,8 +1223,9 @@ CONTRIBUTING.md                      # ✅ Project documentation
 Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 
 **Finding Internal Dependencies:**
-1. **Check `src/` directory** - Each spec has its own subdirectory
-2. **Import patterns** - `@import("url")`, `@import("infra")`, etc.
+1. **Use `monorepo_navigation` skill** - Automatically detects and locates dependencies
+2. **Check `src/` directory** - Each spec has its own subdirectory
+3. **Import patterns** - `@import("url")`, `@import("infra")`, etc.
 
 **Common Dependency Patterns:**
 - Most specs depend on **Infra** (`src/infra/`) - strings, bytes, lists, ordered maps
@@ -1378,7 +1233,7 @@ Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 - URL, Fetch, and others depend on each other
 
 **If Dependency Not Implemented:**
-1. **Create temporary mock** with clear markers
+1. **Use `dependency_mocking` skill** - Create temporary mock with clear markers
 2. **Mark as TODO** - Indicate this must be replaced with real implementation
 
 ### Internal WebIDL Codegen
@@ -1396,6 +1251,8 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 - `webidl.namespace(struct { ... })` - WebIDL namespace (static-only operations)
 - `webidl.mixin(struct { ... })` - WebIDL interface mixin (reusable member bundles)
 
+**See:** `skills/webidl_codegen/SKILL.md` for complete documentation
+
 ---
 
 ## When in Doubt
@@ -1406,8 +1263,9 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 4. **Identify context** - Which spec are you working on? (file path, imports)
 5. **Read the WHATWG spec** - Load complete spec from `specs/whatwg/[spec-name]/`
 6. **Read the complete section** - Context matters, never rely on fragments
-7. **Check dependencies** - Find implementations in `src/`
-8. **Look at existing tests** - See patterns in similar specs
+7. **Check dependencies** - Use `monorepo_navigation` to find implementations
+8. **Load relevant skills** - Get specialized, context-aware guidance
+9. **Look at existing tests** - See patterns in similar specs
 10. **Check FEATURE_CATALOG.md** - See existing API patterns
 11. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
 
@@ -1439,8 +1297,9 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 5. **Test against browsers** - Verify behavior matches Chrome, Firefox, Safari
 
 **Context Detection**:
-- The system automatically detects which spec you're working on from file paths
-- Check `src/` for related implementations
+- The skills will automatically detect which spec you're working on from file paths
+- Use `whatwg_spec` skill for spec-specific guidance
+- Use `monorepo_navigation` skill to find related implementations
 
 ---
 
@@ -1563,125 +1422,6 @@ Agent: "I want to first try to regenerate all of the files,
 
 ---
 
-### Zig 0.15: ArrayList API Changes (Unmanaged by Default)
-
-**Date**: 2025-12-12  
-**Lesson**: In Zig 0.15, `std.ArrayList(T)` is now **unmanaged by default** - it no longer stores the allocator internally.
-
-**Old Pattern (Pre-0.15) - NO LONGER WORKS:**
-```zig
-// ❌ WRONG - This no longer compiles in Zig 0.15
-var list = std.ArrayList(u8).init(allocator);
-defer list.deinit();
-try list.append('a');
-```
-
-**New Pattern (Zig 0.15+) - Unmanaged:**
-```zig
-// ✅ CORRECT - Initialize with empty struct, pass allocator to methods
-var list: std.ArrayList(u8) = .{};
-defer list.deinit(allocator);
-try list.append(allocator, 'a');
-try list.appendSlice(allocator, "hello");
-const owned = try list.toOwnedSlice(allocator);
-```
-
-**Alternative - Use ArrayListUnmanaged explicitly:**
-```zig
-// ✅ ALSO CORRECT - Same thing, more explicit
-var list: std.ArrayListUnmanaged(u8) = .{};
-defer list.deinit(allocator);
-try list.append(allocator, 'a');
-```
-
-**Key Differences:**
-| Aspect | Old (Pre-0.15) | New (0.15+) |
-|--------|----------------|-------------|
-| Initialization | `.init(allocator)` | `.{}` or `= .{}` |
-| Stores allocator | Yes | No |
-| `deinit()` | `list.deinit()` | `list.deinit(allocator)` |
-| `append()` | `list.append(item)` | `list.append(allocator, item)` |
-| `toOwnedSlice()` | `list.toOwnedSlice()` | `list.toOwnedSlice(allocator)` |
-
-**Why This Change:**
-- Reduces struct size (no allocator pointer stored)
-- More explicit about which operations need allocation
-- Consistent with other unmanaged data structures
-- The old managed version exists but is **deprecated**: `std.array_list.AlignedManaged`
-
-**Codebase Migration:**
-When fixing old code, replace:
-```zig
-// Old
-var results = std.ArrayList(T).init(allocator);
-defer results.deinit();
-try results.append(item);
-
-// New
-var results: std.ArrayList(T) = .{};
-defer results.deinit(allocator);
-try results.append(allocator, item);
-```
-
-**Takeaway**: Always pass the allocator to ArrayList methods in Zig 0.15+. The allocator is no longer stored in the struct.
-
----
-
-### Zig 0.15: std.io.getStdOut() Removed
-
-**Date**: 2025-12-12  
-**Lesson**: In Zig 0.15, `std.io.getStdOut()` and `std.io.getStdErr()` no longer exist. Use `std.fs.File.stdout()` instead.
-
-**Old Pattern (Pre-0.15) - NO LONGER WORKS:**
-```zig
-// ❌ WRONG - This no longer compiles in Zig 0.15
-std.io.getStdOut().writeAll("hello\n") catch {};
-const stderr = std.io.getStdErr();
-```
-
-**New Pattern (Zig 0.15+):**
-```zig
-// ✅ CORRECT - Use std.fs.File static methods
-const stdout = std.fs.File.stdout();
-stdout.writeAll("hello\n") catch {};
-
-const stderr = std.fs.File.stderr();
-stderr.writeAll("error\n") catch {};
-
-// For buffered writing
-var buffer: [4096]u8 = undefined;
-var stdout_writer = stdout.writer(&buffer);
-try stdout_writer.interface.print("formatted: {d}\n", .{42});
-```
-
-**Takeaway**: Replace `std.io.getStdOut()` with `std.fs.File.stdout()` and `std.io.getStdErr()` with `std.fs.File.stderr()`.
-
----
-
-### Zig 0.15: std.fmt.formatIntBuf Removed
-
-**Date**: 2025-12-12  
-**Lesson**: In Zig 0.15, `std.fmt.formatIntBuf` no longer exists. Use `std.fmt.bufPrint` instead.
-
-**Old Pattern (Pre-0.15) - NO LONGER WORKS:**
-```zig
-// ❌ WRONG - This no longer compiles in Zig 0.15
-var buf: [20]u8 = undefined;
-const len = std.fmt.formatIntBuf(&buf, value, 10, .lower, .{});
-const str = buf[0..len];
-```
-
-**New Pattern (Zig 0.15+):**
-```zig
-// ✅ CORRECT - Use std.fmt.bufPrint
-var buf: [20]u8 = undefined;
-const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch unreachable;
-```
-
-**Takeaway**: Replace `std.fmt.formatIntBuf` with `std.fmt.bufPrint` using format strings.
-
----
-
 ## ⚠️ DIRECTIVE: Expand AGENTS.md When You Learn
 
 **When you learn something new or find a better way to do something, you MUST update this file.**
@@ -1740,10 +1480,12 @@ Add new lessons when you:
 
 **Quality over speed.** Take time to do it right. The codebase is production-ready and must stay that way.
 
+**Skills are context-aware.** They adapt to the spec you're working on. Load skills for deep expertise.
+
 **WHATWG specs define the web.** Browser compatibility depends on correct implementations. Precision matters.
 
-**Cross-spec dependencies matter.** Handle them correctly by checking `src/` for implementations or creating temporary mocks.
+**Cross-spec dependencies matter.** Use `monorepo_navigation` and `dependency_mocking` skills to handle them correctly.
 
 **Document what you learn.** Future agents (and humans) will thank you for expanding this file when you discover better approaches.
 
-**Thank you for maintaining the high quality standards of this project!**
+**Thank you for maintaining the high quality standards of this project!** 🎉

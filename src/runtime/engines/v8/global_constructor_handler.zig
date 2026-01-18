@@ -76,11 +76,6 @@ pub fn installLazyConstructorsOnGlobal(context: *v8.Context) void {
                     null,
                 );
             }
-        } else {
-            // Debug: Verify core interfaces are being skipped
-            if (std.mem.eql(u8, iface_name, "Worker")) {
-                std.debug.print("[LAZY] Skipping Worker - it's in core_interfaces\n", .{});
-            }
         }
     }
 }

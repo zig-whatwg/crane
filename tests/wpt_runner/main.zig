@@ -1023,8 +1023,10 @@ pub fn executeTests(
     const file_count = discovery.test_files.items.len;
     print("\nRunning {d} test files ({d} total test runs)...\n\n", .{ file_count, total });
 
-    // Create a single BrowserAdapter for all tests (single V8 isolate, new context per navigation)
-    // This is much more efficient than creating a new isolate per test (~1-5ms vs ~50-100ms)
+    // Create BrowserAdapter for tests. Following Chromium's approach:
+    // - Single V8 isolate per browser instance
+    // - New V8 context per test (navigation)
+    // Context isolation is handled by the browser, not the test runner
     var browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root);
     defer browser.deinit();
 
@@ -1147,6 +1149,11 @@ pub fn executeTests(
             var mutable_result = test_result;
             mutable_result.deinit(allocator);
         }
+
+        // Reset HTTP connection pool between test files to prevent connection exhaustion
+        // This ensures each test file starts with a fresh connection pool
+        const fetch_mod = @import("fetch");
+        fetch_mod.network.resetGlobalPool();
     }
 
     // Generate output path
@@ -1314,6 +1321,10 @@ pub fn main() !void {
     // Clean up timer backend
     const platform_mod = @import("platform");
     platform_mod.timer_backend.deinitDefault();
+
+    // Clean up global HTTP connection pool
+    const fetch_mod = @import("fetch");
+    fetch_mod.network.cleanupGlobalPool();
 
     // Finish and write report
     report.finish();

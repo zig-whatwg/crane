@@ -365,3 +365,52 @@ pub fn createBinaryMessageEvent(
 
     return instance;
 }
+
+/// Create a MessageEvent for postMessage
+/// Spec: https://html.spec.whatwg.org/multipage/web-messaging.html#posting-messages
+///
+/// This creates a trusted MessageEvent with:
+/// - type = "message"
+/// - data = the posted message
+/// - origin = the posting window's origin
+/// - source = the posting window (WindowProxy)
+pub fn createPostMessageEvent(
+    allocator: std.mem.Allocator,
+    ctx: runtime.Context,
+    data: runtime.JSValue,
+    origin_str: []const u8,
+    source_window: ?*runtime.Instance,
+) !*runtime.Instance {
+    const instance = try init(allocator, State, &MessageEvent.vtable, ctx);
+    errdefer deinit(instance);
+
+    const state = instance.getState(State);
+
+    // Set event type to "message" (Event fields in state.base.own)
+    state.base.own.type = runtime.DOMString.initInterned("message");
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.isTrusted = true; // Browser-initiated
+    state.base.own.target = null;
+    state.base.own.srcElement = null;
+    state.base.own.currentTarget = null;
+    state.base.own.eventPhase = 0;
+
+    state.base.own.bubbles = false;
+    state.base.own.cancelable = false;
+    state.base.own.composed = false;
+    state.base.own.cancelBubble = false;
+    state.base.own.returnValue = true;
+    state.base.own.defaultPrevented = false;
+
+    // MessageEvent-specific fields (in state.own)
+    // Clone the JSValue data to ensure we own it
+    state.own.data = try data.clone(ctx.allocator);
+    state.own.origin = try allocator.dupe(u8, origin_str);
+    state.own.lastEventId = runtime.DOMString.initEmpty();
+
+    // Set source to the posting window (WindowProxy)
+    // MessageEventSource is a tagged union type that can be WindowProxy, MessagePort, or ServiceWorker
+    state.own.source = if (source_window) |sw| typedefs.MessageEventSource{ .window_proxy = @ptrCast(sw) } else null;
+
+    return instance;
+}

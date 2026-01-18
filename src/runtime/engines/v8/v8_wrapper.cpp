@@ -4165,11 +4165,13 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     Local<String> name_str = String::NewFromUtf8(isolate, constructor_name).ToLocalChecked();
     MaybeLocal<Value> maybe_constructor = global->Get(ctx, name_str);
     if (maybe_constructor.IsEmpty()) {
+        fprintf(stderr, "[v8_GetGlobalPrototype] %s: constructor not found\n", constructor_name);
         return nullptr;
     }
 
     Local<Value> constructor_val = maybe_constructor.ToLocalChecked();
     if (!constructor_val->IsFunction()) {
+        fprintf(stderr, "[v8_GetGlobalPrototype] %s: not a function\n", constructor_name);
         return nullptr;
     }
 
@@ -4179,15 +4181,56 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
     MaybeLocal<Value> maybe_proto = constructor->Get(ctx, prototype_str);
     if (maybe_proto.IsEmpty()) {
+        fprintf(stderr, "[v8_GetGlobalPrototype] %s: no prototype property\n", constructor_name);
         return nullptr;
     }
 
     Local<Value> proto_val = maybe_proto.ToLocalChecked();
     if (!proto_val->IsObject()) {
+        fprintf(stderr, "[v8_GetGlobalPrototype] %s: prototype is not an object\n", constructor_name);
         return nullptr;
     }
 
     Local<Object> proto_obj = proto_val.As<Object>();
+
+    // Debug: trace the prototype chain
+    if (strcmp(constructor_name, "HTMLDivElement") == 0) {
+        fprintf(stderr, "[v8_GetGlobalPrototype] HTMLDivElement prototype chain:\n");
+        Local<Value> current = proto_obj;
+        int depth = 0;
+        while (!current->IsNull() && current->IsObject() && depth < 10) {
+            Local<Object> obj = current.As<Object>();
+            // Try to get constructor name
+            MaybeLocal<Value> ctor = obj->Get(ctx, String::NewFromUtf8Literal(isolate, "constructor"));
+            if (!ctor.IsEmpty() && ctor.ToLocalChecked()->IsFunction()) {
+                Local<Function> ctor_fn = ctor.ToLocalChecked().As<Function>();
+                Local<Value> name = ctor_fn->GetName();
+                String::Utf8Value name_utf8(isolate, name);
+                fprintf(stderr, "  [%d] %s.prototype\n", depth, *name_utf8);
+
+                // Check if this prototype === globalThis.ConstructorName.prototype
+                if (depth > 0) { // Skip HTMLDivElement itself
+                    MaybeLocal<Value> maybe_global_ctor = global->Get(ctx, name);
+                    if (!maybe_global_ctor.IsEmpty() && maybe_global_ctor.ToLocalChecked()->IsFunction()) {
+                        Local<Function> global_ctor = maybe_global_ctor.ToLocalChecked().As<Function>();
+                        MaybeLocal<Value> maybe_global_proto = global_ctor->Get(ctx, prototype_str);
+                        if (!maybe_global_proto.IsEmpty() && maybe_global_proto.ToLocalChecked()->IsObject()) {
+                            Local<Object> global_proto = maybe_global_proto.ToLocalChecked().As<Object>();
+                            bool same = obj->SameValue(global_proto);
+                            fprintf(stderr, "      [same as globalThis.%s.prototype: %s]\n", *name_utf8, same ? "YES" : "NO");
+                        }
+                    }
+                }
+            } else {
+                fprintf(stderr, "  [%d] (unknown)\n", depth);
+            }
+            MaybeLocal<Value> maybe_next = obj->GetPrototype();
+            if (maybe_next.IsEmpty()) break;
+            current = maybe_next.ToLocalChecked();
+            depth++;
+        }
+    }
+
     return trackHandle(new Global<Object>(isolate, proto_obj));
 }
 
@@ -4325,6 +4368,18 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
 
     // Pointer should be in a reasonable address range and aligned
     if (ptr_val < 0x1000 || ptr_val > 0x0000FFFFFFFFFFFF || (ptr_val & 0x7) != 0) {
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+
+    // Additional check: Detect code/static addresses vs heap addresses
+    // On macOS, heap is typically in ranges like 0x6xxxxx, 0x9xxxxx, etc.
+    // Code/static is typically 0x100xxxxxx to 0x10Fxxxxxx
+    // This is a heuristic - rejects pointers that look like code addresses
+    if (ptr_val >= 0x100000000 && ptr_val < 0x110000000) {
+        // This looks like a code/static pointer, not a heap Global handle
+        // Reject it to prevent crash - return undefined instead
+        fprintf(stderr, "[SetReturnValueGlobal] REJECTED: Pointer 0x%lx looks like code/static address, not heap Global handle. Returning undefined.\n", ptr_val);
         info->GetReturnValue().SetUndefined();
         return;
     }
@@ -5446,11 +5501,11 @@ bool v8_Object_SetImmutableProto(Global<Object>* object, Global<Context>* contex
 bool v8_Object_SetPrototype(Global<Object>* object, Global<Context>* context, Global<Value>* prototype) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Object> obj = object->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Local<Value> proto = prototype->Get(isolate);
-    
+
     return obj->SetPrototype(ctx, proto).FromMaybe(false);
 }
 
@@ -7997,32 +8052,16 @@ Global<Value>* v8_Value_ToGlobal(Isolate* isolate, void* local) {
     Local<Value> local_value = *reinterpret_cast<Local<Value>*>(&value_ptr);
 
     if (local_value.IsEmpty()) {
-        fprintf(stderr, "[v8_Value_ToGlobal] ERROR: local_value is empty!\n");
         return nullptr;
-    }
-
-    // DEBUG: Check what type of value we're storing
-    fprintf(stderr, "[v8_Value_ToGlobal] local=%p, IsArray=%d, IsObject=%d, IsUndefined=%d\n",
-            local, local_value->IsArray(), local_value->IsObject(), local_value->IsUndefined());
-
-    if (local_value->IsArray()) {
-        Local<Array> arr = local_value.As<Array>();
-        fprintf(stderr, "[v8_Value_ToGlobal] Storing array with length=%u\n", arr->Length());
     }
 
     Global<Value>* global = new Global<Value>(isolate, local_value);
 
     // Verify the Global immediately after creation
     if (global->IsEmpty()) {
-        fprintf(stderr, "[v8_Value_ToGlobal] ERROR: Created Global is empty!\n");
         delete global;
         return nullptr;
     }
-
-    // Verify we can get the value back
-    Local<Value> verify = global->Get(isolate);
-    fprintf(stderr, "[v8_Value_ToGlobal] After Global creation: global=%p, verify IsArray=%d, IsUndefined=%d\n",
-            global, verify->IsArray(), verify->IsUndefined());
 
     return trackHandle(global);
 }

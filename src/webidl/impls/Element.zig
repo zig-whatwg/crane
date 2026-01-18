@@ -572,20 +572,54 @@ pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Getter for tagName
 /// DOM §4.8 - Returns the qualified name of this element
 /// For HTML elements in HTML documents, this is uppercase
+/// Spec: https://dom.spec.whatwg.org/#dom-element-tagname
 pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
+    // Per DOM spec §4.8:
+    // If the element's namespace is the HTML namespace and the element's node document
+    // is an HTML document, return the qualified name in ASCII uppercase.
+    // HTML elements typically have null namespace_uri (implicit HTML namespace) or
+    // explicit "http://www.w3.org/1999/xhtml"
+    const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+    const is_html_element = internal.namespace_uri == null or
+        (internal.namespace_uri != null and
+        std.mem.eql(u8, internal.namespace_uri.?.asSlice(), HTML_NAMESPACE));
+
     // If there's a prefix, return "prefix:localName"
     if (internal.prefix) |p| {
-        // TODO: Concatenate prefix:localName
-        // For now, return local name
-        _ = p;
-        // Clone to transfer ownership to caller (interface layer will free)
-        return try internal.local_name.clone(instance.ctx.allocator);
+        const prefix_slice = p.asSlice();
+        const local_slice = internal.local_name.asSlice();
+
+        // Allocate buffer for "prefix:localName"
+        const total_len = prefix_slice.len + 1 + local_slice.len;
+        var buffer = try instance.ctx.allocator.alloc(u8, total_len);
+        @memcpy(buffer[0..prefix_slice.len], prefix_slice);
+        buffer[prefix_slice.len] = ':';
+        @memcpy(buffer[prefix_slice.len + 1 ..], local_slice);
+
+        // Uppercase for HTML elements in HTML documents
+        if (is_html_element) {
+            for (buffer) |*c| {
+                c.* = std.ascii.toUpper(c.*);
+            }
+        }
+
+        return runtime.DOMString.initOwned(buffer);
     }
 
     // No prefix, return just local name
-    // TODO: Uppercase for HTML elements in HTML documents
+    // Uppercase for HTML elements in HTML documents
+    if (is_html_element) {
+        const local_slice = internal.local_name.asSlice();
+        var buffer = try instance.ctx.allocator.alloc(u8, local_slice.len);
+        for (local_slice, 0..) |c, i| {
+            buffer[i] = std.ascii.toUpper(c);
+        }
+        return runtime.DOMString.initOwned(buffer);
+    }
+
+    // Non-HTML element: return as-is
     // Clone to transfer ownership to caller (interface layer will free)
     return try internal.local_name.clone(instance.ctx.allocator);
 }

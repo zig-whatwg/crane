@@ -401,6 +401,7 @@ pub const Browser = struct {
             v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
             // Third GC pass for any objects revived during weak callbacks
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+
         }
 
         // Create new context
@@ -448,27 +449,57 @@ pub const Browser = struct {
         return ctx.evaluateScript(script);
     }
 
-    /// Run the event loop until a condition is met or timeout
+    /// Run the event loop until timeout expires.
     ///
-    /// Used for running async tests or waiting for page load.
+    /// This uses efficient blocking on libuv, waking only when:
+    /// - A timer fires
+    /// - I/O is ready
+    /// - The timeout expires
+    ///
+    /// @param timeout_ms Maximum time to run the loop.
+    /// @return true if work was performed, false if timeout with no work
     pub fn runEventLoop(self: *Browser, timeout_ms: u64) !void {
+        _ = try self.runEventLoopBlocking(timeout_ms);
+    }
+
+    /// Run the event loop with proper blocking behavior.
+    ///
+    /// This replaces the old polling + sleep pattern with proper blocking.
+    /// The loop blocks efficiently on libuv, waking only when:
+    /// - A timer fires
+    /// - I/O is ready
+    /// - A task is posted from another thread
+    /// - The timeout expires
+    ///
+    /// @param timeout_ms Maximum time to run the loop. Pass 0 for single non-blocking check.
+    /// @return true if work was performed, false if timeout with no work
+    pub fn runEventLoopBlocking(self: *Browser, timeout_ms: u64) !bool {
         const event_loop = self.event_loop orelse return error.NotInitialized;
         const start_time = std.time.milliTimestamp();
+        const deadline = start_time + @as(i64, @intCast(timeout_ms));
+        var did_work = false;
 
         while (true) {
-            // Run one iteration
-            _ = event_loop.eventLoop().runOnce();
-
-            // Check timeout
             const now = std.time.milliTimestamp();
-            const elapsed: u64 = @intCast(now - start_time);
-            if (elapsed > timeout_ms) {
-                return;
+            if (now >= deadline) {
+                break;
             }
 
-            // Short sleep to avoid busy-waiting
-            std.Thread.sleep(1 * std.time.ns_per_ms);
+            const remaining: u64 = @intCast(deadline - now);
+
+            // Run one iteration of the event loop with blocking
+            // This will block up to `remaining` ms waiting for work
+            if (event_loop.runOnceBlocking(remaining)) {
+                did_work = true;
+            }
+
+            // If no more pending work, exit early
+            if (!event_loop.hasPendingWork()) {
+                break;
+            }
         }
+
+        return did_work;
     }
 
     /// Get the current URL

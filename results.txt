@@ -1,0 +1,31 @@
+WPT ports cleared
+V8 Snapshot Generator with WebIDL Interfaces
+=============================================
+
+This creates a snapshot with V8 builtins AND WebIDL interfaces.
+This snapshot provides fast V8 isolate startup with builtins pre-compiled.
+
+Step 1: Initializing V8 platform...\n  V8 platform initialized
+
+Step 2: Registering external references...
+  Registered 11471 external references
+  Reference hash: 0x4f7f3a6bf51ed95c (for determinism verification)
+Step 2b: Creating SnapshotCreator with external references...
+  SnapshotCreator created successfully
+
+Step 3: Getting isolate from SnapshotCreator...
+  Isolate obtained
+
+Step 4: Entering isolate...\n  Isolate entered, snapshot mode enabled\n\nStep 5: Creating contexts with WebIDL interfaces...\n  5a: Creating global template with internal fields and handlers...\n  Global template configured: 2 internal fields, immutable proto, indexed handlers\n  5b: Creating default context with global template...\n  5c: Entering default context and registering interfaces...\n  5d: WebIDL interfaces registered in default context\n  Default context with interfaces set\n  5e: Creating indexed context with global template...\n  5f: Entering indexed context and registering interfaces...\n  5g: WebIDL interfaces registered in indexed context\n  Indexed context with interfaces added at index 0\n\nStep 6: Creating snapshot blob...\n  Clearing Global handles created during registration...\n  Snapshot blob created: 7085378 bytes (6919.31 KB)
+
+Step 7: Disposing SnapshotCreator...
+  SnapshotCreator disposed
+
+Step 8: Writing snapshot to file: zig-out/bin/whatwg_snapshot.bin
+  Snapshot written successfully
+
+=============================================
+Snapshot generation complete!
+  Output: zig-out/bin/whatwg_snapshot.bin
+  Size: 7085378 bytes (6919.31 KB)
+\nThis snapshot contains V8 builtins AND WebIDL interfaces!\nAll interfaces are pre-registered - no runtime registration needed.\n\nTo use this snapshot at runtime:\n  1. Load the blob from file\n  2. Create isolate with v8_Isolate_NewFromSnapshot(data, size, ext_refs)\n  3. Restore context with v8_Context_NewFromSnapshot(isolate)\n  4. Interfaces are already available - no initializeBindings() needed!\n

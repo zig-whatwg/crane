@@ -61,11 +61,12 @@ pub const ConnectionPool = struct {
 
     const Self = @This();
 
-    /// Default max connections per host (HTTP/1.1 recommendation)
-    pub const DEFAULT_MAX_HOST_CONNECTIONS: u32 = 6;
+    /// Default max connections per host
+    /// Increased from HTTP/1.1 recommendation of 6 to handle sequential test execution
+    pub const DEFAULT_MAX_HOST_CONNECTIONS: u32 = 64;
 
     /// Default max total connections
-    pub const DEFAULT_MAX_TOTAL_CONNECTIONS: u32 = 256;
+    pub const DEFAULT_MAX_TOTAL_CONNECTIONS: u32 = 512;
 
     /// Configuration options for the connection pool
     pub const Options = struct {
@@ -84,6 +85,11 @@ pub const ConnectionPool = struct {
         result_code: curl.CURLcode,
         easy_handle: *curl.CURL,
 
+        // Strings that must persist until request completes (curl doesn't copy them)
+        url_z: ?[:0]u8 = null,
+        method_z: ?[:0]u8 = null,
+        header_list: ?*curl.curl_slist = null,
+
         pub fn init(allocator: Allocator, easy_handle: *curl.CURL) RequestContext {
             return .{
                 .allocator = allocator,
@@ -94,6 +100,9 @@ pub const ConnectionPool = struct {
                 .completed = std.atomic.Value(bool).init(false),
                 .result_code = curl.CURLE_OK,
                 .easy_handle = easy_handle,
+                .url_z = null,
+                .method_z = null,
+                .header_list = null,
             };
         }
 
@@ -105,6 +114,11 @@ pub const ConnectionPool = struct {
             }
             self.response_headers.deinit(self.allocator);
             self.raw_headers.deinit(self.allocator);
+
+            // Free strings that were stored for curl
+            if (self.url_z) |url| self.allocator.free(url);
+            if (self.method_z) |method| self.allocator.free(method);
+            if (self.header_list) |list| curl.slist_free_all(list);
         }
     };
 
@@ -313,16 +327,14 @@ pub const ConnectionPool = struct {
 // =============================================================================
 
 fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *ConnectionPool.RequestContext) !void {
-    // URL (must be null-terminated)
-    const url_z = try ctx.allocator.dupeZ(u8, request.url);
-    defer ctx.allocator.free(url_z);
-    _ = curl.easy_setopt(handle, curl.CURLOPT_URL, url_z.ptr);
+    // URL (must be null-terminated, stored in ctx to persist until request completes)
+    ctx.url_z = try ctx.allocator.dupeZ(u8, request.url);
+    _ = curl.easy_setopt(handle, curl.CURLOPT_URL, ctx.url_z.?.ptr);
 
-    // Method
+    // Method (stored in ctx to persist until request completes)
     if (!std.mem.eql(u8, request.method, "GET")) {
-        const method_z = try ctx.allocator.dupeZ(u8, request.method);
-        defer ctx.allocator.free(method_z);
-        _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, method_z.ptr);
+        ctx.method_z = try ctx.allocator.dupeZ(u8, request.method);
+        _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
     }
 
     // Request body
@@ -331,17 +343,17 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
         _ = curl.easy_setopt(handle, curl.CURLOPT_POSTFIELDSIZE, @as(c_long, @intCast(body.len)));
     }
 
-    // Headers
-    var header_list: ?*curl.curl_slist = null;
+    // Headers (slist is stored in ctx and freed via slist_free_all in deinit)
+    // Note: curl_slist_append copies the strings, so we can free header_z after append
     for (request.headers) |header| {
         const header_str = try std.fmt.allocPrint(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
         defer ctx.allocator.free(header_str);
         const header_z = try ctx.allocator.dupeZ(u8, header_str);
         defer ctx.allocator.free(header_z);
-        header_list = curl.slist_append(header_list, header_z.ptr);
+        ctx.header_list = curl.slist_append(ctx.header_list, header_z.ptr);
     }
-    if (header_list != null) {
-        _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, header_list);
+    if (ctx.header_list != null) {
+        _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, ctx.header_list);
     }
 
     // HTTP version
@@ -620,6 +632,13 @@ pub fn cleanupGlobalPool() void {
         pool.deinit();
         global_pool = null;
     }
+}
+
+/// Reset the global pool by destroying and allowing lazy recreation.
+/// Call between tests to release all connections and start fresh.
+/// The next call to getGlobalPool() will create a new pool.
+pub fn resetGlobalPool() void {
+    cleanupGlobalPool();
 }
 
 // =============================================================================

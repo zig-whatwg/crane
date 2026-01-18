@@ -76,7 +76,27 @@ pub const Manifest = struct {
     pub fn resolveUrlToSource(self: *Manifest, test_url: []const u8) ?[]const u8 {
         // Strip leading slash if present (WPT URLs can have leading /)
         const url = if (test_url.len > 0 and test_url[0] == '/') test_url[1..] else test_url;
-        return self.url_to_source.get(url);
+
+        // Try exact match first
+        if (self.url_to_source.get(url)) |source| {
+            return source;
+        }
+
+        // If no exact match, check if this URL is the base of a URL with query parameters
+        // e.g., "url/url-constructor.any.html" should match "url/url-constructor.any.html?include=file"
+        var iter = self.url_to_source.iterator();
+        while (iter.next()) |entry| {
+            const manifest_url = entry.key_ptr.*;
+            // Check if manifest URL starts with our URL and has a '?' after it
+            if (manifest_url.len > url.len and
+                std.mem.startsWith(u8, manifest_url, url) and
+                manifest_url[url.len] == '?')
+            {
+                return entry.value_ptr.*;
+            }
+        }
+
+        return null;
     }
 
     /// Get all test URLs for a source file

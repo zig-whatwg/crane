@@ -518,6 +518,22 @@ pub const InternalState = struct {
 
         // Stylesheet blocking tracker
         self.stylesheet_tracker.deinit();
+
+        // Clean up cached [SameObject] instances
+        // These instances are lazily created and cached, so we need to clean them up here.
+        // The GC may not have cleaned them up yet if the context is being torn down.
+        if (self.all_collection) |all| {
+            interfaces.HTMLAllCollection.deinit(all);
+        }
+        if (self.fonts) |fonts_inst| {
+            interfaces.FontFaceSet.deinit(fonts_inst);
+        }
+        if (self.selection) |sel| {
+            interfaces.Selection.deinit(sel);
+        }
+        if (self.style_sheets) |ss| {
+            interfaces.StyleSheetList.deinit(ss);
+        }
     }
 };
 

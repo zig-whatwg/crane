@@ -137,15 +137,11 @@ pub const V8EventLoop = struct {
     /// Whether this event loop is frozen (for bfcache)
     frozen: bool,
 
-    /// Count of consecutive poll() calls that returned false (no work done)
-    /// Used for exponential backoff to prevent CPU spinning
-    empty_poll_count: u32,
-
     const Self = @This();
 
-    /// Backoff configuration
-    const BACKOFF_THRESHOLD: u32 = 10; // Start backoff after 10 empty polls
-    const MAX_BACKOFF_MS: u64 = 100; // Cap at 100ms
+    /// Default maximum wait time when no explicit timeout is provided.
+    /// This allows the event loop to block efficiently while still being responsive.
+    const DEFAULT_MAX_WAIT_MS: u64 = 100;
 
     /// Initialize a new V8 event loop with timer support
     ///
@@ -173,7 +169,6 @@ pub const V8EventLoop = struct {
             .in_run_once = false,
             .timer_manager = timer_mgr,
             .frozen = false,
-            .empty_poll_count = 0,
         };
     }
 
@@ -189,7 +184,6 @@ pub const V8EventLoop = struct {
             .in_run_once = false,
             .timer_manager = null,
             .frozen = false,
-            .empty_poll_count = 0,
         };
     }
 
@@ -335,6 +329,98 @@ pub const V8EventLoop = struct {
     }
 
     // ========================================================================
+    // Public Event Loop Methods
+    // ========================================================================
+
+    /// Run one iteration of the event loop with explicit timeout.
+    ///
+    /// This is the recommended method for callers who need to control timing.
+    /// It follows the Node.js/Chromium pattern:
+    /// 1. Drain microtask queue (Promise reactions, queueMicrotask callbacks)
+    /// 2. Calculate optimal wait time based on pending timers and max_wait_ms
+    /// 3. Block on libuv until event or timeout
+    /// 4. Execute timer/I/O callbacks
+    /// 5. Drain microtask queue again
+    ///
+    /// @param max_wait_ms Maximum time to block waiting for events.
+    ///                    Pass 0 for non-blocking check.
+    /// @return true if any work was performed, false if loop is idle
+    pub fn runOnceBlocking(self: *Self, max_wait_ms: u64) bool {
+        // Don't process tasks or timers when frozen (bfcache support)
+        if (self.frozen) {
+            return false;
+        }
+
+        // Prevent reentrancy
+        if (self.in_run_once) {
+            return false;
+        }
+        self.in_run_once = true;
+        defer self.in_run_once = false;
+
+        var did_work = false;
+
+        // Step 1: Run all pending microtasks FIRST
+        // This handles any pending Promise.then() callbacks, queueMicrotask(), etc.
+        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+
+        // Step 2: Execute one task from our task queue (if any)
+        if (self.tasks.items.len > 0) {
+            const task = self.tasks.orderedRemove(0);
+            task.callback(task.context);
+            did_work = true;
+            // Run microtasks after task - it may have resolved Promises
+            v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+        }
+
+        // Step 3: Calculate optimal wait time
+        // We want to wake up when the next timer fires OR when max_wait_ms expires
+        const wait_time = blk: {
+            if (self.timer_manager) |mgr| {
+                if (mgr.getNextTimerDeadline()) |deadline| {
+                    // Wake up at whichever comes first: timer deadline or max wait
+                    break :blk @min(deadline, max_wait_ms);
+                }
+            }
+            // No pending timers - use max_wait_ms (or 0 for non-blocking)
+            break :blk max_wait_ms;
+        };
+
+        // Step 4: Poll libuv for I/O and timer events
+        if (self.timer_manager) |mgr| {
+            // Use blocking poll with timeout - this waits efficiently for timer/I/O
+            // and returns after at most wait_time milliseconds
+            const had_callbacks = mgr.pollBlocking(wait_time);
+            if (had_callbacks) {
+                did_work = true;
+            }
+        }
+
+        // Step 5: Run microtasks again after timer callbacks
+        // Timer callbacks may have scheduled JS callbacks that created Promises
+        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+
+        // Step 6: Process any newly queued tasks from timer callbacks
+        if (self.tasks.items.len > 0) {
+            const task = self.tasks.orderedRemove(0);
+            task.callback(task.context);
+            did_work = true;
+            v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
+        }
+
+        return did_work or self.hasPendingWork();
+    }
+
+    /// Check if there's pending work that should prevent idle.
+    pub fn hasPendingWork(self: *Self) bool {
+        if (self.tasks.items.len > 0) return true;
+        if (self.timer_manager) |mgr| {
+            if (mgr.getActiveTimerCount() > 0) return true;
+        }
+        return false;
+    }
+
+    // ========================================================================
     // EventLoop Interface Implementation
     // ========================================================================
 
@@ -390,72 +476,13 @@ pub const V8EventLoop = struct {
     fn runOnce(ptr: *anyopaque) bool {
         const self: *Self = @ptrCast(@alignCast(ptr));
 
-        // Don't process tasks or timers when frozen (bfcache support)
-        if (self.frozen) {
-            return false;
-        }
-
-        // Prevent reentrancy
-        if (self.in_run_once) {
-            return false;
-        }
-        self.in_run_once = true;
-        defer self.in_run_once = false;
-
-        // NOTE: We do NOT create a HandleScope here that spans the entire function.
-        // Timer callbacks may enter/exit different isolates (worker isolates),
-        // and having a HandleScope for the main isolate active while operating
-        // in a worker isolate corrupts V8's HandleScope tracking. Instead, we
-        // create scoped HandleScopes only for operations that need them.
-
-        var did_work = false;
-
-        // Step 1: Poll libuv for ready timer callbacks
-        // This processes any timers that have fired.
-        // Timer callbacks manage their own V8 state (isolate enter/exit, HandleScopes)
-        // so we don't need a HandleScope here.
-        if (self.timer_manager) |mgr| {
-            const timer_callback_invoked = mgr.poll();
-            if (timer_callback_invoked) {
-                did_work = true;
-            }
-        }
-
-        // Step 2: Run all pending microtasks (including any queued by timer callbacks)
-        // PerformMicrotaskCheckpoint needs to be in the correct isolate context.
-        // The C++ wrapper handles HandleScope internally.
-        v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-
-        // V8 doesn't tell us if microtasks ran, but we assume they might have
-        // We could track this by checking IsExecutingMicrotasks before/after
-
-        // Step 3: Run one task (if any)
-        if (self.tasks.items.len > 0) {
-            const task = self.tasks.orderedRemove(0);
-            task.callback(task.context);
-            did_work = true;
-
-            // Step 4: Run microtasks again after task
-            v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
-        }
-
-        // Step 5: Exponential backoff for CPU efficiency
-        // If no work was done, increment counter and potentially sleep
-        // This prevents 100% CPU spin when waiting for timers
-        if (did_work) {
-            self.empty_poll_count = 0;
-        } else {
-            self.empty_poll_count += 1;
-            if (self.empty_poll_count > BACKOFF_THRESHOLD) {
-                // Calculate backoff: 2^(count - threshold), capped at MAX_BACKOFF_MS
-                const exponent = self.empty_poll_count - BACKOFF_THRESHOLD;
-                const backoff_ms: u64 = @min(MAX_BACKOFF_MS, @as(u64, 1) << @min(exponent, 6));
-                const ns_per_ms: u64 = 1_000_000;
-                std.Thread.sleep(backoff_ms * ns_per_ms);
-            }
-        }
-
-        return did_work;
+        // Use the new blocking implementation with default timeout.
+        // This provides efficient blocking on libuv while maintaining
+        // responsiveness for the vtable interface.
+        //
+        // The default timeout allows the loop to block efficiently when idle,
+        // waking up when timers fire or the timeout expires.
+        return self.runOnceBlocking(DEFAULT_MAX_WAIT_MS);
     }
 
     fn promiseAllocator(ptr: *anyopaque) Allocator {

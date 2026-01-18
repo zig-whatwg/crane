@@ -126,14 +126,21 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
             return;
         }
 
-        // Step 3: Clean up the Zig instance via GC integration
+        // Step 3: Remove from cache HashMap FIRST
+        // This MUST happen before onObjectFreed because:
+        // - onObjectFreed calls deinit chain (Node.deinit, etc.)
+        // - deinit calls markAsCleanedUp which looks up the entry in the cache
+        // - If the entry is still in the cache, markAsCleanedUp will call
+        //   v8_Global_ClearWeak on the wrapper that's currently being processed
+        //   by THIS weak callback, causing a crash.
+        // By removing from cache first, markAsCleanedUp returns false (not found).
+        _ = entry.cache.cache.remove(entry.instance);
+
+        // Step 4: Clean up the Zig instance via GC integration
         // This calls the type's deinit function (e.g., Response.deinit)
         // which frees all owned resources (headers, body, URL list, etc.)
         // and returns the Instance handle to the SlabAllocator
         runtime.gc.onObjectFreed(entry.instance);
-
-        // Step 4: Remove from cache HashMap
-        _ = entry.cache.cache.remove(entry.instance);
 
         // Step 5: Dispose the Global<Object>* handle
         v8.v8_Object_Dispose(@ptrCast(entry.wrapper));

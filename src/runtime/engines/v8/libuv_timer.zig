@@ -248,14 +248,59 @@ pub const LibuvTimerManager = struct {
         return self.callback_invoked;
     }
 
-    /// Run the event loop once (blocking).
-    /// This blocks until at least one callback has been invoked, or until
-    /// there are no more active handles.
-    /// Returns true if there are still active handles.
-    pub fn pollBlocking(self: *Self) bool {
+    /// Run the event loop once (blocking) with timeout.
+    /// This blocks until at least one callback has been invoked, until
+    /// there are no more active handles, or until timeout_ms expires.
+    ///
+    /// @param timeout_ms Maximum time to block. Pass 0 for non-blocking.
+    /// @return true if a callback was invoked during this poll.
+    pub fn pollBlocking(self: *Self, timeout_ms: u64) bool {
         if (!self.initialized) return false;
-        const result = libuv.run(self.loop, .UV_RUN_ONCE);
-        return result > 0;
+
+        // Reset the callback_invoked flag before polling
+        self.callback_invoked = false;
+
+        if (timeout_ms == 0) {
+            // Non-blocking - use NOWAIT
+            _ = libuv.run(self.loop, .UV_RUN_NOWAIT);
+            return self.callback_invoked;
+        }
+
+        // For blocking with timeout, we create a temporary timer that fires
+        // after timeout_ms. This ensures UV_RUN_ONCE returns after at most
+        // timeout_ms milliseconds.
+        var timeout_timer: libuv.uv_timer_t = undefined;
+        libuv.timerInit(self.loop, &timeout_timer) catch {
+            // If we can't create the timeout timer, fall back to non-blocking
+            _ = libuv.run(self.loop, .UV_RUN_NOWAIT);
+            return self.callback_invoked;
+        };
+
+        // Mark this as a timeout timer so we don't count it as user work
+        timeout_timer.data = null;
+
+        // Start the timeout timer
+        libuv.timerStart(&timeout_timer, timeoutCallback, timeout_ms, 0) catch {
+            // Cleanup and fall back to non-blocking
+            libuv.close(libuv.timerToHandle(&timeout_timer), null);
+            _ = libuv.run(self.loop, .UV_RUN_NOWAIT);
+            return self.callback_invoked;
+        };
+
+        // Run the loop once - this will block until:
+        // - A user timer fires (callback_invoked becomes true)
+        // - Our timeout timer fires (we just return)
+        // - I/O is ready
+        _ = libuv.run(self.loop, .UV_RUN_ONCE);
+
+        // Stop and close the timeout timer
+        _ = libuv.timerStop(&timeout_timer) catch {};
+        libuv.close(libuv.timerToHandle(&timeout_timer), null);
+
+        // Run NOWAIT to process the close callback
+        _ = libuv.run(self.loop, .UV_RUN_NOWAIT);
+
+        return self.callback_invoked;
     }
 
     /// Get the timer interface for this manager.
@@ -270,6 +315,63 @@ pub const LibuvTimerManager = struct {
     /// Used for drain loops to ensure all close callbacks are processed.
     pub fn getPendingCount(self: *Self) usize {
         return self.timers.count();
+    }
+
+    /// Get the number of milliseconds until the next timer fires.
+    /// Returns null if no timers are registered or all timers are closing.
+    /// Returns 0 if a timer is already due or overdue.
+    ///
+    /// This is used to calculate the optimal blocking timeout for the event loop.
+    /// Call this after updateTime() for accurate results.
+    pub fn getNextTimerDeadline(self: *Self) ?u64 {
+        if (!self.initialized) return null;
+        if (self.timers.count() == 0) return null;
+
+        // Update libuv's cached time for accurate calculations
+        libuv.updateTime(self.loop);
+
+        var min_due_in: ?u64 = null;
+
+        var iter = self.timers.iterator();
+        while (iter.next()) |entry| {
+            const ctx = entry.value_ptr.*;
+
+            // Skip timers that are cancelled or closing
+            if (ctx.cancelled or ctx.closing) continue;
+
+            // Get time until this timer fires
+            const due_in = libuv.timerGetDueIn(&ctx.handle);
+
+            // Track minimum
+            if (min_due_in == null or due_in < min_due_in.?) {
+                min_due_in = due_in;
+            }
+        }
+
+        return min_due_in;
+    }
+
+    /// Get libuv's recommended backend timeout.
+    /// Returns -1 for infinite wait, 0 for no wait, or positive ms.
+    /// This accounts for all handles, not just timers.
+    pub fn getBackendTimeout(self: *Self) c_int {
+        if (!self.initialized) return 0;
+        return libuv.backendTimeout(self.loop);
+    }
+
+    /// Get the count of active (non-closing) timers.
+    pub fn getActiveTimerCount(self: *Self) usize {
+        if (!self.initialized) return 0;
+
+        var count: usize = 0;
+        var iter = self.timers.iterator();
+        while (iter.next()) |entry| {
+            const ctx = entry.value_ptr.*;
+            if (!ctx.cancelled and !ctx.closing) {
+                count += 1;
+            }
+        }
+        return count;
     }
 
     /// Drain all pending close callbacks by running the loop until empty.
@@ -312,6 +414,11 @@ pub const LibuvTimerManager = struct {
 // ============================================================================
 // libuv Callbacks
 // ============================================================================
+
+/// Dummy callback for timeout timer - does nothing, just wakes the loop.
+fn timeoutCallback(_: *libuv.uv_timer_t) callconv(.c) void {
+    // Intentionally empty - this timer exists only to wake UV_RUN_ONCE
+}
 
 /// Called by libuv when a timer fires.
 fn timerCallback(handle: *libuv.uv_timer_t) callconv(.c) void {

@@ -595,11 +595,17 @@ pub fn V8Interface(comptime Interface: type) type {
         ) void {
             @setEvalBranchQuota(10000); // Raise branch limit for multiple inline loops
 
-            const template = createTemplate(isolate);
+            // CRITICAL: Get template from registry if it exists, otherwise create and register.
+            // This ensures we use the SAME template whether the interface is registered
+            // directly or first referenced as a parent by a child interface.
+            // Without this, prototype objects would differ and instanceof would fail.
+            const cached = template_registry.getTemplate(global_name);
+            const template = cached orelse blk: {
+                const new_template = createTemplate(isolate);
+                template_registry.register(global_name, new_template, isolate);
+                break :blk new_template;
+            };
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
-
-            // Register template in template_registry for wrapInstanceAsV8Object()
-            template_registry.register(global_name, template, isolate);
 
             const key_str = v8.v8_String_NewFromUtf8(
                 isolate,
@@ -1334,9 +1340,17 @@ pub fn V8Interface(comptime Interface: type) type {
             if (@hasDecl(Meta, "ParentInterface")) {
                 const ParentType = Meta.ParentInterface;
                 if (@hasDecl(ParentType, "Meta")) {
-                    // Create parent template
-                    const ParentBinding = V8Interface(ParentType);
-                    const parent_template = ParentBinding.createTemplate(isolate);
+                    // Get parent template from registry (or create and register it)
+                    // This ensures the SAME template is used for both the parent's global
+                    // constructor and for inheritance, which is CRITICAL for instanceof to work.
+                    const parent_name = ParentType.Meta.name;
+                    const cached = template_registry.getTemplate(parent_name);
+                    const parent_template = cached orelse blk: {
+                        const ParentBinding = V8Interface(ParentType);
+                        const new_template = ParentBinding.createTemplate(isolate);
+                        template_registry.register(parent_name, new_template, isolate);
+                        break :blk new_template;
+                    };
 
                     // Set up prototype chain - BEFORE registering methods
                     v8.v8_FunctionTemplate_Inherit(template, parent_template);
@@ -1349,9 +1363,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (BaseTypeInfo == .pointer) {
                         const ChildType = BaseTypeInfo.pointer.child;
                         if (@hasDecl(ChildType, "Meta")) {
-                            // Create parent template
-                            const ParentBinding = V8Interface(ChildType);
-                            const parent_template = ParentBinding.createTemplate(isolate);
+                            // Get parent template from registry (or create and register it)
+                            const parent_name = ChildType.Meta.name;
+                            const parent_template = template_registry.getTemplate(parent_name) orelse blk: {
+                                const ParentBinding = V8Interface(ChildType);
+                                const new_template = ParentBinding.createTemplate(isolate);
+                                template_registry.register(parent_name, new_template, isolate);
+                                break :blk new_template;
+                            };
 
                             // Set up prototype chain - BEFORE registering methods
                             v8.v8_FunctionTemplate_Inherit(template, parent_template);
@@ -2234,6 +2253,7 @@ pub fn V8Interface(comptime Interface: type) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                     // DEBUG: Trace method callback invocation
+                    std.debug.print("[MethodCallback] {s}.{s}\n", .{ interface_name, zig_name });
                     const isolate = info.getIsolate();
 
                     // Get V8 context - for arguments parsing, we use the current context
@@ -3003,14 +3023,17 @@ pub fn V8Interface(comptime Interface: type) type {
                 // but for factory methods like createElement we need to determine
                 // the actual type. For now, we use a heuristic in template_registry.
                 const iface_name = template_registry.getInstanceInterfaceName(result);
+                std.debug.print("[convertReturnValue] Instance return, iface_name={s}, instance=0x{x}\n", .{ iface_name, @intFromPtr(result) });
                 const v8_obj = template_registry.wrapInstanceAsV8Object(
                     result,
                     iface_name,
                     isolate,
                     v8_context,
-                ) catch {
+                ) catch |err| {
+                    std.debug.print("[convertReturnValue] wrapInstanceAsV8Object failed: {any}\n", .{err});
                     return v8.v8_Undefined(isolate);
                 };
+                std.debug.print("[convertReturnValue] v8_obj=0x{x}\n", .{@intFromPtr(v8_obj)});
                 return @ptrCast(v8_obj);
             }
 

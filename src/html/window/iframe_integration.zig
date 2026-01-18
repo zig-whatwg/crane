@@ -273,6 +273,23 @@ pub const IFrameIntegration = struct {
     /// Set to true when cleanupRealmContext is entered
     cleanup_in_progress: bool,
 
+    // ========================================================================
+    // Script Execution Callbacks (Engine-Agnostic)
+    // ========================================================================
+    //
+    // These callbacks are set by modules with V8 access (e.g., HTMLIFrameElement impl)
+    // to allow script execution without directly importing v8 in this module.
+
+    /// Callback to execute a script string in the iframe's context
+    /// Parameters: (engine_context, script_source) -> void
+    /// Set by modules with engine access
+    execute_script_callback: ?*const fn (?*anyopaque, []const u8) void,
+
+    /// Callback to update the Location URL in the iframe's window
+    /// Parameters: (engine_context, url) -> void
+    /// Set by modules with engine access
+    update_location_callback: ?*const fn (?*anyopaque, []const u8) void,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -295,6 +312,9 @@ pub const IFrameIntegration = struct {
             .create_document_callback = null,
             .cleanup_callback = null,
             .cleanup_in_progress = false,
+            // Script execution callbacks
+            .execute_script_callback = null,
+            .update_location_callback = null,
         };
     }
 
@@ -558,6 +578,14 @@ pub const IFrameIntegration = struct {
             }
         }
 
+        // Update the iframe's Location URL to about:srcdoc
+        // Per HTML spec, srcdoc documents have URL "about:srcdoc"
+        self.updateLocationUrl("about:srcdoc");
+
+        // Execute inline scripts in the parsed document
+        // Per HTML Standard §4.12.1.1, scripts execute in document order
+        self.executeScriptsInTree(tree_builder.document);
+
         self.state = .ready;
     }
 
@@ -571,6 +599,7 @@ pub const IFrameIntegration = struct {
     /// 4. Parses the HTML content
     /// 5. Stores the parsed Document in the browsing context
     fn navigateToSrc(self: *IFrameIntegration, url: []const u8) IFrameError!void {
+        std.debug.print("[iframe] navigateToSrc called with url: {s}\n", .{url[0..@min(url.len, 80)]});
         self.state = .navigating;
 
         // Parse the URL to determine origin
@@ -639,6 +668,21 @@ pub const IFrameIntegration = struct {
                 _ = create_doc(self.runtime_context, ctx);
             }
         }
+
+        // Update the iframe's Location URL to reflect the navigated URL.
+        // This must happen before script execution so `location.hash` works.
+        std.debug.print("[iframe] Updating Location URL before script execution\n", .{});
+        self.updateLocationUrl(url);
+
+        // Execute inline scripts in the parsed document
+        // Per HTML Standard §4.12.1.1, scripts execute in document order
+        // NOTE: We need the V8 context to be created first (via contentWindow access)
+        // The script execution uses the engine_context set by setRealmContext()
+        std.debug.print("[iframe] About to execute scripts in tree\n", .{});
+        std.debug.print("[iframe]   engine_context: {?}\n", .{self.engine_context});
+        std.debug.print("[iframe]   execute_script_callback: {?}\n", .{self.execute_script_callback});
+        self.executeScriptsInTree(tree_builder.document);
+        std.debug.print("[iframe] Script execution complete\n", .{});
 
         self.state = .ready;
     }
@@ -970,6 +1014,97 @@ pub const IFrameIntegration = struct {
             return flags.allow_top_navigation;
         }
         return true;
+    }
+
+    // ============================================================================
+    // Script Execution for Iframes
+    // ============================================================================
+
+    /// Execute inline scripts found in the parsed HTML tree.
+    /// This function walks the tree to find <script> elements and executes their
+    /// content in the iframe's context using the execute_script_callback.
+    ///
+    /// Per HTML Standard §4.12.1.1, scripts should execute in document order.
+    /// For simplicity, we only execute inline scripts (no external src support here).
+    pub fn executeScriptsInTree(self: *IFrameIntegration, document_node: *html_parser.TreeNode) void {
+        // Need both engine context and script execution callback
+        const engine_ctx = self.engine_context orelse {
+            std.debug.print("[iframe] executeScriptsInTree: no engine_context, returning\n", .{});
+            return;
+        };
+        const execute_callback = self.execute_script_callback orelse {
+            std.debug.print("[iframe] executeScriptsInTree: no execute_script_callback, returning\n", .{});
+            return;
+        };
+
+        std.debug.print("[iframe] executeScriptsInTree: walking tree\n", .{});
+        // Walk the tree and execute scripts
+        self.executeScriptsRecursive(document_node, engine_ctx, execute_callback);
+    }
+
+    /// Recursively walk the tree and execute script elements
+    fn executeScriptsRecursive(
+        self: *IFrameIntegration,
+        node: *html_parser.TreeNode,
+        engine_ctx: *anyopaque,
+        execute_callback: *const fn (?*anyopaque, []const u8) void,
+    ) void {
+        // Check if this is a script element
+        if (node.node_type == .element) {
+            if (node.local_name) |name| {
+                if (std.mem.eql(u8, name, "script")) {
+                    // Check if sandbox allows scripts
+                    if (self.isSandboxed() and !self.allowsScripts()) {
+                        // Sandbox blocks script execution
+                        return;
+                    }
+
+                    // Get script text content from child text nodes
+                    const script_text = self.getScriptTextContent(node);
+                    std.debug.print("[iframe] Found script element, text length: {d}\n", .{script_text.len});
+                    if (script_text.len > 0) {
+                        std.debug.print("[iframe] Script preview: {s}\n", .{script_text[0..@min(script_text.len, 100)]});
+                        // Execute via callback (which has V8 access)
+                        execute_callback(engine_ctx, script_text);
+                        std.debug.print("[iframe] Script executed\n", .{});
+                    }
+                }
+            }
+        }
+
+        // Recurse to children (depth-first, document order)
+        var child = node.first_child;
+        while (child) |c| {
+            self.executeScriptsRecursive(c, engine_ctx, execute_callback);
+            child = c.next_sibling;
+        }
+    }
+
+    /// Get the text content of a script element (from its child text nodes)
+    fn getScriptTextContent(self: *IFrameIntegration, script_node: *html_parser.TreeNode) []const u8 {
+        _ = self;
+
+        // Script text is in child text nodes
+        var child = script_node.first_child;
+        while (child) |c| {
+            if (c.node_type == .text) {
+                // Return the text content (simplified - doesn't concatenate multiple text nodes)
+                return c.text_content.toSlice();
+            }
+            child = c.next_sibling;
+        }
+        return "";
+    }
+
+    /// Update the iframe's Location URL to reflect the navigated URL.
+    /// This is called during navigation so that `location.hash`, etc. work correctly.
+    fn updateLocationUrl(self: *IFrameIntegration, url: []const u8) void {
+        // Need both engine context and location update callback
+        const engine_ctx = self.engine_context orelse return;
+        const update_callback = self.update_location_callback orelse return;
+
+        // Call the callback (which has V8/impls access)
+        update_callback(engine_ctx, url);
     }
 };
 

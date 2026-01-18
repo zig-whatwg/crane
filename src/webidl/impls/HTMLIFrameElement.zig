@@ -238,6 +238,81 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     return document_instance;
 }
 
+/// Script execution callback for iframes
+/// Called by IFrameIntegration.executeScriptsInTree to execute scripts in the iframe's V8 context.
+/// Parameters: (engine_context as v8.Context*, script_source) -> void
+fn executeIframeScript(engine_ctx: ?*anyopaque, source: []const u8) void {
+    std.debug.print("[iframe] executeIframeScript callback called, source len: {d}\n", .{source.len});
+    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx orelse {
+        std.debug.print("[iframe] executeIframeScript: no engine_ctx\n", .{});
+        return;
+    }));
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
+        std.debug.print("[iframe] executeIframeScript: no isolate\n", .{});
+        return;
+    };
+
+    if (source.len == 0) return;
+
+    // Enter the iframe's context for script execution
+    v8.ffi.v8_Context_Enter(v8_ctx);
+    defer v8.ffi.v8_Context_Exit(v8_ctx);
+
+    // Create V8 string from source
+    const source_str = v8.ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse {
+        std.debug.print("[iframe] Failed to create V8 string for script\n", .{});
+        return;
+    };
+    defer v8.ffi.v8_String_Dispose(source_str);
+
+    // Compile the script
+    const compiled = v8.ffi.v8_Script_Compile(v8_ctx, source_str) orelse {
+        // Log compile error
+        const exception = v8.ffi.v8_TryCatch_Exception(v8_ctx);
+        if (exception) |exc| {
+            const exc_str = v8.ffi.v8_Value_ToString(exc, v8_ctx);
+            if (exc_str) |str| {
+                var buf: [512]u8 = undefined;
+                const len = v8.ffi.v8_String_Utf8Length(str);
+                const write_len: usize = @min(@as(usize, @intCast(len)), buf.len - 1);
+                _ = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(write_len));
+                std.debug.print("[iframe] Script compile error: {s}\n", .{buf[0..write_len]});
+            }
+        }
+        return;
+    };
+
+    // Run the script
+    std.debug.print("[iframe] Running compiled script\n", .{});
+    _ = v8.ffi.v8_Script_Run(v8_ctx, compiled);
+    std.debug.print("[iframe] Script run complete\n", .{});
+
+    // Run microtasks (for Promise resolution, etc.)
+    v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    std.debug.print("[iframe] Microtasks checkpoint done\n", .{});
+}
+
+/// Location URL update callback for iframes
+/// Called by IFrameIntegration.updateLocationUrl to set the iframe's Location URL.
+/// Parameters: (engine_context as v8.Context*, url) -> void
+fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
+    const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx orelse return));
+
+    // Get Window from V8 context
+    const window = context_manager.getWindowForContext(v8_ctx) orelse return;
+
+    // Get Window's Location
+    const WindowImpl = @import("Window.zig");
+    const internal = WindowImpl.getInternal(window) orelse return;
+    const location = internal.location orelse return;
+
+    // Update Location's URL
+    const LocationImpl = @import("Location.zig");
+    LocationImpl.setURLFromString(location, url) catch {
+        std.debug.print("[iframe] Failed to set Location URL: {s}\n", .{url});
+    };
+}
+
 /// Getter for contentWindow
 /// Returns the WindowProxy for the nested browsing context, or null if none.
 ///
@@ -334,6 +409,10 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             createDocumentForIframe,
             iframeContextCleanup,
         );
+
+        // Set script execution callbacks (for script execution in iframe documents)
+        internal.integration.execute_script_callback = &executeIframeScript;
+        internal.integration.update_location_callback = &updateIframeLocation;
     }
 
     // Return the Window instance from the child context
@@ -411,6 +490,7 @@ pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// For WPT tests, we check if an external hook is registered to handle relative
 /// and HTTP URLs. This allows the WPT runner to load content from its file system.
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    std.debug.print("[iframe] set_src called with: {s}\n", .{value[0..@min(value.len, 80)]});
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Free old value
@@ -420,6 +500,12 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 
     // Store new value - USVString is []const u8
     internal.src_attr = try internal.allocator.dupe(u8, value);
+
+    // Ensure the V8 context exists before navigation.
+    // Per HTML spec, when src is set, the iframe should navigate to the URL.
+    // Scripts in the navigated document need a V8 context to execute.
+    // Accessing contentWindow lazily creates the V8 context if needed.
+    _ = try get_contentWindow(instance);
 
     // Check if an external hook is registered to handle this URL
     // The hook handles relative URLs and HTTP URLs for WPT tests
@@ -467,6 +553,10 @@ pub fn set_srcdoc(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     // Store new value - DOMString.asSlice() gets the underlying []const u8
     const str = value.asSlice();
     internal.srcdoc_attr = try internal.allocator.dupe(u8, str);
+
+    // Ensure the V8 context exists before navigation.
+    // Scripts in srcdoc content need a V8 context to execute.
+    _ = try get_contentWindow(instance);
 
     // Trigger navigation via integration
     // Navigation errors are typically silent

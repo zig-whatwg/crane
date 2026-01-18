@@ -34,6 +34,63 @@ const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
 var global_init_count: usize = 0;
 var global_init_mutex: std.Thread.Mutex = .{};
 
+/// Global curl share handle for connection pooling across easy handles.
+/// This enables connection reuse when creating new easy handles for each request.
+/// Without this, each new easy handle creates its own connection pool (default 5 connections),
+/// leading to socket exhaustion after ~25 requests.
+var global_share: ?*curl.CURLSH = null;
+
+/// Mutexes for curl share locking (one per data type)
+/// CURL_LOCK_DATA_CONNECT = 5, CURL_LOCK_DATA_DNS = 2
+/// We allocate enough slots for all lock data types (up to 8)
+var share_mutexes: [8]std.Thread.Mutex = [_]std.Thread.Mutex{.{}} ** 8;
+
+/// Track lock/unlock calls for debugging
+var lock_call_count: usize = 0;
+var unlock_call_count: usize = 0;
+
+/// Lock callback for curl share - called when curl needs to access shared data
+fn shareLockCallback(
+    _: *curl.CURL,
+    data: c_int,
+    access: c_int, // access type (shared/single) - we use exclusive lock regardless
+    _: ?*anyopaque,
+) callconv(.c) void {
+    lock_call_count += 1;
+    if (lock_call_count <= 5 or lock_call_count % 100 == 0) {
+        // Only log first few calls and then every 100th to avoid spam
+        const data_type_name = switch (data) {
+            2 => "DNS",
+            5 => "CONNECT",
+            else => "OTHER",
+        };
+        std.debug.print("[CURL SHARE] Lock #{}: data={} ({s}), access={}\n", .{ lock_call_count, data, data_type_name, access });
+    }
+    if (data >= 0 and data < share_mutexes.len) {
+        share_mutexes[@intCast(data)].lock();
+    }
+}
+
+/// Unlock callback for curl share - called when curl is done with shared data
+fn shareUnlockCallback(
+    _: *curl.CURL,
+    data: c_int,
+    _: ?*anyopaque,
+) callconv(.c) void {
+    unlock_call_count += 1;
+    if (unlock_call_count <= 5 or unlock_call_count % 100 == 0) {
+        const data_type_name = switch (data) {
+            2 => "DNS",
+            5 => "CONNECT",
+            else => "OTHER",
+        };
+        std.debug.print("[CURL SHARE] Unlock #{}: data={} ({s})\n", .{ unlock_call_count, data, data_type_name });
+    }
+    if (data >= 0 and data < share_mutexes.len) {
+        share_mutexes[@intCast(data)].unlock();
+    }
+}
+
 /// Initialize libcurl globally.
 /// Thread-safe and reference counted - can be called multiple times.
 /// Must call globalCleanup() the same number of times.
@@ -41,13 +98,35 @@ pub fn globalInit() !void {
     global_init_mutex.lock();
     defer global_init_mutex.unlock();
 
+    std.debug.print("[CURL] globalInit called, current count: {}\n", .{global_init_count});
+
     if (global_init_count == 0) {
+        std.debug.print("[CURL] First init - initializing libcurl globally\n", .{});
         const result = curl.global_init(curl.CURL_GLOBAL_DEFAULT);
         if (result != curl.CURLE_OK) {
+            std.debug.print("[CURL] ERROR: global_init failed with code: {}\n", .{result});
             return error.CurlGlobalInitFailed;
+        }
+
+        // Create global share for connection pooling
+        global_share = curl.share_init();
+        if (global_share) |share| {
+            std.debug.print("[CURL] Created global share: {*}\n", .{share});
+            // Set lock/unlock callbacks for thread safety (REQUIRED for multi-threaded use)
+            _ = curl.share_setopt(share, curl.CURLSHOPT_LOCKFUNC, @as(*const anyopaque, @ptrCast(&shareLockCallback)));
+            _ = curl.share_setopt(share, curl.CURLSHOPT_UNLOCKFUNC, @as(*const anyopaque, @ptrCast(&shareUnlockCallback)));
+
+            // Enable connection sharing - this is the key to avoiding socket exhaustion
+            _ = curl.share_setopt(share, curl.CURLSHOPT_SHARE, curl.CURL_LOCK_DATA_CONNECT);
+            // Also share DNS cache for efficiency
+            _ = curl.share_setopt(share, curl.CURLSHOPT_SHARE, curl.CURL_LOCK_DATA_DNS);
+            std.debug.print("[CURL] Global share configured with connection and DNS sharing\n", .{});
+        } else {
+            std.debug.print("[CURL] WARNING: Failed to create global share!\n", .{});
         }
     }
     global_init_count += 1;
+    std.debug.print("[CURL] globalInit complete, new count: {}\n", .{global_init_count});
 }
 
 /// Decrement global init reference count.
@@ -56,12 +135,33 @@ pub fn globalCleanup() void {
     global_init_mutex.lock();
     defer global_init_mutex.unlock();
 
+    std.debug.print("[CURL] globalCleanup called, current count: {}\n", .{global_init_count});
+
     if (global_init_count > 0) {
         global_init_count -= 1;
+        std.debug.print("[CURL] Decremented count to: {}\n", .{global_init_count});
         if (global_init_count == 0) {
+            std.debug.print("[CURL] Count is zero - performing full cleanup\n", .{});
+            // Clean up global share before global cleanup
+            if (global_share) |share| {
+                std.debug.print("[CURL] Cleaning up global share: {*}\n", .{share});
+                _ = curl.share_cleanup(share);
+                global_share = null;
+            }
             curl.global_cleanup();
+            std.debug.print("[CURL] Full cleanup complete\n", .{});
         }
+    } else {
+        std.debug.print("[CURL] WARNING: globalCleanup called but count already 0!\n", .{});
     }
+}
+
+/// Get the global share handle for connection pooling.
+/// Returns null if globalInit() hasn't been called.
+pub fn getGlobalShare() ?*curl.CURLSH {
+    global_init_mutex.lock();
+    defer global_init_mutex.unlock();
+    return global_share;
 }
 
 // =============================================================================
@@ -113,13 +213,24 @@ pub const LibcurlBackend = struct {
     };
 
     /// Initialize a new LibcurlBackend.
-    /// Requires globalInit() to have been called first.
+    /// Automatically calls globalInit() if not already initialized.
     pub fn init(allocator: Allocator) !*Self {
         return initWithOptions(allocator, .{});
     }
 
     /// Initialize with options (including cookie configuration)
+    /// Automatically calls globalInit() if not already initialized.
     pub fn initWithOptions(allocator: Allocator, options: Options) !*Self {
+        // Ensure global curl is initialized (idempotent, thread-safe)
+        // We only call globalInit if not already initialized, to avoid
+        // incrementing the reference count on every request.
+        if (getGlobalShare() == null) {
+            std.debug.print("[CURL] First backend init - calling globalInit\n", .{});
+            try globalInit();
+        } else {
+            std.debug.print("[CURL] Backend init - global share already exists, skipping globalInit\n", .{});
+        }
+
         const self = try allocator.create(Self);
         errdefer allocator.destroy(self);
 
@@ -146,13 +257,25 @@ pub const LibcurlBackend = struct {
     }
 
     /// Clean up backend resources.
+    ///
+    /// NOTE: We intentionally do NOT call globalCleanup() here.
+    /// The global curl state (including the shared connection pool) should persist
+    /// for the lifetime of the application to enable connection reuse across requests.
+    /// Each request creates a new LibcurlBackend, but they all share the same global
+    /// connection pool via CURLOPT_SHARE.
     pub fn deinit(self: *Self) void {
+        std.debug.print("[CURL] Backend deinit (NOT calling globalCleanup - share persists)\n", .{});
         if (self.owns_cookie_manager) {
             if (self.cookie_manager) |cm| {
                 cm.deinit();
             }
         }
         self.allocator.destroy(self);
+
+        // NOTE: We used to call globalCleanup() here, but this caused the global share
+        // to be destroyed after each request, preventing connection reuse.
+        // The global state now persists for the application lifetime.
+        // If you need explicit cleanup, call globalCleanup() directly at app shutdown.
     }
 
     /// Get the cookie manager (for sharing with CookieStore API)
@@ -185,6 +308,11 @@ pub const LibcurlBackend = struct {
         raw_headers: std.ArrayList(u8),
         aborted: *std.atomic.Value(bool),
 
+        // Strings that must persist until request completes (curl doesn't copy them)
+        url_z: ?[:0]u8 = null,
+        method_z: ?[:0]u8 = null,
+        header_list: ?*curl.curl_slist = null,
+
         fn init(allocator: Allocator, aborted: *std.atomic.Value(bool)) CallbackContext {
             return .{
                 .allocator = allocator,
@@ -192,6 +320,9 @@ pub const LibcurlBackend = struct {
                 .response_headers = .empty,
                 .raw_headers = .empty,
                 .aborted = aborted,
+                .url_z = null,
+                .method_z = null,
+                .header_list = null,
             };
         }
 
@@ -203,18 +334,53 @@ pub const LibcurlBackend = struct {
             }
             self.response_headers.deinit(self.allocator);
             self.raw_headers.deinit(self.allocator);
+
+            // Free strings that were stored for curl
+            if (self.url_z) |url| self.allocator.free(url);
+            if (self.method_z) |method| self.allocator.free(method);
+            if (self.header_list) |list| curl.slist_free_all(list);
         }
     };
 
+    /// Track request count for debugging
+    var request_counter: usize = 0;
+
     fn sendImpl(ptr: *anyopaque, allocator: Allocator, request: *const NetworkRequest) NetworkError!NetworkResponse {
         const self: *Self = @ptrCast(@alignCast(ptr));
+
+        // Increment and get request number
+        request_counter += 1;
+        const req_num = request_counter;
+
+        std.debug.print("\n[CURL REQUEST #{}] ========================================\n", .{req_num});
+        std.debug.print("[CURL REQUEST #{}] URL: {s}\n", .{ req_num, request.url });
+        std.debug.print("[CURL REQUEST #{}] Method: {s}\n", .{ req_num, request.method });
+        std.debug.print("[CURL REQUEST #{}] Global share: {?}\n", .{ req_num, getGlobalShare() });
+        std.debug.print("[CURL REQUEST #{}] Global init count: {}\n", .{ req_num, global_init_count });
 
         // Reset abort flag
         self.aborted.store(false, .seq_cst);
 
         // Create curl easy handle
-        const handle = curl.easy_init() orelse return NetworkError.OutOfMemory;
-        defer curl.easy_cleanup(handle);
+        std.debug.print("[CURL REQUEST #{}] Creating easy handle...\n", .{req_num});
+        const handle = curl.easy_init() orelse {
+            std.debug.print("[CURL REQUEST #{}] ERROR: easy_init returned null!\n", .{req_num});
+            return NetworkError.OutOfMemory;
+        };
+        std.debug.print("[CURL REQUEST #{}] Easy handle created: {*}\n", .{ req_num, handle });
+        defer {
+            std.debug.print("[CURL REQUEST #{}] Cleaning up easy handle: {*}\n", .{ req_num, handle });
+            curl.easy_cleanup(handle);
+        }
+
+        // Attach to global share for connection pooling
+        // This enables connection reuse across easy handles, preventing socket exhaustion
+        if (getGlobalShare()) |share| {
+            std.debug.print("[CURL REQUEST #{}] Attaching to global share: {*}\n", .{ req_num, share });
+            _ = curl.easy_setopt(handle, curl.CURLOPT_SHARE, share);
+        } else {
+            std.debug.print("[CURL REQUEST #{}] WARNING: No global share available!\n", .{req_num});
+        }
 
         // Attach cookie manager if available
         if (self.cookie_manager) |cm| {
@@ -228,25 +394,52 @@ pub const LibcurlBackend = struct {
         }
 
         // Configure request
+        std.debug.print("[CURL REQUEST #{}] Configuring request...\n", .{req_num});
         configureRequest(handle, request, &ctx) catch {
+            std.debug.print("[CURL REQUEST #{}] ERROR: configureRequest failed\n", .{req_num});
             ctx.deinit();
             return NetworkError.OutOfMemory;
         };
+        std.debug.print("[CURL REQUEST #{}] Request configured\n", .{req_num});
 
-        // Perform the request
-        const result = curl.easy_perform(handle);
+        // Perform the request with retry for connection failures
+        // The WPT server can hit connection limits under load
+        var result: curl.CURLcode = undefined;
+        var retry_count: u8 = 0;
+        const max_retries: u8 = 3;
+        std.debug.print("[CURL REQUEST #{}] Starting perform loop (max {} retries)...\n", .{ req_num, max_retries });
+        while (retry_count < max_retries) : (retry_count += 1) {
+            std.debug.print("[CURL REQUEST #{}] Attempt {}/{}: calling easy_perform...\n", .{ req_num, retry_count + 1, max_retries });
+            result = curl.easy_perform(handle);
+            std.debug.print("[CURL REQUEST #{}] easy_perform returned: {} (CURLE_OK={})\n", .{ req_num, result, curl.CURLE_OK });
+            if (result == curl.CURLE_OK) break;
+
+            // Only retry on connection failures
+            if (result == curl.CURLE_COULDNT_CONNECT) {
+                std.debug.print("[CURL REQUEST #{}] Connection failed, will retry after backoff\n", .{req_num});
+                // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
+                std.Thread.sleep(100_000_000 * std.math.pow(u64, 2, retry_count));
+                continue;
+            }
+            std.debug.print("[CURL REQUEST #{}] Non-retriable error, breaking loop\n", .{req_num});
+            break; // Non-retriable error
+        }
 
         // Check for abort
         if (self.aborted.load(.seq_cst)) {
+            std.debug.print("[CURL REQUEST #{}] Request was aborted\n", .{req_num});
             ctx.deinit();
             return NetworkError.Aborted;
         }
 
         // Check for errors
         if (result != curl.CURLE_OK) {
+            std.debug.print("[CURL REQUEST #{}] ERROR: curl error code: {}\n", .{ req_num, result });
             ctx.deinit();
             return curl_error.mapCurlError(result);
         }
+
+        std.debug.print("[CURL REQUEST #{}] Request completed successfully\n", .{req_num});
 
         // Parse headers from raw header data
         parseHeaders(&ctx) catch {
@@ -299,6 +492,19 @@ pub const LibcurlBackend = struct {
         var num_connects: c_long = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
 
+        // Debug output for response info
+        std.debug.print("[CURL REQUEST #{}] Response info:\n", .{req_num});
+        std.debug.print("[CURL REQUEST #{}]   Status code: {}\n", .{ req_num, status_code });
+        std.debug.print("[CURL REQUEST #{}]   HTTP version: {}\n", .{ req_num, http_version_raw });
+        std.debug.print("[CURL REQUEST #{}]   Body size: {} bytes\n", .{ req_num, ctx.response_body.items.len });
+        std.debug.print("[CURL REQUEST #{}]   Total time: {d:.3}s\n", .{ req_num, total_time });
+        std.debug.print("[CURL REQUEST #{}]   DNS lookup: {d:.3}s\n", .{ req_num, namelookup_time });
+        std.debug.print("[CURL REQUEST #{}]   Connect time: {d:.3}s\n", .{ req_num, connect_time });
+        std.debug.print("[CURL REQUEST #{}]   Num connects: {} (0 = reused)\n", .{ req_num, num_connects });
+        if (primary_ip != null) {
+            std.debug.print("[CURL REQUEST #{}]   Remote IP: {s}:{}\n", .{ req_num, std.mem.span(primary_ip.?), primary_port });
+        }
+
         // Build response
         const http_version: HttpVersion = switch (http_version_raw) {
             curl.CURL_HTTP_VERSION_1_0 => .http_1_0,
@@ -335,8 +541,12 @@ pub const LibcurlBackend = struct {
         else
             null;
 
-        // Clean up remaining context resources
+        // Clean up remaining context resources (url_z, method_z, header_list, raw_headers)
+        // Note: response_body and response_headers ownership transferred via toOwnedSlice
         ctx.raw_headers.deinit(allocator);
+        if (ctx.url_z) |url| allocator.free(url);
+        if (ctx.method_z) |method| allocator.free(method);
+        if (ctx.header_list) |list| curl.slist_free_all(list);
 
         return NetworkResponse{
             .allocator = allocator,
@@ -361,16 +571,14 @@ pub const LibcurlBackend = struct {
     }
 
     fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *CallbackContext) !void {
-        // URL (must be null-terminated)
-        const url_z = try ctx.allocator.dupeZ(u8, request.url);
-        defer ctx.allocator.free(url_z);
-        _ = curl.easy_setopt(handle, curl.CURLOPT_URL, url_z.ptr);
+        // URL (must be null-terminated, stored in ctx to persist until request completes)
+        ctx.url_z = try ctx.allocator.dupeZ(u8, request.url);
+        _ = curl.easy_setopt(handle, curl.CURLOPT_URL, ctx.url_z.?.ptr);
 
-        // Method
+        // Method (stored in ctx to persist until request completes)
         if (!std.mem.eql(u8, request.method, "GET")) {
-            const method_z = try ctx.allocator.dupeZ(u8, request.method);
-            defer ctx.allocator.free(method_z);
-            _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, method_z.ptr);
+            ctx.method_z = try ctx.allocator.dupeZ(u8, request.method);
+            _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
         }
 
         // Request body
@@ -379,21 +587,18 @@ pub const LibcurlBackend = struct {
             _ = curl.easy_setopt(handle, curl.CURLOPT_POSTFIELDSIZE, @as(c_long, @intCast(body.len)));
         }
 
-        // Headers
-        var header_list: ?*curl.curl_slist = null;
+        // Headers (slist is stored in ctx and freed via slist_free_all in deinit)
+        // Note: curl_slist_append copies the strings, so we can free header_z after append
         for (request.headers) |header| {
-            // Format: "Name: Value" - allocate then convert to null-terminated
             const header_str = try std.fmt.allocPrint(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
             defer ctx.allocator.free(header_str);
-            // Create null-terminated copy for curl
             const header_z = try ctx.allocator.dupeZ(u8, header_str);
             defer ctx.allocator.free(header_z);
-            header_list = curl.slist_append(header_list, header_z.ptr);
+            ctx.header_list = curl.slist_append(ctx.header_list, header_z.ptr);
         }
-        if (header_list != null) {
-            _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, header_list);
+        if (ctx.header_list != null) {
+            _ = curl.easy_setopt(handle, curl.CURLOPT_HTTPHEADER, ctx.header_list);
         }
-        // Note: header_list is freed by curl on cleanup
 
         // HTTP version
         const curl_http_version: c_long = switch (request.http_version) {
@@ -403,6 +608,10 @@ pub const LibcurlBackend = struct {
             .http_3 => curl.CURL_HTTP_VERSION_3,
         };
         _ = curl.easy_setopt(handle, curl.CURLOPT_HTTP_VERSION, curl_http_version);
+
+        // Connection reuse is handled via global curl share (CURLOPT_SHARE)
+        // set in sendImpl(). This allows connections to be pooled and reused
+        // across requests, preventing socket exhaustion.
 
         // Timeouts
         if (request.connect_timeout_ms > 0) {
