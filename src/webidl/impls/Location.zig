@@ -164,6 +164,16 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Use lifecycle tracking to prevent double-free
+    // This can be called from multiple paths:
+    // 1. wrapper_cache.deinit → gc.onObjectFreed
+    // 2. Window.deinit cleaning up its owned Location
+    const instance_lifecycle = @import("runtime").instance_lifecycle;
+    if (!instance_lifecycle.markCleanupStarted(instance)) {
+        // Already being cleaned up, skip
+        return;
+    }
+
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();

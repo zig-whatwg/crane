@@ -765,6 +765,16 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "Window";
     }
 
+    // Location - critical for window.location support
+    if (inst_vtable == &interfaces.Location.vtable) {
+        return "Location";
+    }
+
+    // History - for window.history support
+    if (inst_vtable == &interfaces.History.vtable) {
+        return "History";
+    }
+
     // Default to "Element" for unknown types (backwards compat)
     return "Element";
 }

@@ -819,6 +819,23 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // Calling deinit here causes double-free.
             coordinator.cleanupPhase(.dom_tree);
 
+            // Explicitly clean up Location before wrapper cache cleanup
+            // Location might not be in the wrapper cache (if never accessed from JS),
+            // but Window owns it. We must clean it up to prevent memory leaks.
+            // Location.deinit handles lifecycle tracking internally to prevent double-free.
+            // Note: We use entry.window_instance first, falling back to getting Window
+            // from global's internal field (for browser contexts created outside context_manager).
+            const window_instance = entry.window_instance orelse getWindowFromGlobalInternalField(v8_ctx);
+            if (window_instance) |wi| {
+                const WindowImpl = @import("impls").Window;
+                if (WindowImpl.getInternal(wi)) |window_internal| {
+                    if (window_internal.location) |loc| {
+                        const LocationImpl = @import("impls").Location;
+                        LocationImpl.deinit(loc);
+                    }
+                }
+            }
+
             // Clean up V8 wrapper cache
             // Now safe because DOM nodes already removed themselves
             coordinator.cleanupPhase(.wrapper_cache);
@@ -841,7 +858,13 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
                 realm.deinit();
             }
 
-            // Clean up children list
+            // Clean up children (iframe contexts) recursively
+            // We must clean up child contexts before deiniting the children list
+            // so their wrapper caches are cleaned up and their Window/Location
+            // instances are properly deinitialized.
+            for (entry.children.items) |child| {
+                destroyChildContext(child, entry.allocator);
+            }
             entry.children.deinit(entry.allocator);
 
             // NOTE: Module cache cleanup removed - caching disabled
@@ -2145,8 +2168,26 @@ pub fn createChildContext(
     try state.contexts.put(child_key, child_entry);
 
     // 10. Fix up instance.ctx pointers that were created with stack-local ctx_data
-    // NOTE: Document and Location creation temporarily disabled for crash investigation
     window_instance.ctx = &child_entry.runtime_ctx;
+
+    // 10b. Create Location instance for the Window
+    // This is required for iframe.contentWindow.location to work.
+    // Per spec, every Window has a Location object.
+    // Note: Location.init() already creates an about:blank URL, so no need to call setURLFromString.
+    {
+        const interfaces = @import("interfaces");
+        const WindowImpl = @import("impls").Window;
+
+        const stable_runtime_ctx: runtime.Context = &child_entry.runtime_ctx;
+        const loc_instance = interfaces.Location.init(allocator, stable_runtime_ctx) catch |err| {
+            std.debug.print("Warning: Failed to create Location for iframe: {}\n", .{err});
+            // Continue without Location - not fatal but window.location won't work
+            return child_entry;
+        };
+
+        // Link the Location to the Window instance so window.location accessor works
+        WindowImpl.setLocation(window_instance, loc_instance);
+    }
 
     // 11. Link to parent's children list
     try parent_entry.children.append(allocator, child_entry);
@@ -2210,21 +2251,25 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
     if (entry.owns_context) {
         var ctx_data = entry.runtime_ctx;
 
-        // Clean up Window instance and its Document FIRST
-        // This cleans up the DOM tree in proper order (parent before children),
-        // and each Node.deinit removes itself from the wrapper cache to prevent double-free.
-        // This MUST happen before wrapper cache cleanup to avoid use-after-free:
-        // if wrapper cache iterates children before parents, it would free child
-        // nodes, then when parent.deinit walks first_child, those nodes are already freed.
-        // NOTE: Do NOT call Window.deinit here - the Window is also in the wrapper cache
-        // and will be cleaned up when the wrapper cache is deinitialized.
-        // Calling deinit here causes double-free.
+        // 4a. Explicitly clean up Location before wrapper cache cleanup
+        // Location might not be in the wrapper cache (if never accessed from JS),
+        // but Window owns it. We must clean it up to prevent memory leaks.
+        // Location.deinit handles lifecycle tracking internally to prevent double-free.
+        if (entry.window_instance) |window_instance| {
+            const WindowImpl = @import("impls").Window;
+            if (WindowImpl.getInternal(window_instance)) |window_internal| {
+                if (window_internal.location) |loc| {
+                    const LocationImpl = @import("impls").Location;
+                    LocationImpl.deinit(loc);
+                }
+            }
+        }
 
-        // Clean up V8 wrapper cache WITH callbacks
+        // 4b. Clean up V8 wrapper cache WITH callbacks
         // Now safe to call deinit() because:
-        // 1. DOM nodes already removed themselves from cache via Node.deinit
-        // 2. Remaining entries are non-DOM objects (AbortController, etc.)
-        // 3. These need their deinit called to free InternalState
+        // 1. Location already cleaned up above (with lifecycle tracking to prevent double-free)
+        // 2. DOM nodes remove themselves from cache via Node.deinit
+        // 3. Remaining entries (Window, etc.) need their deinit called to free InternalState
         if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
             const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));

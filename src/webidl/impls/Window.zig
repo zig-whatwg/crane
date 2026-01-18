@@ -333,6 +333,18 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Clean up Window's own internal state
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // Clean up [SameObject] sub-interface instances that we own.
+        // These might or might not be in the wrapper cache (depends on whether
+        // JavaScript accessed them). The cleanup order in wrapper_cache is not
+        // guaranteed, so Location might already be cleaned up by the time
+        // Window.deinit runs. Check isCleanupStarted to avoid double-free.
+        if (internal.location) |loc| {
+            // Clean up Location. It handles lifecycle tracking internally
+            // to prevent double-free if already cleaned up.
+            const LocationImpl = @import("Location.zig");
+            LocationImpl.deinit(loc);
+        }
+
         internal.deinit();
     }
 
