@@ -2074,7 +2074,10 @@ pub fn V8Interface(comptime Interface: type) type {
                         // internal state references (e.g., MessageEvent.data). Operations that
                         // allocate new JSValue data (like structuredClone) are cleaned up in
                         // callMethodWithArgs instead.
-                        const needs_cleanup = comptime (PayloadType == runtime.USVString or PayloadType == []const u8 or PayloadType == runtime.DOMString);
+                        // Check for both direct string types and optional string types (?DOMString, etc.)
+                        const is_optional_type = comptime @typeInfo(PayloadType) == .optional;
+                        const inner_type = comptime if (is_optional_type) @typeInfo(PayloadType).optional.child else PayloadType;
+                        const needs_cleanup = comptime (inner_type == runtime.USVString or inner_type == []const u8 or inner_type == runtime.DOMString);
 
                         defer if (needs_cleanup) {
                             // Re-validate allocator before cleanup - it could have been invalidated
@@ -2084,12 +2087,26 @@ pub fn V8Interface(comptime Interface: type) type {
                                 (cleanup_vtable_int & 0xFFFF000000000000) == 0xaaaa000000000000 or
                                 cleanup_vtable_int == 0);
                             if (!is_poisoned) {
-                                if (PayloadType == runtime.DOMString) {
-                                    var mutable = result;
-                                    mutable.deinit(cleanup_allocator);
-                                } else if (PayloadType == runtime.USVString or PayloadType == []const u8) {
-                                    if (result.len > 0) {
-                                        cleanup_allocator.free(result);
+                                // Handle optional types - unwrap first using comptime branching
+                                if (comptime is_optional_type) {
+                                    if (result) |val| {
+                                        if (inner_type == runtime.DOMString) {
+                                            var mutable = val;
+                                            mutable.deinit(cleanup_allocator);
+                                        } else if (inner_type == runtime.USVString or inner_type == []const u8) {
+                                            if (val.len > 0) {
+                                                cleanup_allocator.free(val);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if (inner_type == runtime.DOMString) {
+                                        var mutable = result;
+                                        mutable.deinit(cleanup_allocator);
+                                    } else if (inner_type == runtime.USVString or inner_type == []const u8) {
+                                        if (result.len > 0) {
+                                            cleanup_allocator.free(result);
+                                        }
                                     }
                                 }
                             }
