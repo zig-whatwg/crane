@@ -78,14 +78,16 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 }
 
 /// Initialize instance (creates the instance)
+/// Chains to parent class initialization: Node -> EventTarget
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+    // Chain to parent class (Node) which chains to EventTarget
+    const instance = try NodeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer NodeImpl.deinit(instance);
 
     // Initialize Attr internal state
     const state = instance.getState(StateType);
