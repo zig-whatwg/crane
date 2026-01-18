@@ -781,10 +781,12 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
+        // HTML Spec: Emit <, /, then temp buffer contents
+        // Queue order matters: '/' must come BEFORE temp buffer
         self.reconsume = true;
         self.state = .rcdata;
-        try self.emitTemporaryBufferAsCharacters();
         try self.token_queue.append(Token{ .character = '/' });
+        try self.emitTemporaryBufferAsCharacters();
         return Token{ .character = '<' };
     }
 
@@ -851,10 +853,12 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
+        // HTML Spec: Emit <, /, then temp buffer contents
+        // Queue order matters: '/' must come BEFORE temp buffer
         self.reconsume = true;
         self.state = .rawtext;
-        try self.emitTemporaryBufferAsCharacters();
         try self.token_queue.append(Token{ .character = '/' });
+        try self.emitTemporaryBufferAsCharacters();
         return Token{ .character = '<' };
     }
 
@@ -925,10 +929,12 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
+        // HTML Spec: Emit <, /, then temp buffer contents
+        // Queue order matters: '/' must come BEFORE temp buffer
         self.reconsume = true;
         self.state = .script_data;
-        try self.emitTemporaryBufferAsCharacters();
         try self.token_queue.append(Token{ .character = '/' });
+        try self.emitTemporaryBufferAsCharacters();
         return Token{ .character = '<' };
     }
 
@@ -1097,10 +1103,12 @@ pub const Tokenizer = struct {
         }
 
         // Anything else
+        // HTML Spec: Emit <, /, then temp buffer contents
+        // Queue order matters: '/' must come BEFORE temp buffer
         self.reconsume = true;
         self.state = .script_data_escaped;
-        try self.emitTemporaryBufferAsCharacters();
         try self.token_queue.append(Token{ .character = '/' });
+        try self.emitTemporaryBufferAsCharacters();
         return Token{ .character = '<' };
     }
 
@@ -2903,7 +2911,9 @@ pub const Tokenizer = struct {
                         try self.last_start_tag_name.?.append(c);
                     }
                 },
-                .end_tag => |*t| try t.finishCurrentAttribute(),
+                .end_tag => |*t| {
+                    try t.finishCurrentAttribute();
+                },
                 else => {},
             }
 

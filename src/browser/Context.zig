@@ -1175,27 +1175,19 @@ pub const Context = struct {
         }
 
         // Step 1: Fetch URL content via HTTP
-        std.debug.print("[loadPageWithOptions] Fetching URL: {s}\n", .{self.url});
-        var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch |err| {
+        var result = navigation.fetchUrl(self.allocator, self.url, .{}) catch {
             // Handle navigation errors gracefully
-            std.debug.print("Navigation error for {s}: {}\n", .{ self.url, err });
             return error.NavigationFailed;
         };
         defer result.deinit();
-
-        std.debug.print("[loadPageWithOptions] Fetched {d} bytes, content_type: {s}\n", .{ result.body.len, result.content_type });
-        // Log first 500 chars of HTML for debugging
-        const preview_len = @min(result.body.len, 500);
-        std.debug.print("[loadPageWithOptions] HTML preview: {s}\n", .{result.body[0..preview_len]});
 
         // Step 2: Check if HTML content
         const is_html = std.mem.indexOf(u8, result.content_type, "text/html") != null or
             std.mem.indexOf(u8, result.content_type, "application/xhtml") != null;
 
         if (!is_html) {
-            // For non-HTML content, just set document.body.innerText
+            // For non-HTML content, just return
             // This is a simplified approach for now
-            std.debug.print("Non-HTML content type: {s}\n", .{result.content_type});
             return;
         }
 

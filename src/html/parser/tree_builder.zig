@@ -1989,6 +1989,25 @@ pub const TreeBuilder = struct {
             }
             self.insertion_mode = .after_body;
             try self.processToken(Token{ .end_tag = tag });
+        } else if (std.mem.eql(u8, name, "p")) {
+            // HTML Standard §13.2.6.4.7: End tag "p" has special handling
+            // Uses BUTTON scope, not general scope, and inserts element if not in scope
+            const has_p_in_button_scope = self.hasElementInButtonScope("p");
+            if (!has_p_in_button_scope) {
+                // Parse error - insert an HTML element for a "p" start tag with no attributes
+                self.reportError(.invalid_first_character_of_tag_name);
+                const p_element = try TreeNode.initElement(self.allocator, "p", .html);
+                self.insertAtAppropriatePlace(p_element);
+                try self.open_elements.append(p_element);
+            }
+            // Close the p element
+            self.generateImpliedEndTags("p");
+            if (self.currentNode()) |current| {
+                if (!current.hasTagName("p")) {
+                    self.reportError(.invalid_first_character_of_tag_name);
+                }
+            }
+            self.popUntilTagName("p");
         } else if (isSpecialBlockElement(name)) {
             if (!self.hasElementInScope(name)) {
                 self.reportError(.invalid_first_character_of_tag_name);

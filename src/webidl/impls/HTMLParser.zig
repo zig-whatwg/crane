@@ -510,13 +510,20 @@ pub fn parseFragment(
     var tree_builder = TreeBuilder.init(allocator, &tokenizer) catch return error.OutOfMemory;
     defer tree_builder.deinit();
 
-    // Step 4: Set up fragment parsing context
     // HTML Standard §13.4 "Parsing HTML fragments"
+    // Step 7: Create a root html element and append to document
+    const root = TreeNode.initElement(allocator, "html", .html) catch return error.OutOfMemory;
+    tree_builder.document.appendChild(root);
+
+    // Step 9: Set up stack of open elements with just the root element
+    tree_builder.open_elements.append(root) catch return error.OutOfMemory;
+
+    // Step 4: Set up fragment parsing context
     if (context_tag) |tag| {
-        // Set initial insertion mode based on context element
+        // Step 12: Set initial insertion mode based on context element
         tree_builder.insertion_mode = getFragmentInsertionMode(tag);
 
-        // For certain elements, set tokenizer state
+        // Step 6: For certain elements, set tokenizer state
         if (std.mem.eql(u8, tag, "title") or std.mem.eql(u8, tag, "textarea")) {
             tokenizer.state = .rcdata;
         } else if (std.mem.eql(u8, tag, "style") or
@@ -536,9 +543,12 @@ pub fn parseFragment(
         } else if (std.mem.eql(u8, tag, "plaintext")) {
             tokenizer.state = .plaintext;
         }
+    } else {
+        // No context element - use in_body mode with root on stack
+        tree_builder.insertion_mode = .in_body;
     }
 
-    // Step 5: Parse the fragment using full algorithm
+    // Step 14-15: Parse the fragment using full algorithm
     tree_builder.parse() catch return error.TreeBuilderError;
 
     // Step 6: Create DocumentFragment
@@ -554,30 +564,16 @@ pub fn parseFragment(
         owner_doc = interfaces.Node.get_ownerDocument(elem) catch null;
     }
 
-    // Step 7: Convert parsed children to DOM nodes
-    // For fragments, we only want the children of the parsed document's body/html
+    // Step 16 (per HTML Standard §13.4): Return the children of root
+    // The root element is the html element we created earlier
     const parsed_root = tree_builder.document;
 
-    // Find the relevant content (typically under html > body or just the children)
-    var content_root = parsed_root;
+    // Find the root html element - it should be the first child of document
+    const root_element = parsed_root.first_child orelse return fragment;
 
-    // If there's an html element, look for body
-    if (parsed_root.first_child) |first| {
-        if (first.hasTagName("html")) {
-            // Look for body element
-            var child = first.first_child;
-            while (child) |c| {
-                if (c.hasTagName("body")) {
-                    content_root = c;
-                    break;
-                }
-                child = c.next_sibling;
-            }
-        }
-    }
-
-    // Convert children of content_root to fragment
-    var tree_child = content_root.first_child;
+    // Convert children of the root (html) element to fragment
+    // Per spec, we return children of root, not the root itself
+    var tree_child = root_element.first_child;
     while (tree_child) |tc| {
         const dom_node = try createDomNodeFromTreeNode(allocator, ctx, tc, owner_doc);
         // Use interface instead of impl (per Golden Rule #13)
