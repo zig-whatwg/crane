@@ -275,6 +275,15 @@ fn runRemovingStepsRecursive(node: anytype, old_parent: anytype) void {
     }
 }
 
+/// Recursively set the is_connected flag for a node and all its descendants
+/// Called during insert (connected=true) and remove (connected=false) operations
+fn setConnectedRecursive(node: anytype, connected: bool) void {
+    node.is_connected = connected;
+    for (node.child_nodes.items()) |child| {
+        setConnectedRecursive(child, connected);
+    }
+}
+
 /// Create transient registered observers for a removed node
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove step 15
 fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void {
@@ -790,6 +799,14 @@ pub fn insert(
 
         // Cast parent to *NodeBase when assigning (all DOM types have Node fields duplicated)
         n.parent_node = @ptrCast(parent);
+
+        // Update is_connected for the inserted node and all its descendants
+        // A node is connected if its root is a Document
+        // Per DOM spec: parent is connected if it's a Document or its root is a Document
+        const parent_is_connected = parent.is_connected or parent.node_type == DOCUMENT_NODE;
+        if (parent_is_connected) {
+            setConnectedRecursive(n, true);
+        }
 
         // Step 7.4: If parent is a shadow host and node is slottable, assign a slot
         // TODO: Implement when shadow DOM is fully integrated
@@ -1482,6 +1499,10 @@ pub fn remove(
         _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
     }
     node.parent_node = null;
+
+    // Update is_connected for the removed node and all its descendants
+    // A removed node is no longer connected to the document tree
+    setConnectedRecursive(node, false);
 
     // Step 8-10: Shadow DOM slot assignment
     // TODO: Implement when shadow DOM is fully integrated

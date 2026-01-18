@@ -206,8 +206,6 @@ fn createV8TimerContext(allocator: std.mem.Allocator, isolate: *v8.ffi.Isolate, 
 
 /// Handler function for one-shot timer callbacks (invoked via SelfContainedCallback trampoline)
 fn v8TimerHandler(data: *V8TimerContextData) void {
-    std.debug.print("[v8TimerHandler] Timer callback FIRED for id={}\n", .{data.current_timer_id});
-
     // Unregister from timer_contexts map before destroying (prevents double-free on deinit)
     if (timer_contexts) |*map| {
         _ = map.remove(data.current_timer_id);
@@ -222,15 +220,12 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     defer v8.ffi.v8_Context_Exit(context);
 
     const global = v8.ffi.v8_Context_Global(context) orelse {
-        std.debug.print("[v8TimerHandler] ERROR: Failed to get global object\n", .{});
         return;
     };
 
     // Invoke the V8 function (stored directly, not via persistent handle)
-    std.debug.print("[v8TimerHandler] Invoking callback function\n", .{});
     var empty_args: [1]*v8.ffi.Value = undefined;
     _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
-    std.debug.print("[v8TimerHandler] Callback completed\n", .{});
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -1659,7 +1654,6 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Get timer interface from thread-local storage
     const timer = getTimerInterface() orelse {
-        std.debug.print("[setTimeout] ERROR: No timer interface available!\n", .{});
         // Fallback: execute immediately if no timer interface
         const context = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
             const result = v8.ffi.v8_Integer_New(isolate, 0);
@@ -1701,20 +1695,17 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
 
     // Schedule the timer using TimerInterface with typed callback trampoline
     const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
-    std.debug.print("[setTimeout] Creating timer with delay {}ms\n", .{delay_u64});
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
         timer_wrapper.eraseForFFI(),
     );
     if (timer_id == 0) {
-        std.debug.print("[setTimeout] ERROR: Timer creation failed (id=0)\n", .{});
         timer_wrapper.destroy();
         const result = v8.ffi.v8_Integer_New(isolate, 0);
         info.setReturnValue(@ptrCast(result));
         return;
     }
-    std.debug.print("[setTimeout] Timer created successfully, id={}\n", .{timer_id});
 
     // Store the timer ID in the context so the callback can unregister it
     timer_wrapper.getData().current_timer_id = timer_id;

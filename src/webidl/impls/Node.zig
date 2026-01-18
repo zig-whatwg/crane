@@ -486,7 +486,12 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns true if the node is connected (its root is a document)
 pub fn get_isConnected(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.is_connected;
+    // Read from NodeBase.is_connected which is updated by the mutation module
+    // during insert/remove operations
+    if (internal.node_base) |node_base| {
+        return node_base.is_connected;
+    }
+    return false;
 }
 
 /// Getter for ownerDocument

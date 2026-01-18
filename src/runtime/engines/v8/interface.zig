@@ -2252,8 +2252,6 @@ pub fn V8Interface(comptime Interface: type) type {
         fn MethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-                    // DEBUG: Trace method callback invocation
-                    std.debug.print("[MethodCallback] {s}.{s}\n", .{ interface_name, zig_name });
                     const isolate = info.getIsolate();
 
                     // Get V8 context - for arguments parsing, we use the current context
@@ -3023,17 +3021,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 // but for factory methods like createElement we need to determine
                 // the actual type. For now, we use a heuristic in template_registry.
                 const iface_name = template_registry.getInstanceInterfaceName(result);
-                std.debug.print("[convertReturnValue] Instance return, iface_name={s}, instance=0x{x}\n", .{ iface_name, @intFromPtr(result) });
                 const v8_obj = template_registry.wrapInstanceAsV8Object(
                     result,
                     iface_name,
                     isolate,
                     v8_context,
-                ) catch |err| {
-                    std.debug.print("[convertReturnValue] wrapInstanceAsV8Object failed: {any}\n", .{err});
+                ) catch {
                     return v8.v8_Undefined(isolate);
                 };
-                std.debug.print("[convertReturnValue] v8_obj=0x{x}\n", .{@intFromPtr(v8_obj)});
                 return @ptrCast(v8_obj);
             }
 
