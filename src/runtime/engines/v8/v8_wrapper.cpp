@@ -4234,6 +4234,95 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     return trackHandle(new Global<Object>(isolate, proto_obj));
 }
 
+// Custom [Symbol.hasInstance] callback for Window that checks internal type info
+// instead of relying on prototype chain identity (which V8 snapshots don't preserve).
+static void WindowHasInstanceCallback(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+
+    if (info.Length() < 1) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    Local<Value> arg = info[0];
+    if (!arg->IsObject()) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    Local<Object> obj = arg.As<Object>();
+
+    // Check if this object has the Window type info in internal field 1
+    // Window objects created from the snapshot should have this field set.
+    if (obj->InternalFieldCount() < 2) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    void* type_info = obj->GetAlignedPointerFromInternalField(1);
+    if (type_info == nullptr) {
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    // Check if the type info indicates this is a Window
+    // We check if the interface name is "Window"
+    // The type info structure has interface_name as the first field
+    struct WrapperTypeInfo {
+        const char* interface_name;
+        // ... other fields
+    };
+    const WrapperTypeInfo* wrapper_info = static_cast<const WrapperTypeInfo*>(type_info);
+    bool is_window = (strcmp(wrapper_info->interface_name, "Window") == 0);
+
+    info.GetReturnValue().Set(is_window);
+}
+
+// Patch Window[Symbol.hasInstance] to use custom type checking instead of prototype chain.
+// This is needed because V8 snapshots don't preserve the identity between Function.prototype
+// and objects in the prototype chain.
+void v8_PatchWindowInstanceOf(Isolate* isolate, Global<Context>* context, Global<Object>* global) {
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Object> global_obj = global->Get(isolate);
+
+    // Get the Window constructor
+    Local<String> window_key = String::NewFromUtf8Literal(isolate, "Window");
+    MaybeLocal<Value> maybe_window = global_obj->Get(ctx, window_key);
+    if (maybe_window.IsEmpty()) {
+        fprintf(stderr, "[v8_PatchWindowInstanceOf] Window constructor not found\n");
+        return;
+    }
+
+    Local<Value> window_val = maybe_window.ToLocalChecked();
+    if (!window_val->IsFunction()) {
+        fprintf(stderr, "[v8_PatchWindowInstanceOf] Window is not a function\n");
+        return;
+    }
+
+    Local<Function> window_ctor = window_val.As<Function>();
+
+    // Get Symbol.hasInstance
+    Local<Symbol> has_instance_symbol = Symbol::GetHasInstance(isolate);
+
+    // Create our custom hasInstance function
+    Local<FunctionTemplate> has_instance_tmpl = FunctionTemplate::New(isolate, WindowHasInstanceCallback);
+    Local<Function> has_instance_fn = has_instance_tmpl->GetFunction(ctx).ToLocalChecked();
+
+    // Define Window[Symbol.hasInstance] = our custom function
+    Maybe<bool> result = window_ctor->DefineOwnProperty(
+        ctx,
+        has_instance_symbol,
+        has_instance_fn,
+        static_cast<PropertyAttribute>(v8::ReadOnly | v8::DontEnum | v8::DontDelete)
+    );
+
+    (void)result; // Success check omitted - if it fails, instanceof will use default behavior
+}
+
 void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -5515,11 +5604,11 @@ bool v8_Object_SetPrototype(Global<Object>* object, Global<Context>* context, Gl
 bool v8_Object_SetPrototypeV2(Global<Object>* object, Global<Context>* context, Global<Value>* prototype) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Object> obj = object->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Local<Value> proto = prototype->Get(isolate);
-    
+
     return obj->SetPrototypeV2(ctx, proto).FromMaybe(false);
 }
 

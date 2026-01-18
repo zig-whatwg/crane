@@ -130,21 +130,42 @@ pub fn main() !void {
     // We create contexts manually so we can register ALL WebIDL interfaces.
     log(allocator, "Step 5: Creating contexts with WebIDL interfaces...\\n", .{});
 
-    // Step 5a: Create global ObjectTemplate with proper configuration
-    // This matches what context_manager.zig expects at runtime:
-    // - 2 internal fields (for Window impl pointer + type info)
-    // - Immutable prototype (per WebIDL spec §3.8)
-    // - Indexed property handlers (for frames[index] access)
-    log(allocator, "  5a: Creating global template with internal fields and handlers...\\n", .{});
-    const global_template = v8.ffi.v8_ObjectTemplate_New(isolate);
+    // Step 5a: Create global template using Window's InstanceTemplate
+    // This is CRITICAL for `window instanceof Window` to work:
+    // - Window's FunctionTemplate inherits from EventTarget
+    // - When we use Window's InstanceTemplate as the global template,
+    //   the global object's prototype chain will be: global → Window.prototype → EventTarget.prototype
+    // - This makes `window instanceof Window` return true
+    log(allocator, "  5a: Creating Window FunctionTemplate for global...\\n", .{});
 
-    // Set 2 internal fields for Window binding (instance pointer + type info)
-    v8.ffi.v8_ObjectTemplate_SetInternalFieldCount(global_template, 2);
+    // Create EventTarget template first (Window's parent in the inheritance chain)
+    // We must create and register it BEFORE Window so that Window's creation uses the
+    // same EventTarget template instead of creating a new one.
+    const event_target_template = interface_bindings.EventTarget.createTemplate(isolate);
+    v8.template_registry.register("EventTarget", event_target_template, isolate);
+    log(allocator, "  EventTarget FunctionTemplate created and registered\\n", .{});
 
-    // Set immutable prototype per WebIDL spec §3.8 for global objects
-    v8.ffi.v8_ObjectTemplate_SetImmutableProto(global_template);
+    // Create the Window FunctionTemplate (with inheritance chain)
+    // Since EventTarget is already in template_registry, Window's createTemplate will
+    // use the same EventTarget template we just created.
+    const window_template = interface_bindings.Window.createTemplate(isolate);
+    log(allocator, "  Window FunctionTemplate created (inherits from EventTarget)\\n", .{});
 
-    // Set indexed property handlers for frames[index] access (WindowProxy behavior)
+    // CRITICAL: Register Window template in template_registry BEFORE initializeBindings
+    // This ensures that when initializeBindings calls registerGlobalFast for Window,
+    // it reuses this SAME template instead of creating a new one. Otherwise we'd have
+    // TWO Window templates with different prototypes, breaking `window instanceof Window`.
+    v8.template_registry.register("Window", window_template, isolate);
+    log(allocator, "  Window template registered in template_registry\\n", .{});
+
+    // Get Window's InstanceTemplate - this will be our global template
+    // The Window interface already configures:
+    // - 2 internal fields (for impl pointer + type info)
+    // - Immutable prototype (per WebIDL spec §3.8 for global interfaces)
+    const global_template = v8.ffi.v8_FunctionTemplate_InstanceTemplate(window_template);
+    log(allocator, "  Got Window's InstanceTemplate as global template\\n", .{});
+
+    // Add indexed property handlers for frames[index] access (WindowProxy behavior)
     // These callbacks are registered in external_references via context_manager.registerExternalReferences()
     v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
         global_template,
@@ -154,7 +175,7 @@ pub fn main() !void {
         context_manager.windowIndexedPropertyEnumerator,
         null, // descriptor - not needed
     );
-    log(allocator, "  Global template configured: 2 internal fields, immutable proto, indexed handlers\\n", .{});
+    log(allocator, "  Global template configured with indexed handlers for frames[index]\\n", .{});
 
     // Step 5b: Create default context with global template
     log(allocator, "  5b: Creating default context with global template...\\n", .{});
@@ -172,6 +193,13 @@ pub fn main() !void {
     // Register ALL WebIDL interfaces in this context
     interface_bindings.initializeBindings(isolate, default_context);
     log(allocator, "  5d: WebIDL interfaces registered in default context\\n", .{});
+
+    // CRITICAL: Set global's prototype to Window.prototype for `window instanceof Window`
+    // This must be done AFTER initializeBindings registers Window constructor but BEFORE
+    // the context is serialized into the snapshot. The global was created from Window's
+    // InstanceTemplate, but ObjectTemplate doesn't automatically inherit FunctionTemplate's
+    // prototype chain. We must set it manually here during snapshot creation.
+    setGlobalPrototypeToWindow(isolate, default_context, allocator);
 
     // Exit context before adding to snapshot
     v8.ffi.v8_Context_Exit(default_context);
@@ -197,6 +225,9 @@ pub fn main() !void {
     // Register ALL WebIDL interfaces in this context too
     interface_bindings.initializeBindings(isolate, indexed_context);
     log(allocator, "  5g: WebIDL interfaces registered in indexed context\\n", .{});
+
+    // CRITICAL: Set global's prototype to Window.prototype for `window instanceof Window`
+    setGlobalPrototypeToWindow(isolate, indexed_context, allocator);
 
     // Exit context before adding to snapshot
     v8.ffi.v8_Context_Exit(indexed_context);
@@ -290,4 +321,63 @@ pub fn main() !void {
     log(allocator, "  2. Create isolate with v8_Isolate_NewFromSnapshot(data, size, ext_refs)\\n", .{});
     log(allocator, "  3. Restore context with v8_Context_NewFromSnapshot(isolate)\\n", .{});
     log(allocator, "  4. Interfaces are already available - no initializeBindings() needed!\\n", .{});
+}
+
+/// Set global's prototype to Window.prototype for `window instanceof Window`
+///
+/// This is called during snapshot creation AFTER initializeBindings registers the Window
+/// constructor. The global object was created from an ObjectTemplate, which doesn't
+/// automatically inherit the FunctionTemplate's prototype chain. We must set
+/// global.__proto__ = Window.prototype manually.
+///
+/// This must be done BEFORE the snapshot is finalized because:
+/// 1. After snapshot, the global's prototype is immutable (SetImmutableProto)
+/// 2. SetPrototypeV2 will fail at runtime on the restored context
+fn setGlobalPrototypeToWindow(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, allocator: std.mem.Allocator) void {
+    log(allocator, "  Setting global's prototype to Window.prototype...\\n", .{});
+
+    const global = v8.ffi.v8_Context_Global(context) orelse {
+        log(allocator, "  ERROR: Failed to get global object\\n", .{});
+        return;
+    };
+
+    // Get Window constructor from global
+    const window_key = v8.ffi.v8_String_NewFromUtf8(isolate, "Window", 6);
+    if (window_key == null) {
+        log(allocator, "  ERROR: Failed to create 'Window' string\\n", .{});
+        return;
+    }
+
+    const window_ctor = v8.ffi.v8_Object_Get(global, context, @ptrCast(window_key)) orelse {
+        log(allocator, "  ERROR: Window constructor not found on global\\n", .{});
+        return;
+    };
+
+    // Get Window.prototype
+    const proto_key = v8.ffi.v8_String_NewFromUtf8(isolate, "prototype", 9);
+    if (proto_key == null) {
+        log(allocator, "  ERROR: Failed to create 'prototype' string\\n", .{});
+        return;
+    }
+
+    const window_proto = v8.ffi.v8_Object_Get(@ptrCast(window_ctor), context, @ptrCast(proto_key)) orelse {
+        log(allocator, "  ERROR: Window.prototype not found\\n", .{});
+        return;
+    };
+
+    // Set global's prototype to Window.prototype
+    // Use SetPrototypeV2 which is the proper API for global objects
+    const result = v8.ffi.v8_Object_SetPrototypeV2(global, context, window_proto);
+    if (result) {
+        log(allocator, "  SUCCESS: global.__proto__ = Window.prototype\\n", .{});
+    } else {
+        log(allocator, "  WARNING: SetPrototypeV2 returned false - trying old API...\\n", .{});
+        // Fallback to old API
+        const old_result = v8.ffi.v8_Object_SetPrototype(global, context, window_proto);
+        if (old_result) {
+            log(allocator, "  SUCCESS (old API): global.__proto__ = Window.prototype\\n", .{});
+        } else {
+            log(allocator, "  ERROR: Both SetPrototypeV2 and SetPrototype failed!\\n", .{});
+        }
+    }
 }

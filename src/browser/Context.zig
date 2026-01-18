@@ -456,19 +456,15 @@ pub const Context = struct {
             return error.NoGlobal;
         };
 
-        // Set up Window prototype chain
-        // Set global's prototype to Window.prototype
-        const window_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "Window", 6);
-        if (window_key) |wk| {
-            if (v8.ffi.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
-                const proto_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "prototype", 9);
-                if (proto_key) |pk| {
-                    if (v8.ffi.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                        _ = v8.ffi.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
-                    }
-                }
-            }
-        }
+        // Fix Window instanceof by patching Window[Symbol.hasInstance].
+        // V8 snapshots don't preserve the identity between Function.prototype and
+        // objects in the prototype chain. So after snapshot restore, Window.prototype
+        // is a different object than what's in global's prototype chain.
+        //
+        // Instead of trying to fix the prototype identity (which V8 prevents),
+        // we patch Symbol.hasInstance to check the internal type info, which IS
+        // correctly preserved in the snapshot.
+        v8.ffi.v8_PatchWindowInstanceOf(self.isolate, v8_ctx, global);
 
         // Create and bind Window instance to global object's internal fields
         // This is required for WebIDL method callbacks to extract the Zig instance from `this`

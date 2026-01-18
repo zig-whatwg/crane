@@ -283,6 +283,35 @@ pub fn registerAllTemplatesOnly(
             };
             if (has_legacy_namespace) continue;
 
+            // CRITICAL: Skip Window interface - do NOT reinstall it from snapshot!
+            // The global object's prototype chain already points to Window.prototype from
+            // the snapshot. If we create a new Window template and reinstall the constructor,
+            // the new Window.prototype won't match the global's prototype chain, breaking
+            // `window instanceof Window`.
+            //
+            // The Window constructor from the snapshot already has correct callbacks via
+            // external references, so it doesn't need reinstallation.
+            const is_window = comptime std.mem.eql(u8, decl.name, "Window");
+            if (is_window) {
+                std.debug.print("[registerAllTemplatesOnly] SKIPPING Window (not registering template or global)\n", .{});
+                continue;
+            }
+
+            // Also skip EventTarget - it's in the snapshot and Window inherits from it
+            const is_event_target = comptime std.mem.eql(u8, decl.name, "EventTarget");
+            if (is_event_target) {
+                std.debug.print("[registerAllTemplatesOnly] SKIPPING EventTarget (Window inherits from it)\n", .{});
+                continue;
+            }
+
+            // Debug: print when we're about to process an interface
+            if (comptime std.mem.eql(u8, decl.name, "Node") or
+                std.mem.eql(u8, decl.name, "Element") or
+                std.mem.eql(u8, decl.name, "Document"))
+            {
+                std.debug.print("[registerAllTemplatesOnly] Processing: {s}\n", .{decl.name});
+            }
+
             // CRITICAL: Check if template already exists before creating.
             // Parent templates may have been created during a child's createTemplate() call.
             // If we create a new template unconditionally, we'd break prototype chain identity:
@@ -1257,6 +1286,11 @@ pub fn createTemplateOnDemandByName(
             // Skip problematic interfaces
             if (shouldSkipInterface(decl.name)) {
                 return null;
+            }
+
+            // Debug: trace on-demand template creation
+            if (comptime std.mem.eql(u8, decl.name, "Window") or std.mem.eql(u8, decl.name, "EventTarget")) {
+                std.debug.print("[createTemplateOnDemandByName] Creating template for: {s}\n", .{interface_name});
             }
 
             // Create the template
