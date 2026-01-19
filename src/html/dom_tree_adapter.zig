@@ -56,6 +56,7 @@ const DocumentType = interfaces.DocumentType;
 const DocumentFragment = interfaces.DocumentFragment;
 const Node = interfaces.Node;
 const HTMLScriptElement = interfaces.HTMLScriptElement;
+const HTMLIFrameElement = interfaces.HTMLIFrameElement;
 
 // Import DOM internals for state access (Golden Rule #12 compliant)
 const dom = @import("dom");
@@ -67,6 +68,7 @@ const NodeImpl = impls.Node;
 const ElementImpl = impls.Element;
 const DocumentTypeImpl = impls.DocumentType;
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
+const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
 
 // WebIDL types
 const webidl = @import("webidl");
@@ -347,13 +349,17 @@ pub const DomTreeAdapter = struct {
     fn createElementNode(self: *DomTreeAdapter, tree_node: *TreeNode) DomTreeAdapterError!*runtime.Instance {
         const local_name = tree_node.local_name orelse return DomTreeAdapterError.InvalidNode;
 
-        // Check if this is a script element
+        // Check if this is a script or iframe element
         const is_script = std.mem.eql(u8, local_name, "script") and
+            tree_node.namespace == .html;
+        const is_iframe = std.mem.eql(u8, local_name, "iframe") and
             tree_node.namespace == .html;
 
         // Create the appropriate element type
         const element = if (is_script)
             HTMLScriptElement.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory
+        else if (is_iframe)
+            HTMLIFrameElement.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory
         else
             Element.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory;
 
