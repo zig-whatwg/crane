@@ -99,6 +99,7 @@ fn getOrCreate(instance: *const Instance) *LifecycleFlags {
 
     const result = r.getOrPut(instance) catch {
         // On OOM, return a static default (shouldn't happen in practice)
+        std.log.err("[instance_lifecycle] OOM in getOrPut! Returning default_flags", .{});
         return &default_flags;
     };
 

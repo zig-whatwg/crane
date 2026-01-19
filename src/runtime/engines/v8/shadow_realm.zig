@@ -28,8 +28,10 @@ const context_manager = @import("context_manager.zig");
 const ShadowRealmEntry = struct {
     /// Global handle to the ShadowRealm context (owned by us)
     context_handle: ?*anyopaque,
-    /// Pointer to the initiator context (for association, not ownership)
-    initiator_context: ?*anyopaque,
+    /// Raw address of the initiator context (stable identifier for comparison)
+    /// This is the internal V8 context address, NOT a Global handle pointer.
+    /// We use this for matching when disposeByInitiator is called.
+    initiator_context_raw_addr: ?*anyopaque,
     /// Creation timestamp for debugging
     created_at: i64,
 };
@@ -88,6 +90,15 @@ fn shadowRealmContextCallback(
         return null;
     };
 
+    // Extract the raw address from the initiator context Global handle BEFORE
+    // we return. This is critical because C++ will delete the Global handle after
+    // this callback returns, making initiator_context_ptr a dangling pointer.
+    // The raw address is stable and can be used for comparison in disposeByInitiator.
+    const initiator_raw_addr: ?*anyopaque = if (initiator_context_ptr) |ptr|
+        ffi.v8_Context_GetRawAddress(@ptrCast(ptr))
+    else
+        null;
+
     // Get the initiator context's microtask queue
     // This is CRITICAL for ShadowRealm: wrapped functions must execute in the same
     // microtask queue as the initiator, otherwise calls from inside the ShadowRealm fail.
@@ -138,14 +149,14 @@ fn shadowRealmContextCallback(
     if (callback_data) |data| {
         const entry = ShadowRealmEntry{
             .context_handle = global_context,
-            .initiator_context = initiator_context_ptr,
+            .initiator_context_raw_addr = initiator_raw_addr,
             .created_at = std.time.timestamp(),
         };
         data.tracked_realms.put(@intFromPtr(global_context), entry) catch {
             std.log.warn("[ShadowRealm] Failed to track ShadowRealm context", .{});
         };
         data.total_created += 1;
-        std.log.info("[ShadowRealm] Created ShadowRealm #{d}", .{data.total_created});
+        std.log.info("[ShadowRealm] Created ShadowRealm #{d} (initiator raw addr: {?})", .{ data.total_created, initiator_raw_addr });
     } else {
         std.log.info("[ShadowRealm] Created new ShadowRealm context", .{});
     }
@@ -230,19 +241,19 @@ pub fn disposeShadowRealm(context_handle: ?*anyopaque) void {
 /// Call this when an initiator context (Window, Worker, etc.) is disposed.
 /// This ensures ShadowRealms don't outlive their creating context.
 ///
-/// @param initiator_context - The initiator context handle
-pub fn disposeByInitiator(initiator_context: ?*anyopaque) void {
-    if (initiator_context == null) return;
+/// @param initiator_raw_addr - The raw address of the initiator context (from v8_Context_GetRawAddress)
+pub fn disposeByInitiator(initiator_raw_addr: ?*anyopaque) void {
+    if (initiator_raw_addr == null) return;
 
     if (g_callback_data) |data| {
-        var to_remove: std.ArrayList(usize) = std.ArrayList(usize).init(data.allocator);
-        defer to_remove.deinit();
+        var to_remove: std.ArrayListUnmanaged(usize) = .{};
+        defer to_remove.deinit(data.allocator);
 
-        // Find all ShadowRealms created by this initiator
+        // Find all ShadowRealms created by this initiator (compare raw addresses)
         var iter = data.tracked_realms.iterator();
         while (iter.next()) |entry| {
-            if (entry.value_ptr.initiator_context == initiator_context) {
-                to_remove.append(entry.key_ptr.*) catch continue;
+            if (entry.value_ptr.initiator_context_raw_addr == initiator_raw_addr) {
+                to_remove.append(data.allocator, entry.key_ptr.*) catch continue;
             }
         }
 
@@ -256,7 +267,7 @@ pub fn disposeByInitiator(initiator_context: ?*anyopaque) void {
         }
 
         if (to_remove.items.len > 0) {
-            std.log.info("[ShadowRealm] Disposed {d} ShadowRealm contexts for initiator", .{to_remove.items.len});
+            std.log.info("[ShadowRealm] Disposed {d} ShadowRealm contexts for initiator (raw addr: {?})", .{ to_remove.items.len, initiator_raw_addr });
         }
     }
 }
@@ -310,7 +321,7 @@ test "ShadowRealm entry tracking" {
     // Add a test entry
     const entry = ShadowRealmEntry{
         .context_handle = @ptrFromInt(0x1234),
-        .initiator_context = @ptrFromInt(0x5678),
+        .initiator_context_raw_addr = @ptrFromInt(0x5678),
         .created_at = 12345,
     };
     try tracked_realms.put(0x1234, entry);
@@ -321,6 +332,7 @@ test "ShadowRealm entry tracking" {
     const retrieved = tracked_realms.get(0x1234);
     try std.testing.expect(retrieved != null);
     try std.testing.expectEqual(@as(i64, 12345), retrieved.?.created_at);
+    try std.testing.expectEqual(@as(?*anyopaque, @ptrFromInt(0x5678)), retrieved.?.initiator_context_raw_addr);
 
     // Remove entry
     _ = tracked_realms.remove(0x1234);

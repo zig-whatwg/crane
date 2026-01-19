@@ -332,6 +332,8 @@ pub const IFrameIntegration = struct {
         self.cleanupRealmContext();
 
         // Destroy the browsing context if it exists
+        // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
+        // so we only need to call deinit() here.
         if (self.browsing_context) |ctx| {
             ctx.deinit();
         }
@@ -518,24 +520,32 @@ pub const IFrameIntegration = struct {
     }
 
     /// Called when iframe is removed from a document
-    /// Destroys the nested browsing context per HTML §7.1
+    /// Per HTML §7.1, marks the browsing context as discarded.
+    ///
+    /// IMPORTANT: We do NOT destroy the V8 context or wrapper cache here!
+    /// JavaScript may still be executing in the iframe context (e.g., returning
+    /// from parent.postMessage()). If we free instances now, V8 will access
+    /// freed memory causing use-after-free crashes.
+    ///
+    /// Instead, we just mark the browsing context as closed. The actual cleanup
+    /// happens in one of two ways:
+    /// 1. V8 GC determines no more references to the global → weak callbacks fire
+    /// 2. Parent context is torn down → child contexts are cleaned up
     pub fn onRemovedFromDocument(self: *IFrameIntegration) void {
         // Guard against double-calls. Once discarded, we don't process again.
-        // This can happen if the callback fires and later cleanup also calls this.
         if (self.state == .discarded) return;
 
-        // Clean up engine-specific realm context first (Phase 3)
-        self.cleanupRealmContext();
+        // DO NOT call cleanupRealmContext() here!
+        // The child V8 context must remain alive so V8's weak callbacks can
+        // properly handle cleanup when GC runs. Destroying it now while JS
+        // may still be executing causes use-after-free.
 
         if (self.browsing_context) |ctx| {
             // Remove from parent's children list BEFORE closing.
             // This ensures window.frames.length reflects the removal immediately.
-            // Must be done before deinit/close because during teardown the parent
-            // may not be valid.
             ctx.removeFromParent();
             // Close the browsing context (marks as discarded)
             ctx.close();
-            // Deinit will happen when IFrameIntegration is cleaned up
         }
         self.state = .discarded;
     }

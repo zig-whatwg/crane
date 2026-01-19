@@ -2782,9 +2782,13 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
     if (std.mem.eql(u8, interface_name, "Window")) {
         const WindowImpl = @import("impls").Window;
         if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
-            // Return the bound global directly - this is the key for cross-realm!
-            // bound_global is a Global<Object>* which is the correct type for setReturnValue
+            // bound_global is a Global<Object>* - a persistent handle that was created
+            // in createWindowBoundToGlobal via v8_Context_Global.
+            // Return it directly - SetReturnValueGlobal will dereference it.
+            std.log.info("[instanceToV8] Window returning Global<Object>* at {*}", .{bound_global});
             return @ptrCast(bound_global);
+        } else {
+            std.log.warn("[instanceToV8] Window at {*} has NO bound global!", .{instance});
         }
     }
 

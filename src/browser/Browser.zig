@@ -314,12 +314,17 @@ pub const Browser = struct {
             // freed by cleanupAll(). We must clean them up while allocators are valid.
             impls.cleanup.cleanupAllDomRegistries();
 
-            // Clean up ShadowRealm tracked contexts before isolate disposal
-            v8.deinitializeShadowRealmSupport();
-
             // Central cleanup - calls all registered handlers in priority order
             // This includes: isolate_templates, template_registry, context_manager, etc.
+            // IMPORTANT: context_manager.deinit() calls disposeByInitiator() for each
+            // context being destroyed, which cleans up ShadowRealms created by that context.
             v8.cleanupAll(isolate, self.allocator);
+
+            // Final ShadowRealm cleanup - dispose any remaining tracked contexts
+            // (safety net) and free the callback data structure.
+            // This must happen AFTER cleanupAll() because individual context cleanup
+            // handles ShadowRealm disposal per-context.
+            v8.deinitializeShadowRealmSupport();
 
             // Force V8 garbage collection before isolate disposal
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -401,7 +406,6 @@ pub const Browser = struct {
             v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
             // Third GC pass for any objects revived during weak callbacks
             v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
-
         }
 
         // Create new context

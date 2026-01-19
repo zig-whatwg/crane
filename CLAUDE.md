@@ -1,5 +1,39 @@
 # Agent Guidelines for WHATWG Specifications Monorepo in Zig
 
+ ## Cog Memory Graph (Write-Only)
+
+  This project uses Cog to build a knowledge graph of concepts encountered during development. The
+   graph is for monitoring/visualization only - do not use it for context retrieval.
+
+  ### When to Learn
+
+  After completing a task or explaining a concept, record it:
+
+  ```bash
+  cog learn "Concept Name" "Brief definition or explanation"
+
+  Learn concepts like:
+  - Architecture decisions made
+  - Domain terms specific to this project
+  - Patterns or conventions used
+  - Bug fixes and their root causes
+  - Key abstractions introduced
+
+  When to Associate
+
+  After learning related concepts, connect them:
+
+  cog associate <source-id> <target-id> --type <predicate>
+
+  Predicate types: contains, implies, requires, leads_to, contradicts, similar_to, example_of,
+  derived_from
+
+  Do NOT
+
+  - Do not use cog recall or cog search for context injection
+  - Do not reference the graph when answering questions
+  - This is observational only
+
 ## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
 
 **ALWAYS ask clarifying questions when requirements are ambiguous or unclear.**

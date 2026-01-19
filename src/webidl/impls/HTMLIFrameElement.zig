@@ -316,6 +316,10 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 fn iframeContextCleanup(integration: *IFrameIntegration) void {
     if (integration.context_cleanup_data) |data| {
         const entry: *context_manager.ContextEntry = @ptrCast(@alignCast(data));
+        // Clear the cleanup data BEFORE calling destroyChildContext to prevent
+        // any re-entrant calls from trying to use this stale pointer.
+        // destroyChildContext() has its own guards against double-cleanup.
+        integration.context_cleanup_data = null;
         context_manager.destroyChildContext(entry, integration.allocator);
     }
 }

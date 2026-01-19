@@ -217,6 +217,8 @@ pub const InternalState = struct {
         // Clean up browsing context ONLY if we own it.
         // When replaceBrowsingContext() was called, we borrowed an external BC
         // (from iframe integration) which will be cleaned up by the iframe.
+        // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
+        // so we only need to call deinit() here.
         if (self.owns_browsing_context) {
             self.browsing_context.deinit();
         }
@@ -739,7 +741,12 @@ pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     // but check anyway to prevent segfault in case of corruption/cleanup race
     const bc_ptr = @intFromPtr(internal.browsing_context);
     if (bc_ptr == 0 or bc_ptr < 0x1000) {
-        // Invalid pointer - return self as fallback
+        // Invalid pointer - check if this Window has a bound V8 global to return
+        if (internal.bound_v8_global) |bound_global| {
+            // Return the bound global directly - this will be dereferenced by SetReturnValueGlobal
+            // Cast through usize to satisfy alignment requirements
+            return @ptrFromInt(@intFromPtr(bound_global));
+        }
         return getWindowProxy(instance);
     }
 

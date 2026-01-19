@@ -201,10 +201,13 @@ pub const URLRecord = struct {
 
     /// Free URL record resources
     pub fn deinit(self: *URLRecord) void {
+        std.log.debug("[URLRecord.deinit] Freeing buffer at {*}, len={d}", .{ self.buffer.ptr, self.buffer.len });
         self.allocator.free(self.buffer);
         if (self.host) |*h| {
+            std.log.debug("[URLRecord.deinit] Freeing host", .{});
             h.deinit(self.allocator);
         }
         @import("path").deinitPath(&self.path, self.allocator);
+        std.log.debug("[URLRecord.deinit] Done", .{});
     }
 };

@@ -117,6 +117,7 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    std.log.debug("[Location.init] Created instance {*}", .{instance});
 
     // Initialize internal state
     const internal = try allocator.create(InternalState);
@@ -135,6 +136,7 @@ pub fn init(
     const state = instance.getState(StateType);
     state.own._internal = internal;
 
+    std.log.debug("[Location.init] Instance {*} initialized with URL {*}", .{ instance, parsed_url });
     return instance;
 }
 
@@ -164,20 +166,31 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Use lifecycle tracking to prevent double-free
-    // This can be called from multiple paths:
-    // 1. wrapper_cache.deinit → gc.onObjectFreed
-    // 2. Window.deinit cleaning up its owned Location
+    // Location cleanup can be called from multiple paths:
+    // 1. destroyChildContext → Window.deinit → Location.deinit (normal cleanup)
+    // 2. DOM tree traversal during nested iframe cleanup (may pre-mark)
+    //
+    // The lifecycle tracking prevents concurrent cleanup races, but we MUST
+    // still clean up internal state if it exists. The state pointer being
+    // non-null is the definitive check for whether cleanup is needed.
     const instance_lifecycle = @import("runtime").instance_lifecycle;
-    if (!instance_lifecycle.markCleanupStarted(instance)) {
-        // Already being cleaned up, skip
-        return;
-    }
+
+    // Try to mark cleanup started. If it returns false, another path already marked it,
+    // but we still need to check and clean up internal state if present.
+    const is_first = instance_lifecycle.markCleanupStarted(instance);
 
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        // Clear the pointer to prevent double-free on subsequent calls
+        state.own._internal = null;
+    }
+
+    // Only clear lifecycle entry if we were the first to mark cleanup started.
+    // This ensures the slab allocator address reuse works correctly.
+    if (is_first) {
+        instance_lifecycle.markCleanupComplete(instance);
     }
 }
 

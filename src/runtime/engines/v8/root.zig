@@ -280,6 +280,7 @@ pub const window_properties = @import("window_properties.zig");
 pub const shadow_realm = @import("shadow_realm.zig");
 pub const initializeShadowRealmSupport = shadow_realm.initializeShadowRealmSupport;
 pub const deinitializeShadowRealmSupport = shadow_realm.deinitializeShadowRealmSupport;
+pub const disposeShadowRealmsByInitiator = shadow_realm.disposeByInitiator;
 
 test "v8 module compiles" {
     const testing = @import("std").testing;

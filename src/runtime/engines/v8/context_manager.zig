@@ -51,6 +51,7 @@ const intl_binding = @import("intl_binding.zig");
 const fetch = @import("fetch");
 const iface_bindings_mod = @import("interface_bindings.zig");
 const helpers = @import("webidl").helpers;
+const shadow_realm = @import("shadow_realm.zig");
 
 /// Context mapping entry
 pub const ContextEntry = struct {
@@ -215,11 +216,53 @@ pub fn deinit() void {
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
         // during teardown (is_tearing_down flag prevents nested calls).
+        std.log.debug("[context_manager.deinit] Starting context iteration, {} contexts in map", .{state.contexts.count()});
         var it = state.contexts.valueIterator();
         while (it.next()) |entry_ptr| {
             const entry = entry_ptr.*; // Dereference the pointer to get *ContextEntry
+            std.log.debug("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}", .{ entry.owns_context, entry.window_instance });
             if (entry.owns_context) {
                 var ctx_data = entry.runtime_ctx;
+
+                // Phase: ShadowRealm cleanup
+                // Dispose any ShadowRealm contexts that were created by this context.
+                // This must happen BEFORE we destroy the wrapper cache and context data,
+                // as ShadowRealm cleanup may need to access V8 handles.
+                const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
+                if (raw_addr) |addr| {
+                    shadow_realm.disposeByInitiator(addr);
+                }
+
+                // Phase: Location cleanup
+                // Location may not be in the wrapper cache if never accessed from JS.
+                // Clean it up explicitly to prevent memory leaks.
+                // Strategy:
+                // 1. Remove Location from wrapper_cache FIRST (if present) - disposes V8 handle
+                // 2. Call gc.onObjectFreed to clean InternalState AND free Instance to slab
+                // 3. wrapper_cache.deinit won't find Location (already removed) - no double-free
+                if (entry.window_instance) |window_instance| {
+                    std.log.debug("[context_manager.deinit] Processing Window {*} for Location cleanup", .{window_instance});
+                    const WindowImpl = @import("impls").Window;
+                    if (WindowImpl.getInternal(window_instance)) |window_internal| {
+                        if (window_internal.location) |loc| {
+                            std.log.debug("[context_manager.deinit] Explicit Location cleanup for {*}", .{loc});
+                            // Step 1: Remove from wrapper cache if present
+                            if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                                const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                                _ = cache_ptr.remove(loc);
+                            }
+                            // Step 2: Clean up InternalState and free Instance
+                            runtime.gc.onObjectFreed(loc);
+                            window_internal.location = null; // Prevent double-free
+                        } else {
+                            std.log.debug("[context_manager.deinit] Window {*} has no Location", .{window_instance});
+                        }
+                    } else {
+                        std.log.debug("[context_manager.deinit] Window {*} has no internal state", .{window_instance});
+                    }
+                } else {
+                    std.log.debug("[context_manager.deinit] Context entry has no window_instance", .{});
+                }
 
                 // Phase: DOM Tree cleanup
                 // Clean up Window instance and its Document FIRST
@@ -811,33 +854,62 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // Begin coordinated cleanup - signals GC callbacks to skip
             coordinator.beginContextCleanup();
 
+            // CRITICAL: Clean up children (iframe contexts) FIRST before wrapper cache
+            // Following Chromium's pattern: child frames must be detached before parent cleanup.
+            // If we do this after wrapper_cache.deinit(), the wrapper cache cleanup may trigger
+            // HTMLIFrameElement.deinit() which calls destroyChildContext() on some children,
+            // freeing their entries. Then our loop here would iterate over freed pointers.
+            // By cleaning up children first, we ensure all child entries are freed before
+            // any code tries to iterate over entry.children.items.
+            for (entry.children.items) |child| {
+                destroyChildContext(child, entry.allocator);
+            }
+            entry.children.deinit(entry.allocator);
+
             // Clean up Window and Document (DOM tree) before wrapper cache
-            // This is critical: DOM nodes remove themselves from the wrapper cache
-            // during deinit, so we must clean them up first
-            // NOTE: Do NOT call Window.deinit here - the Window is also in the wrapper cache
-            // and will be cleaned up when the wrapper cache is deinitialized.
-            // Calling deinit here causes double-free.
+            // This is critical: DOM nodes (including HTMLIFrameElement) need their
+            // deinit called to clean up resources like BrowsingContext.
+            // DOM nodes may not be in the wrapper_cache if never accessed from JS.
+            // We must explicitly trigger DOM tree cleanup here.
             coordinator.cleanupPhase(.dom_tree);
 
-            // Explicitly clean up Location before wrapper cache cleanup
-            // Location might not be in the wrapper cache (if never accessed from JS),
-            // but Window owns it. We must clean it up to prevent memory leaks.
-            // Location.deinit handles lifecycle tracking internally to prevent double-free.
-            // Note: We use entry.window_instance first, falling back to getting Window
-            // from global's internal field (for browser contexts created outside context_manager).
-            const window_instance = entry.window_instance orelse getWindowFromGlobalInternalField(v8_ctx);
-            if (window_instance) |wi| {
+            // NOTE: We do NOT iterate wrapper_cache to find HTMLIFrameElement instances.
+            // Per Chromium's pattern, wrapper cache iteration is unsafe because:
+            // 1. Some instances may have invalid state pointers
+            // 2. Instance types cannot be safely checked without accessing state
+            // Instead, we rely on DOM tree traversal: Window.deinit → Document.deinit →
+            // Node.deinit chain which properly cleans up all DOM nodes including iframes.
+            // HTMLIFrameElement instances are cleaned up when Node.deinit iterates children.
+
+            // Clean up the Window and its DOM tree
+            const window_instance_dom = entry.window_instance orelse getWindowFromGlobalInternalField(v8_ctx);
+            if (window_instance_dom) |wi| {
+                // Remove Window from wrapper cache FIRST to prevent double-free
+                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                    _ = cache_ptr.remove(wi);
+                }
+
+                // Also remove Location from wrapper cache before Window.deinit
                 const WindowImpl = @import("impls").Window;
                 if (WindowImpl.getInternal(wi)) |window_internal| {
                     if (window_internal.location) |loc| {
-                        const LocationImpl = @import("impls").Location;
-                        LocationImpl.deinit(loc);
+                        if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                            const cache_ptr2: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                            _ = cache_ptr2.remove(loc);
+                        }
                     }
                 }
+
+                // Now call Window.deinit which will clean up Location, Document, and DOM tree
+                WindowImpl.deinit(wi);
             }
 
             // Clean up V8 wrapper cache
-            // Now safe because DOM nodes already removed themselves
+            // Now safe because:
+            // 1. Children are already cleaned up (no stale child pointers)
+            // 2. DOM nodes already removed themselves
+            // 3. HTMLIFrameElement instances explicitly cleaned up above
             coordinator.cleanupPhase(.wrapper_cache);
             if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                 const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
@@ -857,15 +929,6 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             if (entry.realm) |realm| {
                 realm.deinit();
             }
-
-            // Clean up children (iframe contexts) recursively
-            // We must clean up child contexts before deiniting the children list
-            // so their wrapper caches are cleaned up and their Window/Location
-            // instances are properly deinitialized.
-            for (entry.children.items) |child| {
-                destroyChildContext(child, entry.allocator);
-            }
-            entry.children.deinit(entry.allocator);
 
             // NOTE: Module cache cleanup removed - caching disabled
             // (see handleDynamicImport comment)
@@ -2066,31 +2129,28 @@ fn isBuiltinWindowProperty(name: []const u8) bool {
     // List of common Window properties that should not be intercepted
     const builtins = [_][]const u8{
         // Core Window properties
-        "window", "self", "document", "location", "navigator", "history", "screen",
-        "frames", "length", "top", "parent", "opener", "frameElement", "name",
+        "window",         "self",                  "document",             "location",           "navigator",            "history",             "screen",
+        "frames",         "length",                "top",                  "parent",             "opener",               "frameElement",        "name",
         // Common methods
-        "alert", "confirm", "prompt", "open", "close", "focus", "blur",
-        "postMessage", "addEventListener", "removeEventListener", "dispatchEvent",
-        "setTimeout", "clearTimeout", "setInterval", "clearInterval",
-        "requestAnimationFrame", "cancelAnimationFrame",
+        "alert",          "confirm",               "prompt",               "open",               "close",                "focus",               "blur",
+        "postMessage",    "addEventListener",      "removeEventListener",  "dispatchEvent",      "setTimeout",           "clearTimeout",        "setInterval",
+        "clearInterval",  "requestAnimationFrame", "cancelAnimationFrame",
         // Constructors and built-in objects
-        "Object", "Array", "Function", "String", "Number", "Boolean", "Symbol",
-        "Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError",
-        "Promise", "Map", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect",
-        "JSON", "Math", "Date", "RegExp", "console", "Intl",
+        "Object",             "Array",                "Function",            "String",
+        "Number",         "Boolean",               "Symbol",               "Error",              "TypeError",            "ReferenceError",      "SyntaxError",
+        "RangeError",     "Promise",               "Map",                  "Set",                "WeakMap",              "WeakSet",             "Proxy",
+        "Reflect",        "JSON",                  "Math",                 "Date",               "RegExp",               "console",             "Intl",
         // DOM interfaces
-        "Node", "Element", "Document", "Event", "EventTarget", "HTMLElement",
-        "HTMLIFrameElement", "HTMLDivElement", "HTMLSpanElement", "HTMLCollection",
-        "NodeList", "DOMTokenList", "CSSStyleDeclaration",
+        "Node",           "Element",               "Document",             "Event",              "EventTarget",          "HTMLElement",         "HTMLIFrameElement",
+        "HTMLDivElement", "HTMLSpanElement",       "HTMLCollection",       "NodeList",           "DOMTokenList",         "CSSStyleDeclaration",
         // Other common properties
-        "undefined", "null", "NaN", "Infinity", "eval", "isNaN", "isFinite",
-        "parseInt", "parseFloat", "encodeURI", "decodeURI", "encodeURIComponent", "decodeURIComponent",
-        "performance", "crypto", "fetch", "URL", "URLSearchParams", "FormData",
-        "Blob", "File", "FileReader", "FileList", "ArrayBuffer", "DataView",
-        "Uint8Array", "Uint16Array", "Uint32Array", "Int8Array", "Int16Array", "Int32Array",
-        "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",
-        "WebSocket", "Worker", "MessageChannel", "MessagePort",
-        "MutationObserver", "IntersectionObserver", "ResizeObserver",
+        "undefined",
+        "null",           "NaN",                   "Infinity",             "eval",               "isNaN",                "isFinite",            "parseInt",
+        "parseFloat",     "encodeURI",             "decodeURI",            "encodeURIComponent", "decodeURIComponent",   "performance",         "crypto",
+        "fetch",          "URL",                   "URLSearchParams",      "FormData",           "Blob",                 "File",                "FileReader",
+        "FileList",       "ArrayBuffer",           "DataView",             "Uint8Array",         "Uint16Array",          "Uint32Array",         "Int8Array",
+        "Int16Array",     "Int32Array",            "Float32Array",         "Float64Array",       "BigInt64Array",        "BigUint64Array",      "WebSocket",
+        "Worker",         "MessageChannel",        "MessagePort",          "MutationObserver",   "IntersectionObserver", "ResizeObserver",
     };
 
     for (builtins) |builtin| {
@@ -2363,7 +2423,13 @@ pub fn createChildContext(
     // 10. Fix up instance.ctx pointers that were created with stack-local ctx_data
     window_instance.ctx = &child_entry.runtime_ctx;
 
-    // 10b. Create Location instance for the Window
+    // 10b. Link to parent's children list BEFORE creating Location
+    // This ensures the child context is properly tracked for cleanup even if
+    // Location creation fails. Without this, a failed Location init would
+    // orphan the child context (in context map but not in parent's children list).
+    try parent_entry.children.append(allocator, child_entry);
+
+    // 10c. Create Location instance for the Window
     // This is required for iframe.contentWindow.location to work.
     // Per spec, every Window has a Location object.
     // Note: Location.init() already creates an about:blank URL, so no need to call setURLFromString.
@@ -2375,15 +2441,13 @@ pub fn createChildContext(
         const loc_instance = interfaces.Location.init(allocator, stable_runtime_ctx) catch |err| {
             std.debug.print("Warning: Failed to create Location for iframe: {}\n", .{err});
             // Continue without Location - not fatal but window.location won't work
+            // Child is already in parent's children list so it will be cleaned up properly
             return child_entry;
         };
 
         // Link the Location to the Window instance so window.location accessor works
         WindowImpl.setLocation(window_instance, loc_instance);
     }
-
-    // 11. Link to parent's children list
-    try parent_entry.children.append(allocator, child_entry);
 
     return child_entry;
 }
@@ -2406,7 +2470,9 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
     // This happens when wrapper_cache.deinit() triggers onObjectFreed for iframes,
     // which then tries to clean up child contexts. Since deinit() already cleans
     // up all contexts, we don't need to do it again here.
-    if (state.is_tearing_down) return;
+    if (state.is_tearing_down) {
+        return;
+    }
 
     // 0b. Check if already removed (guard against double-cleanup)
     const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
@@ -2440,33 +2506,66 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
     // 3. Clean up our children list
     entry.children.deinit(allocator);
 
+    // 3b. Clean up any ShadowRealm contexts created by this context
+    // This must happen BEFORE we destroy the wrapper cache and context data.
+    // raw_addr was computed at the top of this function.
+    if (raw_addr) |addr| {
+        shadow_realm.disposeByInitiator(addr);
+    }
+
     // 4. Clean up owned resources (key already computed at top of function)
     if (entry.owns_context) {
         var ctx_data = entry.runtime_ctx;
 
-        // 4a. Explicitly clean up Location before wrapper cache cleanup
-        // Location might not be in the wrapper cache (if never accessed from JS),
-        // but Window owns it. We must clean it up to prevent memory leaks.
-        // Location.deinit handles lifecycle tracking internally to prevent double-free.
+        // 4a. Clean up Window and its DOM tree BEFORE wrapper cache cleanup
+        // We must call the full Window.deinit() (not just InternalState.deinit)
+        // because Window.deinit() triggers Document.deinit() which triggers
+        // Node.deinit() tree traversal. This ensures nested iframes have their
+        // HTMLIFrameElement.deinit() called, which frees IFrameIntegration resources
+        // like BrowsingContext and srcdoc_content.
+        //
+        // Per Chromium pattern: clean up DOM tree before disposing wrapper cache.
         if (entry.window_instance) |window_instance| {
             const WindowImpl = @import("impls").Window;
-            if (WindowImpl.getInternal(window_instance)) |window_internal| {
-                if (window_internal.location) |loc| {
-                    const LocationImpl = @import("impls").Location;
-                    LocationImpl.deinit(loc);
+
+            // First, remove Window and Location from wrapper cache to prevent double-free
+            // via weak callbacks during cleanup.
+            if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+                const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                _ = cache_ptr.remove(window_instance);
+
+                // Also remove Location if it exists
+                if (WindowImpl.getInternal(window_instance)) |window_internal| {
+                    if (window_internal.location) |loc| {
+                        _ = cache_ptr.remove(loc);
+                    }
                 }
             }
+
+            // Now call the full Window.deinit() which cleans up:
+            // - Location.deinit()
+            // - Document.deinit() → Node.deinit() → DOM tree cleanup
+            //   This includes HTMLIFrameElement cleanup for nested iframes
+            // - InternalState.deinit() → BrowsingContext cleanup (if owned)
+            WindowImpl.deinit(window_instance);
         }
 
-        // 4b. Clean up V8 wrapper cache WITH callbacks
-        // Now safe to call deinit() because:
-        // 1. Location already cleaned up above (with lifecycle tracking to prevent double-free)
-        // 2. DOM nodes remove themselves from cache via Node.deinit
-        // 3. Remaining entries (Window, etc.) need their deinit called to free InternalState
+        // 4b. Clean up V8 wrapper cache WITHOUT callbacks
+        // During child context teardown, we MUST use deinitWithoutCallbacks() to avoid
+        // use-after-free crashes. The child's instances might have references to:
+        // 1. Parent context memory that's being freed
+        // 2. DOM nodes that have been detached
+        // 3. Other instances with circular dependencies
+        //
+        // Calling onObjectFreed during teardown triggers type-specific deinit which
+        // can access this corrupted memory, causing Bus errors. Using deinitWithoutCallbacks()
+        // safely disposes V8 handles without invoking deinit functions.
+        // The slab allocator will batch-free all instances during full teardown anyway.
         if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
             const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-            cache_ptr.deinit();
+            cache_ptr.deinitWithoutCallbacks();
             ctx_data.getAllocator().destroy(cache_ptr);
             ctx_data.clearV8WrapperCacheStorage();
         }

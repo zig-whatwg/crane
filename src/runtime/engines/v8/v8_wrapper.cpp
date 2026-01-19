@@ -3083,7 +3083,7 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
-    
+
     // CROSS-REALM FIX: If object is a Proxy, unwrap to get the target.
     // Proxies (used for legacy platform objects like CSSStyleDeclaration)
     // have no internal fields - the internal fields are on the target object.
@@ -3094,15 +3094,16 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
             local_obj = target.As<Object>();
         }
     }
-    
+
     // Safety check: verify object has enough internal fields before access
     // This prevents crashes when accessing prototype objects or other objects
     // that don't have internal fields set up
     if (local_obj->InternalFieldCount() <= index) {
         return nullptr;
     }
-    
-    return local_obj->GetAlignedPointerFromInternalField(index);
+
+    void* result = local_obj->GetAlignedPointerFromInternalField(index);
+    return result;
 }
 
 void v8_Object_Dispose(Global<Object>* obj) {
@@ -4679,11 +4680,40 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
 
     // Check if the Global handle is empty
     if (global->IsEmpty()) {
+        fprintf(stderr, "[SetReturnValueGlobal] Global handle is EMPTY!\n");
         info->GetReturnValue().SetUndefined();
         return;
     }
 
     Local<Value> local = global->Get(isolate);
+
+    // Debug: print what kind of value this is
+    if (local->IsObject()) {
+        Local<Object> obj = local.As<Object>();
+        Local<Context> ctx = isolate->GetCurrentContext();
+        Local<String> constructor_name = obj->GetConstructorName();
+        String::Utf8Value name_utf8(isolate, constructor_name);
+        fprintf(stderr, "[SetReturnValueGlobal] Returning object with constructor: %s\n", *name_utf8);
+
+        // Check if it has postMessage
+        Local<String> pm_key = String::NewFromUtf8Literal(isolate, "postMessage");
+        MaybeLocal<Value> pm_val = obj->Get(ctx, pm_key);
+        if (pm_val.IsEmpty()) {
+            fprintf(stderr, "[SetReturnValueGlobal] postMessage lookup returned empty!\n");
+        } else {
+            Local<Value> pm = pm_val.ToLocalChecked();
+            if (pm->IsFunction()) {
+                fprintf(stderr, "[SetReturnValueGlobal] postMessage IS a function\n");
+            } else if (pm->IsUndefined()) {
+                fprintf(stderr, "[SetReturnValueGlobal] postMessage is UNDEFINED\n");
+            } else {
+                fprintf(stderr, "[SetReturnValueGlobal] postMessage is something else\n");
+            }
+        }
+    } else {
+        fprintf(stderr, "[SetReturnValueGlobal] Returning non-object value\n");
+    }
+
     info->GetReturnValue().Set(local);
 }
 
@@ -5480,7 +5510,7 @@ int v8_Object_InternalFieldCount_Raw(const void* obj) {
 
 void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int index) {
     Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
-    
+
     // CROSS-REALM FIX: Unwrap Proxy to get target with internal fields
     if (object_ptr->IsProxy()) {
         Proxy* proxy = Proxy::Cast(object_ptr);
@@ -5489,12 +5519,23 @@ void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int inde
             object_ptr = Object::Cast(target);
         }
     }
-    
+
     if (object_ptr->InternalFieldCount() <= index) {
         return nullptr;
     }
-    
-    return object_ptr->GetAlignedPointerFromInternalField(index);
+
+    void* result = object_ptr->GetAlignedPointerFromInternalField(index);
+
+    // Debug: print what we're returning for internal field 0
+    if (index == 0) {
+        Isolate* isolate = Isolate::GetCurrent();
+        Local<String> constructor_name = object_ptr->GetConstructorName();
+        String::Utf8Value name_utf8(isolate, constructor_name);
+        fprintf(stderr, "[GetInternalField0_Raw] obj=%p, constructor=%s, result=%p\n",
+                obj, *name_utf8, result);
+    }
+
+    return result;
 }
 
 // String functions for raw pointers (from callbacks)
