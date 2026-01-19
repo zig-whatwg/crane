@@ -29,6 +29,9 @@ pub const NodeBase = struct {
     allocator: Allocator,
     node_type: u16,
     node_name: []const u8,
+    /// Tracks whether node_name was dynamically allocated (vs a string literal).
+    /// Used to determine if node_name should be freed during cleanup.
+    node_name_allocated: bool = false,
 
     // Tree structure - BOTH patterns for O(1) access in all directions
     // Parent pointer

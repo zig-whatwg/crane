@@ -271,6 +271,10 @@ pub fn deinit(instance: *runtime.Instance) void {
                         // Continue to cleanup below
                         node_base.child_nodes.deinit();
                         node_base.registered_observers.deinit();
+                        // Free dynamically allocated node_name if it was allocated
+                        if (node_base.node_name_allocated and node_base.node_name.len > 0) {
+                            internal.allocator.free(@constCast(node_base.node_name));
+                        }
                         instance_bridge.unregister(instance);
                         internal.allocator.destroy(node_base);
                         internal.node_base = null;
@@ -299,6 +303,11 @@ pub fn deinit(instance: *runtime.Instance) void {
             // Clean up NodeBase resources
             node_base.child_nodes.deinit();
             node_base.registered_observers.deinit();
+
+            // Free dynamically allocated node_name if it was allocated
+            if (node_base.node_name_allocated and node_base.node_name.len > 0) {
+                internal.allocator.free(@constCast(node_base.node_name));
+            }
 
             // Unregister from bridge before destroying
             instance_bridge.unregister(instance);
@@ -1480,12 +1489,12 @@ pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void 
         for (name_slice, 0..) |c, i| {
             upper_name[i] = std.ascii.toUpper(c);
         }
-        // Free old node_name if it was allocated (non-empty and not a literal)
-        if (node_base.node_name.len > 0) {
-            // The old node_name might be a literal "" from init, so check before freeing
-            // For now, we'll skip freeing since the default is a literal ""
+        // Free old node_name if it was dynamically allocated
+        if (node_base.node_name_allocated and node_base.node_name.len > 0) {
+            internal.allocator.free(@constCast(node_base.node_name));
         }
         node_base.node_name = upper_name;
+        node_base.node_name_allocated = true;
     }
 }
 
