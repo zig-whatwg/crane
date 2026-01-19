@@ -472,6 +472,11 @@ pub const Context = struct {
         // This custom Symbol.hasInstance checks the internal type info instead.
         v8.ffi.v8_PatchDocumentInstanceOf(self.isolate, v8_ctx, global);
 
+        // Patch Event[Symbol.hasInstance] for event instanceof checks.
+        // V8 snapshots don't preserve prototype identity, so event objects created
+        // and dispatched within the runtime fail instanceof Event checks.
+        v8.ffi.v8_PatchEventInstanceOf(self.isolate, v8_ctx, global);
+
         // Create and bind Window instance to global object's internal fields
         // This is required for WebIDL method callbacks to extract the Zig instance from `this`
         const Window = interfaces.Window;

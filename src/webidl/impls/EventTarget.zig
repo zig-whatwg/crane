@@ -547,7 +547,8 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
                         const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse continue;
 
                         // Wrap the event as a V8 object
-                        const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
+                        // NOTE: wrapInstanceAsV8Object returns a Global<Object>* handle
+                        const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
                             event,
                             "Event",
                             v8_isolate,
@@ -557,9 +558,13 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
                             continue;
                         };
 
+                        // Convert Global handle to Local value for the callback
+                        // The callback wrapper's callN expects Local values, not Global handles
+                        const event_local = v8_engine.ffi.v8_Global_Get(v8_isolate, @ptrCast(event_global)) orelse continue;
+
                         // Invoke the callback with the event as an argument
                         // Use the runtime wrapper's invoke method which delegates to the engine
-                        _ = runtime_wrapper.invoke1(@ptrCast(event_v8_obj)) catch {
+                        _ = runtime_wrapper.invoke1(@ptrCast(event_local)) catch {
                             // If callback invocation fails, continue to next listener
                             continue;
                         };
@@ -634,16 +639,20 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     // Use the engine_ctx directly - it's already a Global<Context>* owned by the runtime context.
     // No need to call v8_Isolate_GetCurrentContext which would create a new Global that needs disposal.
 
-    // Wrap the event as a V8 object (Local handle)
-    const event_v8_local = v8_engine.template_registry.wrapInstanceAsV8Object(
+    // Wrap the event as a V8 object
+    // NOTE: wrapInstanceAsV8Object returns a Global<Object>* handle (not Local!)
+    const event_wrapped_global = v8_engine.template_registry.wrapInstanceAsV8Object(
         event,
         "Event",
         v8_isolate,
         v8_context,
     ) catch return;
 
-    // Convert the event Local to a Global for the function call
-    const event_v8_global = v8_engine.ffi.v8_Value_ToGlobal(v8_isolate, @ptrCast(event_v8_local)) orelse return;
+    // Convert the wrapped Global to Local, then to a NEW Global that we own
+    // This is needed because v8_Function_Call_Safe expects Global handles,
+    // and we need a Global we can dispose after the call
+    const event_local = v8_engine.ffi.v8_Global_Get(v8_isolate, @ptrCast(event_wrapped_global)) orelse return;
+    const event_v8_global = v8_engine.ffi.v8_Value_ToGlobal(v8_isolate, @ptrCast(event_local)) orelse return;
     defer v8_engine.ffi.v8_Global_Dispose(event_v8_global);
 
     // Get 'this' value as a Global - v8_Undefined returns a Global<Value>*

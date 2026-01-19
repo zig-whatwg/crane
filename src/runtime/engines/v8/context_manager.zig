@@ -1997,6 +1997,12 @@ pub fn createChildContext(
     // This custom Symbol.hasInstance checks the internal type info instead.
     v8.v8_PatchDocumentInstanceOf(options.isolate, child_context, global);
 
+    // 4b-bis3. Patch Event[Symbol.hasInstance] for event instanceof checks.
+    // V8 snapshots don't preserve prototype identity, so event objects created
+    // and dispatched within the runtime fail instanceof Event checks.
+    // This custom Symbol.hasInstance checks the internal type info instead.
+    v8.v8_PatchEventInstanceOf(options.isolate, child_context, global);
+
     // 4c. Register Window properties as OWN properties on the global object
     // This is required for cross-realm WPT compliance:
     // `Object.getOwnPropertyDescriptor(iframe.contentWindow, "name")` must return
@@ -2666,6 +2672,11 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // Document is from the child context with a different prototype chain.
     // This custom Symbol.hasInstance checks the internal type info instead.
     v8.v8_PatchDocumentInstanceOf(isolate, v8_ctx, global);
+
+    // 7c. Patch Event[Symbol.hasInstance] for event instanceof checks.
+    // V8 snapshots don't preserve prototype identity, so event objects created
+    // and dispatched within the runtime fail instanceof Event checks.
+    v8.v8_PatchEventInstanceOf(isolate, v8_ctx, global);
 
     // 8. Set up Window prototype chain: global → Window.prototype
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);

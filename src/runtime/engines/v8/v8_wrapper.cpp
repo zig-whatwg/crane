@@ -4406,6 +4406,121 @@ void v8_PatchWindowInstanceOf(Isolate* isolate, Global<Context>* context, Global
     (void)result; // Success check omitted - if it fails, instanceof will use default behavior
 }
 
+// Custom [Symbol.hasInstance] callback for Event that checks internal type info
+// instead of relying on prototype chain identity (which V8 snapshots don't preserve).
+// This is needed for event objects created and dispatched within the runtime.
+static void EventHasInstanceCallback(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+
+    if (info.Length() < 1) {
+        fprintf(stderr, "[EventHasInstanceCallback] No argument provided\n");
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    Local<Value> arg = info[0];
+    if (!arg->IsObject()) {
+        fprintf(stderr, "[EventHasInstanceCallback] Argument is not an object\n");
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    Local<Object> obj = arg.As<Object>();
+
+    // Check if this object has the Event type info in internal field 1
+    int field_count = obj->InternalFieldCount();
+    if (field_count < 2) {
+        fprintf(stderr, "[EventHasInstanceCallback] Object has %d internal fields (need 2)\n", field_count);
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    void* type_info = obj->GetAlignedPointerFromInternalField(1);
+    if (type_info == nullptr) {
+        fprintf(stderr, "[EventHasInstanceCallback] type_info is null\n");
+        info.GetReturnValue().Set(false);
+        return;
+    }
+
+    // Check if the type info indicates this is an Event (or Event subclass)
+    struct WrapperTypeInfo {
+        const char* interface_name;
+    };
+    const WrapperTypeInfo* wrapper_info = static_cast<const WrapperTypeInfo*>(type_info);
+    fprintf(stderr, "[EventHasInstanceCallback] type_info interface_name: %s\n", wrapper_info->interface_name);
+
+    // Event and all Event subclasses should pass instanceof Event
+    // Common Event subclasses: CustomEvent, MessageEvent, ErrorEvent, CloseEvent, etc.
+    const char* name = wrapper_info->interface_name;
+    bool is_event = (strcmp(name, "Event") == 0) ||
+                    (strcmp(name, "CustomEvent") == 0) ||
+                    (strcmp(name, "MessageEvent") == 0) ||
+                    (strcmp(name, "ErrorEvent") == 0) ||
+                    (strcmp(name, "CloseEvent") == 0) ||
+                    (strcmp(name, "UIEvent") == 0) ||
+                    (strcmp(name, "MouseEvent") == 0) ||
+                    (strcmp(name, "KeyboardEvent") == 0) ||
+                    (strcmp(name, "FocusEvent") == 0) ||
+                    (strcmp(name, "InputEvent") == 0) ||
+                    (strcmp(name, "WheelEvent") == 0) ||
+                    (strcmp(name, "TouchEvent") == 0) ||
+                    (strcmp(name, "PointerEvent") == 0) ||
+                    (strcmp(name, "DragEvent") == 0) ||
+                    (strcmp(name, "AnimationEvent") == 0) ||
+                    (strcmp(name, "TransitionEvent") == 0) ||
+                    (strcmp(name, "ProgressEvent") == 0) ||
+                    (strcmp(name, "StorageEvent") == 0) ||
+                    (strcmp(name, "HashChangeEvent") == 0) ||
+                    (strcmp(name, "PopStateEvent") == 0) ||
+                    (strcmp(name, "PageTransitionEvent") == 0) ||
+                    (strcmp(name, "BeforeUnloadEvent") == 0) ||
+                    (strcmp(name, "PromiseRejectionEvent") == 0) ||
+                    (strcmp(name, "SecurityPolicyViolationEvent") == 0);
+
+    info.GetReturnValue().Set(is_event);
+}
+
+// Patch Event[Symbol.hasInstance] to use custom type checking instead of prototype chain.
+// This is needed because V8 snapshots don't preserve the identity between Function.prototype
+// and objects in the prototype chain.
+void v8_PatchEventInstanceOf(Isolate* isolate, Global<Context>* context, Global<Object>* global) {
+    HandleScope handle_scope(isolate);
+
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Object> global_obj = global->Get(isolate);
+
+    // Get the Event constructor
+    Local<String> event_key = String::NewFromUtf8Literal(isolate, "Event");
+    MaybeLocal<Value> maybe_event = global_obj->Get(ctx, event_key);
+    if (maybe_event.IsEmpty()) {
+        return;
+    }
+
+    Local<Value> event_val = maybe_event.ToLocalChecked();
+    if (!event_val->IsFunction()) {
+        return;
+    }
+
+    Local<Function> event_ctor = event_val.As<Function>();
+
+    // Get Symbol.hasInstance
+    Local<Symbol> has_instance_symbol = Symbol::GetHasInstance(isolate);
+
+    // Create our custom hasInstance function
+    Local<FunctionTemplate> has_instance_tmpl = FunctionTemplate::New(isolate, EventHasInstanceCallback);
+    Local<Function> has_instance_fn = has_instance_tmpl->GetFunction(ctx).ToLocalChecked();
+
+    // Define Event[Symbol.hasInstance] = our custom function
+    event_ctor->DefineOwnProperty(
+        ctx,
+        has_instance_symbol,
+        has_instance_fn,
+        static_cast<PropertyAttribute>(v8::ReadOnly | v8::DontEnum | v8::DontDelete)
+    );
+}
+
 void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

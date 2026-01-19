@@ -1522,6 +1522,11 @@ pub extern fn v8_PatchWindowInstanceOf(isolate: *Isolate, context: *Context, glo
 /// This is needed for cross-realm Document access (iframe.contentDocument instanceof Document).
 pub extern fn v8_PatchDocumentInstanceOf(isolate: *Isolate, context: *Context, global: *Object) void;
 
+/// Patch Event[Symbol.hasInstance] to use custom type checking instead of prototype chain.
+/// This is needed because V8 snapshots don't preserve prototype identity, causing
+/// `eventInstance instanceof Event` to fail after snapshot restore.
+pub extern fn v8_PatchEventInstanceOf(isolate: *Isolate, context: *Context, global: *Object) void;
+
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetPrototypeProviderTemplate(self: *FunctionTemplate, provider: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;
