@@ -1641,6 +1641,9 @@ fn createWindowForExistingBrowsingContext(
     // For cross-realm tests, properties like `iframe.contentWindow.document` must work.
     const document_instance = interfaces.Document.init(allocator, runtime_ctx) catch return null;
     WindowImpl.setDocument(window_instance, document_instance);
+    // Also set the defaultView on the document (bidirectional Document <-> Window link)
+    const DocumentImplForDefaultView = @import("impls").Document;
+    DocumentImplForDefaultView.setDefaultView(document_instance, window_instance);
 
     // 9. Bind Window to global (internal fields + wrapper cache)
     // Use dom_type_info which has the actual type info definitions

@@ -58,6 +58,9 @@ const InputStreamManager = html_core.parser.document_write.InputStreamManager;
 const dom_tree_adapter = @import("dom_tree_adapter.zig");
 const DomTreeAdapter = dom_tree_adapter.DomTreeAdapter;
 
+// Import impls for Document.setDefaultView (needed for nested iframe support)
+const impls = @import("impls");
+
 // Import script execution for executing scripts during parsing
 const script_execution = @import("script_execution.zig");
 
@@ -74,6 +77,9 @@ pub const ParseError = error{
 pub const ParseOptions = struct {
     /// Enable scripting (affects parser behavior for <noscript>)
     scripting_enabled: bool = false,
+
+    /// Optional window to set as defaultView BEFORE parsing starts
+    window: ?*runtime.Instance = null,
 };
 
 /// Context for script execution callback during parsing.
@@ -159,6 +165,11 @@ pub fn parseHTMLWithScripting(
 
     // Set document type to HTML
     document_internals.setDocumentType(document, .html) catch {};
+
+    // Set defaultView if window was provided (for nested iframes)
+    if (options.window) |window| {
+        impls.Document.setDefaultView(document, window);
+    }
 
     // Step 2: Create DOM tree adapter connected to the document
     // The adapter will convert TreeNodes to DOM nodes incrementally during parsing

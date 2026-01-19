@@ -308,6 +308,12 @@ pub const InternalState = struct {
     /// This collection has [[IsHTMLDDA]] internal slot (undetectable)
     all_collection: ?*runtime.Instance,
 
+    /// The default view (window) associated with this document.
+    /// This is the Window whose document is this Document.
+    /// Set via setDefaultView() when the document is associated with a window.
+    /// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
+    default_view: ?*runtime.Instance = null,
+
     /// V8 wrapper for this Document, created in the Document's owning context.
     /// Used for cross-context access (e.g., iframe.contentDocument from parent).
     /// When a Document is accessed from a different context than where it was created,
@@ -1326,11 +1332,21 @@ pub fn get_currentScript(instance: *runtime.Instance) anyerror!?typedefs.HTMLOrS
 /// HTML §7.3.1 - Returns the Window object associated with the document, or null
 /// Spec: https://html.spec.whatwg.org/multipage/window-object.html#dom-document-defaultview
 ///
-/// Note: In non-browser context, there's no associated window
+/// Returns the Window whose document is this Document, or null if none.
 pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
-    _ = instance;
-    // No browsing context in server-side/headless context
+    const internal = getInternal(instance) orelse return null;
+    if (internal.default_view) |window| {
+        return @ptrCast(window);
+    }
     return null;
+}
+
+/// Set the default view (window) associated with this document.
+/// Called when the document is associated with a window (e.g., during iframe setup).
+/// This establishes the bidirectional Document <-> Window relationship.
+pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.default_view = window;
 }
 
 /// Getter for designMode

@@ -115,8 +115,27 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
     // This creates the BC and sets up parse_html_callback
     _ = get_contentWindow(instance) catch return;
 
-    // If we have srcdoc content, navigate to it now that BC exists
-    // This handles the case where srcdoc was set before the iframe was connected
+    // Check for srcdoc content in the element's attribute list.
+    // This is critical for nested iframes created by HTML parsing, where the
+    // srcdoc attribute is set via Element.setAttribute rather than the IDL setter.
+    // The IDL setter (set_srcdoc) updates internal.srcdoc_attr, but HTML parsing
+    // only updates the element's attribute list.
+    const ElementImpl = @import("Element.zig");
+    const srcdoc_attr_name = runtime.DOMString.initInterned("srcdoc");
+    const srcdoc_value = ElementImpl.call_getAttribute(instance, srcdoc_attr_name) catch null;
+
+    if (srcdoc_value) |srcdoc_str| {
+        const srcdoc = srcdoc_str.asSlice();
+        if (srcdoc.len > 0) {
+            // Now that BC and callbacks are set up, trigger navigation
+            internal.integration.setSrcdoc(srcdoc) catch {};
+            // Fire load event after srcdoc navigation completes
+            fireLoadEventOnIframe(instance);
+            return;
+        }
+    }
+
+    // Also check internal state (for iframes where srcdoc was set via JavaScript)
     if (internal.srcdoc_attr) |srcdoc| {
         // Now that BC and callbacks are set up, trigger navigation
         internal.integration.setSrcdoc(srcdoc) catch {};
@@ -442,6 +461,8 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
         const WindowImpl = @import("Window.zig");
         const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
         WindowImpl.setDocument(window_instance, document_instance);
+        // Set the defaultView on the document (bidirectional Document <-> Window link)
+        DocumentImpl.setDefaultView(document_instance, window_instance);
     }
 
     return document_instance;
@@ -457,6 +478,12 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     }));
     const allocator = runtime_ctx.allocator;
 
+    // Get window BEFORE parsing for nested iframe support
+    const window_instance: ?*runtime.Instance = if (browsing_ctx_ptr.getActiveWindow()) |window_ptr|
+        @ptrCast(@alignCast(window_ptr))
+    else
+        null;
+
     // Use the scripted parser which:
     // 1. Creates a Document FIRST
     // 2. Uses DomTreeAdapter to convert TreeNodes to DOM nodes incrementally
@@ -465,7 +492,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
         allocator,
         runtime_ctx,
         html_content,
-        .{ .scripting_enabled = true },
+        .{ .scripting_enabled = true, .window = window_instance },
     ) catch {
         // Fall back to empty document on parse error
         return createDocumentForIframe(runtime_ctx_ptr, browsing_ctx_ptr);
@@ -513,8 +540,12 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
 
         // Also set the document on the Window
         const WindowImpl = @import("Window.zig");
-        const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-        WindowImpl.setDocument(window_instance, document_instance);
+        const window_inst: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+        WindowImpl.setDocument(window_inst, document_instance);
+        // Set the defaultView on the document (bidirectional Document <-> Window link)
+        // Note: This is also set by the parser via options.window, but we keep it here
+        // for consistency and in case of parse errors that fall back to createDocumentForIframe
+        DocumentImpl.setDefaultView(document_instance, window_inst);
     }
 
     return document_instance;
@@ -630,7 +661,7 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
     // Ensure the realm and V8 context are created (lazy initialization)
     // This creates a child V8 context with all interface bindings
     if (!internal.integration.hasRealmContext()) {
-        // Get the current V8 isolate and context
+        // Get the current V8 isolate
         const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
             // Fall back to WindowProxy if no V8 isolate
             if (internal.integration.getContentWindow()) |proxy| {
@@ -639,7 +670,8 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
-        const parent_v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        // Get the current V8 context (used for context creation later)
+        const current_v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
             // Fall back to WindowProxy if no current context
             if (internal.integration.getContentWindow()) |proxy| {
                 return @ptrCast(proxy);
@@ -647,20 +679,39 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
-        // CRITICAL: Ensure the iframe's browsing context exists BEFORE creating the V8 context.
-        // The browsing context is created by IFrameIntegration.onInsertedIntoDocument() when the
-        // iframe is inserted into the DOM. However, that function may not have been called yet
-        // (e.g., if insertion steps callbacks aren't set up). We lazily create it here.
+        // CRITICAL: Find the correct parent window.
+        // For nested iframes (inside another iframe's srcdoc), we need to find the parent
+        // through the DOM tree, not through v8_Isolate_GetCurrentContext().
         //
-        // Get the parent Window's browsing context to use as the parent for the child BC.
-        const parent_window = context_manager.getWindowForContext(parent_v8_ctx) orelse {
-            if (internal.integration.getContentWindow()) |proxy| {
-                return @ptrCast(proxy);
-            }
-            return null;
-        };
+        // The correct parent is the window of the iframe's ownerDocument.
+        // For a nested iframe in outer iframe's srcdoc:
+        // - instance.ownerDocument = outer iframe's document
+        // - outer iframe's document.defaultView = outer iframe's window
+        // - outer iframe's window.browsing_context = correct parent BC
+        const DocumentImpl = @import("Document.zig");
 
+        // Try to get parent through ownerDocument.defaultView (correct for nested iframes)
+        const parent_window: *runtime.Instance = blk: {
+            // Get this iframe's ownerDocument (NodeImpl already imported above)
+            if (NodeImpl.getOwnerDocument(instance)) |owner_doc| {
+                // Get the document's defaultView (the window that contains this document)
+                if (DocumentImpl.get_defaultView(owner_doc) catch null) |default_view| {
+                    break :blk default_view;
+                }
+            }
+            // Fall back to window from current V8 context (for top-level iframes)
+            break :blk context_manager.getWindowForContext(current_v8_ctx) orelse {
+                if (internal.integration.getContentWindow()) |proxy| {
+                    return @ptrCast(proxy);
+                }
+                return null;
+            };
+        };
         const WindowImpl = @import("Window.zig");
+
+        // Use current V8 context for child context creation
+        const parent_v8_ctx = current_v8_ctx;
+
         const parent_window_internal = WindowImpl.getInternal(parent_window) orelse {
             if (internal.integration.getContentWindow()) |proxy| {
                 return @ptrCast(proxy);
@@ -708,6 +759,15 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
+        // CRITICAL: Set the Window's origin from the parent for srcdoc/about:blank iframes.
+        // Per HTML spec, srcdoc iframes inherit their origin from the container document.
+        // The Window's origin defaults to "null" (opaque), which breaks same-origin checks.
+        // We must set it to the parent's origin so contentDocument is accessible.
+        if (entry.window_instance) |window_inst| {
+            const WinImpl = @import("Window.zig");
+            WinImpl.setOrigin(window_inst, parent_origin_str) catch {};
+        }
+
         // Store the realm context in the integration for cleanup on removal
         internal.integration.setRealmContext(
             @ptrCast(entry.v8_ctx),
@@ -749,7 +809,30 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         // at the iframe element after the document is completely loaded.
         // For about:blank documents (no srcdoc/src), this happens synchronously.
         // If srcdoc or src is set, the load event will be fired after navigation completes.
-        if (internal.srcdoc_attr == null and internal.src_attr == null) {
+        //
+        // CRITICAL: Also check the element's attribute list for srcdoc, not just internal state.
+        // For nested iframes created by HTML parsing, the srcdoc attribute is in the element's
+        // attribute list but not in internal.srcdoc_attr (because Element.setAttribute doesn't
+        // call the IDL setter).
+        const has_srcdoc_attr = blk: {
+            const ElementImpl = @import("Element.zig");
+            const srcdoc_attr_name = runtime.DOMString.initInterned("srcdoc");
+            const srcdoc_value = ElementImpl.call_getAttribute(instance, srcdoc_attr_name) catch null;
+            if (srcdoc_value) |sv| {
+                break :blk sv.asSlice().len > 0;
+            }
+            break :blk false;
+        };
+        const has_src_attr = blk: {
+            const ElementImpl = @import("Element.zig");
+            const src_attr_name = runtime.DOMString.initInterned("src");
+            const src_value = ElementImpl.call_getAttribute(instance, src_attr_name) catch null;
+            if (src_value) |sv| {
+                break :blk sv.asSlice().len > 0;
+            }
+            break :blk false;
+        };
+        if (internal.srcdoc_attr == null and internal.src_attr == null and !has_srcdoc_attr and !has_src_attr) {
             fireLoadEventOnIframe(instance);
         }
     }
