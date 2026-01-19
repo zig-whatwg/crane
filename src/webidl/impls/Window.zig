@@ -2799,6 +2799,26 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Dispatch the event on the target window (instance)
     // Use EventTarget's dispatchEvent which invokes registered listeners
     _ = try EventTargetImpl.call_dispatchEvent(instance, event);
+
+    // Clean up the MessageEvent after dispatch completes
+    // We must manually clean up because:
+    // 1. The event is wrapped during dispatch and added to the wrapper cache
+    // 2. During context teardown, deinitWithoutCallbacks() is used which doesn't call deinit
+    // 3. This leaves the cloned data and origin string leaked
+    //
+    // By removing from the wrapper cache and calling deinit ourselves, we ensure
+    // the resources are freed immediately after dispatch while still in a safe state.
+    const v8_engine = @import("v8");
+    if (event.ctx.getV8WrapperCacheStorage()) |cache_storage| {
+        const WrapperCache = v8_engine.WrapperCache;
+        const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+
+        // Remove from cache (disposes V8 handle and prevents double-free during teardown)
+        _ = cache.remove(event);
+    }
+
+    // Now safe to call deinit - event is no longer in wrapper cache
+    MessageEventImpl.deinit(event);
 }
 
 /// Operation: showDirectoryPicker

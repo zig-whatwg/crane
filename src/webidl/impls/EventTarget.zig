@@ -603,16 +603,39 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     // Get the event type
     const event_type_str = interfaces.Event.get_type(event) catch return;
 
-    // Try to get HTMLElement's internal state which stores event handlers
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const html_internal = HTMLElementImpl.getInternalState(instance) orelse return;
+    // Try to get the event handler - first from HTMLElement, then from Window
+    // Both store tagged V8 Global handles, but in different formats:
+    // - HTMLElement: *anyopaque (with pointer tag bits)
+    // - Window: typedefs.EventHandler (?*fn) (which is actually a tagged Global handle)
+    var raw_ptr: ?*anyopaque = null;
 
-    // Look up the event handler for this event type
-    // NOTE: event_handlers now stores *anyopaque to preserve tagged pointer bits
-    const raw_ptr = html_internal.event_handlers.get(event_type_str.asSlice()) orelse return;
+    // Try HTMLElement's internal state first
+    const HTMLElementImpl = @import("HTMLElement.zig");
+    if (HTMLElementImpl.getInternalState(instance)) |html_internal| {
+        raw_ptr = html_internal.event_handlers.get(event_type_str.asSlice());
+    }
+
+    // If not found in HTMLElement, try Window's event handlers
+    if (raw_ptr == null) {
+        const WindowImpl = @import("Window.zig");
+        if (WindowImpl.getInternal(instance)) |window_internal| {
+            // Window stores EventHandler (= ?*fn), but it's actually a tagged Global handle.
+            // We need to get the function pointer and cast it to *anyopaque.
+            if (window_internal.event_handlers.get(event_type_str.asSlice())) |handler| {
+                if (handler) |fn_ptr| {
+                    // The function pointer is actually a tagged Global handle pointer
+                    // Cast it to *anyopaque to match HTMLElement's format
+                    raw_ptr = @ptrFromInt(@intFromPtr(fn_ptr));
+                }
+            }
+        }
+    }
+
+    // If no handler found, return early
+    const handler_ptr = raw_ptr orelse return;
 
     // Untag the pointer to get the GlobalHandle
-    const untagged = pointer_tag.untagPointer(raw_ptr);
+    const untagged = pointer_tag.untagPointer(handler_ptr);
 
     // Verify it's a global_handle tag (set during fromV8Value conversion)
     if (untagged.tag != .global_handle) {
@@ -643,11 +666,14 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     // Use the engine_ctx directly - it's already a Global<Context>* owned by the runtime context.
     // No need to call v8_Isolate_GetCurrentContext which would create a new Global that needs disposal.
 
-    // Wrap the event as a V8 object
+    // Wrap the event as a V8 object using the correct interface name
+    // This is critical for event subclasses like MessageEvent - they need
+    // to be wrapped with their actual interface to expose properties like .data
     // NOTE: wrapInstanceAsV8Object returns a Global<Object>* handle (not Local!)
+    const event_interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
     const event_wrapped_global = v8_engine.template_registry.wrapInstanceAsV8Object(
         event,
-        "Event",
+        event_interface_name,
         v8_isolate,
         v8_context,
     ) catch return;
