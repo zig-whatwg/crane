@@ -524,6 +524,11 @@ pub const IFrameIntegration = struct {
         self.cleanupRealmContext();
 
         if (self.browsing_context) |ctx| {
+            // Remove from parent's children list BEFORE closing.
+            // This ensures window.frames.length reflects the removal immediately.
+            // Must be done before deinit/close because during teardown the parent
+            // may not be valid.
+            ctx.removeFromParent();
             // Close the browsing context (marks as discarded)
             ctx.close();
             // Deinit will happen when IFrameIntegration is cleaned up

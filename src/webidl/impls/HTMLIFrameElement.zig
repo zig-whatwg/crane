@@ -232,6 +232,10 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // Ensure the iframe removing steps callback is registered.
+    // This only registers once and is a no-op on subsequent calls.
+    ensureRemovingStepsRegistered();
+
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -1365,4 +1369,58 @@ pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Insta
     _ = instance;
     // TODO: Implement SVG document retrieval
     return null;
+}
+
+// ============================================================================
+// Removing Steps Callback for Iframe Cleanup
+// ============================================================================
+
+/// Removing steps callback for iframe elements.
+/// This callback is registered with the DOM mutation system and is called whenever
+/// a node is removed from the document. If the node is an iframe element, this
+/// function calls onRemovedFromDocument() on the iframe's integration to clean up
+/// the nested browsing context.
+///
+/// Per HTML spec §4.8.5, when an iframe is removed from the document:
+/// 1. The nested browsing context is discarded
+/// 2. The browsing context is removed from its parent's children list
+/// 3. window.frames.length should reflect the change immediately
+fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
+    _ = old_parent;
+
+    // Only process ELEMENT_NODE (nodeType == 1)
+    if (node.node_type != 1) return;
+
+    // Check if this is an iframe element by looking at the node_name.
+    // For HTML elements, node_name is the uppercase tag name (e.g., "IFRAME").
+    // We also check for lowercase "iframe" for robustness.
+    if (!std.ascii.eqlIgnoreCase(node.node_name, "iframe")) return;
+
+    // Get the runtime.Instance from the NodeBase using the instance bridge
+    const instance_ptr = instance_bridge.getInstance(node) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Get the iframe's internal state and call onRemovedFromDocument
+    const internal = getInternal(instance) orelse return;
+    internal.integration.onRemovedFromDocument();
+}
+
+/// Register the iframe removing steps callback with the DOM mutation system.
+/// This should be called during application initialization.
+///
+/// The callback is idempotent - calling it multiple times just adds the callback
+/// again, but since it's the same function pointer, the behavior is the same.
+pub fn registerIframeRemovingSteps() !void {
+    try dom_module.mutation.registerRemovingStepsCallback(&iframeRemovingStepsCallback);
+}
+
+/// Flag to track if the callback has been registered
+var removing_steps_registered: bool = false;
+
+/// Ensure the iframe removing steps callback is registered.
+/// This is called lazily during iframe creation to ensure the callback is set up.
+pub fn ensureRemovingStepsRegistered() void {
+    if (removing_steps_registered) return;
+    registerIframeRemovingSteps() catch return;
+    removing_steps_registered = true;
 }

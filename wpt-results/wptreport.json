@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768793222454,
-  "time_end": 1768793224689,
+  "time_start": 1768793946965,
+  "time_end": 1768793949328,
   "results": [
     {
       "test": "crane/iframe.basic.html",
@@ -79,7 +79,12 @@
         {"name": "Phase 12.1: srcdoc takes precedence over src", "status": "PASS", "message": null},
         {"name": "Phase 12.2: srcdoc can be cleared", "status": "PASS", "message": null},
         {"name": "Phase 13.1: iframe contentWindow.parent is parent window", "status": "PASS", "message": null},
-        {"name": "Phase 13.2: iframe contentWindow.top is top window", "status": "PASS", "message": null}
+        {"name": "Phase 13.2: iframe contentWindow.top is top window", "status": "PASS", "message": null},
+        {"name": "Phase 13.3: iframe contentWindow.self is itself", "status": "PASS", "message": null},
+        {"name": "Phase 13.4: iframe parent is not self", "status": "PASS", "message": null},
+        {"name": "Phase 13.5: parent accessible from iframe script", "status": "PASS", "message": null},
+        {"name": "Phase 14.1: window.frames exists", "status": "PASS", "message": null},
+        {"name": "Phase 14.2: window.frames.length reflects iframe count", "status": "PASS", "message": null}
       ]
     }
   ]

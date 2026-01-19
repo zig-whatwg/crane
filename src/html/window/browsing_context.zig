@@ -393,6 +393,22 @@ pub const BrowsingContext = struct {
         return ctx;
     }
 
+    /// Remove this browsing context from its parent's children list.
+    /// Call this when an iframe is removed from the document BEFORE deinit.
+    /// This is separate from deinit() because during normal DOM removal the parent
+    /// is still alive and valid, while during teardown it may not be.
+    pub fn removeFromParent(self: *BrowsingContext) void {
+        if (self.parent) |parent_ctx| {
+            // Find and remove self from parent's children list
+            for (parent_ctx.children.items, 0..) |child, i| {
+                if (child == self) {
+                    _ = parent_ctx.children.orderedRemove(i);
+                    break;
+                }
+            }
+        }
+    }
+
     /// Deinitialize and free resources
     pub fn deinit(self: *BrowsingContext) void {
         // NOTE: We intentionally do NOT remove ourselves from parent's children list here.
