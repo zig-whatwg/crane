@@ -44,6 +44,11 @@ const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
 
+// HTML module for scripted parsing with DOM integration
+const html_module = @import("html");
+const scripted_parser = html_module.scripted_parser;
+const document_internals = dom_module.document_internals;
+
 // ============================================================================
 // Iframe Src Loading Hook (for WPT runner integration)
 // ============================================================================
@@ -88,7 +93,9 @@ pub fn getIframeSrcLoadHook() ?IframeSrcLoadHook {
 // This callback is registered with the DOM mutation system to handle the
 // post-connection steps for iframe elements.
 
-/// Fire the iframe load event if this is an about:blank iframe.
+/// Fire the iframe load event if this is an about:blank iframe, or trigger
+/// navigation for iframes with src/srcdoc that were set before connection.
+///
 /// Called from Node.call_appendChild after an iframe is inserted into the document.
 /// This function is called with the CORRECT runtime.Instance that JavaScript holds,
 /// ensuring event handlers stored on that instance are found.
@@ -96,23 +103,36 @@ pub fn getIframeSrcLoadHook() ?IframeSrcLoadHook {
 /// Per HTML spec §4.8.5, the load event fires synchronously after:
 /// 1. The iframe is connected to a document
 /// 2. The about:blank document is created (for iframes without src/srcdoc)
+///
+/// For iframes with src/srcdoc, we need to trigger navigation here because
+/// the srcdoc/src attributes may have been set before the iframe was connected,
+/// and at that time the browsing context didn't exist.
 pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
     // Get the internal state to check if we need to fire the load event
     const internal = getInternal(instance) orelse return;
 
-    // Only fire load event for iframes without src or srcdoc (about:blank)
-    // Per HTML spec, iframes with src/srcdoc fire load after navigation completes
-    if (internal.src_attr != null or internal.srcdoc_attr != null) {
+    // Ensure the browsing context exists (via contentWindow access)
+    // This creates the BC and sets up parse_html_callback
+    _ = get_contentWindow(instance) catch return;
+
+    // If we have srcdoc content, navigate to it now that BC exists
+    // This handles the case where srcdoc was set before the iframe was connected
+    if (internal.srcdoc_attr) |srcdoc| {
+        // Now that BC and callbacks are set up, trigger navigation
+        internal.integration.setSrcdoc(srcdoc) catch {};
+        // Fire load event after srcdoc navigation completes
+        fireLoadEventOnIframe(instance);
         return;
     }
 
-    // For about:blank iframes, we need to:
-    // 1. Ensure the browsing context exists (via contentWindow access)
-    // 2. Fire the load event
-    //
-    // get_contentWindow creates the browsing context if needed,
-    // and fireLoadEventOnIframe dispatches the load event.
-    _ = get_contentWindow(instance) catch return;
+    // If we have src, trigger navigation
+    // (src navigation is typically handled by the WPT runner hook)
+    if (internal.src_attr != null) {
+        return;
+    }
+
+    // For about:blank iframes (no src/srcdoc), the load event was already
+    // fired when get_contentWindow created the initial document.
 }
 
 pub const State = HTMLIFrameElement.State;
@@ -414,6 +434,79 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     return document_instance;
 }
 
+/// Parse HTML content into a Document for iframe navigation.
+/// This uses DomTreeAdapter to properly populate the document with parsed content
+/// that JavaScript can access via DOM APIs like getElementById(), querySelector(), etc.
+/// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
+fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext, html_content: []const u8) ?*anyopaque {
+    const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse {
+        return null;
+    }));
+    const allocator = runtime_ctx.allocator;
+
+    // Use the scripted parser which:
+    // 1. Creates a Document FIRST
+    // 2. Uses DomTreeAdapter to convert TreeNodes to DOM nodes incrementally
+    // 3. Scripts can access DOM nodes during parsing via querySelector etc.
+    const document_instance = scripted_parser.parseHTMLWithScripting(
+        allocator,
+        runtime_ctx,
+        html_content,
+        .{ .scripting_enabled = true },
+    ) catch {
+        // Fall back to empty document on parse error
+        return createDocumentForIframe(runtime_ctx_ptr, browsing_ctx_ptr);
+    };
+
+    // Set document type to HTML
+    document_internals.setDocumentType(document_instance, .html) catch {};
+
+    // Create the V8 wrapper for the Document in the child context.
+    // This is critical for cross-context access: when the parent context accesses
+    // iframe.contentDocument, we return this pre-created wrapper instead of creating
+    // a new one in the parent context.
+    const child_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(runtime_ctx.engine_ctx orelse {
+        return document_instance;
+    }));
+
+    // Get the current isolate
+    const isolate = v8.ffi.v8_Isolate_GetCurrent() orelse {
+        return document_instance;
+    };
+
+    // Enter the child context to create the wrapper
+    v8.ffi.v8_Context_Enter(child_v8_ctx);
+    defer v8.ffi.v8_Context_Exit(child_v8_ctx);
+
+    // Create the V8 wrapper in the child context using template_registry
+    const v8_wrapper = v8.template_registry.wrapInstanceAsV8Object(
+        document_instance,
+        "Document",
+        isolate,
+        child_v8_ctx,
+    ) catch {
+        // Continue without wrapper - will create on demand (may have issues)
+        return document_instance;
+    };
+
+    // Store the wrapper on the Document for cross-context access
+    const DocumentImpl = @import("Document.zig");
+    DocumentImpl.setBoundV8Wrapper(document_instance, v8_wrapper);
+
+    // Get the active window for this browsing context to associate with the document
+    if (browsing_ctx_ptr.getActiveWindow()) |window_ptr| {
+        // Set the document on the browsing context
+        browsing_ctx_ptr.setActiveDocument(document_instance, window_ptr);
+
+        // Also set the document on the Window
+        const WindowImpl = @import("Window.zig");
+        const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+        WindowImpl.setDocument(window_instance, document_instance);
+    }
+
+    return document_instance;
+}
+
 /// Script execution callback for iframes
 /// Called by IFrameIntegration.executeScriptsInTree to execute scripts in the iframe's V8 context.
 /// Parameters: (engine_context as v8.Context*, script_source) -> void
@@ -610,6 +703,7 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             @ptrCast(&entry.runtime_ctx),
             createDocumentForIframe,
             iframeContextCleanup,
+            parseHtmlForIframe,
         );
 
         // Set script execution callbacks (for script execution in iframe documents)
@@ -637,12 +731,14 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         // associate the Document with the browsing context.
         _ = createDocumentForIframe(@ptrCast(&entry.runtime_ctx), existing_bc);
 
-        // Fire the load event on the iframe element.
+        // Fire the load event on the iframe element ONLY if no srcdoc/src navigation is pending.
         // Per HTML spec §4.8.5, the "iframe load event steps" fire a load event
         // at the iframe element after the document is completely loaded.
-        // For about:blank documents, this happens synchronously since there are
-        // no resources to fetch.
-        fireLoadEventOnIframe(instance);
+        // For about:blank documents (no srcdoc/src), this happens synchronously.
+        // If srcdoc or src is set, the load event will be fired after navigation completes.
+        if (internal.srcdoc_attr == null and internal.src_attr == null) {
+            fireLoadEventOnIframe(instance);
+        }
     }
 
     // Return the Window instance from the child context

@@ -7,8 +7,8 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768771255235,
-  "time_end": 1768771257409,
+  "time_start": 1768791793379,
+  "time_end": 1768791795696,
   "results": [
     {
       "test": "crane/iframe.basic.html",
@@ -63,7 +63,15 @@
         {"name": "Phase 8.4: about:blank has head element", "status": "PASS", "message": null},
         {"name": "Phase 8.5: about:blank body is empty", "status": "PASS", "message": null},
         {"name": "Phase 9.1: Can add elements to iframe contentDocument", "status": "PASS", "message": null},
-        {"name": "Phase 9.2: Can set innerHTML on iframe document", "status": "PASS", "message": null}
+        {"name": "Phase 9.2: Can set innerHTML on iframe document", "status": "PASS", "message": null},
+        {"name": "Phase 9.3: Can query iframe document", "status": "PASS", "message": null},
+        {"name": "Phase 9.4: Can set properties on contentWindow", "status": "PASS", "message": null},
+        {"name": "Phase 9.5: Can add style elements to iframe", "status": "PASS", "message": null},
+        {"name": "Phase 10.1: iframe fires load event for about:blank", "status": "PASS", "message": null},
+        {"name": "Phase 10.2: iframe load event fires once", "status": "PASS", "message": null},
+        {"name": "Phase 10.3: Load event has correct properties", "status": "PASS", "message": null},
+        {"name": "Phase 11.1: srcdoc attribute can be set", "status": "PASS", "message": null},
+        {"name": "Phase 11.2: srcdoc content is rendered", "status": "PASS", "message": null}
       ]
     }
   ]
