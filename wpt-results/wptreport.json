@@ -7,14 +7,14 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768791793379,
-  "time_end": 1768791795696,
+  "time_start": 1768792413007,
+  "time_end": 1768792415050,
   "results": [
     {
       "test": "crane/iframe.basic.html",
       "status": "OK",
       "message": null,
-      "duration": 51,
+      "duration": 50,
       "subtests": [
         {"name": "Phase 1.1: document exists", "status": "PASS", "message": null},
         {"name": "Phase 1.2: document.createElement exists", "status": "PASS", "message": null},
@@ -71,7 +71,9 @@
         {"name": "Phase 10.2: iframe load event fires once", "status": "PASS", "message": null},
         {"name": "Phase 10.3: Load event has correct properties", "status": "PASS", "message": null},
         {"name": "Phase 11.1: srcdoc attribute can be set", "status": "PASS", "message": null},
-        {"name": "Phase 11.2: srcdoc content is rendered", "status": "PASS", "message": null}
+        {"name": "Phase 11.2: srcdoc content is rendered", "status": "PASS", "message": null},
+        {"name": "Phase 11.3: Full HTML document in srcdoc works", "status": "PASS", "message": null},
+        {"name": "Phase 11.4: Scripts in srcdoc execute", "status": "PASS", "message": null}
       ]
     }
   ]

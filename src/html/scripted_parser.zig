@@ -50,12 +50,16 @@ const document_internals = dom.document_internals;
 const html_core = @import("html_core");
 const Tokenizer = html_core.parser.Tokenizer;
 const TreeBuilder = html_core.parser.TreeBuilder;
+const TreeNode = html_core.parser.TreeNode;
 const QuirksMode = html_core.parser.QuirksMode;
 const InputStreamManager = html_core.parser.document_write.InputStreamManager;
 
 // Import DomTreeAdapter from this module
 const dom_tree_adapter = @import("dom_tree_adapter.zig");
 const DomTreeAdapter = dom_tree_adapter.DomTreeAdapter;
+
+// Import script execution for executing scripts during parsing
+const script_execution = @import("script_execution.zig");
 
 /// Error type for HTML parsing operations
 pub const ParseError = error{
@@ -71,6 +75,54 @@ pub const ParseOptions = struct {
     /// Enable scripting (affects parser behavior for <noscript>)
     scripting_enabled: bool = false,
 };
+
+/// Context for script execution callback during parsing.
+/// This is passed to the tree builder's script callback and provides
+/// access to the DOM adapter and allocator needed for script execution.
+const ScriptCallbackContext = struct {
+    adapter: *DomTreeAdapter,
+    allocator: Allocator,
+    ctx: runtime.Context,
+};
+
+/// Script execution callback invoked by the tree builder when a </script> end tag is processed.
+/// This follows the HTML Standard §13.2.5.4.7 "An end tag whose tag name is 'script'"
+///
+/// The callback:
+/// 1. Converts the TreeNode to a DOM Instance via the adapter
+/// 2. Prepares the script element (validates, determines type, etc.)
+/// 3. Executes the script if it's an inline classic script
+fn scriptExecutionCallback(tree_node: *TreeNode, context: ?*anyopaque) void {
+    const ctx: *ScriptCallbackContext = @ptrCast(@alignCast(context));
+
+    // Get the DOM node for this script element
+    const dom_node = ctx.adapter.getDomNode(tree_node) orelse {
+        std.log.warn("Script callback: failed to get DOM node for script element", .{});
+        return;
+    };
+
+    // Only execute if scripting is enabled for this adapter
+    if (!ctx.adapter.execute_scripts) {
+        return;
+    }
+
+    // Prepare the script element
+    // This validates preconditions, determines script type, and sets up for execution
+    const should_execute = script_execution.prepareScriptElement(ctx.allocator, dom_node) catch |err| {
+        std.log.warn("Script preparation failed: {}", .{err});
+        return;
+    };
+
+    if (!should_execute) {
+        return;
+    }
+
+    // Execute the script element
+    // For inline classic scripts, this runs the script immediately
+    script_execution.executeScriptElement(ctx.allocator, dom_node) catch |err| {
+        std.log.warn("Script execution failed: {}", .{err});
+    };
+}
 
 /// Parse an HTML string with incremental DOM conversion for script execution.
 ///
@@ -145,6 +197,23 @@ pub fn parseHTMLWithScripting(
     // This registers callbacks so DOM nodes are created incrementally during parsing
     adapter.connectToTreeBuilder(&tree_builder);
 
+    // Step 7b: Register script execution callback
+    // HTML Standard §13.2.5.4.7: When a </script> end tag is encountered,
+    // the script element should be prepared and potentially executed.
+    // This callback bridges from TreeNode to DOM Instance for script execution.
+    var script_callback_ctx = ScriptCallbackContext{
+        .adapter = &adapter,
+        .allocator = allocator,
+        .ctx = ctx,
+    };
+
+    if (options.scripting_enabled) {
+        tree_builder.setScriptExecutionCallback(
+            scriptExecutionCallback,
+            @ptrCast(&script_callback_ctx),
+        );
+    }
+
     // Step 8: Parse the document
     // As parsing progresses, the adapter callbacks create DOM nodes in real-time
     // This means scripts can access earlier-parsed DOM nodes via document.querySelector() etc.
@@ -180,13 +249,12 @@ pub fn parseHTMLWithScripting(
         }
     }
 
-    // Step 11: Execute any pending scripts
-    // During parsing, script elements were marked as parser-inserted but may not have
-    // been executed yet if they were deferred or had dependencies
+    // Step 11: Handle deferred scripts
+    // Inline scripts were already executed during parsing via the script execution callback
+    // registered in Step 7b. Deferred scripts would be executed here after parsing completes.
     if (options.scripting_enabled) {
-        // Inline scripts are executed during parsing via the adapter callbacks
-        // Deferred scripts would be executed here after parsing completes
-        // For now, we rely on the TreeBuilder's script handling
+        // TODO: Execute deferred scripts in order
+        // For now, only inline scripts are supported
     }
 
     return document;
