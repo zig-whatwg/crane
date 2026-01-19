@@ -582,6 +582,11 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
         return "AbortSignal";
     }
 
+    // Check MessageEvent BEFORE Event (since it inherits from Event)
+    if (inst_vtable == &interfaces.MessageEvent.vtable) {
+        return "MessageEvent";
+    }
+
     if (inst_vtable == &interfaces.Event.vtable) {
         return "Event";
     }

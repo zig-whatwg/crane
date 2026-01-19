@@ -52,6 +52,8 @@ pub const InternalState = struct {
     message_data: ?MessageData = null,
     /// Whether we own the binary data (should free on deinit)
     owns_binary: bool = false,
+    /// Whether we own the origin string (should free on deinit)
+    owns_origin: bool = false,
     /// Transferred MessagePort instances (stored as Zig instances, not V8 objects)
     /// These get wrapped fresh when get_ports is called to ensure correct prototype chain
     transferred_ports: [16]*runtime.Instance = undefined,
@@ -87,6 +89,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     state.own.data.deinit(instance.ctx.allocator);
 
     if (state.own._internal) |internal| {
+        // Free origin string if we own it (allocated in createPostMessageEvent)
+        if (internal.owns_origin and state.own.origin.len > 0) {
+            instance.ctx.allocator.free(state.own.origin);
+        }
+
         if (internal.owns_binary) {
             if (internal.message_data) |data| {
                 switch (data) {
@@ -407,6 +414,11 @@ pub fn createPostMessageEvent(
     state.own.data = try data.clone(ctx.allocator);
     state.own.origin = try allocator.dupe(u8, origin_str);
     state.own.lastEventId = runtime.DOMString.initEmpty();
+
+    // Mark that we own the origin string (allocated above)
+    if (state.own._internal) |internal| {
+        internal.owns_origin = true;
+    }
 
     // Set source to the posting window (WindowProxy)
     // MessageEventSource is a tagged union type that can be WindowProxy, MessagePort, or ServiceWorker

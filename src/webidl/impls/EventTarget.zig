@@ -546,11 +546,15 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
                         // Get the current V8 isolate
                         const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse continue;
 
-                        // Wrap the event as a V8 object
+                        // Wrap the event as a V8 object using the correct interface name
+                        // This is critical for event subclasses like MessageEvent - they need
+                        // to be wrapped with their actual interface to expose properties like .data
+                        const event_interface_name = v8_engine.template_registry.getInstanceInterfaceName(event);
+
                         // NOTE: wrapInstanceAsV8Object returns a Global<Object>* handle
                         const event_global = v8_engine.template_registry.wrapInstanceAsV8Object(
                             event,
-                            "Event",
+                            event_interface_name,
                             v8_isolate,
                             v8_context,
                         ) catch {
