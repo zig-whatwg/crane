@@ -480,12 +480,23 @@ pub const Context = struct {
         // Create and bind Window instance to global object's internal fields
         // This is required for WebIDL method callbacks to extract the Zig instance from `this`
         const Window = interfaces.Window;
+        const WindowImpl = impls.Window;
         const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
             std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
             self.window_instance = null;
             return;
         };
         self.window_instance = window_instance;
+
+        // CRITICAL: Set this Window as the active window on its browsing context.
+        // Per HTML spec §7.4, every browsing context has an "active window" which is the
+        // Window object of its active document. This is required for:
+        // - frames[index] access to work (WindowProxy [[GetOwnProperty]] calls getActiveWindow())
+        // - iframe.contentWindow.parent to return the correct parent window
+        // Without this, getActiveWindow() returns null and parent falls back to self.
+        if (WindowImpl.getInternal(window_instance)) |internal| {
+            internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
+        }
 
         // Store Window instance in internal field 0
         v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
@@ -621,12 +632,23 @@ pub const Context = struct {
 
         // Create and bind Window instance
         const Window = interfaces.Window;
+        const WindowImpl = impls.Window;
         const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
             std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
             self.window_instance = null;
             return;
         };
         self.window_instance = window_instance;
+
+        // CRITICAL: Set this Window as the active window on its browsing context.
+        // Per HTML spec §7.4, every browsing context has an "active window" which is the
+        // Window object of its active document. This is required for:
+        // - frames[index] access to work (WindowProxy [[GetOwnProperty]] calls getActiveWindow())
+        // - iframe.contentWindow.parent to return the correct parent window
+        // Without this, getActiveWindow() returns null and parent falls back to self.
+        if (WindowImpl.getInternal(window_instance)) |internal| {
+            internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
+        }
 
         // Store Window instance in internal field 0
         v8.ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
@@ -637,7 +659,7 @@ pub const Context = struct {
         }
 
         // Bind the V8 global to the Window instance
-        impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
+        WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
 
         // NOTE: Window is stored in global's internal field 0, so context_manager.getWindowForContext()
         // can find it via getWindowFromGlobalInternalField() fallback. No need to call setWindowForContext().

@@ -7,14 +7,14 @@
     "processor": "aarch64",
     "revision": ""
   },
-  "time_start": 1768792413007,
-  "time_end": 1768792415050,
+  "time_start": 1768792996511,
+  "time_end": 1768792998733,
   "results": [
     {
       "test": "crane/iframe.basic.html",
       "status": "OK",
       "message": null,
-      "duration": 50,
+      "duration": 52,
       "subtests": [
         {"name": "Phase 1.1: document exists", "status": "PASS", "message": null},
         {"name": "Phase 1.2: document.createElement exists", "status": "PASS", "message": null},
@@ -73,7 +73,12 @@
         {"name": "Phase 11.1: srcdoc attribute can be set", "status": "PASS", "message": null},
         {"name": "Phase 11.2: srcdoc content is rendered", "status": "PASS", "message": null},
         {"name": "Phase 11.3: Full HTML document in srcdoc works", "status": "PASS", "message": null},
-        {"name": "Phase 11.4: Scripts in srcdoc execute", "status": "PASS", "message": null}
+        {"name": "Phase 11.4: Scripts in srcdoc execute", "status": "PASS", "message": null},
+        {"name": "Phase 11.5: HTML entities work in srcdoc", "status": "PASS", "message": null},
+        {"name": "Phase 11.6: srcdoc document has about:srcdoc URL", "status": "PASS", "message": null},
+        {"name": "Phase 12.1: srcdoc takes precedence over src", "status": "PASS", "message": null},
+        {"name": "Phase 12.2: srcdoc can be cleared", "status": "PASS", "message": null},
+        {"name": "Phase 13.1: iframe contentWindow.parent is parent window", "status": "PASS", "message": null}
       ]
     }
   ]
