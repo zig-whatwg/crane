@@ -756,10 +756,12 @@ pub fn executeScriptElement(
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 fn runClassicScript(script_element: *runtime.Instance) !void {
     const result = HTMLScriptElementImpl.getResult(script_element);
-    const source = switch (result) {
-        .script => |s| s.source_text,
-        else => HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return,
-    };
+
+    // CRITICAL: Always use getCachedSourceText for the source.
+    // The source_text in ClassicScript is a dangling pointer to memory freed
+    // at the end of prepareScriptElement. The cached source text is a
+    // properly duplicated copy stored in the HTMLScriptElement's internal state.
+    const source = HTMLScriptElementImpl.getCachedSourceText(script_element) orelse return;
 
     // Get source URL for error messages
     const source_url: ?[]const u8 = switch (result) {

@@ -735,6 +735,14 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
 pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
+    // Safety check: browsing_context should never be null for a valid Window,
+    // but check anyway to prevent segfault in case of corruption/cleanup race
+    const bc_ptr = @intFromPtr(internal.browsing_context);
+    if (bc_ptr == 0 or bc_ptr < 0x1000) {
+        // Invalid pointer - return self as fallback
+        return getWindowProxy(instance);
+    }
+
     // Per HTML spec §7.2.2, the parent getter:
     // 1. If this browsing context has a parent, return parent's WindowProxy
     // 2. Otherwise, return this Window's WindowProxy (self)
@@ -755,6 +763,12 @@ pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
 /// Per spec: Returns the Element in which this window is nested, if any.
 pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // Safety check for invalid browsing_context pointer
+    const bc_ptr = @intFromPtr(internal.browsing_context);
+    if (bc_ptr == 0 or bc_ptr < 0x1000) {
+        return null;
+    }
 
     // If this is a top-level context, return null
     if (internal.browsing_context.isTopLevel()) {
