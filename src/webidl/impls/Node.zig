@@ -1220,6 +1220,17 @@ pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) an
         };
     };
 
+    // After insertion, check if this is an iframe and fire load event if needed.
+    // Per HTML spec, about:blank iframes fire their load event synchronously after insertion.
+    // We do this here (with the correct runtime.Instance) rather than in the post-connection
+    // callback to ensure we dispatch the event to the same instance that JavaScript holds.
+    if (node_internal.node_type == NodeType.ELEMENT_NODE) {
+        if (std.mem.eql(u8, node_base.node_name, "IFRAME")) {
+            const HTMLIFrameElementImpl = @import("HTMLIFrameElement.zig");
+            HTMLIFrameElementImpl.fireIframeLoadEventIfNeeded(node);
+        }
+    }
+
     return node;
 }
 
@@ -1452,12 +1463,30 @@ pub fn setNodeType(instance: *runtime.Instance, node_type: u16) !void {
 }
 
 /// Set the local name (used by Element, Attr, etc.)
+/// Also updates the NodeBase's node_name for DOM operations.
 pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.local_name) |*old| {
         old.deinit(internal.allocator);
     }
     internal.local_name = try name.clone(internal.allocator);
+
+    // Also update NodeBase's node_name for DOM operations (post-connection steps, etc.)
+    // For HTML elements, the node_name is the uppercase of the local_name
+    if (internal.node_base) |node_base| {
+        const name_slice = name.asSlice();
+        // Allocate uppercase version for HTML elements
+        const upper_name = try internal.allocator.alloc(u8, name_slice.len);
+        for (name_slice, 0..) |c, i| {
+            upper_name[i] = std.ascii.toUpper(c);
+        }
+        // Free old node_name if it was allocated (non-empty and not a literal)
+        if (node_base.node_name.len > 0) {
+            // The old node_name might be a literal "" from init, so check before freeing
+            // For now, we'll skip freeing since the default is a literal ""
+        }
+        node_base.node_name = upper_name;
+    }
 }
 
 /// Set the namespace URI (used by Element, Attr)

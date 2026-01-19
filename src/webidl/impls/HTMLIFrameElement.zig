@@ -39,6 +39,11 @@ const SandboxFlags = html_core.SandboxFlags;
 const v8 = @import("v8");
 const context_manager = v8.context_manager;
 
+// DOM imports for post-connection steps callback
+const dom_module = @import("dom");
+const instance_bridge = dom_module.instance_bridge;
+const NodeBase = dom_module.NodeBase;
+
 // ============================================================================
 // Iframe Src Loading Hook (for WPT runner integration)
 // ============================================================================
@@ -69,6 +74,45 @@ pub fn setIframeSrcLoadHook(hook: ?IframeSrcLoadHook) void {
 /// Get the current iframe src load hook
 pub fn getIframeSrcLoadHook() ?IframeSrcLoadHook {
     return iframe_src_load_hook;
+}
+
+// ============================================================================
+// Post-Connection Steps for Iframe Load Event
+// ============================================================================
+//
+// Per HTML Standard §4.8.5, when an iframe element is inserted into a document:
+// 1. Create a nested browsing context
+// 2. Navigate to initial content (about:blank if no src/srcdoc)
+// 3. Fire the load event on the iframe element
+//
+// This callback is registered with the DOM mutation system to handle the
+// post-connection steps for iframe elements.
+
+/// Fire the iframe load event if this is an about:blank iframe.
+/// Called from Node.call_appendChild after an iframe is inserted into the document.
+/// This function is called with the CORRECT runtime.Instance that JavaScript holds,
+/// ensuring event handlers stored on that instance are found.
+///
+/// Per HTML spec §4.8.5, the load event fires synchronously after:
+/// 1. The iframe is connected to a document
+/// 2. The about:blank document is created (for iframes without src/srcdoc)
+pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
+    // Get the internal state to check if we need to fire the load event
+    const internal = getInternal(instance) orelse return;
+
+    // Only fire load event for iframes without src or srcdoc (about:blank)
+    // Per HTML spec, iframes with src/srcdoc fire load after navigation completes
+    if (internal.src_attr != null or internal.srcdoc_attr != null) {
+        return;
+    }
+
+    // For about:blank iframes, we need to:
+    // 1. Ensure the browsing context exists (via contentWindow access)
+    // 2. Fire the load event
+    //
+    // get_contentWindow creates the browsing context if needed,
+    // and fireLoadEventOnIframe dispatches the load event.
+    _ = get_contentWindow(instance) catch return;
 }
 
 pub const State = HTMLIFrameElement.State;
@@ -416,6 +460,38 @@ fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
     LocationImpl.setURLFromString(location, url) catch {};
 }
 
+/// Fire a load event on the iframe element.
+/// Per HTML spec §4.8.5, this is the "iframe load event steps" algorithm:
+/// 1. Assert: element's content navigable is not null.
+/// 2. Let childDocument be element's content navigable's active document.
+/// 3. If childDocument has its mute iframe load flag set, then return.
+/// 4. Fire an event named "load" at element.
+///
+/// For about:blank documents, the load event fires synchronously after
+/// the document is created since there are no resources to fetch.
+fn fireLoadEventOnIframe(instance: *runtime.Instance) void {
+    const ctx = instance.ctx;
+
+    // Create the Event instance via constructor (like JavaScript's new Event('load'))
+    // Per HTML spec, load events on iframe elements do NOT bubble
+    const Event = interfaces.Event;
+    const event_type = runtime.DOMString.initInterned("load");
+
+    // EventInit: bubbles=false, cancelable=false
+    const event_init = dictionaries.EventInit{
+        .bubbles = false,
+        .cancelable = false,
+        .composed = false,
+    };
+
+    const event = Event.call_constructor(ctx, event_type, webidl.Opt(dictionaries.EventInit).passed(event_init)) catch return;
+    defer Event.deinit(event);
+
+    // Dispatch the event on the iframe element
+    // HTMLIFrameElement inherits from HTMLElement -> Element -> Node -> EventTarget
+    _ = interfaces.EventTarget.call_dispatchEvent(instance, event) catch return;
+}
+
 /// Getter for contentWindow
 /// Returns the WindowProxy for the nested browsing context, or null if none.
 ///
@@ -560,6 +636,13 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         // We call the createDocumentForIframe callback directly to create and
         // associate the Document with the browsing context.
         _ = createDocumentForIframe(@ptrCast(&entry.runtime_ctx), existing_bc);
+
+        // Fire the load event on the iframe element.
+        // Per HTML spec §4.8.5, the "iframe load event steps" fire a load event
+        // at the iframe element after the document is completely loaded.
+        // For about:blank documents, this happens synchronously since there are
+        // no resources to fetch.
+        fireLoadEventOnIframe(instance);
     }
 
     // Return the Window instance from the child context

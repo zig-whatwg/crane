@@ -616,38 +616,58 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     const v8_context: *v8_engine.ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const v8_isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse return;
 
+    // Create a HandleScope for working with V8 Local handles.
+    // V8 Local handles are only valid within a HandleScope.
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(v8_isolate) orelse return;
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
     // Wrap the GlobalHandle
     const global_handle = global_handles.GlobalHandle{ .ptr = @ptrCast(untagged.ptr) };
 
-    // Get the V8 function from the GlobalHandle
-    const callback_value = global_handle.get(v8_isolate) orelse return;
+    // Verify the global handle contains a function.
+    // v8_Value_IsFunction expects a Global<Value>* - pass the GlobalHandle directly.
+    // The C++ side will get the Local from the Global with proper HandleScope.
+    if (!v8_engine.ffi.v8_Value_IsFunction(global_handle.ptr)) {
+        return;
+    }
 
-    // Verify it's a function
-    if (!v8_engine.ffi.v8_Value_IsFunction(callback_value)) return;
+    // Use the engine_ctx directly - it's already a Global<Context>* owned by the runtime context.
+    // No need to call v8_Isolate_GetCurrentContext which would create a new Global that needs disposal.
 
-    // Wrap the event as a V8 object
-    const event_v8_obj = v8_engine.template_registry.wrapInstanceAsV8Object(
+    // Wrap the event as a V8 object (Local handle)
+    const event_v8_local = v8_engine.template_registry.wrapInstanceAsV8Object(
         event,
         "Event",
         v8_isolate,
         v8_context,
     ) catch return;
 
-    // Get 'this' value - use globalThis (undefined) for simplicity
-    // Per spec, event handlers should use the element as 'this', but using undefined
-    // also works for most callbacks since they don't use 'this' directly
-    const undefined_value = v8_engine.ffi.v8_Undefined(v8_isolate);
+    // Convert the event Local to a Global for the function call
+    const event_v8_global = v8_engine.ffi.v8_Value_ToGlobal(v8_isolate, @ptrCast(event_v8_local)) orelse return;
+    defer v8_engine.ffi.v8_Global_Dispose(event_v8_global);
 
-    // Call the function with undefined as 'this' and event as argument
-    // We need to pass a pointer to the argument array, properly cast
-    var args: [1]*v8_engine.ffi.Value = .{@ptrCast(event_v8_obj)};
-    _ = v8_engine.ffi.v8_Function_Call(
-        @ptrCast(callback_value),
-        v8_context,
-        @ptrCast(undefined_value),
+    // Get 'this' value as a Global - v8_Undefined returns a Global<Value>*
+    const recv_global = v8_engine.ffi.v8_Undefined(v8_isolate);
+
+    // Prepare argument array with Global handles
+    var args: [1]*v8_engine.ffi.Value = .{event_v8_global};
+
+    // Call the function using v8_Function_Call_Safe which expects Global handles
+    // - global_handle.ptr is already a Global<Value>* containing the function
+    // - v8_context is Global<Context>* (from engine_ctx)
+    // - recv_global is Global<Value>* (undefined)
+    // - args contains Global<Value>*
+    const result = v8_engine.ffi.v8_Function_Call_Safe(
+        global_handle.ptr, // Global<Value>* containing the function
+        v8_context, // Global<Context>* from engine_ctx
+        @ptrCast(recv_global), // Global<Value>* for 'this'
         1,
-        &args,
+        @ptrCast(&args),
     );
+
+    // Free the result (errors are silently ignored - per HTML spec, event handler errors
+    // should not prevent other handlers from running)
+    v8_engine.ffi.v8_FreeFunctionCallResult(result);
 }
 
 /// Operation: when (Observable)
