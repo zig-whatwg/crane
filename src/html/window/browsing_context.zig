@@ -399,6 +399,9 @@ pub const BrowsingContext = struct {
     /// is still alive and valid, while during teardown it may not be.
     pub fn removeFromParent(self: *BrowsingContext) void {
         if (self.parent) |parent_ctx| {
+            // Don't modify a closed parent's children list - it may be in teardown
+            if (parent_ctx.is_closed) return;
+
             // Find and remove self from parent's children list
             for (parent_ctx.children.items, 0..) |child, i| {
                 if (child == self) {
@@ -436,7 +439,13 @@ pub const BrowsingContext = struct {
         // The children list is just a view for frames[index] lookup.
         // Trying to deinit children here would cause double-free because the child
         // Window may have already been destroyed (and its browsing context freed).
-        self.children.deinit(self.allocator);
+        //
+        // Only deinit the children list if it was actually allocated (capacity > 0).
+        // An unallocated ArrayListUnmanaged (initialized with .{}) has capacity 0
+        // and a pointer to static memory that should not be freed.
+        if (self.children.capacity > 0) {
+            self.children.deinit(self.allocator);
+        }
 
         // Free target name if allocated
         if (self.target_name.len > 0) {

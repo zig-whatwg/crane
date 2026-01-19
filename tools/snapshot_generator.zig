@@ -177,6 +177,25 @@ pub fn main() !void {
     );
     log(allocator, "  Global template configured with indexed handlers for frames[index]\\n", .{});
 
+    // Add named property handlers for frames['name'] and named element access
+    // Per HTML spec §7.4.3, Window supports named property access for:
+    // 1. Child browsing contexts (iframe names) - frames['name'] returns contentWindow
+    // 2. Named elements in the document (elements with id/name attributes)
+    //
+    // IMPORTANT: Use kNone flag to intercept all named property access
+    // The getter checks isBuiltinWindowProperty() to skip built-in Window properties
+    v8.ffi.v8_ObjectTemplate_SetNamedPropertyHandlerFull(
+        global_template,
+        context_manager.windowNamedPropertyGetter,
+        null, // setter - not needed for read-only frames access
+        context_manager.windowNamedPropertyQuery,
+        null, // deleter - not needed
+        null, // enumerator - not needed (named frame properties are not enumerable)
+        null, // descriptor - not needed
+        .kNone, // No flags - intercept all named properties
+    );
+    log(allocator, "  Global template configured with named handlers for frames['name']\\n", .{});
+
     // Step 5b: Create default context with global template
     log(allocator, "  5b: Creating default context with global template...\\n", .{});
     const default_context = v8.ffi.v8_Context_NewWithGlobalTemplate(isolate, global_template) orelse {

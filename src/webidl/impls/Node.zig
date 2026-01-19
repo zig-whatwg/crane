@@ -207,10 +207,17 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// Per DOM spec semantics, destroying a parent node should release all
 /// child nodes since they are no longer reachable through the tree.
 pub fn deinit(instance: *runtime.Instance) void {
-    // Use lifecycle tracking to prevent double-cleanup (RC2 fix)
-    // markCleanupStarted returns false if cleanup was already started
-    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
-        return; // Already being cleaned up, skip
+    // Check if cleanup was already marked as started. The most-derived class's deinit
+    // (e.g., HTMLIFrameElement.deinit) should mark cleanup started. If it wasn't marked
+    // yet (e.g., direct call to Node.deinit), mark it now.
+    // This handles both cases:
+    // 1. Called through type-specific deinit chain: already marked, proceed with cleanup
+    // 2. Called directly (e.g., for Text nodes): mark now and proceed
+    if (!runtime.instance_lifecycle.isBeingCleanedUp(instance)) {
+        // Not yet marked, mark it now
+        if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
+            return; // Race condition - someone else started cleanup
+        }
     }
 
     // Mark as cleaned up in V8 wrapper cache to prevent double-free.
@@ -280,7 +287,9 @@ pub fn deinit(instance: *runtime.Instance) void {
                         internal.node_base = null;
                         internal.deinit();
                         Registry.remove(instance);
-                        runtime.instance_lifecycle.markCleanupComplete(instance);
+                        // NOTE: Do NOT call markCleanupComplete here. The lifecycle entry
+                        // must persist so wrapper_cache.deinit can check isCleanupStarted.
+                        // If we remove the entry, wrapper_cache will try to clean up again.
                         EventTargetImpl.deinit(instance);
                         return;
                     };
@@ -324,8 +333,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     Registry.remove(instance);
 
-    // Mark cleanup complete in lifecycle tracking (RC2 fix)
-    runtime.instance_lifecycle.markCleanupComplete(instance);
+    // NOTE: Do NOT call markCleanupComplete here. The lifecycle entry must persist
+    // so wrapper_cache.deinit can check isCleanupStarted and skip already-cleaned instances.
+    // If we remove the entry, wrapper_cache will try to clean up again causing double-free.
+    // The lifecycle registry will be cleared when the context is destroyed.
 
     // EventTarget cleanup happens via inheritance chain
     EventTargetImpl.deinit(instance);
@@ -342,8 +353,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// to the document tree.
 pub fn deinitNodeByType(instance: *runtime.Instance) void {
     // Check if already being cleaned up to prevent double-cleanup.
-    // Don't mark cleanup started here - let Node.deinit handle lifecycle tracking.
-    // The type-specific deinit chains to Node.deinit which does the actual cleanup.
+    // This guards against the case where GC cleanup and tree cleanup
+    // both try to deinit the same node.
     if (runtime.instance_lifecycle.isBeingCleanedUp(instance)) {
         return; // Already being cleaned up, skip
     }

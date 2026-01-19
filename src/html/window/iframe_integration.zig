@@ -520,6 +520,10 @@ pub const IFrameIntegration = struct {
     /// Called when iframe is removed from a document
     /// Destroys the nested browsing context per HTML §7.1
     pub fn onRemovedFromDocument(self: *IFrameIntegration) void {
+        // Guard against double-calls. Once discarded, we don't process again.
+        // This can happen if the callback fires and later cleanup also calls this.
+        if (self.state == .discarded) return;
+
         // Clean up engine-specific realm context first (Phase 3)
         self.cleanupRealmContext();
 

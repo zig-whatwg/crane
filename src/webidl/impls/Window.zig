@@ -3610,10 +3610,14 @@ fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runti
 pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
 
+    std.debug.print("[getNamedProperty] Looking for name='{s}', children count={d}\n", .{ name, internal.browsing_context.children.items.len });
+
     // First, check if it's a child browsing context name
-    for (internal.browsing_context.children.items) |child| {
+    for (internal.browsing_context.children.items, 0..) |child, i| {
+        std.debug.print("[getNamedProperty] Child {d}: target_name='{s}'\n", .{ i, child.target_name });
         if (std.mem.eql(u8, child.target_name, name)) {
             const child_window = child.getActiveWindow() orelse continue;
+            std.debug.print("[getNamedProperty] MATCH! Returning child window\n", .{});
             return runtime.JSValue.fromInstanceAnyopaque(@ptrCast(@alignCast(child_window)));
         }
     }
