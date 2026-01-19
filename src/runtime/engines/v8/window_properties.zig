@@ -75,6 +75,8 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
 
     // Register native property interceptors with definer callback
     // Using SetNamedPropertyHandlerWithDefiner to intercept Object.defineProperty
+    // IMPORTANT: Use kNonMasking so named properties don't shadow built-in Window properties
+    // This matches Chromium's WindowProperties configuration
     v8.v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
         instance_tpl,
         namedPropertyGetter,
@@ -84,7 +86,7 @@ pub fn getTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
         namedPropertyEnumerator,
         namedPropertyDefiner,
         namedPropertyDescriptor,
-        .kOnlyInterceptStrings,
+        .kNonMaskingAndOnlyInterceptStrings,
     );
 
     // Mark WindowProperties instances as having immutable [[Prototype]]

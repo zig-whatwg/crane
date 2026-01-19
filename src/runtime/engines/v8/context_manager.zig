@@ -1915,6 +1915,190 @@ pub fn windowIndexedPropertyEnumerator(
     info.setReturnValue(@ptrCast(arr));
 }
 
+// ============================================================================
+// Named Property Handlers for Window Global Objects
+// ============================================================================
+//
+// Per HTML spec §7.4.3 (Named access on the Window object), the Window object
+// supports named property access for:
+// 1. Child browsing contexts (iframe names) - frames['name'] returns contentWindow
+// 2. Named elements in the document (elements with id/name attributes)
+//
+// These handlers are installed on the global object template during snapshot creation
+// to enable frames['name'] access directly on the window object.
+// ============================================================================
+
+/// Named property getter for Window global objects.
+/// Returns child browsing context windows by name, or named document elements.
+///
+/// When JavaScript accesses window['someName'] or window.frames['someName']:
+/// 1. First checks child browsing contexts by target_name (iframe name attribute)
+/// 2. Falls back to named elements in the document
+///
+/// This handler is registered on the Window global template and intercepts all
+/// string property accesses that don't match built-in properties.
+pub fn windowNamedPropertyGetter(
+    property: *v8.Name,
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) v8.Intercepted {
+    const WindowImpl = @import("impls").Window;
+    const conv = @import("conversions.zig");
+
+    const isolate = info.getIsolate();
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+
+    // Convert property name to Zig string
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
+
+    // Skip built-in property names to avoid intercepting them
+    // These are common properties that should fall through to normal lookup
+    if (isBuiltinWindowProperty(name)) {
+        return .kNo;
+    }
+
+    // Get the Window instance from the global object
+    const this_obj = info.getThis();
+    var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+    // If this_obj doesn't have internal fields, try the global object
+    if (instance_ptr == null) {
+        const global_obj = v8.v8_Context_Global(v8_context);
+        if (global_obj) |global| {
+            instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0);
+        }
+    }
+
+    if (instance_ptr == null) {
+        return .kNo;
+    }
+
+    // Safety check for use-after-free patterns
+    const ptr_as_int = @intFromPtr(instance_ptr);
+    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
+    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
+    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
+        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
+    {
+        return .kNo;
+    }
+
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Call Window.getNamedProperty which checks:
+    // 1. Child browsing context names (iframe name attributes)
+    // 2. Named elements in the document
+    const result = WindowImpl.getNamedProperty(instance, name) catch return .kNo;
+
+    if (result) |js_val| {
+        const value = conv.toV8Value(runtime.JSValue, isolate, v8_context, js_val) catch return .kNo;
+        info.setReturnValue(value);
+        return .kYes;
+    }
+
+    // Property not found - let V8 continue with normal lookup
+    return .kNo;
+}
+
+/// Named property query for Window global objects.
+/// Returns whether a named property exists.
+pub fn windowNamedPropertyQuery(
+    property: *v8.Name,
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) v8.Intercepted {
+    const WindowImpl = @import("impls").Window;
+
+    const isolate = info.getIsolate();
+    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+
+    // Convert property name to Zig string
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
+
+    // Skip built-in property names
+    if (isBuiltinWindowProperty(name)) {
+        return .kNo;
+    }
+
+    // Get Window instance
+    const this_obj = info.getThis();
+    var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+
+    if (instance_ptr == null) {
+        const global_obj = v8.v8_Context_Global(v8_context);
+        if (global_obj) |global| {
+            instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0);
+        }
+    }
+
+    if (instance_ptr == null) {
+        return .kNo;
+    }
+
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Check if property exists
+    if (WindowImpl.hasNamedProperty(instance, name)) {
+        // Property exists - return attributes (ReadOnly | DontEnum)
+        const attrs = v8.v8_Integer_New(isolate, 3); // 3 = ReadOnly | DontEnum
+        info.setReturnValue(@ptrCast(attrs));
+        return .kYes;
+    }
+
+    return .kNo;
+}
+
+/// Convert a V8 Name to a native Zig string
+fn nameToNative(_: *v8.Isolate, name: *v8.Name, buf: []u8) ?[]const u8 {
+    if (!v8.v8_Name_IsString(name)) return null;
+    const string: *v8.String = @ptrCast(name);
+    const len = v8.v8_String_WriteUtf8_Raw(string, buf.ptr, @intCast(buf.len));
+    if (len < 0) return null;
+    return buf[0..@intCast(len)];
+}
+
+/// Check if a property name is a built-in Window property that should not be intercepted.
+/// This avoids intercepting normal property access like window.document, window.location, etc.
+fn isBuiltinWindowProperty(name: []const u8) bool {
+    // List of common Window properties that should not be intercepted
+    const builtins = [_][]const u8{
+        // Core Window properties
+        "window", "self", "document", "location", "navigator", "history", "screen",
+        "frames", "length", "top", "parent", "opener", "frameElement", "name",
+        // Common methods
+        "alert", "confirm", "prompt", "open", "close", "focus", "blur",
+        "postMessage", "addEventListener", "removeEventListener", "dispatchEvent",
+        "setTimeout", "clearTimeout", "setInterval", "clearInterval",
+        "requestAnimationFrame", "cancelAnimationFrame",
+        // Constructors and built-in objects
+        "Object", "Array", "Function", "String", "Number", "Boolean", "Symbol",
+        "Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError",
+        "Promise", "Map", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect",
+        "JSON", "Math", "Date", "RegExp", "console", "Intl",
+        // DOM interfaces
+        "Node", "Element", "Document", "Event", "EventTarget", "HTMLElement",
+        "HTMLIFrameElement", "HTMLDivElement", "HTMLSpanElement", "HTMLCollection",
+        "NodeList", "DOMTokenList", "CSSStyleDeclaration",
+        // Other common properties
+        "undefined", "null", "NaN", "Infinity", "eval", "isNaN", "isFinite",
+        "parseInt", "parseFloat", "encodeURI", "decodeURI", "encodeURIComponent", "decodeURIComponent",
+        "performance", "crypto", "fetch", "URL", "URLSearchParams", "FormData",
+        "Blob", "File", "FileReader", "FileList", "ArrayBuffer", "DataView",
+        "Uint8Array", "Uint16Array", "Uint32Array", "Int8Array", "Int16Array", "Int32Array",
+        "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",
+        "WebSocket", "Worker", "MessageChannel", "MessagePort",
+        "MutationObserver", "IntersectionObserver", "ResizeObserver",
+    };
+
+    for (builtins) |builtin| {
+        if (std.mem.eql(u8, name, builtin)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /// Create a new V8 context for a child browsing context (iframe)
 ///
 /// This creates a new V8 context with:
@@ -2538,6 +2722,11 @@ pub fn registerExternalReferences() void {
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyGetter));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyQuery));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyEnumerator));
+
+    // Register named property handler callbacks for Window global objects
+    // These enable window.frames['name'] and window['elementId'] access
+    ext_refs.registerPointer(@intFromPtr(&windowNamedPropertyGetter));
+    ext_refs.registerPointer(@intFromPtr(&windowNamedPropertyQuery));
 }
 
 // ============================================================================

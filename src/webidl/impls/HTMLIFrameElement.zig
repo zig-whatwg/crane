@@ -232,9 +232,10 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Ensure the iframe removing steps callback is registered.
-    // This only registers once and is a no-op on subsequent calls.
+    // Ensure the iframe DOM mutation callbacks are registered.
+    // These only register once and are no-ops on subsequent calls.
     ensureRemovingStepsRegistered();
+    ensureInsertionStepsRegistered();
 
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
@@ -254,6 +255,14 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Guard against double-deinit. This can happen when:
+    // 1. Tree cleanup (Node.deinit → deinitNodeByType) deinits this iframe
+    // 2. GC cleanup (onObjectFreed) also tries to deinit the same iframe
+    // Only one path should proceed with cleanup.
+    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
+        return; // Already being cleaned up, skip
+    }
+
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -1414,8 +1423,9 @@ pub fn registerIframeRemovingSteps() !void {
     try dom_module.mutation.registerRemovingStepsCallback(&iframeRemovingStepsCallback);
 }
 
-/// Flag to track if the callback has been registered
+/// Flag to track if the callbacks have been registered
 var removing_steps_registered: bool = false;
+var insertion_steps_registered: bool = false;
 
 /// Ensure the iframe removing steps callback is registered.
 /// This is called lazily during iframe creation to ensure the callback is set up.
@@ -1423,4 +1433,138 @@ pub fn ensureRemovingStepsRegistered() void {
     if (removing_steps_registered) return;
     registerIframeRemovingSteps() catch return;
     removing_steps_registered = true;
+}
+
+// ============================================================================
+// Insertion Steps Callback for Iframe Browsing Context Creation
+// ============================================================================
+
+/// Insertion steps callback for iframe elements.
+/// This callback is registered with the DOM mutation system and is called whenever
+/// a node is inserted into the document. If the node is an iframe element, this
+/// function triggers browsing context creation if not already created.
+///
+/// Per HTML spec §4.8.5, when an iframe is inserted into a document that has
+/// a browsing context:
+/// 1. Create a nested browsing context for the element
+/// 2. Process the iframe attributes (src, srcdoc, etc.)
+///
+/// This is critical for window.frames[name] to work - the browsing context must
+/// exist and have its name set before JavaScript can access it via the frames collection.
+fn iframeInsertionStepsCallback(node: *NodeBase) void {
+    // Only process ELEMENT_NODE (nodeType == 1)
+    if (node.node_type != 1) return;
+
+    // Check if this is an iframe element by looking at the node_name.
+    // For HTML elements, node_name is the uppercase tag name (e.g., "IFRAME").
+    // We also check for lowercase "iframe" for robustness.
+    if (!std.ascii.eqlIgnoreCase(node.node_name, "iframe")) return;
+
+    // Get the runtime.Instance from the NodeBase using the instance bridge
+    const instance_ptr = instance_bridge.getInstance(node) orelse return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+
+    // Get the iframe's internal state
+    const internal = getInternal(instance) orelse return;
+
+    // If the browsing context already exists, we're done
+    // (this handles re-insertion of an iframe that was previously in the document)
+    if (internal.integration.browsing_context != null) {
+        return;
+    }
+
+    // Trigger lazy creation of the browsing context by accessing contentWindow.
+    // This will:
+    // 1. Create the child V8 context
+    // 2. Create the browsing context and add it to the parent's children list
+    // 3. Set the target_name on the browsing context (if name attribute is set)
+    // 4. Create the initial about:blank document
+    //
+    // After this, window.frames[name] will work because the browsing context
+    // is in the parent's children list with its name set.
+    _ = get_contentWindow(instance) catch return;
+
+    // If the iframe has a name set, ensure it's propagated to the browsing context.
+    // This handles the case where name was set before insertion.
+    if (internal.name_attr) |name| {
+        internal.integration.setName(name) catch {};
+        // Also set on the browsing context directly
+        if (internal.integration.browsing_context) |bc| {
+            bc.setTargetName(name) catch {};
+        }
+
+        // Register the named property on the parent window's global object
+        // This is needed because V8's named property interceptors don't work after snapshot restore.
+        // By setting window[name] = contentWindow, we enable window.frames['name'] to work.
+        registerNamedPropertyOnParentGlobal(instance, name);
+    }
+}
+
+/// Register a named property on the parent window's global object for iframe access.
+/// This sets window[name] = iframe.contentWindow, enabling window.frames['name'] to work.
+///
+/// This is called when an iframe with a name is inserted into the document.
+/// V8's named property interceptors don't survive snapshot restore, so we use this
+/// direct property approach instead.
+fn registerNamedPropertyOnParentGlobal(iframe_instance: *runtime.Instance, name: []const u8) void {
+    // Get the iframe's internal state
+    const internal = getInternal(iframe_instance) orelse return;
+
+    // Get the child browsing context (contains the contentWindow)
+    const child_bc = internal.integration.browsing_context orelse return;
+
+    // Get the parent browsing context
+    const parent_bc = child_bc.parent orelse return;
+
+    // Get the parent's Window instance
+    const parent_window_ptr = parent_bc.active_window orelse return;
+    const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
+
+    // Get the V8 isolate and context from the parent window's realm
+    // We use the realm because it stores the actual V8 context pointer,
+    // unlike GetCurrentContext() which returns the currently-entered context
+    // (which might be the child's context during iframe insertion).
+    const ctx_data = parent_window.ctx;
+    const realm = ctx_data.realm orelse return;
+
+    const isolate_ptr = realm.getIsolate() orelse return;
+    const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(isolate_ptr));
+
+    const parent_v8_ctx_ptr = realm.getV8Context() orelse return;
+    const parent_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(parent_v8_ctx_ptr));
+
+    // Get the parent's global object
+    const global = v8.ffi.v8_Context_Global(parent_v8_ctx) orelse return;
+
+    // Get the child Window instance and its V8 context from its realm
+    const child_window_ptr = child_bc.active_window orelse return;
+    const child_window: *runtime.Instance = @ptrCast(@alignCast(child_window_ptr));
+    const child_ctx_data = child_window.ctx;
+    const child_realm = child_ctx_data.realm orelse return;
+
+    const child_v8_ctx_ptr = child_realm.getV8Context() orelse return;
+    const child_v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(child_v8_ctx_ptr));
+
+    // Get the child window's V8 wrapper (the global object of the child context)
+    const child_global = v8.ffi.v8_Context_Global(child_v8_ctx) orelse return;
+
+    // Create the property name string
+    const name_str = v8.ffi.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return;
+
+    // Set the property: window[name] = child's global (contentWindow)
+    _ = v8.ffi.v8_Object_Set(global, parent_v8_ctx, @ptrCast(name_str), @ptrCast(child_global));
+}
+
+/// Register the iframe insertion steps callback with the DOM mutation system.
+/// This should be called during application initialization.
+pub fn registerIframeInsertionSteps() !void {
+    try dom_module.mutation.registerInsertionStepsCallback(&iframeInsertionStepsCallback);
+}
+
+/// Ensure the iframe insertion steps callback is registered.
+/// This is called lazily during iframe creation to ensure the callback is set up.
+pub fn ensureInsertionStepsRegistered() void {
+    if (insertion_steps_registered) return;
+    registerIframeInsertionSteps() catch return;
+    insertion_steps_registered = true;
 }

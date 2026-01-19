@@ -518,6 +518,27 @@ pub const Context = struct {
             cache.set(window_instance, global, self.isolate) catch {};
         }
 
+        // Create and register Realm for cross-realm support
+        // The Realm stores V8 context and isolate pointers needed for:
+        // - iframe named property registration (window['frameName'] = contentWindow)
+        // - cross-realm error creation
+        // - intrinsic caching
+        if (runtime_ctx.realm == null) {
+            const realm = runtime.Realm.init(self.allocator, .{
+                .v8_context = @ptrCast(v8_ctx),
+                .isolate = @ptrCast(self.isolate),
+                .context_type = .window,
+                .global_object = @ptrCast(window_instance),
+            }) catch |err| {
+                std.debug.print("Warning: Failed to create Realm: {}\n", .{err});
+                return;
+            };
+            _ = realm.populateIntrinsics();
+            runtime_ctx.setRealm(realm);
+            // Also register with context manager
+            context_manager.setRealmForContext(v8_ctx, realm) catch {};
+        }
+
         // Register Window properties (document, navigator, etc.) as own properties on the global object.
         // This is required because the global's prototype is immutable (set via SetImmutableProto),
         // so we can't inherit properties from Window.prototype through the prototype chain.
@@ -532,6 +553,13 @@ pub const Context = struct {
         // Also register EventTarget methods (addEventListener, removeEventListener, dispatchEvent)
         // since Window inherits from EventTarget.
         v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Insert WindowProperties into the prototype chain for named property access.
+        // Per HTML spec §7.4.3, Window supports named property access for:
+        // 1. Child browsing contexts (iframe names) - frames['name'] returns contentWindow
+        // 2. Named elements in the document (elements with id/name attributes)
+        // The WindowProperties object has a named property handler that intercepts these accesses.
+        _ = v8.window_properties.insertIntoPrototypeChain(self.isolate, v8_ctx, window_instance);
 
         // Set self/window/frames as data properties equal to global
         // This is critical for testharness.js compatibility: (function(global_scope){...})(self)
@@ -681,6 +709,13 @@ pub const Context = struct {
         // Also register EventTarget methods (addEventListener, removeEventListener, dispatchEvent)
         // since Window inherits from EventTarget.
         v8.interface_bindings.EventTarget.registerMethodsAsOwnOnObject(self.isolate, v8_ctx, global);
+
+        // Insert WindowProperties into the prototype chain for named property access.
+        // Per HTML spec §7.4.3, Window supports named property access for:
+        // 1. Child browsing contexts (iframe names) - frames['name'] returns contentWindow
+        // 2. Named elements in the document (elements with id/name attributes)
+        // The WindowProperties object has a named property handler that intercepts these accesses.
+        _ = v8.window_properties.insertIntoPrototypeChain(self.isolate, v8_ctx, window_instance);
 
         // Set self/window/frames as data properties equal to global
         // This is critical for testharness.js compatibility
