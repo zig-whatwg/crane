@@ -345,6 +345,19 @@ pub fn deinit(instance: *runtime.Instance) void {
             LocationImpl.deinit(loc);
         }
 
+        // Clean up Document and its entire DOM tree.
+        // Per Chromium's pattern: Window.FrameDestroyed() calls Document.Shutdown()
+        // which recursively cleans up all child nodes via DetachLayoutTree().
+        // This is essential because:
+        // 1. DOM nodes created by DomTreeAdapter during parsing may not be in wrapper cache
+        // 2. If Document isn't cleaned up explicitly, its children leak
+        // 3. Document.deinit() -> Node.deinit() recursively cleans all child nodes
+        if (internal.document) |doc| {
+            const DocumentImpl = @import("Document.zig");
+            DocumentImpl.deinit(doc);
+            internal.document = null;
+        }
+
         internal.deinit();
     }
 
