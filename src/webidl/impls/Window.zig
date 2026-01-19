@@ -682,14 +682,18 @@ pub fn get_top(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
         ctx = parent;
     }
 
-    // Return the WindowProxy for the top-level window
-    // TODO: Return the actual Window instance for the top context
-    // For now, if we're already at the top, return self
+    // If we're already at the top, return self
     if (ctx == internal.browsing_context) {
         return getWindowProxy(instance);
     }
 
-    // Otherwise, we'd need to look up the Window for that context
+    // Get the active Window from the top browsing context
+    if (ctx.getActiveWindow()) |top_window_ptr| {
+        const top_window: *runtime.Instance = @ptrCast(@alignCast(top_window_ptr));
+        return @ptrCast(top_window);
+    }
+
+    // Fallback to self if top window not found (shouldn't happen if browsing context is set up correctly)
     return getWindowProxy(instance);
 }
 
