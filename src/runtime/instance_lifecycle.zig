@@ -209,6 +209,13 @@ pub fn shouldCleanup(instance: *const Instance) bool {
     return !flags.cleanup_started and !flags.cleanup_complete;
 }
 
+/// Check if cleanup has been started (but not necessarily complete)
+/// Used to detect if an instance is currently being cleaned up
+pub fn isBeingCleanedUp(instance: *const Instance) bool {
+    const flags = get(instance) orelse return false; // No flags = not being cleaned
+    return flags.cleanup_started;
+}
+
 /// Reset all flags for an instance (for testing)
 pub fn reset(instance: *const Instance) void {
     if (registry) |*r| {

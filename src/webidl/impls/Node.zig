@@ -341,16 +341,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
 pub fn deinitNodeByType(instance: *runtime.Instance) void {
-    // IMPORTANT: Mark cleanup started BEFORE dispatching to type-specific deinit.
-    // Type-specific deinit (e.g., HTMLIFrameElement.deinit) frees resources BEFORE
-    // chaining to Node.deinit. If we don't mark cleanup started here, the wrapper
-    // cache won't know the instance is being cleaned up and might double-free.
-    //
-    // Also mark in wrapper cache to prevent double-free during cache cleanup.
-    const context_manager = @import("v8").context_manager;
-    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
+    // Check if already being cleaned up to prevent double-cleanup.
+    // Don't mark cleanup started here - let Node.deinit handle lifecycle tracking.
+    // The type-specific deinit chains to Node.deinit which does the actual cleanup.
+    if (runtime.instance_lifecycle.isBeingCleanedUp(instance)) {
         return; // Already being cleaned up, skip
     }
+
+    // Mark in wrapper cache to prevent double-free during cache cleanup.
+    const context_manager = @import("v8").context_manager;
     context_manager.markInstanceCleanedUp(instance);
 
     const internal = Registry.get(instance) orelse {
