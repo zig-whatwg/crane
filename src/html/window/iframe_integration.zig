@@ -905,14 +905,17 @@ pub const IFrameIntegration = struct {
             self.allocator.free(old_content);
         }
 
-        // Copy new content
+        // Copy new content - CRITICAL: we must use this copy, not the original!
+        // The original 'content' may be a slice into a DOMString that gets freed
+        // after this function returns.
         self.srcdoc_content = self.allocator.dupe(u8, content) catch {
             return IFrameError.OutOfMemory;
         };
 
         // If we have a browsing context, navigate
+        // IMPORTANT: Use self.srcdoc_content (the owned copy), NOT content (potentially dangling)
         if (self.browsing_context != null and self.state != .uninitialized and self.state != .discarded) {
-            try self.navigateToSrcdoc(content);
+            try self.navigateToSrcdoc(self.srcdoc_content.?);
         }
     }
 

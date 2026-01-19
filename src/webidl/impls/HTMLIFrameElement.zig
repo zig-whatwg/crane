@@ -109,11 +109,20 @@ pub fn getIframeSrcLoadHook() ?IframeSrcLoadHook {
 /// and at that time the browsing context didn't exist.
 pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
     // Get the internal state to check if we need to fire the load event
-    const internal = getInternal(instance) orelse return;
+    // Note: We'll re-fetch this after get_contentWindow since that operation
+    // can trigger memory allocations that could invalidate pointers.
+    if (getInternal(instance) == null) return;
 
     // Ensure the browsing context exists (via contentWindow access)
     // This creates the BC and sets up parse_html_callback
+    // CRITICAL: This can trigger context creation, memory allocation, and potentially
+    // arena resets. We MUST re-fetch internal state after this call.
     _ = get_contentWindow(instance) catch return;
+
+    // Re-fetch internal state after get_contentWindow.
+    // get_contentWindow does extensive work (context creation, Window instantiation,
+    // browsing context setup) that can invalidate previously captured pointers.
+    const internal = getInternal(instance) orelse return;
 
     // Check for srcdoc content in the element's attribute list.
     // This is critical for nested iframes created by HTML parsing, where the
