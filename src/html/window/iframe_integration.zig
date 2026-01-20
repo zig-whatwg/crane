@@ -502,6 +502,17 @@ pub const IFrameIntegration = struct {
             nested_ctx.setTargetName(self.name) catch {};
         }
 
+        // CRITICAL: Apply sandbox flags to the newly created browsing context.
+        // Per HTML spec §4.8.5, sandbox flags may have been set on the integration
+        // before the browsing context was created (e.g., via setAttribute('sandbox', '')).
+        // The browsing context must inherit these flags so that script execution
+        // respects the sandbox restrictions.
+        if (self.is_sandboxed) {
+            if (self.sandbox_flags) |flags| {
+                nested_ctx.setSandboxFlags(flags);
+            }
+        }
+
         // Create the WindowProxy
         self.window_proxy = WindowProxy.init(self.allocator, nested_ctx);
 

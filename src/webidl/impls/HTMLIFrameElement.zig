@@ -501,11 +501,19 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     // 1. Creates a Document FIRST
     // 2. Uses DomTreeAdapter to convert TreeNodes to DOM nodes incrementally
     // 3. Scripts can access DOM nodes during parsing via querySelector etc.
+    //
+    // CRITICAL: Check sandbox flags to determine if scripting is enabled.
+    // Per HTML spec §4.8.5, when an iframe has the sandbox attribute:
+    // - If empty (sandbox=""), ALL restrictions apply including script blocking
+    // - If sandbox="allow-scripts", scripts are allowed to execute
+    // The BrowsingContext.allowsScripts() method encapsulates this check.
+    const scripting_enabled = browsing_ctx_ptr.allowsScripts();
+
     const document_instance = scripted_parser.parseHTMLWithScripting(
         allocator,
         runtime_ctx,
         html_content,
-        .{ .scripting_enabled = true, .window = window_instance },
+        .{ .scripting_enabled = scripting_enabled, .window = window_instance },
     ) catch {
         // Fall back to empty document on parse error
         return createDocumentForIframe(runtime_ctx_ptr, browsing_ctx_ptr);
@@ -1012,6 +1020,21 @@ pub fn set_srcdoc(instance: *runtime.Instance, value: runtime.DOMString) anyerro
     // Store new value - DOMString.asSlice() gets the underlying []const u8
     const str = value.asSlice();
     internal.srcdoc_attr = try internal.allocator.dupe(u8, str);
+
+    // CRITICAL: Read and apply the sandbox attribute BEFORE creating the browsing context.
+    // Per HTML spec §4.8.5, the sandbox attribute affects script execution in the iframe.
+    // When setAttribute('sandbox', '') is called, it sets the attribute on the Element,
+    // but the IFrameIntegration needs to be notified to set sandbox flags on the
+    // BrowsingContext. Without this, scripts will execute even in sandboxed iframes.
+    const ElementImpl = @import("Element.zig");
+    const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
+    if (ElementImpl.call_hasAttribute(instance, sandbox_attr_name) catch false) {
+        // Sandbox attribute exists (even if empty string)
+        const sandbox_value = ElementImpl.call_getAttribute(instance, sandbox_attr_name) catch null;
+        const sandbox_str = if (sandbox_value) |sv| sv.asSlice() else "";
+        // Apply sandbox flags to the integration
+        internal.integration.setSandbox(sandbox_str) catch {};
+    }
 
     // Ensure the V8 context exists before navigation.
     // Scripts in srcdoc content need a V8 context to execute.
