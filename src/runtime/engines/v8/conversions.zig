@@ -2094,8 +2094,11 @@ pub fn toV8Value(
     if (T == *runtime.CallbackWrapper) {
         // Cast to V8-specific CallbackWrapper to access the V8 function
         const v8_wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(value));
-        if (v8_wrapper.callback_function) |func| {
-            return @ptrCast(func);
+        if (v8_wrapper.callback_function_global) |func_global| {
+            // Return the Global handle's V8 value
+            if (func_global.get(isolate)) |local_val| {
+                return local_val;
+            }
         }
         // If no function stored, return undefined
         return toV8Undefined(isolate);
@@ -2103,6 +2106,7 @@ pub fn toV8Value(
 
     // Handle *runtime.Instance pointers - these need to be wrapped as V8 objects
     // This enables toV8Sequence to work with []const *runtime.Instance
+    // Use comptime type check to handle both direct type and type aliases (like WindowProxy)
     if (T == *runtime.Instance) {
         return instanceToV8(isolate, value);
     }
@@ -2110,11 +2114,14 @@ pub fn toV8Value(
         return instanceToV8(isolate, @constCast(value));
     }
 
-    // Handle pointers - SAFETY: Cannot blindly cast Zig pointers to V8 Values
-    // Zig heap pointers are NOT V8 Global<Value>* handles and will cause crashes
-    // if passed to V8. Return undefined instead.
-    // Note: runtime.Instance* is handled above with proper wrapping.
+    // Handle pointers - Check if pointer child is runtime.Instance to handle type aliases
     if (type_info == .pointer) {
+        const child_type = type_info.pointer.child;
+        // Check if this is a pointer to runtime.Instance (handles type aliases like WindowProxy)
+        if (child_type == runtime.Instance) {
+            const instance: *runtime.Instance = @ptrCast(@alignCast(@constCast(value)));
+            return instanceToV8(isolate, instance);
+        }
         // Return undefined for unknown pointer types to prevent crashes
         return toV8Undefined(isolate);
     }

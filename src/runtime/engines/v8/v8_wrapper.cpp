@@ -1655,6 +1655,19 @@ Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
+// Get the entered or microtask context (the "incumbent" context per HTML spec)
+// This returns the context that was most recently entered via Context::Enter,
+// or the microtask context if we're in a microtask. This is used for postMessage
+// to get the source window - the context from which the message was sent.
+Global<Context>* v8_Isolate_GetEnteredOrMicrotaskContext(Isolate* isolate) {
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = isolate->GetEnteredOrMicrotaskContext();
+    if (ctx.IsEmpty()) {
+        return nullptr;
+    }
+    return trackHandle(new Global<Context>(isolate, ctx));
+}
+
 Isolate* v8_Isolate_GetCurrent() {
     return Isolate::GetCurrent();
 }

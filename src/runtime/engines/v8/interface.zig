@@ -2266,9 +2266,15 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                                 }
                             } else {
-                                // For complex types (interfaces, objects, etc.), return undefined for now
-                                // TODO: Implement proper object/interface conversions
-                                break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                // For complex types (unions, optionals, etc.), use conv.toV8Value
+                                // which handles all types including optional unions like MessageEventSource
+                                const current_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
+                                    break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                };
+                                const v8_converted = conv.toV8Value(PayloadType, isolate_inner, current_context, result) catch {
+                                    break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
+                                };
+                                break :comptime_convert v8_converted;
                             }
                         };
 

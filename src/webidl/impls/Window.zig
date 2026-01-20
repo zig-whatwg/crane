@@ -2754,9 +2754,16 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     // Get V8 isolate and context
     const v8 = @import("v8");
     const v8_isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return error.InvalidStateError;
 
-    // Get the source window (the caller's window)
+    // Get the incumbent context (the context that initiated this call)
+    // Per HTML spec, MessageEvent.source should be the Window of the "incumbent settings object"
+    // which is the context from which postMessage was called, not the target context.
+    // GetEnteredOrMicrotaskContext returns the context that was most recently entered,
+    // which is the caller's context (e.g., iframe's context when calling parent.postMessage).
+    const v8_ctx = v8.ffi.v8_Isolate_GetEnteredOrMicrotaskContext(v8_isolate) orelse
+        v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse return error.InvalidStateError;
+
+    // Get the source window from the incumbent context
     const source_window = v8.context_manager.getWindowForContext(v8_ctx);
     const source_origin: []const u8 = if (source_window) |sw|
         if (getInternal(sw)) |sw_internal| sw_internal.origin else "null"
