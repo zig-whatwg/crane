@@ -1087,6 +1087,20 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Associate with this element and attribute name
     DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("sandbox"));
 
+    // Initialize the token list from the element's current sandbox attribute value.
+    // This is critical: the attribute may have been set via Element.setAttribute()
+    // before the DOMTokenList was created. Per spec, the DOMTokenList should
+    // reflect the current attribute value.
+    const ElementImpl = @import("Element.zig");
+    const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
+    if (ElementImpl.call_getAttribute(instance, sandbox_attr_name) catch null) |attr_value| {
+        const attr_slice = attr_value.asSlice();
+        if (attr_slice.len > 0) {
+            // Parse the attribute value and populate the token list
+            DOMTokenListImpl.set_value(token_list, attr_value) catch {};
+        }
+    }
+
     // Cache for future calls (SameObject semantic)
     internal.sandbox_token_list = token_list;
 
