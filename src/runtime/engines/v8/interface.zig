@@ -2730,8 +2730,15 @@ pub fn V8Interface(comptime Interface: type) type {
                         // Collect all JS arguments into a slice
                         const ElemType = @typeInfo(Param1Type).pointer.child;
                         const arg1 = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info, 0);
-                        // Note: The slice is allocated and will be freed after method call
-                        defer if (arg1.len > 0) allocator.free(arg1);
+                        // Free each element in the slice, then free the slice itself
+                        defer {
+                            if (comptime needsArgCleanup(ElemType)) {
+                                for (arg1) |elem| {
+                                    freeConvertedArg(ElemType, allocator, elem);
+                                }
+                            }
+                            if (arg1.len > 0) allocator.free(arg1);
+                        }
                         break :blk try method_fn(instance, arg1);
                     }
 
