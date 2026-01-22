@@ -140,6 +140,10 @@ pub const InternalState = struct {
     /// This is set during constructor and executed via timer callback
     pending_script: ?[]const u8 = null,
 
+    /// Final URL of the script (after resolution, for V8 context)
+    /// Stored during constructor to avoid re-fetching when blob URLs are revoked
+    script_final_url: ?[]const u8 = null,
+
     /// Pending messages to send to worker (before DedicatedWorker is created)
     /// Messages are queued here if postMessage is called before worker initialization completes.
     /// Once the DedicatedWorker is ready, these are flushed to the inside port.
@@ -171,6 +175,10 @@ pub const InternalState = struct {
         // Free pending script if not yet executed
         if (self.pending_script) |script| {
             self.allocator.free(script);
+        }
+        // Free script_final_url if set
+        if (self.script_final_url) |url| {
+            self.allocator.free(url);
         }
     }
 };
@@ -277,25 +285,65 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     var state = instance.getState(State);
     state.own._internal = internal_state;
 
-    // CRITICAL: Defer ALL worker creation to a task/timer callback!
-    // For nested workers (Worker created from within another Worker),
-    // entering/exiting the worker isolate during the constructor corrupts
-    // the calling isolate's HandleScope state, causing V8 crashes.
+    // CRITICAL: Fetch the worker script IMMEDIATELY in the constructor!
     //
-    // Solution: The constructor only stores parameters and schedules
-    // the actual worker creation for later via queueTask or setTimeout.
-    // This runs after:
-    // 1. The constructor returns and V8 wraps the instance
-    // 2. The calling script finishes
-    // 3. The event loop runs the scheduled task
+    // Per Chromium's implementation, the script fetch must start as soon as the
+    // Worker is constructed. This is critical for blob URLs because:
+    // 1. JavaScript creates a blob URL with URL.createObjectURL()
+    // 2. JavaScript creates a Worker with the blob URL
+    // 3. Later, cleanup code may call URL.revokeObjectURL()
     //
-    // Per HTML Standard § 10.2.5 "Run a worker": worker creation is asynchronous
+    // If we defer the script fetch to a queueTask callback, the blob URL may
+    // be revoked by the time we try to fetch it, causing "Blob not found" errors.
     //
-    // CRITICAL: Use queueTask instead of setTimeout to guarantee task ordering.
-    // Per research on Chromium's DedicatedWorkerMessagingProxy and V8 event loop:
-    // - Tasks queued via queueTask are processed BEFORE libuv timers
-    // - This ensures worker init happens before test timeout timers
-    // - Using setTimeout(1ms) creates a race condition with test timeouts
+    // The fix is to fetch the script content immediately (while the blob URL
+    // is still valid) and store it. Only the script EXECUTION is deferred.
+    const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
+        .worker_type = worker_type,
+        .origin = null,
+    }) catch |err| {
+        std.log.warn("Failed to fetch worker script in constructor: {}", .{err});
+        // Continue with null pending_script - initializeWorkerSync will handle this
+        // by not executing any script (the worker will still be created but idle)
+        internal_state.pending_script = null;
+        internal_state.script_final_url = null;
+        // Don't return error - still schedule initialization
+        if (ctx.getOptionalEventLoop()) |event_loop| {
+            event_loop.queueTask(event_loop_mod.Task{
+                .callback = initializeWorkerCallback,
+                .context = instance,
+            });
+        }
+        return instance;
+    };
+
+    // Store the fetched script content and final URL for later execution
+    internal_state.pending_script = ctx.allocator.dupe(u8, fetched_script.source) catch {
+        @constCast(&fetched_script).deinit();
+        return error.OutOfMemory;
+    };
+    internal_state.script_final_url = ctx.allocator.dupe(u8, fetched_script.final_url) catch {
+        ctx.allocator.free(internal_state.pending_script.?);
+        internal_state.pending_script = null;
+        @constCast(&fetched_script).deinit();
+        return error.OutOfMemory;
+    };
+
+    // Clean up the fetched script metadata (we've copied what we need)
+    @constCast(&fetched_script).deinit();
+
+    // CRITICAL: Use queueTask to schedule worker initialization.
+    // The initialization MUST be deferred because:
+    // 1. The Worker constructor is called from within a V8 callback
+    // 2. Entering the worker's isolate corrupts the current HandleScope
+    // 3. Deferred execution runs after V8 has restored its state
+    //
+    // NOTE: The event loop processes ONE task per iteration, then polls timers.
+    // This means worker init tasks may run AFTER JavaScript setTimeout callbacks
+    // if there are many workers being initialized simultaneously.
+    //
+    // For reliable message delivery timing, the script fetch is done in the
+    // constructor (above), only the script EXECUTION is deferred.
     if (ctx.getOptionalEventLoop()) |event_loop| {
         event_loop.queueTask(event_loop_mod.Task{
             .callback = initializeWorkerCallback,
@@ -303,23 +351,10 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         });
     } else {
         // Fallback: try timer if no event loop available
-        // For nested workers, ctx.timer may be null (context lookup may fail to find
-        // the registered worker context with timer). In this case, we fall back to
-        // the thread-local timer which was set when the parent worker's context was
-        // set up. This timer remains available during the parent worker's script
-        // execution, which is when nested workers are created.
         const timer = ctx.timer orelse WorkerV8Context.getTimerInterface();
-
         if (timer) |t| {
-            // Use 1ms delay instead of 0 to ensure the callback fires in a
-            // FUTURE event loop iteration, not the current one. With 0 delay,
-            // the callback might fire immediately when the event loop is polled
-            // during the parent worker's script execution, causing HandleScope
-            // corruption when we enter the nested worker's isolate.
             _ = t.setTimeout(1, initializeWorkerCallback, instance);
         } else {
-            // No timer available - fall back to synchronous initialization
-            // WARNING: This may cause crashes for nested workers
             std.log.warn("Worker: no timer available, using synchronous initialization", .{});
             initializeWorkerSync(internal_state, ctx);
         }
@@ -480,16 +515,28 @@ fn initializeWorkerCallback(user_data: ?*anyopaque) void {
 ///
 /// This does all the heavy work that was previously in the constructor:
 /// - Creates DedicatedWorker
-/// - Fetches script
 /// - Creates V8 context (enters/exits worker isolate)
 /// - Sets up global scope
 /// - Schedules script execution
+///
+/// NOTE: Script fetch is now done in the constructor to ensure blob URLs
+/// are fetched before they can be revoked. The script content is already
+/// stored in internal.pending_script and internal.script_final_url.
 fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     const allocator = internal.allocator;
     const url = internal.script_url;
     const name = internal.name;
     const worker_type = internal.worker_type;
     const credentials = internal.credentials;
+
+    // Check if script was fetched successfully in the constructor
+    // If not, we still create the worker but it won't execute any script
+    const script_final_url = internal.script_final_url orelse blk: {
+        std.log.warn("No script_final_url - script fetch failed in constructor", .{});
+        // Still create worker for postMessage capability, but no script execution
+        internal.pending_script = null;
+        break :blk url; // Fall back to original URL for DedicatedWorker init
+    };
 
     // Try to create the DedicatedWorker using the global timer backend
     const timer_backend = platform.getDefaultTimerBackend(allocator) catch |err| {
@@ -529,23 +576,13 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // See DedicatedWorkerMessagingProxy::was_script_evaluated_ flag.
     // The flush happens in executeWorkerScriptCallback AFTER script execution.
 
-    // Fetch the worker script
-    const fetched_script = workers.fetchWorkerScript(allocator, url, .{
-        .worker_type = worker_type,
-        .origin = null,
-    }) catch |err| {
-        std.log.warn("Failed to fetch worker script: {}", .{err});
-        return;
-    };
-
-    // Create V8 context for worker execution
+    // Create V8 context for worker execution using the pre-fetched script's final URL
     const v8_context = WorkerV8Context.init(
         allocator,
-        fetched_script.final_url,
+        script_final_url,
         worker_type,
     ) catch |err| {
         std.log.warn("Failed to create WorkerV8Context: {}", .{err});
-        @constCast(&fetched_script).deinit();
         return;
     };
     internal.v8_context = v8_context;
@@ -553,7 +590,6 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // Create the WorkerContext
     dedicated_worker.startWithContext() catch |err| {
         std.log.warn("Failed to start worker context: {}", .{err});
-        @constCast(&fetched_script).deinit();
         return;
     };
 
@@ -562,7 +598,6 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
         worker_ctx.setEngineContext(v8_context.getEngineContext(), v8_context.getCallbacks());
     } else {
         std.log.warn("WorkerContext not created after startWithContext", .{});
-        @constCast(&fetched_script).deinit();
         return;
     }
 
@@ -574,23 +609,13 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // Set up DedicatedWorkerGlobalScope with proper globals
     v8_context.setupWorkerGlobalScope(dedicated_worker) catch |err| {
         std.log.warn("Failed to set up worker global scope: {}", .{err});
-        @constCast(&fetched_script).deinit();
         return;
     };
 
     // Start the worker's message queue
     dedicated_worker.startWorkerMessageQueue();
 
-    // Store the fetched script source for execution
-    const script_source_copy = allocator.dupe(u8, fetched_script.source) catch |err| {
-        std.log.warn("Failed to copy worker script source: {}", .{err});
-        @constCast(&fetched_script).deinit();
-        return;
-    };
-    internal.pending_script = script_source_copy;
-
-    // Clean up fetched script metadata
-    @constCast(&fetched_script).deinit();
+    // NOTE: pending_script is already set from constructor - no need to fetch again
 
     // Execute worker script SYNCHRONOUSLY to prevent race with cleanup.
     //

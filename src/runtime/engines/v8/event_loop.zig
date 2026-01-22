@@ -364,12 +364,14 @@ pub const V8EventLoop = struct {
         // This handles any pending Promise.then() callbacks, queueMicrotask(), etc.
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
-        // Step 2: Execute one task from our task queue (if any)
-        if (self.tasks.items.len > 0) {
+        // Step 2: Execute ALL tasks from our task queue
+        // This ensures worker init tasks and other queued work completes
+        // before we poll timers (which includes test timeouts)
+        while (self.tasks.items.len > 0) {
             const task = self.tasks.orderedRemove(0);
             task.callback(task.context);
             did_work = true;
-            // Run microtasks after task - it may have resolved Promises
+            // Run microtasks after each task - it may have resolved Promises
             v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
         }
 
@@ -400,8 +402,8 @@ pub const V8EventLoop = struct {
         // Timer callbacks may have scheduled JS callbacks that created Promises
         v8_ffi.v8_Isolate_PerformMicrotaskCheckpoint(self.isolate);
 
-        // Step 6: Process any newly queued tasks from timer callbacks
-        if (self.tasks.items.len > 0) {
+        // Step 6: Process ALL newly queued tasks from timer callbacks
+        while (self.tasks.items.len > 0) {
             const task = self.tasks.orderedRemove(0);
             task.callback(task.context);
             did_work = true;
