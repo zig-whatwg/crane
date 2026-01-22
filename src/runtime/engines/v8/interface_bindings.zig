@@ -297,11 +297,14 @@ pub fn registerAllTemplatesOnly(
                 continue;
             }
 
-            // Also skip EventTarget - it's in the snapshot and Window inherits from it
+            // NOTE: EventTarget is NO LONGER skipped here.
+            // Even though Window inherits from EventTarget, we must still refresh
+            // EventTarget's constructor with valid callbacks after snapshot restore.
+            // Without this, `new EventTarget()` would use stale callback pointers.
             const is_event_target = comptime std.mem.eql(u8, decl.name, "EventTarget");
             if (is_event_target) {
-                std.debug.print("[registerAllTemplatesOnly] SKIPPING EventTarget (Window inherits from it)\n", .{});
-                continue;
+                std.debug.print("[registerAllTemplatesOnly] Processing: EventTarget\n", .{});
+                // Continue to normal registration - don't skip
             }
 
             // Debug: print when we're about to process an interface

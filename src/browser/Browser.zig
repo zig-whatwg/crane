@@ -479,6 +479,8 @@ pub const Browser = struct {
     /// @return true if work was performed, false if timeout with no work
     pub fn runEventLoopBlocking(self: *Browser, timeout_ms: u64) !bool {
         const event_loop = self.event_loop orelse return error.NotInitialized;
+        // DEBUG: Log event loop pointer and task count
+        std.log.err("[Browser.runEventLoopBlocking] event_loop={*}, tasks.len={d}", .{ event_loop, event_loop.tasks.items.len });
         const start_time = std.time.milliTimestamp();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
         var did_work = false;

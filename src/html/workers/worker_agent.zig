@@ -97,6 +97,12 @@ pub const WorkerAgent = struct {
             .error_handler = .{},
         };
 
+        // DEBUG
+        const stderr_file = std.fs.File.stderr();
+        var buf: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[WorkerAgent.init] Created agent={*}, closing={}, terminated={}\n", .{ agent, agent.data.closing, agent.termination_state == .terminated }) catch "[WorkerAgent.init]\n";
+        stderr_file.writeAll(msg) catch {};
+
         return agent;
     }
 
@@ -236,6 +242,12 @@ pub const WorkerAgent = struct {
     /// The close() method allows the current task to complete before stopping.
     /// New tasks will not be accepted.
     pub fn close(self: *WorkerAgent) void {
+        // DEBUG
+        const stderr_file = std.fs.File.stderr();
+        var buf: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[WorkerAgent.close] agent={*}, current_closing={}, current_termination_state={s}\n", .{ self, self.data.closing, @tagName(self.termination_state) }) catch "[WorkerAgent.close]\n";
+        stderr_file.writeAll(msg) catch {};
+
         // Don't close if already terminating or terminated
         if (self.termination_state == .terminating or self.termination_state == .terminated) {
             return;
@@ -265,6 +277,12 @@ pub const WorkerAgent = struct {
     ///
     /// The terminate() method immediately aborts execution and cleans up resources.
     pub fn terminate(self: *WorkerAgent) void {
+        // DEBUG
+        const stderr_file = std.fs.File.stderr();
+        var buf: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[WorkerAgent.terminate] agent={*}, current_closing={}, current_termination_state={s}\n", .{ self, self.data.closing, @tagName(self.termination_state) }) catch "[WorkerAgent.terminate]\n";
+        stderr_file.writeAll(msg) catch {};
+
         // Don't terminate if already terminated
         if (self.termination_state == .terminated) {
             return;

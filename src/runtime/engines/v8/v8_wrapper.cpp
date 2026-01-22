@@ -5464,7 +5464,47 @@ Global<Object>* v8_PropertyCallbackInfo_Void_Holder(const PropertyCallbackInfo<v
 void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* info, Global<Value>* value) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
+
+    // Debug: Check if pointer looks valid
+    if (!value) {
+        fprintf(stderr, "[PropertySetReturnValue] ERROR: null value pointer!\n");
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+
+    // Check alignment (Global handles are 8-byte aligned)
+    uintptr_t ptr_val = reinterpret_cast<uintptr_t>(value);
+    if (ptr_val % 8 != 0) {
+        fprintf(stderr, "[PropertySetReturnValue] ERROR: misaligned pointer 0x%lx\n", ptr_val);
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+
+    // Check if Global is empty
+    if (value->IsEmpty()) {
+        fprintf(stderr, "[PropertySetReturnValue] ERROR: Global handle is empty!\n");
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+
     Local<Value> val = value->Get(isolate);
+
+    // Debug: Print what type of value we're returning
+    if (val->IsString()) {
+        String::Utf8Value str(isolate, val);
+        fprintf(stderr, "[PropertySetReturnValue] Returning string: '%s'\n", *str);
+    } else if (val->IsNumber()) {
+        fprintf(stderr, "[PropertySetReturnValue] Returning number: %f\n", val->NumberValue(isolate->GetCurrentContext()).FromMaybe(0.0));
+    } else if (val->IsUndefined()) {
+        fprintf(stderr, "[PropertySetReturnValue] Returning undefined\n");
+    } else if (val->IsNull()) {
+        fprintf(stderr, "[PropertySetReturnValue] Returning null\n");
+    } else if (val->IsObject()) {
+        fprintf(stderr, "[PropertySetReturnValue] Returning object\n");
+    } else {
+        fprintf(stderr, "[PropertySetReturnValue] Returning unknown type\n");
+    }
+
     info->GetReturnValue().Set(val);
 }
 
@@ -6204,33 +6244,100 @@ Global<Value>* v8_Function_Call(
     CHECK_ALIGNMENT_LOG(function, Global<Function>, "v8_Function_Call");
     CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Function_Call");
     CHECK_ALIGNMENT_LOG(recv, Global<Value>, "v8_Function_Call");
-    
+
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     // Convert Global handles to Local handles
     Local<Function> fn = function->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Local<Value> this_val = recv->Get(isolate);
-    
+
     // Convert argument array from Global to Local
     Local<Value>* local_argv = new Local<Value>[argc];
     for (int i = 0; i < argc; i++) {
         CHECK_ALIGNMENT_LOG(argv[i], Global<Value>, "v8_Function_Call[argv]");
         local_argv[i] = argv[i]->Get(isolate);
     }
-    
+
+    // DEBUG: Print argument info for MessageEvent callbacks
+    if (argc == 1 && local_argv[0]->IsObject()) {
+        Local<Object> arg_obj = local_argv[0].As<Object>();
+        Local<String> constructor_name = arg_obj->GetConstructorName();
+        String::Utf8Value name_utf8(isolate, constructor_name);
+        if (strcmp(*name_utf8, "MessageEvent") == 0) {
+            // Print function name/source
+            Local<String> fn_name = fn->GetName().As<String>();
+            if (!fn_name.IsEmpty()) {
+                String::Utf8Value fn_name_str(isolate, fn_name);
+                fprintf(stderr, "[v8_Function_Call] MessageEvent callback fn_name='%s'\n", *fn_name_str);
+            }
+
+            // Try to get toString
+            MaybeLocal<String> maybe_fn_str = fn->ToString(ctx);
+            if (!maybe_fn_str.IsEmpty()) {
+                String::Utf8Value fn_str(isolate, maybe_fn_str.ToLocalChecked());
+                const char* fn_cstr = *fn_str;
+                // Only print first 300 chars
+                char fn_preview[310];
+                strncpy(fn_preview, fn_cstr, 300);
+                fn_preview[300] = '\0';
+                fprintf(stderr, "[v8_Function_Call] MessageEvent callback fn='%s...'\n", fn_preview);
+            }
+
+            // Try to access 'data' property
+            MaybeLocal<Value> data_val = arg_obj->Get(ctx, String::NewFromUtf8Literal(isolate, "data"));
+            if (data_val.IsEmpty()) {
+                fprintf(stderr, "[v8_Function_Call] ERROR: MessageEvent.data access returned empty!\n");
+            } else {
+                Local<Value> data = data_val.ToLocalChecked();
+                if (data->IsString()) {
+                    String::Utf8Value data_str(isolate, data);
+                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = '%s'\n", *data_str);
+                } else if (data->IsUndefined()) {
+                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = undefined\n");
+                } else if (data->IsNull()) {
+                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = null\n");
+                } else if (data->IsNumber()) {
+                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = %f\n", data->NumberValue(ctx).FromMaybe(0.0));
+                } else if (data->IsObject()) {
+                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = [object]\n");
+                } else if (data->IsArray()) {
+                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = [array]\n");
+                } else {
+                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = [other type]\n");
+                }
+            }
+        }
+    }
+
     // Call the function
+    TryCatch try_catch(isolate);
     MaybeLocal<Value> maybe_result = fn->Call(ctx, this_val, argc, local_argv);
-    
+
     // Clean up local argument array
     delete[] local_argv;
-    
+
     // Check for exception
+    if (try_catch.HasCaught()) {
+        Local<Value> exception = try_catch.Exception();
+        String::Utf8Value exception_str(isolate, exception);
+        fprintf(stderr, "[v8_Function_Call] EXCEPTION: %s\n", *exception_str);
+
+        // Get stack trace if available
+        MaybeLocal<Value> maybe_stack = try_catch.StackTrace(ctx);
+        if (!maybe_stack.IsEmpty()) {
+            String::Utf8Value stack_str(isolate, maybe_stack.ToLocalChecked());
+            fprintf(stderr, "[v8_Function_Call] Stack: %s\n", *stack_str);
+        }
+        return nullptr;
+    }
+
     if (maybe_result.IsEmpty()) {
+        fprintf(stderr, "[v8_Function_Call] Result is empty but no exception?\n");
         return nullptr;  // Exception occurred
     }
-    
+
     // Return the result as a Global handle
     Local<Value> result = maybe_result.ToLocalChecked();
     return trackHandle(new Global<Value>(isolate, result));

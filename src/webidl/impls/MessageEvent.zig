@@ -176,6 +176,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
+
+    // DEBUG - show what data type we're returning
+    const stderr_file = std.fs.File.stderr();
+    var debug_buf: [64]u8 = undefined;
+    const data_type = @tagName(state.own.data);
+    const debug_msg = std.fmt.bufPrint(&debug_buf, "[MessageEvent.get_data] type={s}\n", .{data_type}) catch "[MessageEvent.get_data]\n";
+    stderr_file.writeAll(debug_msg) catch {};
+
     return state.own.data;
 }
 

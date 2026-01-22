@@ -91,6 +91,10 @@ pub const DedicatedWorker = struct {
     /// This allows callbacks to access the higher-level Worker object.
     user_data: ?*anyopaque = null,
 
+    /// User data for inside (worker-side) callbacks
+    /// This allows the worker to store a reference to DedicatedWorkerGlobalScope
+    inside_user_data: ?*anyopaque = null,
+
     /// Create a new dedicated worker.
     ///
     /// Spec: HTML Standard § 10.2.3.1 Constructor
@@ -356,6 +360,12 @@ pub const DedicatedWorker = struct {
     ///
     /// This immediately aborts execution and cleans up resources.
     pub fn terminate(self: *DedicatedWorker) void {
+        // DEBUG: Log who's terminating this worker
+        const stderr_file = std.fs.File.stderr();
+        var buf: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[DedicatedWorker.terminate] self={*}, agent={*}\n", .{ self, self.agent }) catch "[DedicatedWorker.terminate]\n";
+        stderr_file.writeAll(msg) catch {};
+
         self.agent.terminate();
     }
 
@@ -494,7 +504,11 @@ pub const DedicatedWorker = struct {
     /// Call `flushPendingMessages()` after exiting the worker isolate.
     pub fn postMessageFromWorker(self: *DedicatedWorker, message: *const JSValue, transfer: ?[]?*anyopaque) !void {
         _ = transfer;
+        const stderr_file = std.fs.File.stderr();
+        stderr_file.writeAll("[postMessageFromWorker] ENTRY\n") catch {};
+
         if (self.agent.isClosing() or self.agent.isTerminated()) {
+            stderr_file.writeAll("[postMessageFromWorker] Worker is closing/terminated, returning\n") catch {};
             return;
         }
 
@@ -517,15 +531,28 @@ pub const DedicatedWorker = struct {
             msg.deinit();
             return error.OutOfMemory;
         };
+
+        var buf: [128]u8 = undefined;
+        const msg_str = std.fmt.bufPrint(&buf, "[postMessageFromWorker] Queued, pending_messages now has {d}\n", .{pending_messages.items.len}) catch "[postMessageFromWorker] queued\n";
+        stderr_file.writeAll(msg_str) catch {};
     }
 
     /// Append a message to the pending queue (public for testing from callback).
     /// This is used to isolate which step of postMessageFromWorker causes the crash.
     pub fn appendPendingMessage(port: *message_channel.WorkerPort, msg: *message_channel.QueuedMessage) !void {
+        const stderr_file = std.fs.File.stderr();
+        var buf: [128]u8 = undefined;
+        const msg_str = std.fmt.bufPrint(&buf, "[appendPendingMessage] ENTRY, current len={d}\n", .{pending_messages.items.len}) catch "[appendPendingMessage]\n";
+        stderr_file.writeAll(msg_str) catch {};
+
         try pending_messages.append(std.heap.page_allocator, .{
             .port = port,
             .msg = msg,
         });
+
+        var buf2: [128]u8 = undefined;
+        const msg_str2 = std.fmt.bufPrint(&buf2, "[appendPendingMessage] Done, new len={d}\n", .{pending_messages.items.len}) catch "[appendPendingMessage] done\n";
+        stderr_file.writeAll(msg_str2) catch {};
     }
 
     /// Flush pending messages to their target ports.
@@ -536,16 +563,29 @@ pub const DedicatedWorker = struct {
     /// callback causes HandleScope issues. This function appends the queued messages
     /// to their target ports so processQueuedMessages() can deliver them.
     pub fn flushPendingMessages() void {
+        const stderr_file = std.fs.File.stderr();
+        var buf: [128]u8 = undefined;
+        const msg_str = std.fmt.bufPrint(&buf, "[flushPendingMessages] pending_messages.items.len={d}\n", .{pending_messages.items.len}) catch "[flushPendingMessages]\n";
+        stderr_file.writeAll(msg_str) catch {};
+
         for (pending_messages.items) |pending| {
             // Append message to the port's message queue
             // This is safe now because we're back in the main isolate's context
+            var port_buf: [128]u8 = undefined;
+            const port_msg = std.fmt.bufPrint(&port_buf, "[flushPendingMessages] Appending message to port={*}\n", .{pending.port}) catch "[flushPendingMessages] Appending\n";
+            stderr_file.writeAll(port_msg) catch {};
             pending.port.message_queue.append(pending.port.allocator, pending.msg) catch {
                 // Clean up message if append fails
+                stderr_file.writeAll("[flushPendingMessages] Failed to append!\n") catch {};
                 pending.msg.deinit();
                 continue;
             };
+            var buf2: [128]u8 = undefined;
+            const msg_str2 = std.fmt.bufPrint(&buf2, "[flushPendingMessages] Port queue now has {d} messages\n", .{pending.port.message_queue.items.len}) catch "[flushPendingMessages] done\n";
+            stderr_file.writeAll(msg_str2) catch {};
         }
         pending_messages.clearRetainingCapacity();
+        stderr_file.writeAll("[flushPendingMessages] Done\n") catch {};
     }
 
     /// Flush pending messages and return the unique ports that received messages.
@@ -603,6 +643,19 @@ pub const DedicatedWorker = struct {
         return self.user_data;
     }
 
+    /// Set inside user data for worker-side callbacks.
+    ///
+    /// This allows storing a reference to the DedicatedWorkerGlobalScope instance
+    /// so that inside message handlers can dispatch MessageEvents.
+    pub fn setInsideUserData(self: *DedicatedWorker, data: ?*anyopaque) void {
+        self.inside_user_data = data;
+    }
+
+    /// Get inside user data for worker-side callbacks.
+    pub fn getInsideUserData(self: *DedicatedWorker) ?*anyopaque {
+        return self.inside_user_data;
+    }
+
     /// Enable message dispatch on the outside port.
     ///
     /// Spec: HTML Standard § 9.3.2 start()
@@ -634,15 +687,25 @@ pub const DedicatedWorker = struct {
         // The outside port's on_message handler will invoke the Worker's onmessage
         const outside_port = self.port_pair.outside_port;
 
+        const stderr_file = std.fs.File.stderr();
+        var buf: [128]u8 = undefined;
+        const msg_str = std.fmt.bufPrint(&buf, "[processQueuedMessages] outside_port has {d} messages, on_message={}\n", .{ outside_port.message_queue.items.len, outside_port.on_message != null }) catch "[processQueuedMessages]\n";
+        stderr_file.writeAll(msg_str) catch {};
+
         while (outside_port.message_queue.items.len > 0) {
             const msg = outside_port.message_queue.orderedRemove(0);
+            stderr_file.writeAll("[processQueuedMessages] Processing message\n") catch {};
 
             if (outside_port.on_message) |handler| {
+                stderr_file.writeAll("[processQueuedMessages] Calling handler\n") catch {};
                 handler(outside_port, msg, outside_port.on_message_context);
+            } else {
+                stderr_file.writeAll("[processQueuedMessages] No handler!\n") catch {};
             }
             // Clean up message after handler returns
             msg.deinit();
         }
+        stderr_file.writeAll("[processQueuedMessages] Done\n") catch {};
     }
 
     /// Process queued messages on the inside port (main thread → worker).
