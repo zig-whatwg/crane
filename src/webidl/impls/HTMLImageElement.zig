@@ -33,7 +33,7 @@ const EventTarget = interfaces.EventTarget;
 const Event = interfaces.Event;
 
 // Event loop for microtask/task queuing
-const event_loop_mod = @import("event_loop");
+const event_loop_mod = @import("streams_event_loop");
 
 pub const State = HTMLImageElement.State;
 

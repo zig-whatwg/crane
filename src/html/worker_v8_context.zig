@@ -398,6 +398,39 @@ fn isSecureUrlForWorker(url: []const u8) bool {
     return false;
 }
 
+/// Escape a string for use within a JavaScript string literal.
+/// Escapes backslashes and double quotes.
+fn escapeJsString(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
+    // Count how many characters need escaping
+    var extra_chars: usize = 0;
+    for (s) |c| {
+        if (c == '"' or c == '\\') {
+            extra_chars += 1;
+        }
+    }
+
+    if (extra_chars == 0) {
+        // No escaping needed, return a copy
+        return try allocator.dupe(u8, s);
+    }
+
+    // Allocate buffer for escaped string
+    var result = try allocator.alloc(u8, s.len + extra_chars);
+    errdefer allocator.free(result);
+
+    var i: usize = 0;
+    for (s) |c| {
+        if (c == '"' or c == '\\') {
+            result[i] = '\\';
+            i += 1;
+        }
+        result[i] = c;
+        i += 1;
+    }
+
+    return result;
+}
+
 /// Get the effective URL for a worker, applying WPT URL rewriting rules.
 /// Per WPT convention:
 ///   - .https. tests use https://localhost:8443
@@ -722,6 +755,18 @@ pub const WorkerV8Context = struct {
     /// - console object (no-op for workers)
     /// - name property (worker name)
     pub fn setupWorkerGlobalScope(self: *Self, dedicated_worker: *DedicatedWorker) !void {
+        // DEBUG: Log the setup pairing
+        const stderr_file = std.fs.File.stderr();
+        var buf: [512]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "[setupWorkerGlobalScope] self={*}, dedicated_worker={*}, agent={*}, agent.closing={}, agent.termination_state={s}\n", .{
+            self,
+            dedicated_worker,
+            dedicated_worker.agent,
+            dedicated_worker.agent.data.closing,
+            @tagName(dedicated_worker.agent.termination_state),
+        }) catch "[setupWorkerGlobalScope]\n";
+        stderr_file.writeAll(msg) catch {};
+
         self.dedicated_worker = dedicated_worker;
 
         // Enter worker's isolate and context for setup
@@ -770,7 +815,7 @@ pub const WorkerV8Context = struct {
             \\  isShadowRealm: function() { return false; },
             \\};
         ;
-        _ = try self.executeScript(global_script);
+        _ = try self.executeScriptNoMessages(global_script);
 
         // NOTE: DedicatedWorkerGlobalScope and WorkerGlobalScope constructors are set up
         // AFTER installForScope() is called, so that Symbol.hasInstance can be added
@@ -802,7 +847,7 @@ pub const WorkerV8Context = struct {
             \\  };
             \\})();
         ;
-        _ = try self.executeScript(console_script);
+        _ = try self.executeScriptNoMessages(console_script);
 
         // Set thread-local reference for callbacks to access this context
         current_worker_context = self;
@@ -997,6 +1042,10 @@ pub const WorkerV8Context = struct {
             const effective_url = try getEffectiveWorkerUrl(self.allocator, self.script_url);
             defer self.allocator.free(effective_url);
 
+            // Escape the URL for use in JavaScript string (escape quotes and backslashes)
+            const escaped_url = try escapeJsString(self.allocator, effective_url);
+            defer self.allocator.free(escaped_url);
+
             const location_script = try std.fmt.allocPrint(self.allocator,
                 \\(function() {{
                 \\  // Create WorkerLocation-like object
@@ -1014,7 +1063,7 @@ pub const WorkerV8Context = struct {
                 \\    toString: function() {{ return this.href; }}
                 \\  }};
                 \\}})();
-            , .{effective_url});
+            , .{escaped_url});
             defer self.allocator.free(location_script);
             _ = try self.executeScriptInternal(location_script);
         }
@@ -1332,13 +1381,21 @@ pub const WorkerV8Context = struct {
         };
     }
 
-    /// Execute a script in this worker's context
+    /// Execute a script in this worker's context (with optional message processing)
     ///
-    /// This also processes any pending incoming messages after script execution,
-    /// allowing the worker's onmessage handler to be invoked.
-    pub fn executeScript(self: *Self, source: []const u8) !?*anyopaque {
+    /// If process_messages is true, also processes any pending incoming messages
+    /// after script execution, allowing the worker's onmessage handler to be invoked.
+    ///
+    /// For setup scripts (global scope initialization), pass process_messages=false
+    /// since the onmessage handler isn't set up yet.
+    fn executeScriptEx(self: *Self, source: []const u8, process_messages: bool) !?*anyopaque {
+        std.log.err("[executeScriptEx] ENTRY source_len={d} process_messages={} self={*}", .{ source.len, process_messages, self });
+        std.log.err("[executeScriptEx] isolate={*} context={*}", .{ self.isolate, self.context });
+
         // Enter worker's isolate and context for script execution
+        std.log.err("[executeScriptEx] About to enter isolate...", .{});
         v8.ffi.v8_Isolate_Enter(self.isolate);
+        std.log.err("[executeScriptEx] Isolate entered", .{});
         v8.ffi.v8_Context_Enter(self.context);
         defer {
             v8.ffi.v8_Context_Exit(self.context);
@@ -1359,12 +1416,65 @@ pub const WorkerV8Context = struct {
         defer current_worker_context = prev_context;
 
         const result = try self.executeScriptInternal(source);
+        std.log.err("[executeScriptEx] Script executed", .{});
 
-        // Process any incoming messages from the main thread
+        // Verify onmessage was set (we're still inside the isolate/context)
+        const global_obj = v8.ffi.v8_Context_Global(self.context);
+        if (global_obj) |g| {
+            const onmessage_key = v8.ffi.v8_String_NewFromUtf8(self.isolate, "onmessage", 9);
+            if (onmessage_key) |k| {
+                const onmessage_val = v8.ffi.v8_Object_Get(g, self.context, @ptrCast(k));
+                if (onmessage_val) |val| {
+                    // CRITICAL: Use v8_Value_IsFunction (for Global handles), NOT v8_Value_IsFunction_Local
+                    // v8_Object_Get returns Global<Value>*, so we must use the Global handle version
+                    if (v8.ffi.v8_Value_IsFunction(val)) {
+                        std.log.err("[executeScriptEx] onmessage IS a function!", .{});
+                    } else {
+                        std.log.err("[executeScriptEx] onmessage NOT a function", .{});
+                    }
+                } else {
+                    std.log.err("[executeScriptEx] onmessage_val is null", .{});
+                }
+            } else {
+                std.log.err("[executeScriptEx] onmessage_key is null", .{});
+            }
+        } else {
+            std.log.err("[executeScriptEx] global_obj is null", .{});
+        }
+
+        // Process any incoming messages from the main thread (only if requested)
         // This allows the worker's onmessage handler (set up by the script) to run
-        self.processIncomingMessagesInternal();
+        if (process_messages) {
+            self.processIncomingMessagesInternal();
+        }
 
         return result;
+    }
+
+    /// Execute a script in this worker's context (processes messages after)
+    ///
+    /// This also processes any pending incoming messages after script execution,
+    /// allowing the worker's onmessage handler to be invoked.
+    pub fn executeScript(self: *Self, source: []const u8) !?*anyopaque {
+        std.log.err("=== EXECUTE_SCRIPT source_len={d} CALLING executeScriptEx ===", .{source.len});
+        std.log.err("=== EXECUTE_SCRIPT self={*} ===", .{self});
+        // Call executeScriptEx directly - inline call to avoid any vtable issues
+        const result_or_err = executeScriptEx(self, source, true);
+        if (result_or_err) |result| {
+            std.log.err("=== EXECUTE_SCRIPT DONE result={*} ===", .{result});
+            return result;
+        } else |err| {
+            std.log.err("=== EXECUTE_SCRIPT executeScriptEx returned error: {} ===", .{err});
+            return err;
+        }
+    }
+
+    /// Execute a script without processing messages (for setup scripts)
+    ///
+    /// Use this for global scope initialization scripts that run before the
+    /// worker's onmessage handler is set up.
+    fn executeScriptNoMessages(self: *Self, source: []const u8) !?*anyopaque {
+        return self.executeScriptEx(source, false);
     }
 
     /// Process incoming messages - internal version (already in isolate context)
@@ -1372,8 +1482,14 @@ pub const WorkerV8Context = struct {
         const dedicated_worker = self.dedicated_worker orelse return;
         const inside_port = dedicated_worker.port_pair.inside_port;
 
+        const queue_len = inside_port.message_queue.items.len;
+        if (queue_len > 0) {
+            std.log.debug("[processIncomingMessagesInternal] {d} messages in inside_port queue", .{queue_len});
+        }
+
         while (inside_port.message_queue.items.len > 0) {
             const msg = inside_port.message_queue.orderedRemove(0);
+            std.log.debug("[processIncomingMessagesInternal] Dispatching message type={s}", .{@tagName(msg.data.type)});
             dispatchMessageToWorkerInternal(self, msg);
             msg.deinit();
         }
@@ -2118,8 +2234,16 @@ fn workerPostMessageCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(
     const json_str = json_buffer[0..@intCast(written)];
     const dedicated_worker = worker_ctx.dedicated_worker orelse return;
 
+    // DEBUG: Log the message being posted
+    const stderr_file = std.fs.File.stderr();
+    var debug_buf: [512]u8 = undefined;
+    const preview_len = @min(json_str.len, 50);
+    const debug_msg = std.fmt.bufPrint(&debug_buf, "[workerPostMessageCallback] json_str len={d}, preview={s}, worker_ctx={*}, closing={}, terminated={}\n", .{ json_str.len, json_str[0..preview_len], worker_ctx, dedicated_worker.agent.isClosing(), dedicated_worker.agent.isTerminated() }) catch "[workerPostMessageCallback]\n";
+    stderr_file.writeAll(debug_msg) catch {};
+
     // Check agent state
     if (dedicated_worker.agent.isClosing() or dedicated_worker.agent.isTerminated()) {
+        stderr_file.writeAll("[workerPostMessageCallback] Agent is closing/terminated, returning\n") catch {};
         return;
     }
 
@@ -2537,6 +2661,9 @@ fn workerStructuredCloneCallback(info: *const v8.ffi.FunctionCallbackInfo) callc
 ///
 /// The function must be called from within the worker's V8 isolate context.
 pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.message_channel.QueuedMessage) void {
+    const stderr_file = std.fs.File.stderr();
+    stderr_file.writeAll("[dispatchMessageToWorker] ENTRY\n") catch {};
+
     const isolate = worker_ctx.isolate;
     const context = worker_ctx.context;
 
@@ -2545,16 +2672,29 @@ pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.messa
     defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
 
     // Get global object
-    const global_obj = v8.ffi.v8_Context_Global(context) orelse return;
+    const global_obj = v8.ffi.v8_Context_Global(context) orelse {
+        stderr_file.writeAll("[dispatchMessageToWorker] No global object\n") catch {};
+        return;
+    };
 
     // Get self.onmessage property
-    const onmessage_key = v8.ffi.v8_String_NewFromUtf8(isolate, "onmessage", 9) orelse return;
-    const onmessage_val = v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(onmessage_key)) orelse return;
+    const onmessage_key = v8.ffi.v8_String_NewFromUtf8(isolate, "onmessage", 9) orelse {
+        stderr_file.writeAll("[dispatchMessageToWorker] Failed to create onmessage key\n") catch {};
+        return;
+    };
+    const onmessage_val = v8.ffi.v8_Object_Get(global_obj, context, @ptrCast(onmessage_key)) orelse {
+        stderr_file.writeAll("[dispatchMessageToWorker] Failed to get onmessage property\n") catch {};
+        return;
+    };
 
     // Check if onmessage is a function
-    if (!v8.ffi.v8_Value_IsFunction_Local(@ptrCast(onmessage_val))) {
+    // CRITICAL: Use v8_Value_IsFunction (for Global handles), NOT v8_Value_IsFunction_Local
+    // v8_Object_Get returns Global<Value>*, so we must use the Global handle version
+    if (!v8.ffi.v8_Value_IsFunction(onmessage_val)) {
+        stderr_file.writeAll("[dispatchMessageToWorker] onmessage is NOT a function\n") catch {};
         return;
     }
+    stderr_file.writeAll("[dispatchMessageToWorker] onmessage IS a function\n") catch {};
 
     // Deserialize message data to JSON string
     const serialized = msg.data;
@@ -2565,20 +2705,36 @@ pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.messa
             .null => "null",
             .boolean => |b| if (b) "true" else "false",
             .number => "0", // TODO: Proper number serialization
+            .bigint => "0", // TODO: Proper bigint serialization
         },
-        .string => serialized.data.string_value,
-        else => return, // Can't convert complex types to simple string
+        .string_object => serialized.data.string_object,
+        else => {
+            stderr_file.writeAll("[dispatchMessageToWorker] Unsupported message type\n") catch {};
+            return;
+        },
     };
+
+    // Debug: Print the JSON string
+    stderr_file.writeAll("[dispatchMessageToWorker] json_str: ") catch {};
+    stderr_file.writeAll(json_str) catch {};
+    stderr_file.writeAll("\n") catch {};
 
     // Create the message data as a V8 value by parsing the JSON
     const data_value = blk: {
-        // Try to parse as JSON first
+        // Try to parse as JSON first using the buffer API
+        const parsed = v8.ffi.v8_JSON_Parse_FromBuffer(context, json_str.ptr, @intCast(json_str.len));
+        if (parsed != null) {
+            stderr_file.writeAll("[dispatchMessageToWorker] JSON parsed successfully\n") catch {};
+            break :blk parsed;
+        }
+        stderr_file.writeAll("[dispatchMessageToWorker] JSON parse failed, creating as string\n") catch {};
+        // If not valid JSON, create as string literal
         const json_v8_str = v8.ffi.v8_String_NewFromUtf8(isolate, json_str.ptr, @intCast(json_str.len)) orelse break :blk null;
-        const parsed = v8.ffi.v8_JSON_Parse(context, @ptrCast(json_v8_str));
-        if (parsed != null) break :blk parsed;
-        // If not valid JSON, use as string literal
         break :blk @as(?*v8.ffi.Value, @ptrCast(json_v8_str));
-    } orelse return;
+    } orelse {
+        stderr_file.writeAll("[dispatchMessageToWorker] Failed to create data value\n") catch {};
+        return;
+    };
 
     // Create a simple event object with 'data' property
     // For now, use a plain object instead of full MessageEvent
@@ -2587,16 +2743,25 @@ pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.messa
         \\  return { data: data, type: 'message', target: self, currentTarget: self };
         \\})
     ;
-    const event_source = v8.ffi.v8_String_NewFromUtf8(isolate, event_script.ptr, @intCast(event_script.len)) orelse return;
+    const event_source = v8.ffi.v8_String_NewFromUtf8(isolate, event_script.ptr, @intCast(event_script.len)) orelse {
+        stderr_file.writeAll("[dispatchMessageToWorker] Failed to create event_source string\n") catch {};
+        return;
+    };
     const compile_result = v8.ffi.v8_Script_Compile_Safe(context, event_source);
     defer v8.ffi.v8_FreeScriptCompileResult(compile_result);
 
-    if (compile_result.script == null) return;
+    if (compile_result.script == null) {
+        stderr_file.writeAll("[dispatchMessageToWorker] Event script compilation failed\n") catch {};
+        return;
+    }
 
     const run_result = v8.ffi.v8_Script_Run_Safe(context, compile_result.script.?);
     defer v8.ffi.v8_FreeScriptRunResult(run_result);
 
-    const event_factory = run_result.value orelse return;
+    const event_factory = run_result.value orelse {
+        stderr_file.writeAll("[dispatchMessageToWorker] Event factory run failed\n") catch {};
+        return;
+    };
 
     // Call the factory function with data to create event object
     var factory_args = [_]*v8.ffi.Value{data_value};
@@ -2606,9 +2771,14 @@ pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.messa
         @ptrCast(global_obj),
         1,
         &factory_args,
-    ) orelse return;
+    ) orelse {
+        stderr_file.writeAll("[dispatchMessageToWorker] Event factory call failed\n") catch {};
+        return;
+    };
+    stderr_file.writeAll("[dispatchMessageToWorker] Event object created\n") catch {};
 
     // Call onmessage(event)
+    stderr_file.writeAll("[dispatchMessageToWorker] Calling onmessage handler...\n") catch {};
     var args = [_]*v8.ffi.Value{event_obj};
     _ = v8.ffi.v8_Function_Call(
         @ptrCast(onmessage_val),
@@ -2617,9 +2787,11 @@ pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.messa
         1,
         &args,
     );
+    stderr_file.writeAll("[dispatchMessageToWorker] onmessage handler returned\n") catch {};
 
     // Run microtasks after handler
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    stderr_file.writeAll("[dispatchMessageToWorker] DONE\n") catch {};
 }
 
 /// Process incoming messages from the main thread
@@ -2627,29 +2799,57 @@ pub fn dispatchMessageToWorker(worker_ctx: *WorkerV8Context, msg: *workers.messa
 /// This should be called from within the worker's V8 context after
 /// the worker script has set up its onmessage handler.
 pub fn processIncomingMessages(worker_ctx: *WorkerV8Context) void {
-    const dedicated_worker = worker_ctx.dedicated_worker orelse return;
+    const stderr_file = std.fs.File.stderr();
+    stderr_file.writeAll("[processIncomingMessages] ENTRY\n") catch {};
+    const dedicated_worker = worker_ctx.dedicated_worker orelse {
+        stderr_file.writeAll("[processIncomingMessages] No dedicated_worker, returning\n") catch {};
+        return;
+    };
 
-    // Enter the worker's isolate and context
-    v8.ffi.v8_Isolate_Enter(worker_ctx.isolate);
-    v8.ffi.v8_Context_Enter(worker_ctx.context);
-    defer {
-        v8.ffi.v8_Context_Exit(worker_ctx.context);
-        v8.ffi.v8_Isolate_Exit(worker_ctx.isolate);
+    // Process messages inside worker isolate context
+    {
+        // Enter the worker's isolate and context
+        v8.ffi.v8_Isolate_Enter(worker_ctx.isolate);
+        v8.ffi.v8_Context_Enter(worker_ctx.context);
+        defer {
+            v8.ffi.v8_Context_Exit(worker_ctx.context);
+            v8.ffi.v8_Isolate_Exit(worker_ctx.isolate);
+        }
+
+        // Create HandleScope for V8 operations (required for string creation in dispatchMessageToWorkerInternal)
+        const handle_scope = v8.ffi.v8_HandleScope_New(worker_ctx.isolate);
+        defer v8.ffi.v8_HandleScope_Dispose(handle_scope);
+
+        // Set current_worker_context for any callbacks
+        const prev_context = current_worker_context;
+        current_worker_context = worker_ctx;
+        defer current_worker_context = prev_context;
+
+        // Process messages - directly iterate over the queue
+        const inside_port = dedicated_worker.port_pair.inside_port;
+        const queue_len = inside_port.message_queue.items.len;
+        var buf: [128]u8 = undefined;
+        const msg_str = std.fmt.bufPrint(&buf, "[processIncomingMessages] inside_port has {d} messages\n", .{queue_len}) catch "[processIncomingMessages] inside_port check\n";
+        stderr_file.writeAll(msg_str) catch {};
+
+        while (inside_port.message_queue.items.len > 0) {
+            const msg = inside_port.message_queue.orderedRemove(0);
+            stderr_file.writeAll("[processIncomingMessages] Dispatching message via JS\n") catch {};
+            // Use the internal method which dispatches via JavaScript - cleaner and avoids FFI handle issues
+            worker_ctx.dispatchMessageToWorkerInternal(msg);
+            msg.deinit();
+        }
     }
+    // Block exits here, so we're now outside the worker isolate
 
-    // Set current_worker_context for any callbacks
-    const prev_context = current_worker_context;
-    current_worker_context = worker_ctx;
-    defer current_worker_context = prev_context;
+    // CRITICAL: Flush pending messages AFTER exiting worker isolate
+    // When worker's onmessage handler calls self.postMessage(), messages are queued
+    // in pending_messages (not directly to outside_port) to avoid HandleScope issues.
+    // Now that we've exited the worker isolate, flush them to the actual port.
+    workers.dedicated_worker.DedicatedWorker.flushPendingMessages();
+    stderr_file.writeAll("[processIncomingMessages] Flushed pending messages\n") catch {};
 
-    // Process messages - directly iterate over the queue
-    const inside_port = dedicated_worker.port_pair.inside_port;
-
-    while (inside_port.message_queue.items.len > 0) {
-        const msg = inside_port.message_queue.orderedRemove(0);
-        dispatchMessageToWorker(worker_ctx, msg);
-        msg.deinit();
-    }
+    stderr_file.writeAll("[processIncomingMessages] Done processing\n") catch {};
 }
 
 // ============================================================================

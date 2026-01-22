@@ -73,6 +73,9 @@ const platform = @import("platform");
 const v8_engine = @import("v8");
 const template_registry = v8_engine.template_registry;
 
+// Import event loop for task scheduling (message dispatch)
+const event_loop_mod = @import("streams_event_loop");
+
 pub const State = Worker.State;
 
 pub const ImplError = error{
@@ -110,6 +113,11 @@ pub const InternalState = struct {
     /// Whether the worker has been terminated
     terminated: bool = false,
 
+    /// Whether the worker script has been evaluated
+    /// Per Chromium's DedicatedWorkerMessagingProxy::was_script_evaluated_ pattern:
+    /// Messages must not be dispatched until the script finishes executing.
+    script_evaluated: bool = false,
+
     /// Allocator used for this state
     allocator: std.mem.Allocator,
 
@@ -132,7 +140,18 @@ pub const InternalState = struct {
     /// This is set during constructor and executed via timer callback
     pending_script: ?[]const u8 = null,
 
+    /// Pending messages to send to worker (before DedicatedWorker is created)
+    /// Messages are queued here if postMessage is called before worker initialization completes.
+    /// Once the DedicatedWorker is ready, these are flushed to the inside port.
+    pending_outgoing_messages: std.ArrayList(*workers.message_channel.SerializedValue),
+
     pub fn deinit(self: *InternalState) void {
+        // Clean up pending outgoing messages
+        for (self.pending_outgoing_messages.items) |msg| {
+            msg.deinit();
+            self.allocator.destroy(msg);
+        }
+        self.pending_outgoing_messages.deinit(self.allocator);
         // Dispose V8 Global handles to prevent memory leaks
         v8_engine.disposeOptionalGlobalHandle(&self.onmessage_handle);
         v8_engine.disposeOptionalGlobalHandle(&self.onerror_handle);
@@ -251,19 +270,20 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         .worker_instance = instance,
         .ctx = ctx,
         .isolate = current_isolate,
+        .pending_outgoing_messages = .{},
     };
 
     // Store internal state in instance
     var state = instance.getState(State);
     state.own._internal = internal_state;
 
-    // CRITICAL: Defer ALL worker creation to a timer callback!
+    // CRITICAL: Defer ALL worker creation to a task/timer callback!
     // For nested workers (Worker created from within another Worker),
     // entering/exiting the worker isolate during the constructor corrupts
     // the calling isolate's HandleScope state, causing V8 crashes.
     //
     // Solution: The constructor only stores parameters and schedules
-    // the actual worker creation for later via setTimeout(0).
+    // the actual worker creation for later via queueTask or setTimeout.
     // This runs after:
     // 1. The constructor returns and V8 wraps the instance
     // 2. The calling script finishes
@@ -271,25 +291,38 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     //
     // Per HTML Standard § 10.2.5 "Run a worker": worker creation is asynchronous
     //
-    // For nested workers, ctx.timer may be null (context lookup may fail to find
-    // the registered worker context with timer). In this case, we fall back to
-    // the thread-local timer which was set when the parent worker's context was
-    // set up. This timer remains available during the parent worker's script
-    // execution, which is when nested workers are created.
-    const timer = ctx.timer orelse WorkerV8Context.getTimerInterface();
-
-    if (timer) |t| {
-        // Use 1ms delay instead of 0 to ensure the callback fires in a
-        // FUTURE event loop iteration, not the current one. With 0 delay,
-        // the callback might fire immediately when the event loop is polled
-        // during the parent worker's script execution, causing HandleScope
-        // corruption when we enter the nested worker's isolate.
-        _ = t.setTimeout(1, initializeWorkerCallback, instance);
+    // CRITICAL: Use queueTask instead of setTimeout to guarantee task ordering.
+    // Per research on Chromium's DedicatedWorkerMessagingProxy and V8 event loop:
+    // - Tasks queued via queueTask are processed BEFORE libuv timers
+    // - This ensures worker init happens before test timeout timers
+    // - Using setTimeout(1ms) creates a race condition with test timeouts
+    if (ctx.getOptionalEventLoop()) |event_loop| {
+        event_loop.queueTask(event_loop_mod.Task{
+            .callback = initializeWorkerCallback,
+            .context = instance,
+        });
     } else {
-        // No timer available - fall back to synchronous initialization
-        // WARNING: This may cause crashes for nested workers
-        std.log.warn("Worker: no timer available, using synchronous initialization", .{});
-        initializeWorkerSync(internal_state, ctx);
+        // Fallback: try timer if no event loop available
+        // For nested workers, ctx.timer may be null (context lookup may fail to find
+        // the registered worker context with timer). In this case, we fall back to
+        // the thread-local timer which was set when the parent worker's context was
+        // set up. This timer remains available during the parent worker's script
+        // execution, which is when nested workers are created.
+        const timer = ctx.timer orelse WorkerV8Context.getTimerInterface();
+
+        if (timer) |t| {
+            // Use 1ms delay instead of 0 to ensure the callback fires in a
+            // FUTURE event loop iteration, not the current one. With 0 delay,
+            // the callback might fire immediately when the event loop is polled
+            // during the parent worker's script execution, causing HandleScope
+            // corruption when we enter the nested worker's isolate.
+            _ = t.setTimeout(1, initializeWorkerCallback, instance);
+        } else {
+            // No timer available - fall back to synchronous initialization
+            // WARNING: This may cause crashes for nested workers
+            std.log.warn("Worker: no timer available, using synchronous initialization", .{});
+            initializeWorkerSync(internal_state, ctx);
+        }
     }
 
     return instance;
@@ -376,17 +409,30 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
     var state = instance.getState(State);
     state.own.onmessage = value;
 
+    // DEBUG - only log for Worker instances (not Window.onmessage)
+    const stderr_file = std.fs.File.stderr();
+
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
         v8_engine.disposeOptionalGlobalHandle(&internal.onmessage_handle);
         // Properly unwrap the optional before casting to extract the tagged pointer
         internal.onmessage_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
 
+        var debug_buf: [256]u8 = undefined;
+        const debug_msg = std.fmt.bufPrint(&debug_buf, "[Worker.set_onmessage] instance={*}, handler_set={}, dedicated_worker={?*}\n", .{ instance, internal.onmessage_handle != null, internal.dedicated_worker }) catch "[Worker.set_onmessage]\n";
+        stderr_file.writeAll(debug_msg) catch {};
+
         // Process any messages that were queued before the handler was set
         // This ensures messages posted by the worker during script execution
         // are delivered now that there's a handler to receive them.
         if (internal.dedicated_worker) |dedicated_worker| {
+            const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
+            var queue_msg_buf: [128]u8 = undefined;
+            const queue_msg = std.fmt.bufPrint(&queue_msg_buf, "[Worker.set_onmessage] worker={*}, queue_len={d}\n", .{ dedicated_worker, queue_len }) catch "[Worker.set_onmessage] queue\n";
+            stderr_file.writeAll(queue_msg) catch {};
             dedicated_worker.processQueuedMessages();
+        } else {
+            stderr_file.writeAll("[Worker.set_onmessage] WARN: dedicated_worker is NULL! Cannot process queued messages.\n") catch {};
         }
     }
 }
@@ -478,6 +524,11 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // Enable message dispatch on outside port
     dedicated_worker.startMessageQueue();
 
+    // NOTE: Pending messages are NOT flushed here. Per Chromium's implementation,
+    // messages must be held until the worker script finishes evaluating.
+    // See DedicatedWorkerMessagingProxy::was_script_evaluated_ flag.
+    // The flush happens in executeWorkerScriptCallback AFTER script execution.
+
     // Fetch the worker script
     const fetched_script = workers.fetchWorkerScript(allocator, url, .{
         .worker_type = worker_type,
@@ -541,13 +592,49 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // Clean up fetched script metadata
     @constCast(&fetched_script).deinit();
 
-    // Schedule script execution (also deferred to avoid HandleScope issues)
-    // Use 1ms delay to ensure execution happens in a future event loop iteration
-    if (ctx.timer) |timer| {
-        _ = timer.setTimeout(1, executeWorkerScriptCallback, internal.worker_instance);
+    // Execute worker script SYNCHRONOUSLY to prevent race with cleanup.
+    //
+    // The issue: If we defer script execution to a timer, test cleanup can call
+    // worker.terminate() BEFORE the script runs. This happens because:
+    // 1. Constructor schedules 1ms timer for script execution
+    // 2. Test harness checks all_done() after window.load (0ms timer)
+    // 3. If all_done() returns true, cleanup runs and terminates workers
+    // 4. 1ms timer fires but workers are already terminated
+    //
+    // The fix: Execute script synchronously during construction. This ensures
+    // the script runs before any cleanup can interfere.
+    //
+    // Per Chromium's DedicatedWorkerMessagingProxy pattern:
+    // - Script executes synchronously
+    // - Messages are queued in pending_outgoing_messages (not dispatched yet)
+    // - script_evaluated flag is set after script completes
+    // - Message dispatch happens in a deferred callback (for handler setup)
+    _ = executeWorkerScriptSync(internal);
+
+    // CRITICAL: Mark script as evaluated AFTER execution completes.
+    // This flag gates message dispatch in postMessage() - without it, messages
+    // posted before the script runs would be dispatched to a non-existent handler.
+    internal.script_evaluated = true;
+
+    // Schedule message dispatch to allow JavaScript to set up worker.onmessage
+    // handlers before messages are dispatched. This is the deferred part.
+    //
+    // CRITICAL: Use queueTask instead of setTimeout to guarantee task ordering.
+    // Per research on Chromium's DedicatedWorkerMessagingProxy and V8 event loop:
+    // - Tasks queued via queueTask are processed BEFORE libuv timers
+    // - This ensures message dispatch happens before test timeout timers
+    // - Using setTimeout(1ms) creates a race condition with test timeouts
+    if (ctx.getOptionalEventLoop()) |event_loop| {
+        event_loop.queueTask(event_loop_mod.Task{
+            .callback = executeWorkerMessageDispatchCallback,
+            .context = internal.worker_instance,
+        });
+    } else if (ctx.timer) |timer| {
+        // Fallback to timer if no event loop available
+        _ = timer.setTimeout(1, executeWorkerMessageDispatchCallback, internal.worker_instance);
     } else {
-        // No timer - execute synchronously (WARNING: may corrupt HandleScope)
-        _ = executeWorkerScriptSync(internal);
+        // No timer or event loop - dispatch messages synchronously (handlers may not be set up)
+        dispatchWorkerMessages(internal);
     }
 }
 
@@ -567,15 +654,58 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
 
     // Execute worker script.
     //
-    // Timeline:
-    // 1. new Worker(...) - constructor returns, fetch_tests_from_worker sets up onmessage handler
-    // 2. setTimeout(0, executeWorkerScriptCallback) fires (we're here)
-    // 3. Worker script runs, posts messages (buffered in pending_messages)
-    // 4. Messages flushed to port queue (pure Zig, no V8)
-    // 5. Dispatch messages synchronously (dispatchMessageEvent creates its own HandleScope)
-    const has_messages = executeWorkerScriptSync(internal);
+    // Timeline (per Chromium's DedicatedWorkerMessagingProxy):
+    // 1. new Worker(...) - constructor returns, fetch_tests_from_worker sets up handlers
+    // 2. JavaScript calls worker.postMessage() - messages queued in pending_outgoing_messages
+    // 3. setTimeout(0, executeWorkerScriptCallback) fires (we're here)
+    // 4. Worker script runs, sets self.onmessage handler
+    // 5. Script evaluation complete - NOW flush pending messages (was_script_evaluated_ = true)
+    // 6. Messages dispatched to worker's onmessage handler
+    _ = executeWorkerScriptSync(internal);
 
-    // Dispatch messages synchronously.
+    // CRITICAL: Mark script as evaluated AFTER execution completes.
+    // This flag gates message dispatch in postMessage() - without it, messages
+    // posted before the script runs would be dispatched to a non-existent handler.
+    internal.script_evaluated = true;
+
+    // CRITICAL: Flush pending messages AFTER script evaluation (per Chromium pattern).
+    // Before this point, was_script_evaluated_ was effectively false.
+    // Now the worker's onmessage handler is set up and ready to receive messages.
+    const dedicated_worker = internal.dedicated_worker orelse return;
+    const pending_count = internal.pending_outgoing_messages.items.len;
+    if (pending_count > 0) {
+        std.log.debug("[Worker] Flushing {d} pending messages after script eval", .{pending_count});
+        for (internal.pending_outgoing_messages.items) |serialized| {
+            dedicated_worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+                std.log.warn("[Worker] Failed to flush pending message: {}", .{err});
+                serialized.deinit();
+                internal.allocator.destroy(serialized);
+                continue;
+            };
+        }
+        internal.pending_outgoing_messages.clearRetainingCapacity();
+        std.log.debug("[Worker] inside_port queue has {d} messages", .{dedicated_worker.port_pair.inside_port.message_queue.items.len});
+    }
+
+    // Now process the messages in the worker's V8 context.
+    // The messages are in inside_port.message_queue (via port entanglement).
+    if (internal.v8_context) |v8_ctx| {
+        std.log.debug("[Worker] Processing incoming messages in worker V8 context", .{});
+        html_full.worker_v8_context.processIncomingMessages(v8_ctx);
+        std.log.debug("[Worker] Done processing incoming messages", .{});
+    }
+
+    // Check if worker sent any messages back and dispatch them to main thread
+    const outside_queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
+    const has_messages = outside_queue_len > 0;
+
+    // DEBUG: Write to stderr to see if messages are in the queue
+    const stderr_file = std.fs.File.stderr();
+    var debug_buf: [256]u8 = undefined;
+    const debug_msg = std.fmt.bufPrint(&debug_buf, "[executeWorkerScriptCallback] outside_port queue len={d}, has_messages={}\n", .{ outside_queue_len, has_messages }) catch "[executeWorkerScriptCallback] check\n";
+    stderr_file.writeAll(debug_msg) catch {};
+
+    // Dispatch worker→main messages synchronously.
     // Although worker script execution enters/exits the worker isolate (which could
     // corrupt the outer HandleScope), dispatchMessageEvent creates its own fresh
     // HandleScope for V8 operations. This is safe because:
@@ -583,7 +713,7 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     // 2. dispatchMessageEvent creates a new HandleScope before any V8 operations
     // 3. This avoids timer scheduling delays that cause test timeouts
     if (has_messages) {
-        const dedicated_worker = internal.dedicated_worker orelse return;
+        stderr_file.writeAll("[executeWorkerScriptCallback] Calling processQueuedMessages\n") catch {};
         dedicated_worker.processQueuedMessages();
 
         // CRITICAL: Message handlers may have posted NEW messages via self.postMessage().
@@ -597,6 +727,73 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
         // 4. Outer worker's onmessage: self.postMessage("outer received: ...")
         //    → queued in pending_messages for OUTER worker's outside_port
         // 5. We need to flush and process ALL affected ports!
+        processAllPendingMessages(internal);
+    }
+}
+
+/// Timer callback for dispatching worker messages after script execution.
+///
+/// This callback runs after the constructor returns, allowing JavaScript to
+/// set up worker.onmessage handlers before messages are dispatched.
+///
+/// Timeline:
+/// 1. new Worker(...) - script executes synchronously during construction
+/// 2. Constructor returns, JavaScript sets up worker.onmessage
+/// 3. setTimeout(1, executeWorkerMessageDispatchCallback) fires (we're here)
+/// 4. Messages dispatched to worker's onmessage handler
+fn executeWorkerMessageDispatchCallback(user_data: ?*anyopaque) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
+    const internal = getInternal(instance) orelse return;
+    dispatchWorkerMessages(internal);
+}
+
+/// Dispatch worker messages to main thread handlers.
+/// This is called either from the timer callback or synchronously as fallback.
+fn dispatchWorkerMessages(internal: *InternalState) void {
+    const dedicated_worker = internal.dedicated_worker orelse return;
+
+    // Flush pending messages to the inside port for worker to receive
+    const pending_count = internal.pending_outgoing_messages.items.len;
+    if (pending_count > 0) {
+        std.log.debug("[Worker] Flushing {d} pending messages after script eval", .{pending_count});
+        for (internal.pending_outgoing_messages.items) |serialized| {
+            dedicated_worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+                std.log.warn("[Worker] Failed to flush pending message: {}", .{err});
+                serialized.deinit();
+                internal.allocator.destroy(serialized);
+                continue;
+            };
+        }
+        internal.pending_outgoing_messages.clearRetainingCapacity();
+        std.log.debug("[Worker] inside_port queue has {d} messages", .{dedicated_worker.port_pair.inside_port.message_queue.items.len});
+    }
+
+    // Process messages in the worker's V8 context
+    if (internal.v8_context) |v8_ctx| {
+        std.log.debug("[Worker] Processing incoming messages in worker V8 context", .{});
+        html_full.worker_v8_context.processIncomingMessages(v8_ctx);
+        std.log.debug("[Worker] Done processing incoming messages", .{});
+    }
+
+    // CRITICAL: Flush messages from threadlocal pending_messages to port queues.
+    // Worker's self.postMessage() adds messages to pending_messages, not directly
+    // to outside_port.message_queue. This flush moves them to the actual port.
+    DedicatedWorker.flushPendingMessages();
+
+    // Check if worker sent any messages back and dispatch them to main thread
+    const outside_queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
+    const has_messages = outside_queue_len > 0;
+
+    // DEBUG: Write to stderr to see if messages are in the queue
+    const stderr_file = std.fs.File.stderr();
+    var debug_buf: [256]u8 = undefined;
+    const debug_msg = std.fmt.bufPrint(&debug_buf, "[dispatchWorkerMessages] worker={*} outside_port={*} queue len={d}, has_messages={}\n", .{ dedicated_worker, dedicated_worker.port_pair.outside_port, outside_queue_len, has_messages }) catch "[dispatchWorkerMessages] check\n";
+    stderr_file.writeAll(debug_msg) catch {};
+
+    // Dispatch worker→main messages
+    if (has_messages) {
+        stderr_file.writeAll("[dispatchWorkerMessages] Calling processQueuedMessages\n") catch {};
+        dedicated_worker.processQueuedMessages();
         processAllPendingMessages(internal);
     }
 }
@@ -666,14 +863,31 @@ fn dispatchWorkerMessagesCallback(user_data: ?*anyopaque) void {
 ///
 /// Returns: true if messages were queued for dispatch, false otherwise
 fn executeWorkerScriptSync(internal: *InternalState) bool {
-    const dedicated_worker = internal.dedicated_worker orelse return false;
-    const script = internal.pending_script orelse return false;
-
-    // Execute the script in worker context
-    // The worker's executeScript() enters/exits its own isolate and creates its own HandleScope.
-    dedicated_worker.executeScript(script) catch |err| {
-        std.log.warn("Failed to execute worker script: {}", .{err});
+    std.log.debug("[executeWorkerScriptSync] ENTRY", .{});
+    const dedicated_worker = internal.dedicated_worker orelse {
+        std.log.debug("[executeWorkerScriptSync] No dedicated_worker, returning", .{});
+        return false;
     };
+    const script = internal.pending_script orelse {
+        std.log.debug("[executeWorkerScriptSync] No pending_script, returning", .{});
+        return false;
+    };
+    std.log.debug("[executeWorkerScriptSync] Script len={d}, preview: {s}", .{ script.len, script[0..@min(script.len, 80)] });
+
+    // Execute the script in WorkerV8Context - this is the SAME context used for message dispatch.
+    // CRITICAL: We must use internal.v8_context, not dedicated_worker.executeScript(), because:
+    // - internal.v8_context is WorkerV8Context (has onmessage dispatch)
+    // - dedicated_worker.executeScript() uses WorkerContext (different V8 context!)
+    // - If we execute in the wrong context, onmessage won't be set where we dispatch.
+    if (internal.v8_context) |v8_ctx| {
+        std.log.err("[executeWorkerScriptSync] Have v8_context, calling executeScript on ptr {*}", .{v8_ctx});
+        _ = v8_ctx.executeScript(script) catch |err| {
+            std.log.err("[executeWorkerScriptSync] Failed to execute: {}", .{err});
+        };
+        std.log.err("[executeWorkerScriptSync] executeScript returned", .{});
+    } else {
+        std.log.err("[executeWorkerScriptSync] No WorkerV8Context!", .{});
+    }
 
     // Flush pending messages to port queues
     // This is a pure Zig operation - NO V8 operations!
@@ -901,6 +1115,12 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // Get internal state with GlobalHandle and isolate
     const internal = getInternal(instance) orelse return;
 
+    // DEBUG: Log the instance we're dispatching to
+    const stderr_file = std.fs.File.stderr();
+    var debug_buf: [256]u8 = undefined;
+    const debug_msg = std.fmt.bufPrint(&debug_buf, "[dispatchMessageEvent] ENTRY instance={*}, dedicated_worker={?*}\n", .{ instance, internal.dedicated_worker }) catch "[dispatchMessageEvent] ENTRY\n";
+    stderr_file.writeAll(debug_msg) catch {};
+
     // Get isolate and V8 context
     const isolate = internal.isolate orelse return;
     const ctx = internal.ctx orelse return;
@@ -977,6 +1197,12 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     if (v8_data == null and msg.data.type == .primitive) {
         switch (msg.data.data.primitive) {
             .string => |json_str| {
+                // DEBUG
+                var json_debug_buf: [256]u8 = undefined;
+                const preview_len = @min(json_str.len, 50);
+                const json_debug_msg = std.fmt.bufPrint(&json_debug_buf, "[dispatchMessageEvent] Parsing JSON: len={d}, content={s}\n", .{ json_str.len, json_str[0..preview_len] }) catch "[dispatchMessageEvent]\n";
+                stderr_file.writeAll(json_debug_msg) catch {};
+
                 // JSON string from worker - parse it in main context
                 v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
                     v8_context,
@@ -985,6 +1211,8 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
                 );
                 if (v8_data == null) {
                     std.log.warn("Worker.dispatchMessageEvent: JSON.parse failed for: {s}", .{json_str});
+                } else {
+                    stderr_file.writeAll("[dispatchMessageEvent] JSON parse SUCCEEDED\n") catch {};
                 }
             },
             else => {},
@@ -1092,6 +1320,13 @@ fn invokeMessageListeners(
     v8_event: *v8_engine.ffi.Object,
     internal: *InternalState,
 ) void {
+    // DEBUG
+    const stderr_file = std.fs.File.stderr();
+    var debug_buf: [128]u8 = undefined;
+    const has_handler = internal.onmessage_handle != null;
+    const debug_msg = std.fmt.bufPrint(&debug_buf, "[invokeMessageListeners] ENTRY, has_onmessage_handler={}\n", .{has_handler}) catch "[invokeMessageListeners]\n";
+    stderr_file.writeAll(debug_msg) catch {};
+
     // EventTargetImpl is imported at module level
     const CallbackWrapper = v8_engine.CallbackWrapper;
 
@@ -1132,20 +1367,49 @@ fn invokeMessageListeners(
 
     // Step 2: Invoke the onmessage handler if set
     if (internal.onmessage_handle) |onmessage_global| {
+        stderr_file.writeAll("[invokeMessageListeners] Step 2: has onmessage_handle\n") catch {};
+
         // Verify it's a function using the Global handle directly
         // v8_Value_IsFunction expects a Global<Value>* which is what rawPtr() returns
         if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.rawPtr())) {
+            stderr_file.writeAll("[invokeMessageListeners] WARN: onmessage_handle is not a function!\n") catch {};
             return;
         }
 
+        stderr_file.writeAll("[invokeMessageListeners] onmessage_handle is a function, calling...\n") catch {};
+
         // Get the function as a Global<Function>* for the call
         // We can safely cast since we verified it's a function above
-        const global_func = v8_engine.ffi.v8_Global_ToFunction(onmessage_global.rawPtr()) orelse return;
+        const global_func = v8_engine.ffi.v8_Global_ToFunction(onmessage_global.rawPtr()) orelse {
+            stderr_file.writeAll("[invokeMessageListeners] WARN: Global_ToFunction returned null!\n") catch {};
+            return;
+        };
 
         // Call the V8 function with the MessageEvent as argument
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-        _ = v8_engine.ffi.v8_Function_Call(global_func, v8_context, @ptrCast(undefined_recv), 1, &args);
+
+        // DEBUG: Check v8_event is valid before call
+        {
+            var event_buf: [128]u8 = undefined;
+            const event_is_obj = v8_engine.ffi.v8_Value_IsObject(@ptrCast(v8_event));
+            const event_msg = std.fmt.bufPrint(&event_buf, "[invokeMessageListeners] v8_event is_object={}\n", .{event_is_obj}) catch "[invokeMessageListeners] v8_event check\n";
+            stderr_file.writeAll(event_msg) catch {};
+        }
+
+        const result = v8_engine.ffi.v8_Function_Call(global_func, v8_context, @ptrCast(undefined_recv), 1, &args);
+        if (result != null) {
+            stderr_file.writeAll("[invokeMessageListeners] V8 function call SUCCEEDED\n") catch {};
+        } else {
+            stderr_file.writeAll("[invokeMessageListeners] WARN: V8 function call returned null\n") catch {};
+            // Check for exception
+            const exception = v8_engine.ffi.v8_TryCatch_Exception(v8_context);
+            if (exception != null) {
+                stderr_file.writeAll("[invokeMessageListeners] V8 has exception!\n") catch {};
+            }
+        }
+    } else {
+        stderr_file.writeAll("[invokeMessageListeners] Step 2: NO onmessage_handle\n") catch {};
     }
 }
 
@@ -1155,12 +1419,19 @@ fn invokeMessageListeners(
 /// "The terminate() method, when invoked, must cause the terminate a worker
 /// algorithm to be run on the worker with which the object is associated."
 pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
+    // DEBUG: Log the terminate call
+    const stderr_file = std.fs.File.stderr();
+    stderr_file.writeAll("[Worker.call_terminate] ENTRY\n") catch {};
+
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         // Mark as terminated
         const internal = @constCast(internal_ptr);
         internal.terminated = true;
         if (internal.dedicated_worker) |worker| {
+            var buf: [256]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buf, "[Worker.call_terminate] worker={*}, agent={*}\n", .{ worker, worker.agent }) catch "[Worker.call_terminate] worker\n";
+            stderr_file.writeAll(msg) catch {};
             worker.terminate();
         }
     }
@@ -1184,10 +1455,8 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
-    if (internal.terminated) {
-        return; // Worker is terminated, ignore message
-    }
-    const worker = internal.dedicated_worker orelse return;
+    if (internal.terminated) return; // Worker is terminated, ignore message
+
     const allocator = internal.allocator;
 
     // Get V8 context and isolate for serialization
@@ -1366,16 +1635,21 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             },
         };
 
-        // Post to the worker's inside port
-        worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-            serialized.deinit();
-            allocator.destroy(serialized);
-            return switch (err) {
-                error.PortClosed => error.WorkerClosed,
-                error.NotEntangled => error.WorkerClosed,
-                else => error.PostMessageFailed,
+        // Post to the worker's inside port (or queue if worker not ready)
+        if (internal.dedicated_worker) |worker| {
+            worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+                serialized.deinit();
+                allocator.destroy(serialized);
+                return switch (err) {
+                    error.PortClosed => error.WorkerClosed,
+                    error.NotEntangled => error.WorkerClosed,
+                    else => error.PostMessageFailed,
+                };
             };
-        };
+        } else {
+            // Queue for later - worker not ready yet
+            try internal.pending_outgoing_messages.append(allocator, serialized);
+        }
     } else {
         // No transfer list - use JSON serialization (simpler, works for primitives)
         var dummy_buf: [1]u8 = undefined;
@@ -1412,14 +1686,42 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
             .data = .{ .primitive = .{ .string = json_copy } },
         };
 
-        worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
-            serialized.deinit();
-            allocator.destroy(serialized);
-            return switch (err) {
-                error.PortClosed => error.WorkerClosed,
-                error.NotEntangled => error.WorkerClosed,
-                else => error.PostMessageFailed,
+        // Post to the worker's inside port (or queue if worker not ready)
+        if (internal.dedicated_worker) |worker| {
+            worker.port_pair.outside_port.postMessage(serialized, null) catch |err| {
+                serialized.deinit();
+                allocator.destroy(serialized);
+                return switch (err) {
+                    error.PortClosed => error.WorkerClosed,
+                    error.NotEntangled => error.WorkerClosed,
+                    else => error.PostMessageFailed,
+                };
             };
-        };
+        } else {
+            // Queue for later - worker not ready yet
+            try internal.pending_outgoing_messages.append(allocator, serialized);
+        }
+    }
+
+    // CRITICAL: Only process messages if the worker script has been evaluated.
+    // Per Chromium's DedicatedWorkerMessagingProxy::was_script_evaluated_ pattern:
+    // - If script hasn't run yet, messages are queued and will be processed later
+    //   in executeWorkerScriptCallback after the script finishes
+    // - If script HAS run, we can immediately dispatch to self.onmessage
+    //
+    // Without this check, messages posted before the script runs would try to
+    // dispatch to a non-existent onmessage handler.
+    if (internal.script_evaluated) {
+        if (internal.v8_context) |v8_ctx| {
+            html_full.worker_v8_context.processIncomingMessages(v8_ctx);
+
+            // After processing, check if worker sent back any messages and dispatch them
+            // This handles the echo pattern: main → worker → main
+            if (internal.dedicated_worker) |dw| {
+                if (dw.port_pair.outside_port.message_queue.items.len > 0) {
+                    dw.processQueuedMessages();
+                }
+            }
+        }
     }
 }
