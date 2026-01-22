@@ -26,17 +26,19 @@ Cog implements biologically-inspired memory: concepts are stored as **engrams** 
 
 ### Visual Indicators for Cog Usage
 
-**ALWAYS print `⚙️` when using Cog tools** so the user knows memory operations are happening:
+**ALWAYS print visual indicators when using Cog tools** so the user knows memory operations are happening:
 
 | Operation | Indicator |
 |-----------|-----------|
 | Querying | `⚙️ Querying Cog...` |
-| Recording | `⚙️ Recording to Cog...` |
-| Linking | `⚙️ Linking concepts...` |
-| Updating | `⚙️ Updating engram...` |
+| Recording | `🧠 Recording to Cog...` |
+| Linking | `🧠 Linking concepts...` |
+| Updating | `🧠 Updating engram...` |
 | Tracing | `⚙️ Tracing connections...` |
 | Exploring | `⚙️ Exploring connections...` |
-| Unlinking | `⚙️ Removing link...` |
+| Unlinking | `🧠 Removing link...` |
+
+**Use `⚙️` for read operations (querying, tracing, exploring) and `🧠` for write operations (recording, linking, updating, unlinking).**
 
 **Example usage in responses:**
 ```
@@ -46,8 +48,8 @@ Based on prior knowledge, I found that...
 ```
 
 ```
-⚙️ Recording to Cog...
-⚙️ Linking concepts...
+🧠 Recording to Cog...
+🧠 Linking concepts...
 ```
 
 This transparency helps users understand when persistent memory is being accessed or modified.
@@ -170,6 +172,9 @@ Subagents do NOT automatically inherit CLAUDE.md instructions. They only receive
 ⚙️ Query Cog first for any prior knowledge about [relevant keywords].
 
 Then [rest of the task...]
+
+If you discover non-trivial learnings, record them:
+🧠 Recording to Cog...
 ```
 
 **Example - CORRECT Task prompt:**
@@ -177,6 +182,9 @@ Then [rest of the task...]
 ⚙️ Query Cog first for any prior knowledge about V8 ShadowRealm GetWrappedValue or value boundary crossing.
 
 Then search in /Users/bcardarella/projects/chromium for V8's GetWrappedValue implementation...
+
+If you discover important implementation details or gotchas, use cog_remember to record them.
+Use 🧠 emoji prefix when recording (e.g., "🧠 Recording to Cog...").
 ```
 
 **Example - WRONG Task prompt (missing Cog instruction):**
@@ -190,10 +198,15 @@ Search in /Users/bcardarella/projects/chromium for V8's GetWrappedValue implemen
 - Knowledge in Cog can shortcut hours of investigation
 - Subagents should contribute TO Cog, not just consume resources
 
+**Visual indicators for subagents:**
+- `⚙️` for read operations (querying Cog)
+- `🧠` for write operations (recording learnings, linking concepts)
+
 **Checklist before launching any Task:**
 1. Did I query Cog myself first? (before even deciding to spawn a subagent)
 2. Does my Task prompt include "⚙️ Query Cog first for..." as the FIRST instruction?
 3. Does my Task prompt include relevant keywords for the Cog query?
+4. Does my Task prompt instruct subagent to record learnings with "🧠" prefix?
 
 ### Using Query Results
 
