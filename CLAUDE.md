@@ -160,6 +160,41 @@ cog_recall({"query": "Worker event loop blob URL", "expand": true})
 
 Cog uses hybrid search (70% semantic + 30% keyword), so both exact terms and conceptually similar queries work.
 
+### ⚠️ CRITICAL: Subagents Must Also Query Cog First
+
+**When spawning subagents via the Task tool, you MUST include explicit instructions for the subagent to query Cog first.**
+
+Subagents do NOT automatically inherit CLAUDE.md instructions. They only receive the prompt you provide. Therefore, every Task prompt for research, exploration, or investigation MUST begin with:
+
+```
+⚙️ Query Cog first for any prior knowledge about [relevant keywords].
+
+Then [rest of the task...]
+```
+
+**Example - CORRECT Task prompt:**
+```
+⚙️ Query Cog first for any prior knowledge about V8 ShadowRealm GetWrappedValue or value boundary crossing.
+
+Then search in /Users/bcardarella/projects/chromium for V8's GetWrappedValue implementation...
+```
+
+**Example - WRONG Task prompt (missing Cog instruction):**
+```
+Search in /Users/bcardarella/projects/chromium for V8's GetWrappedValue implementation...
+```
+
+**Why this matters:**
+- Subagents may duplicate research that's already been done
+- Prior sessions may have already solved the exact problem
+- Knowledge in Cog can shortcut hours of investigation
+- Subagents should contribute TO Cog, not just consume resources
+
+**Checklist before launching any Task:**
+1. Did I query Cog myself first? (before even deciding to spawn a subagent)
+2. Does my Task prompt include "⚙️ Query Cog first for..." as the FIRST instruction?
+3. Does my Task prompt include relevant keywords for the Cog query?
+
 ### Using Query Results
 
 1. **Use the full context**, not just direct matches:
