@@ -36,6 +36,7 @@ const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const dom_type_info = @import("dom_type_info.zig");
+const instance_bridge = @import("dom").instance_bridge;
 
 /// Maximum number of interface templates that can be registered
 const MAX_TEMPLATES = 2048; // Need to support all WebIDL interfaces (~1100)
@@ -268,6 +269,18 @@ pub fn wrapInstanceAsV8Object(
     }
 
     // ========================================
+    // SPECIAL CASE: DOM Nodes with bound V8 wrapper (for cross-context identity)
+    // ========================================
+    // When a DOM node is wrapped in one context and accessed from another
+    // (e.g., MutationObserver callback sees element created in parent context),
+    // we need to return the SAME wrapper to ensure JavaScript === identity works.
+    if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
+        if (nodebase.bound_v8_wrapper) |bound_wrapper| {
+            return @ptrCast(bound_wrapper);
+        }
+    }
+
+    // ========================================
     // CACHE LOOKUP: Check if we already have a wrapper for this instance
     // ========================================
     const ctx_mgr = @import("context_manager.zig");
@@ -389,6 +402,19 @@ pub fn wrapInstanceAsV8Object(
             cache.set(instance, final_object, isolate) catch |err| {
                 std.log.warn("Failed to cache V8 wrapper: {s}", .{@errorName(err)});
             };
+        }
+    }
+
+    // ========================================
+    // BIND THE WRAPPER: Store on NodeBase for cross-context identity
+    // ========================================
+    // For DOM nodes, store the wrapper directly on the NodeBase so that
+    // future lookups from ANY context return the same wrapper.
+    // This ensures JavaScript === identity works across contexts
+    // (e.g., MutationObserver callbacks seeing elements from parent context).
+    if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
+        if (nodebase.bound_v8_wrapper == null) {
+            nodebase.bound_v8_wrapper = @ptrCast(final_object);
         }
     }
 
@@ -571,6 +597,15 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 
     if (inst_vtable == &interfaces.DOMImplementation.vtable) {
         return "DOMImplementation";
+    }
+
+    // MutationObserver API
+    if (inst_vtable == &interfaces.MutationObserver.vtable) {
+        return "MutationObserver";
+    }
+
+    if (inst_vtable == &interfaces.MutationRecord.vtable) {
+        return "MutationRecord";
     }
 
     // DOM Events and AbortController/AbortSignal

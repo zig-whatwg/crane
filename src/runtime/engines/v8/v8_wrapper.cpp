@@ -4709,34 +4709,6 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
     }
 
     Local<Value> local = global->Get(isolate);
-
-    // Debug: print what kind of value this is
-    if (local->IsObject()) {
-        Local<Object> obj = local.As<Object>();
-        Local<Context> ctx = isolate->GetCurrentContext();
-        Local<String> constructor_name = obj->GetConstructorName();
-        String::Utf8Value name_utf8(isolate, constructor_name);
-        fprintf(stderr, "[SetReturnValueGlobal] Returning object with constructor: %s\n", *name_utf8);
-
-        // Check if it has postMessage
-        Local<String> pm_key = String::NewFromUtf8Literal(isolate, "postMessage");
-        MaybeLocal<Value> pm_val = obj->Get(ctx, pm_key);
-        if (pm_val.IsEmpty()) {
-            fprintf(stderr, "[SetReturnValueGlobal] postMessage lookup returned empty!\n");
-        } else {
-            Local<Value> pm = pm_val.ToLocalChecked();
-            if (pm->IsFunction()) {
-                fprintf(stderr, "[SetReturnValueGlobal] postMessage IS a function\n");
-            } else if (pm->IsUndefined()) {
-                fprintf(stderr, "[SetReturnValueGlobal] postMessage is UNDEFINED\n");
-            } else {
-                fprintf(stderr, "[SetReturnValueGlobal] postMessage is something else\n");
-            }
-        }
-    } else {
-        fprintf(stderr, "[SetReturnValueGlobal] Returning non-object value\n");
-    }
-
     info->GetReturnValue().Set(local);
 }
 
@@ -5498,23 +5470,6 @@ void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* i
     }
 
     Local<Value> val = value->Get(isolate);
-
-    // Debug: Print what type of value we're returning
-    if (val->IsString()) {
-        String::Utf8Value str(isolate, val);
-        fprintf(stderr, "[PropertySetReturnValue] Returning string: '%s'\n", *str);
-    } else if (val->IsNumber()) {
-        fprintf(stderr, "[PropertySetReturnValue] Returning number: %f\n", val->NumberValue(isolate->GetCurrentContext()).FromMaybe(0.0));
-    } else if (val->IsUndefined()) {
-        fprintf(stderr, "[PropertySetReturnValue] Returning undefined\n");
-    } else if (val->IsNull()) {
-        fprintf(stderr, "[PropertySetReturnValue] Returning null\n");
-    } else if (val->IsObject()) {
-        fprintf(stderr, "[PropertySetReturnValue] Returning object\n");
-    } else {
-        fprintf(stderr, "[PropertySetReturnValue] Returning unknown type\n");
-    }
-
     info->GetReturnValue().Set(val);
 }
 

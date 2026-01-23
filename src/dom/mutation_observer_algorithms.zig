@@ -261,6 +261,8 @@ const runtime = @import("runtime");
 
 /// Internal version of queueMutationRecord that uses runtime.Instance
 /// This avoids the architectural mismatch with the old interface-based signatures
+///
+/// Spec: https://dom.spec.whatwg.org/#queueing-a-mutation-record
 fn queueMutationRecordInternal(
     allocator: Allocator,
     mutation_type: []const u8,
@@ -273,45 +275,146 @@ fn queueMutationRecordInternal(
     previous_sibling: ?*runtime.Instance,
     next_sibling: ?*runtime.Instance,
 ) !void {
-    // TODO: Full implementation requires updating the registered observer system
-    // to work with runtime.Instance instead of NodeBase.
-    //
-    // For now, create the MutationRecord and queue it if there are any interested observers.
-    // The full observer matching logic is deferred until the node-observer bridge is complete.
-
-    // Get the MutationRecord impl
+    const instance_bridge = @import("instance_bridge.zig");
+    const handles = @import("handles.zig");
+    const MutationObserverImpl = @import("impls").MutationObserver;
     const MutationRecordImpl = @import("impls").MutationRecord;
-    const ctx = target.ctx;
 
-    // Create the mutation record
-    const record = try MutationRecordImpl.create(
-        allocator,
-        ctx,
-        mutation_type,
-        target,
-        added_nodes,
-        removed_nodes,
-        previous_sibling,
-        next_sibling,
-        name,
-        namespace,
-        old_value,
-    );
+    // Get target's NodeBase for accessing registered observers
+    const target_nodebase = instance_bridge.getNodeBase(@ptrCast(target)) orelse {
+        // Target is not a registered node - can't dispatch mutations
+        return;
+    };
 
-    // TODO: The full algorithm requires iterating through target's inclusive ancestors
-    // and checking each node's registered observer list. This needs the node-observer
-    // bridge to be completed (converting runtime.Instance to NodeBase to access
-    // registered_observers field).
-    //
-    // For now, the MutationRecord is created but not dispatched to observers.
-    // This will be completed when the transient observer support is implemented.
-    //
-    // MEMORY FIX: Since we're not dispatching the record, we must free it immediately
-    // to avoid leaking. When observer dispatch is implemented, this defer should be
-    // removed and ownership transferred to the observer's record queue.
-    defer runtime.Instance.deinit(record);
+    // Step 1: Let interestedObservers be an empty map
+    // Maps observer instance to mappedOldValue
+    var interested_observers = std.AutoHashMap(*runtime.Instance, ?[]const u8).init(allocator);
+    defer interested_observers.deinit();
 
-    // Queue a mutation observer microtask
+    // Step 2: Let nodes be the inclusive ancestors of target
+    // Walk from target up to root
+    var current: ?*@import("node_base.zig").NodeBase = target_nodebase;
+    while (current) |node| : (current = node.parent_node) {
+        // Step 3: For each node in nodes, for each registered of node's registered observer list
+        for (0..node.registered_observers.len) |i| {
+            const registered = node.registered_observers.get(i) orelse continue;
+            const options = registered.options;
+
+            // Step 3.2: If NONE of the following are true, then continue (skip this observer)
+            var should_skip = false;
+
+            // - node is not target and options["subtree"] is false
+            if (node != target_nodebase and !options.subtree) {
+                should_skip = true;
+            }
+
+            // - type is "attributes" and options["attributes"] is false
+            if (!should_skip and std.mem.eql(u8, mutation_type, "attributes")) {
+                if (!options.attributes) {
+                    should_skip = true;
+                }
+                // - type is "attributes", options["attributeFilter"] exists, and
+                //   options["attributeFilter"] does not contain name or namespace is non-null
+                if (!should_skip) {
+                    if (options.attribute_filter) |filter| {
+                        if (namespace != null) {
+                            should_skip = true;
+                        } else if (name) |attr_name| {
+                            var found = false;
+                            for (filter) |filter_name| {
+                                if (std.mem.eql(u8, filter_name, attr_name)) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) should_skip = true;
+                        }
+                    }
+                }
+            }
+
+            // - type is "characterData" and options["characterData"] is false
+            if (!should_skip and std.mem.eql(u8, mutation_type, "characterData")) {
+                if (!options.character_data) {
+                    should_skip = true;
+                }
+            }
+
+            // - type is "childList" and options["childList"] is false
+            if (!should_skip and std.mem.eql(u8, mutation_type, "childList")) {
+                if (!options.child_list) {
+                    should_skip = true;
+                }
+            }
+
+            if (should_skip) {
+                continue;
+            }
+
+            // Step 3.2.1: Let mo be registered's observer
+            const observer_ptr = handles.mutationObserverToAnyopaque(registered.observer) orelse continue;
+            const mo: *runtime.Instance = @ptrCast(@alignCast(observer_ptr));
+
+            // Step 3.2.2: If interestedObservers[mo] does not exist, then set it to null
+            if (!interested_observers.contains(mo)) {
+                try interested_observers.put(mo, null);
+            }
+
+            // Step 3.2.3: If either type is "attributes" and options["attributeOldValue"] is true,
+            // or type is "characterData" and options["characterDataOldValue"] is true,
+            // then set interestedObservers[mo] to oldValue
+            if (std.mem.eql(u8, mutation_type, "attributes") and options.attribute_old_value) {
+                try interested_observers.put(mo, old_value);
+            } else if (std.mem.eql(u8, mutation_type, "characterData") and options.character_data_old_value) {
+                try interested_observers.put(mo, old_value);
+            }
+        }
+    }
+
+    // Step 4: For each observer → mappedOldValue of interestedObservers
+    var it = interested_observers.iterator();
+    while (it.next()) |entry| {
+        const observer = entry.key_ptr.*;
+        const mapped_old_value = entry.value_ptr.*;
+
+        // Step 4.1: Let record be a new MutationRecord object
+        const ctx = target.ctx;
+        const record = try MutationRecordImpl.create(
+            allocator,
+            ctx,
+            mutation_type,
+            target,
+            added_nodes,
+            removed_nodes,
+            previous_sibling,
+            next_sibling,
+            name,
+            namespace,
+            mapped_old_value,
+        );
+
+        // Step 4.2: Enqueue record to observer's record queue
+        MutationObserverImpl.enqueueRecord(observer, record) catch {
+            // If enqueueing fails, clean up the record
+            runtime.Instance.deinit(record);
+            continue;
+        };
+
+        // Step 4.3: Append observer to the surrounding agent's pending mutation observers
+        const agent = try getAgent(allocator);
+        var already_pending = false;
+        for (agent.pending_observers.items()) |pending| {
+            if (pending == observer) {
+                already_pending = true;
+                break;
+            }
+        }
+        if (!already_pending) {
+            try agent.pending_observers.append(observer);
+        }
+    }
+
+    // Step 5: Queue a mutation observer microtask
     try queueMutationObserverMicrotask(allocator);
 }
 
@@ -342,6 +445,8 @@ fn queueMutationObserverMicrotask(allocator: Allocator) !void {
 ///
 /// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers
 pub fn notifyMutationObservers(allocator: Allocator) !void {
+    const MutationObserverImpl = @import("impls").MutationObserver;
+
     const agent = try getAgent(allocator);
 
     // Step 1: Set the surrounding agent's mutation observer microtask queued to false
@@ -360,22 +465,35 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     // Step 6: For each mo of notifySet
     for (notify_set.items()) |mo_instance| {
         // Step 6.1: Let records be a clone of mo's record queue
-        // Step 6.2: Empty mo's record queue (done by takeRecords())
-        // takeRecords returns a JSValue (array), not a Zig slice
-        // For now we'll call it but skip the callback invocation until
-        // we have proper JS callback infrastructure
-        _ = MutationObserver.call_takeRecords(mo_instance) catch continue;
+        const records = MutationObserverImpl.getRecordQueue(mo_instance);
+
+        // Skip if no records
+        if (records.len == 0) continue;
+
+        // Step 6.2: Empty mo's record queue
+        // We need to take ownership of the records before clearing
+        var records_copy = infra.List(*runtime.Instance).init(allocator);
+        defer records_copy.deinit();
+        for (records) |record| {
+            records_copy.append(record) catch continue;
+        }
+        MutationObserverImpl.clearRecordQueue(mo_instance);
 
         // Step 6.3: For each node of mo's node list, remove all transient registered observers
         // whose observer is mo from node's registered observer list
-        // TODO: Implement when we have proper observer tracking per node
-        // This requires MutationObserverImpl to track which nodes it's observing
+        // TODO: Implement transient observer removal
 
         // Step 6.4: If records is not empty, then invoke mo's callback with « records, mo »
-        // TODO: Implement callback invocation - requires:
-        // 1. Access to the MutationObserver's stored callback
-        // 2. JS function invocation through runtime
-        // For now, records are cleared by takeRecords() above
+        if (records_copy.len > 0) {
+            // Delegate callback invocation to the impl layer which has V8 access
+            MutationObserverImpl.invokeCallback(mo_instance, records_copy.items()) catch {
+                // If callback invocation fails, clean up records
+                for (records_copy.items()) |record| {
+                    runtime.Instance.deinit(record);
+                }
+            };
+            // Note: Records ownership is transferred to invokeCallback, which will clean them up
+        }
     }
 
     // Step 7: For each slot of signalSet, fire an event named slotchange...

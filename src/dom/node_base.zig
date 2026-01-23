@@ -57,6 +57,12 @@ pub const NodeBase = struct {
     /// Used by isConnected getter
     is_connected: bool = false,
 
+    /// V8 wrapper for cross-context identity
+    /// When set, this wrapper is returned for ALL contexts to ensure `===` identity works.
+    /// Solves the problem where MutationObserver addedNodes[0] !== original element
+    /// because different contexts were creating different wrappers for the same instance.
+    bound_v8_wrapper: ?*anyopaque = null,
+
     // ========================================================================
     // Node Type Constants (DOM Spec §5.1)
     // ========================================================================

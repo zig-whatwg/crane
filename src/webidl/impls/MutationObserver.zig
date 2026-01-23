@@ -20,6 +20,12 @@ const v8_engine = @import("v8");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const MutationObserver = interfaces.MutationObserver;
 
+// DOM imports for registered observer integration
+const dom_module = @import("dom");
+const instance_bridge = dom_module.instance_bridge;
+const RegisteredObserver = dom_module.node_base.RegisteredObserverType;
+const handles = dom_module.handles;
+
 pub const State = MutationObserver.State;
 
 pub const ImplError = error{
@@ -227,13 +233,72 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
         return error.TypeError;
     }
 
-    // Step 7: For each registered of target's registered observer list,
-    // if registered's observer is this:
-    // TODO: Access target's registered observer list once Node is bridged
-    // For now, just add to node_list
+    // Get the target node's NodeBase via instance_bridge for registering the observer
+    const target_nodebase = instance_bridge.getNodeBase(@ptrCast(target));
 
-    // Step 8: Otherwise, append target to this's node list
-    internal.node_list.append(internal.allocator, target) catch return error.OutOfMemory;
+    // Build registered observer options
+    // Note: attribute_filter conversion from DOMString[] to []const u8[] is deferred
+    // For now, we skip the attribute filter matching since DOMString requires conversion
+    const reg_options = RegisteredObserver.Options{
+        .child_list = childList,
+        .attributes = attributes,
+        .character_data = characterData,
+        .subtree = opts.subtree orelse false,
+        .attribute_old_value = opts.attributeOldValue orelse false,
+        .character_data_old_value = opts.characterDataOldValue orelse false,
+        .attribute_filter = null, // TODO: Convert DOMString[] to []const u8[]
+    };
+
+    // Step 7: For each registered of target's registered observer list,
+    // if registered's observer is this, update its options
+    if (target_nodebase) |nodebase| {
+        var found_existing = false;
+        const observer_handle = handles.anyopaqueToMutationObserver(@ptrCast(instance));
+
+        for (0..nodebase.registered_observers.len) |i| {
+            if (nodebase.registered_observers.get(i)) |registered| {
+                // Check if this registered observer belongs to this MutationObserver
+                const registered_handle = handles.mutationObserverToAnyopaque(registered.observer);
+                const instance_ptr: *anyopaque = @ptrCast(instance);
+                if (registered_handle == instance_ptr) {
+                    // Step 7.2: Update options - replace the registration
+                    // We need to create a new RegisteredObserver with updated options
+                    // Note: In the spec this also clears transient registered observers
+                    const new_registered = RegisteredObserver{
+                        .observer = observer_handle.?,
+                        .options = reg_options,
+                    };
+                    _ = nodebase.registered_observers.replace(i, new_registered) catch {};
+                    found_existing = true;
+                    break;
+                }
+            }
+        }
+
+        // Step 8: If not found, append a new registered observer
+        if (!found_existing) {
+            if (observer_handle) |obs_handle| {
+                const new_registered = RegisteredObserver{
+                    .observer = obs_handle,
+                    .options = reg_options,
+                };
+                nodebase.registered_observers.append(new_registered) catch return error.OutOfMemory;
+            }
+        }
+    }
+
+    // Also maintain the observer's node list for disconnect()
+    // Check if target is already in the node list
+    var target_in_list = false;
+    for (internal.node_list.items) |node| {
+        if (node == target) {
+            target_in_list = true;
+            break;
+        }
+    }
+    if (!target_in_list) {
+        internal.node_list.append(internal.allocator, target) catch return error.OutOfMemory;
+    }
 }
 
 /// DOM §7.1 - MutationObserver.disconnect()
@@ -244,11 +309,29 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-disconnect
 pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance);
+    const instance_ptr: *anyopaque = @ptrCast(instance);
 
     // Step 1: For each node of this's node list, remove any registered
     // observer from node's registered observer list for which this is
     // the observer.
-    // TODO: Remove registered observers from nodes once Node is bridged
+    for (internal.node_list.items) |node| {
+        const nodebase = instance_bridge.getNodeBase(@ptrCast(node)) orelse continue;
+
+        // Find and remove registered observers for this MutationObserver
+        var i: usize = 0;
+        while (i < nodebase.registered_observers.len) {
+            if (nodebase.registered_observers.get(i)) |registered| {
+                const registered_handle = handles.mutationObserverToAnyopaque(registered.observer);
+                if (registered_handle == instance_ptr) {
+                    // Remove this registration
+                    _ = nodebase.registered_observers.remove(i) catch continue;
+                    // Don't increment i, check the same index again
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
 
     // Step 2: Empty this's record queue after freeing records we own.
     for (internal.record_queue.items) |record| {
@@ -367,4 +450,105 @@ pub fn unobserveNode(instance: *runtime.Instance, node: *const runtime.Instance)
 pub fn clearRecordQueue(instance: *runtime.Instance) void {
     const internal = getInternal(instance);
     internal.record_queue.clearRetainingCapacity();
+}
+
+/// Invoke the observer's callback with the given mutation records
+///
+/// This is called by the notify mutation observers algorithm to actually
+/// execute the JavaScript callback. Records ownership is transferred to this
+/// function which will clean them up after the callback returns.
+///
+/// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers step 6.4
+pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instance) !void {
+    const internal = getInternal(instance);
+
+    // Get the callback from internal state
+    const callback_global = internal.callback orelse {
+        // No callback - clean up records
+        for (records) |record| {
+            runtime.Instance.deinit(record);
+        }
+        return;
+    };
+
+    const isolate = internal.isolate orelse {
+        // No isolate - clean up records
+        for (records) |record| {
+            runtime.Instance.deinit(record);
+        }
+        return;
+    };
+
+    const context = v8_engine.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
+        // No context - clean up records
+        for (records) |record| {
+            runtime.Instance.deinit(record);
+        }
+        return;
+    };
+
+    // Create a HandleScope for V8 operations - all Local handles must be within a scope
+    const handle_scope = v8_engine.ffi.v8_HandleScope_New(isolate) orelse {
+        for (records) |record| {
+            runtime.Instance.deinit(record);
+        }
+        return;
+    };
+    defer v8_engine.ffi.v8_HandleScope_Dispose(handle_scope);
+
+    // Create a V8 array for the mutation records
+    const records_array = v8_engine.ffi.v8_Array_New(isolate, @intCast(records.len));
+
+    // Populate the array with wrapped MutationRecord objects
+    const conv = v8_engine.conversions;
+    for (records, 0..) |record, idx| {
+        const wrapped = conv.instanceToV8(isolate, record);
+        _ = v8_engine.ffi.v8_Array_Set(records_array, context, @intCast(idx), wrapped);
+    }
+
+    // Wrap the observer instance as V8 object for the second argument
+    const observer_v8 = conv.instanceToV8(isolate, instance);
+
+    // Get undefined for 'this' value
+    // v8_Undefined returns a Global<Value>*
+    const recv_global = v8_engine.ffi.v8_Undefined(isolate) orelse {
+        for (records) |record| {
+            runtime.Instance.deinit(record);
+        }
+        return error.OutOfMemory;
+    };
+
+    // All values are already Global handles from V8 API:
+    // - records_array: Global<Array>* from v8_Array_New
+    // - observer_v8: Global<Value>* from instanceToV8
+    // - recv_global: Global<Value>* from v8_Undefined
+    // v8_Function_Call_Safe expects Global handles, so we can use them directly
+
+    // Prepare arguments: [records, observer]
+    var global_args: [2]*v8_engine.ffi.Value = .{
+        @ptrCast(records_array),
+        observer_v8,
+    };
+
+    // Get the callback function - callback_global is a GlobalHandle which wraps a Global<Function>*
+    // We need to get its raw pointer for the FFI call
+    const func_ptr = callback_global.ptr;
+
+    // Call the callback function
+    // All arguments are Global handles as expected by v8_Function_Call_Safe
+    const result = v8_engine.ffi.v8_Function_Call_Safe(
+        @ptrCast(func_ptr),
+        context,
+        @ptrCast(recv_global),
+        2,
+        @ptrCast(&global_args),
+    );
+    defer v8_engine.ffi.v8_FreeFunctionCallResult(result);
+
+    // Check for errors but don't propagate - per spec, callback errors
+    // should be reported but not stop other observers
+    _ = result.error_info;
+
+    // Note: Records are V8 garbage collected after wrapping, we don't need to free them
+    // The V8 wrapper cache maintains the instance lifetime
 }
