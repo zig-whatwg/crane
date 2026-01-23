@@ -9208,13 +9208,7 @@ void TrapGet(const FunctionCallbackInfo<Value>& info) {
     
     Local<Value> target = info[0];
     Local<Value> property = info[1];
-    
-    // Debug logging disabled for performance - uncomment if needed
-    // if (property->IsString()) {
-    //     String::Utf8Value prop_str(isolate, property);
-    //     fprintf(stderr, "[TrapGet] property='%s'\n", *prop_str);
-    // }
-    
+
     Local<Object> reflect = context->Global()
         ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
         .ToLocalChecked().As<Object>();
@@ -9296,13 +9290,13 @@ extern "C" {
 /// @return Global handle to the Proxy, or nullptr on failure
 Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Global<Object>* target) {
     if (!context || !target) return nullptr;
-    
+
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
     Local<Object> local_target = target->Get(isolate);
-    
+
     // Create the handler object with all traps
     Local<Object> handler = Object::New(isolate);
     

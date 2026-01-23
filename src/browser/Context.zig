@@ -1118,15 +1118,10 @@ pub const Context = struct {
             };
         }
 
-        // Register getComputedStyle as a global function
-        // Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
-        {
-            const template = v8.ffi.v8_FunctionTemplate_New(isolate, getComputedStyleCallback, null) orelse return error.FunctionTemplateCreateFailed;
-            v8.ffi.v8_FunctionTemplate_SetLength(template, 1);
-            const func = v8.ffi.v8_FunctionTemplate_GetFunction(template, v8_ctx) orelse return error.FunctionCreateFailed;
-            const key = v8.ffi.v8_String_NewFromUtf8(isolate, "getComputedStyle", 16) orelse return error.StringCreateFailed;
-            _ = v8.ffi.v8_Object_Set(global_obj, v8_ctx, @ptrCast(key), @ptrCast(func));
-        }
+        // NOTE: getComputedStyle is now properly defined on Window.prototype via WebIDL binding.
+        // The Window.call_getComputedStyle implementation creates a proper CSSStyleDeclaration
+        // with named property handlers for CSS property access (e.g., style.borderStyle).
+        // Do NOT register a stub here - it would shadow the proper implementation.
 
         // Register fetch() as a global function
         {
@@ -2152,65 +2147,6 @@ fn dispatchEventCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) 
     if (v8.ffi.v8_Boolean_New(isolate, result)) |res| {
         info.setReturnValue(res);
     }
-}
-
-/// getComputedStyle callback - returns CSSStyleDeclaration-like object
-/// Per CSSOM spec, window.getComputedStyle(element, pseudoElt) returns computed styles
-fn getComputedStyleCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    const v8_ctx = v8.ffi.v8_Isolate_GetCurrentContext(isolate) orelse {
-        if (v8.ffi.v8_Null(isolate)) |null_val| {
-            info.setReturnValue(null_val);
-        }
-        return;
-    };
-
-    // Create an empty CSSStyleDeclaration-like object
-    // In a full implementation, this would compute styles from the element
-    const style_obj = v8.ffi.v8_Object_New(isolate) orelse {
-        if (v8.ffi.v8_Null(isolate)) |null_val| {
-            info.setReturnValue(null_val);
-        }
-        return;
-    };
-
-    // Add getPropertyValue method
-    const get_prop_template = v8.ffi.v8_FunctionTemplate_New(isolate, getPropertyValueCallback, null) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    const get_prop_func = v8.ffi.v8_FunctionTemplate_GetFunction(get_prop_template, v8_ctx) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    const get_prop_key = v8.ffi.v8_String_NewFromUtf8(isolate, "getPropertyValue", 16) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(get_prop_key), @ptrCast(get_prop_func));
-
-    // Add length property (0 for stub)
-    const length_key = v8.ffi.v8_String_NewFromUtf8(isolate, "length", 6) orelse {
-        info.setReturnValue(@ptrCast(style_obj));
-        return;
-    };
-    const length_val = v8.ffi.v8_Integer_New(isolate, 0);
-    _ = v8.ffi.v8_Object_Set(style_obj, v8_ctx, @ptrCast(length_key), @ptrCast(length_val));
-
-    info.setReturnValue(@ptrCast(style_obj));
-}
-
-/// getPropertyValue helper for CSSStyleDeclaration
-fn getPropertyValueCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) void {
-    const isolate = info.v8_FunctionCallbackInfo_GetIsolate();
-    // Return empty string for any property (stub implementation)
-    const empty_str = v8.ffi.v8_String_NewFromUtf8(isolate, "", 0) orelse {
-        if (v8.ffi.v8_Undefined(isolate)) |undef| {
-            info.setReturnValue(undef);
-        }
-        return;
-    };
-    info.setReturnValue(@ptrCast(empty_str));
 }
 
 /// fetch callback - implements the global fetch() function

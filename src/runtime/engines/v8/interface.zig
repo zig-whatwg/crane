@@ -4939,7 +4939,13 @@ pub fn V8Interface(comptime Interface: type) type {
             // If P is NOT a supported property name, do not intercept.
             // This ensures that properties like __proto__, toString, etc. fall through
             // to the prototype chain instead of being incorrectly intercepted.
-            if (!isSupportedPropertyName(instance, prop_name)) {
+            //
+            // SPECIAL CASE: CSSStyleDeclaration should intercept ALL valid CSS property names,
+            // not just ones currently in getSupportedPropertyNames (which returns only
+            // properties that are currently set). This is critical for getComputedStyle()
+            // which returns computed values for all CSS properties, not just set ones.
+            const is_css_style_declaration = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
+            if (!is_css_style_declaration and !isSupportedPropertyName(instance, prop_name)) {
                 return .kNo;
             }
 
