@@ -64,6 +64,12 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
+/// Navigation callback type for Location.assign/replace/href setter.
+/// Parameters: (context_ptr, url) -> success
+/// The context_ptr is an opaque pointer to implementation-specific data
+/// (e.g., IFrameIntegration* for iframe contexts).
+pub const NavigateCallback = *const fn (ctx: ?*anyopaque, url: []const u8) bool;
+
 /// Internal state for Location implementation
 /// Contains private data not exposed via WebIDL attributes.
 pub const InternalState = struct {
@@ -82,6 +88,15 @@ pub const InternalState = struct {
 
     /// Cached href for comparison
     cached_href: ?[]const u8 = null,
+
+    /// Navigation callback for triggering actual navigation.
+    /// Set by the context that creates this Location (e.g., HTMLIFrameElement for iframes).
+    /// When set, call_assign/call_replace use this to perform navigation.
+    navigate_callback: ?NavigateCallback = null,
+
+    /// Opaque context pointer passed to navigate_callback.
+    /// For iframe contexts, this is the IFrameIntegration*.
+    navigate_context: ?*anyopaque = null,
 
     pub fn deinit(self: *InternalState) void {
         if (self.cached_href) |href| {
@@ -162,6 +177,29 @@ pub fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) !vo
 /// Get internal state (exposed for Window impl to set URL)
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return getInternal(instance);
+}
+
+/// Set the associated Window for this Location.
+/// Called by Window/context initialization to establish the bi-directional link.
+/// This enables Location.assign() to access the browsing context for navigation.
+pub fn setWindow(instance: *runtime.Instance, window: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.window = window;
+}
+
+/// Set the navigation callback for this Location.
+/// Called by iframe setup to enable programmatic navigation via location.href/assign/replace.
+/// Parameters:
+/// - callback: Function to call for navigation, or null to disable
+/// - context: Opaque pointer passed to callback (e.g., IFrameIntegration*)
+pub fn setNavigateCallback(
+    instance: *runtime.Instance,
+    callback: ?NavigateCallback,
+    context: ?*anyopaque,
+) void {
+    const internal = getInternal(instance) orelse return;
+    internal.navigate_callback = callback;
+    internal.navigate_context = context;
 }
 
 /// Deinitialize instance
@@ -512,15 +550,29 @@ pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror
         // Per HTML spec §7.1.3.2, invalid URLs throw "SyntaxError" DOMException
         return error.SyntaxError;
     };
-    defer parsed_url.deinit();
 
-    // URL is valid - proceed with navigation
-    // TODO: Implement actual navigation
-    // 1. Check security (same-origin or appropriate permissions)
-    // 2. Navigate the browsing context with history handling = "push"
+    // Step 3: Serialize the resolved URL for navigation
+    const resolved_url = url_serializer.serialize(allocator, &parsed_url, false) catch {
+        parsed_url.deinit();
+        return error.OutOfMemory;
+    };
+    defer allocator.free(resolved_url);
+    parsed_url.deinit();
 
-    // For now, we just validated the URL
-    // Full navigation requires Phase 6: Navigation & History
+    // Step 4: Perform navigation using the callback if available
+    // The callback handles browsing context navigation (e.g., iframe navigation)
+    if (internal.navigate_callback) |callback| {
+        if (callback(internal.navigate_context, resolved_url)) {
+            // Navigation succeeded - update our URL record
+            setURLFromString(instance, resolved_url) catch {};
+            return;
+        }
+        // Callback returned false - navigation was blocked/failed
+        return error.SecurityError;
+    }
+
+    // No navigation callback set - this context doesn't support programmatic navigation yet
+    // Full navigation for top-level windows requires Phase 6: Navigation & History
     return error.NotImplemented;
 }
 
@@ -539,11 +591,29 @@ pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerro
         // URL parsing failed - throw SyntaxError
         return error.SyntaxError;
     };
-    defer parsed_url.deinit();
 
-    // URL is valid - proceed with navigation
-    // TODO: Implement actual replace navigation
-    // Same as assign but with history handling = "replace"
+    // Step 3: Serialize the resolved URL for navigation
+    const resolved_url = url_serializer.serialize(allocator, &parsed_url, false) catch {
+        parsed_url.deinit();
+        return error.OutOfMemory;
+    };
+    defer allocator.free(resolved_url);
+    parsed_url.deinit();
+
+    // Step 4: Perform navigation using the callback if available
+    // replace uses the same navigation but with "replace" history handling
+    // For now, we treat it the same as assign (both use the same callback)
+    if (internal.navigate_callback) |callback| {
+        if (callback(internal.navigate_context, resolved_url)) {
+            // Navigation succeeded - update our URL record
+            setURLFromString(instance, resolved_url) catch {};
+            return;
+        }
+        // Callback returned false - navigation was blocked/failed
+        return error.SecurityError;
+    }
+
+    // No navigation callback set
     return error.NotImplemented;
 }
 

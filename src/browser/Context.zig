@@ -865,6 +865,10 @@ pub const Context = struct {
             // Link the location to the Window instance so window.location accessor works
             if (self.window_instance) |win| {
                 impls.Window.setLocation(win, loc_instance);
+                // Set up bi-directional link: Location knows its Window
+                impls.Location.setWindow(loc_instance, win);
+                // Note: Top-level navigation callback is not set here yet
+                // Full top-level navigation requires Phase 6: Navigation & History
             }
 
             const v8_location = v8.template_registry.wrapInstanceAsV8Object(

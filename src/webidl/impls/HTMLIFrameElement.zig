@@ -633,6 +633,43 @@ fn updateIframeLocation(engine_ctx: ?*anyopaque, url: []const u8) void {
     LocationImpl.setURLFromString(location, url) catch {};
 }
 
+/// Navigation callback for Location.assign/replace/href setter in iframes.
+/// Called when JavaScript sets iframe.contentWindow.location or similar.
+/// Parameters: (IFrameIntegration* as context, url) -> success
+fn navigateIframe(ctx: ?*anyopaque, url: []const u8) bool {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(ctx orelse return false));
+
+    // Check if the browsing context is still valid
+    if (integration.browsing_context == null or
+        integration.state == .uninitialized or
+        integration.state == .discarded)
+    {
+        return false;
+    }
+
+    // Perform navigation using the IFrameIntegration
+    // navigateToSrc handles different URL schemes (data:, file://, http://, etc.)
+    integration.navigateToSrc(url) catch |err| {
+        std.log.debug("[navigateIframe] Navigation failed: {}", .{err});
+        return false;
+    };
+
+    // Fire the load event on the iframe element after navigation completes
+    // Per HTML spec, the load event fires after the document is loaded
+    if (integration.fire_load_callback) |fire_load| {
+        fire_load(integration.iframe_element);
+    }
+
+    return true;
+}
+
+/// Callback wrapper for firing load event on iframe element.
+/// Used by IFrameIntegration after navigation completes.
+fn fireLoadCallback(iframe_instance_ptr: ?*anyopaque) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(iframe_instance_ptr orelse return));
+    fireLoadEventOnIframe(instance);
+}
+
 /// Fire a load event on the iframe element.
 /// Per HTML spec §4.8.5, this is the "iframe load event steps" algorithm:
 /// 1. Assert: element's content navigable is not null.
@@ -833,6 +870,25 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
         // Set script execution callbacks (for script execution in iframe documents)
         internal.integration.execute_script_callback = &executeIframeScript;
         internal.integration.update_location_callback = &updateIframeLocation;
+
+        // Set up load event callback for navigation (e.g., contentWindow.location = url)
+        internal.integration.fire_load_callback = &fireLoadCallback;
+        internal.integration.iframe_element = @ptrCast(instance);
+
+        // Set up Location's navigate callback for programmatic navigation
+        // (e.g., iframe.contentWindow.location = 'url' or location.assign())
+        if (entry.window_instance) |window_instance| {
+            const WinImpl = @import("Window.zig");
+            if (WinImpl.getInternal(window_instance)) |window_internal| {
+                if (window_internal.location) |location| {
+                    const LocationImpl = @import("Location.zig");
+                    // Set up bi-directional link: Location knows its Window
+                    LocationImpl.setWindow(location, window_instance);
+                    // Set up navigation callback with IFrameIntegration as context
+                    LocationImpl.setNavigateCallback(location, &navigateIframe, @ptrCast(internal.integration));
+                }
+            }
+        }
 
         // CRITICAL: Associate the iframe's browsing context with the Window.
         // createChildContext ignores existing_browsing_context (disabled for crash investigation),

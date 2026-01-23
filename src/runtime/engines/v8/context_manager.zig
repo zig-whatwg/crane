@@ -2447,6 +2447,12 @@ pub fn createChildContext(
 
         // Link the Location to the Window instance so window.location accessor works
         WindowImpl.setLocation(window_instance, loc_instance);
+
+        // Set up bi-directional link: Location knows its Window
+        const LocationImpl = @import("impls").Location;
+        LocationImpl.setWindow(loc_instance, window_instance);
+        // Note: Navigation callback is set up later in HTMLIFrameElement.get_contentWindow
+        // after the IFrameIntegration is available
     }
 
     return child_entry;

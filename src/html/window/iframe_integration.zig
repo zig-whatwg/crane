@@ -297,6 +297,14 @@ pub const IFrameIntegration = struct {
     /// Set by modules with interface access (e.g., impls/HTMLIFrameElement.zig)
     parse_html_callback: ?*const fn (?*anyopaque, *BrowsingContext, []const u8) ?*anyopaque,
 
+    /// Callback to fire the load event on the iframe element after navigation.
+    /// Parameters: (iframe_instance) -> void
+    /// Set by modules with interface access (e.g., impls/HTMLIFrameElement.zig)
+    fire_load_callback: ?*const fn (?*anyopaque) void,
+
+    /// Opaque pointer to the HTMLIFrameElement instance (for load event firing)
+    iframe_element: ?*anyopaque,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -323,6 +331,8 @@ pub const IFrameIntegration = struct {
             .execute_script_callback = null,
             .update_location_callback = null,
             .parse_html_callback = null,
+            .fire_load_callback = null,
+            .iframe_element = null,
         };
     }
 
@@ -660,7 +670,7 @@ pub const IFrameIntegration = struct {
     /// 3. Detects encoding (BOM → Content-Type → default UTF-8)
     /// 4. Parses the HTML content
     /// 5. Stores the parsed Document in the browsing context
-    fn navigateToSrc(self: *IFrameIntegration, url: []const u8) IFrameError!void {
+    pub fn navigateToSrc(self: *IFrameIntegration, url: []const u8) IFrameError!void {
         self.state = .navigating;
 
         // Parse the URL to determine origin
@@ -717,6 +727,23 @@ pub const IFrameIntegration = struct {
         }
         defer content.deinit();
 
+        // Use the parse_html_callback if available - this uses DomTreeAdapter
+        // to properly populate the document with parsed content that JavaScript
+        // can access via DOM APIs like getElementById(), querySelector(), etc.
+        if (self.parse_html_callback) |parse_html| {
+            if (self.browsing_context) |ctx| {
+                _ = parse_html(self.runtime_context, ctx, content.bytes);
+            }
+
+            // Update the iframe's Location URL to reflect the navigated URL
+            self.updateLocationUrl(url);
+
+            self.state = .ready;
+            return;
+        }
+
+        // Fallback: Parse without DOM integration (scripts won't have access to parsed DOM)
+        // This path is only used when parse_html_callback is not set.
         // Detect encoding from BOM and Content-Type
         const detected_encoding = detectEncoding(content.bytes, content.content_type);
 
