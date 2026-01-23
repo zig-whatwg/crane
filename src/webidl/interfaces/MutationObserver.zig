@@ -111,7 +111,6 @@ pub const MutationObserver = struct {
     }
 
     pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(MutationObserverInit)) anyerror!void {
-        
         return try MutationObserverImpl.call_observe(instance, target, options);
     }
 
