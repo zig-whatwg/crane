@@ -2799,18 +2799,21 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
         }
     }
 
-    // Get the instance's creation context - this is critical for cross-realm support!
-    // When returning interface instances from toJSON, they must be wrapped with their
-    // ORIGINAL realm's prototype, not the current context's prototype.
-    // e.g., DOMQuad.toJSON returns p1-p4 DOMPoints - these should have the DOMPoint
-    // prototype from the realm where they were created, not the toJSON method's realm.
-    const context: *v8.Context = if (instance.ctx.getEngineContext()) |engine_ctx|
-        @ptrCast(@alignCast(engine_ctx))
-    else
-        v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-            // No context available, return undefined
+    // Use the CURRENT context for wrapper lookup to ensure identity works
+    // when the same instance is accessed from the same context multiple times.
+    // This is critical for MutationObserver callbacks where addedNodes items
+    // must be === to the original element reference held by JavaScript.
+    //
+    // Note: For cross-realm support (iframe contentWindow, etc.), we use
+    // special handling in Window and Document cases above.
+    const context: *v8.Context = v8.v8_Isolate_GetCurrentContext(isolate) orelse blk: {
+        // Fall back to instance's context if no current context
+        if (instance.ctx.getEngineContext()) |engine_ctx| {
+            break :blk @ptrCast(@alignCast(engine_ctx));
+        } else {
             return v8.v8_Undefined(isolate) orelse unreachable;
-        };
+        }
+    };
 
     // Wrap with correct prototype using template registry
     const v8_obj = template_registry.wrapInstanceAsV8Object(
