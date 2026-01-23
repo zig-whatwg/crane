@@ -1,403 +1,66 @@
 # Agent Guidelines for WHATWG Specifications Monorepo in Zig
 
-## Knowledge Management with Cog
+## Cog Memory System
 
-You have access to Cog, a persistent memory system for storing and retrieving knowledge across sessions. Your API token is automatically linked to a specific brain, so no brain_id is needed in any tool calls.
+  You have access to Cog, a persistent memory system via MCP.
 
-**Cog persists across sessions and conversations.** Knowledge recorded today is available in future sessions. This is why recording learnings is valuable - future agents (including yourself in a new conversation) will benefit from past discoveries.
+  **At the start of every session and after any context compaction, call:**
+  cog_start({})
 
-Cog implements biologically-inspired memory: concepts are stored as **engrams** and linked via **synapses**. When you recall knowledge, activation spreads through connected concepts—just like biological memory retrieval.
+  This returns the full usage instructions for Cog.
 
-### Available Tools
+### ⚠️ MUST ALWAYS: Report Cog Memory Usefulness
 
-| Tool | Purpose |
-|------|---------|
-| `cog_remember` | Store a new concept (term + definition) |
-| `cog_recall` | Search for concepts with optional spreading activation (`expand: true`) |
-| `cog_get` | Retrieve a specific engram by ID |
-| `cog_associate` | Link two concepts with a relationship predicate |
-| `cog_trace` | Find reasoning paths between two concepts |
-| `cog_update` | Modify an existing engram's term or definition |
-| `cog_unlink` | Remove a synapse between concepts |
-| `cog_connections` | List all connections from/to an engram |
-| `cog_bootstrap` | Get a codebase exploration prompt (empty brains only) |
+**After ANY research, exploration, or investigation activity where `cog_recall` was used, you MUST report on memory usefulness.**
 
----
+**This applies to ALL agents, including subagents.** When a subagent (spawned via Task tool) performs research or exploration using Cog, it MUST include the Cog Memory Feedback in its results returned to the parent agent.
 
-### Visual Indicators for Cog Usage
+**Reporting Chain:**
+- **Subagents** → MUST include Cog Memory Feedback in results returned to parent agent
+- **Parent agents** → MUST surface/include subagent Cog feedback when reporting to user
+- **All feedback must bubble up** to ensure visibility of Cog's value across the agent hierarchy
 
-**ALWAYS print visual indicators when using Cog tools** so the user knows memory operations are happening:
+**When to Report:**
+- After exploring the codebase to understand something
+- After investigating a bug or issue
+- After researching how something works
+- After any task where you recalled memories from Cog
+- **Subagents:** Include in your final result message back to the parent agent
+- **Parent agents:** Include subagent Cog feedback in your response to the user
 
-| Operation | Indicator |
-|-----------|-----------|
-| Querying | `⚙️ Querying Cog...` |
-| Recording | `🧠 Recording to Cog...` |
-| Linking | `🧠 Linking concepts...` |
-| Updating | `🧠 Updating engram...` |
-| Tracing | `⚙️ Tracing connections...` |
-| Exploring | `⚙️ Exploring connections...` |
-| Unlinking | `🧠 Removing link...` |
-
-**Use `⚙️` for read operations (querying, tracing, exploring) and `🧠` for write operations (recording, linking, updating, unlinking).**
-
-**Example usage in responses:**
+**Report Format:**
 ```
-⚙️ Querying Cog...
-
-Based on prior knowledge, I found that...
+📊 **Cog Memory Feedback:**
+- Memories recalled: [number] engrams
+- Useful memories: [list any that saved time or provided valuable context]
+- Not useful: [list any that were irrelevant or outdated]
+- Verdict: [Helpful / Partially helpful / Not helpful]
 ```
 
+**Examples:**
+
+✅ **Good Report:**
 ```
-🧠 Recording to Cog...
-🧠 Linking concepts...
-```
-
-This transparency helps users understand when persistent memory is being accessed or modified.
-
----
-
-### Starting Fresh: Codebase Exploration
-
-If the brain is empty and you're exploring a new codebase, use `cog_bootstrap` to get a comprehensive exploration prompt:
-
-```
-cog_bootstrap({})
+📊 **Cog Memory Feedback:**
+- Memories recalled: 3 engrams
+- Useful memories: "WebIDL codegen signature matching" - directly relevant, saved investigation time
+- Not useful: "URL parser edge cases" - not related to current DOM work
+- Verdict: Helpful
 ```
 
-This returns a detailed system prompt guiding you through systematic codebase analysis and knowledge recording.
-
----
-
-### Retrieving Knowledge
-
-The brain recalls **constellations**, not isolated facts. When you need context:
-
-#### With Spreading Activation (Recommended)
-
+✅ **When No Memories Recalled:**
 ```
-cog_recall({"query": "authentication", "expand": true})
+📊 **Cog Memory Feedback:**
+- Memories recalled: 0 engrams
+- No relevant memories found for this topic
+- Verdict: N/A (consider storing learnings from this session)
 ```
 
-Returns:
-- **Direct matches**: Concepts matching your query
-- **Connected context**: Related concepts reached via synapses (with activation levels)
-- **Paths**: How concepts are connected (predicates showing the relationship)
-
-Use `expand_depth` to control how far activation spreads (default: 2 hops):
-```
-cog_recall({"query": "error handling", "expand": true, "expand_depth": 3})
-```
-
-#### Quick Lookups (No Expansion)
-
-```
-cog_recall({"query": "specific function name"})
-```
-
-#### Deep Path Exploration
-
-```
-cog_trace({"from_id": "<concept_a>", "to_id": "<concept_b>"})
-```
-
----
-
-### When to Use Each Tool
-
-| Tool | Use When |
-|------|----------|
-| `cog_recall` | Starting any task, searching for concepts, exploring a topic |
-| `cog_get` | You have a specific engram ID and need its full definition |
-| `cog_trace` | Understanding WHY/HOW two concepts connect (shows multi-hop paths) |
-| `cog_connections` | Exploring what a concept links to before updating, or finding related concepts |
-| `cog_associate` | Linking new or existing concepts with semantic relationships |
-| `cog_update` | Correcting or clarifying an existing engram's definition |
-| `cog_unlink` | Removing an incorrect synapse (NOT the engram itself) |
-
-**Example - Using `cog_trace` to understand connections:**
-```
-cog_trace({"from_id": "<worker_concept_id>", "to_id": "<event_loop_concept_id>"})
-```
-Returns paths like: Worker → requires → V8 Isolate → is_component_of → Event Loop
-
-**Example - Using `cog_connections` to explore neighbors:**
-```
-cog_connections({"engram_id": "<concept_id>", "direction": "both"})
-```
-Returns all incoming and outgoing links with their predicates and weights.
-
----
-
-### ⚠️ CRITICAL: Always Query Cog First
-
-**BEFORE starting ANY task - bug fix, feature, investigation, or research - you MUST query Cog first.**
-
-This is non-negotiable. Cog may have:
-- Prior knowledge about the exact problem you're facing
-- Related gotchas or pitfalls discovered in previous sessions
-- Architectural context that speeds up understanding
-- Solutions to similar problems
-
-**Even if Cog returns nothing or partial information, you MUST check first.** The query takes seconds; rediscovering knowledge takes hours.
-
-```
-cog_recall({"query": "Worker event loop blob URL", "expand": true})
-```
-
-**Do this BEFORE:**
-- Reading code
-- Running tests
-- Starting to debug
-- Writing implementation plans
-
-**The query should include keywords related to:**
-- The component/module you're working on (e.g., "Worker", "URL", "Streams")
-- The type of problem (e.g., "crash", "memory leak", "timing")
-- Technologies involved (e.g., "V8", "isolate", "event loop")
-
-**If the first query returns nothing useful:**
-1. Try broader keywords (e.g., "Worker" instead of "DedicatedWorker")
-2. Try related terms (e.g., "message passing" instead of "postMessage")
-3. Try technology keywords (e.g., "V8 isolate" instead of "JavaScript context")
-
-Cog uses hybrid search (70% semantic + 30% keyword), so both exact terms and conceptually similar queries work.
-
-### ⚠️ CRITICAL: Subagents Must Also Query Cog First
-
-**When spawning subagents via the Task tool, you MUST include explicit instructions for the subagent to query Cog first.**
-
-Subagents do NOT automatically inherit CLAUDE.md instructions. They only receive the prompt you provide. Therefore, every Task prompt for research, exploration, or investigation MUST begin with:
-
-```
-⚙️ Query Cog first for any prior knowledge about [relevant keywords].
-
-Then [rest of the task...]
-
-If you discover non-trivial learnings, record them:
-🧠 Recording to Cog...
-```
-
-**Example - CORRECT Task prompt:**
-```
-⚙️ Query Cog first for any prior knowledge about V8 ShadowRealm GetWrappedValue or value boundary crossing.
-
-Then search in /Users/bcardarella/projects/chromium for V8's GetWrappedValue implementation...
-
-If you discover important implementation details or gotchas, use cog_remember to record them.
-Use 🧠 emoji prefix when recording (e.g., "🧠 Recording to Cog...").
-```
-
-**Example - WRONG Task prompt (missing Cog instruction):**
-```
-Search in /Users/bcardarella/projects/chromium for V8's GetWrappedValue implementation...
-```
-
-**Why this matters:**
-- Subagents may duplicate research that's already been done
-- Prior sessions may have already solved the exact problem
-- Knowledge in Cog can shortcut hours of investigation
-- Subagents should contribute TO Cog, not just consume resources
-
-**Visual indicators for subagents:**
-- `⚙️` for read operations (querying Cog)
-- `🧠` for write operations (recording learnings, linking concepts)
-
-**Checklist before launching any Task:**
-1. Did I query Cog myself first? (before even deciding to spawn a subagent)
-2. Does my Task prompt include "⚙️ Query Cog first for..." as the FIRST instruction?
-3. Does my Task prompt include relevant keywords for the Cog query?
-4. Does my Task prompt instruct subagent to record learnings with "🧠" prefix?
-
-### Using Query Results
-
-1. **Use the full context**, not just direct matches:
-   - `requires` links show prerequisites you might be missing
-   - `contrasts_with` links show alternative approaches
-   - `implies` links show consequences to consider
-   - `temporally_related` links show concepts learned in the same session
-
-2. **If knowledge proves incorrect**, determine the severity:
-
-   | Update (minor) | Disconnect + Create New (major) |
-   |----------------|--------------------------------|
-   | API behavior clarification | Feature completely refactored |
-   | Version/syntax changes | Module/file deleted or renamed |
-   | Missing edge case | Architecture fundamentally changed |
-
-   **Minor correction:**
-   ```
-   cog_update({"engram_id": "<id>", "definition": "Corrected explanation..."})
-   ```
-
-   **Major change:**
-   ```
-   cog_connections({"engram_id": "<stale_id>"})
-   cog_unlink({"synapse_id": "<each_synapse_id>"})
-   cog_remember({"term": "Updated concept", "definition": "Current accurate explanation..."})
-   ```
-
----
-
-### How Cog Handles Conflicts
-
-Cog uses **idempotent deduplication**, not explicit conflict resolution:
-
-- **Duplicate concepts**: If you try to remember something ≥90% similar to an existing engram, Cog activates the existing one instead of creating a duplicate
-- **Repeated associations**: Calling `cog_associate` on existing links strengthens them (LTP) rather than failing
-- **Contradictory information**: Both facts coexist - create explicit `contradicts` links if needed
-
-**When Cog conflicts with current code or user statements:**
-1. **Trust the code/user over Cog** - code is the source of truth
-2. **Update the engram** with `cog_update` to correct it
-3. **If fundamentally wrong**, unlink the engram's connections and create a new one
-
----
-
-### Recording Knowledge
-
-When you learn something new that is:
-1. **Verified** - You've confirmed it works (ran tests, saw output, validated behavior)
-2. **Non-trivial** - Not obvious or well-documented elsewhere
-3. **Reusable** - Could be helpful in future sessions
-
-Store it in Cog:
-
-1. **Search first** to avoid duplicates:
-   ```
-   cog_recall({"query": "Phoenix LiveView navigation"})
-   ```
-
-2. **Create the engram**:
-   ```
-   cog_remember({
-     "term": "Phoenix LiveView push_navigate behavior",
-     "definition": "push_navigate/2 triggers a full LiveView mount cycle, not a patch. Use push_patch/2 for same-LiveView navigation to preserve state."
-   })
-   ```
-
-3. **Query for existing related concepts** - Don't just link new engrams to each other; find existing concepts they connect to:
-   ```
-   cog_recall({"query": "V8 event loop isolate", "expand": true})
-   ```
-
-4. **Link to BOTH new and existing concepts** - New knowledge should integrate into the existing graph:
-   ```
-   // Link new engrams to each other
-   cog_associate({
-     "source_id": "<new_engram_id>",
-     "target_id": "<other_new_engram_id>",
-     "predicate": "related_to"
-   })
-
-   // Link new engrams to existing related concepts
-   cog_associate({
-     "source_id": "<new_engram_id>",
-     "target_id": "<existing_related_id>",
-     "predicate": "is_component_of"  // or appropriate predicate
-   })
-   ```
-
-### Writing Good Engrams
-
-**Terms (2-5 words):**
-- ✅ "V8 HandleScope Corruption Pattern"
-- ✅ "Blob URL Fetch Timing"
-- ✅ "Event Loop Task Draining"
-- ❌ "Worker.zig" (just a filename)
-- ❌ "Error handling" (too vague)
-- ❌ "The bug fix" (not searchable)
-
-**Definitions (1-3 sentences) should answer:**
-1. **What is this?** - The core concept
-2. **Why does it matter?** - Consequences of not knowing this
-3. **Context** - Where it applies (optional file paths, conditions)
-
-**Example of a good engram:**
-```
-Term: "V8 HandleScope corruption from nested isolate entry"
-Definition: "Entering a worker's V8 isolate synchronously from within a V8
-callback corrupts the calling isolate's HandleScope state, causing 'Cannot
-create a handle without a HandleScope' crashes. Worker isolate entry must
-be deferred via queueTask or setTimeout to run after V8 restores its state."
-```
-
-**Why this matters:** Isolated engrams won't surface in future queries. The value of Cog comes from spreading activation through connected concepts. New learnings should connect to the existing knowledge graph so they're discoverable when querying related topics.
-
-**Note:** Concepts created close in time are automatically linked with `temporally_related` synapses, but these weak links are not sufficient - explicit semantic associations are needed.
-
----
-
-### Relationship Predicates
-
-When linking concepts, use the most specific predicate:
-
-| Predicate | Meaning |
-|-----------|---------|
-| `requires` | A is prerequisite for B |
-| `implies` | If A then B |
-| `contradicts` | A and B are mutually exclusive |
-| `leads_to` | A naturally flows to B |
-| `is_component_of` | A is part of B |
-| `contains` | A includes B |
-| `example_of` | A demonstrates pattern B |
-| `generalizes` | A is broader version of B |
-| `similar_to` | A and B are related concepts |
-| `contrasts_with` | A and B differ importantly |
-| `supersedes` | A replaces B |
-| `derived_from` | A came from B |
-| `precedes` | A comes before B |
-| `related_to` | General link (use sparingly) |
-| `temporally_related` | A and B were created close in time (auto-generated) |
-
----
-
-### What to Remember
-
-**Good candidates:**
-- Bug fixes and their root causes
-- Non-obvious API behaviors discovered through experimentation
-- Project-specific patterns or conventions
-- Workarounds for framework/library quirks
-- Performance insights from profiling
-- Architecture decisions and their rationale
-- Common gotchas and pitfalls
-
-**Do NOT remember:**
-- Standard documentation that's easily searchable
-- Temporary debugging steps
-- User preferences (use CLAUDE.md for those)
-- Secrets or credentials
-- Trivial or obvious information
-
----
-
-### Limitations
-
-- **No engram deletion**: There is no MCP tool to delete engrams entirely. If an engram is wrong:
-  1. Use `cog_update` to correct the definition
-  2. Use `cog_unlink` to remove incorrect synapses
-  3. For obsolete concepts, update the definition to note "DEPRECATED: [reason]"
-
-- **No multi-query**: Each `cog_recall` is independent. Chain queries manually if needed.
-
-- **Synapse uniqueness**: Only one synapse can exist between two engrams (same direction). Calling `cog_associate` again strengthens the existing link rather than creating a duplicate.
-
----
-
-### How Spreading Activation Works
-
-When you query with `expand: true`:
-
-1. **Seeds**: Direct matches found (e.g., "Session Auth Pattern") with similarity scores
-2. **Spread**: Activation flows through synapses to connected concepts
-3. **Decay**: Activation diminishes with each hop (0.7x per hop by default)
-4. **Threshold**: Spreading stops when activation falls below 0.2
-5. **Strengthen**: All activated concepts become slightly more accessible for future recall
-
-This mirrors biological memory:
-- Recalling one memory activates related memories automatically
-- Frequently co-accessed memories strengthen their connections
-- The more a path is traversed, the stronger it becomes
+**Why This Matters:**
+- Helps evaluate if Cog is providing value
+- Identifies gaps in stored knowledge
+- Tracks ROI on memory storage
+- Guides what should/shouldn't be stored in future
 
 ## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
 
@@ -978,17 +641,6 @@ Did user explicitly request a different location?
 
 These apply to ALL work on this project:
 
-### 0. **Query Cog First** ⭐⭐⭐
-**BEFORE doing ANYTHING else, query Cog for prior knowledge.** This is the FIRST action for ANY task.
-
-```
-cog_recall({"query": "relevant keywords here", "expand": true})
-```
-
-Cog may have solutions, gotchas, or context from previous sessions. Even if it returns nothing, you MUST check. Rediscovering knowledge wastes hours; querying takes seconds.
-
-**This rule takes precedence over all other rules.** Don't read code, don't write tests, don't start debugging until you've queried Cog.
-
 ### 1. **Ask When Unclear** ⭐
 When requirements are ambiguous or unclear, **ASK CLARIFYING QUESTIONS** before proceeding. One question at a time. Wait for answer. Never assume.
 
@@ -1230,17 +882,6 @@ pub fn parseHTML(allocator: Allocator, html: []const u8) !*Instance {
 
 See epic `whatwg-jwgc` for the full list and refactoring plan.
 
-### 15. **Record Non-Trivial Learnings to Cog** ⭐
-After fixing bugs or discovering unexpected behavior, use `cog_remember` to persist:
-- Root causes that weren't obvious
-- Gotchas and pitfalls others might hit
-- Patterns that could recur in this codebase
-
-**Rule of thumb:** If you spent more than a few minutes figuring something out, it's worth recording. The debugging time you save future sessions pays for the seconds it takes to record.
-
-**Don't forget to link:** After creating engrams, query for related concepts and use `cog_associate` to connect new knowledge to existing engrams. Isolated engrams won't surface in future queries.
-
----
 
 ## Critical Project Context
 
@@ -1278,10 +919,6 @@ After fixing bugs or discovering unexpected behavior, use `cog_remember` to pers
 
 ### Workflow (New Features)
 
-1. **⚠️ Query Cog FIRST** - Before anything else, check for prior knowledge (see Golden Rule #0):
-   ```
-   cog_recall({"query": "relevant component keywords", "expand": true})
-   ```
 2. **Identify context** - Determine which spec you're implementing (from file path or task description)
 3. **Read spec** - Load complete spec from `specs/whatwg/[spec-name]/` or relevant spec directory
 4. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
@@ -1292,7 +929,6 @@ After fixing bugs or discovering unexpected behavior, use `cog_remember` to pers
 9. **Document** - Inline docs with spec references (do this BEFORE committing)
 10. **Verify** - No leaks, all tests pass, pre-commit checks pass
 11. **✅ COMMIT** - Implementation + tests + inline docs together (see Golden Rule #8)
-12. **Record learnings to Cog** - If you discovered non-obvious patterns, gotchas, or architectural insights, use `cog_remember` and link to existing concepts (see Golden Rule #15)
 13. **Update CHANGELOG.md** - Document what was added
 14. **✅ COMMIT** - Commit changelog update
 15. **Update FEATURE_CATALOG.md** if user-facing API
@@ -1302,10 +938,6 @@ After fixing bugs or discovering unexpected behavior, use `cog_remember` to pers
 
 ### Workflow (Bug Fixes)
 
-1. **⚠️ Query Cog FIRST** - Before anything else, check for prior knowledge about this area (see Golden Rule #0):
-   ```
-   cog_recall({"query": "component name error type keywords", "expand": true})
-   ```
 2. **Identify context** - Determine which spec has the bug
 3. **Write failing test** that reproduces the bug
 4. **Read spec** - Load relevant spec from `specs/whatwg/` to verify expected behavior
@@ -1313,7 +945,6 @@ After fixing bugs or discovering unexpected behavior, use `cog_remember` to pers
 6. **Document** - Add/update inline docs if needed
 7. **Verify** all tests pass (including new test), pre-commit checks pass
 8. **✅ COMMIT** - Fix + test + docs together with clear description
-9. **Record learnings to Cog** - If you discovered a non-obvious root cause, gotcha, or recurring pattern, use `cog_remember` and link to existing concepts (see Golden Rule #15)
 10. **Update** CHANGELOG.md if user-visible
 11. **✅ COMMIT** - Commit changelog update
 
