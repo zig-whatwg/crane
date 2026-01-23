@@ -21,6 +21,9 @@ const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
 // Import Element impl for tag name access
 const ElementImpl = @import("Element.zig");
 
+// Import HTMLElement impl for inline style storage delegation
+const HTMLElementImpl = @import("HTMLElement.zig");
+
 pub const State = CSSStyleDeclaration.State;
 
 pub const ImplError = error{
@@ -36,16 +39,23 @@ const Registry = utils.InstanceRegistry(InternalState);
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
-    /// The element this computed style is for (null for non-computed styles)
+    /// The element this style is for (used for both inline and computed styles)
     element: ?*runtime.Instance = null,
 
-    /// Whether this is a computed style (read-only) or inline style (read-write)
+    /// Whether this is a computed style (read-only)
     is_computed: bool = false,
 
+    /// Whether this is an inline style (element.style)
+    /// When true, property storage is delegated to the owner HTMLElement
+    /// This allows properties to survive V8 GC of this CSSStyleDeclaration wrapper
+    is_inline_style: bool = false,
+
     /// Storage for individual CSS property values (property name -> value)
+    /// Only used when is_inline_style=false (for non-inline CSSStyleDeclarations)
     properties: std.StringHashMapUnmanaged([]const u8) = .{},
 
     /// Cached cssText representation
+    /// Only used when is_inline_style=false
     css_text: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
@@ -53,23 +63,27 @@ pub const InternalState = struct {
             .allocator = allocator,
             .element = null,
             .is_computed = false,
+            .is_inline_style = false,
             .properties = .{},
             .css_text = null,
         };
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Free property values
-        var iter = self.properties.iterator();
-        while (iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.*);
-        }
-        self.properties.deinit(self.allocator);
+        // Only free properties if NOT an inline style (inline styles are stored in HTMLElement)
+        if (!self.is_inline_style) {
+            var iter = self.properties.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                self.allocator.free(entry.value_ptr.*);
+            }
+            self.properties.deinit(self.allocator);
 
-        if (self.css_text) |text| {
-            self.allocator.free(text);
+            if (self.css_text) |text| {
+                self.allocator.free(text);
+            }
         }
+        // Note: For inline styles, HTMLElement owns the property storage
     }
 
     /// Parse and set cssText, updating individual properties
@@ -166,6 +180,28 @@ pub fn initForComputedStyle(
     return instance;
 }
 
+/// Create a CSSStyleDeclaration for element.style (inline styles)
+/// Properties are stored in the HTMLElement's InternalState, not in this CSSStyleDeclaration.
+/// This allows properties to survive V8 GC of this wrapper.
+pub fn initForInlineStyle(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+    owner_element: *runtime.Instance,
+) !*runtime.Instance {
+    const instance = try init(allocator, StateType, vtable, ctx);
+    errdefer deinit(instance);
+
+    if (getInternal(instance)) |internal| {
+        internal.element = owner_element;
+        internal.is_inline_style = true;
+        internal.is_computed = false;
+    }
+
+    return instance;
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up internal state from registry
@@ -179,6 +215,18 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for cssText
 pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+
+    // For inline styles, delegate to HTMLElement
+    if (internal.is_inline_style) {
+        if (internal.element) |element| {
+            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+                const text = html_internal.getInlineStyleCssText();
+                return runtime.DOMString.initInterned(text);
+            }
+        }
+        return runtime.DOMString.initEmpty();
+    }
+
     const text = internal.getCssText();
     // Return as interned since the internal state owns the memory
     return runtime.DOMString.initInterned(text);
@@ -186,12 +234,25 @@ pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
 
 /// Getter for length
 /// Returns the number of CSS properties in this declaration.
-/// For computed styles, this would be all computed properties.
-/// For our stub, we return 0.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    // Stub: return 0 for now (no enumerable properties)
-    return 0;
+    const internal = getInternal(instance) orelse return 0;
+
+    // For inline styles, delegate to HTMLElement
+    if (internal.is_inline_style) {
+        if (internal.element) |element| {
+            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+                return html_internal.getInlineStylePropertyCount();
+            }
+        }
+        return 0;
+    }
+
+    // For computed styles, return 0 (stub)
+    if (internal.is_computed) {
+        return 0;
+    }
+
+    return @intCast(internal.properties.count());
 }
 
 /// Getter for parentRule
@@ -210,6 +271,18 @@ pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) any
     }
 
     const text = value.asSlice();
+
+    // For inline styles, delegate to HTMLElement
+    if (internal.is_inline_style) {
+        if (internal.element) |element| {
+            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+                try html_internal.setInlineStyleCssText(text);
+                return;
+            }
+        }
+        return error.NotImplemented;
+    }
+
     try internal.setCssText(text);
 }
 
@@ -266,7 +339,19 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
         }
     }
 
-    // For inline styles, check our stored properties
+    // For inline styles, delegate to HTMLElement
+    if (internal.is_inline_style) {
+        if (internal.element) |element| {
+            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+                if (html_internal.getInlineStyleProperty(prop_name)) |value| {
+                    return runtime.DOMString.initInterned(value);
+                }
+            }
+        }
+        return runtime.DOMString.initEmpty();
+    }
+
+    // For non-inline styles, check our stored properties
     if (internal.getProperty(prop_name)) |value| {
         // Return as interned since internal state owns the memory
         return runtime.DOMString.initInterned(value);
@@ -470,7 +555,20 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
         }
     }
 
-    // For inline styles, check stored properties
+    // For inline styles, delegate to HTMLElement
+    if (internal.is_inline_style) {
+        if (internal.element) |element| {
+            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+                if (html_internal.getInlineStyleProperty(kebab_name)) |value| {
+                    return runtime.DOMString.initInterned(value);
+                }
+            }
+        }
+        // Return empty string for valid CSS properties (not null)
+        return runtime.DOMString.initEmpty();
+    }
+
+    // For non-inline styles, check stored properties
     if (internal.getProperty(kebab_name)) |value| {
         return runtime.DOMString.initInterned(value);
     }
@@ -484,7 +582,9 @@ pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anye
 /// Maps camelCase property names to kebab-case and calls setProperty
 /// Example: style.backgroundColor = "blue" -> setProperty("background-color", "blue")
 pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.NotImplemented;
+    const internal = getInternal(instance) orelse {
+        return error.NotImplemented;
+    };
 
     // Computed styles are read-only
     if (internal.is_computed) {
@@ -498,6 +598,24 @@ pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, v
     var kebab_buf: [256]u8 = undefined;
     const kebab_name = camelToKebab(prop_name, &kebab_buf) orelse return;
 
+    // For inline styles, delegate to HTMLElement
+    if (internal.is_inline_style) {
+        if (internal.element) |element| {
+            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+                if (prop_value.len == 0) {
+                    // Remove property
+                    html_internal.removeInlineStyleProperty(kebab_name);
+                } else {
+                    // Set property
+                    try html_internal.setInlineStyleProperty(kebab_name, prop_value);
+                }
+                return;
+            }
+        }
+        return error.NotImplemented;
+    }
+
+    // For non-inline styles, use local storage
     // If value is empty, remove the property
     if (prop_value.len == 0) {
         _ = internal.properties.remove(kebab_name);
@@ -527,6 +645,25 @@ pub fn call_setNamedItem(instance: *runtime.Instance, name: runtime.DOMString, v
 /// Returns CSS property names in camelCase format
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
+
+    // For inline styles, delegate to HTMLElement
+    if (internal.is_inline_style) {
+        if (internal.element) |element| {
+            if (HTMLElementImpl.getInternalState(element)) |html_internal| {
+                const count = html_internal.inline_style_properties.count();
+                if (count == 0) return &[_]runtime.DOMString{};
+
+                var names: std.ArrayList(runtime.DOMString) = .{};
+                var iter = html_internal.inline_style_properties.iterator();
+                while (iter.next()) |entry| {
+                    const camel_name = try kebabToCamel(allocator, entry.key_ptr.*);
+                    try names.append(allocator, runtime.DOMString.initOwned(camel_name));
+                }
+                return names.toOwnedSlice(allocator);
+            }
+        }
+        return &[_]runtime.DOMString{};
+    }
 
     const count = internal.properties.count();
     if (count == 0) return &[_]runtime.DOMString{};

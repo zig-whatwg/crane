@@ -5420,7 +5420,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // Note: For named setters, we still intercept even for unsupported names if
             // the interface allows creating new named properties. However, the visibility
             // check ensures we don't shadow prototype chain properties.
-            if (!isSupportedPropertyName(instance, prop_name)) {
+            //
+            // SPECIAL CASE: CSSStyleDeclaration allows setting ANY valid CSS property name,
+            // not just ones currently in getSupportedPropertyNames (which returns only
+            // properties that are currently set). Skip the visibility check for CSS.
+            const is_css_style_declaration = comptime std.mem.endsWith(u8, interface_name, "CSSStyleDeclaration");
+            if (!is_css_style_declaration and !isSupportedPropertyName(instance, prop_name)) {
                 return .kNo;
             }
 

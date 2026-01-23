@@ -28,6 +28,8 @@ const DOMTokenListImpl = @import("DOMTokenList.zig");
 const CharacterDataImpl = @import("CharacterData.zig");
 const NamedNodeMapImpl = @import("NamedNodeMap.zig");
 const ParentNodeImpl = @import("ParentNode.zig");
+const HTMLElementImpl = @import("HTMLElement.zig");
+const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -3652,17 +3654,104 @@ pub fn call_hasAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMS
     return getAttributeByNS(internal, if (ns_slice.len > 0) ns_slice else null, name_slice) != null;
 }
 
+/// Parse a CSS length value string and return pixels.
+/// Supports: px, cm, mm, in, pt, pc (absolute units).
+/// Returns null for unsupported units or invalid values.
+/// Spec: https://drafts.csswg.org/css-values-4/#lengths
+fn parseCssLengthToPixels(value: []const u8) ?f64 {
+    const trimmed = std.mem.trim(u8, value, " \t\n\r");
+    if (trimmed.len == 0) return null;
+
+    // Find where the numeric part ends
+    var numeric_end: usize = 0;
+    var has_dot = false;
+
+    for (trimmed, 0..) |c, i| {
+        if (c == '-' and i == 0) {
+            numeric_end = 1;
+        } else if (c == '.' and !has_dot) {
+            has_dot = true;
+            numeric_end = i + 1;
+        } else if (c >= '0' and c <= '9') {
+            numeric_end = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    if (numeric_end == 0) return null;
+
+    const numeric_str = trimmed[0..numeric_end];
+    const unit_str = std.mem.trim(u8, trimmed[numeric_end..], " \t");
+
+    const numeric_value = std.fmt.parseFloat(f64, numeric_str) catch return null;
+
+    // Handle different units - convert to pixels
+    // Spec: https://drafts.csswg.org/css-values-4/#absolute-lengths
+    if (unit_str.len == 0) {
+        // Unitless - in quirks mode this might be treated as px, but strictly it's invalid
+        // For pragmatic compatibility, treat as px
+        return numeric_value;
+    } else if (std.ascii.eqlIgnoreCase(unit_str, "px")) {
+        return numeric_value;
+    } else if (std.ascii.eqlIgnoreCase(unit_str, "cm")) {
+        return numeric_value * 37.7953; // 1cm = 37.7953px
+    } else if (std.ascii.eqlIgnoreCase(unit_str, "mm")) {
+        return numeric_value * 3.77953; // 1mm = 3.77953px
+    } else if (std.ascii.eqlIgnoreCase(unit_str, "in")) {
+        return numeric_value * 96.0; // 1in = 96px
+    } else if (std.ascii.eqlIgnoreCase(unit_str, "pt")) {
+        return numeric_value * (96.0 / 72.0); // 1pt = 96/72px
+    } else if (std.ascii.eqlIgnoreCase(unit_str, "pc")) {
+        return numeric_value * 16.0; // 1pc = 16px
+    } else if (std.ascii.eqlIgnoreCase(unit_str, "q")) {
+        return numeric_value * 0.944882; // 1Q = 0.944882px
+    }
+
+    // Relative units (em, rem, %, vw, vh, etc.) require layout context
+    // Return null to indicate we can't compute the value
+    return null;
+}
+
 /// Operation: getBoundingClientRect
 /// CSSOM View §3.1 - Returns a DOMRect with the element's bounding box
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-getboundingclientrect
 ///
 /// Returns a DOMRect representing the smallest rectangle containing the entire element.
-/// Without a layout engine, returns a DOMRect with zero dimensions at origin.
+/// For elements with inline CSS dimensions (width/height in pixels), returns those dimensions.
+/// For elements without explicit dimensions or with relative units, returns zero dimensions.
 pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Without a layout engine, return a zero-sized rect at origin
-    return interfaces.DOMRect.call_constructor(instance.ctx, webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0), webidl.Opt(f64).passed(0)) catch return error.OutOfMemory;
+    var width: f64 = 0;
+    var height: f64 = 0;
+
+    // Try to get CSS dimensions from the element's inline style
+    // Inline style properties are stored directly in HTMLElement's InternalState
+    // (not in CSSStyleDeclaration) so they survive V8 GC of the style wrapper
+    if (HTMLElementImpl.getInternalState(instance)) |html_internal| {
+        // Get width and height directly from HTMLElement's inline style properties
+        if (html_internal.getInlineStyleProperty("width")) |width_value| {
+            if (parseCssLengthToPixels(width_value)) |w| {
+                width = w;
+            }
+        }
+        if (html_internal.getInlineStyleProperty("height")) |height_value| {
+            if (parseCssLengthToPixels(height_value)) |h| {
+                height = h;
+            }
+        }
+    }
+
+    // Return DOMRect with computed dimensions
+    // x and y are 0 since we don't have layout position information
+    return interfaces.DOMRect.call_constructor(
+        instance.ctx,
+        webidl.Opt(f64).passed(0), // x
+        webidl.Opt(f64).passed(0), // y
+        webidl.Opt(f64).passed(width), // width
+        webidl.Opt(f64).passed(height), // height
+    ) catch return error.OutOfMemory;
 }
 
 /// Operation: querySelectorAll

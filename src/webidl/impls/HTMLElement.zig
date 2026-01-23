@@ -25,6 +25,9 @@ const HTMLElement = interfaces.HTMLElement;
 // Import parent impl for chaining initialization
 const ElementImpl = @import("Element.zig");
 
+// Import CSSStyleDeclaration impl for inline style creation
+const CSSStyleDeclarationImpl = @import("CSSStyleDeclaration.zig");
+
 // Platform layout backend for CSSOM View metrics
 const layout_backend = @import("platform").layout_backend;
 
@@ -83,9 +86,19 @@ pub const InternalState = struct {
     event_handlers: std.StringHashMap(*anyopaque),
 
     // === Style ===
-    /// Cached inline CSSStyleDeclaration for this element
+    /// Cached inline CSSStyleDeclaration wrapper for this element
+    /// Note: This may be garbage collected by V8, but the properties are stored
+    /// separately in inline_style_properties below
     /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
     style_declaration: ?*runtime.Instance = null,
+
+    /// Inline style properties storage (property name -> value)
+    /// These are stored here (not in CSSStyleDeclaration) so they survive V8 GC
+    /// of the CSSStyleDeclaration wrapper. Properties persist as long as the element exists.
+    inline_style_properties: std.StringHashMapUnmanaged([]const u8) = .{},
+
+    /// Cached inline style cssText
+    inline_style_css_text: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -98,12 +111,113 @@ pub const InternalState = struct {
             .is_dragging = false,
             .event_handlers = std.StringHashMap(*anyopaque).init(allocator),
             .style_declaration = null,
+            .inline_style_properties = .{},
+            .inline_style_css_text = null,
         };
     }
 
     pub fn deinit(self: *InternalState) void {
         self.event_handlers.deinit();
-        // Note: style_declaration is owned by the GC layer, don't deinit here
+        // Clean up inline style properties
+        var iter = self.inline_style_properties.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.inline_style_properties.deinit(self.allocator);
+        if (self.inline_style_css_text) |text| {
+            self.allocator.free(text);
+        }
+        // Note: style_declaration runtime.Instance is owned by the GC layer, don't deinit here
+    }
+
+    /// Get inline style property value
+    pub fn getInlineStyleProperty(self: *InternalState, name: []const u8) ?[]const u8 {
+        return self.inline_style_properties.get(name);
+    }
+
+    /// Set inline style property value
+    pub fn setInlineStyleProperty(self: *InternalState, name: []const u8, value: []const u8) !void {
+        // Check if property already exists
+        if (self.inline_style_properties.get(name)) |old_value| {
+            // Free old value
+            self.allocator.free(old_value);
+            // Update with new value (key already exists, no need to dup key)
+            const value_copy = try self.allocator.dupe(u8, value);
+            self.inline_style_properties.putAssumeCapacity(name, value_copy);
+        } else {
+            // New property - need to allocate both key and value
+            const name_copy = try self.allocator.dupe(u8, name);
+            errdefer self.allocator.free(name_copy);
+            const value_copy = try self.allocator.dupe(u8, value);
+            try self.inline_style_properties.put(self.allocator, name_copy, value_copy);
+        }
+        // Invalidate cssText cache
+        if (self.inline_style_css_text) |old_text| {
+            self.allocator.free(old_text);
+            self.inline_style_css_text = null;
+        }
+    }
+
+    /// Remove inline style property
+    pub fn removeInlineStyleProperty(self: *InternalState, name: []const u8) void {
+        if (self.inline_style_properties.fetchRemove(name)) |entry| {
+            self.allocator.free(entry.key);
+            self.allocator.free(entry.value);
+            // Invalidate cssText cache
+            if (self.inline_style_css_text) |old_text| {
+                self.allocator.free(old_text);
+                self.inline_style_css_text = null;
+            }
+        }
+    }
+
+    /// Get inline style cssText
+    pub fn getInlineStyleCssText(self: *InternalState) []const u8 {
+        return self.inline_style_css_text orelse "";
+    }
+
+    /// Set inline style cssText (parses and updates properties)
+    pub fn setInlineStyleCssText(self: *InternalState, text: []const u8) !void {
+        // Clear existing properties
+        var iter = self.inline_style_properties.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.inline_style_properties.clearRetainingCapacity();
+
+        if (self.inline_style_css_text) |old_text| {
+            self.allocator.free(old_text);
+        }
+
+        // Store the cssText
+        self.inline_style_css_text = try self.allocator.dupe(u8, text);
+
+        // Parse simple "property: value" pairs separated by semicolons
+        var declarations = std.mem.splitScalar(u8, text, ';');
+        while (declarations.next()) |decl| {
+            const trimmed = std.mem.trim(u8, decl, " \t\n\r");
+            if (trimmed.len == 0) continue;
+
+            // Find the colon
+            if (std.mem.indexOf(u8, trimmed, ":")) |colon_pos| {
+                const prop_name = std.mem.trim(u8, trimmed[0..colon_pos], " \t");
+                const prop_value = std.mem.trim(u8, trimmed[colon_pos + 1 ..], " \t");
+
+                if (prop_name.len > 0) {
+                    const name_copy = try self.allocator.dupe(u8, prop_name);
+                    errdefer self.allocator.free(name_copy);
+                    const value_copy = try self.allocator.dupe(u8, prop_value);
+                    try self.inline_style_properties.put(self.allocator, name_copy, value_copy);
+                }
+            }
+        }
+    }
+
+    /// Get count of inline style properties
+    pub fn getInlineStylePropertyCount(self: *InternalState) u32 {
+        return @intCast(self.inline_style_properties.count());
     }
 };
 
@@ -490,6 +604,8 @@ pub fn get_offsetHeight(instance: *runtime.Instance) anyerror!i32 {
 /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
 /// Returns the inline CSSStyleDeclaration for this element.
 /// Each element has exactly one associated inline CSSStyleDeclaration object.
+/// Note: CSS properties are stored in HTMLElement's InternalState, not in the CSSStyleDeclaration.
+/// This allows properties to survive V8 GC of the CSSStyleDeclaration wrapper.
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Get internal state to check for cached style declaration
     const internal = getInternalState(instance) orelse return error.InvalidStateError;
@@ -504,8 +620,16 @@ pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const ctx = instance.ctx;
     const CSSStyleDeclaration = interfaces.CSSStyleDeclaration;
 
-    // Initialize the style declaration
-    const style = try CSSStyleDeclaration.init(allocator, ctx);
+    // Initialize the style declaration using initForInlineStyle
+    // This sets is_inline_style=true and stores the owner element reference
+    // Properties will be delegated to this HTMLElement's InternalState
+    const style = try CSSStyleDeclarationImpl.initForInlineStyle(
+        allocator,
+        CSSStyleDeclaration.State,
+        &CSSStyleDeclaration.vtable,
+        ctx,
+        instance, // owner element
+    );
     errdefer CSSStyleDeclaration.deinit(style);
 
     // Cache it in internal state for future access
