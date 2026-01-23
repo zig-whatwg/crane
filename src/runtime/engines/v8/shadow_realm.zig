@@ -111,8 +111,8 @@ fn shadowRealmContextCallback(
         null;
 
     // Create a context for the ShadowRealm from the snapshot
-    // Using a snapshot context avoids issues with calling Context::New from inside
-    // the ShadowRealm callback, which can cause crashes due to V8's internal state.
+    // Using a snapshot context is required because Context::New crashes inside
+    // the ShadowRealm callback due to V8's internal state.
     //
     // We use context index 0. V8's ShadowRealm implementation correctly filters out
     // host objects (document, window, etc.) from the global scope per TC39 spec.
@@ -124,10 +124,27 @@ fn shadowRealmContextCallback(
         return null;
     };
 
-    // Set up security token - critical for cross-realm callable wrapping
-    // Per Chromium's shadow_realm_context.cc, use default security token.
-    // This makes the ShadowRealm same-origin with itself only (isolation).
-    ffi.v8_Context_UseDefaultSecurityToken(context);
+    // Share the initiator context's security token with the ShadowRealm
+    //
+    // For Function constructor to work inside ShadowRealm, V8's AllowDynamicFunction
+    // must return true. It calls MayAccess() which checks security tokens.
+    // By sharing the initiator's security token, MayAccess returns true and
+    // new Function() works inside the ShadowRealm.
+    //
+    // Note: This still maintains ShadowRealm isolation for cross-realm function
+    // wrapping because V8's GetWrappedValue handles that separately.
+    if (initiator_context) |ctx| {
+        if (ffi.v8_Context_GetSecurityToken(ctx)) |token| {
+            ffi.v8_Context_SetSecurityToken(context, token);
+            std.log.debug("[ShadowRealm] Set security token from initiator context", .{});
+        } else {
+            std.log.warn("[ShadowRealm] Initiator context has no security token, using default", .{});
+            ffi.v8_Context_UseDefaultSecurityToken(context);
+        }
+    } else {
+        // No initiator context - use default token for isolation
+        ffi.v8_Context_UseDefaultSecurityToken(context);
+    }
 
     // Create a Global handle for the new context
     // The C++ side expects a Global<Context>* which it will use and clean up

@@ -1866,6 +1866,16 @@ void v8_Context_UseDefaultSecurityToken(Global<Context>* context) {
     local_context->UseDefaultSecurityToken();
 }
 
+// Allow or disallow code generation from strings (eval, Function constructor)
+// This is needed for ShadowRealm contexts to enable eval() and new Function()
+// which are standard JavaScript features per TC39 spec.
+void v8_Context_AllowCodeGenerationFromStrings(Global<Context>* context, bool allow) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local_context = context->Get(isolate);
+    local_context->AllowCodeGenerationFromStrings(allow);
+}
+
 // ============================================================================
 // String Functions
 // ============================================================================

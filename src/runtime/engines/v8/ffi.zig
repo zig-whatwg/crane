@@ -697,6 +697,7 @@ pub extern fn v8_Context_GetRawAddress(context: *Context) ?*anyopaque;
 pub extern fn v8_Context_SetSecurityToken(context: *Context, token: *Value) void;
 pub extern fn v8_Context_GetSecurityToken(context: *Context) ?*Value;
 pub extern fn v8_Context_UseDefaultSecurityToken(context: *Context) void;
+pub extern fn v8_Context_AllowCodeGenerationFromStrings(context: *Context, allow: bool) void;
 pub extern fn v8_Context_GetMicrotaskQueue(context: *Context) ?*MicrotaskQueue;
 pub extern fn v8_Context_NewFromSnapshotAtWithMicrotaskQueue(isolate: *Isolate, context_index: usize, microtask_queue: ?*MicrotaskQueue) ?*Context;
 pub extern fn v8_Context_NewWithMicrotaskQueue(isolate: *Isolate, microtask_queue: ?*MicrotaskQueue) ?*Context;
