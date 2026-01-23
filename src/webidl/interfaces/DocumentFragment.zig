@@ -42,10 +42,10 @@ pub const DocumentFragment = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "children", "get_children", null },
@@ -53,8 +53,9 @@ pub const DocumentFragment = struct {
             .{ "lastElementChild", "get_lastElementChild", null },
             .{ "childElementCount", "get_childElementCount", null },
         };
-        
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
+
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity)
+        /// Note: Includes inherited Node methods because V8 prototype chain is not properly set up
         pub const methods = .{
             .{ "getElementById", "call_getElementById", 1 },
             .{ "prepend", "call_prepend", 1 },
@@ -63,8 +64,12 @@ pub const DocumentFragment = struct {
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
+            // Inherited from Node - required for DOM tree manipulation
+            .{ "appendChild", "call_appendChild", 1 },
+            .{ "removeChild", "call_removeChild", 1 },
+            .{ "insertBefore", "call_insertBefore", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getElementById",
@@ -75,7 +80,7 @@ pub const DocumentFragment = struct {
             "querySelector",
             "querySelectorAll",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -98,7 +103,7 @@ pub const DocumentFragment = struct {
             "replaceChild",
             "removeChild",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "children", "get_children", null },
@@ -106,13 +111,12 @@ pub const DocumentFragment = struct {
             .{ "lastElementChild", "get_lastElementChild", null },
             .{ "childElementCount", "get_childElementCount", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = true;
-        
+
         /// Members marked with [Unscopable] extended attribute
         pub const unscopables = .{
             "prepend",
@@ -135,7 +139,6 @@ pub const DocumentFragment = struct {
     );
 
     const delegates = .{
-
         .get_childElementCount = &get_childElementCount,
         .get_children = &get_children,
         .get_firstElementChild = &get_firstElementChild,
@@ -148,6 +151,11 @@ pub const DocumentFragment = struct {
         .call_querySelector = &call_querySelector,
         .call_querySelectorAll = &call_querySelectorAll,
         .call_replaceChildren = &call_replaceChildren,
+
+        // Inherited Node methods - required for DOM tree manipulation
+        .call_appendChild = &call_appendChild,
+        .call_removeChild = &call_removeChild,
+        .call_insertBefore = &call_insertBefore,
 
         .deinit = &deinit,
     };
@@ -207,14 +215,13 @@ pub const DocumentFragment = struct {
     }
 
     pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
-        
         return try DocumentFragmentImpl.call_getElementById(instance, elementId);
     }
 
     /// Extended attributes: [NewObject]
     pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        
+
         return try DocumentFragmentImpl.call_querySelectorAll(instance, selectors);
     }
 
@@ -223,8 +230,7 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentFragmentImpl.call_prepend(instance, nodes);
     }
 
@@ -233,13 +239,11 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentFragmentImpl.call_replaceChildren(instance, nodes);
     }
 
     pub fn call_querySelector(instance: *runtime.Instance, selectors: DOMString) anyerror!?*runtime.Instance {
-        
         return try DocumentFragmentImpl.call_querySelector(instance, selectors);
     }
 
@@ -248,8 +252,7 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentFragmentImpl.call_moveBefore(instance, node, child);
     }
 
@@ -258,9 +261,42 @@ pub const DocumentFragment = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try DocumentFragmentImpl.call_append(instance, nodes);
     }
 
+    // =========================================================================
+    // Inherited Node methods for DOM tree manipulation
+    // These are required because DocumentFragment inherits from Node
+    // =========================================================================
+
+    /// Node.appendChild - adds a node to the end of the list of children
+    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
+    pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        const NodeImpl = @import("impls").Node;
+        return try NodeImpl.call_appendChild(instance, node);
+    }
+
+    /// Node.removeChild - removes a child node from the DOM
+    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
+    pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        const NodeImpl = @import("impls").Node;
+        return try NodeImpl.call_removeChild(instance, child);
+    }
+
+    /// Node.insertBefore - inserts a node before a reference child
+    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
+    pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        const NodeImpl = @import("impls").Node;
+        return try NodeImpl.call_insertBefore(instance, node, child);
+    }
 };

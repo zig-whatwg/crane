@@ -97,8 +97,28 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: focus
+/// Per HTML spec: Focusing steps for an element
+/// https://html.spec.whatwg.org/multipage/interaction.html#focusing-steps
+///
+/// This is a simplified implementation that:
+/// 1. Sets the document's activeElement to this element
+/// 2. Does not fire focus events (TODO)
+/// 3. Does not handle preventScroll option (TODO)
 pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) anyerror!void {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
+    _ = options; // TODO: Handle preventScroll option
+
+    // Get the owner document for this element
+    const NodeImpl = @import("Node.zig");
+    const owner_doc = try NodeImpl.get_ownerDocument(instance) orelse return;
+
+    // Set the document's activeElement to this element
+    // Access Document's internal state to set active_element
+    const DocumentImpl = @import("Document.zig");
+    if (DocumentImpl.getInternal(owner_doc)) |doc_internal| {
+        doc_internal.active_element = instance;
+    }
+
+    // TODO: Fire focusin and focus events
+    // TODO: Handle focus delegation for shadow DOM
+    // TODO: Update :focus-visible pseudo-class state
 }

@@ -50,10 +50,10 @@ pub const ShadowRoot = struct {
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
-        
+
         /// Global contexts where this interface is exposed
         pub const exposed_in = .{ .Window = true };
-        
+
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "mode", "get_mode", null },
@@ -72,27 +72,32 @@ pub const ShadowRoot = struct {
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
             .{ "activeElement", "get_activeElement", null },
         };
-        
+
         /// [LegacyLenientSetter] attributes: readonly with no-op setters
         /// Setters silently do nothing (don't throw, don't modify)
         pub const lenient_setter_attributes = .{
             "fullscreenElement",
         };
-        
-        /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
+
+        /// Method binding hints for V8Interface (JS name, Zig function name, arity)
+        /// Note: Includes inherited Node methods because V8 prototype chain is not properly set up
         pub const methods = .{
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
             .{ "getHTML", "call_getHTML", 0 },
             .{ "getAnimations", "call_getAnimations", 0 },
+            // Inherited from Node - required for DOM tree manipulation
+            .{ "appendChild", "call_appendChild", 1 },
+            .{ "removeChild", "call_removeChild", 1 },
+            .{ "insertBefore", "call_insertBefore", 2 },
         };
-        
+
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "setHTMLUnsafe",
             "getHTML",
             "getAnimations",
         };
-        
+
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
         pub const inherited_methods = .{
             "addEventListener",
@@ -122,7 +127,7 @@ pub const ShadowRoot = struct {
             "querySelector",
             "querySelectorAll",
         };
-        
+
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "mode", "get_mode", null },
@@ -141,11 +146,10 @@ pub const ShadowRoot = struct {
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
             .{ "activeElement", "get_activeElement", null },
         };
-        
+
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-        };
-        
+        pub const lazy_properties = .{};
+
         pub const has_constructor = false;
     };
 
@@ -177,7 +181,6 @@ pub const ShadowRoot = struct {
     );
 
     const delegates = .{
-
         .get_activeElement = &get_activeElement,
         .get_adoptedStyleSheets = &get_adoptedStyleSheets,
         .get_clonable = &get_clonable,
@@ -202,6 +205,11 @@ pub const ShadowRoot = struct {
         .call_getAnimations = &call_getAnimations,
         .call_getHTML = &call_getHTML,
         .call_setHTMLUnsafe = &call_setHTMLUnsafe,
+
+        // Inherited Node methods - required for DOM tree manipulation
+        .call_appendChild = &call_appendChild,
+        .call_removeChild = &call_removeChild,
+        .call_insertBefore = &call_insertBefore,
 
         .deinit = &deinit,
     };
@@ -270,7 +278,7 @@ pub const ShadowRoot = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
+
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
 
@@ -332,14 +340,46 @@ pub const ShadowRoot = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-        
-        
+
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html);
     }
 
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!DOMString {
-        
         return try ShadowRootImpl.call_getHTML(instance, options);
     }
 
+    // =========================================================================
+    // Inherited Node methods for DOM tree manipulation
+    // These are required because ShadowRoot inherits from DocumentFragment->Node
+    // =========================================================================
+
+    /// Node.appendChild - adds a node to the end of the list of children
+    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
+    pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        const NodeImpl = @import("impls").Node;
+        return try NodeImpl.call_appendChild(instance, node);
+    }
+
+    /// Node.removeChild - removes a child node from the DOM
+    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
+    pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        const NodeImpl = @import("impls").Node;
+        return try NodeImpl.call_removeChild(instance, child);
+    }
+
+    /// Node.insertBefore - inserts a node before a reference child
+    /// [CEReactions] - Trigger Custom Element lifecycle callbacks
+    pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        const NodeImpl = @import("impls").Node;
+        return try NodeImpl.call_insertBefore(instance, node, child);
+    }
 };

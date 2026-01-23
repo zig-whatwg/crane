@@ -568,10 +568,42 @@ pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for history
 /// Per spec: Returns the History object for this window.
+/// Lazily creates the History instance on first access.
 pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // TODO: Create History instance lazily
-    return internal.history orelse error.NotImplemented;
+
+    // Return cached instance if already created
+    if (internal.history) |history| {
+        return history;
+    }
+
+    // Lazily create the History instance
+    const HistoryImpl = @import("History.zig");
+    const History = interfaces.History;
+    const history = try HistoryImpl.init(
+        internal.allocator,
+        HistoryImpl.State,
+        &History.vtable,
+        instance.ctx,
+    );
+
+    // Associate this History with the window
+    if (HistoryImpl.getInternal(history)) |history_internal| {
+        history_internal.window = instance;
+
+        // Initialize with a single entry for the current document's URL
+        // Per spec, session history starts with one entry for the initial document
+        const initial_entry = HistoryImpl.HistoryEntry{
+            .url = try internal.allocator.dupe(u8, "about:blank"),
+            .state = null,
+        };
+        try history_internal.entries.append(internal.allocator, initial_entry);
+        history_internal.current_index = 0;
+    }
+
+    // Cache for future access
+    internal.history = history;
+    return history;
 }
 
 /// Getter for navigation

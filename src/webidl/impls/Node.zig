@@ -502,14 +502,71 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
 
 /// Getter for isConnected
 /// https://dom.spec.whatwg.org/#dom-node-isconnected
-/// Returns true if the node is connected (its root is a document)
+/// Returns true if the node is connected (its shadow-including root is a document)
+///
+/// Per DOM spec, a node is connected if its root is a document. For shadow trees,
+/// we must follow the shadow host chain to determine connection status:
+/// - If root is a Document, the node is connected
+/// - If root is a ShadowRoot, check if its host element is connected
+///
+/// This implementation first checks the cached is_connected flag, then falls back
+/// to dynamic computation for shadow DOM nodes where the flag may not be set correctly.
 pub fn get_isConnected(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Read from NodeBase.is_connected which is updated by the mutation module
-    // during insert/remove operations
-    if (internal.node_base) |node_base| {
-        return node_base.is_connected;
+    const node_base = internal.node_base orelse return false;
+
+    // Fast path: if cached value is true, we're connected
+    if (node_base.is_connected) {
+        return true;
     }
+
+    // Slow path: compute dynamically for shadow DOM support
+    // Walk up to find the root and check shadow hosts
+    return isConnectedThroughShadow(instance, node_base);
+}
+
+/// Compute isConnected dynamically, following shadow hosts
+/// This handles cases where a node is in a shadow tree whose host is connected
+fn isConnectedThroughShadow(instance: *runtime.Instance, node_base: *NodeBase) bool {
+    _ = instance;
+
+    // Find the root node
+    var current: *const NodeBase = node_base;
+    while (current.parent_node) |parent| {
+        current = parent;
+    }
+
+    // If root is a Document, we're connected
+    if (current.node_type == NodeType.DOCUMENT_NODE) {
+        return true;
+    }
+
+    // If root is a DocumentFragment, check if it's a ShadowRoot with a connected host
+    if (current.node_type == NodeType.DOCUMENT_FRAGMENT_NODE) {
+        // Get the runtime.Instance for this DocumentFragment
+        const root_opaque = instance_bridge.getInstance(@constCast(current)) orelse return false;
+        const root_instance: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
+
+        // Try to get it as a ShadowRoot and check its host
+        const ShadowRootImpl = @import("ShadowRoot.zig");
+        if (ShadowRootImpl.getInternalState(root_instance)) |shadow_internal| {
+            // This is a ShadowRoot - check if its host is connected
+            if (shadow_internal.host) |host| {
+                // Recursively check if the host element is connected
+                if (getInternal(host)) |host_internal| {
+                    if (host_internal.node_base) |host_node_base| {
+                        // Check cached value first
+                        if (host_node_base.is_connected) {
+                            return true;
+                        }
+                        // Recurse to follow further shadow hosts
+                        return isConnectedThroughShadow(host, host_node_base);
+                    }
+                }
+            }
+        }
+    }
+
     return false;
 }
 
