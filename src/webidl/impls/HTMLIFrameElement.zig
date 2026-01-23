@@ -153,9 +153,24 @@ pub fn fireIframeLoadEventIfNeeded(instance: *runtime.Instance) void {
         return;
     }
 
-    // If we have src, trigger navigation
-    // (src navigation is typically handled by the WPT runner hook)
-    if (internal.src_attr != null) {
+    // If we have src, trigger navigation and fire load event
+    if (internal.src_attr) |src| {
+        // Apply sandbox attribute before navigation if present
+        const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
+        if (ElementImpl.call_hasAttribute(instance, sandbox_attr_name) catch false) {
+            const sandbox_value = ElementImpl.call_getAttribute(instance, sandbox_attr_name) catch null;
+            const sandbox_str = if (sandbox_value) |sv| sv.asSlice() else "";
+            internal.integration.setSandbox(sandbox_str) catch {};
+        }
+
+        // Navigate to src URL
+        internal.integration.setSrc(src) catch {};
+
+        // Fire load event after navigation for data: and javascript: URLs
+        // (HTTP URLs are async and would need async load event firing)
+        if (std.mem.startsWith(u8, src, "data:") or std.mem.startsWith(u8, src, "javascript:")) {
+            fireLoadEventOnIframe(instance);
+        }
         return;
     }
 
@@ -780,13 +795,28 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
-        // CRITICAL: Set the Window's origin from the parent for srcdoc/about:blank iframes.
-        // Per HTML spec, srcdoc iframes inherit their origin from the container document.
-        // The Window's origin defaults to "null" (opaque), which breaks same-origin checks.
-        // We must set it to the parent's origin so contentDocument is accessible.
+        // CRITICAL: Set the Window's origin based on sandbox flags.
+        // Per HTML spec §4.8.5:
+        // - If sandboxed without allow-same-origin: opaque origin (unique)
+        // - Otherwise: inherit from container document
+        //
+        // The Window's origin defaults to "null" (opaque). If sandbox doesn't have
+        // allow-same-origin, we keep it opaque. Otherwise, set to parent's origin.
         if (entry.window_instance) |window_inst| {
             const WinImpl = @import("Window.zig");
-            WinImpl.setOrigin(window_inst, parent_origin_str) catch {};
+            // Check if sandboxed without allow-same-origin
+            const has_opaque_origin = blk: {
+                if (internal.integration.sandbox_flags) |flags| {
+                    // Sandboxed without allow-same-origin = opaque origin
+                    break :blk !flags.allow_same_origin;
+                }
+                break :blk false;
+            };
+            if (!has_opaque_origin) {
+                // Not sandboxed or has allow-same-origin - inherit parent's origin
+                WinImpl.setOrigin(window_inst, parent_origin_str) catch {};
+            }
+            // If has_opaque_origin, leave as "null" (opaque)
         }
 
         // Store the realm context in the integration for cleanup on removal
@@ -995,6 +1025,14 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
     // Trigger navigation via integration
     // Navigation errors are typically silent for iframe src
     internal.integration.setSrc(value) catch {};
+
+    // Fire load event after navigation completes for data: and javascript: URLs
+    // Per HTML spec §4.8.5, the load event fires after the document is loaded.
+    // For data: URLs, this is synchronous.
+    // For javascript: URLs, the document content is the result of the script.
+    if (std.mem.startsWith(u8, value, "data:") or std.mem.startsWith(u8, value, "javascript:")) {
+        fireLoadEventOnIframe(instance);
+    }
 }
 
 /// Getter for srcdoc

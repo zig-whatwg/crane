@@ -694,6 +694,22 @@ pub const IFrameIntegration = struct {
             // about: URLs are handled by navigateToAboutBlank
             self.state = .ready;
             return;
+        } else if (std.mem.startsWith(u8, url, "javascript:")) {
+            // javascript: URL - execute script and use result as content
+            // Per HTML spec §4.1.2.4, if the script returns a string, it becomes the doc
+            const script = url["javascript:".len..];
+
+            // Execute the script if we have the callback
+            // The result should be used as document content, but for now
+            // we just execute it and create an empty document
+            if (self.execute_script_callback) |exec| {
+                exec(self.engine_context, script);
+            }
+
+            // Update location to the javascript: URL
+            self.updateLocationUrl(url);
+            self.state = .ready;
+            return;
         } else {
             // Unsupported scheme
             self.state = .ready;
