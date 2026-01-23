@@ -86,6 +86,11 @@ pub fn init(
     // Set the node type for this DocumentFragment
     if (NodeImpl.getInternalState(instance)) |node_internal| {
         node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
+        // CRITICAL: Also set the NodeBase's node_type for DOM algorithms
+        // that read directly from NodeBase (e.g., mutation.zig's isConnectedThroughShadow)
+        if (node_internal.node_base) |node_base| {
+            node_base.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
+        }
     }
 
     // Initialize DocumentFragment's own internal state and register it

@@ -275,6 +275,53 @@ fn runRemovingStepsRecursive(node: anytype, old_parent: anytype) void {
     }
 }
 
+/// Check if a node is connected through shadow DOM.
+/// A node is connected through shadow if its root is a ShadowRoot whose host is connected.
+/// This handles nested shadow DOMs by recursively checking hosts.
+fn isConnectedThroughShadow(node: anytype) bool {
+    const node_ptr: *NodeBase = @ptrCast(node);
+
+    // Find the root node
+    var current: *const NodeBase = node_ptr;
+    while (current.parent_node) |parent| {
+        current = parent;
+    }
+
+    // If root is a Document, we're connected
+    if (current.node_type == DOCUMENT_NODE) {
+        return true;
+    }
+
+    // If root is a DocumentFragment, check if it's a ShadowRoot with a connected host
+    if (current.node_type == DOCUMENT_FRAGMENT_NODE) {
+        // Get the runtime.Instance for this DocumentFragment
+        const root_opaque = instance_bridge.getInstance(@constCast(current)) orelse return false;
+        const root_instance: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
+
+        // Try to get it as a ShadowRoot and check its host
+        const ShadowRootImpl = impls.ShadowRoot;
+        if (ShadowRootImpl.getInternalState(root_instance)) |shadow_internal| {
+            // This is a ShadowRoot - check if its host is connected
+            if (shadow_internal.host) |host| {
+                // Get the host's NodeBase
+                const NodeImpl = impls.Node;
+                if (NodeImpl.getInternalState(host)) |host_internal| {
+                    if (host_internal.node_base) |host_node_base| {
+                        // Check cached value first
+                        if (host_node_base.is_connected) {
+                            return true;
+                        }
+                        // Recurse to follow further shadow hosts
+                        return isConnectedThroughShadow(host_node_base);
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 /// Recursively set the is_connected flag for a node and all its descendants
 /// Called during insert (connected=true) and remove (connected=false) operations
 /// Uses sibling pointers instead of child_nodes.items() for safety during tree construction
@@ -805,9 +852,14 @@ pub fn insert(
         n.parent_node = @ptrCast(parent);
 
         // Update is_connected for the inserted node and all its descendants
-        // A node is connected if its root is a Document
-        // Per DOM spec: parent is connected if it's a Document or its root is a Document
-        const parent_is_connected = parent.is_connected or parent.node_type == DOCUMENT_NODE;
+        // A node is connected if its shadow-including root is a Document.
+        // Per DOM spec: parent is connected if:
+        // 1. It's a Document, OR
+        // 2. Its is_connected flag is true, OR
+        // 3. It's inside a shadow tree whose host is connected
+        const parent_is_connected = parent.is_connected or
+            parent.node_type == DOCUMENT_NODE or
+            isConnectedThroughShadow(parent);
         if (parent_is_connected) {
             setConnectedRecursive(n, true);
         }
