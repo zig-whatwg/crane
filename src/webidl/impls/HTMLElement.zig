@@ -2034,20 +2034,33 @@ pub fn call_hidePopover(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: focus
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-focus
+///
+/// The focus(options) method steps are:
+/// 1. If this element is a focusable element, run the focusing steps for it.
+/// 2. Otherwise, do nothing.
+///
+/// For now, we implement a simplified version that:
+/// - Updates document.activeElement
+/// - Fires focus event
+/// - TODO: Check focusability, handle preventScroll option
 pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) anyerror!void {
     const internal = getInternalState(instance) orelse return;
     _ = options; // FocusOptions - preventScroll, focusVisible
 
-    // Run the focusing steps
-    // In a full implementation, this would:
-    // 1. Check if element is focusable
-    // 2. Update document.activeElement
-    // 3. Fire focus event
-    // 4. Scroll into view (unless preventScroll)
-
+    // Mark as focused by script
     internal.was_focused_by_script = true;
 
+    // Get the owner document and update its activeElement
+    // Per spec: "the Document of the area element is the active document of the
+    // browsing context, and its activeElement is the element"
+    const NodeImpl = @import("Node.zig");
+    if (NodeImpl.get_ownerDocument(instance) catch null) |owner_doc| {
+        const DocumentImpl = @import("Document.zig");
+        DocumentImpl.setActiveElement(owner_doc, instance);
+    }
+
     // Fire focus event (simplified)
+    // TODO: Fire proper FocusEvent with relatedTarget
     if (getEventHandler(instance, "focus")) |handler| {
         _ = handler; // Would invoke handler
     }

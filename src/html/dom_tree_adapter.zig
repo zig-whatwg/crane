@@ -66,6 +66,7 @@ const document_internals = dom.document_internals;
 const impls = @import("impls");
 const NodeImpl = impls.Node;
 const ElementImpl = impls.Element;
+const DocumentImpl = impls.Document;
 const DocumentTypeImpl = impls.DocumentType;
 const HTMLScriptElementImpl = impls.HTMLScriptElement;
 const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
@@ -346,20 +347,22 @@ pub const DomTreeAdapter = struct {
     }
 
     /// Create an Element DOM node from a TreeNode.
+    ///
+    /// Uses the HTML element factory to create the correct element subclass
+    /// (e.g., HTMLInputElement for <input>, HTMLDivElement for <div>).
+    /// This ensures JavaScript prototype chains are correct:
+    ///   input.__proto__ === HTMLInputElement.prototype
+    ///   input.__proto__.__proto__ === HTMLElement.prototype (which has focus/blur)
     fn createElementNode(self: *DomTreeAdapter, tree_node: *TreeNode) DomTreeAdapterError!*runtime.Instance {
         const local_name = tree_node.local_name orelse return DomTreeAdapterError.InvalidNode;
+        const is_html_namespace = tree_node.namespace == .html;
 
-        // Check if this is a script or iframe element
-        const is_script = std.mem.eql(u8, local_name, "script") and
-            tree_node.namespace == .html;
-        const is_iframe = std.mem.eql(u8, local_name, "iframe") and
-            tree_node.namespace == .html;
-
-        // Create the appropriate element type
-        const element = if (is_script)
-            HTMLScriptElement.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory
-        else if (is_iframe)
-            HTMLIFrameElement.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory
+        // Create the appropriate element type using the element factory
+        // For HTML namespace elements, use createHTMLElement which returns the
+        // correct element subclass (HTMLInputElement, HTMLDivElement, etc.)
+        // For other namespaces (SVG, MathML), use generic Element
+        const element = if (is_html_namespace)
+            DocumentImpl.createHTMLElement(self.allocator, self.ctx, local_name) catch return DomTreeAdapterError.OutOfMemory
         else
             Element.init(self.allocator, self.ctx) catch return DomTreeAdapterError.OutOfMemory;
 
@@ -387,6 +390,8 @@ pub const DomTreeAdapter = struct {
         };
 
         // For script elements, mark as parser-inserted
+        // Check tag name since element is now created via factory
+        const is_script = std.mem.eql(u8, local_name, "script") and is_html_namespace;
         if (is_script) {
             HTMLScriptElementImpl.setParserDocument(element, self.document);
             HTMLScriptElementImpl.clearForceAsync(element);

@@ -1590,6 +1590,14 @@ pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     return internal.active_element;
 }
 
+/// Set the active element (focused element) for this document.
+/// Called by HTMLElement.focus() to update document.activeElement.
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#focus-processing-model
+pub fn setActiveElement(instance: *runtime.Instance, element: ?*runtime.Instance) void {
+    const internal = getInternalState(instance) orelse return;
+    internal.active_element = element;
+}
+
 /// Getter for children
 /// ParentNode mixin - Returns an HTMLCollection of child elements
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
@@ -3141,8 +3149,12 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
 /// - Known HTML tag names create specific element types (HTMLDivElement, etc.)
 /// - Unknown tag names create HTMLUnknownElement
 ///
+/// This function is public so that the HTML parser can use it during element creation.
+/// The parser needs to create the correct element types (e.g., HTMLInputElement for <input>)
+/// so that JavaScript prototype chains are correct.
+///
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#htmlunknownelement
-fn createHTMLElement(
+pub fn createHTMLElement(
     allocator: std.mem.Allocator,
     ctx: runtime.Context,
     local_name: []const u8,
