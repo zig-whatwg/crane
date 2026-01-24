@@ -2208,7 +2208,7 @@ fn isBuiltinWindowProperty(name: []const u8) bool {
         "fetch",          "URL",                   "URLSearchParams",      "FormData",           "Blob",                 "File",                "FileReader",
         "FileList",       "ArrayBuffer",           "DataView",             "Uint8Array",         "Uint16Array",          "Uint32Array",         "Int8Array",
         "Int16Array",     "Int32Array",            "Float32Array",         "Float64Array",       "BigInt64Array",        "BigUint64Array",      "WebSocket",
-        "Worker",         "MessageChannel",        "MessagePort",          "MutationObserver",   "IntersectionObserver", "ResizeObserver",
+        "Worker",         "MessageChannel",        "MessagePort",          "MutationObserver",   "IntersectionObserver", "IntersectionObserverEntry", "ResizeObserver",
     };
 
     for (builtins) |builtin| {

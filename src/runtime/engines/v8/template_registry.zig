@@ -276,8 +276,13 @@ pub fn wrapInstanceAsV8Object(
     // we need to return the SAME wrapper to ensure JavaScript === identity works.
     if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
         if (nodebase.bound_v8_wrapper) |bound_wrapper| {
+            std.log.debug("[wrapInstanceAsV8Object] RETURNING bound_v8_wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, bound_wrapper });
             return @ptrCast(bound_wrapper);
+        } else {
+            std.log.debug("[wrapInstanceAsV8Object] NodeBase found but bound_v8_wrapper is null for {s} Instance={*} NodeBase={*}", .{ interface_name, instance, nodebase });
         }
+    } else {
+        std.log.debug("[wrapInstanceAsV8Object] NO NodeBase found for {s} Instance={*}", .{ interface_name, instance });
     }
 
     // ========================================
@@ -390,6 +395,9 @@ pub fn wrapInstanceAsV8Object(
         break :blk lpo_proxy.wrapInProxy(v8_object, isolate, context);
     } else v8_object;
 
+    // Note: v8_ObjectTemplate_NewInstance already returns a Global<Object>* handle,
+    // so final_object is already persistent across HandleScopes.
+
     // ========================================
     // CACHE THE WRAPPER: Store for future lookups
     // ========================================
@@ -415,6 +423,7 @@ pub fn wrapInstanceAsV8Object(
     if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
         if (nodebase.bound_v8_wrapper == null) {
             nodebase.bound_v8_wrapper = @ptrCast(final_object);
+            std.log.debug("[wrapInstanceAsV8Object] SET bound_v8_wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, final_object });
         }
     }
 
@@ -606,6 +615,15 @@ pub fn getInstanceInterfaceName(instance: *runtime.Instance) []const u8 {
 
     if (inst_vtable == &interfaces.MutationRecord.vtable) {
         return "MutationRecord";
+    }
+
+    // IntersectionObserver API
+    if (inst_vtable == &interfaces.IntersectionObserver.vtable) {
+        return "IntersectionObserver";
+    }
+
+    if (inst_vtable == &interfaces.IntersectionObserverEntry.vtable) {
+        return "IntersectionObserverEntry";
     }
 
     // DOM Events and AbortController/AbortSignal
