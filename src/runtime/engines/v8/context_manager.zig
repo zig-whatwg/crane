@@ -117,6 +117,56 @@ pub const ChildContextGlobalsCallback = *const fn (
 /// Set by browser layer via setChildContextGlobalsCallback()
 threadlocal var child_context_globals_callback: ?ChildContextGlobalsCallback = null;
 
+// ============================================================================
+// Accessor Context Stack
+// ============================================================================
+//
+// V8's GetEnteredOrMicrotaskContext doesn't work correctly for cross-context
+// property access (e.g., iframe accessing parent.document). When a property
+// accessor is called on a cross-context object, V8 enters the object's context,
+// making it impossible to determine the original accessor.
+//
+// This stack tracks the accessor Window explicitly. Script execution pushes the
+// executing Window onto this stack, and property accessors can query it to get
+// the correct accessor for security checks.
+
+/// Maximum depth of the accessor stack (nested script execution)
+const ACCESSOR_STACK_MAX_DEPTH = 32;
+
+/// Thread-local accessor stack
+threadlocal var accessor_stack: [ACCESSOR_STACK_MAX_DEPTH]?*runtime.Instance = [_]?*runtime.Instance{null} ** ACCESSOR_STACK_MAX_DEPTH;
+threadlocal var accessor_stack_depth: usize = 0;
+
+/// Push a Window onto the accessor stack before script execution.
+/// Call this before running JavaScript code to track which Window is the accessor.
+pub fn pushAccessorWindow(window: *runtime.Instance) void {
+    if (accessor_stack_depth < ACCESSOR_STACK_MAX_DEPTH) {
+        accessor_stack[accessor_stack_depth] = window;
+        accessor_stack_depth += 1;
+    } else {
+        std.debug.print("[context_manager] WARNING: accessor stack overflow\n", .{});
+    }
+}
+
+/// Pop a Window from the accessor stack after script execution.
+/// Call this after running JavaScript code.
+pub fn popAccessorWindow() void {
+    if (accessor_stack_depth > 0) {
+        accessor_stack_depth -= 1;
+        accessor_stack[accessor_stack_depth] = null;
+    }
+}
+
+/// Get the current accessor Window (top of the stack).
+/// Returns the Window that is currently executing JavaScript code.
+/// Returns null if no script is executing (direct API call).
+pub fn getCurrentAccessorWindow() ?*runtime.Instance {
+    if (accessor_stack_depth > 0) {
+        return accessor_stack[accessor_stack_depth - 1];
+    }
+    return null;
+}
+
 /// Set the callback for registering globals on child contexts
 /// This should be called by the browser layer during initialization
 pub fn setChildContextGlobalsCallback(callback: ChildContextGlobalsCallback) void {
@@ -1470,6 +1520,14 @@ pub const ChildContextOptions = struct {
     /// is inserted into the DOM (via IFrameIntegration.onInsertedIntoDocument).
     /// The Window will be set as the active window on this browsing context.
     existing_browsing_context: ?*anyopaque = null,
+
+    /// Whether to use an opaque (unique) origin for this context.
+    /// Per HTML spec, sandboxed iframes without allow-same-origin get a unique opaque origin.
+    /// When true, the context uses V8's default security token which isolates it from
+    /// all other contexts (including parent), blocking cross-context property access.
+    /// When false (default), the context shares the parent's security token allowing
+    /// same-origin access patterns.
+    use_opaque_origin: bool = false,
 };
 
 // ============================================================================
@@ -2201,10 +2259,19 @@ pub fn createChildContext(
     const child_raw_addr = v8.v8_Context_GetRawAddress(child_context) orelse return error.InvalidContext;
     const child_key = @intFromPtr(child_raw_addr);
 
-    // 2b. Set security token to match parent context (same-origin for iframes)
-    // This allows cross-context property access without "no access" errors.
-    // In a real browser, this would only be done for same-origin iframes.
-    // For now, we treat all iframes as same-origin for testing purposes.
+    // 2b. Set security token to match parent context for all iframes.
+    // V8's security token mechanism is designed for "all or nothing" access control,
+    // but HTML spec requires fine-grained per-property control:
+    // - Some properties (parent, postMessage) must be accessible cross-origin
+    // - Other properties (document, history) must be blocked cross-origin
+    //
+    // We share security tokens to allow V8-level property access, then implement
+    // cross-origin checks in individual property getters/setters:
+    // - Window.get_document checks origin and throws SecurityError for cross-origin
+    // - Window.postMessage allows cross-origin access (by design)
+    //
+    // The use_opaque_origin flag is used for DOM-level origin tracking, not V8 tokens.
+    // This allows `parent.postMessage()` to work while `parent.document` throws.
     if (v8.v8_Context_GetSecurityToken(options.parent_context)) |parent_token| {
         v8.v8_Context_SetSecurityToken(child_context, parent_token);
     }

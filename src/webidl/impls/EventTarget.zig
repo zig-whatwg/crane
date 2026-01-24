@@ -566,6 +566,20 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
                         // The callback wrapper's callN expects Local values, not Global handles
                         const event_local = v8_engine.ffi.v8_Global_Get(v8_isolate, @ptrCast(event_global)) orelse continue;
 
+                        // Get the Window for this context to push onto accessor stack.
+                        // This ensures that during the callback, the accessor is the
+                        // Window that registered the event listener, not the Window
+                        // that triggered the event.
+                        const callback_window = v8_engine.context_manager.getWindowForContext(v8_context);
+                        if (callback_window) |win| {
+                            v8_engine.context_manager.pushAccessorWindow(win);
+                        }
+                        defer {
+                            if (callback_window != null) {
+                                v8_engine.context_manager.popAccessorWindow();
+                            }
+                        }
+
                         // Invoke the callback with the event as an argument
                         // Use the runtime wrapper's invoke method which delegates to the engine
                         _ = runtime_wrapper.invoke1(@ptrCast(event_local)) catch {

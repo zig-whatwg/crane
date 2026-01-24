@@ -781,6 +781,26 @@ fn runClassicScript(script_element: *runtime.Instance) !void {
         return;
     };
 
+    // Get the Window for accessor tracking.
+    // This is used for cross-origin security checks during property access.
+    // When the script accesses properties on other windows (e.g., parent.document),
+    // we need to know which Window is the accessor for security checks.
+    const v8 = @import("v8");
+    const accessor_window: ?*runtime.Instance = blk: {
+        const v8_ctx: *v8.ffi.Context = @ptrCast(@alignCast(engine_ctx));
+        break :blk v8.context_manager.getWindowForContext(v8_ctx);
+    };
+
+    // Push accessor Window onto stack for cross-origin security checks
+    if (accessor_window) |win| {
+        v8.context_manager.pushAccessorWindow(win);
+    }
+    defer {
+        if (accessor_window != null) {
+            v8.context_manager.popAccessorWindow();
+        }
+    }
+
     // Compile the script using the engine interface
     const compileScript = engine.compileScript orelse {
         return;

@@ -545,8 +545,75 @@ pub fn get_self(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
 
 /// Getter for document
 /// Per spec: Returns the Document associated with this window.
+///
+/// Security: Per HTML spec §7.2.3.1, accessing document cross-origin throws SecurityError.
+/// This applies to sandboxed iframes without allow-same-origin which have opaque origins.
 pub fn get_document(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // CRITICAL: Cross-origin security check per HTML spec §7.2.3.1
+    // "document" is NOT a cross-origin accessible property of Window.
+    // If the accessor (current context) is cross-origin with this Window,
+    // we must throw SecurityError.
+    //
+    // This check is essential for sandbox security: sandboxed iframes without
+    // allow-same-origin have opaque origins ("null") that never match the parent's
+    // origin, so `parent.document` must throw SecurityError.
+    const v8 = @import("v8");
+    const v8_isolate = v8.ffi.v8_Isolate_GetCurrent() orelse return error.InvalidStateError;
+
+    // Get the accessor Window for cross-origin security checks.
+    //
+    // V8's context stack doesn't work correctly for cross-context property access:
+    // when accessing `parent.document` from an iframe, V8 enters the parent's context
+    // for the property access, making GetEnteredOrMicrotaskContext return the wrong context.
+    //
+    // We use a Zig-level accessor stack that is pushed/popped by script execution.
+    // This correctly tracks which Window is executing JavaScript code.
+    //
+    // If no accessor is on the stack, fall back to V8's current context.
+    // This handles:
+    // - Native/internal calls (no JavaScript on the stack)
+    // - Callbacks where we haven't pushed the accessor
+    const accessor_window: ?*runtime.Instance = v8.context_manager.getCurrentAccessorWindow() orelse blk: {
+        // No accessor on stack - fall back to V8's current context
+        const current_ctx = v8.ffi.v8_Isolate_GetCurrentContext(v8_isolate) orelse break :blk null;
+        break :blk v8.context_manager.getWindowForContext(current_ctx);
+    };
+
+    // Safety check: if accessing own document (same Window), always allow.
+    // This handles initialization cases where the entered context might not
+    // be fully set up, but the access is clearly same-origin (self-access).
+    if (accessor_window) |aw| {
+        if (aw == instance) {
+            // Accessing own document - always allowed
+            return internal.document orelse error.NotImplemented;
+        }
+    }
+
+    // Cross-origin check for accessing other Window's document
+    const accessor_origin: []const u8 = if (accessor_window) |aw|
+        if (getInternal(aw)) |aw_internal| aw_internal.origin else "null"
+    else
+        // No accessor window at all - likely internal call, allow access
+        internal.origin;
+
+    // Get this Window's origin (target origin)
+    const target_origin = internal.origin;
+
+    // Cross-origin check:
+    // - If accessor has opaque origin ("null"), it's always cross-origin (except self-access handled above)
+    // - If target has opaque origin ("null"), it's always cross-origin
+    // - Otherwise, compare origin strings
+    const is_same_origin = !std.mem.eql(u8, accessor_origin, "null") and
+        !std.mem.eql(u8, target_origin, "null") and
+        std.mem.eql(u8, accessor_origin, target_origin);
+
+    if (!is_same_origin) {
+        // Cross-origin access to document is blocked per spec.
+        return error.SecurityError;
+    }
+
     return internal.document orelse error.NotImplemented;
 }
 
@@ -3367,6 +3434,7 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
         elt,
     );
 
+    std.debug.print("[DEBUG] getComputedStyle returning instance={*}\n", .{css_instance});
     return css_instance;
 }
 
