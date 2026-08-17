@@ -165,6 +165,54 @@ pub fn readWorklist(allocator: Allocator, path: []const u8) !Worklist {
     return parseWorklist(allocator, bytes);
 }
 
+/// How many runners a run should actually use.
+///
+/// `requested` is `--parallel=N` as given, where 0 means "decide for me" and
+/// resolves to one runner per core. Either way the count is capped at the
+/// number of tests: a runner costs about nine seconds of process startup before
+/// it opens a single file, so spawning more of them than there is work for is a
+/// straight loss, and the surplus shards would have empty worklists anyway.
+///
+/// `cpu_count` is passed in rather than queried so this stays a pure function.
+/// It can legitimately be 0 when the platform will not say, which is treated as
+/// "one" rather than as an error - a serial run is the right fallback.
+pub fn resolveShardCount(requested: usize, total: usize, cpu_count: usize) usize {
+    if (total == 0) return 0;
+    const want = if (requested == 0) @max(cpu_count, 1) else requested;
+    return @min(want, total);
+}
+
+/// The positions of `total` worklist entries belonging to shard `shard` of
+/// `shard_count`, in worklist order. Caller owns the returned slice.
+///
+/// Round robin, not contiguous blocks. Discovery yields paths in directory
+/// order and cost tracks the directory hard - `html/` alone is 62% of the
+/// in-scope corpus and its tests are the slow ones - so contiguous blocks would
+/// hand one shard hours of work and another minutes. Interleaving spreads every
+/// directory across every shard.
+///
+/// The result is a mapping from a shard-local index to a global one, which is
+/// what lets each shard keep a private, contiguous worklist (and so a working
+/// resume point) while its journal records can still be translated back onto
+/// the run as a whole.
+pub fn shardIndices(
+    allocator: Allocator,
+    total: usize,
+    shard_count: usize,
+    shard: usize,
+) ![]usize {
+    std.debug.assert(shard_count > 0);
+    std.debug.assert(shard < shard_count);
+
+    var out: std.ArrayListUnmanaged(usize) = .empty;
+    errdefer out.deinit(allocator);
+
+    var i = shard;
+    while (i < total) : (i += shard_count) try out.append(allocator, i);
+
+    return out.toOwnedSlice(allocator);
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -412,4 +460,98 @@ test "a selection round-trips through a worklist file" {
     for (sel.sources, wl.paths) |want, got| {
         try std.testing.expectEqualStrings(want, got);
     }
+}
+
+test "shards interleave rather than carve blocks" {
+    // Contiguous blocks would put all of html/ - 62% of the corpus and the slow
+    // end of it - in one shard, and the run would be as long as that shard.
+    const allocator = std.testing.allocator;
+
+    const s0 = try shardIndices(allocator, 10, 3, 0);
+    defer allocator.free(s0);
+    const s1 = try shardIndices(allocator, 10, 3, 1);
+    defer allocator.free(s1);
+    const s2 = try shardIndices(allocator, 10, 3, 2);
+    defer allocator.free(s2);
+
+    try std.testing.expectEqualSlices(usize, &.{ 0, 3, 6, 9 }, s0);
+    try std.testing.expectEqualSlices(usize, &.{ 1, 4, 7 }, s1);
+    try std.testing.expectEqualSlices(usize, &.{ 2, 5, 8 }, s2);
+}
+
+test "every entry lands in exactly one shard" {
+    // A dropped index is a test that silently never runs; a duplicated one is a
+    // test two browsers race on. Both would read as a scoreboard change.
+    const allocator = std.testing.allocator;
+
+    const total: usize = 97;
+    const shard_count: usize = 8;
+
+    var seen = try allocator.alloc(u8, total);
+    defer allocator.free(seen);
+    @memset(seen, 0);
+
+    var shard: usize = 0;
+    while (shard < shard_count) : (shard += 1) {
+        const idx = try shardIndices(allocator, total, shard_count, shard);
+        defer allocator.free(idx);
+        for (idx) |i| {
+            try std.testing.expect(i < total);
+            seen[i] += 1;
+        }
+    }
+
+    for (seen, 0..) |count, i| {
+        if (count != 1) {
+            std.debug.print("index {d} covered {d} times\n", .{ i, count });
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+test "shard sizes stay within one of each other" {
+    const allocator = std.testing.allocator;
+
+    const idx_a = try shardIndices(allocator, 10, 4, 0);
+    defer allocator.free(idx_a);
+    const idx_d = try shardIndices(allocator, 10, 4, 3);
+    defer allocator.free(idx_d);
+
+    try std.testing.expectEqual(@as(usize, 3), idx_a.len);
+    try std.testing.expectEqual(@as(usize, 2), idx_d.len);
+}
+
+test "more shards than tests leaves the extras empty, not broken" {
+    const allocator = std.testing.allocator;
+
+    const busy = try shardIndices(allocator, 2, 5, 1);
+    defer allocator.free(busy);
+    try std.testing.expectEqualSlices(usize, &.{1}, busy);
+
+    const idle = try shardIndices(allocator, 2, 5, 4);
+    defer allocator.free(idle);
+    try std.testing.expectEqual(@as(usize, 0), idle.len);
+}
+
+test "a requested shard count is honoured" {
+    try std.testing.expectEqual(@as(usize, 4), resolveShardCount(4, 100, 8));
+}
+
+test "zero means auto, which means one shard per core" {
+    try std.testing.expectEqual(@as(usize, 8), resolveShardCount(0, 100, 8));
+}
+
+test "shards never outnumber the tests they would run" {
+    // Eight runners for three files would pay the ~9s process startup eight
+    // times to save nothing; five of them would have no work at all.
+    try std.testing.expectEqual(@as(usize, 3), resolveShardCount(0, 3, 8));
+    try std.testing.expectEqual(@as(usize, 3), resolveShardCount(8, 3, 8));
+}
+
+test "an empty run needs no shards" {
+    try std.testing.expectEqual(@as(usize, 0), resolveShardCount(8, 0, 8));
+}
+
+test "an unknown core count still yields a usable single shard" {
+    try std.testing.expectEqual(@as(usize, 1), resolveShardCount(0, 100, 0));
 }

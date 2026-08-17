@@ -40,6 +40,7 @@ const WptBrowser = @import("wpt_browser.zig").WptBrowser;
 const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
+const wpt_server = @import("wpt_server.zig");
 
 // Browser module for context type mapping
 const browser = @import("browser");
@@ -171,8 +172,12 @@ pub const BrowserAdapter = struct {
     ) !test_harness.TestResult {
         _ = context_type; // URL determines context type
 
-        // Build HTTP URL from test path
-        const test_url = try std.fmt.allocPrint(self.allocator, "http://web-platform.test:8000/{s}", .{test_path});
+        // Build the URL from the test path. Scheme and port follow the
+        // `.https.` marker in the filename; see wpt_server.isHttpsTest.
+        const test_url = if (wpt_server.isHttpsTest(test_path))
+            try std.fmt.allocPrint(self.allocator, "https://{s}:8443/{s}", .{ wpt_server.WPT_HOST, test_path })
+        else
+            try std.fmt.allocPrint(self.allocator, "http://{s}:8000/{s}", .{ wpt_server.WPT_HOST, test_path });
         defer self.allocator.free(test_url);
 
         const timeout_ms = timeout.toMillis();

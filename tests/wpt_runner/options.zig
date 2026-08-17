@@ -19,8 +19,11 @@ pub const Options = struct {
     output_dir: []const u8 = "wpt-results",
     /// Verbose output (default: true, use --quiet to disable)
     verbose: bool = true,
-    /// Number of parallel runners (0 = auto)
-    parallel: u32 = 0,
+    /// Number of parallel runners: 0 means "one per core", null means the flag
+    /// was never given. The distinction matters because asking for parallelism
+    /// at all is what routes a run through the supervisor, and `--parallel=0`
+    /// is a real request for it.
+    parallel: ?u32 = null,
     /// WPT root directory
     wpt_root: []const u8 = "tests/wpt",
     /// Specific test files to run (overrides directory filters)
@@ -79,6 +82,23 @@ pub const Options = struct {
     /// True when this process was spawned by a supervisor.
     pub fn isChild(self: Options) bool {
         return self.from_file != null;
+    }
+
+    /// True when this run should discover tests and then drive child processes
+    /// rather than run the tests itself.
+    ///
+    /// `--parallel` implies it because parallelism is implemented by sharding
+    /// the worklist across child processes; there is no in-process path to it.
+    /// A child never sees either flag, so this cannot recurse.
+    pub fn wantsSupervisor(self: Options) bool {
+        return self.supervise or self.parallel != null;
+    }
+
+    /// The runner count to hand `selection.resolveShardCount`, where 0 means
+    /// "one per core". A plain `--supervise` asks for exactly one, which is the
+    /// serial behaviour it has always had.
+    pub fn shardRequest(self: Options) usize {
+        return self.parallel orelse 1;
     }
 
     /// Where this run keeps its journal, or null if it keeps none.
@@ -255,7 +275,7 @@ test "parseArgs collects directory filters and scalar options" {
     try testing.expectEqualStrings("dom/", options.filters.items[1]);
     try testing.expect(!options.verbose);
     try testing.expectEqual(@as(usize, 42), options.limit);
-    try testing.expectEqual(@as(u32, 4), options.parallel);
+    try testing.expectEqual(@as(?u32, 4), options.parallel);
     try testing.expectEqualStrings("*constructor*", options.pattern.?);
     try testing.expectEqualStrings("/tmp/out", options.output_dir);
     try testing.expectEqualStrings("/tmp/wpt", options.wpt_root);
@@ -457,4 +477,61 @@ test "config is reachable from options" {
     // options.zig exists to be testable without V8; keep the config import it
     // shares with main.zig honest.
     try std.testing.expectEqual(config.FileType.any_js, config.FileType.fromPath("url/a.any.js"));
+}
+
+test "--parallel implies the supervisor" {
+    const testing = std.testing;
+    const args = [_][]const u8{ "wpt-runner", "--parallel=4" };
+
+    var options = try parseArgs(testing.allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(?u32, 4), options.parallel);
+    try testing.expect(options.wantsSupervisor());
+}
+
+test "--parallel=0 means auto, which is still a parallel run" {
+    const testing = std.testing;
+    const args = [_][]const u8{ "wpt-runner", "--parallel=0" };
+
+    var options = try parseArgs(testing.allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(?u32, 0), options.parallel);
+    try testing.expect(options.wantsSupervisor());
+}
+
+test "no --parallel leaves the run serial" {
+    const testing = std.testing;
+    const args = [_][]const u8{"wpt-runner"};
+
+    var options = try parseArgs(testing.allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqual(@as(?u32, null), options.parallel);
+    try testing.expect(!options.wantsSupervisor());
+}
+
+test "--supervise alone still supervises" {
+    const testing = std.testing;
+    const args = [_][]const u8{ "wpt-runner", "--supervise" };
+
+    var options = try parseArgs(testing.allocator, &args);
+    defer options.deinit();
+
+    try testing.expect(options.wantsSupervisor());
+}
+
+test "shardRequest is zero for a serial run" {
+    const testing = std.testing;
+
+    var serial = Options.init(testing.allocator);
+    defer serial.deinit();
+    serial.supervise = true;
+    try testing.expectEqual(@as(usize, 1), serial.shardRequest());
+
+    var auto = Options.init(testing.allocator);
+    defer auto.deinit();
+    auto.parallel = 0;
+    try testing.expectEqual(@as(usize, 0), auto.shardRequest());
 }

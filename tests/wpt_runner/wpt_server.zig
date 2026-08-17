@@ -21,13 +21,53 @@ const test_parser = @import("test_parser.zig");
 /// Lockfile name stored in WPT root
 const LOCKFILE_NAME = ".wpt_serve.lock";
 
+/// The host every test URL is built from.
+///
+/// Not `localhost`. WPT generates its own certificate authority under
+/// `tools/certs/`, and the leaf certificate's subject alternative names cover
+/// `web-platform.test` and its subdomains only — a TLS connection to
+/// `localhost:8443` cannot verify against it at any price short of disabling
+/// verification. Using the same host for plain HTTP keeps the document origin
+/// equal to the origin the script loader already builds subresource URLs from.
+///
+/// WPT's own setup instructions have this in `/etc/hosts` pointing at 127.0.0.1.
+pub const WPT_HOST = "web-platform.test";
+
+/// Does this test have to be served over TLS?
+///
+/// The marker is a component of the *filename*, per WPT's naming convention:
+/// `foo.https.html`, `foo.https.any.js`, `foo.https.window.js`. Matching against
+/// the whole path would sweep in every test under a directory that happened to
+/// contain the string.
+pub fn isHttpsTest(test_path: []const u8) bool {
+    return std.mem.indexOf(u8, std.fs.path.basename(test_path), ".https.") != null;
+}
+
+/// The origin of an absolute URL: scheme, host and port, no trailing slash.
+///
+/// Same-origin checks for blob URLs and worker scripts compare against this
+/// string, so a TLS test handed the plain-HTTP origin fails them for a reason
+/// that has nothing to do with the code under test. A slice of the input, not a
+/// copy; null for anything that is not an absolute URL.
+pub fn originOfUrl(url: []const u8) ?[]const u8 {
+    const sep = std.mem.indexOf(u8, url, "://") orelse return null;
+    const after_scheme = sep + 3;
+    // The authority ends at the first delimiter that can follow it.
+    const rest = url[after_scheme..];
+    const end = std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len;
+    return url[0 .. after_scheme + end];
+}
+
 /// WPT Server manager
 pub const WptServer = struct {
     allocator: Allocator,
     /// WPT root directory
     wpt_root: []const u8,
-    /// Server port
+    /// Server port (HTTP)
     port: u16 = 8000,
+    /// Server port (TLS). `wpt serve` binds this alongside the HTTP one; it is
+    /// not optional and not separately startable.
+    https_port: u16 = 8443,
     /// PID of the server process (from lockfile or spawned)
     pid: ?posix.pid_t = null,
     /// Whether we spawned the server (vs found existing)
@@ -205,10 +245,22 @@ pub const WptServer = struct {
         self.we_spawned = false;
     }
 
-    /// Get the base URL for the server
-    pub fn getBaseUrl(self: *WptServer) []const u8 {
-        _ = self;
-        return "http://localhost:8000";
+    /// Get the plain-HTTP base URL for the server, for display.
+    ///
+    /// Test URLs come from `buildTestUrl`, which picks the scheme per test.
+    pub fn getBaseUrl(self: *WptServer, allocator: Allocator) ![]u8 {
+        return std.fmt.allocPrint(allocator, "http://{s}:{d}", .{ WPT_HOST, self.port });
+    }
+
+    /// The origin a given test's document will have once fetched.
+    ///
+    /// Same-origin checks for blob URLs and worker scripts compare against this,
+    /// so it has to track the scheme and port the document actually came from.
+    pub fn originFor(self: *WptServer, allocator: Allocator, test_path: []const u8) ![]u8 {
+        return if (isHttpsTest(test_path))
+            std.fmt.allocPrint(allocator, "https://{s}:{d}", .{ WPT_HOST, self.https_port })
+        else
+            std.fmt.allocPrint(allocator, "http://{s}:{d}", .{ WPT_HOST, self.port });
     }
 
     /// Build a test URL from a test path and context type
@@ -216,6 +268,8 @@ pub const WptServer = struct {
     /// For .any.js tests, the WPT server generates different HTML wrappers:
     /// - Window context: test.any.html (runs test directly in window)
     /// - Worker context: test.any.worker.html (uses fetch_tests_from_worker)
+    ///
+    /// A `.https.` test is routed to the TLS listener; see `isHttpsTest`.
     pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
         var url_path = test_path;
         var suffix: []const u8 = "";
@@ -237,12 +291,14 @@ pub const WptServer = struct {
             suffix = ".worker.html";
         }
 
-        const url = try std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
-            self.getBaseUrl(),
+        const https = isHttpsTest(test_path);
+        return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}", .{
+            if (https) "https" else "http",
+            WPT_HOST,
+            if (https) self.https_port else self.port,
             url_path,
             suffix,
         });
-        return url;
     }
 };
 
@@ -329,27 +385,171 @@ test "WptServer.buildTestUrl" {
     {
         const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/url/url-constructor.any.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.html", url);
     }
 
     // Worker context generates .any.worker.html
     {
         const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/url/url-constructor.any.worker.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker.html", url);
     }
 
     // Window context for another .any.js test
     {
         const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/encoding/api-basics.any.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/encoding/api-basics.any.html", url);
     }
 
     // HTML files ignore context (always use raw path)
     {
         const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
         defer allocator.free(url);
-        try std.testing.expectEqualStrings("http://localhost:8000/dom/nodes/Element-matches.html", url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000/dom/nodes/Element-matches.html", url);
     }
+}
+
+test "isHttpsTest keys off the filename, not the directory" {
+    // WPT's convention is a flag in the *filename*. A directory that happens to
+    // contain the string must not drag every test under it onto TLS.
+    try std.testing.expect(isHttpsTest("fetch/api/basic/keepalive.https.any.js"));
+    try std.testing.expect(isHttpsTest("cookiestore/cookieStore_get_arguments.https.html"));
+    try std.testing.expect(isHttpsTest("html/dom/idlharness.https.window.js"));
+
+    try std.testing.expect(!isHttpsTest("url/url-constructor.any.js"));
+    try std.testing.expect(!isHttpsTest("dom/nodes/Element-matches.html"));
+    // "https" without the trailing dot is just a word in a name.
+    try std.testing.expect(!isHttpsTest("fetch/api/request/request-https.html"));
+    // A directory carrying the marker does not make the test itself secure.
+    try std.testing.expect(!isHttpsTest("some.https.dir/plain.html"));
+}
+
+test "a .https. test is fetched over TLS on the HTTPS port" {
+    // These are 371 of the 4,107 in-scope sources. Served over plain HTTP they
+    // 404 or hang, so every one of them baselines as TIMEOUT for a reason that
+    // has nothing to do with the engine.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    {
+        const url = try server.buildTestUrl(allocator, "cookiestore/cookieStore_get_arguments.https.html", .window);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "https://web-platform.test:8443/cookiestore/cookieStore_get_arguments.https.html",
+            url,
+        );
+    }
+
+    // The suffix rewrite for generated wrappers still applies under TLS.
+    {
+        const url = try server.buildTestUrl(allocator, "fetch/api/basic/keepalive.https.any.js", .window);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "https://web-platform.test:8443/fetch/api/basic/keepalive.https.any.html",
+            url,
+        );
+    }
+    {
+        const url = try server.buildTestUrl(allocator, "html/dom/idlharness.https.window.js", .window);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "https://web-platform.test:8443/html/dom/idlharness.https.window.html",
+            url,
+        );
+    }
+}
+
+test "the document origin matches the scheme and port the test was fetched from" {
+    // Blob URLs and worker script fetches are same-origin checked against this
+    // string. Handing a TLS test the http:// origin makes those checks fail in
+    // a way that looks like a spec bug.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    {
+        const origin = try server.originFor(allocator, "url/url-constructor.any.js");
+        defer allocator.free(origin);
+        try std.testing.expectEqualStrings("http://web-platform.test:8000", origin);
+    }
+    {
+        const origin = try server.originFor(allocator, "fetch/api/basic/keepalive.https.any.js");
+        defer allocator.free(origin);
+        try std.testing.expectEqualStrings("https://web-platform.test:8443", origin);
+    }
+}
+
+test "a non-default port pair is carried into both schemes" {
+    // The ports are fields, not literals, so a run that had to move off 8000
+    // still builds URLs that point at itself.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+    server.port = 8001;
+    server.https_port = 8444;
+
+    {
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("http://web-platform.test:8001/dom/nodes/Element-matches.html", url);
+    }
+    {
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.https.html", .window);
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://web-platform.test:8444/dom/nodes/Element-matches.https.html", url);
+    }
+}
+
+test "originOfUrl keeps scheme, host and port and drops everything after" {
+    try std.testing.expectEqualStrings(
+        "http://web-platform.test:8000",
+        originOfUrl("http://web-platform.test:8000/url/a-element.html").?,
+    );
+    try std.testing.expectEqualStrings(
+        "https://web-platform.test:8443",
+        originOfUrl("https://web-platform.test:8443/fetch/api/basic/x.https.html?q=1#frag").?,
+    );
+}
+
+test "originOfUrl handles an authority with no path at all" {
+    try std.testing.expectEqualStrings(
+        "http://web-platform.test:8000",
+        originOfUrl("http://web-platform.test:8000").?,
+    );
+}
+
+test "originOfUrl stops at a query or fragment that precedes any slash" {
+    try std.testing.expectEqualStrings(
+        "http://web-platform.test:8000",
+        originOfUrl("http://web-platform.test:8000?q=1").?,
+    );
+}
+
+test "originOfUrl declines anything that is not an absolute URL" {
+    try std.testing.expectEqual(@as(?[]const u8, null), originOfUrl("/url/a-element.html"));
+    try std.testing.expectEqual(@as(?[]const u8, null), originOfUrl("a-element.html"));
+    try std.testing.expectEqual(@as(?[]const u8, null), originOfUrl(""));
+}
+
+test "the origin of a built test URL is the origin the test will report" {
+    const allocator = std.testing.allocator;
+
+    var server = WptServer{ .allocator = allocator, .wpt_root = "tests/wpt" };
+
+    const plain = try server.buildTestUrl(allocator, "url/a-element.html", .window);
+    defer allocator.free(plain);
+    const plain_origin = try server.originFor(allocator, "url/a-element.html");
+    defer allocator.free(plain_origin);
+    try std.testing.expectEqualStrings(plain_origin, originOfUrl(plain).?);
+
+    const tls = try server.buildTestUrl(allocator, "fetch/api/basic/x.https.html", .window);
+    defer allocator.free(tls);
+    const tls_origin = try server.originFor(allocator, "fetch/api/basic/x.https.html");
+    defer allocator.free(tls_origin);
+    try std.testing.expectEqualStrings(tls_origin, originOfUrl(tls).?);
 }

@@ -49,9 +49,18 @@ const workers = html.workers;
 const test_harness = @import("test_harness.zig");
 const test_parser = @import("test_parser.zig");
 const config = @import("config.zig");
+const wpt_server = @import("wpt_server.zig");
+const fetch = @import("fetch");
 
-/// WPT test origin - all tests run on this origin
+const log = std.log.scoped(.wpt_browser);
+
+/// Default WPT test origin, used when no test URL is in hand.
+///
+/// Most tests run here, but a `.https.` test is fetched from
+/// `https://web-platform.test:8443` and must be told so — see `originOfUrl`.
 const WPT_ORIGIN = "http://web-platform.test:8000";
+
+const originOfUrl = wpt_server.originOfUrl;
 
 /// Blob URL resolver callback for Web Workers.
 /// This function is registered with the workers module to resolve blob: URLs
@@ -62,13 +71,13 @@ const WPT_ORIGIN = "http://web-platform.test:8000";
 fn resolveBlobUrl(_: std.mem.Allocator, url: []const u8, origin: []const u8) ?workers.BlobResolveResult {
     // Get the global blob URL store
     const store = file.getGlobalBlobURLStore() orelse {
-        std.debug.print("resolveBlobUrl: No global blob URL store available\n", .{});
+        log.warn("resolveBlobUrl: no global blob URL store available", .{});
         return null;
     };
 
     // Resolve the blob URL (handles same-origin validation)
     const blob_data = store.resolve(url, origin) orelse {
-        std.debug.print("resolveBlobUrl: Blob not found for URL: {s} (origin: {s})\n", .{ url, origin });
+        log.warn("resolveBlobUrl: blob not found for URL {s} (origin {s})", .{ url, origin });
         return null;
     };
 
@@ -105,6 +114,9 @@ pub const WptBrowser = struct {
     testharnessreport_js: ?[]const u8,
     /// Number of tests run
     tests_run: usize,
+    /// Path to WPT's certificate authority, held because the fetch layer
+    /// borrows it rather than copying. Null if the checkout has no certs.
+    ca_bundle_path: ?[]const u8,
 
     /// Initialize WptBrowser with a fresh Browser instance
     pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*WptBrowser {
@@ -124,12 +136,18 @@ pub const WptBrowser = struct {
             .testharness_js = null,
             .testharnessreport_js = null,
             .tests_run = 0,
+            .ca_bundle_path = null,
         };
 
         // Register the blob URL resolver for Web Workers.
         // This allows Workers created with blob URLs (new Worker(URL.createObjectURL(blob)))
         // to resolve their script content from the BlobURLStore.
         workers.setBlobResolver(resolveBlobUrl);
+
+        // Trust WPT's certificate authority, so `.https.` tests can be fetched
+        // from :8443 at all. `wpt serve` signs its leaf certificate with a CA
+        // it generates itself; nothing in the system trust store knows it.
+        try self.trustWptCertificateAuthority();
 
         // Pre-load testharness.js for efficiency
         self.testharness_js = self.loadWptScript("resources/testharness.js") catch null;
@@ -138,12 +156,38 @@ pub const WptBrowser = struct {
         return self;
     }
 
+    /// Point the fetch layer at WPT's own certificate authority.
+    ///
+    /// Only adds a CA; it does not relax verification. A `.https.` test served
+    /// with a certificate this CA did not sign should still fail, because that
+    /// is a real defect in the server, not in the test.
+    fn trustWptCertificateAuthority(self: *WptBrowser) !void {
+        const ca = try std.fs.path.join(self.allocator, &.{ self.wpt_root, "tools/certs/cacert.pem" });
+        errdefer self.allocator.free(ca);
+
+        std.fs.cwd().access(ca, .{}) catch |err| {
+            // Not fatal: a run that touches no `.https.` test never needs it.
+            log.warn("no WPT certificate authority at {s} ({}); .https. tests will fail to connect", .{ ca, err });
+            self.allocator.free(ca);
+            return;
+        };
+
+        self.ca_bundle_path = ca;
+        fetch.network.setDefaultCertOptions(.{ .ca_bundle_path = ca });
+    }
+
     /// Cleanup
     pub fn deinit(self: *WptBrowser) void {
         // Clear the blob resolver and document origin registrations
         workers.clearBlobResolver();
         workers.clearDocumentOrigin();
         file.clearDocumentOrigin();
+
+        if (self.ca_bundle_path) |ca| {
+            // Drop the borrowed path before freeing it.
+            fetch.network.setDefaultCertOptions(.{});
+            self.allocator.free(ca);
+        }
 
         if (self.testharness_js) |js| {
             self.allocator.free(js);
@@ -163,7 +207,7 @@ pub const WptBrowser = struct {
 
         // Use cwd-relative open since wpt_root may not be absolute
         const script_file = std.fs.cwd().openFile(full_path, .{}) catch |err| {
-            std.debug.print("Failed to open WPT script: {s} - {}\n", .{ full_path, err });
+            log.warn("failed to open WPT script {s}: {}", .{ full_path, err });
             return err;
         };
         defer script_file.close();
@@ -215,8 +259,9 @@ pub const WptBrowser = struct {
         // Both URL.createObjectURL (to store blobs with the correct origin)
         // and Workers (to resolve blob URLs with same-origin validation)
         // need to know the current document origin.
-        file.setDocumentOrigin(WPT_ORIGIN);
-        workers.setDocumentOrigin(WPT_ORIGIN);
+        const origin = originOfUrl(test_url) orelse WPT_ORIGIN;
+        file.setDocumentOrigin(origin);
+        workers.setDocumentOrigin(origin);
 
         // Load testharness.js
         try self.loadTestHarness(ctx);
@@ -250,10 +295,16 @@ pub const WptBrowser = struct {
         timeout_ms: u64,
         context_type: browser_mod.ContextType,
     ) !test_harness.TestResult {
+        // The origin this document actually came from. A `.https.` test is
+        // served from :8443 over TLS, and every same-origin check downstream -
+        // blob URLs, worker scripts, subresource URLs - has to agree with it.
+        const origin = originOfUrl(test_url) orelse WPT_ORIGIN;
+
         // Create script loader context for external script loading
         const loader_ctx = ScriptLoaderContext{
             .wpt_browser = self,
             .test_path = test_path,
+            .origin = origin,
         };
 
         // Navigate to test URL with skip_load so we can inject testharness first
@@ -268,8 +319,8 @@ pub const WptBrowser = struct {
         // Both URL.createObjectURL (to store blobs with the correct origin)
         // and Workers (to resolve blob URLs with same-origin validation)
         // need to know the current document origin.
-        file.setDocumentOrigin(WPT_ORIGIN);
-        workers.setDocumentOrigin(WPT_ORIGIN);
+        file.setDocumentOrigin(origin);
+        workers.setDocumentOrigin(origin);
 
         // Load testharness.js BEFORE loading the page
         // This ensures testharness globals are available when scripts in HTML execute
@@ -300,6 +351,9 @@ pub const WptBrowser = struct {
     const ScriptLoaderContext = struct {
         wpt_browser: *WptBrowser,
         test_path: []const u8,
+        /// The document's origin, so subresources are fetched from the same
+        /// scheme and port the document was. Borrowed from the test URL.
+        origin: []const u8,
     };
 
     /// Callback for loading external scripts during HTML parsing
@@ -309,7 +363,7 @@ pub const WptBrowser = struct {
         const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr));
         const self = loader_ctx.wpt_browser;
 
-        std.debug.print("scriptLoaderCallback: url='{s}'\n", .{url});
+        log.debug("scriptLoaderCallback: url='{s}'", .{url});
 
         // Skip testharness.js and testharnessreport.js - they're already loaded
         // via loadTestHarness() before HTML parsing starts. Loading them again
@@ -317,7 +371,7 @@ pub const WptBrowser = struct {
         if (std.mem.eql(u8, url, "/resources/testharness.js") or
             std.mem.eql(u8, url, "/resources/testharnessreport.js"))
         {
-            std.debug.print("scriptLoaderCallback: SKIPPING {s} (already loaded)\n", .{url});
+            log.debug("scriptLoaderCallback: skipping {s} (already loaded)", .{url});
             // Return empty script to prevent double-loading
             return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
         }
@@ -334,8 +388,8 @@ pub const WptBrowser = struct {
                 // Absolute path from WPT root - build full URL
                 break :blk std.fmt.allocPrint(
                     self.allocator,
-                    "http://web-platform.test:8000{s}",
-                    .{rewritten_url},
+                    "{s}{s}",
+                    .{ loader_ctx.origin, rewritten_url },
                 ) catch return null;
             } else {
                 // Relative path - resolve relative to test path
@@ -343,25 +397,25 @@ pub const WptBrowser = struct {
                 if (test_dir.len > 0) {
                     break :blk std.fmt.allocPrint(
                         self.allocator,
-                        "http://web-platform.test:8000/{s}/{s}",
-                        .{ test_dir, url },
+                        "{s}/{s}/{s}",
+                        .{ loader_ctx.origin, test_dir, url },
                     ) catch return null;
                 } else {
                     break :blk std.fmt.allocPrint(
                         self.allocator,
-                        "http://web-platform.test:8000/{s}",
-                        .{url},
+                        "{s}/{s}",
+                        .{ loader_ctx.origin, url },
                     ) catch return null;
                 }
             }
         };
         defer self.allocator.free(http_url);
 
-        std.debug.print("scriptLoaderCallback: fetching HTTP URL '{s}'\n", .{http_url});
+        log.debug("scriptLoaderCallback: fetching {s}", .{http_url});
 
         // Fetch the script via HTTP
         const result = navigation.fetchUrl(self.allocator, http_url, .{}) catch |err| {
-            std.debug.print("scriptLoaderCallback: HTTP fetch failed: {}\n", .{err});
+            log.warn("scriptLoaderCallback: fetch failed: {}", .{err});
             return null;
         };
         defer {
@@ -371,12 +425,12 @@ pub const WptBrowser = struct {
 
         // Check for success
         if (result.status_code >= 400) {
-            std.debug.print("scriptLoaderCallback: HTTP {d} for {s}\n", .{ result.status_code, http_url });
+            log.warn("scriptLoaderCallback: HTTP {d} for {s}", .{ result.status_code, http_url });
             self.allocator.free(result.body);
             return null;
         }
 
-        std.debug.print("scriptLoaderCallback: loaded {d} bytes from {s}\n", .{ result.body.len, http_url });
+        log.debug("scriptLoaderCallback: loaded {d} bytes from {s}", .{ result.body.len, http_url });
 
         // Return the body - caller owns this memory
         return result.body;
@@ -403,7 +457,7 @@ pub const WptBrowser = struct {
             \\})();
         ;
         const leak_result = ctx.evaluateScript(leak_check) catch |err| {
-            std.debug.print("[loadTestHarness] Leak check error: {}\n", .{err});
+            log.warn("loadTestHarness: leak check error: {}", .{err});
             return err;
         };
         if (leak_result) |val| {
@@ -412,7 +466,7 @@ pub const WptBrowser = struct {
                 defer self.allocator.free(s);
                 // Only print if there's a leak
                 if (!std.mem.eql(u8, s, "CLEAN")) {
-                    std.debug.print("[loadTestHarness] !!! STATE LEAK DETECTED: {s} !!!\n", .{s});
+                    log.warn("loadTestHarness: state leak detected: {s}", .{s});
                 }
             }
         }
@@ -441,7 +495,7 @@ pub const WptBrowser = struct {
             \\'GLOBALS_VERIFIED';
         ;
         _ = ctx.evaluateScript(verify_script) catch |err| {
-            std.debug.print("ERROR: testharness.js verification failed: {}\n", .{err});
+            log.err("testharness.js verification failed: {}", .{err});
             return error.TestHarnessLoadFailed;
         };
 
@@ -699,9 +753,16 @@ pub const WptBrowser = struct {
         return result;
     }
 
-    /// Build test URL from path
+    /// Build test URL from path.
+    ///
+    /// Scheme and port follow the `.https.` marker in the filename, the same
+    /// way `wpt_server.buildTestUrl` does - a TLS test fetched over plain HTTP
+    /// gets whatever the server chooses to serve on :8000, which is not the
+    /// test.
     fn buildTestUrl(self: *WptBrowser, test_path: []const u8) ![]const u8 {
-        // Create a file:// URL or http://web-platform.test URL
-        return try std.fmt.allocPrint(self.allocator, "http://web-platform.test:8000/{s}", .{test_path});
+        return if (wpt_server.isHttpsTest(test_path))
+            try std.fmt.allocPrint(self.allocator, "https://{s}:8443/{s}", .{ wpt_server.WPT_HOST, test_path })
+        else
+            try std.fmt.allocPrint(self.allocator, "http://{s}:8000/{s}", .{ wpt_server.WPT_HOST, test_path });
     }
 };

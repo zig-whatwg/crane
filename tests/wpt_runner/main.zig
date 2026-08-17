@@ -1019,7 +1019,7 @@ fn run() !u8 {
         return 0;
     }
 
-    if (options.supervise) {
+    if (options.wantsSupervisor()) {
         return supervise(allocator, options, discovery);
     }
 
@@ -1033,9 +1033,12 @@ fn run() !u8 {
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
-    print("\nwpt serve {s} at {s}\n", .{
+    const base_url = try server.getBaseUrl(allocator);
+    defer allocator.free(base_url);
+    print("\nwpt serve {s} at {s} (TLS on :{d})\n", .{
         if (server.we_spawned) "started" else "adopted",
-        server.getBaseUrl(),
+        base_url,
+        server.https_port,
     });
 
     // Execute tests (prints progress and summary)
@@ -1186,6 +1189,251 @@ fn writeWorklistFile(
     try file_writer.interface.flush();
 }
 
+/// Write the subset of `discovery` named by `indices` as its own worklist.
+///
+/// A shard gets a private worklist rather than a stride over the shared one so
+/// that its indices stay contiguous from zero. The resume-past-a-crash loop is
+/// built on "the first index nobody journalled", which only means anything if
+/// the indices a process runs are the indices it counts.
+fn writeShardWorklist(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    discovery: DiscoveryResult,
+    indices: []const usize,
+) !void {
+    if (std.fs.path.dirname(path)) |dir| {
+        std.fs.cwd().makePath(dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+    }
+
+    var paths = try allocator.alloc([]const u8, indices.len);
+    defer allocator.free(paths);
+    for (indices, 0..) |global, local| paths[local] = discovery.test_files.items[global].path;
+
+    var file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    var buf: [4096]u8 = undefined;
+    var file_writer = file.writer(&buf);
+    try selection.writeWorklist(&file_writer.interface, paths);
+    try file_writer.interface.flush();
+}
+
+/// Everything one shard's restart loop needs. A shard is a worklist file, a
+/// journal to write, and the paths in that worklist so a crash can be named.
+const Shard = struct {
+    allocator: std.mem.Allocator,
+    options: *const Options,
+    self_exe: []const u8,
+    worklist_path: []const u8,
+    journal_path: []const u8,
+    /// Shard-local order, so `paths[i]` is the test at local index `i`.
+    paths: []const []const u8,
+    /// Prefix for this shard's progress lines. Null when there is only one
+    /// shard and the output needs no disambiguating.
+    label: ?[]const u8,
+};
+
+/// Run one shard's worklist to exhaustion, respawning past each crash.
+///
+/// This is the original single-process supervise loop with the worklist and
+/// journal made parameters. Nothing about it is aware of other shards: they
+/// share the server and nothing else, so each one's resume point is its own.
+fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
+    const total = shard.paths.len;
+    if (total == 0) return;
+
+    const options = shard.options;
+    var attempt: usize = 0;
+
+    while (true) {
+        // Each restart consumes exactly one worklist entry, so this can only
+        // spin as many times as there are tests. The bound is a backstop
+        // against a bug in that reasoning, not part of the design.
+        attempt += 1;
+        if (attempt > total + 1) {
+            print("{s}giving up after {d} restarts\n", .{ shard.label orelse "Supervisor: ", attempt - 1 });
+            break;
+        }
+
+        var log = try journal.read(allocator, shard.journal_path);
+        const next = log.nextIndex();
+        log.deinit();
+
+        if (next >= total) break;
+
+        const start_arg = try std.fmt.allocPrint(allocator, "--start-index={d}", .{next});
+        defer allocator.free(start_arg);
+        const from_arg = try std.fmt.allocPrint(allocator, "--from-file={s}", .{shard.worklist_path});
+        defer allocator.free(from_arg);
+        const journal_arg = try std.fmt.allocPrint(allocator, "--journal={s}", .{shard.journal_path});
+        defer allocator.free(journal_arg);
+        const root_arg = try std.fmt.allocPrint(allocator, "--wpt-root={s}", .{options.wpt_root});
+        defer allocator.free(root_arg);
+        const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
+        defer allocator.free(out_arg);
+
+        var argv: std.ArrayList([]const u8) = .{};
+        defer argv.deinit(allocator);
+        try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg });
+        if (!options.verbose) try argv.append(allocator, "--quiet");
+
+        print("{s}running tests {d}..{d}\n", .{ shard.label orelse "--> ", next, total });
+
+        var child = std.process.Child.init(argv.items, allocator);
+        const term = try child.spawnAndWait();
+
+        const clean = switch (term) {
+            .Exited => |code| code == 0,
+            else => false,
+        };
+        if (clean) {
+            // A clean exit that did not finish the worklist means the child
+            // stopped for a reason of its own. Looping again would either
+            // repeat that or spin, so stop and let the journal speak.
+            var after = try journal.read(allocator, shard.journal_path);
+            defer after.deinit();
+            if (after.nextIndex() >= total) break;
+            if (after.nextIndex() <= next) {
+                print("{s}child exited cleanly without running anything; stopping\n", .{shard.label orelse "Supervisor: "});
+                break;
+            }
+            continue;
+        }
+
+        // Abnormal exit. Everything before the crashing test wrote its record,
+        // so the first unreported index is the culprit.
+        var after = try journal.read(allocator, shard.journal_path);
+        const crashed = after.nextIndex();
+        after.deinit();
+
+        if (crashed >= total) break;
+
+        const path = shard.paths[crashed];
+        print("\n{s}!!! crashed on [{d}] {s} ({any})\n\n", .{ shard.label orelse "", crashed, path, term });
+
+        var j = try journal.Journal.append(allocator, shard.journal_path);
+        defer j.deinit();
+        const message = try std.fmt.allocPrint(allocator, "process terminated: {any}", .{term});
+        defer allocator.free(message);
+        try j.record(.{
+            .index = crashed,
+            .path = path,
+            .status = .crash,
+            .message = message,
+        });
+    }
+}
+
+/// A shard whose loop runs on its own thread, plus what it needs to be merged
+/// back into the run afterwards.
+const ShardRun = struct {
+    shard: Shard,
+    /// Shard-local index -> global worklist index.
+    indices: []usize,
+    thread: std.Thread = undefined,
+    /// Set by the thread. Threads cannot propagate errors, so the failure is
+    /// carried here and re-raised on the joining side.
+    failure: ?anyerror = null,
+
+    fn entry(self: *ShardRun) void {
+        runShard(self.shard.allocator, self.shard) catch |err| {
+            self.failure = err;
+        };
+    }
+};
+
+/// Run `shard_count` shards concurrently, then fold their journals into one.
+///
+/// Sharding at the process level rather than inside the browser is deliberate.
+/// A test file costs about 4s of overhead beyond its own runtime - roughly
+/// 1.7s to tear down the previous V8 context and build a new one, 1.6s to fetch
+/// and parse the page - and that cost is per file no matter how fast the test
+/// is. It is not going away by making any one step cheaper, but it does divide.
+fn runShardsInParallel(
+    allocator: std.mem.Allocator,
+    options: Options,
+    discovery: DiscoveryResult,
+    self_exe: []const u8,
+    journal_path: []const u8,
+    shard_count: usize,
+) !void {
+    const total = discovery.test_files.items.len;
+
+    const runs = try allocator.alloc(ShardRun, shard_count);
+    defer allocator.free(runs);
+
+    // Allocated up front so the cleanup below can free unconditionally.
+    var built: usize = 0;
+    defer {
+        for (runs[0..built]) |*r| {
+            allocator.free(r.indices);
+            allocator.free(r.shard.paths);
+            allocator.free(r.shard.worklist_path);
+            allocator.free(r.shard.journal_path);
+            allocator.free(r.shard.label.?);
+        }
+    }
+
+    while (built < shard_count) : (built += 1) {
+        const i = built;
+        const indices = try selection.shardIndices(allocator, total, shard_count, i);
+        const paths = try allocator.alloc([]const u8, indices.len);
+        for (indices, 0..) |global, local| paths[local] = discovery.test_files.items[global].path;
+
+        const wl = try std.fmt.allocPrint(allocator, "{s}/worklist.shard{d}.txt", .{ options.output_dir, i });
+        const jl = try std.fmt.allocPrint(allocator, "{s}/journal.shard{d}.jsonl", .{ options.output_dir, i });
+        const label = try std.fmt.allocPrint(allocator, "[shard {d}] ", .{i});
+
+        try writeShardWorklist(allocator, wl, discovery, indices);
+        // Start each shard from an empty ledger, for the same reason the whole
+        // run does: a stale journal resumes at indices that mean nothing now.
+        {
+            var fresh = try journal.Journal.create(allocator, jl);
+            fresh.deinit();
+        }
+
+        runs[i] = .{
+            .shard = .{
+                .allocator = allocator,
+                .options = &options,
+                .self_exe = self_exe,
+                .worklist_path = wl,
+                .journal_path = jl,
+                .paths = paths,
+                .label = label,
+            },
+            .indices = indices,
+        };
+    }
+
+    print("Sharding {d} files across {d} parallel runners\n\n", .{ total, shard_count });
+
+    for (runs) |*r| r.thread = try std.Thread.spawn(.{}, ShardRun.entry, .{r});
+    for (runs) |*r| r.thread.join();
+
+    // Fold the shards back into the run's journal, translating each record's
+    // shard-local index to its global worklist position. Without that the
+    // report and the baseline would see a dozen index 0s.
+    var merged = try journal.Journal.append(allocator, journal_path);
+    defer merged.deinit();
+
+    for (runs) |*r| {
+        var log = try journal.read(allocator, r.shard.journal_path);
+        defer log.deinit();
+        for (log.records) |rec| {
+            var out = rec;
+            out.index = if (rec.index < r.indices.len) r.indices[rec.index] else rec.index;
+            try merged.record(out);
+        }
+    }
+
+    for (runs) |*r| {
+        if (r.failure) |err| return err;
+    }
+}
+
 /// Run the whole worklist, restarting past anything that kills the process.
 ///
 /// The runner executes every test in one process against one V8 isolate, so a
@@ -1238,92 +1486,39 @@ fn supervise(
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
-    print("\nwpt serve {s} at {s}\n", .{
+    const base_url = try server.getBaseUrl(allocator);
+    defer allocator.free(base_url);
+    print("\nwpt serve {s} at {s} (TLS on :{d})\n", .{
         if (server.we_spawned) "started" else "adopted",
-        server.getBaseUrl(),
+        base_url,
+        server.https_port,
     });
 
     print("\nSupervising {d} test files\n", .{total});
     print("  worklist: {s}\n", .{worklist_path});
     print("  journal:  {s}\n\n", .{journal_path});
 
-    var attempt: usize = 0;
+    const shard_count = selection.resolveShardCount(
+        options.shardRequest(),
+        total,
+        std.Thread.getCpuCount() catch 1,
+    );
 
-    while (true) {
-        // Each restart consumes exactly one worklist entry, so this can only
-        // spin as many times as there are tests. The bound is a backstop
-        // against a bug in that reasoning, not part of the design.
-        attempt += 1;
-        if (attempt > total + 1) {
-            print("Supervisor: giving up after {d} restarts\n", .{attempt - 1});
-            break;
-        }
+    if (shard_count > 1) {
+        try runShardsInParallel(allocator, options, discovery, self_exe, journal_path, shard_count);
+    } else {
+        const worklist_paths = try allocator.alloc([]const u8, total);
+        defer allocator.free(worklist_paths);
+        for (discovery.test_files.items, 0..) |f, i| worklist_paths[i] = f.path;
 
-        var log = try journal.read(allocator, journal_path);
-        const next = log.nextIndex();
-        log.deinit();
-
-        if (next >= total) break;
-
-        const start_arg = try std.fmt.allocPrint(allocator, "--start-index={d}", .{next});
-        defer allocator.free(start_arg);
-        const from_arg = try std.fmt.allocPrint(allocator, "--from-file={s}", .{worklist_path});
-        defer allocator.free(from_arg);
-        const journal_arg = try std.fmt.allocPrint(allocator, "--journal={s}", .{journal_path});
-        defer allocator.free(journal_arg);
-        const root_arg = try std.fmt.allocPrint(allocator, "--wpt-root={s}", .{options.wpt_root});
-        defer allocator.free(root_arg);
-        const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
-        defer allocator.free(out_arg);
-
-        var argv: std.ArrayList([]const u8) = .{};
-        defer argv.deinit(allocator);
-        try argv.appendSlice(allocator, &.{ self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg });
-        if (!options.verbose) try argv.append(allocator, "--quiet");
-
-        print("--> running tests {d}..{d}\n", .{ next, total });
-
-        var child = std.process.Child.init(argv.items, allocator);
-        const term = try child.spawnAndWait();
-
-        const clean = switch (term) {
-            .Exited => |code| code == 0,
-            else => false,
-        };
-        if (clean) {
-            // A clean exit that did not finish the worklist means the child
-            // stopped for a reason of its own. Looping again would either
-            // repeat that or spin, so stop and let the journal speak.
-            var after = try journal.read(allocator, journal_path);
-            defer after.deinit();
-            if (after.nextIndex() >= total) break;
-            if (after.nextIndex() <= next) {
-                print("Supervisor: child exited cleanly without running anything; stopping\n", .{});
-                break;
-            }
-            continue;
-        }
-
-        // Abnormal exit. Everything before the crashing test wrote its record,
-        // so the first unreported index is the culprit.
-        var after = try journal.read(allocator, journal_path);
-        const crashed = after.nextIndex();
-        after.deinit();
-
-        if (crashed >= total) break;
-
-        const path = discovery.test_files.items[crashed].path;
-        print("\n!!! crashed on [{d}] {s} ({any})\n\n", .{ crashed, path, term });
-
-        var j = try journal.Journal.append(allocator, journal_path);
-        defer j.deinit();
-        const message = try std.fmt.allocPrint(allocator, "process terminated: {any}", .{term});
-        defer allocator.free(message);
-        try j.record(.{
-            .index = crashed,
-            .path = path,
-            .status = .crash,
-            .message = message,
+        try runShard(allocator, .{
+            .allocator = allocator,
+            .options = &options,
+            .self_exe = self_exe,
+            .worklist_path = worklist_path,
+            .journal_path = journal_path,
+            .paths = worklist_paths,
+            .label = null,
         });
     }
 
