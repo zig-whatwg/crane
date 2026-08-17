@@ -2793,6 +2793,7 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/manifest.zig",
             "tests/wpt_runner/config.zig",
             "tests/wpt_runner/selection.zig",
+            "tests/wpt_runner/journal.zig",
         };
         for (harness_sources) |src| {
             const harness_tests = b.addTest(.{
