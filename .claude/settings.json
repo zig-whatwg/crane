@@ -1,0 +1,60 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__cog__*"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "cog"
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob|Bash|Agent|mcp__cog__code_explore|mcp__cog__code_query",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/cog-pretooluse.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/cog-stop-memory.sh",
+            "timeout": 10,
+            "statusMessage": "Verifying memory storage..."
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "mcp__cog__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/cog-posttooluse-failure.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/cog-precompact.sh",
+            "timeout": 10,
+            "statusMessage": "Preserving Cog context..."
+          }
+        ]
+      }
+    ]
+  }
+}

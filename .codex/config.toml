@@ -1,0 +1,4 @@
+
+[mcp_servers.cog]
+command = "cog"
+args = ["mcp"]

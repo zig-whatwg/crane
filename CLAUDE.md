@@ -1,67 +1,5 @@
 # Agent Guidelines for WHATWG Specifications Monorepo in Zig
 
-## Cog Memory System
-
-  You have access to Cog, a persistent memory system via MCP.
-
-  **At the start of every session and after any context compaction, call:**
-  cog_start({})
-
-  This returns the full usage instructions for Cog.
-
-### ⚠️ MUST ALWAYS: Report Cog Memory Usefulness
-
-**After ANY research, exploration, or investigation activity where `cog_recall` was used, you MUST report on memory usefulness.**
-
-**This applies to ALL agents, including subagents.** When a subagent (spawned via Task tool) performs research or exploration using Cog, it MUST include the Cog Memory Feedback in its results returned to the parent agent.
-
-**Reporting Chain:**
-- **Subagents** → MUST include Cog Memory Feedback in results returned to parent agent
-- **Parent agents** → MUST surface/include subagent Cog feedback when reporting to user
-- **All feedback must bubble up** to ensure visibility of Cog's value across the agent hierarchy
-
-**When to Report:**
-- After exploring the codebase to understand something
-- After investigating a bug or issue
-- After researching how something works
-- After any task where you recalled memories from Cog
-- **Subagents:** Include in your final result message back to the parent agent
-- **Parent agents:** Include subagent Cog feedback in your response to the user
-
-**Report Format:**
-```
-📊 **Cog Memory Feedback:**
-- Memories recalled: [number] engrams
-- Useful memories: [list any that saved time or provided valuable context]
-- Not useful: [list any that were irrelevant or outdated]
-- Verdict: [Helpful / Partially helpful / Not helpful]
-```
-
-**Examples:**
-
-✅ **Good Report:**
-```
-📊 **Cog Memory Feedback:**
-- Memories recalled: 3 engrams
-- Useful memories: "WebIDL codegen signature matching" - directly relevant, saved investigation time
-- Not useful: "URL parser edge cases" - not related to current DOM work
-- Verdict: Helpful
-```
-
-✅ **When No Memories Recalled:**
-```
-📊 **Cog Memory Feedback:**
-- Memories recalled: 0 engrams
-- No relevant memories found for this topic
-- Verdict: N/A (consider storing learnings from this session)
-```
-
-**Why This Matters:**
-- Helps evaluate if Cog is providing value
-- Identifies gaps in stored knowledge
-- Tracks ROI on memory storage
-- Guides what should/shouldn't be stored in future
-
 ## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
 
 **ALWAYS ask clarifying questions when requirements are ambiguous or unclear.**
@@ -122,7 +60,7 @@ Is that correct, or did you mean [alternative interpretation]?"
 **When to Provide Summaries**:
 - ✅ **ONLY at the end of completed work** - After all tasks are done and committed
 - ✅ **When explicitly asked** - User requests "What did we do?" or similar
-- ✅ **After oneshot completion** - Final summary after entire epic is complete
+- ✅ **After completing an entire task** - Final summary after entire epic is complete
 
 **When NOT to Provide Summaries**:
 - ❌ **During active work** - While implementing features, fixing bugs, or writing code
@@ -184,15 +122,6 @@ This project implements multiple WHATWG specifications in idiomatic Zig:
 
 **IDL Reference Files** (in `idl/`): Symlink to `/Users/bcardarella/projects/webref/ed/idl/` containing all official WHATWG WebIDL definitions used as the source for code generation.
 
-### Context Awareness
-
-**When working on a spec, the system detects context from:**
-- File paths (e.g., `src/url/parser.zig` → URL Standard)
-- Import statements (e.g., `@import("encoding")` → Encoding Standard)
-- Current working directory
-
-**The skills adapt based on detected context** to provide spec-specific guidance.
-
 ### Test Guidelines
 
 - Use realistic examples from the target spec
@@ -204,10 +133,10 @@ This project implements multiple WHATWG specifications in idiomatic Zig:
 ```zig
 test "URL - basic parsing" {
     const allocator = std.testing.allocator;
-    
+
     const url = try URL.parse(allocator, "https://example.com:8080/path?query#fragment");
     defer url.deinit();
-    
+
     try std.testing.expectEqualStrings("https", url.scheme);
     try std.testing.expectEqualStrings("example.com", url.host.?.domain);
     try std.testing.expectEqual(@as(?u16, 8080), url.port);
@@ -215,283 +144,14 @@ test "URL - basic parsing" {
 
 test "Encoding - UTF-8 decode" {
     const allocator = std.testing.allocator;
-    
+
     const input: []const u8 = &[_]u8{ 0xE2, 0x9C, 0x93 }; // ✓
     const decoded = try decodeUtf8(allocator, input);
     defer allocator.free(decoded);
-    
+
     try std.testing.expectEqualStrings("✓", decoded);
 }
 ```
-
----
-
-## Dynamic Skill Loading System
-
-This project uses a **dynamic skill loading system** where the LLM should:
-1. **Analyze the task** to determine which skills are required
-2. **Load only the necessary skills** by reading their SKILL.md files
-3. **Apply the skill knowledge** during task execution
-4. **Unload skills** from working memory when no longer needed
-
-### Available Skills
-
-| Skill | Load When | Description |
-|-------|-----------|-------------|
-| **commit_workflow** | Committing code, managing git history | Incremental commit strategy - commit after each feature completion |
-| **communication_protocol** | ALWAYS (every interaction) | Ask clarifying questions when requirements are ambiguous |
-| **temporary_files** | ALWAYS (every interaction) | All AI-generated temporary files go to `tmp/` directory |
-| **oneshot** | User explicitly requests "oneshot [task]" | Complete uninterrupted execution of entire task/epic with final summary only |
-| **pre_commit_checks** | Before committing code | Automated format/build/test checks before every commit |
-| **zig** | Writing/refactoring Zig code | Universal Zig best practices, memory management, testing, documentation |
-| **cpp** | Writing/refactoring C++ code, V8 FFI wrappers | Modern C++ (C++17/C++20), RAII, V8 API patterns, FFI boundaries |
-| **monorepo_navigation** | Finding dependencies across specs | Navigate monorepo structure, locate spec implementations |
-| **dependency_mocking** | Creating temporary mocks for unimplemented specs | Temporary mocks with clear markers for missing dependencies |
-| **webidl_codegen** | Working with WebIDL code generation | WebIDL code generation system, interface/namespace/mixin definitions |
-
-### Skill Loading Protocol
-
-**Before starting any task:**
-
-1. **Identify required skills** based on task type:
-   - User says "oneshot [task]" → Load `oneshot` skill (takes over execution)
-   - Zig code changes → Load `zig` skill
-   - C++ code changes (V8 wrappers) → Load `cpp` skill
-   - Git operations → Load `commit_workflow` skill
-   - Ambiguous requirements → `communication_protocol` (always active)
-   - Temporary files → `temporary_files` (always active)
-   - Pre-commit → Load `pre_commit_checks` skill
-   - Finding dependencies → Load `monorepo_navigation` skill
-   - Mocking unimplemented specs → Load `dependency_mocking` skill
-   - WebIDL codegen → Load `webidl_codegen` skill
-
-2. **Load skills** by reading the appropriate SKILL.md file:
-   ```
-   Read: skills/<skill_name>/SKILL.md
-   ```
-   
-   **IMPORTANT**: When loading a skill, the LLM MUST announce it in the chat response:
-   ```
-   🔧 Loading skill: <skill_name>
-   ```
-
-3. **Apply skill knowledge** during task execution
-
-4. **Unload skills** when done:
-   - Keep only relevant skills in working memory
-   - Unload skills that are no longer needed for current task
-   - Communication protocol and temporary_files are ALWAYS active (never unload)
-   
-   **IMPORTANT**: When unloading a skill, the LLM MUST announce it in the chat response:
-   ```
-   ✓ Unloading skill: <skill_name>
-   ```
-
-### Skill Usage Decision Tree
-
-```
-Task received
-    ↓
-Analyze task type
-    ↓
-┌──────────────────────────────────────┐
-│ Did user say "oneshot [task]"?       │ → YES → Load: oneshot (takes over execution)
-└──────────────────────────────────────┘
-    ↓ NO
-┌──────────────────────────────┐
-│ Is this Zig code?            │ → YES → Load: zig
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Is this C++ code (V8 FFI)?  │ → YES → Load: cpp
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Is this a git commit?        │ → YES → Load: commit_workflow, pre_commit_checks
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Need to find dependencies?   │ → YES → Load: monorepo_navigation
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Need to mock dependencies?   │ → YES → Load: dependency_mocking
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Working with WebIDL codegen? │ → YES → Load: webidl_codegen
-└──────────────────────────────┘
-    ↓ ALSO CHECK
-┌──────────────────────────────┐
-│ Are requirements unclear?    │ → YES → Use: communication_protocol (already loaded)
-└──────────────────────────────┘
-    ↓
-Execute task with loaded skills
-    ↓
-Task complete
-    ↓
-Unload skills no longer needed
-```
-
-### Skill Combinations
-
-Common task scenarios and their skill requirements:
-
-| Task Scenario | Skills to Load |
-|---------------|----------------|
-| **Oneshot execution** | `oneshot` (then loads others as needed: `zig`, `cpp`, `commit_workflow`, etc.) |
-| **Implement new WHATWG spec feature** | `zig`, `monorepo_navigation` |
-| **Implement V8 FFI wrapper** | `cpp` |
-| **Add V8 TypedArray API** | `cpp`, `zig` (for FFI bindings) |
-| **Fix bug in Zig code** | `zig` |
-| **Fix bug in C++ wrapper** | `cpp` |
-| **Commit code** | `commit_workflow`, `pre_commit_checks` |
-| **Clarify requirements** | `communication_protocol` (always active) |
-| **Write Zig tests** | `zig` |
-| **Refactor Zig code** | `zig`, `commit_workflow` |
-| **Refactor C++ code** | `cpp`, `commit_workflow` |
-| **Mock unimplemented dependency** | `dependency_mocking`, `zig` |
-| **Work with WebIDL codegen** | `webidl_codegen`, `zig` |
-| **Find cross-spec dependencies** | `monorepo_navigation` |
-
-### Example Workflow
-
-**Scenario**: User asks to "implement a new URL parser function"
-
-**LLM Response:**
-
-```
-I'll implement a new URL parser function for you.
-
-🔧 Loading skill: commit_workflow
-🔧 Loading skill: zig
-
-First, let me create an issue to track this work...
-
-Now I'll implement the parser function following Zig best practices...
-[Implements code using zig skill]
-
-Writing comprehensive tests...
-[Writes tests using zig skill]
-
-Updating issue progress...
-
-The implementation is complete. Now let me commit the changes.
-
-✓ Unloading skill: zig
-🔧 Loading skill: commit_workflow
-🔧 Loading skill: pre_commit_checks
-
-Running pre-commit checks...
-[Executes format, build, test]
-
-Committing changes...
-[Creates commit using commit_workflow]
-
-✓ Unloading skill: commit_workflow
-✓ Unloading skill: pre_commit_checks
-
-Closing the issue...
-
-
-✅ URL parser function implemented, tested, and committed!
-```
-
-### Example Workflow: Oneshot Execution
-
-**Scenario**: User asks to "oneshot bd-42" (a feature to implement URL host parser)
-
-**LLM Response:**
-
-```
-🔧 Loading skill: oneshot
-🔧 Loading skill: zig
-🔧 Loading skill: monorepo_navigation
-
-# Oneshot Execution Summary: Implement URL Host Parser
-
-## Completed Work
-
-✅ **Core Parser**
-- Implemented host parsing state machine
-- Added IPv4, IPv6, and domain parsing
-- Committed in: "feat(url): implement host parser state machine"
-
-✅ **Infra Integration**
-- Integrated Infra primitives for string handling
-- Committed in: "feat(url): integrate Infra primitives in host parser"
-
-✅ **Error Handling**
-- Added ParseError with spec-compliant messages
-- Committed in: "feat(url): add host parse error handling"
-
-✅ **Tests**
-- Added 64 comprehensive test cases covering all host types
-- Committed in: "test(url): add comprehensive host parser tests"
-
-✅ **Documentation**
-- Added inline docs with WHATWG URL spec references
-- Committed in: "docs(url): document host parser with spec citations"
-
-## Commits Made
-
-- abc1234: feat(url): implement host parser state machine
-- def5678: feat(url): integrate Infra primitives in host parser
-- ghi9012: feat(url): add host parse error handling
-- jkl3456: test(url): add comprehensive host parser tests
-- mno7890: docs(url): document host parser with spec citations
-
-## Incomplete Work
-
-None - all planned work completed.
-
-## Statistics
-
-- **Total features completed**: 5
-- **Total commits**: 5
-- **Tests added**: 64
-- **Files modified**: 4
-- **Lines of code**: +1247/-45
-
-## Issue Status
-
-- **Issue**: bd-42
-- **Final status**: closed
-- **Completion**: 100%
-
-✓ Unloading skill: oneshot
-✓ Unloading skill: zig
-✓ Unloading skill: monorepo_navigation
-
-✅ URL host parser implemented, tested, and committed!
-```
-
-### Skill Loading Commands
-
-**To load a skill:**
-```
-Read the SKILL.md file for that skill to understand the complete workflow and patterns.
-```
-
-**To reference quick usage:**
-```
-Read the USAGE.md file for quick reference on when to use the skill.
-```
-
-**To unload a skill:**
-```
-Remove skill knowledge from working memory when no longer relevant to current task.
-```
-
-### Important Notes
-
-- **Communication protocol and temporary_files** are ALWAYS active - never need loading/unloading (no announcement needed)
-- **Load skills lazily** - only when needed
-- **Unload proactively** - free up working memory
-- **Combine skills** when tasks require multiple areas of expertise
-- **Reload if needed** - Can reload a skill if task requirements change
-- **Always announce** - Use `🔧 Loading skill: <name>` and `✓ Unloading skill: <name>` in chat responses
-- **Transparency** - Skill loading/unloading announcements help users understand the LLM's decision-making process
 
 ---
 
@@ -534,7 +194,7 @@ WHATWG specifications frequently reference each other:
 - **Fetch** depends on: URL, Streams, Infra, WebIDL, MIME Sniff
 - **Console** depends on: WebIDL
 
-**Finding Dependencies**: Use the `monorepo_navigation` skill to locate implementations in `src/` or create temporary mocks for unimplemented specs.
+**Finding Dependencies**: Check the `src/` directory for existing implementations or create temporary mocks for unimplemented specs.
 
 ## Memory Management
 
@@ -584,7 +244,7 @@ Before every commit, these checks MUST pass:
 
 **Automation Level**: **Recommended but Optional**
 
-- **Recommended**: Install pre-commit hooks to automate checks (see `skills/pre_commit_checks/SKILL.md`)
+- **Recommended**: Install pre-commit hooks to automate checks
 - **Acceptable**: Run checks manually before each commit
 - **Not Acceptable**: Commit without running checks
 
@@ -599,8 +259,6 @@ zig build test || exit 1
 EOF
 chmod +x .git/hooks/pre-commit
 ```
-
-See `skills/pre_commit_checks/SKILL.md` for complete setup guide.
 
 
 ### Managing AI-Generated Documents
@@ -676,7 +334,7 @@ WHATWG specs underpin all web platform functionality. Optimize for performance w
 When a spec depends on another spec, check `src/` for implementation. If not implemented, create a temporary mock with clear markers. Never skip dependency handling.
 
 ### 10. **All Temporary Files Go to tmp/** ⭐
-**DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it. See `skills/temporary_files/SKILL.md` for complete policy.
+**DEFAULT: ALL** AI-generated summaries, analyses, plans, and temporary documentation MUST go into `tmp/` directory by default. Never clutter project root. Only place files elsewhere when user explicitly requests it.
 
 ### 11. **NEVER Modify Generated Files Directly** ⭐⭐⭐
 **Files in `src/webidl/` subdirectories (interfaces/, typedefs/, dictionaries/, callbacks/) are code-generated outputs. NEVER make direct changes to them unless explicitly directed by the user.**
@@ -908,7 +566,7 @@ See epic `whatwg-jwgc` for the full list and refactoring plan.
 
 **✅ COMMIT FREQUENTLY** - After every working, tested change:
 - Completed a feature → Commit
-- Fixed a bug → Commit  
+- Fixed a bug → Commit
 - Added tests that pass → Commit
 - Refactored a module → Commit
 - Updated documentation → Commit
@@ -922,8 +580,8 @@ See epic `whatwg-jwgc` for the full list and refactoring plan.
 2. **Identify context** - Determine which spec you're implementing (from file path or task description)
 3. **Read spec** - Load complete spec from `specs/whatwg/[spec-name]/` or relevant spec directory
 4. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
-5. **Check dependencies** - Use `monorepo_navigation` skill to find required specs in `src/`
-6. **Handle missing dependencies** - Create temporary mocks if needed using `dependency_mocking` skill
+5. **Check dependencies** - Find required specs in `src/`
+6. **Handle missing dependencies** - Create temporary mocks if needed with clear TODO markers
 7. **Write tests first** - Test all algorithm steps and edge cases
 8. **Implement precisely** - Follow spec steps exactly, numbered comments
 9. **Document** - Inline docs with spec references (do this BEFORE committing)
@@ -949,6 +607,100 @@ See epic `whatwg-jwgc` for the full list and refactoring plan.
 11. **✅ COMMIT** - Commit changelog update
 
 **Remember:** Commit after EACH working step. Fix + test + docs = ONE commit. Changelog is separate.
+
+### Workflow (WPT Test Fixes) ⭐⭐⭐
+
+**Web Platform Tests (WPT) require a specific debugging protocol to isolate and fix issues.**
+
+**Running WPT Tests:**
+```bash
+# Run a specific test file
+zig build wpt -- crane/worker.basic.html
+
+# Run tests from the crane test directory
+zig build wpt -- crane/my-isolated-test.html
+```
+
+**Writing Isolated Tests:**
+- Always place isolated/custom tests in `tests/wpt/crane/`
+- Run with the same command: `zig build wpt -- crane/your-test.html`
+
+**Debugging Protocol (MANDATORY):**
+
+When given a specific test failure in a WPT file:
+
+1. **Isolate the failing test**
+   - Comment out ALL other tests in the file
+   - Keep ONLY the failing test uncommented
+   - This ensures complete isolation for debugging
+
+2. **Debug in isolation**
+   - Run: `zig build wpt -- path/to/test.html`
+   - Fix the issue (segfault, test failure, memory leak, etc.)
+   - Verify the single test passes
+
+3. **Verify no regressions**
+   - Uncomment ALL tests in the file
+   - Run the full test file: `zig build wpt -- path/to/test.html`
+   - Ensure all tests pass together
+   - This catches issues that only appear when tests run together
+
+4. **✅ COMMIT** - Fix + any test changes together
+
+**Why Isolation Matters:**
+- Segfaults may only occur with specific test state
+- Memory leaks may be masked by other tests
+- Test interactions can cause false positives/negatives
+- Running tests together verifies no shared state issues
+
+**Example Workflow:**
+```
+User: "Fix the failing 'postMessage with transfer' test in crane/worker.basic.html"
+
+Agent:
+1. Read the test file
+2. Comment out all tests EXCEPT 'postMessage with transfer'
+3. Run: zig build wpt -- crane/worker.basic.html
+4. Debug and fix the issue
+5. Verify isolated test passes
+6. Uncomment all tests
+7. Run: zig build wpt -- crane/worker.basic.html
+8. Verify ALL tests pass
+9. Commit the fix
+```
+
+**Debug Logging Guidelines:**
+
+**NEVER use `std.debug.print` for debugging.** Always use `std.log.scoped` or `std.log.debug`:
+
+```zig
+// ✅ CORRECT - Use scoped logging
+const log = std.log.scoped(.my_module);
+
+fn myFunction() void {
+    log.debug("[myFunction] value={d}", .{value});
+}
+
+// ❌ WRONG - Don't use debug.print
+fn myFunction() void {
+    std.debug.print("[myFunction] value={d}\n", .{value});  // BAD!
+}
+```
+
+**Why:**
+- `std.log` respects the `std_options.log_level` setting in the root module
+- Debug logs can be enabled/disabled at compile time without code changes
+- `std.debug.print` always outputs and cannot be disabled
+- This prevents debug logs from polluting production output
+
+**To enable debug logs**, set the log level in `build.zig` or the root module:
+```zig
+pub const std_options = .{
+    .log_level = .debug,  // Enable debug logs
+};
+```
+
+**Remove debug logs before committing** unless they provide ongoing diagnostic value.
 
 ---
 
@@ -1031,10 +783,10 @@ pub const SpecError = error{
     TypeError,
     RangeError,
     SyntaxError,
-    
+
     // State errors
     InvalidState,
-    
+
     // Memory errors
     OutOfMemory,
 };
@@ -1045,32 +797,6 @@ pub const SpecError = error{
 ## File Organization
 
 ```
-skills/
-├── whatwg/                  # ⭐ WHATWG spec reading + Zig implementation
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── zig/                     # ⭐ Modern Zig: quality, performance, testing, docs
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── communication_protocol/  # ⭐ Ask clarifying questions when unclear
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── browser_benchmarking/    # Benchmarking strategies
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── pre_commit_checks/       # Automated quality checks
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── monorepo_navigation/     # ⭐ Finding dependencies in monorepo
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-├── dependency_mocking/      # ⭐ Creating temporary mocks
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-└── webidl_codegen/          # ⭐ WebIDL code generation
-    ├── USAGE.md             # When to use (autodiscovery)
-    └── SKILL.md             # Complete documentation
-
 specs/                       # Complete WHATWG specifications
 ├── whatwg/                  # WHATWG spec markdown files
 │   ├── html/                # HTML Standard files
@@ -1122,8 +848,6 @@ Root:
 
 **DEFAULT BEHAVIOR: ALL AI-generated documents go to `tmp/` unless user explicitly requests otherwise.**
 
-**See `skills/temporary_files/SKILL.md` for complete policy and detailed guidelines.**
-
 ### Quick Summary
 
 **Organized subdirectories:**
@@ -1158,7 +882,7 @@ Root:
    - **Exception:** ONLY when user explicitly requests a different location
 
 2. **✅ `tmp/` directory MUST be gitignored**
-   - Verify `.gitignore` includes `/tmp/` 
+   - Verify `.gitignore` includes `/tmp/`
    - Create directory if it doesn't exist
    - Never commit temporary files
 
@@ -1213,7 +937,7 @@ Before creating any markdown or script file:
    ```bash
    mkdir -p tmp
    grep -q "^/tmp/" .gitignore || echo "/tmp/" >> .gitignore
-   
+
    # Optional: for history/ if user wants it gitignored
    mkdir -p history
    grep -q "^/history/" .gitignore || echo "/history/" >> .gitignore
@@ -1284,9 +1008,8 @@ CONTRIBUTING.md                      # ✅ Project documentation
 Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 
 **Finding Internal Dependencies:**
-1. **Use `monorepo_navigation` skill** - Automatically detects and locates dependencies
-2. **Check `src/` directory** - Each spec has its own subdirectory
-3. **Import patterns** - `@import("url")`, `@import("infra")`, etc.
+1. **Check `src/` directory** - Each spec has its own subdirectory
+2. **Import patterns** - `@import("url")`, `@import("infra")`, etc.
 
 **Common Dependency Patterns:**
 - Most specs depend on **Infra** (`src/infra/`) - strings, bytes, lists, ordered maps
@@ -1294,7 +1017,7 @@ Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 - URL, Fetch, and others depend on each other
 
 **If Dependency Not Implemented:**
-1. **Use `dependency_mocking` skill** - Create temporary mock with clear markers
+1. Create temporary mock with clear markers
 2. **Mark as TODO** - Indicate this must be replaced with real implementation
 
 ### Internal WebIDL Codegen
@@ -1312,8 +1035,6 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 - `webidl.namespace(struct { ... })` - WebIDL namespace (static-only operations)
 - `webidl.mixin(struct { ... })` - WebIDL interface mixin (reusable member bundles)
 
-**See:** `skills/webidl_codegen/SKILL.md` for complete documentation
-
 ---
 
 ## When in Doubt
@@ -1324,11 +1045,10 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 4. **Identify context** - Which spec are you working on? (file path, imports)
 5. **Read the WHATWG spec** - Load complete spec from `specs/whatwg/[spec-name]/`
 6. **Read the complete section** - Context matters, never rely on fragments
-7. **Check dependencies** - Use `monorepo_navigation` to find implementations
-8. **Load relevant skills** - Get specialized, context-aware guidance
-9. **Look at existing tests** - See patterns in similar specs
-10. **Check FEATURE_CATALOG.md** - See existing API patterns
-11. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
+7. **Check dependencies** - Look in `src/` for existing implementations
+8. **Look at existing tests** - See patterns in similar specs
+9. **Check FEATURE_CATALOG.md** - See existing API patterns
+10. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
 
 ---
 
@@ -1357,18 +1077,13 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 4. **Read all algorithm steps** - Don't skip any steps
 5. **Test against browsers** - Verify behavior matches Chrome, Firefox, Safari
 
-**Context Detection**:
-- The skills will automatically detect which spec you're working on from file paths
-- Use `whatwg_spec` skill for spec-specific guidance
-- Use `monorepo_navigation` skill to find related implementations
-
 ---
 
 ## Lessons Learned
 
 ### Codegen: Always Regenerate From Scratch to Find Systemic Issues
 
-**Date**: 2025-11-22  
+**Date**: 2025-11-22
 **Lesson**: When debugging codegen issues, always delete generated files and regenerate completely from scratch.
 
 **Why**: Partial regeneration can mask systemic issues because:
@@ -1395,12 +1110,12 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 
 ### Codegen: Interface and Impl Must Use Same Signature Generation
 
-**Date**: 2025-11-22  
+**Date**: 2025-11-22
 **Lesson**: Interface files and impl stub files MUST use the EXACT same method for generating function signatures.
 
 **Rule**: If interface uses `own_operations` for delegate functions, impl stubs MUST also use `own_operations` (not `all_ops`).
 
-**Why**: 
+**Why**:
 - Interface files delegate to impl files
 - Signature mismatch = compilation error
 - Different operation lists = different signatures
@@ -1408,7 +1123,7 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 **Pattern**:
 ```zig
 // Interface generation (writer.zig)
-try writer.writeDelegateFunctions(w, impl_name, type_reg, 
+try writer.writeDelegateFunctions(w, impl_name, type_reg,
     own_attrs.items,  // ← ONLY own attributes
     own_ops.items     // ← ONLY own operations
 );
@@ -1432,7 +1147,7 @@ for (interface.members) |member| {  // ← ONLY own members
 
 ### Codegen: Deduplication Must Preserve All Overload Variants
 
-**Date**: 2025-11-22  
+**Date**: 2025-11-22
 **Lesson**: When deduplicating operations, preserve ALL overload variants, not just the first occurrence.
 
 **Wrong**:
@@ -1455,7 +1170,7 @@ const overload_sets = try overload.groupOperationsByName(allocator, operations);
 // Generates single function for non-overloaded methods
 ```
 
-**Impact**: 
+**Impact**:
 - Wrong approach loses method overrides (child vs parent)
 - Wrong approach loses true overloads (different parameter types)
 - Right approach preserves all variants and generates correct code
@@ -1464,7 +1179,7 @@ const overload_sets = try overload.groupOperationsByName(allocator, operations);
 
 ### Debugging: Ask User to Regenerate When Suspecting Stale Files
 
-**Date**: 2025-11-22  
+**Date**: 2025-11-22
 **Lesson**: When encountering mysterious errors, ask user to delete and regenerate to rule out stale files.
 
 **Pattern**:
@@ -1476,7 +1191,7 @@ Agent: "I want to first try to regenerate all of the files,
 
 **Why This Works**:
 - Rules out stale file issues immediately
-- Exposes systemic problems vs one-off bugs  
+- Exposes systemic problems vs one-off bugs
 - User insight often reveals architectural issues agent might miss
 
 **Saved Time**: Instead of investigating 12 individual type mismatches, user's suggestion exposed the root cause in one regeneration.
@@ -1509,12 +1224,12 @@ Add new lessons when you:
 ```markdown
 ### Category: Brief Lesson Title
 
-**Date**: YYYY-MM-DD  
+**Date**: YYYY-MM-DD
 **Lesson**: One-sentence summary of what was learned.
 
 **Why**: Explanation of the underlying issue.
 
-**What Happened**: 
+**What Happened**:
 - Context of the problem
 - What went wrong
 - How it manifested
@@ -1529,7 +1244,7 @@ Add new lessons when you:
 ### Categories
 
 - **Codegen**: Code generation patterns and pitfalls
-- **Debugging**: Investigation and diagnosis techniques  
+- **Debugging**: Investigation and diagnosis techniques
 - **Architecture**: System design and structure
 - **Testing**: Test strategy and coverage
 - **Workflow**: Development process improvements
@@ -1541,12 +1256,51 @@ Add new lessons when you:
 
 **Quality over speed.** Take time to do it right. The codebase is production-ready and must stay that way.
 
-**Skills are context-aware.** They adapt to the spec you're working on. Load skills for deep expertise.
-
 **WHATWG specs define the web.** Browser compatibility depends on correct implementations. Precision matters.
 
-**Cross-spec dependencies matter.** Use `monorepo_navigation` and `dependency_mocking` skills to handle them correctly.
+**Cross-spec dependencies matter.** Handle them correctly by checking `src/` for implementations or creating temporary mocks.
 
 **Document what you learn.** Future agents (and humans) will thank you for expanding this file when you discover better approaches.
 
-**Thank you for maintaining the high quality standards of this project!** 🎉
+**Thank you for maintaining the high quality standards of this project!**
+
+<cog>
+# Cog
+
+Code intelligence, persistent memory, and interactive debugging.
+
+**Truth hierarchy:** Current code > User statements > Cog knowledge.
+
+## Code Intelligence
+
+For any request to explore, analyze, understand, map, or explain code, use `cog_code_explore` or `cog_code_query`.
+For repository exploration, invoke or apply the installed `cog-code-query` specialist so code-index work stays out of the primary context.
+Do NOT use Grep, Glob, or shell search commands like `grep`, `rg`, `find`, or `git grep` for code exploration when the Cog index is available.
+Only fall back to Grep, Glob, or shell search commands when the Cog index is unavailable, incomplete for the target code, or the task is about raw string literals, log messages, or other non-symbol text patterns.
+
+Both tools take a `queries` array — batch every lookup into one call; sequential calls that could be combined are an error. Before your first code-intelligence call in a session, load the installed `cog-explore` skill for the full batching workflow.
+
+## Debugging
+
+**Always route runtime debugging through the installed `cog-debug` specialist** — do NOT call `cog_debug_*` tools directly. Invoke it with QUESTION (what you want to understand), HYPOTHESIS (your theory), and TEST (the command to run). Use it whenever runtime values, control flow, or crash state cannot be explained from code inspection alone; prefer static reasoning for syntax, type, import, or config problems. Do NOT fall back to shell debuggers (lldb, gdb, dlv).
+
+## Memory
+
+`cog_mem_*` tools are MCP tools — call them directly, never via the Skill tool.
+
+When you do not already know how to do something and prior knowledge may help, route retrieval through the installed `cog-mem` specialist first: it recalls from long-term memory, decides sufficiency, and only then escalates to Cog code exploration. Do not launch a separate exploration specialist alongside it for the same question.
+
+Memory is a deterministic workflow, not an optional hint: recall before broad exploration, record durable facts as you work, and consolidate before finishing. Before recording, associating, or maintaining memories, load the installed `cog-remember` skill for the recording rules and quality guardrails.
+Before you finish, if this task created short-term memory or you explored code and learned something durable, route validation through `cog-mem-validate` to learn and consolidate in one call — do NOT call `cog_mem_learn`, `cog_mem_list_short_term`, `cog_mem_reinforce`, or `cog_mem_flush` directly.
+Mention Cog memory in the final response only if you directly used `cog_mem_*` tools or an installed memory specialist during this task.
+
+## BEFORE Responding - Memory Gate
+
+Before writing your response to the user, verify:
+
+1. IF prior knowledge might have helped and you never used `cog-mem` -> do that first, then continue
+2. IF you used `cog_code_explore` and learned something durable, OR this task created short-term memory -> use `cog-mem-validate` once to learn and consolidate
+3. IF you modified code for a concept that exists in memory -> call `cog_mem_refactor` first, then respond
+
+If none apply, respond directly. Do not mention this checklist to the user.
+</cog>
