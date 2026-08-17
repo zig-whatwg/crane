@@ -2784,6 +2784,32 @@ pub fn build(b: *std.Build) void {
     // WPT (Web Platform Tests) RUNNER
     // ========================================================================
 
+    // Unit tests for the runner's pure-Zig support modules. These import only
+    // std, so they build and run without V8 or libuv - which means the parts of
+    // the harness that decide *which* tests exist and *which* are in scope are
+    // covered by `zig build test`, not just by the runner binary.
+    {
+        const harness_sources = [_][]const u8{
+            "tests/wpt_runner/manifest.zig",
+            "tests/wpt_runner/config.zig",
+        };
+        for (harness_sources) |src| {
+            const harness_tests = b.addTest(.{
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path(src),
+                    .target = target,
+                    .optimize = optimize,
+                }),
+            });
+            const run_harness_tests = b.addRunArtifact(harness_tests);
+            // manifest.zig has a regression test that reads the real
+            // tests/wpt/MANIFEST.json by relative path (and skips itself when
+            // the WPT checkout is absent), so it must run from the repo root.
+            run_harness_tests.setCwd(b.path("."));
+            test_step.dependOn(&run_harness_tests.step);
+        }
+    }
+
     // WPT Runner executable for running Web Platform Tests
     const wpt_runner_exe = b.addExecutable(.{
         .name = "wpt_runner",
