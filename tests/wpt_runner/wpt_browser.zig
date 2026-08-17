@@ -307,6 +307,12 @@ pub const WptBrowser = struct {
             .origin = origin,
         };
 
+        // Phase clocks. `waitForCompletion` measures itself, but on a page of
+        // synchronous subtests it starts after the work is already done, so on
+        // its own it makes the most expensive files look free. Timing the two
+        // phases ahead of it is what makes the per-file cost add up.
+        var phase = std.time.Timer.start() catch null;
+
         // Navigate to test URL with skip_load so we can inject testharness first
         try self.browser.navigateWithOptions(test_url, context_type, .{
             .skip_load = true,
@@ -326,6 +332,8 @@ pub const WptBrowser = struct {
         // This ensures testharness globals are available when scripts in HTML execute
         try self.loadTestHarness(ctx);
 
+        const nav_ms = lapMs(&phase);
+
         // Now load the page via HTTP - this will fetch, parse HTML, and execute scripts
         // The script loader handles external script loading (also via HTTP for absolute URLs)
         ctx.loadPageWithOptions(.{
@@ -337,14 +345,31 @@ pub const WptBrowser = struct {
             var result = try test_harness.TestResult.init(self.allocator, test_path);
             result.status = .@"error";
             result.message = try std.fmt.allocPrint(self.allocator, "Page load error: {}", .{err});
+            result.nav_ms = nav_ms;
+            result.load_ms = lapMs(&phase);
             return result;
         };
 
+        const load_ms = lapMs(&phase);
+
         // Run event loop until test completes or timeout
-        const result = try self.waitForCompletion(ctx, timeout_ms, test_path);
+        var result = try self.waitForCompletion(ctx, timeout_ms, test_path);
+        result.nav_ms = nav_ms;
+        result.load_ms = load_ms;
 
         self.tests_run += 1;
         return result;
+    }
+
+    /// Milliseconds since the timer was last lapped, and reset it.
+    ///
+    /// Null timers report zero rather than failing the run: losing a phase
+    /// breakdown is not worth losing a test result over.
+    fn lapMs(timer: *?std.time.Timer) u64 {
+        // Capture by pointer: `timer.* orelse ...` would lap a copy and the
+        // next phase would be measured from the wrong origin.
+        if (timer.*) |*t| return t.lap() / std.time.ns_per_ms;
+        return 0;
     }
 
     /// Script loader context for HTML parsing

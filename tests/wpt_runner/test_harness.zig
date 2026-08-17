@@ -163,8 +163,17 @@ pub const TestResult = struct {
     allocator: std.mem.Allocator,
     /// Overall message (error message if status is ERROR)
     message: ?[]const u8 = null,
-    /// Duration in milliseconds
+    /// Milliseconds spent waiting for the page to signal `__wpt_complete`.
+    ///
+    /// A page whose scripts are all synchronous has already finished by the
+    /// time this clock starts, so this being near zero says nothing about how
+    /// long the file took. See `nav_ms` and `load_ms` for the rest of it.
     duration_ms: u64 = 0,
+    /// Milliseconds spent creating the V8 context and installing testharness.js.
+    nav_ms: u64 = 0,
+    /// Milliseconds spent fetching the page, parsing it, and running its
+    /// scripts to the end of the document.
+    load_ms: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator, test_path: []const u8) !TestResult {
         return TestResult{

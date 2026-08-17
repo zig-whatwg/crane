@@ -827,12 +827,14 @@ const FileTally = struct {
     timed_out: usize = 0,
     notrun: usize = 0,
     duration_ms: u64 = 0,
+    nav_ms: u64 = 0,
+    load_ms: u64 = 0,
     contexts: usize = 0,
     /// Wall clock across everything this file cost, started at the top of the
     /// loop so loading and parsing are inside it. `duration_ms` cannot serve
-    /// this purpose: it only sums what individual subtests reported, so a file
-    /// that failed before any subtest finished scores as free however long it
-    /// actually took.
+    /// this purpose: it only covers the wait for `__wpt_complete`, and a page
+    /// whose subtests are synchronous has already run them all before that wait
+    /// begins - so the most expensive files in the corpus score near zero on it.
     timer: ?std.time.Timer = null,
 
     fn start() FileTally {
@@ -847,6 +849,8 @@ const FileTally = struct {
     fn add(self: *FileTally, result: test_harness.TestResult) void {
         self.contexts += 1;
         self.duration_ms += result.duration_ms;
+        self.nav_ms += result.nav_ms;
+        self.load_ms += result.load_ms;
 
         // Worst status across contexts wins - a file that errored in one global
         // has not passed, however well it did in the others.
@@ -877,6 +881,8 @@ const FileTally = struct {
             .timed_out = self.timed_out,
             .notrun = self.notrun,
             .duration_ms = self.duration_ms,
+            .nav_ms = self.nav_ms,
+            .load_ms = self.load_ms,
             .wall_ms = self.wallMs(),
         });
     }

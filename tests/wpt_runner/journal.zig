@@ -73,14 +73,33 @@ pub const Record = struct {
     failed: usize = 0,
     timed_out: usize = 0,
     notrun: usize = 0,
-    /// Sum of the durations the harness reported for this file's subtests.
+    /// Time spent waiting for the page to signal `__wpt_complete`, summed over
+    /// every context of this file.
     ///
-    /// This is *not* how long the file took. A subtest that never finished is
-    /// never charged, and nothing outside a subtest - navigation, context
-    /// construction, teardown - is charged at all. Use `wall_ms` for cost.
+    /// This is *not* how long the file took, and it is not subtest time either:
+    /// a classic `<script>` runs to completion while the HTML is being parsed,
+    /// so a file whose subtests are all synchronous can register and run every
+    /// one of them before this clock even starts. Zero here means the page was
+    /// already finished on arrival, not that it was free. Use `wall_ms` for cost.
     duration_ms: u64 = 0,
+    /// Time spent creating the V8 context and installing testharness.js, summed
+    /// over every context of this file.
+    ///
+    /// Zero in journals written before this field existed.
+    nav_ms: u64 = 0,
+    /// Time spent fetching the page, parsing it, and running its scripts to the
+    /// end of the document, summed over every context of this file.
+    ///
+    /// For a file of synchronous subtests this is where nearly all of the real
+    /// work lands, which is why it is broken out from `duration_ms`.
+    ///
+    /// Zero in journals written before this field existed.
+    load_ms: u64 = 0,
     /// Wall-clock time the runner spent on this file, measured around every
-    /// context of it. `wall_ms - duration_ms` is the per-file overhead.
+    /// context of it, so it covers the phases above plus teardown and the
+    /// runner's own per-file bookkeeping.
+    ///
+    /// `wall_ms - nav_ms - load_ms - duration_ms` is what nothing else claims.
     ///
     /// Zero in journals written before this field existed.
     wall_ms: u64 = 0,
@@ -121,8 +140,11 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
     try writeJsonString(w, rec.status.toString());
     try w.print(
         ",\"passed\":{d},\"failed\":{d},\"timed_out\":{d},\"notrun\":{d}" ++
-            ",\"duration_ms\":{d},\"wall_ms\":{d}",
-        .{ rec.passed, rec.failed, rec.timed_out, rec.notrun, rec.duration_ms, rec.wall_ms },
+            ",\"duration_ms\":{d},\"nav_ms\":{d},\"load_ms\":{d},\"wall_ms\":{d}",
+        .{
+            rec.passed,      rec.failed, rec.timed_out, rec.notrun,
+            rec.duration_ms, rec.nav_ms, rec.load_ms,   rec.wall_ms,
+        },
     );
     if (rec.message) |msg| {
         try w.writeAll(",\"message\":");
@@ -307,6 +329,8 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
             .timed_out = jsonUint(obj, "timed_out"),
             .notrun = jsonUint(obj, "notrun"),
             .duration_ms = jsonUint(obj, "duration_ms"),
+            .nav_ms = jsonUint(obj, "nav_ms"),
+            .load_ms = jsonUint(obj, "load_ms"),
             .wall_ms = jsonUint(obj, "wall_ms"),
             .message = message,
         });
@@ -354,6 +378,8 @@ fn expectRoundTrip(rec: Record) !void {
     try std.testing.expectEqual(rec.timed_out, got.timed_out);
     try std.testing.expectEqual(rec.notrun, got.notrun);
     try std.testing.expectEqual(rec.duration_ms, got.duration_ms);
+    try std.testing.expectEqual(rec.nav_ms, got.nav_ms);
+    try std.testing.expectEqual(rec.load_ms, got.load_ms);
     try std.testing.expectEqual(rec.wall_ms, got.wall_ms);
     if (rec.message) |want| {
         try std.testing.expectEqualStrings(want, got.message.?);
@@ -378,31 +404,32 @@ test "a record survives a write/parse round trip" {
     });
 }
 
-test "wall time is recorded even when no subtest reported a duration" {
-    // `duration_ms` is a sum over harness-reported subtest times, so it is 0 on
-    // every path where the harness never finished a test: load failures, parse
-    // failures, and errors raised before the first subtest completed. Those are
-    // precisely the files worth measuring, and reading `duration_ms` as "time
-    // spent on this file" silently scores them as free.
+test "wall time is recorded even when the page finished before we waited" {
+    // `duration_ms` only covers the wait for `__wpt_complete`, so it is ~0 on
+    // every file whose scripts are synchronous: they run during parsing and the
+    // page is already complete when the wait begins. Those are precisely the
+    // expensive files, and reading `duration_ms` as "time spent on this file"
+    // silently scores them as free.
     //
     // `wall_ms` is measured by the runner around the whole file, so it is
-    // non-zero whenever real time passed. The gap between the two is the
-    // per-file overhead - navigation, context construction, teardown - that no
-    // subtest is ever charged for.
+    // non-zero whenever real time passed. This record is a real one, from
+    // `encoding/`: 21,269 subtests registered, none run, three minutes gone,
+    // and one millisecond of it on the clock that looks like it should know.
     try expectRoundTrip(.{
         .index = 12,
-        .path = "encoding/legacy-mb-korean/euckr-encode-href-errors-han.html",
+        .path = "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-form-errors-han.html",
         .status = .@"error",
-        .notrun = 11_183,
-        .duration_ms = 0,
-        .wall_ms = 19_710,
-        .message = "harness did not start",
+        .notrun = 21_269,
+        .duration_ms = 1,
+        .nav_ms = 244,
+        .load_ms = 183_208,
+        .wall_ms = 183_453,
     });
 }
 
-test "an older journal without wall_ms still parses" {
+test "an older journal without the timing fields still parses" {
     // Journals are read back by `--resume` and by the scoreboard, both of which
-    // must keep working against files written before this field existed.
+    // must keep working against files written before these fields existed.
     const allocator = std.testing.allocator;
 
     const line =
@@ -414,7 +441,35 @@ test "an older journal without wall_ms still parses" {
 
     try std.testing.expectEqual(@as(usize, 1), log.records.len);
     try std.testing.expectEqual(@as(u64, 5), log.records[0].duration_ms);
+    try std.testing.expectEqual(@as(u64, 0), log.records[0].nav_ms);
+    try std.testing.expectEqual(@as(u64, 0), log.records[0].load_ms);
     try std.testing.expectEqual(@as(u64, 0), log.records[0].wall_ms);
+}
+
+test "the phases sum to no more than the wall clock" {
+    // The point of splitting the phases is that they account for the wall time.
+    // If they ever oversubscribe it, some interval is being counted twice and
+    // every conclusion drawn from the split is wrong by that much.
+    const allocator = std.testing.allocator;
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try writeRecord(&out.writer, .{
+        .index = 0,
+        .path = "encoding/legacy-mb-japanese/iso-2022-jp/iso2022jp-encode-href-errors-han.html",
+        .status = .ok,
+        .failed = 21_269,
+        .duration_ms = 152_277,
+        .nav_ms = 251,
+        .load_ms = 30_402,
+        .wall_ms = 182_947,
+    });
+
+    var log = try parseLines(allocator, out.written());
+    defer log.deinit();
+
+    const rec = log.records[0];
+    try std.testing.expect(rec.nav_ms + rec.load_ms + rec.duration_ms <= rec.wall_ms);
 }
 
 test "record strings are JSON-escaped" {
