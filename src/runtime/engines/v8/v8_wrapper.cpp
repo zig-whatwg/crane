@@ -6225,57 +6225,6 @@ Global<Value>* v8_Function_Call(
         local_argv[i] = argv[i]->Get(isolate);
     }
 
-    // DEBUG: Print argument info for MessageEvent callbacks
-    if (argc == 1 && local_argv[0]->IsObject()) {
-        Local<Object> arg_obj = local_argv[0].As<Object>();
-        Local<String> constructor_name = arg_obj->GetConstructorName();
-        String::Utf8Value name_utf8(isolate, constructor_name);
-        if (strcmp(*name_utf8, "MessageEvent") == 0) {
-            // Print function name/source
-            Local<String> fn_name = fn->GetName().As<String>();
-            if (!fn_name.IsEmpty()) {
-                String::Utf8Value fn_name_str(isolate, fn_name);
-                fprintf(stderr, "[v8_Function_Call] MessageEvent callback fn_name='%s'\n", *fn_name_str);
-            }
-
-            // Try to get toString
-            MaybeLocal<String> maybe_fn_str = fn->ToString(ctx);
-            if (!maybe_fn_str.IsEmpty()) {
-                String::Utf8Value fn_str(isolate, maybe_fn_str.ToLocalChecked());
-                const char* fn_cstr = *fn_str;
-                // Only print first 300 chars
-                char fn_preview[310];
-                strncpy(fn_preview, fn_cstr, 300);
-                fn_preview[300] = '\0';
-                fprintf(stderr, "[v8_Function_Call] MessageEvent callback fn='%s...'\n", fn_preview);
-            }
-
-            // Try to access 'data' property
-            MaybeLocal<Value> data_val = arg_obj->Get(ctx, String::NewFromUtf8Literal(isolate, "data"));
-            if (data_val.IsEmpty()) {
-                fprintf(stderr, "[v8_Function_Call] ERROR: MessageEvent.data access returned empty!\n");
-            } else {
-                Local<Value> data = data_val.ToLocalChecked();
-                if (data->IsString()) {
-                    String::Utf8Value data_str(isolate, data);
-                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = '%s'\n", *data_str);
-                } else if (data->IsUndefined()) {
-                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = undefined\n");
-                } else if (data->IsNull()) {
-                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = null\n");
-                } else if (data->IsNumber()) {
-                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = %f\n", data->NumberValue(ctx).FromMaybe(0.0));
-                } else if (data->IsObject()) {
-                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = [object]\n");
-                } else if (data->IsArray()) {
-                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = [array]\n");
-                } else {
-                    fprintf(stderr, "[v8_Function_Call] MessageEvent.data = [other type]\n");
-                }
-            }
-        }
-    }
-
     // Call the function
     TryCatch try_catch(isolate);
     MaybeLocal<Value> maybe_result = fn->Call(ctx, this_val, argc, local_argv);

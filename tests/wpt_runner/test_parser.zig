@@ -105,24 +105,27 @@ pub const GlobalType = enum {
         };
     }
 
-    /// Check if this context type is implemented and can execute tests
+    /// Whether a test declaring this global should actually be run.
     ///
-    /// NOTE: Worker context is marked as not implemented because:
-    /// 1. Worker tests require fetch_tests_from_worker infrastructure from testharness.js
-    /// 2. The Worker constructor doesn't fully spawn workers with message passing
-    /// 3. Worker tests timeout waiting for worker communication that doesn't happen
-    ///
-    /// Worker support can be re-enabled when:
-    /// - Worker constructor properly spawns V8 workers
-    /// - postMessage/onmessage work between main and worker contexts
-    /// - fetch_tests_from_worker function is available or polyfilled
+    /// A global that is off here is skipped outright rather than reported as a
+    /// failure, so this is a claim about infrastructure, not about any
+    /// particular test. Turning one on before its plumbing exists converts a
+    /// silent skip into a wall of timeouts, each costing the full test timeout
+    /// in wall clock; the bar for flipping one is that the harness can get
+    /// results back out of that global at all.
     pub fn isImplemented(self: GlobalType) bool {
         return switch (self) {
             .window => true,
-            // Worker tests are disabled due to incomplete infrastructure
-            // They timeout because fetch_tests_from_worker is not available
-            // and Worker constructor doesn't spawn real workers
-            .worker => false,
+            // The dedicated worker clears that bar: `wpt serve` generates the
+            // `.any.worker.html` wrapper, the Worker constructor spawns a real
+            // thread with its own V8 context, importScripts() pulls
+            // testharness.js into it, and fetch_tests_from_worker() carries the
+            // results back over postMessage.
+            .worker => true,
+            // A shared worker is keyed by name and URL across browsing contexts;
+            // a service worker sits behind a registration and an
+            // install/activate lifecycle. Neither is wired up, so tests in them
+            // would report timeouts rather than results.
             .sharedworker => false,
             .serviceworker => false,
             // All ShadowRealm variants not implemented
@@ -1128,16 +1131,11 @@ test "GlobalType.toString - shadowrealm variants" {
 }
 
 test "GlobalType.isImplemented - shadowrealm returns false" {
-    // Implemented contexts (only window for now)
-    try std.testing.expect(GlobalType.window.isImplemented());
-    // Worker is NOT implemented - requires fetch_tests_from_worker infrastructure
-    try std.testing.expect(!GlobalType.worker.isImplemented());
+    // The non-ShadowRealm globals are covered by the isImplemented tests below;
+    // this one is only about the ShadowRealm family. Note that
+    // `shadowrealm-in-dedicatedworker` stays off even though the dedicated
+    // worker itself is on - the realm inside it is the part that is missing.
 
-    // Not implemented contexts
-    try std.testing.expect(!GlobalType.sharedworker.isImplemented());
-    try std.testing.expect(!GlobalType.serviceworker.isImplemented());
-
-    // All ShadowRealm variants return false
     try std.testing.expect(!GlobalType.shadowrealm.isImplemented());
     try std.testing.expect(!GlobalType.shadowrealm_in_window.isImplemented());
     try std.testing.expect(!GlobalType.shadowrealm_in_dedicatedworker.isImplemented());
@@ -1227,8 +1225,8 @@ test "multi-context: test runs in each specified context" {
         }
     }
 
-    // Only window is implemented (worker disabled due to missing infrastructure)
-    try std.testing.expectEqual(@as(usize, 1), executed_contexts);
+    // Both window and the dedicated worker run this file.
+    try std.testing.expectEqual(@as(usize, 2), executed_contexts);
 }
 
 test "multi-context: unimplemented contexts are skipped" {
@@ -1245,7 +1243,8 @@ test "multi-context: unimplemented contexts are skipped" {
     // Should have 3 globals parsed
     try std.testing.expectEqual(@as(usize, 3), parsed.metadata.globals.items.len);
 
-    // But only 1 implemented (window)
+    // Only window: shared and service workers are separate globals with their
+    // own lifecycles, and neither is wired up yet.
     var implemented: usize = 0;
     for (parsed.metadata.globals.items) |ctx| {
         if (ctx.isImplemented()) {
@@ -1330,9 +1329,37 @@ test "multi-context: counting implemented vs unimplemented contexts" {
         }
     }
 
-    // Only window is implemented (worker disabled due to missing fetch_tests_from_worker)
-    try std.testing.expectEqual(@as(usize, 1), implemented);
-    try std.testing.expectEqual(@as(usize, 4), unimplemented);
+    // window and worker run; sharedworker, serviceworker and shadowrealm do not.
+    try std.testing.expectEqual(@as(usize, 2), implemented);
+    try std.testing.expectEqual(@as(usize, 3), unimplemented);
+}
+
+test "GlobalType.isImplemented - the dedicated worker runs" {
+    // The single largest block of tests we are not running. Of the in-scope WPT
+    // corpus, 28% of URLs are dedicated-worker variants - `foo.worker.html`
+    // from a `.worker.js`, and `foo.any.worker.html` from a `.any.js` - so
+    // leaving this off costs more coverage than every other global combined.
+    try std.testing.expect(GlobalType.worker.isImplemented());
+    try std.testing.expect(GlobalType.window.isImplemented());
+}
+
+test "GlobalType.isImplemented - other worker globals stay off" {
+    // Each of these needs infrastructure the dedicated worker does not: a
+    // registry keyed by name and URL for shared workers, and a registration and
+    // install/activate lifecycle for service workers. Turning them on with the
+    // dedicated worker would report timeouts, not results.
+    try std.testing.expect(!GlobalType.sharedworker.isImplemented());
+    try std.testing.expect(!GlobalType.serviceworker.isImplemented());
+}
+
+test "GlobalType.isImplemented - dedicatedworker spelling agrees" {
+    // WPT writes `global=dedicatedworker` as often as `global=worker`, and both
+    // parse to the same variant. A gate that disagreed with itself across the
+    // two spellings would run a file in one and skip it in the other.
+    const from_short = GlobalType.fromString("worker").?;
+    const from_long = GlobalType.fromString("dedicatedworker").?;
+    try std.testing.expectEqual(from_short, from_long);
+    try std.testing.expectEqual(from_short.isImplemented(), from_long.isImplemented());
 }
 
 test "multi-context: effective test count with variants and globals" {

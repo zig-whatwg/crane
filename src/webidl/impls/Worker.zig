@@ -22,6 +22,7 @@
 //! 5. onmessage handler is invoked with MessageEvent
 
 const std = @import("std");
+const log = std.log.scoped(.worker);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -445,7 +446,6 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
     state.own.onmessage = value;
 
     // DEBUG - only log for Worker instances (not Window.onmessage)
-    const stderr_file = std.fs.File.stderr();
 
     // Also store as GlobalHandle in internal state for proper V8 invocation
     if (getInternal(instance)) |internal| {
@@ -453,21 +453,17 @@ pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) 
         // Properly unwrap the optional before casting to extract the tagged pointer
         internal.onmessage_handle = if (value) |v| extractEventHandler(@ptrCast(v)) else null;
 
-        var debug_buf: [256]u8 = undefined;
-        const debug_msg = std.fmt.bufPrint(&debug_buf, "[Worker.set_onmessage] instance={*}, handler_set={}, dedicated_worker={?*}\n", .{ instance, internal.onmessage_handle != null, internal.dedicated_worker }) catch "[Worker.set_onmessage]\n";
-        stderr_file.writeAll(debug_msg) catch {};
+        log.debug("[Worker.set_onmessage] instance={*}, handler_set={}, dedicated_worker={?*}", .{ instance, internal.onmessage_handle != null, internal.dedicated_worker });
 
         // Process any messages that were queued before the handler was set
         // This ensures messages posted by the worker during script execution
         // are delivered now that there's a handler to receive them.
         if (internal.dedicated_worker) |dedicated_worker| {
             const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
-            var queue_msg_buf: [128]u8 = undefined;
-            const queue_msg = std.fmt.bufPrint(&queue_msg_buf, "[Worker.set_onmessage] worker={*}, queue_len={d}\n", .{ dedicated_worker, queue_len }) catch "[Worker.set_onmessage] queue\n";
-            stderr_file.writeAll(queue_msg) catch {};
+            log.debug("[Worker.set_onmessage] worker={*}, queue_len={d}", .{ dedicated_worker, queue_len });
             dedicated_worker.processQueuedMessages();
         } else {
-            stderr_file.writeAll("[Worker.set_onmessage] WARN: dedicated_worker is NULL! Cannot process queued messages.\n") catch {};
+            log.debug("[Worker.set_onmessage] WARN: dedicated_worker is NULL! Cannot process queued messages.", .{});
         }
     }
 }
@@ -724,11 +720,7 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     const outside_queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
     const has_messages = outside_queue_len > 0;
 
-    // DEBUG: Write to stderr to see if messages are in the queue
-    const stderr_file = std.fs.File.stderr();
-    var debug_buf: [256]u8 = undefined;
-    const debug_msg = std.fmt.bufPrint(&debug_buf, "[executeWorkerScriptCallback] outside_port queue len={d}, has_messages={}\n", .{ outside_queue_len, has_messages }) catch "[executeWorkerScriptCallback] check\n";
-    stderr_file.writeAll(debug_msg) catch {};
+    log.debug("[executeWorkerScriptCallback] outside_port queue len={d}, has_messages={}", .{ outside_queue_len, has_messages });
 
     // Dispatch worker→main messages synchronously.
     // Although worker script execution enters/exits the worker isolate (which could
@@ -738,7 +730,7 @@ fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
     // 2. dispatchMessageEvent creates a new HandleScope before any V8 operations
     // 3. This avoids timer scheduling delays that cause test timeouts
     if (has_messages) {
-        stderr_file.writeAll("[executeWorkerScriptCallback] Calling processQueuedMessages\n") catch {};
+        log.debug("[executeWorkerScriptCallback] Calling processQueuedMessages", .{});
         dedicated_worker.processQueuedMessages();
 
         // CRITICAL: Message handlers may have posted NEW messages via self.postMessage().
@@ -809,15 +801,11 @@ fn dispatchWorkerMessages(internal: *InternalState) void {
     const outside_queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
     const has_messages = outside_queue_len > 0;
 
-    // DEBUG: Write to stderr to see if messages are in the queue
-    const stderr_file = std.fs.File.stderr();
-    var debug_buf: [256]u8 = undefined;
-    const debug_msg = std.fmt.bufPrint(&debug_buf, "[dispatchWorkerMessages] worker={*} outside_port={*} queue len={d}, has_messages={}\n", .{ dedicated_worker, dedicated_worker.port_pair.outside_port, outside_queue_len, has_messages }) catch "[dispatchWorkerMessages] check\n";
-    stderr_file.writeAll(debug_msg) catch {};
+    log.debug("[dispatchWorkerMessages] worker={*} outside_port={*} queue len={d}, has_messages={}", .{ dedicated_worker, dedicated_worker.port_pair.outside_port, outside_queue_len, has_messages });
 
     // Dispatch worker→main messages
     if (has_messages) {
-        stderr_file.writeAll("[dispatchWorkerMessages] Calling processQueuedMessages\n") catch {};
+        log.debug("[dispatchWorkerMessages] Calling processQueuedMessages", .{});
         dedicated_worker.processQueuedMessages();
         processAllPendingMessages(internal);
     }
@@ -905,11 +893,11 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
     // - dedicated_worker.executeScript() uses WorkerContext (different V8 context!)
     // - If we execute in the wrong context, onmessage won't be set where we dispatch.
     if (internal.v8_context) |v8_ctx| {
-        std.log.err("[executeWorkerScriptSync] Have v8_context, calling executeScript on ptr {*}", .{v8_ctx});
+        log.debug("[executeWorkerScriptSync] Have v8_context, calling executeScript on ptr {*}", .{v8_ctx});
         _ = v8_ctx.executeScript(script) catch |err| {
             std.log.err("[executeWorkerScriptSync] Failed to execute: {}", .{err});
         };
-        std.log.err("[executeWorkerScriptSync] executeScript returned", .{});
+        log.debug("[executeWorkerScriptSync] executeScript returned", .{});
     } else {
         std.log.err("[executeWorkerScriptSync] No WorkerV8Context!", .{});
     }
@@ -1140,11 +1128,7 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     // Get internal state with GlobalHandle and isolate
     const internal = getInternal(instance) orelse return;
 
-    // DEBUG: Log the instance we're dispatching to
-    const stderr_file = std.fs.File.stderr();
-    var debug_buf: [256]u8 = undefined;
-    const debug_msg = std.fmt.bufPrint(&debug_buf, "[dispatchMessageEvent] ENTRY instance={*}, dedicated_worker={?*}\n", .{ instance, internal.dedicated_worker }) catch "[dispatchMessageEvent] ENTRY\n";
-    stderr_file.writeAll(debug_msg) catch {};
+    log.debug("[dispatchMessageEvent] ENTRY instance={*}, dedicated_worker={?*}", .{ instance, internal.dedicated_worker });
 
     // Get isolate and V8 context
     const isolate = internal.isolate orelse return;
@@ -1223,10 +1207,8 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
         switch (msg.data.data.primitive) {
             .string => |json_str| {
                 // DEBUG
-                var json_debug_buf: [256]u8 = undefined;
                 const preview_len = @min(json_str.len, 50);
-                const json_debug_msg = std.fmt.bufPrint(&json_debug_buf, "[dispatchMessageEvent] Parsing JSON: len={d}, content={s}\n", .{ json_str.len, json_str[0..preview_len] }) catch "[dispatchMessageEvent]\n";
-                stderr_file.writeAll(json_debug_msg) catch {};
+                log.debug("[dispatchMessageEvent] Parsing JSON: len={d}, content={s}", .{ json_str.len, json_str[0..preview_len] });
 
                 // JSON string from worker - parse it in main context
                 v8_data = v8_engine.ffi.v8_JSON_Parse_FromBuffer(
@@ -1237,7 +1219,7 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
                 if (v8_data == null) {
                     std.log.warn("Worker.dispatchMessageEvent: JSON.parse failed for: {s}", .{json_str});
                 } else {
-                    stderr_file.writeAll("[dispatchMessageEvent] JSON parse SUCCEEDED\n") catch {};
+                    log.debug("[dispatchMessageEvent] JSON parse SUCCEEDED", .{});
                 }
             },
             else => {},
@@ -1345,68 +1327,48 @@ fn invokeMessageListeners(
     v8_event: *v8_engine.ffi.Object,
     internal: *InternalState,
 ) void {
-    // DEBUG
-    const stderr_file = std.fs.File.stderr();
-    var debug_buf: [128]u8 = undefined;
-    const has_handler = internal.onmessage_handle != null;
-    const debug_msg = std.fmt.bufPrint(&debug_buf, "[invokeMessageListeners] ENTRY, has_onmessage_handler={}\n", .{has_handler}) catch "[invokeMessageListeners]\n";
-    stderr_file.writeAll(debug_msg) catch {};
-
-    // EventTargetImpl is imported at module level
-    const CallbackWrapper = v8_engine.CallbackWrapper;
+    log.debug("invokeMessageListeners: has_onmessage_handler={}", .{internal.onmessage_handle != null});
 
     // Step 1: Invoke registered "message" event listeners (from addEventListener)
+    //
+    // `EventListenerRecord.callback` is written by
+    // `EventTarget.call_addEventListener`, whose WebIDL signature takes a
+    // `*runtime.CallbackWrapper` - the engine-agnostic wrapper, not the V8 one.
+    // The two structs have different layouts, so reading `callback_function_global`
+    // off a V8-shaped cast actually reads `runtime.CallbackWrapper.engine`, and
+    // handing that vtable pointer to V8 as a `Global<Function>*` faults on the
+    // first handle load. Go through the runtime wrapper instead, exactly as
+    // `EventTarget.call_dispatchEvent` does.
     if (EventTargetImpl.getInternalState(instance)) |et_internal| {
         const listeners = et_internal.getEventListenerList();
         for (listeners) |listener| {
-            // Check if listener is for "message" events and not removed
-            if (std.mem.eql(u8, listener.type.asSlice(), "message") and !listener.removed) {
-                // listener.callback is actually a *CallbackWrapper
-                if (listener.callback) |callback_instance| {
-                    const callback_wrapper: *CallbackWrapper = @ptrCast(@alignCast(callback_instance));
+            if (!std.mem.eql(u8, listener.type.asSlice(), "message") or listener.removed) continue;
+            const callback_instance = listener.callback orelse continue;
+            const callback_wrapper: *runtime.CallbackWrapper = @ptrCast(@alignCast(callback_instance));
 
-                    // NOTE: We can't use callback_wrapper.call1() here because v8_event is
-                    // already a Global<Object>*, and call1's v8_Value_ToGlobal() assumes
-                    // the argument is a Local handle. Instead, we directly invoke the V8
-                    // function using v8_Function_Call which expects Global handles.
-                    //
-                    // callback_function_global.ptr is already a Global<Function>*
-                    if (callback_wrapper.callback_function_global) |func_global| {
-                        const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
+            // invoke1() takes a Local; v8_event is a Global<Object>*.
+            const event_local = v8_engine.ffi.v8_Global_Get(isolate, @ptrCast(v8_event)) orelse continue;
 
-                        // Both func_global.ptr and v8_event are Global handles,
-                        // which is exactly what v8_Function_Call expects
-                        var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
-                        _ = v8_engine.ffi.v8_Function_Call(
-                            @ptrCast(func_global.ptr),
-                            v8_context,
-                            @ptrCast(undefined_recv),
-                            1,
-                            &args,
-                        );
-                    }
-                }
-            }
+            _ = callback_wrapper.invoke1(@ptrCast(event_local)) catch |err| {
+                log.warn("message listener failed: {s}", .{@errorName(err)});
+                continue;
+            };
         }
     }
 
     // Step 2: Invoke the onmessage handler if set
     if (internal.onmessage_handle) |onmessage_global| {
-        stderr_file.writeAll("[invokeMessageListeners] Step 2: has onmessage_handle\n") catch {};
-
         // Verify it's a function using the Global handle directly
         // v8_Value_IsFunction expects a Global<Value>* which is what rawPtr() returns
         if (!v8_engine.ffi.v8_Value_IsFunction(onmessage_global.rawPtr())) {
-            stderr_file.writeAll("[invokeMessageListeners] WARN: onmessage_handle is not a function!\n") catch {};
+            log.warn("onmessage handler is not a function", .{});
             return;
         }
-
-        stderr_file.writeAll("[invokeMessageListeners] onmessage_handle is a function, calling...\n") catch {};
 
         // Get the function as a Global<Function>* for the call
         // We can safely cast since we verified it's a function above
         const global_func = v8_engine.ffi.v8_Global_ToFunction(onmessage_global.rawPtr()) orelse {
-            stderr_file.writeAll("[invokeMessageListeners] WARN: Global_ToFunction returned null!\n") catch {};
+            log.warn("onmessage handler could not be cast to a function", .{});
             return;
         };
 
@@ -1414,27 +1376,11 @@ fn invokeMessageListeners(
         const undefined_recv = v8_engine.ffi.v8_Undefined(isolate);
         var args = [_]*v8_engine.ffi.Value{@ptrCast(v8_event)};
 
-        // DEBUG: Check v8_event is valid before call
-        {
-            var event_buf: [128]u8 = undefined;
-            const event_is_obj = v8_engine.ffi.v8_Value_IsObject(@ptrCast(v8_event));
-            const event_msg = std.fmt.bufPrint(&event_buf, "[invokeMessageListeners] v8_event is_object={}\n", .{event_is_obj}) catch "[invokeMessageListeners] v8_event check\n";
-            stderr_file.writeAll(event_msg) catch {};
-        }
-
         const result = v8_engine.ffi.v8_Function_Call(global_func, v8_context, @ptrCast(undefined_recv), 1, &args);
-        if (result != null) {
-            stderr_file.writeAll("[invokeMessageListeners] V8 function call SUCCEEDED\n") catch {};
-        } else {
-            stderr_file.writeAll("[invokeMessageListeners] WARN: V8 function call returned null\n") catch {};
-            // Check for exception
+        if (result == null) {
             const exception = v8_engine.ffi.v8_TryCatch_Exception(v8_context);
-            if (exception != null) {
-                stderr_file.writeAll("[invokeMessageListeners] V8 has exception!\n") catch {};
-            }
+            log.warn("onmessage handler returned null (exception={})", .{exception != null});
         }
-    } else {
-        stderr_file.writeAll("[invokeMessageListeners] Step 2: NO onmessage_handle\n") catch {};
     }
 }
 
@@ -1444,9 +1390,7 @@ fn invokeMessageListeners(
 /// "The terminate() method, when invoked, must cause the terminate a worker
 /// algorithm to be run on the worker with which the object is associated."
 pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
-    // DEBUG: Log the terminate call
-    const stderr_file = std.fs.File.stderr();
-    stderr_file.writeAll("[Worker.call_terminate] ENTRY\n") catch {};
+    log.debug("[Worker.call_terminate] ENTRY", .{});
 
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
@@ -1454,9 +1398,7 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
         const internal = @constCast(internal_ptr);
         internal.terminated = true;
         if (internal.dedicated_worker) |worker| {
-            var buf: [256]u8 = undefined;
-            const msg = std.fmt.bufPrint(&buf, "[Worker.call_terminate] worker={*}, agent={*}\n", .{ worker, worker.agent }) catch "[Worker.call_terminate] worker\n";
-            stderr_file.writeAll(msg) catch {};
+            log.debug("[Worker.call_terminate] worker={*}, agent={*}", .{ worker, worker.agent });
             worker.terminate();
         }
     }
