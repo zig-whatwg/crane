@@ -39,6 +39,11 @@
 //!   kills the process, until the worklist is exhausted. Writes
 //!   `<output>/worklist.txt` and `<output>/journal.jsonl`.
 //!
+//! Regression gating:
+//! - `--baseline=path` - Compare the finished run against recorded
+//!   expectations. Exits nonzero if anything regressed.
+//! - `--update-baseline` - Rewrite that file from this run instead.
+//!
 //! Child-process options, set by the supervisor (rarely used directly):
 //! - `--from-file=path` - Run the paths in this worklist instead of discovering
 //! - `--start-index=N` - Begin at this worklist index
@@ -54,6 +59,7 @@ const wpt_server = @import("wpt_server.zig");
 const wpt_manifest = @import("manifest.zig");
 const selection = @import("selection.zig");
 const journal = @import("journal.zig");
+const baseline = @import("baseline.zig");
 const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
 const wpt_options = @import("wpt_options");
@@ -633,9 +639,16 @@ pub fn executeTests(
 
     // The journal is what lets a run survive a segfault: one record per test
     // file, written straight to the file descriptor as soon as the file is
-    // done, so a supervisor can tell which test never reported.
-    var run_journal: ?journal.Journal = if (options.journal_path) |p|
-        try journal.Journal.append(allocator, p)
+    // done, so a supervisor can tell which test never reported. A supervised
+    // child joins the ledger already in progress; anyone else starts a fresh
+    // one, so a baseline comparison reads this run and not the last one too.
+    const journal_path = try options.journalPath(allocator);
+    defer if (journal_path) |p| allocator.free(p);
+    var run_journal: ?journal.Journal = if (journal_path) |p|
+        if (options.appendsToJournal())
+            try journal.Journal.append(allocator, p)
+        else
+            try journal.Journal.create(allocator, p)
     else
         null;
     defer if (run_journal) |*j| j.deinit();
@@ -905,8 +918,18 @@ fn print(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(fmt, args);
 }
 
-/// Main entry point
+/// Main entry point.
+///
+/// A regression has to make the process exit nonzero - that is the whole point
+/// of a baseline, and it is what lets a CI job go red. Returning an error from
+/// main would do it too, but it would print a stack trace, and a run that
+/// correctly detected a regression is not a crash.
 pub fn main() !void {
+    const code = try run();
+    if (code != 0) std.process.exit(code);
+}
+
+fn run() !u8 {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -958,7 +981,7 @@ pub fn main() !void {
         if (discovery.skipped.items.len > 0) {
             print("Skipped {d} items.\n", .{discovery.skipped.items.len});
         }
-        return;
+        return 0;
     }
 
     // Print breakdown by type
@@ -993,7 +1016,7 @@ pub fn main() !void {
 
     if (options.discover_only) {
         print("\n--discover-only: stopping before execution.\n", .{});
-        return;
+        return 0;
     }
 
     if (options.supervise) {
@@ -1041,6 +1064,100 @@ pub fn main() !void {
     defer allocator.free(output_path);
 
     try report.writeToFile(output_path);
+
+    const selected = try selectedPaths(allocator, discovery);
+    defer allocator.free(selected);
+    return settleBaseline(allocator, options, selected);
+}
+
+/// The paths this run set out to cover. Borrows from `discovery`.
+fn selectedPaths(
+    allocator: std.mem.Allocator,
+    discovery: DiscoveryResult,
+) ![]const []const u8 {
+    const paths = try allocator.alloc([]const u8, discovery.test_files.items.len);
+    for (discovery.test_files.items, 0..) |tf, i| paths[i] = tf.path;
+    return paths;
+}
+
+/// Compare the finished run against its baseline, or rewrite the baseline from
+/// it. Returns the process exit code: nonzero means something regressed.
+///
+/// Reads the journal rather than the in-memory results because a supervised run
+/// is several processes and the journal is the only place all of them meet.
+///
+/// `selected` is what this run set out to do. Both directions need it: a run of
+/// url/ must not be told that every dom/ expectation went missing, and
+/// recording one must not delete them.
+fn settleBaseline(
+    allocator: std.mem.Allocator,
+    options: Options,
+    selected: []const []const u8,
+) !u8 {
+    const baseline_path = options.baseline_path orelse return 0;
+
+    const journal_path = (try options.journalPath(allocator)) orelse return 0;
+    defer allocator.free(journal_path);
+
+    var log = try journal.read(allocator, journal_path);
+    defer log.deinit();
+
+    var current = try baseline.fromLog(allocator, log);
+    defer current.deinit();
+
+    if (options.update_baseline) {
+        // Fold into whatever is already recorded, so recording a subset keeps
+        // the rest. An absent file starts from nothing, which is the same
+        // thing with an empty baseline.
+        var previous = baseline.read(allocator, baseline_path) catch |err| switch (err) {
+            error.FileNotFound => baseline.Set{ .allocator = allocator, .entries = &.{} },
+            else => return err,
+        };
+        defer previous.deinit();
+
+        var updated = try baseline.merge(allocator, previous, current);
+        defer updated.deinit();
+
+        try baseline.writeToFile(baseline_path, updated);
+        print("\nRecorded {d} of {d} expectations in {s}\n", .{
+            current.entries.len,
+            updated.entries.len,
+            baseline_path,
+        });
+        return 0;
+    }
+
+    var recorded = baseline.read(allocator, baseline_path) catch |err| switch (err) {
+        // Not "nothing is expected, so nothing can regress" - a comparison with
+        // no baseline has checked nothing, and reporting that as a pass is the
+        // one answer a gate must never give.
+        error.FileNotFound => {
+            print("\nNo baseline at {s}. Record one with --update-baseline.\n", .{baseline_path});
+            return 1;
+        },
+        else => return err,
+    };
+    defer recorded.deinit();
+
+    var expected = try baseline.restrictTo(allocator, recorded, selected);
+    defer expected.deinit();
+
+    if (expected.entries.len < recorded.entries.len) {
+        print("\nComparing {d} of {d} recorded expectations (this run's selection).\n", .{
+            expected.entries.len,
+            recorded.entries.len,
+        });
+    }
+
+    var d = try baseline.diff(allocator, expected, current);
+    defer d.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try baseline.report(&out.writer, d, 40);
+    print("{s}", .{out.written()});
+
+    return if (d.ok()) 0 else 1;
 }
 
 /// Write the discovered sources as a worklist file.
@@ -1084,9 +1201,9 @@ fn supervise(
     allocator: std.mem.Allocator,
     options: Options,
     discovery: DiscoveryResult,
-) !void {
+) !u8 {
     const total = discovery.test_files.items.len;
-    if (total == 0) return;
+    if (total == 0) return 0;
 
     std.fs.cwd().makePath(options.output_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
@@ -1097,7 +1214,10 @@ fn supervise(
     defer allocator.free(worklist_path);
     try writeWorklistFile(allocator, worklist_path, discovery);
 
-    const journal_path = try std.fs.path.join(allocator, &.{ options.output_dir, "journal.jsonl" });
+    // Same path settleBaseline will read afterwards, so a `--journal=` override
+    // does not leave the comparison reading a file nobody wrote.
+    const journal_path = (try options.journalPath(allocator)) orelse
+        try std.fs.path.join(allocator, &.{ options.output_dir, "journal.jsonl" });
     defer allocator.free(journal_path);
 
     // Start from an empty ledger. Resuming an old journal against a worklist
@@ -1223,6 +1343,10 @@ fn supervise(
         s.subtests_notrun,
     });
     print("\nJournal: {s}\n", .{journal_path});
+
+    const selected = try selectedPaths(allocator, discovery);
+    defer allocator.free(selected);
+    return settleBaseline(allocator, options, selected);
 }
 
 // The tests below never run: main.zig is only ever built as an executable, so

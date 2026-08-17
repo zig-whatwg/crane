@@ -48,6 +48,14 @@ pub const Options = struct {
     /// Supervise child runs: discover, then respawn this binary past each
     /// crash until the worklist is exhausted.
     supervise: bool = false,
+    /// Compare the finished run against the baseline at this path. A regression
+    /// makes the process exit nonzero, which is the whole point: it is what
+    /// lets CI go red.
+    baseline_path: ?[]const u8 = null,
+    /// Rewrite the file named by `baseline_path` from this run instead of
+    /// comparing against it. One path flag rather than two so a run cannot
+    /// compare against one file and write to another.
+    update_baseline: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -71,6 +79,27 @@ pub const Options = struct {
     /// True when this process was spawned by a supervisor.
     pub fn isChild(self: Options) bool {
         return self.from_file != null;
+    }
+
+    /// Where this run keeps its journal, or null if it keeps none.
+    ///
+    /// A journal is normally opt-in, but a baseline has nothing to compare
+    /// against without one, so asking for a baseline implies a journal next to
+    /// the report. Caller owns the returned path.
+    pub fn journalPath(self: Options, allocator: std.mem.Allocator) !?[]const u8 {
+        if (self.journal_path) |p| return try allocator.dupe(u8, p);
+        if (self.baseline_path == null) return null;
+        return try std.fs.path.join(allocator, &.{ self.output_dir, "journal.jsonl" });
+    }
+
+    /// True when this process joins a journal already in progress rather than
+    /// starting one.
+    ///
+    /// Only a supervised child does. A fresh run that appended would stack this
+    /// run's records on top of the last one's, and a comparison that read both
+    /// would report the worse of the two as today's result.
+    pub fn appendsToJournal(self: Options) bool {
+        return self.isChild();
     }
 
     /// Where this process writes its wptreport.
@@ -166,6 +195,10 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             options.journal_path = arg["--journal=".len..];
         } else if (std.mem.eql(u8, arg, "--supervise")) {
             options.supervise = true;
+        } else if (std.mem.startsWith(u8, arg, "--baseline=")) {
+            options.baseline_path = arg["--baseline=".len..];
+        } else if (std.mem.eql(u8, arg, "--update-baseline")) {
+            options.update_baseline = true;
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
@@ -298,6 +331,70 @@ test "each child of a supervised run writes its own report" {
 
     try testing.expectEqualStrings("out/wptreport-0.json", a_path);
     try testing.expectEqualStrings("out/wptreport-17.json", b_path);
+}
+
+test "parseArgs reads baseline flags" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--baseline=tests/wpt_expectations.jsonl", "--update-baseline" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    try testing.expectEqualStrings("tests/wpt_expectations.jsonl", options.baseline_path.?);
+    try testing.expect(options.update_baseline);
+}
+
+test "asking for a baseline implies a journal to compare from" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--baseline=b.jsonl", "--output=out" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    const path = (try options.journalPath(allocator)).?;
+    defer allocator.free(path);
+    try testing.expectEqualStrings("out/journal.jsonl", path);
+}
+
+test "an explicit journal path beats the one a baseline implies" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const args = [_][]const u8{ "--baseline=b.jsonl", "--output=out", "--journal=/tmp/j.jsonl" };
+    var options = try parseArgs(allocator, &args);
+    defer options.deinit();
+
+    const path = (try options.journalPath(allocator)).?;
+    defer allocator.free(path);
+    try testing.expectEqualStrings("/tmp/j.jsonl", path);
+}
+
+test "a run with neither flag keeps no journal" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var options = try parseArgs(allocator, &.{"url/"});
+    defer options.deinit();
+
+    try testing.expect((try options.journalPath(allocator)) == null);
+}
+
+test "only a supervised child appends to an existing journal" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // A fresh run that appended would stack today's records on yesterday's, and
+    // fromLog keeps the worse of a duplicated path - so a passing run would
+    // inherit last week's crash and fail the comparison.
+    var fresh = try parseArgs(allocator, &.{"--journal=j.jsonl"});
+    defer fresh.deinit();
+    try testing.expect(!fresh.appendsToJournal());
+
+    var child = try parseArgs(allocator, &.{ "--journal=j.jsonl", "--from-file=w.txt" });
+    defer child.deinit();
+    try testing.expect(child.appendsToJournal());
 }
 
 test "parseArgs ignores unrecognised flags" {
