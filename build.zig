@@ -2915,11 +2915,16 @@ pub fn build(b: *std.Build) void {
     wpt_runner_exe.root_module.addOptions("wpt_options", wpt_options);
 
     // Add step to clear WPT ports before running
-    // WPT uses ports: HTTP 8000-8003, HTTPS 8443-8446
+    // WPT uses ports: HTTP 8000-8003, HTTPS 8443-8446, HTTP/2 9000
+    //
+    // 9000 matters as much as the rest: `wpt serve` treats a failure to bind
+    // any one listener as fatal and tears down all the others, so a single
+    // orphaned h2 subprocess from a previous run leaves nothing on 8000 and
+    // every test times out for a reason that looks nothing like the cause.
     const clear_ports = b.addSystemCommand(&.{
         "sh",
         "-c",
-        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446; do
+        \\for port in 8000 8001 8002 8003 8443 8444 8445 8446 9000; do
         \\  pid=$(lsof -ti :$port 2>/dev/null)
         \\  if [ -n "$pid" ]; then
         \\    echo "Killing process $pid on port $port"
