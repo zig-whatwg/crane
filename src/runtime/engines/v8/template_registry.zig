@@ -38,6 +38,8 @@ const wrapper_type_info = @import("wrapper_type_info.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const instance_bridge = @import("dom").instance_bridge;
 
+const log = std.log.scoped(.template_registry);
+
 /// Maximum number of interface templates that can be registered
 const MAX_TEMPLATES = 2048; // Need to support all WebIDL interfaces (~1100)
 
@@ -401,6 +403,7 @@ pub fn wrapInstanceAsV8Object(
     // ========================================
     // CACHE THE WRAPPER: Store for future lookups
     // ========================================
+    const is_iframe = std.mem.eql(u8, interface_name, "HTMLIFrameElement");
     if (ctx_mgr.get(context)) |runtime_ctx| {
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
@@ -410,6 +413,17 @@ pub fn wrapInstanceAsV8Object(
             cache.set(instance, final_object, isolate) catch |err| {
                 std.log.warn("Failed to cache V8 wrapper: {s}", .{@errorName(err)});
             };
+            if (is_iframe) {
+                log.debug("[wrapInstanceAsV8Object] Cached iframe instance={*} in cache={*}", .{ instance, cache });
+            }
+        } else {
+            if (is_iframe) {
+                log.debug("[wrapInstanceAsV8Object] NO cache storage for iframe instance={*}", .{instance});
+            }
+        }
+    } else {
+        if (is_iframe) {
+            log.debug("[wrapInstanceAsV8Object] ctx_mgr.get returned null for iframe instance={*}", .{instance});
         }
     }
 

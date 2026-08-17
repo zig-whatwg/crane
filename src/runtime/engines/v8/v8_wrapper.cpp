@@ -2862,15 +2862,15 @@ bool v8_Object_Set(Global<Object>* object, Global<Context>* context, Global<Valu
     CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Object_Set");
     CHECK_ALIGNMENT_LOG(key, Global<Value>, "v8_Object_Set");
     CHECK_ALIGNMENT_LOG(value, Global<Value>, "v8_Object_Set");
-    
+
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Context> ctx = context->Get(isolate);
     Local<Object> obj = object->Get(isolate);
     Local<Value> k = key->Get(isolate);
     Local<Value> v = value->Get(isolate);
-    
+
     Maybe<bool> result = obj->Set(ctx, k, v);
     return result.FromMaybe(false);
 }
@@ -2910,19 +2910,19 @@ Global<Value>* v8_Object_Get(Global<Object>* object, Global<Context>* context, G
     CHECK_ALIGNMENT_LOG(object, Global<Object>, "v8_Object_Get");
     CHECK_ALIGNMENT_LOG(context, Global<Context>, "v8_Object_Get");
     CHECK_ALIGNMENT_LOG(key, Global<Value>, "v8_Object_Get");
-    
+
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    
+
     Local<Context> ctx = context->Get(isolate);
     Local<Object> obj = object->Get(isolate);
     Local<Value> k = key->Get(isolate);
-    
+
     MaybeLocal<Value> maybe_val = obj->Get(ctx, k);
     if (maybe_val.IsEmpty()) {
         return nullptr;
     }
-    
+
     Local<Value> val = maybe_val.ToLocalChecked();
     return trackHandle(new Global<Value>(isolate, val));
 }
@@ -4616,9 +4616,17 @@ void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* i
         fprintf(stderr, "WARNING: v8_FunctionCallbackInfo_SetReturnValue called with empty Global handle\n");
         return;
     }
-    
+
     Isolate* isolate = info->GetIsolate();
     Local<Value> val = value->Get(isolate);
+
+    // Debug: Print identity hash to trace object identity
+    if (val->IsObject()) {
+        Local<Object> obj = val.As<Object>();
+        int hash = obj->GetIdentityHash();
+        fprintf(stderr, "[FunctionSetReturnValue] Global=%p IdentityHash=%d\n", value, hash);
+    }
+
     info->GetReturnValue().Set(val);
 }
 
@@ -5447,24 +5455,7 @@ void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* i
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
 
-    // Debug: Check if pointer looks valid
-    if (!value) {
-        fprintf(stderr, "[PropertySetReturnValue] ERROR: null value pointer!\n");
-        info->GetReturnValue().SetUndefined();
-        return;
-    }
-
-    // Check alignment (Global handles are 8-byte aligned)
-    uintptr_t ptr_val = reinterpret_cast<uintptr_t>(value);
-    if (ptr_val % 8 != 0) {
-        fprintf(stderr, "[PropertySetReturnValue] ERROR: misaligned pointer 0x%lx\n", ptr_val);
-        info->GetReturnValue().SetUndefined();
-        return;
-    }
-
-    // Check if Global is empty
-    if (value->IsEmpty()) {
-        fprintf(stderr, "[PropertySetReturnValue] ERROR: Global handle is empty!\n");
+    if (!value || value->IsEmpty()) {
         info->GetReturnValue().SetUndefined();
         return;
     }
@@ -9152,23 +9143,23 @@ void TrapGet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Context> context = isolate->GetCurrentContext();
-    
+
     if (info.Length() < 2) return;
-    
+
     Local<Value> target = info[0];
     Local<Value> property = info[1];
 
     Local<Object> reflect = context->Global()
         ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
         .ToLocalChecked().As<Object>();
-    
+
     Local<Function> get_fn = reflect
         ->Get(context, String::NewFromUtf8Literal(isolate, "get"))
         .ToLocalChecked().As<Function>();
-    
+
     Local<Value> args[] = { target, property, target };
     MaybeLocal<Value> result = get_fn->Call(context, reflect, 3, args);
-    
+
     if (!result.IsEmpty()) {
         info.GetReturnValue().Set(result.ToLocalChecked());
     }
@@ -9178,19 +9169,14 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Context> context = isolate->GetCurrentContext();
-    
+
     if (info.Length() < 3) {
         info.GetReturnValue().Set(false);
         return;
     }
-    
+
     Local<Object> target = info[0].As<Object>();
     Local<Value> property = info[1];
-    
-    if (property->IsString()) {
-        String::Utf8Value prop_str(isolate, property);
-        fprintf(stderr, "[TrapSet] property='%s'\n", *prop_str);
-    }
     Local<Value> value = info[2];
     
     // Use Object.defineProperty to bypass named property interceptor.

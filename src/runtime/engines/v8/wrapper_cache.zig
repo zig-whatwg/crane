@@ -66,6 +66,8 @@ const std = @import("std");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 
+const log = std.log.scoped(.wrapper_cache);
+
 /// Cache entry stored in the HashMap
 ///
 /// Contains both the V8 wrapper handle and backpointer to the cache for cleanup.
@@ -83,7 +85,49 @@ const CacheEntry = struct {
     /// (e.g., via Node.deinit). When true, deinit should NOT call
     /// onObjectFreed since the instance is already cleaned up.
     instance_already_cleaned: bool = false,
+
+    /// Set to true when the cache is being destroyed. This allows pending
+    /// weak callbacks to detect that they should skip cleanup because:
+    /// 1. The cache is no longer valid
+    /// 2. The instance pointer may have been reused by a new object
+    /// When orphaned, callbacks should just dispose the wrapper and entry
+    /// without calling onObjectFreed.
+    is_orphaned: bool = false,
+
+    /// VTable pointer captured when entry was created.
+    /// Used to detect if instance address was reused for a different object.
+    /// If the current instance's vtable differs from this, the address was
+    /// reused and we should not call onObjectFreed.
+    original_vtable: *const runtime.VTable,
+
+    /// State pointer captured when entry was created.
+    /// Used to detect if instance address was reused for the SAME type.
+    /// Even if vtable matches, if state differs, it's a different instance.
+    original_state: *anyopaque,
 };
+
+/// Dispose an entry's V8 handle, first dropping any alias to it.
+///
+/// `NodeBase.bound_v8_wrapper` (set by template_registry.wrapInstanceAsV8Object)
+/// stores the SAME `Global<Object>*` handle that the cache entry owns, so that
+/// DOM nodes keep JavaScript `===` identity across contexts. Disposing the
+/// handle without clearing that alias leaves a dangling pointer which the next
+/// wrapInstanceAsV8Object call would happily return.
+///
+/// The pointer-equality guard matters: instance addresses are recycled by the
+/// SlabAllocator, so the NodeBase reachable from `entry.instance` may already
+/// belong to a different object. Only an exact match is ours to clear.
+fn disposeEntryWrapper(entry: *CacheEntry) void {
+    const instance_bridge = @import("dom").instance_bridge;
+
+    if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
+        if (nodebase.bound_v8_wrapper == entry.wrapper) {
+            nodebase.bound_v8_wrapper = null;
+        }
+    }
+
+    v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+}
 
 /// Weak callback for GC cleanup
 ///
@@ -105,13 +149,96 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     if (data) |entry_ptr| {
         const entry: *CacheEntry = @ptrCast(@alignCast(entry_ptr));
 
+        // CRITICAL: Check if entry is orphaned FIRST, before any cache access.
+        // An orphaned entry means the cache was destroyed (via deinitWithoutCallbacks).
+        // In this case:
+        // 1. The cache pointer (entry.cache) may be invalid/freed
+        // 2. The instance pointer (entry.instance) may have been reused for a new object
+        // 3. We should NOT call onObjectFreed - just clean up the entry itself
+        //
+        // This prevents a critical bug where:
+        // - Old instance at address X is garbage collected, callback is queued
+        // - Child context (and its cache) is destroyed
+        // - New instance is allocated at address X in a different cache
+        // - Old callback fires and would incorrectly call onObjectFreed on NEW instance
+        if (entry.is_orphaned) {
+            log.debug("[weakCallback] ORPHANED: instance={*} - cache was destroyed, skipping cleanup", .{entry.instance});
+            // Just dispose our wrapper handle - don't touch the cache or call onObjectFreed
+            // The cache allocator should still be valid since we're called during deinitWithoutCallbacks
+            disposeEntryWrapper(entry);
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+
+        log.debug("[weakCallback] ENTRY: instance={*} cache={*} vtable={*} state={*}", .{ entry.instance, entry.cache, entry.original_vtable, entry.original_state });
+
+        // CRITICAL: Validate that this entry is still in the cache before removing.
+        // Due to memory reuse (SlabAllocator/ArenaAllocator), the same instance address
+        // can be used for different objects over time. If:
+        // 1. Object A at address X is cached with entry E1
+        // 2. Object A is garbage collected (E1's weak callback fires)
+        // 3. Object B reuses address X and is cached with entry E2
+        // 4. E1's weak callback runs and removes by key X
+        // Then E2 (the NEW entry) would be incorrectly removed!
+        //
+        // The fix: Use fetchRemove and verify the removed entry matches our entry.
+        // If it doesn't match, the entry was replaced - put it back and skip cleanup.
+        if (entry.cache.cache.fetchRemove(entry.instance)) |kv| {
+            if (kv.value != entry) {
+                // The entry was replaced by a new one - put it back!
+                log.debug("[weakCallback] STALE ENTRY: instance={*} - entry replaced, restoring new entry", .{entry.instance});
+                entry.cache.cache.put(entry.instance, kv.value) catch {};
+                // Just dispose our (stale) wrapper and entry, don't call onObjectFreed
+                disposeEntryWrapper(entry);
+                entry.cache.allocator.destroy(entry);
+                return;
+            }
+        } else {
+            // Entry not in cache at all - already removed by another path
+            log.debug("[weakCallback] NOT FOUND: instance={*}", .{entry.instance});
+            disposeEntryWrapper(entry);
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+
+        // CRITICAL: Verify the instance hasn't been reused for a different object.
+        // The SlabAllocator can reuse instance addresses. If:
+        // 1. Old instance A at address X is garbage collected
+        // 2. This callback is queued but not yet run
+        // 3. New instance B is allocated at address X (different type or re-init)
+        // 4. This callback runs and would incorrectly deinit instance B
+        //
+        // Detection: Compare the current vtable AND state with what we stored.
+        // - If vtable differs, the address was reused for a different type
+        // - If state differs (even with same vtable), it's a new instance of same type
+        log.debug("[weakCallback] VTABLE_CHECK: instance={*} orig_vtable={*} curr_vtable={*} orig_state={*} curr_state={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable, entry.original_state, entry.instance.state });
+        if (entry.instance.vtable != entry.original_vtable or entry.instance.state != entry.original_state) {
+            log.debug("[weakCallback] INSTANCE REUSED: instance={*} - vtable/state mismatch, skipping cleanup", .{entry.instance});
+            // Don't call onObjectFreed - the instance at this address is different
+            disposeEntryWrapper(entry);
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+
         // Step 1: Check if context teardown is in progress
-        // If the CleanupCoordinator is handling teardown, skip GC-driven cleanup
-        // to prevent race conditions and double-free issues
+        // If the CleanupCoordinator is handling teardown, we still need to ensure
+        // type-specific cleanup happens. Previously we skipped onObjectFreed here
+        // assuming "wrapper_cache.deinit handles it", but if the weak callback fires
+        // BEFORE wrapper_cache.deinit iterates to this entry, the entry would be
+        // removed from the cache and the instance's deinit would never be called.
+        //
+        // The fix: Check if cleanup was already started for this instance.
+        // If not, call onObjectFreed to trigger the type's deinit.
         if (runtime.cleanup_coordinator.isContextTearingDown()) {
-            // Context teardown handles all cleanup - just dispose handles
-            _ = entry.cache.cache.remove(entry.instance);
-            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+            // Note: entry already removed from cache above
+
+            // Check if this instance was already cleaned up
+            if (!runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
+                // Not yet cleaned up - call onObjectFreed to trigger deinit
+                runtime.gc.onObjectFreed(entry.instance);
+            }
+
+            disposeEntryWrapper(entry);
             entry.cache.allocator.destroy(entry);
             return;
         }
@@ -120,21 +247,13 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         // This prevents double-cleanup if Node.deinit was already called
         if (runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
             // Already being cleaned up - just dispose handles
-            _ = entry.cache.cache.remove(entry.instance);
-            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+            // Note: entry already removed from cache above
+            disposeEntryWrapper(entry);
             entry.cache.allocator.destroy(entry);
             return;
         }
 
-        // Step 3: Remove from cache HashMap FIRST
-        // This MUST happen before onObjectFreed because:
-        // - onObjectFreed calls deinit chain (Node.deinit, etc.)
-        // - deinit calls markAsCleanedUp which looks up the entry in the cache
-        // - If the entry is still in the cache, markAsCleanedUp will call
-        //   v8_Global_ClearWeak on the wrapper that's currently being processed
-        //   by THIS weak callback, causing a crash.
-        // By removing from cache first, markAsCleanedUp returns false (not found).
-        _ = entry.cache.cache.remove(entry.instance);
+        // Step 3: Entry already removed from cache at the top (with validation)
 
         // Step 4: Clean up the Zig instance via GC integration
         // This calls the type's deinit function (e.g., Response.deinit)
@@ -143,7 +262,7 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         runtime.gc.onObjectFreed(entry.instance);
 
         // Step 5: Dispose the Global<Object>* handle
-        v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+        disposeEntryWrapper(entry);
 
         // Step 6: Free the CacheEntry
         entry.cache.allocator.destroy(entry);
@@ -212,9 +331,50 @@ pub const WrapperCache = struct {
         }
 
         // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
+        log.debug("[wrapper_cache.deinit] cache={*} PHASE 2: Processing {} entries", .{ self, self.cache.count() });
+
+        // Debug: dump all entries at deinit time
+        {
+            var debug_iter = self.cache.iterator();
+            while (debug_iter.next()) |kv| {
+                const inst = kv.key_ptr.*;
+                const ent = kv.value_ptr.*;
+                const NodeImpl = @import("impls").Node;
+                var is_iframe_str: []const u8 = "no";
+                var local_name_str: []const u8 = "null";
+                if (NodeImpl.getInternalState(inst)) |node_internal| {
+                    if (node_internal.local_name) |ln| {
+                        local_name_str = ln.asSlice();
+                        if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
+                            is_iframe_str = "YES";
+                        }
+                    }
+                } else {
+                    local_name_str = "no_internal";
+                }
+                log.debug("[wrapper_cache.deinit] ENTRY: instance={*} entry={*} local_name={s} is_iframe={s} vtable={*} state={*}", .{ inst, ent, local_name_str, is_iframe_str, inst.vtable, inst.state });
+            }
+        }
         var iter = self.cache.valueIterator();
+        var processed: usize = 0;
+        var skipped_cleaned: usize = 0;
+        var skipped_started: usize = 0;
+        var iframe_count: usize = 0;
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
+            processed += 1;
+
+            // Count iframes in cache
+            const NodeImpl = @import("impls").Node;
+            var is_iframe = false;
+            if (NodeImpl.getInternalState(entry.instance)) |node_internal| {
+                if (node_internal.local_name) |ln| {
+                    if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
+                        iframe_count += 1;
+                        is_iframe = true;
+                    }
+                }
+            }
 
             // Only call deinit if not already cleaned up externally
             // Check both:
@@ -222,20 +382,50 @@ pub const WrapperCache = struct {
             // 2. isCleanupStarted flag (set at start of Node.deinit)
             // The second check catches cases where markAsCleanedUp couldn't set the flag
             // (e.g., if is_tearing_down was already true or entry wasn't found)
+            //
+            // CRITICAL: Also check if the instance has been reused (vtable/state changed).
+            // The SlabAllocator can reuse memory addresses multiple times. If the instance
+            // at this address is different from what we cached, we must NOT call onObjectFreed
+            // as it would deinit the wrong object.
             const is_started = runtime.instance_lifecycle.isCleanupStarted(entry.instance);
-            if (!entry.instance_already_cleaned and !is_started) {
+            const is_reused = entry.instance.vtable != entry.original_vtable or entry.instance.state != entry.original_state;
+            if (entry.instance_already_cleaned) {
+                skipped_cleaned += 1;
+                if (is_iframe) {
+                    log.debug("[wrapper_cache.deinit] SKIP_CLEANED iframe instance={*}", .{entry.instance});
+                }
+            } else if (is_started) {
+                skipped_started += 1;
+                if (is_iframe) {
+                    log.debug("[wrapper_cache.deinit] SKIP_STARTED iframe instance={*}", .{entry.instance});
+                }
+            } else if (is_reused) {
+                // Instance was reused for a different object - don't call onObjectFreed
+                // This can happen when:
+                // 1. Old instance X was cached
+                // 2. Old X was GC'd and deinit'd via weakCallback
+                // 3. New instance Y was allocated at same address
+                // 4. Y was also GC'd and deinit'd via weakCallback
+                // 5. Yet another instance Z was allocated at same address
+                // 6. Cache deinit runs, entry.instance points to Z, not Y
+                log.debug("[wrapper_cache.deinit] SKIP_REUSED instance={*} orig_vtable={*} curr_vtable={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable });
+            } else {
+                if (is_iframe) {
+                    log.debug("[wrapper_cache.deinit] DEINIT iframe instance={*}", .{entry.instance});
+                }
                 // Call GC integration to invoke type-specific deinit
                 // This is essential for cleanup since weak callbacks may not fire during shutdown
                 runtime.gc.onObjectFreed(entry.instance);
             }
 
             // Dispose the Global<Object>* handle
-            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+            disposeEntryWrapper(entry);
 
             // Free the CacheEntry
             self.allocator.destroy(entry);
         }
 
+        log.debug("[wrapper_cache.deinit] Summary: processed={}, iframes={}, skipped_cleaned={}, skipped_started={}", .{ processed, iframe_count, skipped_cleaned, skipped_started });
         self.cache.deinit();
     }
 
@@ -247,11 +437,31 @@ pub const WrapperCache = struct {
     /// type-specific cleanup. During teardown, all instances will be
     /// batch-freed anyway, so calling individual deinit functions
     /// can cause crashes if they reference already-freed memory.
+    ///
+    /// CRITICAL: This function marks entries as "orphaned" before cleanup.
+    /// If V8's GC has already queued a weak callback that fires after this
+    /// function returns, the callback will see the orphaned flag and skip
+    /// calling onObjectFreed. This prevents a critical bug where a callback
+    /// for an old instance at address X incorrectly deinits a NEW instance
+    /// that reused address X.
     pub fn deinitWithoutCallbacks(self: *Self) void {
         // Mark as tearing down to prevent re-entrant access
         self.is_tearing_down = true;
 
-        // Clear all weak callbacks first
+        // PHASE 1: Mark all entries as orphaned FIRST.
+        // This must happen before ClearWeak because if a callback fires
+        // after ClearWeak but before we destroy entries, it needs to see
+        // the orphaned flag to skip onObjectFreed.
+        {
+            var iter = self.cache.valueIterator();
+            while (iter.next()) |entry_ptr| {
+                const entry = entry_ptr.*;
+                entry.is_orphaned = true;
+            }
+        }
+
+        // PHASE 2: Try to clear weak callbacks.
+        // This may not stop callbacks that V8 already queued.
         {
             var iter = self.cache.valueIterator();
             while (iter.next()) |entry_ptr| {
@@ -260,16 +470,19 @@ pub const WrapperCache = struct {
             }
         }
 
-        // Clean up entries WITHOUT calling onObjectFreed
-        var iter = self.cache.valueIterator();
-        while (iter.next()) |entry_ptr| {
-            const entry = entry_ptr.*;
-
-            // Dispose the Global<Object>* handle
-            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
-
-            // Free the CacheEntry
-            self.allocator.destroy(entry);
+        // PHASE 3: Dispose V8 handles and destroy entries.
+        // Since we've cleared weak callbacks, they should not fire.
+        // The orphaned flag serves as a safety net - if a callback somehow
+        // fires after this point (race with V8 GC), it will see is_orphaned=true.
+        {
+            var iter = self.cache.valueIterator();
+            while (iter.next()) |entry_ptr| {
+                const entry = entry_ptr.*;
+                // Dispose the Global<Object>* handle
+                disposeEntryWrapper(entry);
+                // Free the CacheEntry
+                self.allocator.destroy(entry);
+            }
         }
 
         self.cache.deinit();
@@ -316,9 +529,28 @@ pub const WrapperCache = struct {
             .wrapper = @ptrCast(wrapper),
             .instance = instance,
             .cache = self,
+            .original_vtable = instance.vtable,
+            .original_state = instance.state,
         };
 
-        // Store in HashMap
+        // Store in HashMap.
+        //
+        // An existing entry means this instance is being wrapped a second time,
+        // which normally indicates a missed cache lookup upstream. Replacing the
+        // value without releasing the old entry would leak its CacheEntry and its
+        // Global<Object>* handle, and leave that handle's weak callback armed
+        // pointing at memory we are about to orphan. Release it the same way
+        // remove() does before taking over the key.
+        if (self.cache.fetchRemove(instance)) |kv| {
+            const old_entry = kv.value;
+            log.debug(
+                "[set] replacing existing wrapper for instance={*} old_entry={*} new_entry={*}",
+                .{ instance, old_entry, entry },
+            );
+            v8.v8_Global_ClearWeak(@ptrCast(old_entry.wrapper));
+            disposeEntryWrapper(old_entry);
+            self.allocator.destroy(old_entry);
+        }
         try self.cache.put(instance, entry);
 
         // Set weak callback for GC cleanup
@@ -357,7 +589,7 @@ pub const WrapperCache = struct {
             runtime.gc.onObjectFreed(entry.instance);
 
             // Dispose the Global<Object>* handle
-            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+            disposeEntryWrapper(entry);
 
             // Free the CacheEntry
             self.allocator.destroy(entry);
@@ -384,9 +616,18 @@ pub const WrapperCache = struct {
     /// ## Returns
     /// true if entry was found and marked, false if not in cache
     pub fn markAsCleanedUp(self: *Self, instance: *runtime.Instance) bool {
-        // During teardown, the cache is being iterated over for cleanup.
-        // Re-entrant access would corrupt the HashMap iterator, so skip.
-        if (self.is_tearing_down) return false;
+        // CRITICAL: Skip during teardown to avoid HashMap access corruption.
+        // During wrapper_cache.deinit, we're iterating and destroying entries.
+        // Accessing the HashMap via get() during this phase can cause alignment
+        // errors because entries are being deallocated.
+        //
+        // Instead, callers should use runtime.instance_lifecycle.markCleanupStarted()
+        // which uses a SEPARATE tracking data structure that's safe to access
+        // during teardown. The wrapper_cache.deinit loop already checks
+        // isCleanupStarted() before calling gc.onObjectFreed.
+        if (self.is_tearing_down) {
+            return false;
+        }
 
         if (self.cache.get(instance)) |entry| {
             // Clear weak callback to prevent it from firing
@@ -416,7 +657,7 @@ pub const WrapperCache = struct {
             v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
 
             // Dispose the Global<Object>* handle
-            v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+            disposeEntryWrapper(entry);
 
             // Free the CacheEntry
             self.allocator.destroy(entry);
