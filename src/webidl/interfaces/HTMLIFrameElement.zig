@@ -432,7 +432,6 @@ pub const HTMLIFrameElement = struct {
 
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        std.debug.print("[HTMLIFrameElement.set_name] INTERFACE called with '{s}'\n", .{value.asSlice()});
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

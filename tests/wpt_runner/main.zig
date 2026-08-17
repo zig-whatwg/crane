@@ -62,6 +62,7 @@ const journal = @import("journal.zig");
 const baseline = @import("baseline.zig");
 const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
+const output = @import("output.zig");
 const wpt_options = @import("wpt_options");
 
 /// Thread-local verbose flag for log filtering
@@ -355,6 +356,12 @@ pub const ProgressTracker = struct {
             // No failures, clean up the empty list
             failure_subtests.deinit(self.allocator);
         }
+
+        // One test file is the unit of crash recovery in this runner - the
+        // journal restarts at a file boundary - so it is also the point at
+        // which buffered output has to become visible. A segfault in the next
+        // file cannot then swallow the report for this one.
+        flushOutput();
     }
 
     /// Print progress with optional context suffix
@@ -399,6 +406,12 @@ pub const ProgressTracker = struct {
             elapsed,
             display_path,
         });
+
+        // This bar rewrites one line with \r and is the only output in quiet
+        // mode, so it has to reach the terminal as it is written. It is one
+        // flush per test file, not per subtest, which is the cost this module
+        // was buffered to avoid.
+        flushOutput();
     }
 
     pub fn getElapsedTime(self: *ProgressTracker) []const u8 {
@@ -654,7 +667,8 @@ pub fn executeTests(
     defer if (run_journal) |*j| j.deinit();
 
     for (discovery.test_files.items, 0..) |test_file, file_offset| {
-        var tally: FileTally = .{ .index = discovery.base_index + file_offset };
+        var tally: FileTally = FileTally.start();
+        tally.index = discovery.base_index + file_offset;
 
         // Load content once per test file (still needed for parsing metadata)
         const content = loadTestContent(allocator, options, test_file) catch |err| {
@@ -814,6 +828,21 @@ const FileTally = struct {
     notrun: usize = 0,
     duration_ms: u64 = 0,
     contexts: usize = 0,
+    /// Wall clock across everything this file cost, started at the top of the
+    /// loop so loading and parsing are inside it. `duration_ms` cannot serve
+    /// this purpose: it only sums what individual subtests reported, so a file
+    /// that failed before any subtest finished scores as free however long it
+    /// actually took.
+    timer: ?std.time.Timer = null,
+
+    fn start() FileTally {
+        return .{ .index = 0, .timer = std.time.Timer.start() catch null };
+    }
+
+    fn wallMs(self: *const FileTally) u64 {
+        var t = self.timer orelse return 0;
+        return t.read() / std.time.ns_per_ms;
+    }
 
     fn add(self: *FileTally, result: test_harness.TestResult) void {
         self.contexts += 1;
@@ -848,6 +877,7 @@ const FileTally = struct {
             .timed_out = self.timed_out,
             .notrun = self.notrun,
             .duration_ms = self.duration_ms,
+            .wall_ms = self.wallMs(),
         });
     }
 };
@@ -912,10 +942,37 @@ fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: Te
     return try std.fs.cwd().readFileAlloc(allocator, full_path, 10 * 1024 * 1024);
 }
 
-/// Output helper - uses std.debug.print for standalone compatibility
-/// TODO: When integrated with build.zig, use proper std.io.getStdOut()
+/// Buffer behind `print`. Sized to hold a heavy test file's worth of subtest
+/// lines - `encoding/legacy-mb-korean/euckr-encode-href-errors-han.html` alone
+/// emits about 11,000 - so a whole file usually drains in a handful of writes
+/// rather than one per line. See output.zig for the measurements.
+var stderr_buffer: [256 * 1024]u8 = undefined;
+var stderr_writer: std.fs.File.Writer = undefined;
+var stderr_sink: output.Sink = undefined;
+var stderr_once = std.once(initStderrSink);
+
+fn initStderrSink() void {
+    stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+    stderr_sink = .{ .w = &stderr_writer.interface };
+}
+
+fn sink() *output.Sink {
+    stderr_once.call();
+    return &stderr_sink;
+}
+
+/// Output helper. Buffered, so a subtest line costs a memcpy rather than a
+/// syscall; `flushOutput` marks the points where that buffer has to reach the
+/// terminal - after each test file, and before anything that could end the
+/// process. Diagnostics that must survive a crash belong in journal.zig, which
+/// writes straight through for exactly that reason.
 fn print(comptime fmt: []const u8, args: anytype) void {
-    std.debug.print(fmt, args);
+    sink().print(fmt, args);
+}
+
+/// Pushes buffered output to stderr.
+fn flushOutput() void {
+    sink().flush();
 }
 
 /// Main entry point.
@@ -925,7 +982,14 @@ fn print(comptime fmt: []const u8, args: anytype) void {
 /// main would do it too, but it would print a stack trace, and a run that
 /// correctly detected a regression is not a crash.
 pub fn main() !void {
-    const code = try run();
+    // Neither path out of here runs deferred code: std.process.exit does not,
+    // and an error return prints a trace and exits. So the flush is explicit on
+    // both, or the tail of a run - including its summary - is lost.
+    const code = run() catch |err| {
+        flushOutput();
+        return err;
+    };
+    flushOutput();
     if (code != 0) std.process.exit(code);
 }
 
@@ -1280,6 +1344,11 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         if (!options.verbose) try argv.append(allocator, "--quiet");
 
         print("{s}running tests {d}..{d}\n", .{ shard.label orelse "--> ", next, total });
+
+        // The child writes to this same stderr. Anything still sitting in our
+        // buffer has to go out first or it would surface after the child's
+        // output and misreport the order of the run.
+        flushOutput();
 
         var child = std.process.Child.init(argv.items, allocator);
         const term = try child.spawnAndWait();

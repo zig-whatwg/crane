@@ -231,7 +231,7 @@ pub const InternalState = struct {
         const integration = try ArenaAllocator.get().create(IFrameIntegration);
         integration.* = IFrameIntegration.init(allocator);
 
-        std.debug.print("[InternalState.init] Created integration={*} for state={*}\n", .{ integration, state });
+        log.debug("[InternalState.init] Created integration={*} for state={*}", .{ integration, state });
 
         state.* = .{
             .integration = integration,
@@ -291,7 +291,7 @@ pub fn init(
     // Initialize internal state
     const state = instance.getState(StateType);
     state.own._internal = try InternalState.init(allocator);
-    std.debug.print("[HTMLIFrameElement.init] instance={*} -> internal={*} -> integration={*}\n", .{ instance, state.own._internal.?, state.own._internal.?.integration });
+    log.debug("[HTMLIFrameElement.init] instance={*} -> internal={*} -> integration={*}", .{ instance, state.own._internal.?, state.own._internal.?.integration });
 
     // Set Node's local name for iframe identification during DOM operations
     const NodeImpl = @import("Node.zig");
@@ -306,18 +306,18 @@ pub fn deinit(instance: *runtime.Instance) void {
     // 1. Tree cleanup (Node.deinit → deinitNodeByType) deinits this iframe
     // 2. GC cleanup (onObjectFreed) also tries to deinit the same iframe
     // Only one path should proceed with cleanup.
-    std.debug.print("[HTMLIFrameElement.deinit] Called for instance {*}\n", .{instance});
+    log.debug("[HTMLIFrameElement.deinit] Called for instance {*}", .{instance});
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
-        std.debug.print("[HTMLIFrameElement.deinit] Already cleaning up, skipping\n", .{});
+        log.debug("[HTMLIFrameElement.deinit] Already cleaning up, skipping", .{});
         return; // Already being cleaned up, skip
     }
 
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        std.debug.print("[HTMLIFrameElement.deinit] instance={*} -> integration={*}\n", .{ instance, internal.integration });
+        log.debug("[HTMLIFrameElement.deinit] instance={*} -> integration={*}", .{ instance, internal.integration });
         internal.deinit();
     } else {
-        std.debug.print("[HTMLIFrameElement.deinit] instance={*} -> No internal state\n", .{instance});
+        log.debug("[HTMLIFrameElement.deinit] instance={*} -> No internal state", .{instance});
     }
     // Chain to parent class cleanup
     const HTMLElementImpl = @import("HTMLElement.zig");
@@ -511,7 +511,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
 /// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
 fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext, html_content: []const u8) ?*anyopaque {
     const time_start = std.time.nanoTimestamp();
-    log.debug("[parseHtmlForIframe] time={d}ns START content_len={d}\n", .{ time_start, html_content.len });
+    log.debug("[parseHtmlForIframe] time={d}ns START content_len={d}", .{ time_start, html_content.len });
 
     const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse {
         return null;
@@ -536,7 +536,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     // The BrowsingContext.allowsScripts() method encapsulates this check.
     const scripting_enabled = browsing_ctx_ptr.allowsScripts();
 
-    log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting\n", .{std.time.nanoTimestamp()});
+    log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting", .{std.time.nanoTimestamp()});
     const document_instance = scripted_parser.parseHTMLWithScripting(
         allocator,
         runtime_ctx,
@@ -546,7 +546,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
         // Fall back to empty document on parse error
         return createDocumentForIframe(runtime_ctx_ptr, browsing_ctx_ptr);
     };
-    log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE\n", .{std.time.nanoTimestamp()});
+    log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE", .{std.time.nanoTimestamp()});
 
     // Set document type to HTML
     document_internals.setDocumentType(document_instance, .html) catch {};
