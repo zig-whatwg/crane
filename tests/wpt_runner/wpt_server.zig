@@ -246,6 +246,79 @@ pub const WptServer = struct {
     }
 };
 
+/// Write a lockfile naming `pid` into a scratch WPT root.
+fn writeTestLockfile(dir: std.fs.Dir, pid: posix.pid_t) !void {
+    var file = try dir.createFile(LOCKFILE_NAME, .{});
+    defer file.close();
+    var buf: [64]u8 = undefined;
+    try file.writeAll(try std.fmt.bufPrint(&buf, "{d}:8000\n", .{pid}));
+}
+
+test "a live lockfile is adopted, not owned" {
+    // Under --supervise the parent starts the server and every child finds it
+    // this way. A child that thought it owned the server would SIGTERM it on
+    // exit and leave the rest of the run with nothing to talk to.
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    try writeTestLockfile(tmp.dir, std.c.getpid());
+
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+
+    try std.testing.expect(try server.checkExistingServer());
+    try std.testing.expectEqual(std.c.getpid(), server.pid.?);
+    try std.testing.expectEqual(@as(u16, 8000), server.port);
+    try std.testing.expect(!server.we_spawned);
+
+    // Still there: adopting must not consume the lockfile the owner wrote.
+    try tmp.dir.access(LOCKFILE_NAME, .{});
+}
+
+test "a lockfile naming a dead process is cleared" {
+    // A crashed run can leave its lockfile behind. Trusting it would point the
+    // next run at a port nothing is listening on, and every test would fail
+    // for a reason that has nothing to do with the browser.
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    // Above any pid_max, so kill() cannot find it and cannot ever be reused.
+    try writeTestLockfile(tmp.dir, 2147483646);
+
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+
+    try std.testing.expect(!try server.checkExistingServer());
+    try std.testing.expect(server.pid == null);
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(LOCKFILE_NAME, .{}));
+}
+
+test "no lockfile means no server to adopt" {
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+
+    try std.testing.expect(!try server.checkExistingServer());
+    try std.testing.expect(server.pid == null);
+}
+
 test "WptServer.buildTestUrl" {
     const allocator = std.testing.allocator;
 

@@ -1004,12 +1004,16 @@ pub fn main() !void {
     var report = result_reporter.WptReport.init(allocator);
     defer report.deinit();
 
-    // Start WPT server (provides URL rewrites and proper resource serving)
-    print("\nStarting wpt serve...\n", .{});
+    // Start WPT server (provides URL rewrites and proper resource serving).
+    // Under --supervise the parent already started one and this adopts it,
+    // which is what keeps a restart from fighting over the ports.
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
-    print("WPT server running at {s}\n", .{server.getBaseUrl()});
+    print("\nwpt serve {s} at {s}\n", .{
+        if (server.we_spawned) "started" else "adopted",
+        server.getBaseUrl(),
+    });
 
     // Execute tests (prints progress and summary)
     try executeTests(allocator, discovery, options, &report, server);
@@ -1105,6 +1109,18 @@ fn supervise(
 
     const self_exe = try std.fs.selfExePathAlloc(allocator);
     defer allocator.free(self_exe);
+
+    // The supervisor owns the server for the whole run; children adopt it
+    // through the lockfile and leave it alone. Letting each child spawn its
+    // own would pay the startup cost once per crash, and a child killed
+    // mid-run would orphan the server it was holding.
+    const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
+    defer server.deinit();
+    try server.start();
+    print("\nwpt serve {s} at {s}\n", .{
+        if (server.we_spawned) "started" else "adopted",
+        server.getBaseUrl(),
+    });
 
     print("\nSupervising {d} test files\n", .{total});
     print("  worklist: {s}\n", .{worklist_path});
