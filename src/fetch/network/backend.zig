@@ -73,6 +73,30 @@ pub const CertVerifyOptions = struct {
     client_key_path: ?[]const u8 = null,
 };
 
+/// Certificate options applied to requests that do not specify their own.
+///
+/// An embedder that has to trust a certificate authority the system does not
+/// know about - a test server with a self-signed CA, a corporate MITM proxy -
+/// has no per-request hook to do it through: requests are built deep inside the
+/// fetch algorithms from a `Request`, which has no place to carry a trust
+/// store. This is that hook.
+var default_cert_options: CertVerifyOptions = .{};
+
+/// Set the certificate options every subsequent request will default to.
+///
+/// Any paths in `options` are borrowed, not copied, and must outlive every
+/// request that uses them. Intended to be called once during startup, before
+/// any fetching begins; there is no synchronisation, because a process that
+/// changes its trust store mid-flight has a bigger problem than this global.
+pub fn setDefaultCertOptions(options: CertVerifyOptions) void {
+    default_cert_options = options;
+}
+
+/// The certificate options a request gets when it names none of its own.
+pub fn defaultCertOptions() CertVerifyOptions {
+    return default_cert_options;
+}
+
 /// Network request configuration.
 pub const NetworkRequest = struct {
     /// Request URL
@@ -738,4 +762,29 @@ test "HttpVersion - toString" {
     try std.testing.expectEqualStrings("HTTP/1.1", HttpVersion.http_1_1.toString());
     try std.testing.expectEqualStrings("HTTP/2", HttpVersion.http_2.toString());
     try std.testing.expectEqualStrings("HTTP/3", HttpVersion.http_3.toString());
+}
+
+test "CertVerifyOptions - the default trust store is the system one" {
+    const restore = defaultCertOptions();
+    defer setDefaultCertOptions(restore);
+
+    setDefaultCertOptions(.{});
+    try std.testing.expectEqual(@as(?[]const u8, null), defaultCertOptions().ca_bundle_path);
+    try std.testing.expect(defaultCertOptions().verify_peer);
+    try std.testing.expect(defaultCertOptions().verify_host);
+}
+
+test "CertVerifyOptions - a private CA can be trusted process-wide" {
+    const restore = defaultCertOptions();
+    defer setDefaultCertOptions(restore);
+
+    setDefaultCertOptions(.{ .ca_bundle_path = "tests/wpt/tools/certs/cacert.pem" });
+    try std.testing.expectEqualStrings(
+        "tests/wpt/tools/certs/cacert.pem",
+        defaultCertOptions().ca_bundle_path.?,
+    );
+    // Trusting an extra CA must not relax verification - that would turn a
+    // certificate problem into a silent pass.
+    try std.testing.expect(defaultCertOptions().verify_peer);
+    try std.testing.expect(defaultCertOptions().verify_host);
 }

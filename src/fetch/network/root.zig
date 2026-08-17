@@ -59,6 +59,8 @@ pub const HttpVersion = backend.HttpVersion;
 pub const TlsVersion = backend.TlsVersion;
 pub const ProxyConfig = backend.ProxyConfig;
 pub const CertVerifyOptions = backend.CertVerifyOptions;
+pub const setDefaultCertOptions = backend.setDefaultCertOptions;
+pub const defaultCertOptions = backend.defaultCertOptions;
 pub const ConnectionTimingInfo = backend.ConnectionTimingInfo;
 
 // Re-export libcurl backend

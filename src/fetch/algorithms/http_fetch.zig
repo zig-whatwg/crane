@@ -384,10 +384,9 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest) !Network
         .follow_redirects = false, // WHATWG Fetch handles redirects
         .max_redirects = 20,
         .proxy = null, // TODO: Get from request/settings
-        .cert_options = .{
-            .verify_peer = true,
-            .verify_host = true,
-        },
+        // Whatever the embedder registered, which is `verify_peer` and
+        // `verify_host` against the system trust store unless it said otherwise.
+        .cert_options = network.defaultCertOptions(),
         .verbose = false,
     };
 }
@@ -591,10 +590,9 @@ fn performCorsPreflight(
         .follow_redirects = false,
         .max_redirects = 0,
         .proxy = null,
-        .cert_options = .{
-            .verify_peer = true,
-            .verify_host = true,
-        },
+        // Whatever the embedder registered, which is `verify_peer` and
+        // `verify_host` against the system trust store unless it said otherwise.
+        .cert_options = network.defaultCertOptions(),
         .verbose = false,
     };
 
