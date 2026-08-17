@@ -2898,6 +2898,19 @@ pub fn build(b: *std.Build) void {
         "Show verbose output for each test",
     ) orelse false;
 
+    const wpt_debug = b.option(
+        bool,
+        "wpt-debug",
+        "Enable debug log output (std.log.debug) during WPT tests",
+    ) orelse false;
+
+    // Create WPT options module for compile-time configuration
+    const wpt_options = b.addOptions();
+    wpt_options.addOption(bool, "debug_enabled", wpt_debug);
+
+    // Add WPT options to the runner's root module
+    wpt_runner_exe.root_module.addOptions("wpt_options", wpt_options);
+
     // Add step to clear WPT ports before running
     // WPT uses ports: HTTP 8000-8003, HTTPS 8443-8446
     const clear_ports = b.addSystemCommand(&.{
