@@ -15,6 +15,7 @@
 //! - Abort support via callback
 
 const std = @import("std");
+const log = std.log.scoped(.curl);
 const Allocator = std.mem.Allocator;
 const backend = @import("backend.zig");
 const NetworkBackend = backend.NetworkBackend;
@@ -64,7 +65,7 @@ fn shareLockCallback(
             5 => "CONNECT",
             else => "OTHER",
         };
-        std.debug.print("[CURL SHARE] Lock #{}: data={} ({s}), access={}\n", .{ lock_call_count, data, data_type_name, access });
+        log.debug("[CURL SHARE] Lock #{}: data={} ({s}), access={}\n", .{ lock_call_count, data, data_type_name, access });
     }
     if (data >= 0 and data < share_mutexes.len) {
         share_mutexes[@intCast(data)].lock();
@@ -84,7 +85,7 @@ fn shareUnlockCallback(
             5 => "CONNECT",
             else => "OTHER",
         };
-        std.debug.print("[CURL SHARE] Unlock #{}: data={} ({s})\n", .{ unlock_call_count, data, data_type_name });
+        log.debug("[CURL SHARE] Unlock #{}: data={} ({s})\n", .{ unlock_call_count, data, data_type_name });
     }
     if (data >= 0 and data < share_mutexes.len) {
         share_mutexes[@intCast(data)].unlock();
@@ -98,20 +99,20 @@ pub fn globalInit() !void {
     global_init_mutex.lock();
     defer global_init_mutex.unlock();
 
-    std.debug.print("[CURL] globalInit called, current count: {}\n", .{global_init_count});
+    log.debug("[CURL] globalInit called, current count: {}\n", .{global_init_count});
 
     if (global_init_count == 0) {
-        std.debug.print("[CURL] First init - initializing libcurl globally\n", .{});
+        log.debug("[CURL] First init - initializing libcurl globally\n", .{});
         const result = curl.global_init(curl.CURL_GLOBAL_DEFAULT);
         if (result != curl.CURLE_OK) {
-            std.debug.print("[CURL] ERROR: global_init failed with code: {}\n", .{result});
+            log.debug("[CURL] ERROR: global_init failed with code: {}\n", .{result});
             return error.CurlGlobalInitFailed;
         }
 
         // Create global share for connection pooling
         global_share = curl.share_init();
         if (global_share) |share| {
-            std.debug.print("[CURL] Created global share: {*}\n", .{share});
+            log.debug("[CURL] Created global share: {*}\n", .{share});
             // Set lock/unlock callbacks for thread safety (REQUIRED for multi-threaded use)
             _ = curl.share_setopt(share, curl.CURLSHOPT_LOCKFUNC, @as(*const anyopaque, @ptrCast(&shareLockCallback)));
             _ = curl.share_setopt(share, curl.CURLSHOPT_UNLOCKFUNC, @as(*const anyopaque, @ptrCast(&shareUnlockCallback)));
@@ -120,13 +121,13 @@ pub fn globalInit() !void {
             _ = curl.share_setopt(share, curl.CURLSHOPT_SHARE, curl.CURL_LOCK_DATA_CONNECT);
             // Also share DNS cache for efficiency
             _ = curl.share_setopt(share, curl.CURLSHOPT_SHARE, curl.CURL_LOCK_DATA_DNS);
-            std.debug.print("[CURL] Global share configured with connection and DNS sharing\n", .{});
+            log.debug("[CURL] Global share configured with connection and DNS sharing\n", .{});
         } else {
-            std.debug.print("[CURL] WARNING: Failed to create global share!\n", .{});
+            log.debug("[CURL] WARNING: Failed to create global share!\n", .{});
         }
     }
     global_init_count += 1;
-    std.debug.print("[CURL] globalInit complete, new count: {}\n", .{global_init_count});
+    log.debug("[CURL] globalInit complete, new count: {}\n", .{global_init_count});
 }
 
 /// Decrement global init reference count.
@@ -135,24 +136,24 @@ pub fn globalCleanup() void {
     global_init_mutex.lock();
     defer global_init_mutex.unlock();
 
-    std.debug.print("[CURL] globalCleanup called, current count: {}\n", .{global_init_count});
+    log.debug("[CURL] globalCleanup called, current count: {}\n", .{global_init_count});
 
     if (global_init_count > 0) {
         global_init_count -= 1;
-        std.debug.print("[CURL] Decremented count to: {}\n", .{global_init_count});
+        log.debug("[CURL] Decremented count to: {}\n", .{global_init_count});
         if (global_init_count == 0) {
-            std.debug.print("[CURL] Count is zero - performing full cleanup\n", .{});
+            log.debug("[CURL] Count is zero - performing full cleanup\n", .{});
             // Clean up global share before global cleanup
             if (global_share) |share| {
-                std.debug.print("[CURL] Cleaning up global share: {*}\n", .{share});
+                log.debug("[CURL] Cleaning up global share: {*}\n", .{share});
                 _ = curl.share_cleanup(share);
                 global_share = null;
             }
             curl.global_cleanup();
-            std.debug.print("[CURL] Full cleanup complete\n", .{});
+            log.debug("[CURL] Full cleanup complete\n", .{});
         }
     } else {
-        std.debug.print("[CURL] WARNING: globalCleanup called but count already 0!\n", .{});
+        log.debug("[CURL] WARNING: globalCleanup called but count already 0!\n", .{});
     }
 }
 
@@ -225,10 +226,10 @@ pub const LibcurlBackend = struct {
         // We only call globalInit if not already initialized, to avoid
         // incrementing the reference count on every request.
         if (getGlobalShare() == null) {
-            std.debug.print("[CURL] First backend init - calling globalInit\n", .{});
+            log.debug("[CURL] First backend init - calling globalInit\n", .{});
             try globalInit();
         } else {
-            std.debug.print("[CURL] Backend init - global share already exists, skipping globalInit\n", .{});
+            log.debug("[CURL] Backend init - global share already exists, skipping globalInit\n", .{});
         }
 
         const self = try allocator.create(Self);
@@ -264,7 +265,7 @@ pub const LibcurlBackend = struct {
     /// Each request creates a new LibcurlBackend, but they all share the same global
     /// connection pool via CURLOPT_SHARE.
     pub fn deinit(self: *Self) void {
-        std.debug.print("[CURL] Backend deinit (NOT calling globalCleanup - share persists)\n", .{});
+        log.debug("[CURL] Backend deinit (NOT calling globalCleanup - share persists)\n", .{});
         if (self.owns_cookie_manager) {
             if (self.cookie_manager) |cm| {
                 cm.deinit();
@@ -353,33 +354,33 @@ pub const LibcurlBackend = struct {
         const req_num = request_counter;
 
         std.debug.print("\n[CURL REQUEST #{}] ========================================\n", .{req_num});
-        std.debug.print("[CURL REQUEST #{}] URL: {s}\n", .{ req_num, request.url });
-        std.debug.print("[CURL REQUEST #{}] Method: {s}\n", .{ req_num, request.method });
-        std.debug.print("[CURL REQUEST #{}] Global share: {?}\n", .{ req_num, getGlobalShare() });
-        std.debug.print("[CURL REQUEST #{}] Global init count: {}\n", .{ req_num, global_init_count });
+        log.debug("[CURL REQUEST #{}] URL: {s}\n", .{ req_num, request.url });
+        log.debug("[CURL REQUEST #{}] Method: {s}\n", .{ req_num, request.method });
+        log.debug("[CURL REQUEST #{}] Global share: {?}\n", .{ req_num, getGlobalShare() });
+        log.debug("[CURL REQUEST #{}] Global init count: {}\n", .{ req_num, global_init_count });
 
         // Reset abort flag
         self.aborted.store(false, .seq_cst);
 
         // Create curl easy handle
-        std.debug.print("[CURL REQUEST #{}] Creating easy handle...\n", .{req_num});
+        log.debug("[CURL REQUEST #{}] Creating easy handle...\n", .{req_num});
         const handle = curl.easy_init() orelse {
-            std.debug.print("[CURL REQUEST #{}] ERROR: easy_init returned null!\n", .{req_num});
+            log.debug("[CURL REQUEST #{}] ERROR: easy_init returned null!\n", .{req_num});
             return NetworkError.OutOfMemory;
         };
-        std.debug.print("[CURL REQUEST #{}] Easy handle created: {*}\n", .{ req_num, handle });
+        log.debug("[CURL REQUEST #{}] Easy handle created: {*}\n", .{ req_num, handle });
         defer {
-            std.debug.print("[CURL REQUEST #{}] Cleaning up easy handle: {*}\n", .{ req_num, handle });
+            log.debug("[CURL REQUEST #{}] Cleaning up easy handle: {*}\n", .{ req_num, handle });
             curl.easy_cleanup(handle);
         }
 
         // Attach to global share for connection pooling
         // This enables connection reuse across easy handles, preventing socket exhaustion
         if (getGlobalShare()) |share| {
-            std.debug.print("[CURL REQUEST #{}] Attaching to global share: {*}\n", .{ req_num, share });
+            log.debug("[CURL REQUEST #{}] Attaching to global share: {*}\n", .{ req_num, share });
             _ = curl.easy_setopt(handle, curl.CURLOPT_SHARE, share);
         } else {
-            std.debug.print("[CURL REQUEST #{}] WARNING: No global share available!\n", .{req_num});
+            log.debug("[CURL REQUEST #{}] WARNING: No global share available!\n", .{req_num});
         }
 
         // Attach cookie manager if available
@@ -394,62 +395,72 @@ pub const LibcurlBackend = struct {
         }
 
         // Configure request
-        std.debug.print("[CURL REQUEST #{}] Configuring request...\n", .{req_num});
+        log.debug("[CURL REQUEST #{}] Configuring request...\n", .{req_num});
         configureRequest(handle, request, &ctx) catch {
-            std.debug.print("[CURL REQUEST #{}] ERROR: configureRequest failed\n", .{req_num});
+            log.debug("[CURL REQUEST #{}] ERROR: configureRequest failed\n", .{req_num});
             ctx.deinit();
             return NetworkError.OutOfMemory;
         };
-        std.debug.print("[CURL REQUEST #{}] Request configured\n", .{req_num});
+        log.debug("[CURL REQUEST #{}] Request configured\n", .{req_num});
 
         // Perform the request with retry for connection failures
         // The WPT server can hit connection limits under load
         var result: curl.CURLcode = undefined;
         var retry_count: u8 = 0;
         const max_retries: u8 = 3;
-        std.debug.print("[CURL REQUEST #{}] Starting perform loop (max {} retries)...\n", .{ req_num, max_retries });
+        log.debug("[CURL REQUEST #{}] Starting perform loop (max {} retries)...\n", .{ req_num, max_retries });
         while (retry_count < max_retries) : (retry_count += 1) {
-            std.debug.print("[CURL REQUEST #{}] Attempt {}/{}: calling easy_perform...\n", .{ req_num, retry_count + 1, max_retries });
+            log.debug("[CURL REQUEST #{}] Attempt {}/{}: calling easy_perform...\n", .{ req_num, retry_count + 1, max_retries });
             result = curl.easy_perform(handle);
-            std.debug.print("[CURL REQUEST #{}] easy_perform returned: {} (CURLE_OK={})\n", .{ req_num, result, curl.CURLE_OK });
+            log.debug("[CURL REQUEST #{}] easy_perform returned: {} (CURLE_OK={})\n", .{ req_num, result, curl.CURLE_OK });
             if (result == curl.CURLE_OK) break;
 
             // Only retry on connection failures
             if (result == curl.CURLE_COULDNT_CONNECT) {
-                std.debug.print("[CURL REQUEST #{}] Connection failed, will retry after backoff\n", .{req_num});
+                log.debug("[CURL REQUEST #{}] Connection failed, will retry after backoff\n", .{req_num});
                 // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
                 std.Thread.sleep(100_000_000 * std.math.pow(u64, 2, retry_count));
                 continue;
             }
-            std.debug.print("[CURL REQUEST #{}] Non-retriable error, breaking loop\n", .{req_num});
+            log.debug("[CURL REQUEST #{}] Non-retriable error, breaking loop\n", .{req_num});
             break; // Non-retriable error
         }
 
         // Check for abort
         if (self.aborted.load(.seq_cst)) {
-            std.debug.print("[CURL REQUEST #{}] Request was aborted\n", .{req_num});
+            log.debug("[CURL REQUEST #{}] Request was aborted\n", .{req_num});
             ctx.deinit();
             return NetworkError.Aborted;
         }
 
-        // Check for errors
-        if (result != curl.CURLE_OK) {
-            std.debug.print("[CURL REQUEST #{}] ERROR: curl error code: {}\n", .{ req_num, result });
-            ctx.deinit();
-            return curl_error.mapCurlError(result);
-        }
-
-        std.debug.print("[CURL REQUEST #{}] Request completed successfully\n", .{req_num});
-
-        // Parse headers from raw header data
+        // Parse headers from raw header data. This has to happen before the
+        // error check below, which needs the response's framing headers to tell
+        // a finished close-delimited body from a truncated one.
         parseHeaders(&ctx) catch {
             ctx.deinit();
             return NetworkError.OutOfMemory;
         };
 
-        // Extract response info
         var status_code: c_long = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
+
+        // Check for errors
+        if (result != curl.CURLE_OK) {
+            if (isCloseDelimitedEnd(result, status_code, ctx.response_headers.items)) {
+                log.debug(
+                    "[CURL REQUEST #{}] treating recv error as end of close-delimited body ({d} bytes)\n",
+                    .{ req_num, ctx.response_body.items.len },
+                );
+            } else {
+                log.debug("[CURL REQUEST #{}] ERROR: curl error code: {}\n", .{ req_num, result });
+                ctx.deinit();
+                return curl_error.mapCurlError(result);
+            }
+        }
+
+        log.debug("[CURL REQUEST #{}] Request completed successfully\n", .{req_num});
+
+        // Extract response info
 
         var http_version_raw: c_long = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_HTTP_VERSION, &http_version_raw);
@@ -493,16 +504,16 @@ pub const LibcurlBackend = struct {
         _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
 
         // Debug output for response info
-        std.debug.print("[CURL REQUEST #{}] Response info:\n", .{req_num});
-        std.debug.print("[CURL REQUEST #{}]   Status code: {}\n", .{ req_num, status_code });
-        std.debug.print("[CURL REQUEST #{}]   HTTP version: {}\n", .{ req_num, http_version_raw });
-        std.debug.print("[CURL REQUEST #{}]   Body size: {} bytes\n", .{ req_num, ctx.response_body.items.len });
-        std.debug.print("[CURL REQUEST #{}]   Total time: {d:.3}s\n", .{ req_num, total_time });
-        std.debug.print("[CURL REQUEST #{}]   DNS lookup: {d:.3}s\n", .{ req_num, namelookup_time });
-        std.debug.print("[CURL REQUEST #{}]   Connect time: {d:.3}s\n", .{ req_num, connect_time });
-        std.debug.print("[CURL REQUEST #{}]   Num connects: {} (0 = reused)\n", .{ req_num, num_connects });
+        log.debug("[CURL REQUEST #{}] Response info:\n", .{req_num});
+        log.debug("[CURL REQUEST #{}]   Status code: {}\n", .{ req_num, status_code });
+        log.debug("[CURL REQUEST #{}]   HTTP version: {}\n", .{ req_num, http_version_raw });
+        log.debug("[CURL REQUEST #{}]   Body size: {} bytes\n", .{ req_num, ctx.response_body.items.len });
+        log.debug("[CURL REQUEST #{}]   Total time: {d:.3}s\n", .{ req_num, total_time });
+        log.debug("[CURL REQUEST #{}]   DNS lookup: {d:.3}s\n", .{ req_num, namelookup_time });
+        log.debug("[CURL REQUEST #{}]   Connect time: {d:.3}s\n", .{ req_num, connect_time });
+        log.debug("[CURL REQUEST #{}]   Num connects: {} (0 = reused)\n", .{ req_num, num_connects });
         if (primary_ip != null) {
-            std.debug.print("[CURL REQUEST #{}]   Remote IP: {s}:{}\n", .{ req_num, std.mem.span(primary_ip.?), primary_port });
+            log.debug("[CURL REQUEST #{}]   Remote IP: {s}:{}\n", .{ req_num, std.mem.span(primary_ip.?), primary_port });
         }
 
         // Build response
@@ -782,9 +793,96 @@ fn progressCallback(
     return 0;
 }
 
+/// Whether a curl receive error is really the clean end of a body whose only
+/// terminator was the server closing the connection.
+///
+/// RFC 9112 §6.3 case 7: a response carrying neither `Content-Length` nor
+/// `Transfer-Encoding: chunked` runs until the connection closes, and that
+/// close *is* the terminator rather than a failure. curl's mbedTLS backend
+/// surfaces the resulting EOF as `CURLE_RECV_ERROR` instead of a clean
+/// end-of-stream, so a fully-received response comes back as a transport error.
+/// Only TLS connections are affected - the plain-HTTP path already reads such
+/// responses to completion - which is why `.https.` WPT tests failed against
+/// `wpt serve`, whose Python `BaseHTTP` server sends no framing headers at all.
+///
+/// This deliberately does not paper over a truncated *framed* response. If the
+/// server announced a length or used chunked encoding, then the terminator it
+/// promised never arrived, bytes are missing, and the error stands.
+fn isCloseDelimitedEnd(
+    code: curl.CURLcode,
+    status_code: c_long,
+    headers: []const NetworkResponse.Header,
+) bool {
+    if (code != curl.CURLE_RECV_ERROR) return false;
+
+    // curl reports 0 when it never parsed a status line, so there is no
+    // response to salvage no matter how the connection ended.
+    if (status_code == 0) return false;
+
+    for (headers) |header| {
+        if (std.ascii.eqlIgnoreCase(header.name, "content-length")) return false;
+        if (std.ascii.eqlIgnoreCase(header.name, "transfer-encoding")) return false;
+    }
+
+    return true;
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
+
+test "isCloseDelimitedEnd - a close-delimited body ends at EOF, not in error" {
+    // No Content-Length and no chunked encoding: the connection close is the
+    // terminator, so curl's receive error is the end of the body.
+    const headers = [_]NetworkResponse.Header{
+        .{ .name = "Content-Type", .value = "text/html" },
+    };
+    try std.testing.expect(isCloseDelimitedEnd(curl.CURLE_RECV_ERROR, 200, &headers));
+}
+
+test "isCloseDelimitedEnd - a framed body that stops early is still truncated" {
+    // Content-Length promised a length; not reaching it means bytes went
+    // missing, which must stay an error.
+    const with_length = [_]NetworkResponse.Header{
+        .{ .name = "Content-Length", .value = "1024" },
+    };
+    try std.testing.expect(!isCloseDelimitedEnd(curl.CURLE_RECV_ERROR, 200, &with_length));
+
+    // Same for chunked, whose terminator is the zero-length chunk.
+    const chunked = [_]NetworkResponse.Header{
+        .{ .name = "Transfer-Encoding", .value = "chunked" },
+    };
+    try std.testing.expect(!isCloseDelimitedEnd(curl.CURLE_RECV_ERROR, 200, &chunked));
+}
+
+test "isCloseDelimitedEnd - header names are matched case-insensitively" {
+    const lower = [_]NetworkResponse.Header{
+        .{ .name = "content-length", .value = "7" },
+    };
+    try std.testing.expect(!isCloseDelimitedEnd(curl.CURLE_RECV_ERROR, 200, &lower));
+
+    const mixed = [_]NetworkResponse.Header{
+        .{ .name = "TrAnSfEr-EnCoDiNg", .value = "Chunked" },
+    };
+    try std.testing.expect(!isCloseDelimitedEnd(curl.CURLE_RECV_ERROR, 200, &mixed));
+}
+
+test "isCloseDelimitedEnd - only a receive error can be an end of body" {
+    const headers = [_]NetworkResponse.Header{
+        .{ .name = "Content-Type", .value = "text/html" },
+    };
+    // A connection that never opened has no body to have finished.
+    try std.testing.expect(!isCloseDelimitedEnd(curl.CURLE_COULDNT_CONNECT, 0, &headers));
+    // Nor does a request that timed out mid-flight.
+    try std.testing.expect(!isCloseDelimitedEnd(curl.CURLE_OPERATION_TIMEDOUT, 200, &headers));
+}
+
+test "isCloseDelimitedEnd - a response that never arrived is not complete" {
+    // curl reports status 0 when no status line was ever parsed. There is no
+    // response to salvage, whatever the error was.
+    const headers = [_]NetworkResponse.Header{};
+    try std.testing.expect(!isCloseDelimitedEnd(curl.CURLE_RECV_ERROR, 0, &headers));
+}
 
 test "LibcurlBackend - init and deinit" {
     const allocator = std.testing.allocator;
