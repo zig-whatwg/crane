@@ -55,3 +55,7 @@ data/
 /specs/algorithms/
 /specs/idl/
 /specs/whatwg/
+
+# WPT run output (journals, per-shard worklists, per-child reports)
+# The regression baseline is tests/wpt_expectations.jsonl, not anything here.
+/wpt-results/
