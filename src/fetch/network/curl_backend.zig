@@ -353,7 +353,7 @@ pub const LibcurlBackend = struct {
         request_counter += 1;
         const req_num = request_counter;
 
-        std.debug.print("\n[CURL REQUEST #{}] ========================================\n", .{req_num});
+        log.debug("\n[CURL REQUEST #{}] ========================================\n", .{req_num});
         log.debug("[CURL REQUEST #{}] URL: {s}\n", .{ req_num, request.url });
         log.debug("[CURL REQUEST #{}] Method: {s}\n", .{ req_num, request.method });
         log.debug("[CURL REQUEST #{}] Global share: {?}\n", .{ req_num, getGlobalShare() });

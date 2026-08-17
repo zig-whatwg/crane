@@ -16,6 +16,8 @@
 //! 3. Handle results (e.g., beforeunload cancellation)
 
 const std = @import("std");
+
+const log = std.log.scoped(.navigation);
 const Allocator = std.mem.Allocator;
 
 // Navigation module imports
@@ -215,7 +217,7 @@ fn dispatchEventToWindow(
 
     // Log for debugging (can be removed in production)
     if (@import("builtin").mode == .Debug) {
-        std.debug.print("Navigation event dispatched: {s}\n", .{event_type});
+        log.debug("Navigation event dispatched: {s}\n", .{event_type});
     }
 }
 

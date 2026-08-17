@@ -20,6 +20,8 @@
 //! ```
 
 const std = @import("std");
+
+const log = std.log.scoped(.parser_script_execution);
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -130,7 +132,7 @@ pub const ParserScriptContext = struct {
 
         // Resolve relative URLs against base URL
         const resolved_url = resolveScriptUrl(self.allocator, url, self.base_url) orelse {
-            std.debug.print("Failed to resolve script URL: {s}\n", .{url});
+            log.debug("Failed to resolve script URL: {s}\n", .{url});
             return null;
         };
         defer if (resolved_url.ptr != url.ptr) self.allocator.free(resolved_url);
@@ -184,12 +186,10 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
         HTMLScriptElementImpl.setParserDocument(script_element, ctx.document);
         HTMLScriptElementImpl.setFromExternalFile(script_element, true);
 
-
         // Try to load the external script
         if (ctx.loadExternalScript(src_url)) |external_content| {
             // Free the loaded content when we're done (cacheSourceText duplicates it)
             defer ctx.allocator.free(external_content);
-
 
             // Successfully loaded - execute the external script content
             if (external_content.len == 0) {
@@ -355,14 +355,14 @@ fn fetchScriptViaHttp(allocator: Allocator, url: []const u8) ?[]const u8 {
 
     // Use the fetch module to retrieve the script
     const response = fetch.fetchSimple(allocator, url) catch |err| {
-        std.debug.print("HTTP fetch error for script {s}: {}\n", .{ url, err });
+        log.debug("HTTP fetch error for script {s}: {}\n", .{ url, err });
         return null;
     };
     defer response.deinit();
 
     // Check for successful response (2xx status)
     if (response.status < 200 or response.status >= 300) {
-        std.debug.print("HTTP {d} fetching script {s}\n", .{ response.status, url });
+        log.debug("HTTP {d} fetching script {s}\n", .{ response.status, url });
         return null;
     }
 

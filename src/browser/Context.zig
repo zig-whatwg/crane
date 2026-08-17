@@ -119,13 +119,13 @@ fn registerTimerContext(timer_id: TimerId, wrapper: *V8TimerCallback) void {
     if (timer_contexts) |*map| {
         map.put(timer_id, wrapper) catch |err| {
             // If we can't track the timer, we must destroy it to prevent leaks
-            std.debug.print("Warning: Failed to register timer context {}: {}\n", .{ timer_id, err });
+            log.debug("Warning: Failed to register timer context {}: {}\n", .{ timer_id, err });
             wrapper.destroy();
         };
     } else {
         // timer_contexts is null - this shouldn't happen if setTimerInterface was called
         // Destroy the context to prevent memory leak
-        std.debug.print("Warning: timer_contexts is null, destroying untracked timer {}\n", .{timer_id});
+        log.debug("Warning: timer_contexts is null, destroying untracked timer {}\n", .{timer_id});
         wrapper.destroy();
     }
 }
@@ -371,7 +371,7 @@ pub const Context = struct {
     ) !*Context {
         context_id_counter += 1;
         const ctx_id = context_id_counter;
-        std.debug.print("\n[Context.init] === Creating context #{d} ===\n", .{ctx_id});
+        log.debug("\n[Context.init] === Creating context #{d} ===\n", .{ctx_id});
         log.debug("[Context.init] URL: {s}\n", .{url});
         log.debug("[Context.init] Isolate: {*}\n", .{isolate});
 
@@ -415,7 +415,7 @@ pub const Context = struct {
             // so we don't need to call initializeBindings() - saving ~1099 registrations.
             v8_ctx = v8.ffi.v8_Context_NewFromSnapshot(self.isolate) orelse {
                 // Fallback to slow path if snapshot context fails
-                std.debug.print("Warning: Snapshot context failed, falling back to fresh context\n", .{});
+                log.debug("Warning: Snapshot context failed, falling back to fresh context\n", .{});
                 return self.createV8ContextFresh();
             };
         } else {
@@ -431,7 +431,7 @@ pub const Context = struct {
         // Subsequent context creations within the same thread will get AlreadyInitialized.
         context_manager.init(self.allocator) catch |err| {
             if (err != error.AlreadyInitialized) {
-                std.debug.print("Warning: Context manager init failed: {}\n", .{err});
+                log.debug("Warning: Context manager init failed: {}\n", .{err});
             }
         };
 
@@ -440,7 +440,7 @@ pub const Context = struct {
         const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
         const event_loop_iface = if (self.event_loop) |ev| ev.eventLoop() else null;
         const runtime_ctx = context_manager.getOrCreateWithExternalEventLoop(v8_ctx, timer_iface, event_loop_iface, self.allocator) catch |err| {
-            std.debug.print("Warning: Context registration failed: {}\n", .{err});
+            log.debug("Warning: Context registration failed: {}\n", .{err});
             return error.ContextRegistrationFailed;
         };
 
@@ -483,7 +483,7 @@ pub const Context = struct {
         const Window = interfaces.Window;
         const WindowImpl = impls.Window;
         const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
-            std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
+            log.debug("Warning: Failed to create Window instance: {}\n", .{err});
             self.window_instance = null;
             return;
         };
@@ -514,7 +514,7 @@ pub const Context = struct {
         // This is critical for cross-origin security checks where we need to get
         // the accessor's Window from the entered context.
         v8.context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
-            std.debug.print("Warning: Failed to setWindowForContext: {}\n", .{err});
+            log.debug("Warning: Failed to setWindowForContext: {}\n", .{err});
         };
 
         // Register Window in wrapper cache for proper cleanup
@@ -535,7 +535,7 @@ pub const Context = struct {
                 .context_type = .window,
                 .global_object = @ptrCast(window_instance),
             }) catch |err| {
-                std.debug.print("Warning: Failed to create Realm: {}\n", .{err});
+                log.debug("Warning: Failed to create Realm: {}\n", .{err});
                 return;
             };
             _ = realm.populateIntrinsics();
@@ -585,7 +585,7 @@ pub const Context = struct {
         // This must happen before registerBrowserGlobals() which stores singletons in __internal
         self.setupGlobalAliases() catch |err| {
             // Log but continue - setupGlobalAliases failing shouldn't prevent context creation
-            std.debug.print("Warning: setupGlobalAliases failed: {} - continuing\n", .{err});
+            log.debug("Warning: setupGlobalAliases failed: {} - continuing\n", .{err});
         };
 
         // Register browser globals based on context type
@@ -626,7 +626,7 @@ pub const Context = struct {
         // Initialize context manager for V8 callbacks (only if not already initialized)
         context_manager.init(self.allocator) catch |err| {
             if (err != error.AlreadyInitialized) {
-                std.debug.print("Warning: Context manager init failed: {}\n", .{err});
+                log.debug("Warning: Context manager init failed: {}\n", .{err});
             }
         };
 
@@ -634,7 +634,7 @@ pub const Context = struct {
         const timer_iface = if (self.event_loop) |ev| ev.timerInterface() else null;
         const event_loop_iface = if (self.event_loop) |ev| ev.eventLoop() else null;
         const runtime_ctx = context_manager.getOrCreateWithExternalEventLoop(v8_ctx, timer_iface, event_loop_iface, self.allocator) catch |err| {
-            std.debug.print("Warning: Context registration failed: {}\n", .{err});
+            log.debug("Warning: Context registration failed: {}\n", .{err});
             return error.ContextRegistrationFailed;
         };
 
@@ -667,7 +667,7 @@ pub const Context = struct {
         const Window = interfaces.Window;
         const WindowImpl = impls.Window;
         const window_instance = Window.init(self.allocator, runtime_ctx) catch |err| {
-            std.debug.print("Warning: Failed to create Window instance: {}\n", .{err});
+            log.debug("Warning: Failed to create Window instance: {}\n", .{err});
             self.window_instance = null;
             return;
         };
@@ -698,7 +698,7 @@ pub const Context = struct {
         // This is critical for cross-origin security checks where we need to get
         // the accessor's Window from the entered context.
         v8.context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
-            std.debug.print("Warning: Failed to setWindowForContext: {}\n", .{err});
+            log.debug("Warning: Failed to setWindowForContext: {}\n", .{err});
         };
 
         // Register Window in wrapper cache
@@ -740,7 +740,7 @@ pub const Context = struct {
 
         // Set up global aliases
         self.setupGlobalAliases() catch |err| {
-            std.debug.print("Warning: setupGlobalAliases failed: {} - continuing\n", .{err});
+            log.debug("Warning: setupGlobalAliases failed: {} - continuing\n", .{err});
         };
 
         // Register browser globals
@@ -763,7 +763,7 @@ pub const Context = struct {
 
         // Get runtime context for wrapper caching
         const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
-            std.debug.print("Warning: Failed to get runtime context: {}\n", .{err});
+            log.debug("Warning: Failed to get runtime context: {}\n", .{err});
             return;
         };
 
@@ -797,7 +797,7 @@ pub const Context = struct {
         // The accessor properties defined in setupGlobalAliases() read from __internal
         const internal_key = v8.ffi.v8_String_NewFromUtf8(isolate, "__internal", 10) orelse return error.StringCreateFailed;
         const internal_obj = v8.ffi.v8_Object_Get(global_obj, v8_ctx, @ptrCast(internal_key)) orelse {
-            std.debug.print("Warning: __internal object not found on global\n", .{});
+            log.debug("Warning: __internal object not found on global\n", .{});
             return error.ObjectNotFound;
         };
 
@@ -805,7 +805,7 @@ pub const Context = struct {
         {
             const Document = interfaces.Document;
             const doc_instance = Document.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create document singleton: {}\n", .{err});
+                log.debug("Warning: Failed to create document singleton: {}\n", .{err});
                 return;
             };
             self.document_instance = doc_instance;
@@ -823,7 +823,7 @@ pub const Context = struct {
                 isolate,
                 v8_ctx,
             ) catch |err| {
-                std.debug.print("Warning: Failed to wrap document: {}\n", .{err});
+                log.debug("Warning: Failed to wrap document: {}\n", .{err});
                 return;
             };
 
@@ -835,7 +835,7 @@ pub const Context = struct {
         {
             const Navigator = interfaces.Navigator;
             const nav_instance = Navigator.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create navigator: {}\n", .{err});
+                log.debug("Warning: Failed to create navigator: {}\n", .{err});
                 return;
             };
             self.navigator_instance = nav_instance;
@@ -851,7 +851,7 @@ pub const Context = struct {
                 isolate,
                 v8_ctx,
             ) catch |err| {
-                std.debug.print("Warning: Failed to wrap navigator: {}\n", .{err});
+                log.debug("Warning: Failed to wrap navigator: {}\n", .{err});
                 // Clean up the instance we just created to avoid memory leak
                 Navigator.deinit(nav_instance);
                 self.navigator_instance = null;
@@ -866,7 +866,7 @@ pub const Context = struct {
         {
             const Location = interfaces.Location;
             const loc_instance = Location.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create location: {}\n", .{err});
+                log.debug("Warning: Failed to create location: {}\n", .{err});
                 return;
             };
             self.location_instance = loc_instance;
@@ -886,7 +886,7 @@ pub const Context = struct {
                 isolate,
                 v8_ctx,
             ) catch |err| {
-                std.debug.print("Warning: Failed to wrap location: {}\n", .{err});
+                log.debug("Warning: Failed to wrap location: {}\n", .{err});
                 // Clean up the instance we just created to avoid memory leak
                 Location.deinit(loc_instance);
                 self.location_instance = null;
@@ -901,7 +901,7 @@ pub const Context = struct {
         {
             const History = interfaces.History;
             const hist_instance = History.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create history: {}\n", .{err});
+                log.debug("Warning: Failed to create history: {}\n", .{err});
                 return;
             };
             self.history_instance = hist_instance;
@@ -917,7 +917,7 @@ pub const Context = struct {
                 isolate,
                 v8_ctx,
             ) catch |err| {
-                std.debug.print("Warning: Failed to wrap history: {}\n", .{err});
+                log.debug("Warning: Failed to wrap history: {}\n", .{err});
                 // Clean up the instance we just created to avoid memory leak
                 History.deinit(hist_instance);
                 self.history_instance = null;
@@ -932,7 +932,7 @@ pub const Context = struct {
         {
             const Performance = interfaces.Performance;
             const perf_instance = Performance.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create performance: {}\n", .{err});
+                log.debug("Warning: Failed to create performance: {}\n", .{err});
                 return;
             };
             self.performance_instance = perf_instance;
@@ -948,7 +948,7 @@ pub const Context = struct {
                 isolate,
                 v8_ctx,
             ) catch |err| {
-                std.debug.print("Warning: Failed to wrap performance: {}\n", .{err});
+                log.debug("Warning: Failed to wrap performance: {}\n", .{err});
                 // Clean up the instance we just created to avoid memory leak
                 Performance.deinit(perf_instance);
                 self.performance_instance = null;
@@ -988,7 +988,7 @@ pub const Context = struct {
         {
             const WorkerNavigator = interfaces.WorkerNavigator;
             const nav_instance = WorkerNavigator.init(self.allocator, runtime_ctx) catch |err| {
-                std.debug.print("Warning: Failed to create worker navigator: {}\n", .{err});
+                log.debug("Warning: Failed to create worker navigator: {}\n", .{err});
                 return;
             };
 
@@ -998,7 +998,7 @@ pub const Context = struct {
                 isolate,
                 v8_ctx,
             ) catch |err| {
-                std.debug.print("Warning: Failed to wrap worker navigator: {}\n", .{err});
+                log.debug("Warning: Failed to wrap worker navigator: {}\n", .{err});
                 return;
             };
 
@@ -1123,7 +1123,7 @@ pub const Context = struct {
                 \\})();
             ;
             _ = self.evaluateScript(btoa_atob_script) catch |err| {
-                std.debug.print("Warning: Failed to register btoa/atob: {}\n", .{err});
+                log.debug("Warning: Failed to register btoa/atob: {}\n", .{err});
             };
         }
 
@@ -1216,7 +1216,7 @@ pub const Context = struct {
         };
 
         _ = self.evaluateScript(setup_script) catch |err| {
-            std.debug.print("ERROR: Failed to set up global aliases: {}\n", .{err});
+            log.debug("ERROR: Failed to set up global aliases: {}\n", .{err});
             return err;
         };
     }
@@ -1337,7 +1337,7 @@ pub const Context = struct {
                     const len = v8.ffi.v8_String_Utf8Length(str);
                     const write_len: usize = @min(@as(usize, @intCast(len)), buf.len - 1);
                     _ = v8.ffi.v8_String_WriteUtf8(str, &buf, @intCast(write_len));
-                    std.debug.print("Script compile error: {s}\n", .{buf[0..write_len]});
+                    log.debug("Script compile error: {s}\n", .{buf[0..write_len]});
                 }
             }
             return null;
@@ -1409,19 +1409,19 @@ pub const Context = struct {
         const isolate = self.isolate;
         const v8_ctx = self.v8_context orelse return error.NotInitialized;
 
-        std.debug.print("loadHTML: Browser.Context v8_context={*}\n", .{v8_ctx});
+        log.debug("loadHTML: Browser.Context v8_context={*}\n", .{v8_ctx});
 
         // Get runtime context for HTMLParser
         const runtime_ctx = context_manager.getOrCreate(v8_ctx, self.allocator) catch |err| {
-            std.debug.print("Failed to get runtime context: {}\n", .{err});
+            log.debug("Failed to get runtime context: {}\n", .{err});
             return error.NotInitialized;
         };
 
-        std.debug.print("loadHTML: runtime_ctx engine_ctx={*}\n", .{runtime_ctx.getEngineContext()});
+        log.debug("loadHTML: runtime_ctx engine_ctx={*}\n", .{runtime_ctx.getEngineContext()});
 
         // Set the document URL in context_manager for fetch relative URL resolution
         context_manager.setDocumentUrl(v8_ctx, options.base_url) catch |err| {
-            std.debug.print("Warning: Failed to set document URL: {}\n", .{err});
+            log.debug("Warning: Failed to set document URL: {}\n", .{err});
         };
 
         // Update location object with the document's URL
@@ -1437,7 +1437,7 @@ pub const Context = struct {
                 const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
                 const origin = options.base_url[0 .. scheme_end + 3 + path_start];
                 impls.Window.setOrigin(win, origin) catch |err| {
-                    std.debug.print("Warning: Failed to set Window origin: {}\n", .{err});
+                    log.debug("Warning: Failed to set Window origin: {}\n", .{err});
                 };
             }
         }
@@ -1446,7 +1446,7 @@ pub const Context = struct {
         // and is already registered in V8. We pass it to the parser so scripts can
         // access the DOM via document.getElementById(), querySelector(), etc.
         const document = self.document_instance orelse {
-            std.debug.print("ERROR: document_instance is null - context must be initialized first\n", .{});
+            log.debug("ERROR: document_instance is null - context must be initialized first\n", .{});
             return error.NotInitialized;
         };
 
@@ -1472,7 +1472,7 @@ pub const Context = struct {
                 .existing_document = document,
             },
         ) catch |err| {
-            std.debug.print("HTML parse error: {}\n", .{err});
+            log.debug("HTML parse error: {}\n", .{err});
             return error.ParseError;
         };
 
@@ -1480,7 +1480,7 @@ pub const Context = struct {
         // This is necessary for window.frames[N] to work properly
         self.initializeIframeBrowsingContexts(document) catch |err| {
             // Non-fatal - some iframes may not need initialization
-            std.debug.print("Warning: Failed to initialize iframe browsing contexts: {}\n", .{err});
+            log.debug("Warning: Failed to initialize iframe browsing contexts: {}\n", .{err});
         };
 
         // Fire DOMContentLoaded event
@@ -1516,7 +1516,7 @@ pub const Context = struct {
             if (element) |iframe_elem| {
                 // Access contentWindow to trigger IFrameIntegration.ensureBrowsingContext
                 _ = impls.HTMLIFrameElement.get_contentWindow(iframe_elem) catch |err| {
-                    std.debug.print("Warning: Failed to initialize iframe {d}: {}\n", .{ i, err });
+                    log.debug("Warning: Failed to initialize iframe {d}: {}\n", .{ i, err });
                 };
             }
         }
@@ -1565,7 +1565,7 @@ pub const Context = struct {
                     const buffer = self.allocator.alloc(u8, @intCast(len)) catch return error.CompileError;
                     defer self.allocator.free(buffer);
                     _ = v8.ffi.v8_String_WriteUtf8(str, buffer.ptr, @intCast(len));
-                    std.debug.print("Script compile error: {s}\n", .{buffer});
+                    log.debug("Script compile error: {s}\n", .{buffer});
                 }
             }
             return error.CompileError;
@@ -1578,16 +1578,16 @@ pub const Context = struct {
         if (run_result.error_info) |err_info| {
             // Print detailed error information
             if (err_info.message) |msg| {
-                std.debug.print("Script runtime error: {s}\n", .{msg});
+                log.debug("Script runtime error: {s}\n", .{msg});
             }
             if (err_info.source_line) |line| {
-                std.debug.print("  Source line: {s}\n", .{line});
+                log.debug("  Source line: {s}\n", .{line});
             }
             if (err_info.resource_name) |name| {
-                std.debug.print("  Resource: {s}:{d}:{d}\n", .{ name, err_info.line_number, err_info.column_number });
+                log.debug("  Resource: {s}:{d}:{d}\n", .{ name, err_info.line_number, err_info.column_number });
             }
             if (err_info.stack_trace) |stack| {
-                std.debug.print("  Stack trace:\n{s}\n", .{stack});
+                log.debug("  Stack trace:\n{s}\n", .{stack});
             }
             return error.RuntimeError;
         }
@@ -1609,7 +1609,7 @@ pub const Context = struct {
     /// 6. ContextDisposedNotification() - hint GC (Chrome pattern)
     /// 7. Dispose context handle
     pub fn deinit(self: *Context) void {
-        std.debug.print("\n[Context.deinit] === Destroying context ===\n", .{});
+        log.debug("\n[Context.deinit] === Destroying context ===\n", .{});
         log.debug("[Context.deinit] URL: {s}\n", .{self.url});
         log.debug("[Context.deinit] V8 Context: {?*}\n", .{self.v8_context});
 

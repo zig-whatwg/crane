@@ -10,6 +10,7 @@
 //! - Creating error events for script failures
 
 const std = @import("std");
+const log = std.log.scoped(.event_utils);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
@@ -308,9 +309,9 @@ pub fn reportException(
     // Step 7: If notHandled is true, report to developer console
     if (not_handled) {
         // Log to debug output (developer console equivalent)
-        std.debug.print("Uncaught error: {s}\n", .{error_info.message});
+        log.debug("Uncaught error: {s}\n", .{error_info.message});
         if (error_info.filename.len > 0) {
-            std.debug.print("  at {s}:{d}:{d}\n", .{
+            log.debug("  at {s}:{d}:{d}\n", .{
                 error_info.filename,
                 error_info.lineno,
                 error_info.colno,

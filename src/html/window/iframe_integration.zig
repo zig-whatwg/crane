@@ -346,10 +346,10 @@ pub const IFrameIntegration = struct {
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
         // so we only need to call deinit() here.
         if (self.browsing_context) |ctx| {
-            std.debug.print("[IFrameIntegration.deinit] integration={*} -> BC {*}\n", .{ self, ctx });
+            log.debug("[IFrameIntegration.deinit] integration={*} -> BC {*}\n", .{ self, ctx });
             ctx.deinit();
         } else {
-            std.debug.print("[IFrameIntegration.deinit] integration={*} -> BC null\n", .{self});
+            log.debug("[IFrameIntegration.deinit] integration={*} -> BC null\n", .{self});
         }
 
         // Free allocated strings
@@ -468,7 +468,7 @@ pub const IFrameIntegration = struct {
             return IFrameError.ContextCreationFailed;
         };
 
-        std.debug.print("[IFrameIntegration.onInsertedIntoDocument] Created BC {*} for integration {*} (via onInsertedIntoDocument)\n", .{ nested_ctx, self });
+        log.debug("[IFrameIntegration.onInsertedIntoDocument] Created BC {*} for integration {*} (via onInsertedIntoDocument)\n", .{ nested_ctx, self });
         self.browsing_context = nested_ctx;
 
         // Set the target name if we have one
@@ -509,7 +509,7 @@ pub const IFrameIntegration = struct {
             return null;
         };
 
-        std.debug.print("[IFrameIntegration.ensureBrowsingContext] Created BC {*} for integration {*} (via ensureBrowsingContext)\n", .{ nested_ctx, self });
+        log.debug("[IFrameIntegration.ensureBrowsingContext] Created BC {*} for integration {*} (via ensureBrowsingContext)\n", .{ nested_ctx, self });
         self.browsing_context = nested_ctx;
         self.parent_context = parent_bc;
 
@@ -578,7 +578,7 @@ pub const IFrameIntegration = struct {
             // Destroy the BrowsingContext synchronously. This is deterministic cleanup
             // following the Chromium pattern, not deferred GC-driven cleanup.
             // The BC is a Zig-only struct with no V8 references, so this is safe.
-            std.debug.print("[IFrameIntegration.onRemovedFromDocument] integration={*} -> destroying BC {*}\n", .{ self, ctx });
+            log.debug("[IFrameIntegration.onRemovedFromDocument] integration={*} -> destroying BC {*}\n", .{ self, ctx });
             ctx.deinit();
             // Set to null to prevent double-free in IFrameIntegration.deinit()
             self.browsing_context = null;

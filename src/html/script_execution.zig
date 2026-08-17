@@ -19,6 +19,8 @@
 //! that are re-exported through the interfaces.
 
 const std = @import("std");
+
+const log = std.log.scoped(.script_execution);
 const runtime = @import("runtime");
 
 // WebIDL interfaces - used for all WebIDL type interactions (Golden Rule #12)
@@ -200,7 +202,7 @@ pub fn prepareScriptElement(
                 null, // hash_value (TODO: compute from source)
             )) {
                 // CSP blocked inline script
-                std.debug.print("CSP blocked inline script\n", .{});
+                log.debug("CSP blocked inline script\n", .{});
                 return false;
             }
         }
@@ -275,7 +277,7 @@ pub fn prepareScriptElement(
                 if (nonce.len > 0) nonce else null,
             )) {
                 // CSP blocked external script
-                std.debug.print("CSP blocked external script: {s}\n", .{script_url});
+                log.debug("CSP blocked external script: {s}\n", .{script_url});
                 return false;
             }
         }
@@ -286,7 +288,7 @@ pub fn prepareScriptElement(
         const body: []const u8 = if (cached) |c| c else blk: {
             // No cached content - fetch it
             const fetch_result = fetchExternalScript(allocator, script_url) catch |err| {
-                std.debug.print("External script fetch error: {}\n", .{err});
+                log.debug("External script fetch error: {}\n", .{err});
                 return false;
             };
 
@@ -357,7 +359,7 @@ pub fn prepareScriptElement(
                 if (doc_state.hasImportMapAcquired(doc)) {
                     // Only one import map per document is allowed
                     // Subsequent import maps are ignored with a console warning
-                    std.debug.print("Import map ignored: document already has an import map\n", .{});
+                    log.debug("Import map ignored: document already has an import map\n", .{});
                     return false;
                 }
 
@@ -372,13 +374,13 @@ pub fn prepareScriptElement(
                 }
 
                 if (import_map_result.error_message) |err_msg| {
-                    std.debug.print("Import map parse error: {s}\n", .{err_msg});
+                    log.debug("Import map parse error: {s}\n", .{err_msg});
                     return false;
                 }
 
                 // Step 3: Register the import map
                 registerImportMap(doc, import_map_result) catch |err| {
-                    std.debug.print("Failed to register import map: {}\n", .{err});
+                    log.debug("Failed to register import map: {}\n", .{err});
                     return false;
                 };
 
@@ -402,13 +404,13 @@ pub fn prepareScriptElement(
                 }
 
                 if (speculation_result.error_message) |err_msg| {
-                    std.debug.print("Speculation rules parse error: {s}\n", .{err_msg});
+                    log.debug("Speculation rules parse error: {s}\n", .{err_msg});
                     return false;
                 }
 
                 // Step 2: Register speculation rules with the document
                 registerSpeculationRules(doc, speculation_result) catch |err| {
-                    std.debug.print("Failed to register speculation rules: {}\n", .{err});
+                    log.debug("Failed to register speculation rules: {}\n", .{err});
                     return false;
                 };
 
@@ -585,7 +587,7 @@ pub fn executePendingParserBlockingScript(
 
     // Execute the script
     _ = executeScriptElement(allocator, pending_script) catch |err| {
-        std.debug.print("Parser-blocking script execution error: {}\n", .{err});
+        log.debug("Parser-blocking script execution error: {}\n", .{err});
     };
 }
 
@@ -601,7 +603,7 @@ pub fn executeScriptsWhenParsingFinished(
     for (scripts) |script| {
         // Execute each deferred script in order
         _ = executeScriptElement(allocator, script) catch |err| {
-            std.debug.print("Deferred script execution error: {}\n", .{err});
+            log.debug("Deferred script execution error: {}\n", .{err});
         };
     }
 
@@ -627,7 +629,7 @@ pub fn executeScriptsInOrderAsap(
         }
 
         _ = executeScriptElement(allocator, script) catch |err| {
-            std.debug.print("In-order async script execution error: {}\n", .{err});
+            log.debug("In-order async script execution error: {}\n", .{err});
         };
     }
 }
@@ -647,7 +649,7 @@ pub fn executeScriptsAsap(
         if (HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
             _ = doc_state.removeScriptFromExecuteAsap(document, script);
             _ = executeScriptElement(allocator, script) catch |err| {
-                std.debug.print("ASAP script execution error: {}\n", .{err});
+                log.debug("ASAP script execution error: {}\n", .{err});
             };
             // Don't increment i - list shifted
         } else {
@@ -717,7 +719,7 @@ pub fn executeScriptElement(
             // Step 6.3: Run the classic script
             runClassicScript(script_element) catch |err| {
                 // Script execution error - log but don't propagate
-                std.debug.print("Script execution error: {}\n", .{err});
+                log.debug("Script execution error: {}\n", .{err});
             };
 
             // Step 6.4: Set currentScript back to oldCurrentScript
@@ -730,7 +732,7 @@ pub fn executeScriptElement(
 
             runModuleScript(script_element) catch |err| {
                 // Module execution error - log but don't propagate
-                std.debug.print("Module script execution error: {}\n", .{err});
+                log.debug("Module script execution error: {}\n", .{err});
             };
         },
         .importmap => {
@@ -952,34 +954,34 @@ fn runModuleFromSource(
     const ctx = script_element.ctx;
     const engine = ctx.getEngine() orelse {
         // No engine available (testing mode) - silently skip execution
-        std.debug.print("No JS engine available for module execution (testing mode)\n", .{});
+        log.debug("No JS engine available for module execution (testing mode)\n", .{});
         return;
     };
 
     // Get engine context
     const engine_ctx = ctx.getEngineContext() orelse {
-        std.debug.print("No engine context available for module execution\n", .{});
+        log.debug("No engine context available for module execution\n", .{});
         return;
     };
 
     // Compile the module using the engine interface
     const compileModule = engine.compileModule orelse {
-        std.debug.print("Engine does not support module compilation\n", .{});
+        log.debug("Engine does not support module compilation\n", .{});
         return;
     };
 
     const module = compileModule(engine_ctx, source, base_url) catch |err| {
-        std.debug.print("Module compilation error: {}\n", .{err});
+        log.debug("Module compilation error: {}\n", .{err});
         return;
     } orelse {
-        std.debug.print("Failed to compile ES module: {s}\n", .{base_url});
+        log.debug("Failed to compile ES module: {s}\n", .{base_url});
         return;
     };
 
     // Store in document's module map for caching and dependency resolution
     if (node_document) |doc| {
         doc_state.setModule(doc, base_url, module) catch |err| {
-            std.debug.print("Failed to cache module: {}\n", .{err});
+            log.debug("Failed to cache module: {}\n", .{err});
             // Continue execution even if caching fails
         };
     }
@@ -998,16 +1000,16 @@ fn runModuleFromSource(
         //  then the result of evaluating script's record is a promise."
         const runModuleAsync = engine.runModuleAsync orelse {
             // Fallback to sync execution if async not available
-            std.debug.print("Engine does not support async module execution, falling back to sync\n", .{});
+            log.debug("Engine does not support async module execution, falling back to sync\n", .{});
             return runModuleSync(engine, engine_ctx, module);
         };
 
         // Start async evaluation - returns a Promise
         const evaluation_promise = runModuleAsync(engine_ctx, module) catch |err| {
-            std.debug.print("Module async evaluation error: {}\n", .{err});
+            log.debug("Module async evaluation error: {}\n", .{err});
             return;
         } orelse {
-            std.debug.print("Failed to start async module evaluation: {s}\n", .{base_url});
+            log.debug("Failed to start async module evaluation: {s}\n", .{base_url});
             return;
         };
 
@@ -1027,7 +1029,7 @@ fn runModuleFromSource(
                 tlaRejectHandler,
                 @ptrCast(@constCast(base_url.ptr)),
             ) catch |err| {
-                std.debug.print("Failed to chain TLA handlers: {}\n", .{err});
+                log.debug("Failed to chain TLA handlers: {}\n", .{err});
             };
         }
 
@@ -1046,12 +1048,12 @@ fn runModuleSync(
     module: *anyopaque,
 ) void {
     const runModule = engine.runModule orelse {
-        std.debug.print("Engine does not support module execution\n", .{});
+        log.debug("Engine does not support module execution\n", .{});
         return;
     };
 
     runModule(engine_ctx, module) catch |err| {
-        std.debug.print("Module execution error: {}\n", .{err});
+        log.debug("Module execution error: {}\n", .{err});
         return;
     };
 }
@@ -1064,7 +1066,7 @@ fn tlaFulfillHandler(context: ?*anyopaque, value: ?*anyopaque) callconv(.c) void
         const url_ptr: [*]const u8 = @ptrCast(ctx);
         // We don't know the length, so just log that it completed
         _ = url_ptr;
-        std.debug.print("TLA module evaluation completed successfully\n", .{});
+        log.debug("TLA module evaluation completed successfully\n", .{});
     }
 }
 
@@ -1075,7 +1077,7 @@ fn tlaRejectHandler(context: ?*anyopaque, reason: ?*anyopaque) callconv(.c) void
     if (context) |ctx| {
         const url_ptr: [*]const u8 = @ptrCast(ctx);
         _ = url_ptr;
-        std.debug.print("TLA module evaluation failed\n", .{});
+        log.debug("TLA module evaluation failed\n", .{});
     }
 }
 
@@ -1315,7 +1317,7 @@ fn performSyncScriptFetch(ctx: *AsyncScriptContext) void {
     defer ctx.deinit();
 
     const fetch_result = fetchExternalScript(ctx.allocator, ctx.script_url) catch {
-        std.debug.print("Async script fetch error for: {s}\n", .{ctx.script_url});
+        log.debug("Async script fetch error for: {s}\n", .{ctx.script_url});
         HTMLScriptElementImpl.setResult(ctx.script_element, .null);
         if (ctx.completion_callback) |cb| cb(ctx.user_context, false);
         return;
@@ -1698,7 +1700,7 @@ fn moduleResolveCallback(
             resolved_url = specifier_slice;
         } else {
             // Bare specifier without import map entry - error
-            std.debug.print("Module specifier '{s}' could not be resolved\n", .{specifier_slice});
+            log.debug("Module specifier '{s}' could not be resolved\n", .{specifier_slice});
             return null;
         }
     }
@@ -1716,7 +1718,7 @@ fn moduleResolveCallback(
 
     // Try to fetch the module (synchronous for now - ideally would be async)
     const fetch_result = fetchExternalScript(allocator, final_url) catch {
-        std.debug.print("Failed to fetch module: {s}\n", .{final_url});
+        log.debug("Failed to fetch module: {s}\n", .{final_url});
         return null;
     };
 
@@ -1726,25 +1728,25 @@ fn moduleResolveCallback(
         // Use engine interface to compile the module
         const ctx = script_element.ctx;
         const engine = ctx.getEngine() orelse {
-            std.debug.print("No JS engine available for module compilation\n", .{});
+            log.debug("No JS engine available for module compilation\n", .{});
             return null;
         };
 
         const engine_ctx = ctx.getEngineContext() orelse {
-            std.debug.print("No engine context available for module compilation\n", .{});
+            log.debug("No engine context available for module compilation\n", .{});
             return null;
         };
 
         const compileModule = engine.compileModule orelse {
-            std.debug.print("Engine does not support module compilation\n", .{});
+            log.debug("Engine does not support module compilation\n", .{});
             return null;
         };
 
         const module = compileModule(engine_ctx, body, final_url) catch {
-            std.debug.print("Failed to compile fetched module: {s}\n", .{final_url});
+            log.debug("Failed to compile fetched module: {s}\n", .{final_url});
             return null;
         } orelse {
-            std.debug.print("Failed to compile fetched module: {s}\n", .{final_url});
+            log.debug("Failed to compile fetched module: {s}\n", .{final_url});
             return null;
         };
 
@@ -1756,7 +1758,7 @@ fn moduleResolveCallback(
         return module;
     }
 
-    std.debug.print("Module fetch returned no body: {s}\n", .{final_url});
+    log.debug("Module fetch returned no body: {s}\n", .{final_url});
     return null;
 }
 
@@ -2161,7 +2163,7 @@ fn parseUrlForCSP(url: []const u8) UrlPartsForCSP {
 fn fetchExternalScript(allocator: std.mem.Allocator, url: []const u8) !ExternalScriptFetchResult {
     // Use the fetch module to retrieve the script
     const response = fetch.fetchSimple(allocator, url) catch |err| {
-        std.debug.print("Fetch error for script {s}: {}\n", .{ url, err });
+        log.debug("Fetch error for script {s}: {}\n", .{ url, err });
         return ExternalScriptFetchResult{
             .body = null,
             .content_type = null,
@@ -2718,7 +2720,7 @@ fn registerSpeculationRules(
         }
     }
 
-    std.debug.print("Registered {d} prefetch rules and {d} prerender rules\n", .{
+    log.debug("Registered {d} prefetch rules and {d} prerender rules\n", .{
         rules.prefetch_rules.len,
         rules.prerender_rules.len,
     });
@@ -2739,7 +2741,7 @@ const event_utils = @import("event_utils.zig");
 pub fn fireLoadEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
     // Fire a simple "load" event - not cancelable, doesn't bubble
     event_utils.fireSimpleEvent(allocator, null, script_element, "load") catch |err| {
-        std.debug.print("Failed to fire load event: {any}\n", .{err});
+        log.debug("Failed to fire load event: {any}\n", .{err});
     };
 }
 
@@ -2757,7 +2759,7 @@ pub fn fireLoadEvent(allocator: std.mem.Allocator, script_element: *runtime.Inst
 pub fn fireErrorEvent(allocator: std.mem.Allocator, script_element: *runtime.Instance) void {
     // Fire a simple "error" event - not cancelable by default for load errors
     event_utils.fireSimpleEvent(allocator, null, script_element, "error") catch |err| {
-        std.debug.print("Failed to fire error event: {any}\n", .{err});
+        log.debug("Failed to fire error event: {any}\n", .{err});
     };
 }
 
@@ -2798,7 +2800,7 @@ pub fn reportScriptError(
         muted_errors,
         false, // omit_error = false
     ) catch |err| {
-        std.debug.print("Failed to report script error: {any}\n", .{err});
+        log.debug("Failed to report script error: {any}\n", .{err});
     };
 }
 

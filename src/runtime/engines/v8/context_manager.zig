@@ -232,7 +232,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
 ///
 /// Thread safety: Thread-local, no synchronization needed
 pub fn deinit() void {
-    std.debug.print("[context_manager.deinit] ENTERING DEINIT\n", .{});
+    log.debug("[context_manager.deinit] ENTERING DEINIT\n", .{});
     if (manager_state) |*state| {
         const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
         const cleanup_coordinator = runtime.cleanup_coordinator;
@@ -268,13 +268,13 @@ pub fn deinit() void {
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
         // during teardown (is_tearing_down flag prevents nested calls).
-        std.debug.print("[context_manager.deinit] Starting context iteration, {} contexts in map\n", .{state.contexts.count()});
+        log.debug("[context_manager.deinit] Starting context iteration, {} contexts in map\n", .{state.contexts.count()});
         var it = state.contexts.valueIterator();
         while (it.next()) |entry_ptr| {
             const entry = entry_ptr.*; // Dereference the pointer to get *ContextEntry
-            std.debug.print("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}\n", .{ entry.owns_context, entry.window_instance });
+            log.debug("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}\n", .{ entry.owns_context, entry.window_instance });
             if (entry.owns_context) {
-                std.debug.print("[context_manager.deinit] Owns context - processing\n", .{});
+                log.debug("[context_manager.deinit] Owns context - processing\n", .{});
                 var ctx_data = entry.runtime_ctx;
 
                 // Phase: ShadowRealm cleanup
@@ -351,9 +351,9 @@ pub fn deinit() void {
                 // to ensure IFrameIntegration.deinit() → BrowsingContext.deinit() is called.
                 //
                 // We identify iframes by checking Node's local_name == "iframe".
-                std.debug.print("[context_manager.deinit] Starting orphaned iframe cleanup phase\n", .{});
+                log.debug("[context_manager.deinit] Starting orphaned iframe cleanup phase\n", .{});
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                    std.debug.print("[context_manager.deinit] Got wrapper cache storage\n", .{});
+                    log.debug("[context_manager.deinit] Got wrapper cache storage\n", .{});
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
                     const NodeImpl = @import("impls").Node;
                     const HTMLIFrameElementIface = @import("interfaces").HTMLIFrameElement;
@@ -383,13 +383,13 @@ pub fn deinit() void {
                     }
 
                     // Now clean up the collected iframes
-                    std.debug.print("[context_manager.deinit] Cleaning up {} orphaned iframes\n", .{iframe_count});
+                    log.debug("[context_manager.deinit] Cleaning up {} orphaned iframes\n", .{iframe_count});
                     for (iframe_instances[0..iframe_count]) |iframe_instance| {
-                        std.debug.print("[context_manager.deinit] Calling deinit for iframe instance {*}\n", .{iframe_instance});
+                        log.debug("[context_manager.deinit] Calling deinit for iframe instance {*}\n", .{iframe_instance});
                         HTMLIFrameElementIface.deinit(iframe_instance);
                     }
                 } else {
-                    std.debug.print("[context_manager.deinit] No wrapper cache storage found\n", .{});
+                    log.debug("[context_manager.deinit] No wrapper cache storage found\n", .{});
                 }
 
                 // Phase: Wrapper Cache cleanup
@@ -2257,27 +2257,27 @@ fn isBuiltinWindowProperty(name: []const u8) bool {
     // List of common Window properties that should not be intercepted
     const builtins = [_][]const u8{
         // Core Window properties
-        "window",         "self",                  "document",             "location",           "navigator",            "history",             "screen",
-        "frames",         "length",                "top",                  "parent",             "opener",               "frameElement",        "name",
+        "window",         "self",                  "document",             "location",           "navigator",            "history",                   "screen",
+        "frames",         "length",                "top",                  "parent",             "opener",               "frameElement",              "name",
         // Common methods
-        "alert",          "confirm",               "prompt",               "open",               "close",                "focus",               "blur",
-        "postMessage",    "addEventListener",      "removeEventListener",  "dispatchEvent",      "setTimeout",           "clearTimeout",        "setInterval",
+        "alert",          "confirm",               "prompt",               "open",               "close",                "focus",                     "blur",
+        "postMessage",    "addEventListener",      "removeEventListener",  "dispatchEvent",      "setTimeout",           "clearTimeout",              "setInterval",
         "clearInterval",  "requestAnimationFrame", "cancelAnimationFrame",
         // Constructors and built-in objects
-        "Object",             "Array",                "Function",            "String",
-        "Number",         "Boolean",               "Symbol",               "Error",              "TypeError",            "ReferenceError",      "SyntaxError",
-        "RangeError",     "Promise",               "Map",                  "Set",                "WeakMap",              "WeakSet",             "Proxy",
-        "Reflect",        "JSON",                  "Math",                 "Date",               "RegExp",               "console",             "Intl",
+        "Object",             "Array",                "Function",                  "String",
+        "Number",         "Boolean",               "Symbol",               "Error",              "TypeError",            "ReferenceError",            "SyntaxError",
+        "RangeError",     "Promise",               "Map",                  "Set",                "WeakMap",              "WeakSet",                   "Proxy",
+        "Reflect",        "JSON",                  "Math",                 "Date",               "RegExp",               "console",                   "Intl",
         // DOM interfaces
-        "Node",           "Element",               "Document",             "Event",              "EventTarget",          "HTMLElement",         "HTMLIFrameElement",
+        "Node",           "Element",               "Document",             "Event",              "EventTarget",          "HTMLElement",               "HTMLIFrameElement",
         "HTMLDivElement", "HTMLSpanElement",       "HTMLCollection",       "NodeList",           "DOMTokenList",         "CSSStyleDeclaration",
         // Other common properties
-        "undefined",
-        "null",           "NaN",                   "Infinity",             "eval",               "isNaN",                "isFinite",            "parseInt",
-        "parseFloat",     "encodeURI",             "decodeURI",            "encodeURIComponent", "decodeURIComponent",   "performance",         "crypto",
-        "fetch",          "URL",                   "URLSearchParams",      "FormData",           "Blob",                 "File",                "FileReader",
-        "FileList",       "ArrayBuffer",           "DataView",             "Uint8Array",         "Uint16Array",          "Uint32Array",         "Int8Array",
-        "Int16Array",     "Int32Array",            "Float32Array",         "Float64Array",       "BigInt64Array",        "BigUint64Array",      "WebSocket",
+              "undefined",
+        "null",           "NaN",                   "Infinity",             "eval",               "isNaN",                "isFinite",                  "parseInt",
+        "parseFloat",     "encodeURI",             "decodeURI",            "encodeURIComponent", "decodeURIComponent",   "performance",               "crypto",
+        "fetch",          "URL",                   "URLSearchParams",      "FormData",           "Blob",                 "File",                      "FileReader",
+        "FileList",       "ArrayBuffer",           "DataView",             "Uint8Array",         "Uint16Array",          "Uint32Array",               "Int8Array",
+        "Int16Array",     "Int32Array",            "Float32Array",         "Float64Array",       "BigInt64Array",        "BigUint64Array",            "WebSocket",
         "Worker",         "MessageChannel",        "MessagePort",          "MutationObserver",   "IntersectionObserver", "IntersectionObserverEntry", "ResizeObserver",
     };
 
