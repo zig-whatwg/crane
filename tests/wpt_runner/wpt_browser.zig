@@ -508,6 +508,56 @@ pub const WptBrowser = struct {
             _ = try ctx.evaluateScript(js);
         }
 
+        // Turn off the harness's human-facing reporting. It is pure waste in a
+        // headless runner, and it is the single largest cost in the suite.
+        //
+        // One `setup({output: false})` disables two separate things, because
+        // testharness.js keeps two flags and this sets both:
+        //
+        //   `output.enabled` gates the results table. On completion the harness
+        //   renders one row per subtest into `#log` - a `<tr>`, three `<td>`, a
+        //   `<pre>`, and, even for a test that ran no asserts, a `<details>`/
+        //   `<summary>`/`<table>` plus two querySelector calls. A dozen-odd DOM
+        //   operations each, every one crossing into Zig at roughly 75us.
+        //   Measured on a page of trivial subtests: 2.16ms per subtest, against
+        //   0.069ms to register and run one. 31x more time spent describing the
+        //   results than producing them.
+        //
+        //   `tests.output` gates per-assertion bookkeeping in `expose_assert`,
+        //   which wraps every `assert_*`. It pushes an AssertRecord, and in its
+        //   `finally` calls `get_stack()` - `new Error().stack`, split into
+        //   lines, matched against a RegExp built fresh each time - on *passing*
+        //   assertions too, since a pass leaves `stack` null.
+        //
+        // Nothing reads either one. `asserts_run` is consumed only by
+        // `Output.show_results`; results come back through `__wpt_results`,
+        // built by the completion callback below, whose signature is
+        // `(tests, harness_status)` - it never even receives the assert records.
+        // The context is destroyed immediately afterwards.
+        //
+        // Only the table is measured above; the assertion path is extra, and is
+        // the likeliest reason real files run ~8.6ms/subtest where the trivial
+        // fixtures run 2.16 - those fixtures have empty bodies and assert
+        // nothing. Failure reporting is untouched: on a throw `expose_assert`
+        // takes the stack from the exception, outside the flag.
+        //
+        // This is the mechanism upstream intends for exactly this - wptrunner
+        // ships its own testharnessreport.js that does the same. The stock one
+        // only reads `window.opener.testharness_properties`, and there is no
+        // opener here, so the runner has to say it. `Output.prototype.setup`
+        // ands its flag rather than assigning, so a test calling
+        // `setup({output: true})` later cannot switch the table back on. (The
+        // assertion flag *is* a plain assignment, so such a test would resume
+        // paying for stacks - correct behaviour, and vanishingly rare.)
+        const disable_output =
+            \\setup({ output: false });
+        ;
+        _ = ctx.evaluateScript(disable_output) catch |err| {
+            // Not fatal: the table is a waste of time, not a correctness
+            // requirement, and a result is worth more than the speed-up.
+            log.warn("loadTestHarness: could not disable harness output: {}", .{err});
+        };
+
         // Verify testharness.js loaded correctly by checking for globals
         // This catches cases where testharness.js execution fails silently
         const verify_script =
