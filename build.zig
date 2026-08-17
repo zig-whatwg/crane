@@ -2792,6 +2792,7 @@ pub fn build(b: *std.Build) void {
         const harness_sources = [_][]const u8{
             "tests/wpt_runner/manifest.zig",
             "tests/wpt_runner/config.zig",
+            "tests/wpt_runner/selection.zig",
         };
         for (harness_sources) |src| {
             const harness_tests = b.addTest(.{

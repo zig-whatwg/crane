@@ -20,7 +20,11 @@
 //!
 //! ## Options
 //!
-//! Options are passed after `--` to zig build wpt:
+//! Build-time options (passed before `--`):
+//! - `-Dwpt-debug=true` - Enable debug log output (std.log.debug statements)
+//! - `-Dwpt-verbose=true` - Show verbose output for each test
+//!
+//! Runtime options (passed after `--`):
 //! - `--output=path` - Output directory for results (default: wpt-results/)
 //! - `--quiet` or `-q` - Minimal output (progress bar only, no individual tests)
 //! - `--parallel=N` - Number of parallel test runners
@@ -35,6 +39,8 @@ const browser_adapter = @import("browser_adapter.zig");
 const result_reporter = @import("result_reporter.zig");
 const wpt_server = @import("wpt_server.zig");
 const wpt_manifest = @import("manifest.zig");
+const selection = @import("selection.zig");
+const wpt_options = @import("wpt_options");
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -42,6 +48,10 @@ var verbose_mode: bool = false;
 /// Custom log function that suppresses error logs in non-verbose mode.
 /// This prevents V8 engine errors from cluttering the test output.
 pub const std_options: std.Options = .{
+    // Control log level based on -Dwpt-debug build flag
+    // When debug is disabled (default), only show warnings and errors
+    // When debug is enabled, show all log levels including debug
+    .log_level = if (wpt_options.debug_enabled) .debug else .warn,
     .logFn = wptLogFn,
 };
 
@@ -81,6 +91,14 @@ pub const Options = struct {
     limit: usize = 0,
     /// Glob pattern to filter test names (e.g., "*constructor*")
     pattern: ?[]const u8 = null,
+    /// Discover tests by walking the filesystem instead of reading
+    /// MANIFEST.json. Kept as an escape hatch for a checkout whose manifest is
+    /// stale or absent; it cannot report a denominator.
+    legacy_scan: bool = false,
+    /// Report what would run and exit without executing anything.
+    discover_only: bool = false,
+    /// Write the discovered source list, one path per line, to this file.
+    worklist_out: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -167,6 +185,13 @@ pub const DiscoveryResult = struct {
     skipped: std.ArrayList(SkippedEntry),
     /// Total directories scanned
     directories_scanned: usize = 0,
+    /// Manifest test URLs in scope for this run - the scoreboard denominator.
+    /// Zero when discovery did not consult the manifest.
+    total_in_scope_urls: usize = 0,
+    /// Manifest test URLs in the whole testharness corpus, in scope or not.
+    total_manifest_urls: usize = 0,
+    /// Sources the manifest lists but that are absent from our checkout.
+    missing_sources: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) DiscoveryResult {
         return DiscoveryResult{
@@ -260,6 +285,12 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             options.limit = std.fmt.parseInt(usize, value, 10) catch 0;
         } else if (std.mem.startsWith(u8, arg, "--pattern=")) {
             options.pattern = arg["--pattern=".len..];
+        } else if (std.mem.eql(u8, arg, "--legacy-scan")) {
+            options.legacy_scan = true;
+        } else if (std.mem.eql(u8, arg, "--discover-only")) {
+            options.discover_only = true;
+        } else if (std.mem.startsWith(u8, arg, "--worklist-out=")) {
+            options.worklist_out = arg["--worklist-out=".len..];
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
@@ -339,6 +370,48 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
                 }
             }
         }
+        return result;
+    }
+
+    // Enumerate from MANIFEST.json rather than the filesystem.
+    //
+    // The manifest partitions every file in the tree by harness type, so
+    // items.testharness is exactly the set of tests we are trying to pass -
+    // no guessing from filenames which .html files are tests, references or
+    // support files. It also gives the scoreboard a denominator: how many
+    // tests exist, not just how many we happened to find.
+    if (!options.legacy_scan) {
+        var manifest = try wpt_manifest.loadManifest(allocator, options.wpt_root);
+        defer manifest.deinit();
+
+        var sel = try selection.selectInScope(allocator, &manifest, options.filters.items);
+        defer sel.deinit();
+
+        result.total_in_scope_urls = sel.url_count;
+        result.total_manifest_urls = manifest.urlCount();
+
+        for (sel.sources) |source_path| {
+            if (options.pattern) |pat| {
+                if (std.mem.indexOf(u8, source_path, pat) == null) continue;
+            }
+
+            const file_type = config.FileType.fromPath(source_path);
+            if (file_type == .unknown) continue;
+
+            // The manifest describes the upstream tree; our checkout may be
+            // sparse, so a listed source is not guaranteed to be on disk.
+            const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, source_path });
+            defer allocator.free(full_path);
+            std.fs.cwd().access(full_path, .{}) catch {
+                result.missing_sources += 1;
+                continue;
+            };
+
+            try result.addTestFile(source_path, file_type);
+
+            if (options.limit > 0 and result.test_files.items.len >= options.limit) break;
+        }
+
         return result;
     }
 
@@ -1263,6 +1336,20 @@ pub fn main() !void {
 
     print("Found {d} test files in {d} directories\n", .{ discovery.test_files.items.len, discovery.directories_scanned });
 
+    if (discovery.total_manifest_urls > 0) {
+        const pct = 100.0 * @as(f64, @floatFromInt(discovery.total_in_scope_urls)) /
+            @as(f64, @floatFromInt(discovery.total_manifest_urls));
+        print("Scope: {d} of {d} testharness URLs ({d:.1}%), across {d} source files\n", .{
+            discovery.total_in_scope_urls,
+            discovery.total_manifest_urls,
+            pct,
+            discovery.test_files.items.len,
+        });
+        if (discovery.missing_sources > 0) {
+            print("  ({d} manifest sources absent from this checkout)\n", .{discovery.missing_sources});
+        }
+    }
+
     if (discovery.test_files.items.len == 0) {
         print("No tests found. Check your filter paths.\n", .{});
         if (discovery.skipped.items.len > 0) {
@@ -1294,6 +1381,23 @@ pub fn main() !void {
 
     if (discovery.skipped.items.len > 0) {
         print("\nSkipped {d} items\n", .{discovery.skipped.items.len});
+    }
+
+    if (options.worklist_out) |path| {
+        var file = try std.fs.cwd().createFile(path, .{});
+        defer file.close();
+        var buf: [4096]u8 = undefined;
+        var writer = file.writer(&buf);
+        for (discovery.test_files.items) |tf| {
+            try writer.interface.print("{s}\n", .{tf.path});
+        }
+        try writer.interface.flush();
+        print("\nWrote {d} paths to {s}\n", .{ discovery.test_files.items.len, path });
+    }
+
+    if (options.discover_only) {
+        print("\n--discover-only: stopping before execution.\n", .{});
+        return;
     }
 
     // Create report
