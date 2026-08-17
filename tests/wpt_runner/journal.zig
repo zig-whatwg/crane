@@ -43,6 +43,21 @@ pub const Status = enum {
         }
         return null;
     }
+
+    /// How bad an outcome is, for "worst wins" aggregation over the several
+    /// global contexts one test file runs in.
+    ///
+    /// A timeout ranks below an error: the test at least got as far as running.
+    /// Declared explicitly rather than leaning on the enum's integer values,
+    /// which exist to name the wire format, not to rank it.
+    pub fn severity(self: Status) u8 {
+        return switch (self) {
+            .ok => 0,
+            .timeout => 1,
+            .@"error" => 2,
+            .crash => 3,
+        };
+    }
 };
 
 /// One journal line: what happened to one test.
@@ -366,6 +381,12 @@ test "every status round-trips through its wire name" {
         try std.testing.expectEqual(status, Status.fromString(status.toString()).?);
     }
     try std.testing.expect(Status.fromString("NOPE") == null);
+}
+
+test "severity ranks a crash worst and a pass best" {
+    try std.testing.expect(Status.ok.severity() < Status.timeout.severity());
+    try std.testing.expect(Status.timeout.severity() < Status.@"error".severity());
+    try std.testing.expect(Status.@"error".severity() < Status.crash.severity());
 }
 
 test "one record is written per line" {

@@ -30,6 +30,19 @@
 //! - `--parallel=N` - Number of parallel test runners
 //! - `--limit=N` - Run only the first N test files (useful for quick iteration)
 //! - `--pattern=GLOB` - Only run tests matching glob pattern (e.g., "*constructor*")
+//! - `--legacy-scan` - Discover by walking the filesystem instead of MANIFEST.json
+//! - `--discover-only` - Report what would run, then stop
+//! - `--worklist-out=path` - Write the discovered sources, one per line
+//!
+//! Crash-tolerant runs:
+//! - `--supervise` - Discover, then respawn this binary past any test that
+//!   kills the process, until the worklist is exhausted. Writes
+//!   `<output>/worklist.txt` and `<output>/journal.jsonl`.
+//!
+//! Child-process options, set by the supervisor (rarely used directly):
+//! - `--from-file=path` - Run the paths in this worklist instead of discovering
+//! - `--start-index=N` - Begin at this worklist index
+//! - `--journal=path` - Append a JSONL record per completed test file
 
 const std = @import("std");
 const config = @import("config.zig");
@@ -40,6 +53,9 @@ const result_reporter = @import("result_reporter.zig");
 const wpt_server = @import("wpt_server.zig");
 const wpt_manifest = @import("manifest.zig");
 const selection = @import("selection.zig");
+const journal = @import("journal.zig");
+const options_mod = @import("options.zig");
+const discovery_mod = @import("discovery.zig");
 const wpt_options = @import("wpt_options");
 
 /// Thread-local verbose flag for log filtering
@@ -71,509 +87,18 @@ fn wptLogFn(
     std.log.defaultLog(level, scope, format, args);
 }
 
-/// Command-line options
-pub const Options = struct {
-    /// Directory filters (empty = all in-scope categories)
-    filters: std.ArrayList([]const u8),
-    /// Allocator for managing memory
-    allocator: std.mem.Allocator,
-    /// Output directory for results
-    output_dir: []const u8 = "wpt-results",
-    /// Verbose output (default: true, use --quiet to disable)
-    verbose: bool = true,
-    /// Number of parallel runners (0 = auto)
-    parallel: u32 = 0,
-    /// WPT root directory
-    wpt_root: []const u8 = "tests/wpt",
-    /// Specific test files to run (overrides directory filters)
-    specific_files: std.ArrayList([]const u8),
-    /// Maximum number of test files to run (0 = no limit)
-    limit: usize = 0,
-    /// Glob pattern to filter test names (e.g., "*constructor*")
-    pattern: ?[]const u8 = null,
-    /// Discover tests by walking the filesystem instead of reading
-    /// MANIFEST.json. Kept as an escape hatch for a checkout whose manifest is
-    /// stale or absent; it cannot report a denominator.
-    legacy_scan: bool = false,
-    /// Report what would run and exit without executing anything.
-    discover_only: bool = false,
-    /// Write the discovered source list, one path per line, to this file.
-    worklist_out: ?[]const u8 = null,
+// The runner's command-line surface and test discovery live in their own
+// modules so `zig build test` can cover them. main.zig links V8 and libuv and
+// is only ever built as an executable, which means any test block in this file
+// is never compiled, let alone run.
+pub const Options = options_mod.Options;
+pub const parseArgs = options_mod.parseArgs;
+const isTestFile = options_mod.isTestFile;
 
-    pub fn init(allocator: std.mem.Allocator) Options {
-        return Options{
-            .filters = .{},
-            .specific_files = .{},
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *Options) void {
-        for (self.filters.items) |f| {
-            self.allocator.free(f);
-        }
-        self.filters.deinit(self.allocator);
-        for (self.specific_files.items) |f| {
-            self.allocator.free(f);
-        }
-        self.specific_files.deinit(self.allocator);
-    }
-
-    /// Check if a test path matches the filters
-    pub fn matchesFilter(self: Options, test_path: []const u8) bool {
-        // If specific files are specified, only those match
-        if (self.specific_files.items.len > 0) {
-            for (self.specific_files.items) |file| {
-                if (std.mem.eql(u8, test_path, file)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // If no filters, everything matches
-        if (self.filters.items.len == 0) {
-            return true;
-        }
-
-        // Check if path starts with any filter
-        for (self.filters.items) |filter| {
-            const clean_filter = std.mem.trimRight(u8, filter, "/");
-            if (std.mem.startsWith(u8, test_path, clean_filter)) {
-                // Make sure it's a proper prefix (followed by / or end of string)
-                if (test_path.len == clean_filter.len) return true;
-                if (test_path.len > clean_filter.len and test_path[clean_filter.len] == '/') return true;
-            }
-        }
-        return false;
-    }
-};
-
-/// Discovered test file
-pub const TestFile = struct {
-    /// Path relative to WPT root
-    path: []const u8,
-    /// File type
-    file_type: config.FileType,
-
-    pub fn deinit(self: *TestFile, allocator: std.mem.Allocator) void {
-        allocator.free(self.path);
-    }
-};
-
-/// Skipped file entry with reason
-pub const SkippedEntry = struct {
-    path: []const u8,
-    reason: []const u8,
-
-    pub fn deinit(self: *SkippedEntry, allocator: std.mem.Allocator) void {
-        allocator.free(self.path);
-        // reason is a static string, don't free
-    }
-};
-
-/// Discovery result
-pub const DiscoveryResult = struct {
-    allocator: std.mem.Allocator,
-    /// Discovered test files
-    test_files: std.ArrayList(TestFile),
-    /// Count by file type
-    by_type: std.AutoHashMap(config.FileType, usize),
-    /// Count by category (first path component)
-    by_category: std.StringHashMap(usize),
-    /// Skipped paths with reasons
-    skipped: std.ArrayList(SkippedEntry),
-    /// Total directories scanned
-    directories_scanned: usize = 0,
-    /// Manifest test URLs in scope for this run - the scoreboard denominator.
-    /// Zero when discovery did not consult the manifest.
-    total_in_scope_urls: usize = 0,
-    /// Manifest test URLs in the whole testharness corpus, in scope or not.
-    total_manifest_urls: usize = 0,
-    /// Sources the manifest lists but that are absent from our checkout.
-    missing_sources: usize = 0,
-
-    pub fn init(allocator: std.mem.Allocator) DiscoveryResult {
-        return DiscoveryResult{
-            .allocator = allocator,
-            .test_files = .{},
-            .by_type = std.AutoHashMap(config.FileType, usize).init(allocator),
-            .by_category = std.StringHashMap(usize).init(allocator),
-            .skipped = .{},
-        };
-    }
-
-    pub fn deinit(self: *DiscoveryResult) void {
-        for (self.test_files.items) |*tf| {
-            tf.deinit(self.allocator);
-        }
-        self.test_files.deinit(self.allocator);
-        self.by_type.deinit();
-        // Free the duped category keys
-        var cat_iter = self.by_category.keyIterator();
-        while (cat_iter.next()) |key| {
-            self.allocator.free(key.*);
-        }
-        self.by_category.deinit();
-        for (self.skipped.items) |*s| {
-            s.deinit(self.allocator);
-        }
-        self.skipped.deinit(self.allocator);
-    }
-
-    pub fn addTestFile(self: *DiscoveryResult, path: []const u8, file_type: config.FileType) !void {
-        try self.test_files.append(self.allocator, TestFile{
-            .path = try self.allocator.dupe(u8, path),
-            .file_type = file_type,
-        });
-
-        // Count by type
-        const type_entry = try self.by_type.getOrPut(file_type);
-        if (!type_entry.found_existing) {
-            type_entry.value_ptr.* = 0;
-        }
-        type_entry.value_ptr.* += 1;
-
-        // Count by category (first path component)
-        if (std.mem.indexOf(u8, path, "/")) |sep_pos| {
-            const category = path[0..sep_pos];
-            // Check if this category already exists first (avoid duplicate key issue)
-            if (self.by_category.getPtr(category)) |count| {
-                count.* += 1;
-            } else {
-                // Need to dupe the key since path will be freed
-                const duped_key = try self.allocator.dupe(u8, category);
-                try self.by_category.put(duped_key, 1);
-            }
-        }
-    }
-
-    pub fn addSkipped(self: *DiscoveryResult, path: []const u8, reason: []const u8) !void {
-        try self.skipped.append(self.allocator, SkippedEntry{
-            .path = try self.allocator.dupe(u8, path),
-            .reason = reason,
-        });
-    }
-
-    /// Get total count of discovered tests
-    pub fn totalCount(self: DiscoveryResult) usize {
-        return self.test_files.items.len;
-    }
-};
-
-/// Parse command-line arguments
-pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Options {
-    var options = Options.init(allocator);
-    errdefer options.deinit();
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-
-        if (std.mem.startsWith(u8, arg, "--output=")) {
-            options.output_dir = arg["--output=".len..];
-        } else if (std.mem.eql(u8, arg, "--quiet") or std.mem.eql(u8, arg, "-q")) {
-            // Quiet mode: minimal output (progress bar only)
-            options.verbose = false;
-        } else if (std.mem.startsWith(u8, arg, "--parallel=")) {
-            const value = arg["--parallel=".len..];
-            options.parallel = std.fmt.parseInt(u32, value, 10) catch 0;
-        } else if (std.mem.startsWith(u8, arg, "--wpt-root=")) {
-            options.wpt_root = arg["--wpt-root=".len..];
-        } else if (std.mem.startsWith(u8, arg, "--limit=")) {
-            const value = arg["--limit=".len..];
-            options.limit = std.fmt.parseInt(usize, value, 10) catch 0;
-        } else if (std.mem.startsWith(u8, arg, "--pattern=")) {
-            options.pattern = arg["--pattern=".len..];
-        } else if (std.mem.eql(u8, arg, "--legacy-scan")) {
-            options.legacy_scan = true;
-        } else if (std.mem.eql(u8, arg, "--discover-only")) {
-            options.discover_only = true;
-        } else if (std.mem.startsWith(u8, arg, "--worklist-out=")) {
-            options.worklist_out = arg["--worklist-out=".len..];
-        } else if (!std.mem.startsWith(u8, arg, "-")) {
-            // Directory or file filter
-            // Check if it's a specific file (has extension) or a directory
-            if (isTestFile(arg)) {
-                try options.specific_files.append(allocator, try allocator.dupe(u8, arg));
-            } else {
-                try options.filters.append(allocator, try allocator.dupe(u8, arg));
-            }
-        }
-    }
-
-    return options;
-}
-
-/// Check if a path looks like a test file
-fn isTestFile(path: []const u8) bool {
-    return std.mem.endsWith(u8, path, ".any.js") or
-        std.mem.endsWith(u8, path, ".window.js") or
-        std.mem.endsWith(u8, path, ".worker.js") or
-        std.mem.endsWith(u8, path, ".html") or
-        std.mem.endsWith(u8, path, ".htm");
-}
-
-/// Discover test files in WPT tree
-///
-/// Uses the official WPT MANIFEST.json to resolve test URLs to source files.
-/// This follows the standard WPT approach where virtual test URLs like
-/// "url/url-searchparams.any.html" are mapped to their source files like
-/// "url/url-searchparams.any.js" through the manifest.
-pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryResult {
-    var result = DiscoveryResult.init(allocator);
-    errdefer result.deinit();
-
-    // If specific files are specified, resolve them through the manifest
-    if (options.specific_files.items.len > 0) {
-        // Load the WPT manifest for URL resolution
-        var manifest = try wpt_manifest.loadManifest(allocator, options.wpt_root);
-        defer manifest.deinit();
-
-        for (options.specific_files.items) |file_path| {
-            const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, file_path });
-            defer allocator.free(full_path);
-
-            // First, check if the file exists directly (source file or real HTML)
-            if (std.fs.cwd().access(full_path, .{})) |_| {
-                const file_type = config.FileType.fromPath(file_path);
-                if (file_type == .unknown) {
-                    print("Warning: Unknown test file type: {s}\n", .{file_path});
-                    continue;
-                }
-                try result.addTestFile(file_path, file_type);
-            } else |_| {
-                // File doesn't exist - check if it's a virtual test URL in the manifest
-                // WPT generates virtual URLs like .any.html from .any.js source files
-                if (manifest.resolveUrlToSource(file_path)) |source_path| {
-                    // Verify the source file exists
-                    const source_full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, source_path });
-                    defer allocator.free(source_full_path);
-
-                    std.fs.cwd().access(source_full_path, .{}) catch {
-                        print("Warning: Source file not found: {s} (for test URL: {s})\n", .{ source_path, file_path });
-                        continue;
-                    };
-
-                    const file_type = config.FileType.fromPath(source_path);
-                    if (file_type == .unknown) {
-                        print("Warning: Unknown test file type: {s}\n", .{source_path});
-                        continue;
-                    }
-
-                    // Use the source file path
-                    try result.addTestFile(source_path, file_type);
-                    print("Resolved test URL '{s}' to source file '{s}'\n", .{ file_path, source_path });
-                } else {
-                    print("Warning: Test file not found: {s}\n", .{file_path});
-                    print("  (Not in MANIFEST.json - run 'wpt manifest' to update)\n", .{});
-                }
-            }
-        }
-        return result;
-    }
-
-    // Enumerate from MANIFEST.json rather than the filesystem.
-    //
-    // The manifest partitions every file in the tree by harness type, so
-    // items.testharness is exactly the set of tests we are trying to pass -
-    // no guessing from filenames which .html files are tests, references or
-    // support files. It also gives the scoreboard a denominator: how many
-    // tests exist, not just how many we happened to find.
-    if (!options.legacy_scan) {
-        var manifest = try wpt_manifest.loadManifest(allocator, options.wpt_root);
-        defer manifest.deinit();
-
-        var sel = try selection.selectInScope(allocator, &manifest, options.filters.items);
-        defer sel.deinit();
-
-        result.total_in_scope_urls = sel.url_count;
-        result.total_manifest_urls = manifest.urlCount();
-
-        for (sel.sources) |source_path| {
-            if (options.pattern) |pat| {
-                if (std.mem.indexOf(u8, source_path, pat) == null) continue;
-            }
-
-            const file_type = config.FileType.fromPath(source_path);
-            if (file_type == .unknown) continue;
-
-            // The manifest describes the upstream tree; our checkout may be
-            // sparse, so a listed source is not guaranteed to be on disk.
-            const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, source_path });
-            defer allocator.free(full_path);
-            std.fs.cwd().access(full_path, .{}) catch {
-                result.missing_sources += 1;
-                continue;
-            };
-
-            try result.addTestFile(source_path, file_type);
-
-            if (options.limit > 0 and result.test_files.items.len >= options.limit) break;
-        }
-
-        return result;
-    }
-
-    // Determine which directories to scan
-    var owns_dirs = false;
-    var default_dirs: std.ArrayList([]const u8) = .{};
-    defer if (owns_dirs) default_dirs.deinit(allocator);
-
-    const dirs_to_scan = if (options.filters.items.len > 0)
-        options.filters.items
-    else blk: {
-        // Default: all in-scope categories
-        owns_dirs = true;
-        for (config.in_scope_categories) |cat| {
-            try default_dirs.append(allocator, cat.name);
-        }
-        break :blk default_dirs.items;
-    };
-
-    // Validate directories exist before scanning
-    for (dirs_to_scan) |dir| {
-        const clean_dir = std.mem.trimRight(u8, dir, "/");
-        const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
-        defer allocator.free(full_path);
-
-        std.fs.cwd().access(full_path, .{}) catch {
-            print("Warning: Directory not found: {s}\n", .{clean_dir});
-            print("  Available categories: ", .{});
-            for (config.in_scope_categories, 0..) |cat, i| {
-                if (i > 0) print(", ", .{});
-                print("{s}", .{cat.name});
-            }
-            print("\n", .{});
-            continue;
-        };
-    }
-
-    // Scan each directory
-    for (dirs_to_scan) |dir| {
-        // Handle both "url/" and "url" formats
-        const clean_dir = std.mem.trimRight(u8, dir, "/");
-        const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
-        defer allocator.free(full_path);
-
-        try scanDirectory(allocator, &result, options.wpt_root, full_path, clean_dir, options.pattern);
-
-        // Check if we've hit the limit
-        if (options.limit > 0 and result.test_files.items.len >= options.limit) {
-            break;
-        }
-    }
-
-    // Apply limit after scanning (in case pattern filtered some out)
-    if (options.limit > 0 and result.test_files.items.len > options.limit) {
-        // Free excess test files
-        for (result.test_files.items[options.limit..]) |*tf| {
-            tf.deinit(allocator);
-        }
-        result.test_files.shrinkRetainingCapacity(options.limit);
-    }
-
-    return result;
-}
-
-/// Recursively scan a directory for test files
-fn scanDirectory(
-    allocator: std.mem.Allocator,
-    result: *DiscoveryResult,
-    wpt_root: []const u8,
-    full_path: []const u8,
-    relative_path: []const u8,
-    pattern: ?[]const u8,
-) !void {
-    var dir = std.fs.cwd().openDir(full_path, .{ .iterate = true }) catch |err| {
-        if (err == error.FileNotFound) {
-            // Directory doesn't exist, skip silently
-            return;
-        }
-        return err;
-    };
-    defer dir.close();
-
-    result.directories_scanned += 1;
-
-    var iter = dir.iterate();
-    while (try iter.next()) |entry| {
-        const entry_path = try std.fs.path.join(allocator, &.{ relative_path, entry.name });
-        defer allocator.free(entry_path);
-
-        const full_entry_path = try std.fs.path.join(allocator, &.{ wpt_root, entry_path });
-        defer allocator.free(full_entry_path);
-
-        if (entry.kind == .directory) {
-            // Skip excluded directories
-            if (config.isExcluded(entry_path)) {
-                try result.addSkipped(entry_path, "excluded directory");
-                continue;
-            }
-
-            // Recurse into subdirectory
-            try scanDirectory(allocator, result, wpt_root, full_entry_path, entry_path, pattern);
-        } else if (entry.kind == .file) {
-            // Check if this is a test file
-            const file_type = config.FileType.fromPath(entry.name);
-            if (file_type == .unknown) continue;
-
-            // Check if excluded
-            if (config.isExcluded(entry_path)) {
-                try result.addSkipped(entry_path, "excluded by pattern");
-                continue;
-            }
-
-            // Check if matches pattern filter (if specified)
-            if (pattern) |p| {
-                if (!globMatch(entry_path, p) and !globMatch(entry.name, p)) {
-                    try result.addSkipped(entry_path, "pattern mismatch");
-                    continue;
-                }
-            }
-
-            // Add to results
-            try result.addTestFile(entry_path, file_type);
-        }
-    }
-}
-
-/// Simple glob matching supporting * wildcards
-/// Matches patterns like "*constructor*", "url-*", etc.
-fn globMatch(str: []const u8, pattern: []const u8) bool {
-    var s_idx: usize = 0;
-    var p_idx: usize = 0;
-    var star_idx: ?usize = null;
-    var match_idx: usize = 0;
-
-    while (s_idx < str.len) {
-        if (p_idx < pattern.len and (pattern[p_idx] == '?' or pattern[p_idx] == str[s_idx])) {
-            // Characters match or pattern has ?
-            s_idx += 1;
-            p_idx += 1;
-        } else if (p_idx < pattern.len and pattern[p_idx] == '*') {
-            // Star matches zero or more characters
-            star_idx = p_idx;
-            match_idx = s_idx;
-            p_idx += 1;
-        } else if (star_idx) |si| {
-            // Mismatch, but we have a star to backtrack to
-            p_idx = si + 1;
-            match_idx += 1;
-            s_idx = match_idx;
-        } else {
-            // No match
-            return false;
-        }
-    }
-
-    // Check remaining pattern characters (must all be *)
-    while (p_idx < pattern.len and pattern[p_idx] == '*') {
-        p_idx += 1;
-    }
-
-    return p_idx == pattern.len;
-}
+pub const TestFile = discovery_mod.TestFile;
+pub const SkippedEntry = discovery_mod.SkippedEntry;
+pub const DiscoveryResult = discovery_mod.DiscoveryResult;
+pub const discoverTests = discovery_mod.discoverTests;
 
 /// Stored failure detail for final report
 const FailureDetail = struct {
@@ -1106,7 +631,18 @@ pub fn executeTests(
     var progress = ProgressTracker.init(allocator, total, options.verbose);
     defer progress.deinit();
 
-    for (discovery.test_files.items) |test_file| {
+    // The journal is what lets a run survive a segfault: one record per test
+    // file, written straight to the file descriptor as soon as the file is
+    // done, so a supervisor can tell which test never reported.
+    var run_journal: ?journal.Journal = if (options.journal_path) |p|
+        try journal.Journal.append(allocator, p)
+    else
+        null;
+    defer if (run_journal) |*j| j.deinit();
+
+    for (discovery.test_files.items, 0..) |test_file, file_offset| {
+        var tally: FileTally = .{ .index = discovery.base_index + file_offset };
+
         // Load content once per test file (still needed for parsing metadata)
         const content = loadTestContent(allocator, options, test_file) catch |err| {
             // Create error result for load failure
@@ -1119,6 +655,9 @@ pub fn executeTests(
 
             try report.addResult(error_result);
             error_result.deinit(allocator);
+
+            tally.status = .@"error";
+            if (run_journal) |*j| try tally.record(j, test_file.path);
             continue;
         };
         defer allocator.free(content);
@@ -1135,6 +674,9 @@ pub fn executeTests(
 
             try report.addResult(error_result);
             error_result.deinit(allocator);
+
+            tally.status = .@"error";
+            if (run_journal) |*j| try tally.record(j, test_file.path);
             continue;
         };
         defer parsed.deinit();
@@ -1199,6 +741,7 @@ pub fn executeTests(
                 progress.printProgressWithContext(test_file.path, context_name);
 
                 try report.addResult(error_result);
+                tally.add(error_result);
                 error_result.deinit(allocator);
                 continue;
             };
@@ -1218,10 +761,17 @@ pub fn executeTests(
                 try report.addResult(test_result);
             }
 
+            tally.add(test_result);
+
             // Clean up the test result (addResult copies the data)
             var mutable_result = test_result;
             mutable_result.deinit(allocator);
         }
+
+        // Every context of this file reported, so the file is done. Journal it
+        // before starting the next one: anything after this point that kills
+        // the process must not be blamed on this test.
+        if (run_journal) |*j| try tally.record(j, test_file.path);
 
         // Reset HTTP connection pool between test files to prevent connection exhaustion
         // This ensures each test file starts with a fresh connection pool
@@ -1230,11 +780,64 @@ pub fn executeTests(
     }
 
     // Generate output path
-    const output_path = try std.fs.path.join(allocator, &.{ options.output_dir, "wptreport.json" });
+    const output_path = try options.reportPath(allocator);
     defer allocator.free(output_path);
 
     progress.printSummary(output_path);
 }
+
+/// Per-file totals accumulated across the contexts a test file runs in.
+///
+/// The journal records one line per *file*, not per context. A context is not a
+/// resumable unit: a supervisor can only restart at a file boundary, so a
+/// half-finished file has to look unfinished, which means no record until every
+/// context of it has reported.
+const FileTally = struct {
+    index: usize,
+    status: journal.Status = .ok,
+    passed: usize = 0,
+    failed: usize = 0,
+    timed_out: usize = 0,
+    notrun: usize = 0,
+    duration_ms: u64 = 0,
+    contexts: usize = 0,
+
+    fn add(self: *FileTally, result: test_harness.TestResult) void {
+        self.contexts += 1;
+        self.duration_ms += result.duration_ms;
+
+        // Worst status across contexts wins - a file that errored in one global
+        // has not passed, however well it did in the others.
+        const status: journal.Status = switch (result.status) {
+            .ok => .ok,
+            .timeout => .timeout,
+            else => .@"error",
+        };
+        if (status.severity() > self.status.severity()) self.status = status;
+
+        for (result.subtests.items) |sub| {
+            switch (sub.status) {
+                .pass => self.passed += 1,
+                .fail, .precondition_failed => self.failed += 1,
+                .timeout => self.timed_out += 1,
+                .notrun => self.notrun += 1,
+            }
+        }
+    }
+
+    fn record(self: *const FileTally, j: *journal.Journal, path: []const u8) !void {
+        try j.record(.{
+            .index = self.index,
+            .path = path,
+            .status = self.status,
+            .passed = self.passed,
+            .failed = self.failed,
+            .timed_out = self.timed_out,
+            .notrun = self.notrun,
+            .duration_ms = self.duration_ms,
+        });
+    }
+};
 
 /// Execute a single test file in a specific context using the shared BrowserAdapter
 /// This function is called once per context (e.g., window, worker) for each test file.
@@ -1384,20 +987,17 @@ pub fn main() !void {
     }
 
     if (options.worklist_out) |path| {
-        var file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        var buf: [4096]u8 = undefined;
-        var writer = file.writer(&buf);
-        for (discovery.test_files.items) |tf| {
-            try writer.interface.print("{s}\n", .{tf.path});
-        }
-        try writer.interface.flush();
+        try writeWorklistFile(allocator, path, discovery);
         print("\nWrote {d} paths to {s}\n", .{ discovery.test_files.items.len, path });
     }
 
     if (options.discover_only) {
         print("\n--discover-only: stopping before execution.\n", .{});
         return;
+    }
+
+    if (options.supervise) {
+        return supervise(allocator, options, discovery);
     }
 
     // Create report
@@ -1433,100 +1033,188 @@ pub fn main() !void {
     // Finish and write report
     report.finish();
 
-    const output_path = try std.fs.path.join(allocator, &.{ options.output_dir, "wptreport.json" });
+    const output_path = try options.reportPath(allocator);
     defer allocator.free(output_path);
 
     try report.writeToFile(output_path);
 }
 
-test "parseArgs basic" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    const args = [_][]const u8{ "url/", "encoding/" };
-    var options = try parseArgs(allocator, &args);
-    defer options.deinit();
-
-    try testing.expectEqual(@as(usize, 2), options.filters.items.len);
-    // Verbose is true by default
-    try testing.expect(options.verbose);
-}
-
-test "parseArgs with quiet flag" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    const args = [_][]const u8{ "url/", "--quiet" };
-    var options = try parseArgs(allocator, &args);
-    defer options.deinit();
-
-    try testing.expectEqual(@as(usize, 1), options.filters.items.len);
-    try testing.expect(!options.verbose);
-}
-
-test "parseArgs with options" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    const args = [_][]const u8{ "--output=results", "--parallel=4", "url/" };
-    var options = try parseArgs(allocator, &args);
-    defer options.deinit();
-
-    try testing.expectEqualStrings("results", options.output_dir);
-    try testing.expectEqual(@as(u32, 4), options.parallel);
-    try testing.expectEqual(@as(usize, 1), options.filters.items.len);
-}
-
-test "parseArgs with specific file" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    const args = [_][]const u8{"url/url-constructor.any.js"};
-    var options = try parseArgs(allocator, &args);
-    defer options.deinit();
-
-    try testing.expectEqual(@as(usize, 0), options.filters.items.len);
-    try testing.expectEqual(@as(usize, 1), options.specific_files.items.len);
-    try testing.expectEqualStrings("url/url-constructor.any.js", options.specific_files.items[0]);
-}
-
-test "isTestFile" {
-    try std.testing.expect(isTestFile("url/test.any.js"));
-    try std.testing.expect(isTestFile("dom/test.window.js"));
-    try std.testing.expect(isTestFile("html/test.html"));
-    try std.testing.expect(!isTestFile("url/"));
-    try std.testing.expect(!isTestFile("dom"));
-}
-
-test "Options.matchesFilter" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    // Test with directory filter
-    {
-        var options = Options.init(allocator);
-        defer options.deinit();
-        try options.filters.append(allocator, try allocator.dupe(u8, "url"));
-
-        try testing.expect(options.matchesFilter("url/test.any.js"));
-        try testing.expect(options.matchesFilter("url/subdir/test.html"));
-        try testing.expect(!options.matchesFilter("encoding/test.any.js"));
+/// Write the discovered sources as a worklist file.
+fn writeWorklistFile(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    discovery: DiscoveryResult,
+) !void {
+    if (std.fs.path.dirname(path)) |dir| {
+        std.fs.cwd().makePath(dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
     }
 
-    // Test with no filter (matches all)
-    {
-        var options = Options.init(allocator);
-        defer options.deinit();
+    var paths = try allocator.alloc([]const u8, discovery.test_files.items.len);
+    defer allocator.free(paths);
+    for (discovery.test_files.items, 0..) |tf, i| paths[i] = tf.path;
 
-        try testing.expect(options.matchesFilter("url/test.any.js"));
-        try testing.expect(options.matchesFilter("anything/here.html"));
-    }
+    var file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    var buf: [4096]u8 = undefined;
+    var file_writer = file.writer(&buf);
+    try selection.writeWorklist(&file_writer.interface, paths);
+    try file_writer.interface.flush();
 }
 
-// =============================================================================
-// Multi-Context Integration Tests
-// =============================================================================
+/// Run the whole worklist, restarting past anything that kills the process.
+///
+/// The runner executes every test in one process against one V8 isolate, so a
+/// segfault anywhere ends the run. Without this, a single crashing test makes a
+/// full-corpus number impossible to obtain - not "hard to obtain", impossible,
+/// because the process never reaches the point where it writes a report.
+///
+/// Each iteration spawns this same binary over a slice of the worklist. When a
+/// child dies abnormally, the journal's `nextIndex()` is by construction the
+/// index of the test that never reported: every earlier test wrote a record
+/// before the next one started. That index gets a CRASH record and the next
+/// child starts one past it, so the loop always advances.
+fn supervise(
+    allocator: std.mem.Allocator,
+    options: Options,
+    discovery: DiscoveryResult,
+) !void {
+    const total = discovery.test_files.items.len;
+    if (total == 0) return;
 
+    std.fs.cwd().makePath(options.output_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+
+    const worklist_path = try std.fs.path.join(allocator, &.{ options.output_dir, "worklist.txt" });
+    defer allocator.free(worklist_path);
+    try writeWorklistFile(allocator, worklist_path, discovery);
+
+    const journal_path = try std.fs.path.join(allocator, &.{ options.output_dir, "journal.jsonl" });
+    defer allocator.free(journal_path);
+
+    // Start from an empty ledger. Resuming an old journal against a worklist
+    // that may have been regenerated would resume at meaningless indices.
+    {
+        var fresh = try journal.Journal.create(allocator, journal_path);
+        fresh.deinit();
+    }
+
+    const self_exe = try std.fs.selfExePathAlloc(allocator);
+    defer allocator.free(self_exe);
+
+    print("\nSupervising {d} test files\n", .{total});
+    print("  worklist: {s}\n", .{worklist_path});
+    print("  journal:  {s}\n\n", .{journal_path});
+
+    var attempt: usize = 0;
+
+    while (true) {
+        // Each restart consumes exactly one worklist entry, so this can only
+        // spin as many times as there are tests. The bound is a backstop
+        // against a bug in that reasoning, not part of the design.
+        attempt += 1;
+        if (attempt > total + 1) {
+            print("Supervisor: giving up after {d} restarts\n", .{attempt - 1});
+            break;
+        }
+
+        var log = try journal.read(allocator, journal_path);
+        const next = log.nextIndex();
+        log.deinit();
+
+        if (next >= total) break;
+
+        const start_arg = try std.fmt.allocPrint(allocator, "--start-index={d}", .{next});
+        defer allocator.free(start_arg);
+        const from_arg = try std.fmt.allocPrint(allocator, "--from-file={s}", .{worklist_path});
+        defer allocator.free(from_arg);
+        const journal_arg = try std.fmt.allocPrint(allocator, "--journal={s}", .{journal_path});
+        defer allocator.free(journal_arg);
+        const root_arg = try std.fmt.allocPrint(allocator, "--wpt-root={s}", .{options.wpt_root});
+        defer allocator.free(root_arg);
+        const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
+        defer allocator.free(out_arg);
+
+        var argv: std.ArrayList([]const u8) = .{};
+        defer argv.deinit(allocator);
+        try argv.appendSlice(allocator, &.{ self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg });
+        if (!options.verbose) try argv.append(allocator, "--quiet");
+
+        print("--> running tests {d}..{d}\n", .{ next, total });
+
+        var child = std.process.Child.init(argv.items, allocator);
+        const term = try child.spawnAndWait();
+
+        const clean = switch (term) {
+            .Exited => |code| code == 0,
+            else => false,
+        };
+        if (clean) {
+            // A clean exit that did not finish the worklist means the child
+            // stopped for a reason of its own. Looping again would either
+            // repeat that or spin, so stop and let the journal speak.
+            var after = try journal.read(allocator, journal_path);
+            defer after.deinit();
+            if (after.nextIndex() >= total) break;
+            if (after.nextIndex() <= next) {
+                print("Supervisor: child exited cleanly without running anything; stopping\n", .{});
+                break;
+            }
+            continue;
+        }
+
+        // Abnormal exit. Everything before the crashing test wrote its record,
+        // so the first unreported index is the culprit.
+        var after = try journal.read(allocator, journal_path);
+        const crashed = after.nextIndex();
+        after.deinit();
+
+        if (crashed >= total) break;
+
+        const path = discovery.test_files.items[crashed].path;
+        print("\n!!! crashed on [{d}] {s} ({any})\n\n", .{ crashed, path, term });
+
+        var j = try journal.Journal.append(allocator, journal_path);
+        defer j.deinit();
+        const message = try std.fmt.allocPrint(allocator, "process terminated: {any}", .{term});
+        defer allocator.free(message);
+        try j.record(.{
+            .index = crashed,
+            .path = path,
+            .status = .crash,
+            .message = message,
+        });
+    }
+
+    var log = try journal.read(allocator, journal_path);
+    defer log.deinit();
+    const s = log.summarize();
+
+    print("\n=== Run complete ===\n", .{});
+    print("Files:    {d} of {d} journalled\n", .{ log.records.len, total });
+    print("  ok:      {d}\n", .{s.ok});
+    print("  error:   {d}\n", .{s.errored});
+    print("  timeout: {d}\n", .{s.timed_out});
+    print("  crash:   {d}\n", .{s.crashed});
+    print("Subtests: {d} passed, {d} failed, {d} timed out, {d} not run\n", .{
+        s.subtests_passed,
+        s.subtests_failed,
+        s.subtests_timed_out,
+        s.subtests_notrun,
+    });
+    print("\nJournal: {s}\n", .{journal_path});
+}
+
+// The tests below never run: main.zig is only ever built as an executable, so
+// Zig neither compiles nor executes its test blocks. The argument-parsing,
+// discovery and filtering tests that used to sit here now live in options.zig
+// and discovery.zig, which `zig build test` does run. What remains covers the
+// V8-dependent execution path and is kept until it can be given a home that
+// runs too.
 test "multi-context: TestResult can hold context information" {
     const allocator = std.testing.allocator;
 

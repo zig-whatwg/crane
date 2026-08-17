@@ -113,6 +113,59 @@ pub fn selectInScope(
 }
 
 // ============================================================================
+// Worklist
+// ============================================================================
+
+/// An ordered list of test sources, read back from a file.
+///
+/// A run that has to survive crashes cannot pass its test list on the command
+/// line - there are thousands of paths, well past any argv limit - and it needs
+/// the order to be identical across restarts, because the resume point is an
+/// index into that order.
+pub const Worklist = struct {
+    allocator: Allocator,
+    paths: [][]const u8,
+
+    pub fn deinit(self: *Worklist) void {
+        for (self.paths) |p| self.allocator.free(p);
+        self.allocator.free(self.paths);
+    }
+};
+
+/// Write one path per line.
+pub fn writeWorklist(w: *std.Io.Writer, paths: []const []const u8) !void {
+    for (paths) |p| try w.print("{s}\n", .{p});
+}
+
+/// Parse a worklist's bytes. Blank lines are ignored; everything else is a path.
+pub fn parseWorklist(allocator: Allocator, bytes: []const u8) !Worklist {
+    var paths: std.ArrayListUnmanaged([]const u8) = .empty;
+    errdefer {
+        for (paths.items) |p| allocator.free(p);
+        paths.deinit(allocator);
+    }
+
+    var lines = std.mem.splitScalar(u8, bytes, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        if (line.len == 0) continue;
+        try paths.append(allocator, try allocator.dupe(u8, line));
+    }
+
+    return .{
+        .allocator = allocator,
+        .paths = try paths.toOwnedSlice(allocator),
+    };
+}
+
+/// Read a worklist from disk.
+pub fn readWorklist(allocator: Allocator, path: []const u8) !Worklist {
+    const bytes = try std.fs.cwd().readFileAlloc(allocator, path, 64 * 1024 * 1024);
+    defer allocator.free(bytes);
+    return parseWorklist(allocator, bytes);
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -271,5 +324,92 @@ test "selectInScope over the real manifest reports a plausible denominator" {
     // Every selected source must be in scope and must not be excluded.
     for (sel.sources) |s| {
         try std.testing.expect(!config.isExcluded(s));
+    }
+}
+
+test "a worklist survives a write/read round trip" {
+    const allocator = std.testing.allocator;
+
+    const paths = [_][]const u8{
+        "dom/abort/AbortSignal.any.js",
+        "dom/nodes/Node-appendChild.html",
+        "html/dom/reflection.html",
+    };
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try writeWorklist(&out.writer, &paths);
+
+    var wl = try parseWorklist(allocator, out.written());
+    defer wl.deinit();
+
+    try std.testing.expectEqual(paths.len, wl.paths.len);
+    for (paths, wl.paths) |want, got| {
+        try std.testing.expectEqualStrings(want, got);
+    }
+}
+
+test "parseWorklist ignores blank lines and preserves order" {
+    const allocator = std.testing.allocator;
+
+    var wl = try parseWorklist(allocator,
+        \\dom/b.html
+        \\
+        \\dom/a.html
+        \\
+        \\html/c.html
+        \\
+    );
+    defer wl.deinit();
+
+    // Order is the run order and therefore the index space the journal resumes
+    // against - it must not be normalised or sorted here.
+    try std.testing.expectEqual(@as(usize, 3), wl.paths.len);
+    try std.testing.expectEqualStrings("dom/b.html", wl.paths[0]);
+    try std.testing.expectEqualStrings("dom/a.html", wl.paths[1]);
+    try std.testing.expectEqualStrings("html/c.html", wl.paths[2]);
+}
+
+test "an empty worklist parses to no paths" {
+    const allocator = std.testing.allocator;
+
+    var wl = try parseWorklist(allocator, "\n\n");
+    defer wl.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), wl.paths.len);
+}
+
+test "a selection round-trips through a worklist file" {
+    const allocator = std.testing.allocator;
+
+    var manifest = try wpt_manifest.parseManifestBytes(allocator, test_manifest_json);
+    defer manifest.deinit();
+
+    var sel = try selectInScope(allocator, &manifest, &.{});
+    defer sel.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(dir_path);
+    const path = try std.fs.path.join(allocator, &.{ dir_path, "worklist.txt" });
+    defer allocator.free(path);
+
+    {
+        var file = try std.fs.cwd().createFile(path, .{});
+        defer file.close();
+        var buf: [4096]u8 = undefined;
+        var file_writer = file.writer(&buf);
+        try writeWorklist(&file_writer.interface, sel.sources);
+        try file_writer.interface.flush();
+    }
+
+    var wl = try readWorklist(allocator, path);
+    defer wl.deinit();
+
+    try std.testing.expectEqual(sel.sources.len, wl.paths.len);
+    for (sel.sources, wl.paths) |want, got| {
+        try std.testing.expectEqualStrings(want, got);
     }
 }
