@@ -182,21 +182,20 @@ pub fn isExcluded(path: []const u8) bool {
 }
 
 /// Check if a path is in an in-scope category
+///
+/// Accepts both "dom/nodes/foo.html" and "/dom/nodes/foo.html". The category
+/// must match a whole leading path segment: "dom" matches "dom/nodes/foo.html"
+/// but not "domparsing/foo.html".
 pub fn isInScope(path: []const u8) bool {
+    const rel = if (path.len > 0 and path[0] == '/') path[1..] else path;
+
     for (in_scope_categories) |cat| {
-        if (cat.enabled and std.mem.startsWith(u8, path, cat.name)) {
+        if (!cat.enabled) continue;
+        if (rel.len > cat.name.len and
+            std.mem.startsWith(u8, rel, cat.name) and
+            rel[cat.name.len] == '/')
+        {
             return !isExcluded(path);
-        }
-        // Also check with leading slash (e.g., "/url/")
-        if (cat.enabled and path.len > 0 and path[0] == '/') {
-            // Build pattern: check if path starts with /<name>/
-            if (std.mem.startsWith(u8, path[1..], cat.name)) {
-                // Check for trailing / or end of category name
-                const after_name = 1 + cat.name.len;
-                if (path.len > after_name and path[after_name] == '/') {
-                    return !isExcluded(path);
-                }
-            }
         }
     }
     return false;
@@ -260,4 +259,27 @@ test "isInScope" {
     try testing.expect(!isInScope("css/selectors/test.html"));
     try testing.expect(!isInScope("webgl/test.html"));
     try testing.expect(!isInScope("html/rendering/test.html"));
+}
+
+test "isInScope matches whole path segments, not prefixes" {
+    const testing = std.testing;
+
+    // Several WPT top-level directories share a prefix with an in-scope
+    // category. Matching on the prefix alone pulls them into the corpus and
+    // inflates the denominator.
+    try testing.expect(!isInScope("domparsing/xmlserializer.html"));
+    try testing.expect(!isInScope("domxpath/evaluate.html"));
+    try testing.expect(!isInScope("encoding-detection/bug-1547595.html"));
+    try testing.expect(!isInScope("html-aam/roles.html"));
+    try testing.expect(!isInScope("html-longdesc/link-image.html"));
+    try testing.expect(!isInScope("html-media-capture/capture_reflect.html"));
+
+    // The genuine categories still match, in both URL forms.
+    try testing.expect(isInScope("dom/nodes/Node-appendChild.html"));
+    try testing.expect(isInScope("/dom/nodes/Node-appendChild.html"));
+    try testing.expect(isInScope("encoding/textdecoder-fatal.any.js"));
+    try testing.expect(isInScope("/html/dom/aria-attribute-reflection.html"));
+
+    // urlpattern is in scope in its own right, not because it starts with url.
+    try testing.expect(isInScope("urlpattern/urlpattern.any.js"));
 }
