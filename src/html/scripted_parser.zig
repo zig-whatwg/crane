@@ -113,20 +113,20 @@ fn scriptExecutionCallback(tree_node: *TreeNode, context: ?*anyopaque) void {
     }
 
     // Prepare the script element
-    // This validates preconditions, determines script type, and sets up for execution
-    const should_execute = script_execution.prepareScriptElement(ctx.allocator, dom_node) catch |err| {
+    // Per HTML Standard §13.2.5.4.7 "An end tag whose tag name is 'script'":
+    // The tree construction stage calls "prepare the script element" which handles
+    // all script execution scheduling. For parser-inserted inline classic scripts,
+    // execution happens immediately inside prepareScriptElement (step 36.3).
+    // For external scripts, execution is deferred until fetch completes.
+    //
+    // IMPORTANT: Do NOT call executeScriptElement here! The prepareScriptElement
+    // function already handles script execution at the appropriate time based on
+    // script type (inline vs external), insertion context (parser vs script), and
+    // attributes (async, defer). Calling executeScriptElement again would cause
+    // double-execution for inline parser-inserted scripts.
+    _ = script_execution.prepareScriptElement(ctx.allocator, dom_node) catch |err| {
         std.log.warn("Script preparation failed: {}", .{err});
         return;
-    };
-
-    if (!should_execute) {
-        return;
-    }
-
-    // Execute the script element
-    // For inline classic scripts, this runs the script immediately
-    script_execution.executeScriptElement(ctx.allocator, dom_node) catch |err| {
-        std.log.warn("Script execution failed: {}", .{err});
     };
 }
 

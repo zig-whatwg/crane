@@ -22,6 +22,7 @@
 //! - HTML Standard: Window object https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-window-object
 
 const std = @import("std");
+const log = std.log.scoped(.browser_context);
 const v8 = @import("v8");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
@@ -371,8 +372,8 @@ pub const Context = struct {
         context_id_counter += 1;
         const ctx_id = context_id_counter;
         std.debug.print("\n[Context.init] === Creating context #{d} ===\n", .{ctx_id});
-        std.debug.print("[Context.init] URL: {s}\n", .{url});
-        std.debug.print("[Context.init] Isolate: {*}\n", .{isolate});
+        log.debug("[Context.init] URL: {s}\n", .{url});
+        log.debug("[Context.init] Isolate: {*}\n", .{isolate});
 
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);
@@ -509,8 +510,12 @@ pub const Context = struct {
         // Bind the V8 global to the Window instance for cross-realm access
         impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
 
-        // NOTE: Window is stored in global's internal field 0, so context_manager.getWindowForContext()
-        // can find it via getWindowFromGlobalInternalField() fallback. No need to call setWindowForContext().
+        // Register Window with context manager for getWindowForContext()
+        // This is critical for cross-origin security checks where we need to get
+        // the accessor's Window from the entered context.
+        v8.context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
+            std.debug.print("Warning: Failed to setWindowForContext: {}\n", .{err});
+        };
 
         // Register Window in wrapper cache for proper cleanup
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
@@ -689,8 +694,12 @@ pub const Context = struct {
         // Bind the V8 global to the Window instance
         WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
 
-        // NOTE: Window is stored in global's internal field 0, so context_manager.getWindowForContext()
-        // can find it via getWindowFromGlobalInternalField() fallback. No need to call setWindowForContext().
+        // Register Window with context manager for getWindowForContext()
+        // This is critical for cross-origin security checks where we need to get
+        // the accessor's Window from the entered context.
+        v8.context_manager.setWindowForContext(v8_ctx, window_instance) catch |err| {
+            std.debug.print("Warning: Failed to setWindowForContext: {}\n", .{err});
+        };
 
         // Register Window in wrapper cache
         if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
@@ -1601,8 +1610,8 @@ pub const Context = struct {
     /// 7. Dispose context handle
     pub fn deinit(self: *Context) void {
         std.debug.print("\n[Context.deinit] === Destroying context ===\n", .{});
-        std.debug.print("[Context.deinit] URL: {s}\n", .{self.url});
-        std.debug.print("[Context.deinit] V8 Context: {?*}\n", .{self.v8_context});
+        log.debug("[Context.deinit] URL: {s}\n", .{self.url});
+        log.debug("[Context.deinit] V8 Context: {?*}\n", .{self.v8_context});
 
         // Clean up threadlocal state that accumulates across context navigations.
         // These must be cleaned up to prevent state accumulation that causes
@@ -1997,7 +2006,7 @@ fn addEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.
         @as(?*runtime.CallbackWrapper, runtime_wrapper),
         webidl.Opt(runtime.JSValue).notPassed(),
     ) catch |err| {
-        std.debug.print("[addEventListener] Error: {}\n", .{err});
+        log.debug("[addEventListener] Error: {}\n", .{err});
         runtime_wrapper.deinit();
         allocator.destroy(runtime_wrapper);
     };
@@ -2072,7 +2081,7 @@ fn removeEventListenerCallback(info: *const v8.ffi.FunctionCallbackInfo) callcon
         @as(?*runtime.CallbackWrapper, runtime_wrapper),
         webidl.Opt(runtime.JSValue).notPassed(),
     ) catch |err| {
-        std.debug.print("[removeEventListener] Error: {}\n", .{err});
+        log.debug("[removeEventListener] Error: {}\n", .{err});
     };
     // Note: removeEventListener cleans up its own callback wrapper via deinit
 }

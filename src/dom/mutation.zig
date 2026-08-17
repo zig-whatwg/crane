@@ -497,7 +497,10 @@ fn createNodeListFromBases(
         if (instance_bridge.getInstance(node_base_ptr)) |instance_ptr| {
             // Cast anyopaque to *runtime.Instance
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+            std.log.debug("[createNodeListFromBases] NodeBase={*} -> Instance={*}", .{ node_base_ptr, instance });
             try instances.append(allocator, instance);
+        } else {
+            std.log.debug("[createNodeListFromBases] NodeBase={*} -> NO INSTANCE FOUND!", .{node_base_ptr});
         }
         // Skip nodes that aren't registered as runtime instances
         // This handles internal nodes that may not have WebIDL wrappers

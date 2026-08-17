@@ -746,6 +746,26 @@ pub fn executeScriptElement(
 
     // Step 7: Decrement counter was handled with defer above
 
+    // CRITICAL: Perform microtask checkpoint after script execution
+    //
+    // Per WHATWG HTML Standard §8.1.7.2 "Processing model", after each task
+    // (including script execution), we must "perform a microtask checkpoint".
+    //
+    // This is essential for MutationObserver callbacks, Promise reactions,
+    // and other microtasks that were queued during script execution.
+    // Without this checkpoint, microtasks would only run when the event loop
+    // next iterates, which breaks spec-compliant behavior where MutationObserver
+    // callbacks fire synchronously before the next script runs.
+    //
+    // Spec: https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint
+    {
+        const v8_engine = @import("v8");
+        const isolate = v8_engine.ffi.v8_Isolate_GetCurrent();
+        if (isolate) |iso| {
+            v8_engine.ffi.v8_Isolate_PerformMicrotaskCheckpoint(iso);
+        }
+    }
+
     // Step 8: If el's from an external file is true, fire load event
     if (from_external) {
         fireLoadEvent(allocator, script_element);

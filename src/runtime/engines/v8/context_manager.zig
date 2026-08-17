@@ -43,6 +43,7 @@
 //! ```
 
 const std = @import("std");
+const log = std.log.scoped(.v8_context);
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const V8EventLoop = @import("event_loop.zig").V8EventLoop;
@@ -144,7 +145,7 @@ pub fn pushAccessorWindow(window: *runtime.Instance) void {
         accessor_stack[accessor_stack_depth] = window;
         accessor_stack_depth += 1;
     } else {
-        std.debug.print("[context_manager] WARNING: accessor stack overflow\n", .{});
+        log.debug("[context_manager] WARNING: accessor stack overflow\n", .{});
     }
 }
 
@@ -231,6 +232,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
 ///
 /// Thread safety: Thread-local, no synchronization needed
 pub fn deinit() void {
+    std.debug.print("[context_manager.deinit] ENTERING DEINIT\n", .{});
     if (manager_state) |*state| {
         const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
         const cleanup_coordinator = runtime.cleanup_coordinator;
@@ -266,12 +268,13 @@ pub fn deinit() void {
         // Deinit all owned runtime contexts
         // Note: The order doesn't matter for cleanup because we skip onObjectFreed
         // during teardown (is_tearing_down flag prevents nested calls).
-        std.log.debug("[context_manager.deinit] Starting context iteration, {} contexts in map", .{state.contexts.count()});
+        std.debug.print("[context_manager.deinit] Starting context iteration, {} contexts in map\n", .{state.contexts.count()});
         var it = state.contexts.valueIterator();
         while (it.next()) |entry_ptr| {
             const entry = entry_ptr.*; // Dereference the pointer to get *ContextEntry
-            std.log.debug("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}", .{ entry.owns_context, entry.window_instance });
+            std.debug.print("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}\n", .{ entry.owns_context, entry.window_instance });
             if (entry.owns_context) {
+                std.debug.print("[context_manager.deinit] Owns context - processing\n", .{});
                 var ctx_data = entry.runtime_ctx;
 
                 // Phase: ShadowRealm cleanup
@@ -318,17 +321,84 @@ pub fn deinit() void {
                 // Clean up Window instance and its Document FIRST
                 // This cleans up the DOM tree, and each Node.deinit removes itself
                 // from the wrapper cache to prevent double-free.
-                // NOTE: Do NOT call Window.deinit here - the Window is also in the wrapper cache
-                // and will be cleaned up when the wrapper cache is deinitialized.
-                // Calling deinit here causes double-free.
+                // CRITICAL: We must call Window.deinit to trigger Document.deinit → Node.deinit
+                // which recursively cleans up all DOM nodes. Without this, DOM nodes
+                // (including HTMLScriptElement in iframes) would leak.
+                // To prevent double-free, we remove Window from wrapper cache FIRST.
                 coordinator.cleanupPhase(.dom_tree);
+
+                if (entry.window_instance) |window_instance| {
+                    const WindowImpl = @import("impls").Window;
+                    log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit for {*}", .{window_instance});
+
+                    // Remove Window from wrapper cache FIRST to prevent double-free
+                    if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                        const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                        _ = cache_ptr.remove(window_instance);
+                    }
+
+                    // Now call Window.deinit to clean up Document and DOM tree
+                    WindowImpl.deinit(window_instance);
+                    log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit DONE", .{});
+                } else {
+                    log.debug("[context_manager.deinit] DOM Tree cleanup: NO window_instance for context", .{});
+                }
+
+                // Phase: Orphaned Iframe cleanup
+                // Clean up HTMLIFrameElements that were removed from the DOM (via iframe.remove())
+                // but never explicitly deinited. These are still in the wrapper cache and their
+                // BrowsingContext needs to be freed. We must do this before wrapper_cache.deinit()
+                // to ensure IFrameIntegration.deinit() → BrowsingContext.deinit() is called.
+                //
+                // We identify iframes by checking Node's local_name == "iframe".
+                std.debug.print("[context_manager.deinit] Starting orphaned iframe cleanup phase\n", .{});
+                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+                    std.debug.print("[context_manager.deinit] Got wrapper cache storage\n", .{});
+                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+                    const NodeImpl = @import("impls").Node;
+                    const HTMLIFrameElementIface = @import("interfaces").HTMLIFrameElement;
+
+                    // Collect iframe instances first to avoid modifying cache while iterating
+                    var iframe_instances: [64]*runtime.Instance = undefined;
+                    var iframe_count: usize = 0;
+
+                    var iter = cache_ptr.cache.iterator();
+                    while (iter.next()) |kv| {
+                        const instance = kv.key_ptr.*;
+
+                        // Skip if already being cleaned up
+                        if (runtime.instance_lifecycle.isCleanupStarted(instance)) continue;
+
+                        // Check if this is an HTMLIFrameElement by checking local_name
+                        if (NodeImpl.getInternalState(instance)) |node_internal| {
+                            if (node_internal.local_name) |ln| {
+                                if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
+                                    if (iframe_count < iframe_instances.len) {
+                                        iframe_instances[iframe_count] = instance;
+                                        iframe_count += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Now clean up the collected iframes
+                    std.debug.print("[context_manager.deinit] Cleaning up {} orphaned iframes\n", .{iframe_count});
+                    for (iframe_instances[0..iframe_count]) |iframe_instance| {
+                        std.debug.print("[context_manager.deinit] Calling deinit for iframe instance {*}\n", .{iframe_instance});
+                        HTMLIFrameElementIface.deinit(iframe_instance);
+                    }
+                } else {
+                    std.debug.print("[context_manager.deinit] No wrapper cache storage found\n", .{});
+                }
 
                 // Phase: Wrapper Cache cleanup
                 // Clean up V8 wrapper cache WITH callbacks
                 // Now safe to call deinit() because:
                 // 1. DOM nodes already removed themselves from cache via Node.deinit
-                // 2. Remaining entries are non-DOM objects (AbortController, etc.)
-                // 3. These need their deinit called to free InternalState
+                // 2. Orphaned iframes already cleaned up explicitly above
+                // 3. Remaining entries are non-DOM objects (AbortController, etc.)
+                // 4. These need their deinit called to free InternalState
                 coordinator.cleanupPhase(.wrapper_cache);
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
                     const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
@@ -703,7 +773,7 @@ pub fn hydrateContextFromSnapshot(
     v8_ctx: *v8.Context,
     scope: helpers.GlobalScope,
 ) void {
-    std.debug.print("[HYDRATE-SNAPSHOT] hydrateContextFromSnapshot called, context={*}, scope={s}\n", .{ v8_ctx, @tagName(scope) });
+    log.debug("[HYDRATE-SNAPSHOT] hydrateContextFromSnapshot called, context={*}, scope={s}\n", .{ v8_ctx, @tagName(scope) });
 
     // Use inline for to convert runtime scope to comptime for installForScope
     inline for (std.meta.fields(helpers.GlobalScope)) |field| {
@@ -725,7 +795,7 @@ pub fn hydrateContextFromSnapshot(
             // snapshot creation via FunctionTemplate::Inherit(). Re-calling this would create
             // new templates and potentially break the prototype chain identity.
 
-            std.debug.print("[HYDRATE-SNAPSHOT] Context hydrated with legacy aliases, scope={s}\n", .{@tagName(scope)});
+            log.debug("[HYDRATE-SNAPSHOT] Context hydrated with legacy aliases, scope={s}\n", .{@tagName(scope)});
             return;
         }
     }
@@ -2506,7 +2576,7 @@ pub fn createChildContext(
 
         const stable_runtime_ctx: runtime.Context = &child_entry.runtime_ctx;
         const loc_instance = interfaces.Location.init(allocator, stable_runtime_ctx) catch |err| {
-            std.debug.print("Warning: Failed to create Location for iframe: {}\n", .{err});
+            log.warn("Failed to create Location for iframe: {}", .{err});
             // Continue without Location - not fatal but window.location won't work
             // Child is already in parent's children list so it will be cleaned up properly
             return child_entry;
@@ -2624,7 +2694,51 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
             WindowImpl.deinit(window_instance);
         }
 
-        // 4b. Clean up V8 wrapper cache WITHOUT callbacks
+        // 4b. Clean up orphaned HTMLIFrameElements BEFORE wrapper cache cleanup
+        // This is needed because iframes removed from the DOM (via iframe.remove())
+        // won't be found during DOM tree traversal, but their BrowsingContext still
+        // needs to be freed. We must do this before deinitWithoutCallbacks() because
+        // that function doesn't call onObjectFreed, which means HTMLIFrameElement.deinit()
+        // would never be called and BrowsingContext would leak.
+        //
+        // We identify iframes by checking Node's local_name == "iframe".
+        if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
+            const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+            const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
+            const NodeImpl = @import("impls").Node;
+            const HTMLIFrameElementIface = @import("interfaces").HTMLIFrameElement;
+
+            // Collect iframe instances first to avoid modifying cache while iterating
+            var iframe_instances: [64]*runtime.Instance = undefined;
+            var iframe_count: usize = 0;
+
+            var iter = cache_ptr.cache.iterator();
+            while (iter.next()) |kv| {
+                const instance = kv.key_ptr.*;
+
+                // Skip if already being cleaned up
+                if (runtime.instance_lifecycle.isCleanupStarted(instance)) continue;
+
+                // Check if this is an HTMLIFrameElement by checking local_name
+                if (NodeImpl.getInternalState(instance)) |node_internal| {
+                    if (node_internal.local_name) |ln| {
+                        if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
+                            if (iframe_count < iframe_instances.len) {
+                                iframe_instances[iframe_count] = instance;
+                                iframe_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Now clean up the collected iframes
+            for (iframe_instances[0..iframe_count]) |iframe_instance| {
+                HTMLIFrameElementIface.deinit(iframe_instance);
+            }
+        }
+
+        // 4c. Clean up V8 wrapper cache WITHOUT callbacks
         // During child context teardown, we MUST use deinitWithoutCallbacks() to avoid
         // use-after-free crashes. The child's instances might have references to:
         // 1. Parent context memory that's being freed
@@ -3021,7 +3135,7 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // With minimal snapshot (only core interfaces), non-core interface templates are
     // created fresh on-demand with all accessors correctly installed from the start.
     // No reinstallation needed - eliminates the prototype identity bug.
-    std.debug.print("[HYDRATE-WINDOW] Using on-demand template architecture (no accessor reinstall needed)\n", .{});
+    log.debug("[HYDRATE-WINDOW] Using on-demand template architecture (no accessor reinstall needed)\n", .{});
 
     // 6. Register namespaces (console, WebAssembly, etc.) - NOT in snapshot
     interface_bindings.registerNamespacesGeneric(namespaces_module, isolate, v8_ctx);
@@ -3145,7 +3259,7 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
     const v8_ctx = options.context;
     const allocator = options.allocator;
 
-    std.debug.print("[HYDRATE-WORKER] hydrateWorkerContext called, isolate={*}, context={*}\n", .{ isolate, v8_ctx });
+    log.debug("[HYDRATE-WORKER] hydrateWorkerContext called, isolate={*}, context={*}\n", .{ isolate, v8_ctx });
 
     // 1. Initialize context manager (if not already initialized)
     init(allocator) catch |err| {
@@ -3158,7 +3272,7 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
     const runtime_ctx = try getOrCreate(v8_ctx, allocator);
 
     // 3. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
-    std.debug.print("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\\n", .{});
+    log.debug("[HYDRATE-WORKER] Calling registerAllTemplatesOnly...\\n", .{});
     interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx);
 
     // 4. Install lazy constructors on global object
@@ -3167,13 +3281,13 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
     // Without this, interfaces like URL, URLSearchParams, etc. are not available.
     const global_constructor_handler = @import("global_constructor_handler.zig");
     global_constructor_handler.installLazyConstructorsOnGlobal(v8_ctx);
-    std.debug.print("[HYDRATE-WORKER] Lazy constructors installed on worker global\n", .{});
+    log.debug("[HYDRATE-WORKER] Lazy constructors installed on worker global\n", .{});
 
     // NOTE: Accessor callback reinstallation is NO LONGER NEEDED after whatwg-41la6.
     // The Chromium pattern fix (calling GetFunction before NewInstance) ensures
     // prototype chains are materialized correctly during snapshot creation.
 
-    std.debug.print("[HYDRATE-WORKER] hydrateWorkerContext complete\n", .{});
+    log.debug("[HYDRATE-WORKER] hydrateWorkerContext complete\n", .{});
 
     // 6. Set up basic worker globals
     const global_obj = v8.v8_Context_Global(v8_ctx) orelse {

@@ -28,6 +28,7 @@
 //! - Internal fields for Zig instance storage
 
 const std = @import("std");
+const log = std.log.scoped(.v8_interface);
 const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
@@ -2055,7 +2056,23 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                     return;
                                 }
-                                conv.throwWebIDLErrorFromContext(isolate_inner, getter_context, @errorName(err));
+                                // CRITICAL: For cross-origin SecurityError, throw in the CALLER's context
+                                // (the entered context), not the getter's creation context.
+                                // This ensures the caller's try/catch can catch the exception.
+                                // Without this, sandboxed iframes can't catch SecurityError when
+                                // accessing parent.document because the exception is thrown in
+                                // the parent's context, not the iframe's context.
+                                const entered_ctx = v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate_inner);
+                                const current_ctx = v8.v8_Isolate_GetCurrentContext(isolate_inner);
+                                const entered_raw = if (entered_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
+                                const current_raw = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
+                                const getter_raw = v8.v8_Context_GetRawAddress(getter_context);
+                                log.debug("[interface] err={s} entered_raw={?*} current_raw={?*} getter_raw={?*}\n", .{ @errorName(err), entered_raw, current_raw, getter_raw });
+                                const error_context = if (err == error.SecurityError)
+                                    entered_ctx orelse current_ctx orelse getter_context
+                                else
+                                    getter_context;
+                                conv.throwWebIDLErrorFromContext(isolate_inner, error_context, @errorName(err));
                                 return;
                             }
                         else
@@ -3263,10 +3280,9 @@ pub fn V8Interface(comptime Interface: type) type {
         fn constructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             debug.print("[V8_CONSTRUCTOR] constructorCallback called for: {s}\n", .{interface_name});
 
-            // Always-on stderr debug for Worker constructor to trace issues
-            if (comptime std.mem.eql(u8, interface_name, "Worker")) {
-                const stderr = std.fs.File.stderr();
-                stderr.writeAll("[CTOR_CALLBACK] Worker constructorCallback ENTRY\n") catch {};
+            // Always-on stderr debug for Worker and MutationObserver constructor to trace issues
+            if (comptime std.mem.eql(u8, interface_name, "Worker") or std.mem.eql(u8, interface_name, "MutationObserver")) {
+                log.debug("[CTOR_CALLBACK] {s} constructorCallback ENTRY\n", .{interface_name});
             }
 
             const isolate = info.getIsolate();
@@ -3335,18 +3351,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // Call the interface's constructor with arguments parsed at comptime
             // Note: Arguments are parsed from current_context (caller's values), but
             // the runtime ctx uses constructor_context (constructor's realm)
-            if (comptime std.mem.eql(u8, interface_name, "Worker")) {
-                const stderr = std.fs.File.stderr();
-                stderr.writeAll("[CTOR_CALLBACK] Worker calling callConstructorWithArgs\n") catch {};
+            if (comptime std.mem.eql(u8, interface_name, "Worker") or std.mem.eql(u8, interface_name, "MutationObserver")) {
+                log.debug("[CTOR_CALLBACK] {s} calling callConstructorWithArgs\n", .{interface_name});
             }
             const instance = callConstructorWithArgs(info, allocator, ctx, current_context, isolate) catch |err| {
                 // ExceptionPending means an exception was already rethrown during conversion
                 // (e.g., from toString() throwing) - don't throw a second error
-                if (comptime std.mem.eql(u8, interface_name, "Worker")) {
-                    const stderr = std.fs.File.stderr();
-                    var buf: [256]u8 = undefined;
-                    const msg = std.fmt.bufPrint(&buf, "[CTOR_CALLBACK] Worker callConstructorWithArgs FAILED: {s}\n", .{@errorName(err)}) catch "[CTOR_CALLBACK] Worker callConstructorWithArgs FAILED\n";
-                    stderr.writeAll(msg) catch {};
+                if (comptime std.mem.eql(u8, interface_name, "Worker") or std.mem.eql(u8, interface_name, "MutationObserver")) {
+                    log.debug("[CTOR_CALLBACK] {s} callConstructorWithArgs FAILED: {s}\n", .{ interface_name, @errorName(err) });
                 }
                 if (err == conv.ConversionError.ExceptionPending) {
                     return;
@@ -3440,6 +3452,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Single argument constructor
                 const Param1Type = params[1].type.?;
 
+                // Debug for MutationObserver
+                if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
+                    log.debug("[CTOR_ARGS] MutationObserver single-param path, Param1Type={s}, js_arg_count={d}\n", .{ @typeName(Param1Type), js_arg_count });
+                }
+
                 // Check if this is a ConstructorArgs union (overloaded constructor)
                 const param_info = @typeInfo(Param1Type);
                 if (param_info == .@"union") {
@@ -3458,8 +3475,15 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Normal single-parameter constructor
                 // Parameter may be optional - check type and provide default if needed
                 const arg1 = if (js_arg_count >= 1) blk: {
+                    if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
+                        log.debug("[CTOR_ARGS] MutationObserver converting arg from V8...\n", .{});
+                    }
                     const v8_arg1 = info.get(0);
-                    break :blk try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    const converted = try conv.fromV8Value(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
+                        log.debug("[CTOR_ARGS] MutationObserver arg converted OK\n", .{});
+                    }
+                    break :blk converted;
                 } else blk: {
                     // No argument provided - use getDefaultArgValue for consistent handling
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -3472,7 +3496,14 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
                 defer freeConvertedArg(Param1Type, allocator, arg1);
 
-                return try Interface.call_constructor(ctx, arg1);
+                if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
+                    log.debug("[CTOR_ARGS] MutationObserver calling Interface.call_constructor...\n", .{});
+                }
+                const result = try Interface.call_constructor(ctx, arg1);
+                if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
+                    log.debug("[CTOR_ARGS] MutationObserver call_constructor returned OK\n", .{});
+                }
+                return result;
             } else if (webidl_param_count == 2) {
                 // Two arguments constructor (second may be optional dictionary)
                 const Param1Type = params[1].type.?;
@@ -3912,9 +3943,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (err == conv.ConversionError.ExceptionPending) {
                         return;
                     }
+                    // CRITICAL: For cross-origin SecurityError, throw in the CALLER's context
+                    // (the entered context), not the object's creation context.
+                    // This ensures the caller's try/catch can catch the exception.
                     const this_obj = info.getThis();
                     const creation_ctx = v8.v8_Object_GetPrototypeCreationContext(this_obj) orelse v8.v8_Isolate_GetCurrentContext(isolate).?;
-                    conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
+                    const error_context = if (err == error.SecurityError)
+                        v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse
+                            v8.v8_Isolate_GetCurrentContext(isolate) orelse creation_ctx
+                    else
+                        creation_ctx;
+                    conv.throwWebIDLErrorFromContext(isolate, error_context, @errorName(err));
                     return;
                 }
             else
@@ -4316,6 +4355,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
             // Call the item() method
+            std.log.debug("[indexedPropertyGetter] Calling {s}.call_item(instance={*}, index={})", .{ interface_name, instance, index });
             const result = Interface.call_item(instance, index) catch |err| {
                 if (err == conv.ConversionError.ExceptionPending) {
                     return .kNo;
@@ -4348,6 +4388,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             conv.throwError(isolate, "Failed to wrap result");
                             return .kNo;
                         };
+                        std.log.debug("[indexedPropertyGetter] Returning {s} Instance={*} wrapper={*}", .{ iface_name, unwrapped_result, wrapped });
                         info.setReturnValue(@ptrCast(wrapped));
                     } else {
                         // Other type (like DOMString, CSSOMString) - convert to V8 string
@@ -5760,14 +5801,17 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getThis();
 
             // Determine default iterator kind based on iterable type:
-            // - Pair iterables (key_type defined): default to entries per WebIDL spec
-            // - Indexed iterables: default to values
+            // - Pair iterables (key_type is a string, not null): default to entries per WebIDL spec
+            // - Indexed iterables (key_type is null or not defined): default to values
             const default_kind: IteratorKind = comptime blk: {
                 if (@hasDecl(Meta, "iterable")) {
                     const iterable = Meta.iterable;
-                    // Check if this is a pair iterable (has key_type field)
+                    // Check if this is a pair iterable (has key_type field that is not null)
+                    // When key_type = null, its type is @TypeOf(null), not a string pointer
                     if (@hasField(@TypeOf(iterable), "key_type")) {
-                        break :blk .entries;
+                        if (@TypeOf(iterable.key_type) != @TypeOf(null)) {
+                            break :blk .entries;
+                        }
                     }
                 }
                 break :blk .values;

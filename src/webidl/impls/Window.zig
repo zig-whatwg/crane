@@ -18,6 +18,7 @@
 //! - TimerManager: Handles setTimeout/setInterval (from event_loop)
 
 const std = @import("std");
+const log = std.log.scoped(.window);
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -347,6 +348,12 @@ pub fn deinit(instance: *runtime.Instance) void {
             LocationImpl.deinit(loc);
         }
 
+        // Clean up History instance if it was lazily created
+        if (internal.history) |history_inst| {
+            const HistoryImpl = @import("History.zig");
+            HistoryImpl.deinit(history_inst);
+        }
+
         // Clean up Document and its entire DOM tree.
         // Per Chromium's pattern: Window.FrameDestroyed() calls Document.Shutdown()
         // which recursively cleans up all child nodes via DetachLayoutTree().
@@ -356,8 +363,12 @@ pub fn deinit(instance: *runtime.Instance) void {
         // 3. Document.deinit() -> Node.deinit() recursively cleans all child nodes
         if (internal.document) |doc| {
             const DocumentImpl = @import("Document.zig");
+            log.debug("[Window.deinit] Cleaning up Document {*}", .{doc});
             DocumentImpl.deinit(doc);
             internal.document = null;
+            log.debug("[Window.deinit] Document cleanup DONE", .{});
+        } else {
+            log.debug("[Window.deinit] NO document to clean up", .{});
         }
 
         internal.deinit();
@@ -478,6 +489,7 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     internal.owns_browsing_context = false;
 
     // Set this Window as the active window on the browsing context
+    log.debug("[replaceBrowsingContext] BC={*} Window={*} calling setActiveWindow", .{ existing_bc, instance });
     existing_bc.setActiveWindow(@ptrCast(instance));
 }
 
@@ -3434,7 +3446,7 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
         elt,
     );
 
-    std.debug.print("[DEBUG] getComputedStyle returning instance={*}\n", .{css_instance});
+    log.debug("[DEBUG] getComputedStyle returning instance={*}\n", .{css_instance});
     return css_instance;
 }
 
@@ -3771,14 +3783,14 @@ fn collectNamedElementNames(node: *runtime.Instance, names: *std.ArrayList(runti
 pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
 
-    std.debug.print("[getNamedProperty] Looking for name='{s}', children count={d}\n", .{ name, internal.browsing_context.children.items.len });
+    log.debug("[getNamedProperty] Looking for name='{s}', children count={d}\n", .{ name, internal.browsing_context.children.items.len });
 
     // First, check if it's a child browsing context name
     for (internal.browsing_context.children.items, 0..) |child, i| {
-        std.debug.print("[getNamedProperty] Child {d}: target_name='{s}'\n", .{ i, child.target_name });
+        log.debug("[getNamedProperty] Child {d}: target_name='{s}'\n", .{ i, child.target_name });
         if (std.mem.eql(u8, child.target_name, name)) {
             const child_window = child.getActiveWindow() orelse continue;
-            std.debug.print("[getNamedProperty] MATCH! Returning child window\n", .{});
+            log.debug("[getNamedProperty] MATCH! Returning child window\n", .{});
             return runtime.JSValue.fromInstanceAnyopaque(@ptrCast(@alignCast(child_window)));
         }
     }

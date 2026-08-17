@@ -168,7 +168,11 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 
     // For static collections, use stored nodes
     // Return null for out of bounds per spec
-    return internal.nodes.get(index);
+    const node = internal.nodes.get(index);
+    if (node) |n| {
+        std.log.debug("[NodeList.call_item] Returning index={} Instance={*}", .{ index, n });
+    }
+    return node;
 }
 
 /// Operation: forEach(callback)

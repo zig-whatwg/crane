@@ -86,6 +86,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
+        // CRITICAL: Clear the pointer after deinit to prevent double-free.
+        // Without this, a second call to deinit (e.g., from both Element cleanup
+        // and wrapper_cache cleanup) would try to deinit already-freed memory,
+        // causing integer overflow crashes when ArrayList tries to free its
+        // heap storage with corrupted slice.len.
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }

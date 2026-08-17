@@ -9,6 +9,7 @@
 //! Migrated from: webidl/src/dom/MutationObserver.zig
 
 const std = @import("std");
+const log = std.log.scoped(.mutation_observer);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -148,6 +149,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// The callback is invoked with a list of MutationRecord objects as first
 /// argument and the constructed MutationObserver object as second argument.
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallback) !*runtime.Instance {
+    std.log.debug("[MutationObserver] call_constructor called with callback={*}", .{@as(?*const anyopaque, @ptrCast(callback))});
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &MutationObserver.vtable, ctx);
     errdefer deinit(instance);
@@ -172,6 +174,7 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
         }
     }
 
+    std.log.debug("[MutationObserver] call_constructor returning instance={*}", .{instance});
     return instance;
 }
 
@@ -182,6 +185,8 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
 ///
 /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-observe
 pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(dictionaries.MutationObserverInit)) anyerror!void {
+    log.debug("[MO_OBSERVE] call_observe ENTRY: instance={*}, target={*}\n", .{ instance, target });
+
     const internal = getInternal(instance);
 
     // Get the options value, using defaults if not passed
@@ -235,6 +240,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 
     // Get the target node's NodeBase via instance_bridge for registering the observer
     const target_nodebase = instance_bridge.getNodeBase(@ptrCast(target));
+    log.debug("[MO_OBSERVE] target_nodebase={?*}\n", .{target_nodebase});
 
     // Build registered observer options
     // Note: attribute_filter conversion from DOMString[] to []const u8[] is deferred
@@ -283,8 +289,11 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
                     .options = reg_options,
                 };
                 nodebase.registered_observers.append(new_registered) catch return error.OutOfMemory;
+                std.log.debug("[MutationObserver] observe: registered new observer on nodebase {*}, total observers: {}", .{ nodebase, nodebase.registered_observers.len });
             }
         }
+    } else {
+        std.log.debug("[MutationObserver] observe: WARNING - target_nodebase is null!", .{});
     }
 
     // Also maintain the observer's node list for disconnect()
@@ -460,11 +469,14 @@ pub fn clearRecordQueue(instance: *runtime.Instance) void {
 ///
 /// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers step 6.4
 pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instance) !void {
+    std.log.debug("[MutationObserver.invokeCallback] Called with {} records", .{records.len});
+
     const internal = getInternal(instance);
 
     // Get the callback from internal state
     const callback_global = internal.callback orelse {
         // No callback - clean up records
+        std.log.debug("[MutationObserver.invokeCallback] No callback stored, cleaning up records", .{});
         for (records) |record| {
             runtime.Instance.deinit(record);
         }
@@ -551,4 +563,66 @@ pub fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Ins
 
     // Note: Records are V8 garbage collected after wrapping, we don't need to free them
     // The V8 wrapper cache maintains the instance lifetime
+}
+
+// ============================================================================
+// Microtask Queueing (for proper async MutationObserver callback delivery)
+// ============================================================================
+
+/// Context for the mutation observer microtask callback
+const MutationMicrotaskContext = struct {
+    allocator: std.mem.Allocator,
+};
+
+/// Microtask trampoline callback that invokes notifyMutationObservers
+/// This is called by V8's microtask queue with C calling convention.
+fn mutationMicrotaskCallback(data: ?*anyopaque) callconv(.c) void {
+    std.log.debug("[MutationObserver] mutationMicrotaskCallback called", .{});
+
+    const ctx: *MutationMicrotaskContext = @ptrCast(@alignCast(data orelse {
+        std.log.err("[MutationObserver] mutationMicrotaskCallback: null data!", .{});
+        return;
+    }));
+    const allocator = ctx.allocator;
+
+    // Free the context first (we've captured what we need)
+    allocator.destroy(ctx);
+
+    // Now invoke the notify algorithm from the dom module
+    std.log.debug("[MutationObserver] Calling notifyMutationObservers", .{});
+    const mutation_observer_algorithms = @import("dom").mutation_observer_algorithms;
+    mutation_observer_algorithms.notifyMutationObservers(allocator) catch |err| {
+        std.log.err("MutationObserver: notifyMutationObservers failed: {}", .{err});
+    };
+    std.log.debug("[MutationObserver] notifyMutationObservers returned", .{});
+}
+
+/// Queue a microtask to notify mutation observers
+///
+/// This is called by mutation_observer_algorithms.queueMutationObserverMicrotask
+/// to properly queue the notification as a V8 microtask.
+///
+/// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
+pub fn queueNotifyMicrotask(allocator: std.mem.Allocator) !void {
+    std.log.debug("[MutationObserver] queueNotifyMicrotask called", .{});
+
+    // Get the current V8 isolate
+    const isolate = v8_engine.ffi.v8_Isolate_GetCurrent() orelse {
+        std.log.debug("[MutationObserver] No V8 isolate, calling notifyMutationObservers directly", .{});
+        // No V8 isolate available - call notifyMutationObservers directly
+        // This handles edge cases like unit tests without V8
+        const mutation_observer_algorithms = @import("dom").mutation_observer_algorithms;
+        try mutation_observer_algorithms.notifyMutationObservers(allocator);
+        return;
+    };
+
+    // Allocate context for the microtask
+    const ctx = allocator.create(MutationMicrotaskContext) catch return error.OutOfMemory;
+    ctx.* = .{ .allocator = allocator };
+
+    // Queue the microtask with V8
+    std.log.debug("[MutationObserver] Queuing microtask with V8", .{});
+    const callback_fn: ?*const anyopaque = @ptrCast(&mutationMicrotaskCallback);
+    v8_engine.ffi.v8_Isolate_EnqueueMicrotask(isolate, callback_fn, ctx);
+    std.log.debug("[MutationObserver] Microtask queued successfully", .{});
 }

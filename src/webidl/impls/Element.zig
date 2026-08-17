@@ -181,7 +181,16 @@ pub const InternalState = struct {
         }
 
         // Clean up cached NamedNodeMap
+        // CRITICAL: Mark the NamedNodeMap via lifecycle tracking BEFORE calling deinit.
+        // We use lifecycle tracking (not wrapper_cache.markInstanceCleanedUp) because
+        // during wrapper_cache.deinit, the HashMap is being iterated/destroyed and
+        // cannot be safely accessed. The lifecycle tracking uses a SEPARATE data
+        // structure that's safe to modify during teardown.
+        //
+        // wrapper_cache.deinit checks isCleanupStarted() before calling gc.onObjectFreed,
+        // so marking here prevents double-free of the NamedNodeMap.
         if (self.named_node_map) |nnm| {
+            _ = runtime.instance_lifecycle.markCleanupStarted(nnm);
             interfaces.NamedNodeMap.deinit(nnm);
             self.named_node_map = null;
         }

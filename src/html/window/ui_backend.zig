@@ -31,6 +31,7 @@
 //! ```
 
 const std = @import("std");
+const log = std.log.scoped(.ui_backend);
 const Allocator = std.mem.Allocator;
 
 /// UI Backend interface for user prompts
@@ -140,14 +141,14 @@ pub const StubUIBackend = struct {
     fn showAlert(ptr: *anyopaque, message: []const u8) void {
         const self: *StubUIBackend = @ptrCast(@alignCast(ptr));
         if (self.config.log_calls) {
-            std.debug.print("[StubUI] alert: {s}\n", .{message});
+            log.debug("[StubUI] alert: {s}\n", .{message});
         }
     }
 
     fn showConfirm(ptr: *anyopaque, message: []const u8) bool {
         const self: *StubUIBackend = @ptrCast(@alignCast(ptr));
         if (self.config.log_calls) {
-            std.debug.print("[StubUI] confirm: {s} -> {}\n", .{ message, self.config.confirm_result });
+            log.debug("[StubUI] confirm: {s} -> {}\n", .{ message, self.config.confirm_result });
         }
         return self.config.confirm_result;
     }
@@ -155,7 +156,7 @@ pub const StubUIBackend = struct {
     fn showPrompt(ptr: *anyopaque, message: []const u8, default_value: []const u8) ?[]const u8 {
         const self: *StubUIBackend = @ptrCast(@alignCast(ptr));
         if (self.config.log_calls) {
-            std.debug.print("[StubUI] prompt: {s} (default: {s})\n", .{ message, default_value });
+            log.debug("[StubUI] prompt: {s} (default: {s})\n", .{ message, default_value });
         }
 
         // If a custom result is configured and we have an allocator, return a copy
@@ -176,7 +177,7 @@ pub const StubUIBackend = struct {
     fn showPrint(ptr: *anyopaque) void {
         const self: *StubUIBackend = @ptrCast(@alignCast(ptr));
         if (self.config.log_calls) {
-            std.debug.print("[StubUI] print dialog\n", .{});
+            log.debug("[StubUI] print dialog\n", .{});
         }
     }
 

@@ -20,6 +20,7 @@
 //! - WindowProxy (the cross-origin access control)
 
 const std = @import("std");
+const log = std.log.scoped(.iframe);
 const Allocator = std.mem.Allocator;
 const browsing_context = @import("browsing_context.zig");
 const BrowsingContext = browsing_context.BrowsingContext;
@@ -345,7 +346,10 @@ pub const IFrameIntegration = struct {
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
         // so we only need to call deinit() here.
         if (self.browsing_context) |ctx| {
+            std.debug.print("[IFrameIntegration.deinit] integration={*} -> BC {*}\n", .{ self, ctx });
             ctx.deinit();
+        } else {
+            std.debug.print("[IFrameIntegration.deinit] integration={*} -> BC null\n", .{self});
         }
 
         // Free allocated strings
@@ -464,6 +468,7 @@ pub const IFrameIntegration = struct {
             return IFrameError.ContextCreationFailed;
         };
 
+        std.debug.print("[IFrameIntegration.onInsertedIntoDocument] Created BC {*} for integration {*} (via onInsertedIntoDocument)\n", .{ nested_ctx, self });
         self.browsing_context = nested_ctx;
 
         // Set the target name if we have one
@@ -504,6 +509,7 @@ pub const IFrameIntegration = struct {
             return null;
         };
 
+        std.debug.print("[IFrameIntegration.ensureBrowsingContext] Created BC {*} for integration {*} (via ensureBrowsingContext)\n", .{ nested_ctx, self });
         self.browsing_context = nested_ctx;
         self.parent_context = parent_bc;
 
@@ -541,17 +547,18 @@ pub const IFrameIntegration = struct {
     }
 
     /// Called when iframe is removed from a document
-    /// Per HTML §7.1, marks the browsing context as discarded.
+    /// Per WHATWG HTML §7.3.1.6 "destroy a child navigable", the browsing context
+    /// is destroyed synchronously when the iframe element is removed from the document.
     ///
-    /// IMPORTANT: We do NOT destroy the V8 context or wrapper cache here!
-    /// JavaScript may still be executing in the iframe context (e.g., returning
-    /// from parent.postMessage()). If we free instances now, V8 will access
-    /// freed memory causing use-after-free crashes.
+    /// Architecture notes:
+    /// - BrowsingContext is a Zig-only struct with no V8 references - safe to deinit synchronously
+    /// - V8 context cleanup (cleanupRealmContext) is NOT done here - the child V8 context must
+    ///   remain alive so V8's weak callbacks can properly handle wrapper cleanup when GC runs
+    /// - The wrapper cache cleanup happens via destroyChildContext when V8 GC runs
     ///
-    /// Instead, we just mark the browsing context as closed. The actual cleanup
-    /// happens in one of two ways:
-    /// 1. V8 GC determines no more references to the global → weak callbacks fire
-    /// 2. Parent context is torn down → child contexts are cleaned up
+    /// This follows the Chromium pattern of deterministic cleanup during element removal,
+    /// not GC-driven cleanup. The BC must be destroyed here to prevent memory leaks caused
+    /// by memory address reuse before GC runs.
     pub fn onRemovedFromDocument(self: *IFrameIntegration) void {
         // Guard against double-calls. Once discarded, we don't process again.
         if (self.state == .discarded) return;
@@ -567,6 +574,14 @@ pub const IFrameIntegration = struct {
             ctx.removeFromParent();
             // Close the browsing context (marks as discarded)
             ctx.close();
+            // Per WHATWG spec §7.3.1.6 "destroy a child navigable":
+            // Destroy the BrowsingContext synchronously. This is deterministic cleanup
+            // following the Chromium pattern, not deferred GC-driven cleanup.
+            // The BC is a Zig-only struct with no V8 references, so this is safe.
+            std.debug.print("[IFrameIntegration.onRemovedFromDocument] integration={*} -> destroying BC {*}\n", .{ self, ctx });
+            ctx.deinit();
+            // Set to null to prevent double-free in IFrameIntegration.deinit()
+            self.browsing_context = null;
         }
         self.state = .discarded;
     }
@@ -607,6 +622,11 @@ pub const IFrameIntegration = struct {
     /// srcdoc content is always treated as UTF-8 since it comes from the
     /// parent document's parsing (which normalizes to UTF-8).
     fn navigateToSrcdoc(self: *IFrameIntegration, content: []const u8) IFrameError!void {
+        // Debug: trace what content is being parsed
+        const time_ns = std.time.nanoTimestamp();
+        const preview_len = @min(150, content.len);
+        log.debug("[navigateToSrcdoc] time={d}ns content_len={d} content={s}...\n", .{ time_ns, content.len, content[0..preview_len] });
+
         // srcdoc documents inherit origin from container
         if (self.window_proxy) |*proxy| {
             proxy.setDocumentOrigin(self.container_origin);

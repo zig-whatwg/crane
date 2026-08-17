@@ -283,8 +283,11 @@ fn queueMutationRecordInternal(
     // Get target's NodeBase for accessing registered observers
     const target_nodebase = instance_bridge.getNodeBase(@ptrCast(target)) orelse {
         // Target is not a registered node - can't dispatch mutations
+        std.log.debug("[MutationObserver] queueMutationRecordInternal: target has no NodeBase", .{});
         return;
     };
+
+    std.log.debug("[MutationObserver] queueMutationRecordInternal: type={s}, target Instance={*}, target NodeBase={*}", .{ mutation_type, target, target_nodebase });
 
     // Step 1: Let interestedObservers be an empty map
     // Maps observer instance to mappedOldValue
@@ -293,8 +296,13 @@ fn queueMutationRecordInternal(
 
     // Step 2: Let nodes be the inclusive ancestors of target
     // Walk from target up to root
+    var ancestors_count: usize = 0;
     var current: ?*@import("node_base.zig").NodeBase = target_nodebase;
     while (current) |node| : (current = node.parent_node) {
+        ancestors_count += 1;
+        if (node.registered_observers.len > 0) {
+            std.log.debug("[MutationObserver] Checking node {*} with {} registered observers", .{ node, node.registered_observers.len });
+        }
         // Step 3: For each node in nodes, for each registered of node's registered observer list
         for (0..node.registered_observers.len) |i| {
             const registered = node.registered_observers.get(i) orelse continue;
@@ -344,20 +352,29 @@ fn queueMutationRecordInternal(
             if (!should_skip and std.mem.eql(u8, mutation_type, "childList")) {
                 if (!options.child_list) {
                     should_skip = true;
+                    std.log.debug("[MutationObserver] Skipping observer: childList=false", .{});
                 }
             }
 
             if (should_skip) {
+                std.log.debug("[MutationObserver] Observer skipped for mutation type '{s}'", .{mutation_type});
                 continue;
             }
 
+            std.log.debug("[MutationObserver] Found interested observer! node={*}, options.childList={}", .{ node, options.child_list });
+
             // Step 3.2.1: Let mo be registered's observer
-            const observer_ptr = handles.mutationObserverToAnyopaque(registered.observer) orelse continue;
+            const observer_ptr = handles.mutationObserverToAnyopaque(registered.observer) orelse {
+                std.log.debug("[MutationObserver] WARNING: mutationObserverToAnyopaque returned null!", .{});
+                continue;
+            };
             const mo: *runtime.Instance = @ptrCast(@alignCast(observer_ptr));
+            std.log.debug("[MutationObserver] Observer instance: {*}", .{mo});
 
             // Step 3.2.2: If interestedObservers[mo] does not exist, then set it to null
             if (!interested_observers.contains(mo)) {
                 try interested_observers.put(mo, null);
+                std.log.debug("[MutationObserver] Added observer to interested_observers map", .{});
             }
 
             // Step 3.2.3: If either type is "attributes" and options["attributeOldValue"] is true,
@@ -372,10 +389,12 @@ fn queueMutationRecordInternal(
     }
 
     // Step 4: For each observer → mappedOldValue of interestedObservers
+    std.log.debug("[MutationObserver] interested_observers count: {}", .{interested_observers.count()});
     var it = interested_observers.iterator();
     while (it.next()) |entry| {
         const observer = entry.key_ptr.*;
         const mapped_old_value = entry.value_ptr.*;
+        std.log.debug("[MutationObserver] Processing interested observer: {*}", .{observer});
 
         // Step 4.1: Let record be a new MutationRecord object
         const ctx = target.ctx;
@@ -394,11 +413,14 @@ fn queueMutationRecordInternal(
         );
 
         // Step 4.2: Enqueue record to observer's record queue
+        std.log.debug("[MutationObserver] Enqueueing record to observer", .{});
         MutationObserverImpl.enqueueRecord(observer, record) catch {
             // If enqueueing fails, clean up the record
+            std.log.debug("[MutationObserver] Failed to enqueue record!", .{});
             runtime.Instance.deinit(record);
             continue;
         };
+        std.log.debug("[MutationObserver] Record enqueued successfully", .{});
 
         // Step 4.3: Append observer to the surrounding agent's pending mutation observers
         const agent = try getAgent(allocator);
@@ -411,8 +433,13 @@ fn queueMutationRecordInternal(
         }
         if (!already_pending) {
             try agent.pending_observers.append(observer);
+            std.log.debug("[MutationObserver] Added observer to pending_observers, total: {}", .{agent.pending_observers.len});
+        } else {
+            std.log.debug("[MutationObserver] Observer already pending", .{});
         }
     }
+
+    std.log.debug("[MutationObserver] queueMutationRecordInternal complete, pending_observers: {}", .{(getAgent(allocator) catch unreachable).pending_observers.len});
 
     // Step 5: Queue a mutation observer microtask
     try queueMutationObserverMicrotask(allocator);
@@ -424,6 +451,8 @@ fn queueMutationRecordInternal(
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
 fn queueMutationObserverMicrotask(allocator: Allocator) !void {
+    const MutationObserverImpl = @import("impls").MutationObserver;
+
     const agent = try getAgent(allocator);
 
     // Step 1: If the surrounding agent's mutation observer microtask queued is true, then return
@@ -433,10 +462,12 @@ fn queueMutationObserverMicrotask(allocator: Allocator) !void {
     agent.microtask_queued = true;
 
     // Step 3: Queue a microtask to notify mutation observers
-    // TODO: Integrate with actual microtask queue
-    // For now, we'll call notifyMutationObservers immediately
-    // In a real implementation, this would be deferred to the microtask queue
-    try notifyMutationObservers(allocator);
+    // Delegate to the impl which has access to V8 for proper microtask queueing
+    MutationObserverImpl.queueNotifyMicrotask(allocator) catch {
+        // If queueing fails, fall back to synchronous execution
+        std.log.err("MutationObserver: failed to queue microtask, falling back to synchronous", .{});
+        try notifyMutationObservers(allocator);
+    };
 }
 
 /// DOM §7.1 - Notify mutation observers
@@ -446,6 +477,8 @@ fn queueMutationObserverMicrotask(allocator: Allocator) !void {
 /// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers
 pub fn notifyMutationObservers(allocator: Allocator) !void {
     const MutationObserverImpl = @import("impls").MutationObserver;
+
+    std.log.debug("[MutationObserver] notifyMutationObservers called", .{});
 
     const agent = try getAgent(allocator);
 
@@ -457,6 +490,8 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     defer notify_set.deinit();
     try notify_set.appendSlice(agent.pending_observers.items());
 
+    std.log.debug("[MutationObserver] notifySet has {} observers", .{notify_set.len});
+
     // Step 3: Empty the surrounding agent's pending mutation observers
     agent.pending_observers.clear();
 
@@ -467,8 +502,13 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         // Step 6.1: Let records be a clone of mo's record queue
         const records = MutationObserverImpl.getRecordQueue(mo_instance);
 
+        std.log.debug("[MutationObserver] Processing observer {*}, records.len={}", .{ mo_instance, records.len });
+
         // Skip if no records
-        if (records.len == 0) continue;
+        if (records.len == 0) {
+            std.log.debug("[MutationObserver] No records for observer, skipping", .{});
+            continue;
+        }
 
         // Step 6.2: Empty mo's record queue
         // We need to take ownership of the records before clearing
@@ -486,12 +526,15 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         // Step 6.4: If records is not empty, then invoke mo's callback with « records, mo »
         if (records_copy.len > 0) {
             // Delegate callback invocation to the impl layer which has V8 access
-            MutationObserverImpl.invokeCallback(mo_instance, records_copy.items()) catch {
+            std.log.debug("[MutationObserver] Invoking callback with {} records", .{records_copy.len});
+            MutationObserverImpl.invokeCallback(mo_instance, records_copy.items()) catch |err| {
+                std.log.err("[MutationObserver] invokeCallback failed: {}", .{err});
                 // If callback invocation fails, clean up records
                 for (records_copy.items()) |record| {
                     runtime.Instance.deinit(record);
                 }
             };
+            std.log.debug("[MutationObserver] Callback invocation completed", .{});
             // Note: Records ownership is transferred to invokeCallback, which will clean them up
         }
     }

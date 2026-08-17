@@ -20,6 +20,7 @@
 //! All conversion functions return error unions for proper error propagation.
 
 const std = @import("std");
+const log = std.log.scoped(.v8_conv);
 const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
@@ -2554,6 +2555,89 @@ pub fn throwDOMException(
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
+/// Throw a DOMException from a specific context's realm
+///
+/// Per WebIDL spec, DOMExceptions should be thrown from the function's realm
+/// or the caller's realm depending on the error type. For cross-origin security
+/// errors, this should be the caller's realm so the caller's try/catch can catch it.
+pub fn throwDOMExceptionFromContext(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    name: []const u8,
+    message: []const u8,
+) void {
+    log.debug("[throwDOMExceptionFromContext] name={s}\n", .{name});
+    const global = v8.v8_Context_Global(context) orelse {
+        log.debug("[throwDOMExceptionFromContext] fallback - no global\n", .{});
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+
+    // Get the DOMException constructor from the specified context's global
+    const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+    const dom_exception_ctor = v8.v8_Object_Get(global, context, @ptrCast(dom_exception_key)) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+
+    if (!v8.v8_Value_IsFunction(dom_exception_ctor)) {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    }
+
+    // Create V8 strings for the arguments
+    const v8_message = v8.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+    const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+
+    // Use Reflect.construct to call the constructor
+    const reflect_key = v8.v8_String_NewFromUtf8(isolate, "Reflect", 7) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+    const reflect_obj = v8.v8_Object_Get(global, context, @ptrCast(reflect_key)) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+    const construct_key = v8.v8_String_NewFromUtf8(isolate, "construct", 9) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+    const construct_fn_value = v8.v8_Object_Get(@ptrCast(reflect_obj), context, @ptrCast(construct_key)) orelse {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+    if (!v8.v8_Value_IsFunction(construct_fn_value)) {
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    }
+    const construct_fn: *v8.Function = @ptrCast(construct_fn_value);
+
+    // Create argument array: [message, name]
+    const args_array = v8.v8_Array_New(isolate, 2);
+    _ = v8.v8_Array_Set(args_array, context, 0, @ptrCast(v8_message));
+    _ = v8.v8_Array_Set(args_array, context, 1, @ptrCast(v8_name));
+
+    // Call Reflect.construct(DOMException, [message, name])
+    var args = [_]*v8.Value{ dom_exception_ctor, @ptrCast(args_array) };
+    const exception = v8.v8_Function_Call(construct_fn, context, reflect_obj, 2, &args) orelse {
+        log.debug("[throwDOMExceptionFromContext] fallback - Reflect.construct failed\n", .{});
+        throwDOMExceptionFallback(isolate, name, message);
+        return;
+    };
+
+    log.debug("[throwDOMExceptionFromContext] throwing exception\n", .{});
+    v8.v8_Isolate_ThrowException(isolate, exception);
+}
+
 /// List of DOMException names as defined by WebIDL spec
 /// Used to determine if an error name is a DOMException or a simple exception
 pub const dom_exception_names = [_][]const u8{
@@ -2616,8 +2700,10 @@ pub fn throwWebIDLErrorFromContext(
     error_name: []const u8,
 ) void {
     if (isDOMExceptionName(error_name)) {
-        // TODO: implement throwDOMExceptionFromContext
-        throwDOMException(isolate, error_name, error_name);
+        // Use the specified context's DOMException constructor
+        // This is critical for cross-origin errors: throwing in the caller's
+        // context allows the caller's try/catch to catch the exception.
+        throwDOMExceptionFromContext(isolate, context, error_name, error_name);
     } else if (std.mem.eql(u8, error_name, "TypeError")) {
         throwTypeErrorFromContext(isolate, context, "TypeError");
     } else if (std.mem.eql(u8, error_name, "RangeError")) {

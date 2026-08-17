@@ -126,10 +126,28 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Guard against double-deinit. This can happen when:
+    // 1. Window.deinit explicitly cleans up History
+    // 2. Wrapper cache cleanup also tries to call History.deinit via onObjectFreed
+    //
+    // The lifecycle tracking prevents concurrent cleanup races, but we MUST
+    // still clean up internal state if it exists.
+    const instance_lifecycle = @import("runtime").instance_lifecycle;
+
+    // Try to mark cleanup started. If it returns false, another path already marked it,
+    // but we still need to check and clean up internal state if present.
+    const is_first = instance_lifecycle.markCleanupStarted(instance);
+
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
+
+    // Only clear lifecycle entry if we were the first to mark cleanup started.
+    if (is_first) {
+        instance_lifecycle.markCleanupComplete(instance);
     }
 }
 

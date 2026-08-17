@@ -17,6 +17,7 @@
 //! The integration handles lifecycle (insertion/removal) and navigation.
 
 const std = @import("std");
+const log = std.log.scoped(.html_iframe);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -230,6 +231,8 @@ pub const InternalState = struct {
         const integration = try ArenaAllocator.get().create(IFrameIntegration);
         integration.* = IFrameIntegration.init(allocator);
 
+        std.debug.print("[InternalState.init] Created integration={*} for state={*}\n", .{ integration, state });
+
         state.* = .{
             .integration = integration,
             .allocator = allocator,
@@ -288,6 +291,7 @@ pub fn init(
     // Initialize internal state
     const state = instance.getState(StateType);
     state.own._internal = try InternalState.init(allocator);
+    std.debug.print("[HTMLIFrameElement.init] instance={*} -> internal={*} -> integration={*}\n", .{ instance, state.own._internal.?, state.own._internal.?.integration });
 
     // Set Node's local name for iframe identification during DOM operations
     const NodeImpl = @import("Node.zig");
@@ -302,13 +306,18 @@ pub fn deinit(instance: *runtime.Instance) void {
     // 1. Tree cleanup (Node.deinit → deinitNodeByType) deinits this iframe
     // 2. GC cleanup (onObjectFreed) also tries to deinit the same iframe
     // Only one path should proceed with cleanup.
+    std.debug.print("[HTMLIFrameElement.deinit] Called for instance {*}\n", .{instance});
     if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
+        std.debug.print("[HTMLIFrameElement.deinit] Already cleaning up, skipping\n", .{});
         return; // Already being cleaned up, skip
     }
 
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        std.debug.print("[HTMLIFrameElement.deinit] instance={*} -> integration={*}\n", .{ instance, internal.integration });
         internal.deinit();
+    } else {
+        std.debug.print("[HTMLIFrameElement.deinit] instance={*} -> No internal state\n", .{instance});
     }
     // Chain to parent class cleanup
     const HTMLElementImpl = @import("HTMLElement.zig");
@@ -501,6 +510,9 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
 /// that JavaScript can access via DOM APIs like getElementById(), querySelector(), etc.
 /// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
 fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core.BrowsingContext, html_content: []const u8) ?*anyopaque {
+    const time_start = std.time.nanoTimestamp();
+    log.debug("[parseHtmlForIframe] time={d}ns START content_len={d}\n", .{ time_start, html_content.len });
+
     const runtime_ctx: runtime.Context = @ptrCast(@alignCast(runtime_ctx_ptr orelse {
         return null;
     }));
@@ -524,6 +536,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
     // The BrowsingContext.allowsScripts() method encapsulates this check.
     const scripting_enabled = browsing_ctx_ptr.allowsScripts();
 
+    log.debug("[parseHtmlForIframe] time={d}ns calling parseHTMLWithScripting\n", .{std.time.nanoTimestamp()});
     const document_instance = scripted_parser.parseHTMLWithScripting(
         allocator,
         runtime_ctx,
@@ -533,6 +546,7 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
         // Fall back to empty document on parse error
         return createDocumentForIframe(runtime_ctx_ptr, browsing_ctx_ptr);
     };
+    log.debug("[parseHtmlForIframe] time={d}ns parseHTMLWithScripting DONE\n", .{std.time.nanoTimestamp()});
 
     // Set document type to HTML
     document_internals.setDocumentType(document_instance, .html) catch {};
@@ -577,11 +591,14 @@ fn parseHtmlForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html_core
         // Also set the document on the Window
         const WindowImpl = @import("Window.zig");
         const window_inst: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
+        log.debug("[parseHtmlForIframe] BC={*} Setting document {*} on Window {*}", .{ browsing_ctx_ptr, document_instance, window_inst });
         WindowImpl.setDocument(window_inst, document_instance);
         // Set the defaultView on the document (bidirectional Document <-> Window link)
         // Note: This is also set by the parser via options.window, but we keep it here
         // for consistency and in case of parse errors that fall back to createDocumentForIframe
         DocumentImpl.setDefaultView(document_instance, window_inst);
+    } else {
+        log.debug("[parseHtmlForIframe] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
     }
 
     return document_instance;
@@ -811,6 +828,23 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
+        // CRITICAL: Determine if this iframe should use an opaque origin BEFORE
+        // creating the V8 context. Per HTML spec §4.8.5 and Chromium's implementation:
+        // - Sandboxed iframes WITHOUT allow-same-origin get a unique opaque origin
+        // - This requires setting V8's default security token (isolated from parent)
+        // - Otherwise, share parent's security token for same-origin access
+        //
+        // This MUST be calculated before createChildContext because V8's security
+        // token is set during context creation and affects all subsequent property
+        // access attempts (e.g., `parent.document` from within the iframe).
+        const use_opaque_origin = blk: {
+            if (internal.integration.sandbox_flags) |flags| {
+                // Sandboxed without allow-same-origin = opaque origin
+                break :blk !flags.allow_same_origin;
+            }
+            break :blk false;
+        };
+
         // Create child V8 context with all interface bindings AND Window instance
         // The Window instance IS the V8 global, enabling cross-realm access
         //
@@ -824,6 +858,7 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             .context_type = .window,
             .inherit_event_loop = true,
             .existing_browsing_context = @ptrCast(existing_bc),
+            .use_opaque_origin = use_opaque_origin,
         }, internal.allocator) catch {
             // Fall back to WindowProxy if context creation fails
             if (internal.integration.getContentWindow()) |proxy| {
@@ -832,28 +867,20 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
             return null;
         };
 
-        // CRITICAL: Set the Window's origin based on sandbox flags.
+        // Set the Window's origin based on sandbox flags (already calculated above).
         // Per HTML spec §4.8.5:
-        // - If sandboxed without allow-same-origin: opaque origin (unique)
+        // - If sandboxed without allow-same-origin: opaque origin (unique) - keep default "null"
         // - Otherwise: inherit from container document
         //
         // The Window's origin defaults to "null" (opaque). If sandbox doesn't have
         // allow-same-origin, we keep it opaque. Otherwise, set to parent's origin.
         if (entry.window_instance) |window_inst| {
             const WinImpl = @import("Window.zig");
-            // Check if sandboxed without allow-same-origin
-            const has_opaque_origin = blk: {
-                if (internal.integration.sandbox_flags) |flags| {
-                    // Sandboxed without allow-same-origin = opaque origin
-                    break :blk !flags.allow_same_origin;
-                }
-                break :blk false;
-            };
-            if (!has_opaque_origin) {
+            if (!use_opaque_origin) {
                 // Not sandboxed or has allow-same-origin - inherit parent's origin
                 WinImpl.setOrigin(window_inst, parent_origin_str) catch {};
             }
-            // If has_opaque_origin, leave as "null" (opaque)
+            // If use_opaque_origin, leave as "null" (opaque)
         }
 
         // Store the realm context in the integration for cleanup on removal

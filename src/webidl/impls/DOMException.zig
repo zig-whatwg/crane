@@ -23,23 +23,31 @@ pub const ImplError = error{
 
 /// Internal state for DOMException
 /// Stores the message, name, and legacy error code
+///
+/// NOTE: InternalState and its strings are arena-allocated to ensure cleanup
+/// happens even when deinitWithoutCallbacks() is used during child context teardown.
+/// The arena is reset when the context is destroyed, freeing all memory.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     message: []const u8,
     name: []const u8,
     code: u16,
     /// Whether we own the message/name memory (allocated by us)
+    /// When arena-allocated, these should be false.
     owns_message: bool,
     owns_name: bool,
 
     pub fn deinit(self: *InternalState) void {
+        // Only free strings if we own them (non-arena allocation)
         if (self.owns_message and self.message.len > 0) {
             self.allocator.free(self.message);
         }
         if (self.owns_name and self.name.len > 0) {
             self.allocator.free(self.name);
         }
-        self.allocator.destroy(self);
+        // NOTE: Don't call allocator.destroy(self) here.
+        // InternalState is arena-allocated, so the arena will handle cleanup.
+        // Calling destroy with a different allocator would cause issues.
     }
 };
 
@@ -76,31 +84,36 @@ pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMStr
 
     const state = instance.getState(State);
 
-    // Create internal state
-    const internal = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal);
+    // Use arena allocator for InternalState and strings.
+    // This ensures cleanup happens when the context is destroyed, even if
+    // deinitWithoutCallbacks() is used during child context teardown.
+    const ArenaAllocator = runtime.ArenaAllocator;
+    const arena = ArenaAllocator.get();
+
+    // Create internal state using arena
+    const internal = try arena.create(InternalState);
 
     // Get message (default to empty string)
     const msg_str = if (message.was_passed) message.value.asSlice() else "";
     // Get name (default to "Error")
     const name_str = if (name.was_passed) name.value.asSlice() else "Error";
 
-    // Duplicate strings so we own them
-    const owned_message = if (msg_str.len > 0) try ctx.allocator.dupe(u8, msg_str) else "";
-    errdefer if (owned_message.len > 0) ctx.allocator.free(owned_message);
-
-    const owned_name = try ctx.allocator.dupe(u8, name_str);
+    // Duplicate strings using arena - no manual cleanup needed
+    const owned_message = if (msg_str.len > 0) try arena.dupe(u8, msg_str) else "";
+    const owned_name = try arena.dupe(u8, name_str);
 
     // Get legacy error code from name
     const code = getLegacyCodeForName(name_str);
 
     internal.* = .{
+        // Store ctx.allocator for compatibility, but arena handles cleanup
         .allocator = ctx.allocator,
         .message = owned_message,
         .name = owned_name,
         .code = code,
-        .owns_message = owned_message.len > 0,
-        .owns_name = true,
+        // Arena-allocated strings don't need individual cleanup
+        .owns_message = false,
+        .owns_name = false,
     };
 
     state.own._internal = internal;

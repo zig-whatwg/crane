@@ -47,6 +47,7 @@
 //! - HTML Standard: Navigation and session history https://html.spec.whatwg.org/multipage/nav-history-apis.html
 
 const std = @import("std");
+const log = std.log.scoped(.browser);
 const v8 = @import("v8");
 const runtime = @import("runtime");
 const impls = @import("impls");
@@ -480,7 +481,7 @@ pub const Browser = struct {
     pub fn runEventLoopBlocking(self: *Browser, timeout_ms: u64) !bool {
         const event_loop = self.event_loop orelse return error.NotInitialized;
         // DEBUG: Log event loop pointer and task count
-        std.log.err("[Browser.runEventLoopBlocking] event_loop={*}, tasks.len={d}", .{ event_loop, event_loop.tasks.items.len });
+        log.debug("[Browser.runEventLoopBlocking] event_loop={*}, tasks.len={d}", .{ event_loop, event_loop.tasks.items.len });
         const start_time = std.time.milliTimestamp();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
         var did_work = false;

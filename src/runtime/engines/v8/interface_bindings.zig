@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const log = std.log.scoped(.v8_bindings);
 const v8 = @import("ffi.zig");
 const V8Interface = @import("interface.zig").V8Interface;
 pub const V8Namespace = @import("namespace.zig").V8Namespace;
@@ -293,7 +294,7 @@ pub fn registerAllTemplatesOnly(
             // external references, so it doesn't need reinstallation.
             const is_window = comptime std.mem.eql(u8, decl.name, "Window");
             if (is_window) {
-                std.debug.print("[registerAllTemplatesOnly] SKIPPING Window (not registering template or global)\n", .{});
+                log.debug("[registerAllTemplatesOnly] SKIPPING Window (not registering template or global)\n", .{});
                 continue;
             }
 
@@ -303,7 +304,7 @@ pub fn registerAllTemplatesOnly(
             // Without this, `new EventTarget()` would use stale callback pointers.
             const is_event_target = comptime std.mem.eql(u8, decl.name, "EventTarget");
             if (is_event_target) {
-                std.debug.print("[registerAllTemplatesOnly] Processing: EventTarget\n", .{});
+                log.debug("[registerAllTemplatesOnly] Processing: EventTarget\n", .{});
                 // Continue to normal registration - don't skip
             }
 
@@ -312,7 +313,7 @@ pub fn registerAllTemplatesOnly(
                 std.mem.eql(u8, decl.name, "Element") or
                 std.mem.eql(u8, decl.name, "Document"))
             {
-                std.debug.print("[registerAllTemplatesOnly] Processing: {s}\n", .{decl.name});
+                log.debug("[registerAllTemplatesOnly] Processing: {s}\n", .{decl.name});
             }
 
             // CRITICAL: Check if template already exists before creating.
@@ -593,7 +594,7 @@ pub fn initializeCoreBindingsForScope(
 ) void {
     // Get the global object from context
     const global = v8.v8_Context_Global(context) orelse {
-        std.debug.print("[CORE-BINDINGS] Failed to get global object from context\n", .{});
+        log.debug("[CORE-BINDINGS] Failed to get global object from context\n", .{});
         return;
     };
 
@@ -1293,7 +1294,7 @@ pub fn createTemplateOnDemandByName(
 
             // Debug: trace on-demand template creation
             if (comptime std.mem.eql(u8, decl.name, "Window") or std.mem.eql(u8, decl.name, "EventTarget")) {
-                std.debug.print("[createTemplateOnDemandByName] Creating template for: {s}\n", .{interface_name});
+                log.debug("[createTemplateOnDemandByName] Creating template for: {s}\n", .{interface_name});
             }
 
             // Create the template

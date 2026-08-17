@@ -16,6 +16,7 @@
 //! - ports is an empty array (not used for WebSocket)
 
 const std = @import("std");
+const log = std.log.scoped(.message_event);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -177,12 +178,13 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
 
-    // DEBUG - show what data type we're returning
-    const stderr_file = std.fs.File.stderr();
-    var debug_buf: [64]u8 = undefined;
+    // DEBUG - show what data type and value we're returning
     const data_type = @tagName(state.own.data);
-    const debug_msg = std.fmt.bufPrint(&debug_buf, "[MessageEvent.get_data] type={s}\n", .{data_type}) catch "[MessageEvent.get_data]\n";
-    stderr_file.writeAll(debug_msg) catch {};
+    if (state.own.data.asString()) |str_val| {
+        log.debug("[MessageEvent.get_data] type={s} value=\"{s}\"\n", .{ data_type, str_val });
+    } else {
+        log.debug("[MessageEvent.get_data] type={s}\n", .{data_type});
+    }
 
     return state.own.data;
 }
@@ -193,6 +195,7 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// For WebSocket, this is the URL of the WebSocket server.
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
+    log.debug("[MessageEvent.get_origin] value=\"{s}\"\n", .{state.own.origin});
     return state.own.origin;
 }
 
@@ -203,6 +206,7 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// This is used by Server-Sent Events.
 pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
+    log.debug("[MessageEvent.get_lastEventId] called\n", .{});
     // Return as interned to avoid double-free (state owns the string)
     return runtime.DOMString.initInterned(state.own.lastEventId.asSlice());
 }
@@ -214,6 +218,7 @@ pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// This is used by postMessage to identify the sending window/worker.
 pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSource {
     const state = instance.getState(State);
+    log.debug("[MessageEvent.get_source] called\n", .{});
     return state.own.source;
 }
 
