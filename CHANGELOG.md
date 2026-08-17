@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - WPT Regression Gating (`tests/wpt_runner/baseline.zig`)
+
+A recorded expectation per WPT test file, and a comparison that fails when a
+result gets worse. Previously a run reported pass and fail counts but nothing
+consumed them, and the CI job discarded its exit code three separate ways, so
+no WPT result could turn a build red.
+
+- **`--baseline=path`** - Compare the finished run against
+  `tests/wpt_expectations.jsonl`. Exits nonzero if anything regressed.
+- **`--update-baseline`** - Record this run's results instead of comparing.
+  Merges into the existing file, so recording one category leaves the rest
+  alone.
+
+A regression is a status that got worse, a drop in passing subtests, or a
+baselined file that did not run. Improvements and newly discovered files are
+reported but do not fail.
+
+Comparison is scoped to the paths the run actually selected, so a job covering
+one category is not told that every other category went missing. Recording
+reaches the same end by merging, so it does not delete them either.
+
+### Fixed - WPT server port sweep (`build.zig`)
+
+The pre-run sweep did not cover port 9000, where `wpt serve` binds its HTTP/2
+listener. Because `wpt serve` treats any single bind failure as fatal and tears
+down all its other listeners, one orphaned subprocess left nothing serving on
+8000 and every test timed out.
+
 ### Added - CookieStore API Implementation (v0.8.0 - 2025-12-05)
 
 #### WHATWG Cookie Store API (`src/cookiestore/`)
