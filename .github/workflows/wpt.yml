@@ -8,30 +8,75 @@ on:
     - cron: '0 0 * * 0'  # Weekly on Sunday
 
 jobs:
-  wpt:
+  # The harness's own logic: argument parsing, manifest reading, test selection,
+  # the journal and the baseline comparison. Pure std, no V8, no WPT checkout,
+  # so it finishes in seconds and catches a broken gate before the gate runs.
+  harness:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      
+
       - name: Install Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.15.2
-        
+
+      - name: Test harness modules
+        run: |
+          zig test tests/wpt_runner/manifest.zig
+          zig test tests/wpt_runner/config.zig
+          zig test tests/wpt_runner/selection.zig
+          zig test tests/wpt_runner/journal.zig
+          zig test tests/wpt_runner/options.zig
+          zig test tests/wpt_runner/discovery.zig
+          zig test tests/wpt_runner/wpt_server.zig
+          zig test tests/wpt_runner/baseline.zig
+
+  # The scoreboard. Runs a slice of WPT and compares it against the recorded
+  # expectations in tests/wpt_expectations.jsonl. A test that used to pass and
+  # now does not fails this job.
+  #
+  # Deliberately no `|| true`, no `continue-on-error`, and no pipe into `head`:
+  # all three swallow the exit code, which is the only thing here that carries
+  # the result.
+  #
+  # To accept new numbers on purpose:
+  #   zig build wpt -- url/ --baseline=tests/wpt_expectations.jsonl --update-baseline
+  # and commit the diff. Recording a subset leaves the rest of the file alone.
+  wpt:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
       - name: Install V8
         run: |
           brew install v8
           brew install libuv
-          
+
       - name: Build
         run: zig build
-        
-      - name: Run WPT (URL tests only for CI)
-        run: zig build wpt -- url/ 2>&1 | head -100 || true
-        continue-on-error: true
-        
+
+      # `zig build wpt` runs the binary through addRunArtifact, which expects
+      # exit 0 and fails the step otherwise, so the gate's exit code survives.
+      - name: Run WPT
+        run: |
+          zig build wpt -- ${WPT_SCOPE} \
+            --quiet \
+            --baseline=tests/wpt_expectations.jsonl
+        env:
+          # Kept narrow on purpose: the whole in-scope corpus is 4,107 source
+          # files and does not fit in a pull request's patience. Widen this as
+          # categories are baselined.
+          WPT_SCOPE: url/
+
       - name: Upload Results
         uses: actions/upload-artifact@v4
         if: always()

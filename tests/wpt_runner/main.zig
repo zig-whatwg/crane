@@ -1086,9 +1086,10 @@ fn selectedPaths(
 /// Reads the journal rather than the in-memory results because a supervised run
 /// is several processes and the journal is the only place all of them meet.
 ///
-/// `selected` is what this run set out to do. Both directions need it: a run of
-/// url/ must not be told that every dom/ expectation went missing, and
-/// recording one must not delete them.
+/// `selected` is what this run set out to do, and scopes the comparison to it:
+/// a run of url/ must not be told that every dom/ expectation went missing.
+/// Recording reaches the same end by merging rather than by scoping, so that a
+/// run of url/ does not delete them either.
 fn settleBaseline(
     allocator: std.mem.Allocator,
     options: Options,
