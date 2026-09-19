@@ -36,19 +36,36 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.1
+          version: 0.15.2
 
-      - name: Build library
+      - name: Build library (cross-compile, no host fallback)
         run: |
-          zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} || zig build -Doptimize=ReleaseFast
+          # NO FALLBACK. This step previously ran "|| zig build -Doptimize=ReleaseFast",
+          # so a failed cross-compile silently produced a HOST binary that was then
+          # packaged and published under the cross-target's artifact name -- e.g. users
+          # downloading libwhatwg-linux-x86_64 would have received a macOS binary.
+          # This step also runs under pwsh on the Windows runner, so keep it
+          # shell-agnostic (no bash-only builtins here).
+          zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
 
       - name: Package artifacts (Unix)
         if: runner.os != 'Windows'
         run: |
+          set -euo pipefail
           mkdir -p dist
-          cp zig-out/lib/libwhatwg.a dist/ || true
-          cp zig-out/lib/libwhatwg.so dist/ || true
-          cp zig-out/lib/libwhatwg.dylib dist/ || true
+          # `zig build` installs the static library on every Unix target in this
+          # matrix, so a missing one means the build did not produce what we are
+          # about to publish. Strict.
+          cp zig-out/lib/libwhatwg.a dist/
+          # Exactly one shared-library extension exists per platform (.so on Linux,
+          # .dylib on macOS). Tolerating the absent one is legitimate; tolerating
+          # BOTH being absent is not, so the invariant is asserted below.
+          cp zig-out/lib/libwhatwg.so dist/ 2>/dev/null || true
+          cp zig-out/lib/libwhatwg.dylib dist/ 2>/dev/null || true
+          if [ ! -e dist/libwhatwg.so ] && [ ! -e dist/libwhatwg.dylib ]; then
+            echo "::error::no shared library (libwhatwg.so/.dylib) was produced for ${{ matrix.target }}; refusing to publish a static-only archive as ${{ matrix.artifact }}"
+            exit 1
+          fi
           cp -r include dist/
           tar -czvf ${{ matrix.artifact }}.tar.gz -C dist .
 
@@ -56,9 +73,21 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item zig-out/lib/whatwg.lib dist/ -ErrorAction SilentlyContinue
-          Copy-Item zig-out/lib/whatwg.dll dist/ -ErrorAction SilentlyContinue
+          # Zig spells the static/import library differently per Windows ABI
+          # (whatwg.lib vs libwhatwg.a), so accept either spelling rather than
+          # guessing -- but do NOT tolerate no library being produced at all.
+          # The -ErrorAction on the probe below is legitimate: zig-out/lib may not
+          # exist, and that case is reported explicitly by the throw that follows.
+          $libs = @(Get-ChildItem -Path zig-out/lib -Include 'whatwg.lib','libwhatwg.a','whatwg.dll' -Recurse -ErrorAction SilentlyContinue)
+          if ($libs.Count -eq 0) {
+            throw "No library artifacts found in zig-out/lib for ${{ matrix.target }}; refusing to publish a headers-only archive as ${{ matrix.artifact }}"
+          }
+          foreach ($f in $libs) { Copy-Item -LiteralPath $f.FullName -Destination dist/ }
+          if (-not (Test-Path dist/whatwg.dll)) {
+            throw "whatwg.dll was not produced for ${{ matrix.target }}; the shared library is missing from ${{ matrix.artifact }}"
+          }
           Copy-Item -Recurse include dist/
           Compress-Archive -Path dist/* -DestinationPath ${{ matrix.artifact }}.zip
 
@@ -87,45 +116,64 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.1
+          version: 0.15.2
 
       - name: Build for macOS arm64
         run: |
+          set -euo pipefail
           zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos
           mkdir -p build/macos-arm64
-          cp zig-out/lib/libwhatwg.a build/macos-arm64/ || true
+          # Strict: the build above succeeded, so a missing libwhatwg.a is a real
+          # failure. Swallowing it left lipo to fail later with no useful context.
+          cp zig-out/lib/libwhatwg.a build/macos-arm64/
 
       - name: Build for macOS x86_64
         run: |
+          set -euo pipefail
           zig build -Doptimize=ReleaseFast -Dtarget=x86_64-macos
           mkdir -p build/macos-x86_64
-          cp zig-out/lib/libwhatwg.a build/macos-x86_64/ || true
+          # Strict: see the macOS arm64 step.
+          cp zig-out/lib/libwhatwg.a build/macos-x86_64/
 
       - name: Build for iOS arm64
         run: |
-          zig build -Doptimize=ReleaseFast -Dtarget=aarch64-ios || true
+          set -euo pipefail
+          # NO FALLBACK. A broken or missing iOS toolchain must fail the release,
+          # not quietly yield an iOS slice that is really the last host build.
+          zig build -Doptimize=ReleaseFast -Dtarget=aarch64-ios
           mkdir -p build/ios-arm64
-          cp zig-out/lib/libwhatwg.a build/ios-arm64/ || true
+          cp zig-out/lib/libwhatwg.a build/ios-arm64/
 
       - name: Build for iOS Simulator
         run: |
-          zig build -Doptimize=ReleaseFast -Dtarget=aarch64-ios-simulator || true
+          set -euo pipefail
+          # NO FALLBACK. See the iOS arm64 step.
+          zig build -Doptimize=ReleaseFast -Dtarget=aarch64-ios-simulator
           mkdir -p build/ios-simulator
-          cp zig-out/lib/libwhatwg.a build/ios-simulator/ || true
+          cp zig-out/lib/libwhatwg.a build/ios-simulator/
 
-      - name: Create XCFramework
+      - name: Create XCFramework (KNOWN BROKEN - packaging not implemented)
         run: |
-          # Create universal macOS library
+          set -euo pipefail
+          # Create universal macOS library.
+          # NO FALLBACK: the old "|| cp build/macos-arm64/libwhatwg.a ... || true"
+          # shipped a single-architecture arm64 slice under the name
+          # "macos-universal", and 2>/dev/null hid lipo's reason for failing.
           mkdir -p build/macos-universal
           lipo -create \
             build/macos-arm64/libwhatwg.a \
             build/macos-x86_64/libwhatwg.a \
-            -output build/macos-universal/libwhatwg.a 2>/dev/null || \
-            cp build/macos-arm64/libwhatwg.a build/macos-universal/ || true
-          
-          # Create XCFramework structure (simplified)
-          mkdir -p WhatWG.xcframework
-          echo "XCFramework creation requires full Xcode project setup"
+            -output build/macos-universal/libwhatwg.a
+          lipo -info build/macos-universal/libwhatwg.a
+
+          # KNOWN BROKEN, DELIBERATELY FAILING.
+          # This step used to run "mkdir -p WhatWG.xcframework" and echo a message,
+          # fabricating an empty framework directory and reporting success. Shipping
+          # an empty framework as a release artifact is worse than shipping nothing.
+          # Replace this with real "xcodebuild -create-xcframework" packaging that
+          # embeds build/macos-universal, build/ios-arm64 and build/ios-simulator.
+          echo "::error::XCFramework packaging is not implemented; refusing to fabricate an empty WhatWG.xcframework for a release"
+          exit 1
 
       - name: Package Swift
         run: |
@@ -168,7 +216,14 @@ jobs:
       - name: Build AAR
         working-directory: bindings/kotlin
         run: |
-          ./gradlew assembleRelease --no-daemon || echo "AAR build requires full Android SDK setup"
+          set -euo pipefail
+          # NO FALLBACK. "|| echo ..." exits 0, so every AAR build failure -- including
+          # the wrapper being absent entirely -- was published as a green release.
+          if [ ! -x ./gradlew ]; then
+            echo "::error::bindings/kotlin/gradlew is missing or not executable; the Gradle wrapper was never committed, so no AAR can be built"
+            exit 1
+          fi
+          ./gradlew assembleRelease --no-daemon
 
       - name: Package Kotlin
         run: |
@@ -183,7 +238,18 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-libraries, build-swift, build-kotlin]
+    # Deliberately depends ONLY on build-libraries.
+    #
+    # build-swift and build-kotlin are currently expected to fail: XCFramework
+    # packaging is not implemented, and bindings/kotlin has no committed Gradle
+    # wrapper. Keeping them in `needs` would mean a `v*` tag publishes NOTHING -
+    # including the Linux/macOS/Windows native libraries, which do build
+    # correctly and whose packaging was just hardened against publishing wrong
+    # or empty artifacts.
+    #
+    # Those two jobs stay in the workflow and stay red, so the gap is visible on
+    # every tag. They just no longer block shipping the artifacts that are real.
+    needs: [build-libraries]
     
     steps:
       - name: Checkout code
@@ -200,6 +266,9 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, '-') }}
           generate_release_notes: true
+          # Without this the action silently publishes a release whose asset globs
+          # matched nothing, so a release can appear successful with zero binaries.
+          fail_on_unmatched_files: true
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip

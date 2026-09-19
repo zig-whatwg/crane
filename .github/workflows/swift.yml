@@ -33,14 +33,14 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.1
+          version: 0.15.2
 
       - name: Build Zig library
         run: |
           zig build -Doptimize=ReleaseFast
           # Create universal library for macOS
           mkdir -p bindings/swift/Sources/CWhatWG/lib
-          cp zig-out/lib/libwhatwg.a bindings/swift/Sources/CWhatWG/lib/ || true
+          cp zig-out/lib/libwhatwg.a bindings/swift/Sources/CWhatWG/lib/
 
       - name: Build Swift Package
         working-directory: bindings/swift
@@ -66,34 +66,41 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.1
+          version: 0.15.2
 
       - name: Build Zig library for iOS
         run: |
           # Build for iOS arm64
-          zig build -Doptimize=ReleaseFast -Dtarget=aarch64-ios || true
+          zig build -Doptimize=ReleaseFast -Dtarget=aarch64-ios
           mkdir -p bindings/swift/Sources/CWhatWG/lib
-          cp zig-out/lib/libwhatwg.a bindings/swift/Sources/CWhatWG/lib/ || true
+          cp zig-out/lib/libwhatwg.a bindings/swift/Sources/CWhatWG/lib/
 
-      - name: Build Swift Package for iOS
+      - name: Build Swift Package for iOS (KNOWN BROKEN - CWhatWG.xcframework has no iOS slice)
         working-directory: bindings/swift
         run: |
+          # KNOWN BROKEN, left failing on purpose. CWhatWG.xcframework/Info.plist
+          # declares exactly one slice, macos-arm64, and that slice does not even
+          # contain the libwhatwg.a its Info.plist names (only 4 headers are
+          # committed). Nothing can link for iOS until an ios-arm64-simulator
+          # slice exists. Do not re-add a `|| echo` to make this green.
           xcodebuild build \
             -scheme WhatWG \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -configuration Debug \
             CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO || echo "iOS build skipped - requires Xcode project"
+            CODE_SIGNING_REQUIRED=NO
 
-      - name: Run Tests on iOS Simulator
+      - name: Run Tests on iOS Simulator (KNOWN BROKEN - CWhatWG.xcframework has no iOS slice)
         working-directory: bindings/swift
         run: |
+          # KNOWN BROKEN, left failing on purpose. See the build step above.
+          # A green tick here previously meant only that `echo` succeeded.
           xcodebuild test \
             -scheme WhatWG \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -configuration Debug \
             CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO || echo "iOS tests skipped - requires Xcode project"
+            CODE_SIGNING_REQUIRED=NO
 
   lint:
     name: Swift Lint
@@ -106,8 +113,8 @@ jobs:
       - name: Run SwiftLint
         working-directory: bindings/swift
         run: |
-          if command -v swiftlint &> /dev/null; then
-            swiftlint lint --reporter github-actions-logging
-          else
-            echo "SwiftLint not installed, skipping"
+          if ! command -v swiftlint &> /dev/null; then
+            echo "::error::SwiftLint is not installed on this runner, so the Swift Lint job linted nothing. Install it or delete this job - do not let it report success."
+            exit 1
           fi
+          swiftlint lint --reporter github-actions-logging

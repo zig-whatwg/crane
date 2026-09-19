@@ -21,20 +21,57 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: Test harness modules
+      # The module list is DERIVED from build.zig's `harness_sources`
+      # (build.zig:2792, the source of truth) instead of being re-typed here.
+      # A hand-copied list drifts silently and did: this file listed 8 modules
+      # while build.zig listed 10, so test_parser.zig (45 test blocks) and
+      # output.zig were never run by this job. Nothing reported that gap,
+      # because a list that is too short still exits 0.
+      #
+      # A failed parse must FAIL, not quietly run zero modules - hence
+      # pipefail plus the empty check. If build.zig's declaration ever moves or
+      # changes shape, this step goes red and someone fixes it on purpose.
+      - name: Test harness modules (list derived from build.zig:2792)
         run: |
-          zig test tests/wpt_runner/manifest.zig
-          zig test tests/wpt_runner/config.zig
-          zig test tests/wpt_runner/selection.zig
-          zig test tests/wpt_runner/journal.zig
-          zig test tests/wpt_runner/options.zig
-          zig test tests/wpt_runner/discovery.zig
-          zig test tests/wpt_runner/wpt_server.zig
-          zig test tests/wpt_runner/baseline.zig
+          set -euo pipefail
+          modules="$(
+            sed -n '/const harness_sources = \[_\]\[\]const u8{/,/};/p' build.zig \
+              | grep -o '"tests/wpt_runner/[A-Za-z0-9_]*\.zig"' \
+              | tr -d '"'
+          )"
+          if [ -z "$modules" ]; then
+            echo "::error file=build.zig,line=2792::could not parse harness_sources out of build.zig. The declaration moved or changed shape. Fix this workflow - do NOT let it pass having tested nothing."
+            exit 1
+          fi
+          echo "Harness modules derived from build.zig:"
+          echo "$modules"
+          for m in $modules; do
+            echo "--- zig test $m"
+            zig test "$m"
+          done
 
   # The scoreboard. Runs a slice of WPT and compares it against the recorded
   # expectations in tests/wpt_expectations.jsonl. A test that used to pass and
   # now does not fails this job.
+  #
+  # WARNING - THIS GATE HAS NEVER ACTUALLY RUN, AND IS LEFT FAILING ON PURPOSE.
+  #
+  # build.zig links jsengines/v8/out/static/obj/{libv8_monolith,
+  # libv8_libplatform_fat,libv8_libbase_fat}.a by hard-coded relative path
+  # (35 references). jsengines/v8/ is gitignored (.gitignore:47) and is not a
+  # submodule, so a fresh CI checkout never contains it, and `brew install v8`
+  # installs to /opt/homebrew/opt/v8 - a path build.zig never reads. The Build
+  # step below therefore cannot succeed here, which means every "WPT Tests"
+  # success this workflow has ever reported came from the harness job alone.
+  #
+  # It is NOT disabled and NOT given a fallback: a skipped job or a build
+  # against some other V8 would keep laundering "WPT verified" into the log for
+  # a gate that measured nothing. It fails until CI provisions or caches the
+  # archives that scripts/build-v8-static.sh produces.
+  #
+  # Also unprovisioned, and masked behind the V8 failure: build.zig links
+  # /opt/homebrew/opt/sqlite (build.zig:63) and /opt/homebrew/opt/leveldb
+  # (build.zig:69) on macOS, and this workflow installs neither.
   #
   # Deliberately no `|| true`, no `continue-on-error`, and no pipe into `head`:
   # all three swallow the exit code, which is the only thing here that carries
@@ -56,12 +93,35 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: Install V8
+      # libuv is real: build.zig links /opt/homebrew/opt/libuv (build.zig:265).
+      # Homebrew's v8 is theatre - nothing in build.zig reads it. The install is
+      # kept rather than deleted so the mismatch stays visible right next to the
+      # preflight that fails on it.
+      - name: Install libuv (linked) and Homebrew v8 (NOT what build.zig links)
         run: |
-          brew install v8
+          set -euo pipefail
           brew install libuv
+          brew install v8
 
-      - name: Build
+      # Fails early and with a reason instead of letting the linker emit 35
+      # "file not found" lines that read like a code bug. No fallback: the only
+      # correct outcome when V8 is absent is a red job.
+      - name: Preflight - V8 static archives (EXPECTED TO FAIL - V8 is not provisioned in CI)
+        run: |
+          set -euo pipefail
+          missing=0
+          for a in libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a; do
+            if [ ! -f "jsengines/v8/out/static/obj/$a" ]; then
+              echo "::error file=build.zig::missing jsengines/v8/out/static/obj/$a - build.zig links it by hard-coded relative path"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::$missing of 3 V8 static archives are absent, so the WPT gate cannot run. jsengines/v8/ is gitignored (.gitignore:47) and is not a submodule, so a fresh checkout never has it; 'brew install v8' installs to /opt/homebrew/opt/v8, which build.zig never reads. Only scripts/build-v8-static.sh produces these (~15GB, 30-60 min) and this workflow does not run or cache it. Until CI provisions V8, this job must fail rather than report a WPT result it never measured."
+            exit 1
+          fi
+
+      - name: Build (links jsengines/v8/out/static/obj/*.a - see preflight above)
         run: zig build
 
       # `zig build wpt` runs the binary through addRunArtifact, which expects
@@ -77,10 +137,15 @@ jobs:
           # categories are baselined.
           WPT_SCOPE: url/
 
+      # wpt-results/wptreport.json is the gate's evidence and the runner writes
+      # it by default. Tolerating its absence is legitimate only when the run
+      # already failed for a reported reason; if `Run WPT` reported success and
+      # produced no report, the success is unsupported and that IS a failure.
+      # So: error on a green job, warn on a red one - never silent.
       - name: Upload Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: wpt-results
           path: wpt-results/
-          if-no-files-found: ignore
+          if-no-files-found: "${{ job.status == 'success' && 'error' || 'warn' }}"
