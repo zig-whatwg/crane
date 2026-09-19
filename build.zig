@@ -461,11 +461,22 @@ pub fn build(b: *std.Build) void {
     });
     clock_mod.link_libc = true;
 
+    // The process std.Io. Zig 0.16 moved the filesystem, networking and timers onto
+    // std.Io, which is passed like an Allocator; Crane has ~150 filesystem sites in
+    // leaf code reached from C-ABI callbacks that cannot take another parameter.
+    // Zero dependencies for the same reason as clock_mod.
+    const host_mod = b.addModule("host", .{
+        .root_source_file = b.path("src/platform/host.zig"),
+        .target = target,
+    });
+    host_mod.link_libc = true;
+
     const infra_mod = b.addModule("infra", .{
         .root_source_file = b.path("src/infra/root.zig"),
         .target = target,
     });
     infra_mod.addImport("clock", clock_mod);
+    infra_mod.addImport("host", host_mod);
 
     const webidl_mod = b.addModule("webidl", .{
         .root_source_file = b.path("src/webidl/root.zig"),
@@ -480,6 +491,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     storage_mod.addImport("clock", clock_mod);
+    storage_mod.addImport("host", host_mod);
 
     // Configure platform-specific storage backend linking (Phase 9)
     // - iOS: System SQLite (Phase 9.1)
@@ -493,6 +505,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     cookiestore_mod.addImport("clock", clock_mod);
+    cookiestore_mod.addImport("host", host_mod);
 
     // Runtime module (WebIDL runtime infrastructure)
     const runtime_mod = b.addModule("runtime", .{
@@ -500,6 +513,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     runtime_mod.addImport("clock", clock_mod);
+    runtime_mod.addImport("host", host_mod);
     runtime_mod.addImport("webidl", webidl_mod);
     runtime_mod.addImport("infra", infra_mod);
     runtime_mod.addImport("storage", storage_mod);
@@ -512,6 +526,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     v8_mod.addImport("clock", clock_mod);
+    v8_mod.addImport("host", host_mod);
     v8_mod.addImport("runtime", runtime_mod);
     v8_mod.addOptions("debug_options", debug_options);
     // v8_mod will need event_loop - added later after streams_event_loop_mod is defined
@@ -609,6 +624,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     impls_mod.addImport("clock", clock_mod);
+    impls_mod.addImport("host", host_mod);
     impls_mod.addImport("runtime", runtime_mod);
     impls_mod.addImport("v8", v8_mod);
     impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
@@ -661,6 +677,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     dom_mod.addImport("clock", clock_mod);
+    dom_mod.addImport("host", host_mod);
     dom_mod.addImport("infra", infra_mod);
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("runtime", runtime_mod);
@@ -1349,6 +1366,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     file_mod.addImport("clock", clock_mod);
+    file_mod.addImport("host", host_mod);
     // File module dependencies can be added here when needed:
     // file_mod.addImport("infra", infra_mod);
     // file_mod.addImport("encoding", encoding_mod);
@@ -1363,6 +1381,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     fs_mod.addImport("clock", clock_mod);
+    fs_mod.addImport("host", host_mod);
     // fs_mod dependencies will be added as implementation progresses:
     // fs_mod.addImport("storage", storage_mod);
     // fs_mod.addImport("streams", streams_mod);
@@ -1383,6 +1402,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     fetch_mod.addImport("clock", clock_mod);
+    fetch_mod.addImport("host", host_mod);
     fetch_mod.addImport("referrer_policy", referrer_policy_mod);
 
     // Configure libcurl for network requests
@@ -1406,6 +1426,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     xhr_mod.addImport("clock", clock_mod);
+    xhr_mod.addImport("host", host_mod);
     xhr_mod.addImport("fetch", fetch_mod); // XHR uses Fetch infrastructure
     xhr_mod.addImport("mimesniff", mimesniff_mod); // XHR uses MIME type parsing for overrideMimeType
 
@@ -1433,6 +1454,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     csp_mod.addImport("clock", clock_mod);
+    csp_mod.addImport("host", host_mod);
 
     // Add csp to impls for Document CSP checks
     impls_mod.addImport("csp", csp_mod);
@@ -1443,6 +1465,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     hr_time_mod.addImport("clock", clock_mod);
+    hr_time_mod.addImport("host", host_mod);
 
     // Add hr_time to impls for Performance implementation
     impls_mod.addImport("hr_time", hr_time_mod);
@@ -1464,6 +1487,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     platform_mod.addImport("clock", clock_mod);
+    platform_mod.addImport("host", host_mod);
     // Platform module needs fetch for NetworkBackend adapter (bridges old/new interfaces)
     platform_mod.addImport("fetch", fetch_mod);
 
@@ -1481,6 +1505,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     html_core_mod.addImport("clock", clock_mod);
+    html_core_mod.addImport("host", host_mod);
     html_core_mod.addImport("infra", infra_mod);
     html_core_mod.addImport("dom", dom_mod);
     html_core_mod.addImport("platform", platform_mod);
@@ -1556,6 +1581,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     browser_mod.addImport("clock", clock_mod);
+    browser_mod.addImport("host", host_mod);
     browser_mod.addImport("v8", v8_mod);
     browser_mod.addImport("runtime", runtime_mod);
     browser_mod.addImport("interfaces", interfaces_mod);
@@ -1572,6 +1598,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     webdriver_mod.addImport("clock", clock_mod);
+    webdriver_mod.addImport("host", host_mod);
     webdriver_mod.addImport("v8", v8_mod);
     webdriver_mod.addImport("browser", browser_mod);
 
@@ -1882,6 +1909,7 @@ pub fn build(b: *std.Build) void {
         // Add dedicated test files from tests/fetch/ when they exist
         const fetch_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
             .{ .name = "fetch", .module = fetch_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false) catch |err| {
@@ -1958,6 +1986,7 @@ pub fn build(b: *std.Build) void {
         // Add dedicated test files from tests/storage/
         const storage_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
             .{ .name = "storage", .module = storage_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false) catch |err| {
@@ -1987,6 +2016,7 @@ pub fn build(b: *std.Build) void {
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "runtime")) {
         const runtime_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "webidl", .module = webidl_mod },
         };
@@ -2016,6 +2046,7 @@ pub fn build(b: *std.Build) void {
         // Add dedicated test files from tests/intl/
         const intl_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
             .{ .name = "intl", .module = intl_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/intl", target, &intl_imports, false) catch |err| {
@@ -2041,6 +2072,7 @@ pub fn build(b: *std.Build) void {
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
         const v8_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "runtime", .module = runtime_mod },
         };
@@ -2069,6 +2101,7 @@ pub fn build(b: *std.Build) void {
     {
         const benchmark_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
             .{ .name = "browser", .module = browser_mod },
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "runtime", .module = runtime_mod },
@@ -2887,6 +2920,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "clock", .module = clock_mod },
+                .{ .name = "host", .module = host_mod },
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },

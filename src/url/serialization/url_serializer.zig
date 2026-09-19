@@ -155,7 +155,8 @@ pub fn serialize(allocator: std.mem.Allocator, url: *const URLRecord, exclude_fr
         // Step 2.4: If port is non-null, append ":" + port
         if (url.port) |port| {
             try output.append(':');
-            try output.writer().print("{d}", .{port});
+            var w = output.writer();
+            try w.interface.print("{d}", .{port});
         }
     }
 

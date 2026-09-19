@@ -14,22 +14,22 @@ pub fn serializeByteQueue(allocator: Allocator, queue: *const io_queue.ByteQueue
     var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
-    const writer = result.writer();
-    try writer.writeAll("[");
+    var writer = result.writer();
+    try writer.interface.writeAll("[");
 
     var first = true;
     const items = queue.items.items();
     for (items) |item| {
-        if (!first) try writer.writeAll(", ");
+        if (!first) try writer.interface.writeAll(", ");
         first = false;
 
         switch (item) {
-            .value => |v| try writer.print("0x{X:0>2}", .{v}),
-            .end_of_queue => try writer.writeAll("EOQ"),
+            .value => |v| try writer.interface.print("0x{X:0>2}", .{v}),
+            .end_of_queue => try writer.interface.writeAll("EOQ"),
         }
     }
 
-    try writer.writeAll("]");
+    try writer.interface.writeAll("]");
     return result.toOwnedSlice();
 }
 
@@ -38,14 +38,14 @@ pub fn serializeScalarQueue(allocator: Allocator, queue: *const io_queue.ScalarQ
     var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
-    const writer = result.writer();
+    var writer = result.writer();
     const items = queue.items.items();
     for (items) |item| {
         switch (item) {
             .value => |v| {
                 var buf: [4]u8 = undefined;
                 const len = std.unicode.utf8Encode(v, &buf) catch continue;
-                try writer.writeAll(buf[0..len]);
+                try writer.interface.writeAll(buf[0..len]);
             },
             .end_of_queue => break,
         }

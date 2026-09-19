@@ -263,9 +263,9 @@ pub const ParseErrorCollector = struct {
         var buffer = std.ArrayList(u8).init(out_allocator);
         errdefer buffer.deinit();
 
-        const writer = buffer.writer();
+        var writer = buffer.writer();
         for (self.errors.toSlice()) |err| {
-            try writer.print("{d}:{d}: {s}\n", .{
+            try writer.interface.print("{d}:{d}: {s}\n", .{
                 err.line,
                 err.column,
                 getErrorDescription(err.code),
