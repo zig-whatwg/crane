@@ -94,6 +94,22 @@ const nesting_threshold: u32 = 5;
 /// inside the callback nest one deeper.
 threadlocal var timer_nesting_level: u32 = 0;
 
+/// Restore the timer nesting level at the start of the microtask checkpoint.
+///
+/// A plain `defer` around the callback restores too late. V8's default microtask
+/// policy drains the queue when the JS call stack empties - which happens INSIDE
+/// `v8_Function_Call` - so a microtask queued by a timer callback would still
+/// observe the task's nesting level and have its sub-4ms timeout clamped.
+///
+/// Microtasks run FIFO, so enqueueing this BEFORE invoking the callback puts it
+/// ahead of anything the callback enqueues. That lands the reset exactly on the
+/// spec boundary: a setTimeout called synchronously from the callback nests one
+/// deeper, while one scheduled from a microtask does not inherit the level at all.
+/// The checkpoint runs between tasks, so the level there is 0 by definition.
+fn resetNestingMicrotask(_: ?*anyopaque) callconv(.c) void {
+    timer_nesting_level = 0;
+}
+
 /// Apply the clamping half of the timer initialisation steps.
 ///
 /// Returns the delay actually to be scheduled. Separated from the nesting bookkeeping
@@ -268,13 +284,6 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     const isolate = data.isolate;
     const context = data.v8_context;
 
-    // For the duration of this callback the "current timer nesting level" is this
-    // timer's own level, so any setTimeout it calls nests one deeper. Restored after,
-    // because the event loop's own turn is level 0.
-    const saved_nesting = timer_nesting_level;
-    timer_nesting_level = data.nesting_level;
-    defer timer_nesting_level = saved_nesting;
-
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
     v8.ffi.v8_Context_Enter(context);
@@ -284,9 +293,24 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
         return;
     };
 
-    // Invoke the V8 function (stored directly, not via persistent handle)
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    {
+        // The "current timer nesting level" is this timer's level for the DURATION OF
+        // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
+        // restored before the microtask checkpoint below: per HTML the checkpoint runs
+        // after the task's callback returns, so a timer scheduled from a microtask must
+        // NOT inherit the task's nesting level and must not be clamped to 4ms.
+        // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
+        const saved_nesting = timer_nesting_level;
+        timer_nesting_level = data.nesting_level;
+        defer timer_nesting_level = saved_nesting;
+
+        // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
+        v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
+
+        // Invoke the V8 function (stored directly, not via persistent handle)
+        var empty_args: [1]*v8.ffi.Value = undefined;
+        _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    }
 
     // Run microtasks after the timer callback (per event loop semantics)
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -310,13 +334,6 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
     const isolate = data.isolate;
     const context = data.v8_context;
 
-    // For the duration of this callback the "current timer nesting level" is this
-    // timer's own level, so any setTimeout it calls nests one deeper. Restored after,
-    // because the event loop's own turn is level 0.
-    const saved_nesting = timer_nesting_level;
-    timer_nesting_level = data.nesting_level;
-    defer timer_nesting_level = saved_nesting;
-
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
     v8.ffi.v8_Context_Enter(context);
@@ -324,9 +341,24 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
 
     const global = v8.ffi.v8_Context_Global(context) orelse return;
 
-    // Invoke the V8 function
-    var empty_args: [1]*v8.ffi.Value = undefined;
-    _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    {
+        // The "current timer nesting level" is this timer's level for the DURATION OF
+        // THE CALLBACK ONLY, so timers the callback creates nest one deeper. It is
+        // restored before the microtask checkpoint below: per HTML the checkpoint runs
+        // after the task's callback returns, so a timer scheduled from a microtask must
+        // NOT inherit the task's nesting level and must not be clamped to 4ms.
+        // (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
+        const saved_nesting = timer_nesting_level;
+        timer_nesting_level = data.nesting_level;
+        defer timer_nesting_level = saved_nesting;
+
+        // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
+        v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
+
+        // Invoke the V8 function
+        var empty_args: [1]*v8.ffi.Value = undefined;
+        _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
+    }
 
     // Run microtasks after the timer callback
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
