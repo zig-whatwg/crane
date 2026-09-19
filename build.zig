@@ -216,17 +216,18 @@ fn addTestFilesFromDir(
     link_v8: bool,
 ) !void {
     const allocator = builder.allocator;
-    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+    const io = builder.graph.io;
+    var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| {
         // Directory might not exist yet, skip silently
         if (err == error.FileNotFound) return;
         return err;
     };
-    defer dir.close();
+    defer dir.close(io);
 
     var walker = try dir.walk(allocator);
     defer walker.deinit();
 
-    while (try walker.next()) |entry| {
+    while (try walker.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
 
@@ -244,7 +245,7 @@ fn addTestFilesFromDir(
         // Link V8 libraries if requested (for V8 tests)
         if (link_v8) {
             // Add V8 C++ wrapper
-            test_exe.addCSourceFile(.{
+            test_exe.root_module.addCSourceFile(.{
                 .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
                 .flags = &.{
                     "-std=c++20",
@@ -256,16 +257,16 @@ fn addTestFilesFromDir(
             });
 
             // Add custom-built V8 static libraries
-            test_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-            test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+            test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+            test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+            test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+            test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
             // Add libuv
-            test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-            test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-            test_exe.linkSystemLibrary("uv");
-            test_exe.linkLibCpp();
+            test_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+            test_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+            test_exe.root_module.linkSystemLibrary("uv", .{});
+            test_exe.root_module.link_libcpp = true; //
         }
 
         const run_test = builder.addRunArtifact(test_exe);
@@ -2057,7 +2058,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Link V8 and libuv for browser tests
-    browser_test.addCSourceFile(.{
+    browser_test.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2067,14 +2068,14 @@ pub fn build(b: *std.Build) void {
             "-DV8_ENABLE_SANDBOX",
         },
     });
-    browser_test.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    browser_test.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-    browser_test.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    browser_test.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    browser_test.linkSystemLibrary("uv");
-    browser_test.linkLibCpp();
+    browser_test.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    browser_test.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    browser_test.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    browser_test.root_module.linkSystemLibrary("uv", .{});
+    browser_test.root_module.link_libcpp = true; //
 
     const run_browser_test = b.addRunArtifact(browser_test);
     test_browser_step.dependOn(&run_browser_test.step);
@@ -2190,7 +2191,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 C++ wrapper source
-    full_static_lib.addCSourceFile(.{
+    full_static_lib.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2202,20 +2203,20 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    full_static_lib.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    full_static_lib.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    full_static_lib.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    full_static_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    full_static_lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    full_static_lib.linkSystemLibrary("uv");
+    full_static_lib.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    full_static_lib.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    full_static_lib.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
-    full_static_lib.linkLibCpp();
+    full_static_lib.root_module.link_libcpp = true; //
 
     // Configure storage backends
     configureStorageBackends(lib_exports_mod, target);
@@ -2385,7 +2386,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 C++ wrapper
-    crane_lib.addCSourceFile(.{
+    crane_lib.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2397,28 +2398,28 @@ pub fn build(b: *std.Build) void {
     });
 
     // V8 include paths - use local V8 headers
-    crane_lib.addIncludePath(b.path(v8_dir ++ "/include"));
+    crane_lib.root_module.addIncludePath(b.path(v8_dir ++ "/include"));
 
     // Link static V8 libraries
     // Note: libv8_libplatform and libv8_libbase are converted from thin archives to fat archives
     // using llvm-ar (the original thin archives can't be parsed by Zig's linker)
-    crane_lib.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_monolith.a" });
-    crane_lib.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
-    crane_lib.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
+    crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_monolith.a" });
+    crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
+    crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
-    crane_lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    crane_lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    crane_lib.linkSystemLibrary("uv");
+    crane_lib.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    crane_lib.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    crane_lib.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
-    crane_lib.linkLibCpp();
+    crane_lib.root_module.link_libcpp = true; //
 
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
-        crane_lib.linkFramework("CoreFoundation");
-        crane_lib.linkFramework("CoreServices");
-        crane_lib.linkFramework("SystemConfiguration");
+        crane_lib.root_module.linkFramework("CoreFoundation", .{});
+        crane_lib.root_module.linkFramework("CoreServices", .{});
+        crane_lib.root_module.linkFramework("SystemConfiguration", .{});
     }
 
     // ---- Crane Executable (crane) ----
@@ -2442,7 +2443,7 @@ pub fn build(b: *std.Build) void {
     crane_exe.root_module.addImport("webdriver", webdriver_mod);
 
     // Add V8 C++ wrapper
-    crane_exe.addCSourceFile(.{
+    crane_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2454,31 +2455,31 @@ pub fn build(b: *std.Build) void {
     });
 
     // V8 include paths - use local V8 headers
-    crane_exe.addIncludePath(b.path(v8_dir ++ "/include"));
+    crane_exe.root_module.addIncludePath(b.path(v8_dir ++ "/include"));
 
     // Link static V8 libraries
     // Note: libv8_libplatform and libv8_libbase are converted from thin archives to fat archives
     // using llvm-ar (the original thin archives can't be parsed by Zig's linker)
-    crane_exe.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_monolith.a" });
-    crane_exe.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
-    crane_exe.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
+    crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_monolith.a" });
+    crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
+    crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
-    crane_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    crane_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    crane_exe.linkSystemLibrary("uv");
+    crane_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    crane_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    crane_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Configure storage backends for executable
     configureStorageBackends(crane_exe.root_module, target);
 
     // Link C++ standard library
-    crane_exe.linkLibCpp();
+    crane_exe.root_module.link_libcpp = true; //
 
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
-        crane_exe.linkFramework("CoreFoundation");
-        crane_exe.linkFramework("CoreServices");
-        crane_exe.linkFramework("SystemConfiguration");
+        crane_exe.root_module.linkFramework("CoreFoundation", .{});
+        crane_exe.root_module.linkFramework("CoreServices", .{});
+        crane_exe.root_module.linkFramework("SystemConfiguration", .{});
     }
 
     // Build step - depends on V8 being built first
@@ -2619,7 +2620,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 C++ wrapper
-    snapshot_gen_exe.addCSourceFile(.{
+    snapshot_gen_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2631,20 +2632,20 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    snapshot_gen_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    snapshot_gen_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    snapshot_gen_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    snapshot_gen_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    snapshot_gen_exe.linkSystemLibrary("uv");
+    snapshot_gen_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    snapshot_gen_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    snapshot_gen_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
-    snapshot_gen_exe.linkLibCpp();
+    snapshot_gen_exe.root_module.link_libcpp = true; //
 
     // Add run step for Snapshot Generator (manual use)
     const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
@@ -2708,7 +2709,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 C++ wrapper
-    repl_exe.addCSourceFile(.{
+    repl_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2720,20 +2721,20 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    repl_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    repl_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    repl_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    repl_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    repl_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    repl_exe.linkSystemLibrary("uv");
+    repl_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    repl_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    repl_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
-    repl_exe.linkLibCpp();
+    repl_exe.root_module.link_libcpp = true; //
 
     // Make REPL depend on snapshot generation
     // This ensures the snapshot is always up-to-date with the current V8 build
@@ -2766,7 +2767,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 C++ wrapper
-    minimal_snapshot_test_exe.addCSourceFile(.{
+    minimal_snapshot_test_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2778,20 +2779,20 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths
-    minimal_snapshot_test_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    minimal_snapshot_test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    minimal_snapshot_test_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    minimal_snapshot_test_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    minimal_snapshot_test_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    minimal_snapshot_test_exe.linkSystemLibrary("uv");
+    minimal_snapshot_test_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    minimal_snapshot_test_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    minimal_snapshot_test_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
-    minimal_snapshot_test_exe.linkLibCpp();
+    minimal_snapshot_test_exe.root_module.link_libcpp = true; //
 
     // Install the binary
     b.installArtifact(minimal_snapshot_test_exe);
@@ -2879,7 +2880,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 C++ wrapper
-    wpt_runner_exe.addCSourceFile(.{
+    wpt_runner_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = &.{
             "-std=c++20",
@@ -2891,20 +2892,20 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    wpt_runner_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    wpt_runner_exe.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
+    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
+    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    wpt_runner_exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    wpt_runner_exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
-    wpt_runner_exe.linkSystemLibrary("uv");
+    wpt_runner_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
+    wpt_runner_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    wpt_runner_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
-    wpt_runner_exe.linkLibCpp();
+    wpt_runner_exe.root_module.link_libcpp = true; //
 
     // Make WPT runner depend on snapshot generation
     // This ensures the snapshot is always up-to-date with the current V8 build
@@ -3056,18 +3057,19 @@ pub fn build(b: *std.Build) void {
     }.check;
 
     // Collect all .js test files
-    var test_dir = std.fs.cwd().openDir(v8_test_dir, .{ .iterate = true }) catch {
+    const io2 = b.graph.io;
+    var test_dir = std.Io.Dir.cwd().openDir(io2, v8_test_dir, .{ .iterate = true }) catch {
         std.debug.print("Warning: Could not open {s} directory\n", .{v8_test_dir});
         return;
     };
-    defer test_dir.close();
+    defer test_dir.close(io2);
 
     // Use fixed-size buffer for collecting ALL test files
     var test_files_buffer: [100][]const u8 = undefined;
     var test_files_count: usize = 0;
 
     var dir_iterator = test_dir.iterate();
-    while (dir_iterator.next() catch null) |entry| {
+    while (dir_iterator.next(io2) catch null) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".js")) continue;
         if (shouldExcludeFile(entry.name)) continue;
