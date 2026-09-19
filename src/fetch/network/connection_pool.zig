@@ -247,6 +247,27 @@ pub const ConnectionPool = struct {
 
         // Cleanup easy handle (connection cached in multi)
         curl.easy_cleanup(easy_handle);
+
+        // Release the request-lifetime resources curl borrowed from `ctx`.
+        // Every other exit path from `send` frees these - the two errdefers, the
+        // curl-error branch and the buildResponse-failure branch all reach
+        // `ctx.deinit()`. The success path did not, so a successful HTTP request
+        // leaked its URL and method on every call. `curl_backend.zig`'s sendImpl
+        // does exactly this on its own success path.
+        //
+        // This is the only safe point: libcurl does NOT copy the
+        // CURLOPT_HTTPHEADER slist, it reads it for the whole transfer, so
+        // freeing any earlier (e.g. a defer in configureRequest) would be a
+        // use-after-free during multi_perform. Here the transfer has completed,
+        // multi_remove_handle has detached the handle, and easy_cleanup has run.
+        //
+        // Do NOT replace this with `ctx.deinit()`: buildResponse already moved
+        // response_headers/response_body out via toOwnedSlice and already called
+        // raw_headers.deinit, so a second deinit would free poisoned pointers.
+        if (ctx.url_z) |url| allocator.free(url);
+        if (ctx.method_z) |method| allocator.free(method);
+        if (ctx.header_list) |list| curl.slist_free_all(list);
+
         allocator.destroy(ctx);
 
         return response;
