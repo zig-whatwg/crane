@@ -51,7 +51,12 @@ pub const TestServer = struct {
         // The process `Io`. Exactly one `Io.Threaded` may exist per process
         // (its init installs SIGIO/SIGPIPE handlers), so borrow the shared one
         // rather than constructing another.
-        const io = host.io();
+        // std.testing.io, NOT host.io(): this is test-only infrastructure and the
+        // 0.16 test runner already owns a live Io.Threaded (std.testing.io_instance).
+        // host.io() would lazily construct a SECOND one, and Io.Threaded.init installs
+        // process-wide SIGIO/SIGPIPE handlers - two of them in one process, with
+        // whichever deinits last restoring the other's handlers.
+        const io = std.testing.io;
 
         // Bind to localhost on a random available port
         const address: net.IpAddress = .{ .ip4 = net.Ip4Address.loopback(0) };

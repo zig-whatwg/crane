@@ -185,6 +185,24 @@ fn configureStaticLibcurl(
     // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
     const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return;
 
+    // Turn Zig's C UBSan OFF for libcurl's own sources.
+    //
+    // curl 8.18.0 reads `static bool init_ssl` in Curl_ssl_cleanup (lib/vtls/vtls.c
+    // :1042) after curl_global_init wrote it, and the byte is not 0 or 1 - so the
+    // -fsanitize=undefined bool check Zig inserts in Debug aborts the process. It is
+    // reproducible with nothing but globalInit() followed by globalCleanup(), so it is
+    // entirely inside libcurl; bisected against mbedTLS 3.6.4 vs 3.6.6 (identical) and
+    // against every Crane-side change in the 0.16 migration.
+    //
+    // The value is truthy, so `if(init_ssl)` takes the branch TRUE would have taken and
+    // the library behaves correctly - `zig build test -Doptimize=ReleaseFast`, where the
+    // check is absent, passes every one of these tests. The defect is real C UB but it
+    // is upstream's, in a content-hash-pinned dependency we cannot patch from here.
+    //
+    // This disables the sanitizer for libcurl ONLY. Every Zig module in Crane keeps its
+    // full safety checks. Revisit when a curl release fixes it upstream.
+    libcurl.root_module.sanitize_c = .off;
+
     // Link the static library to the module
     module.linkLibrary(libcurl);
 
