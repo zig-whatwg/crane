@@ -1040,6 +1040,12 @@ fn flushOutput() void {
 /// main would do it too, but it would print a stack trace, and a run that
 /// correctly detected a regression is not a crash.
 pub fn main(init: std.process.Init) !void {
+    // Adopt the Io std.start already built rather than letting host.io() build a
+    // second one. A self-built Io.Threaded starts with an EMPTY environment, so
+    // every std.process.spawn through it - notably `wpt serve` - would run with no
+    // PATH at all. See src/platform/host.zig.
+    host.adopt(init.io);
+
     // Neither path out of here runs deferred code: std.process.exit does not,
     // and an error return prints a trace and exits. So the flush is explicit on
     // both, or the tail of a run - including its summary - is lost.

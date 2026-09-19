@@ -52,11 +52,48 @@ var init_mutex: std.Io.Mutex = .init;
 pub fn init(gpa: std.mem.Allocator) void {
     std.Io.Threaded.mutexLock(&init_mutex);
     defer std.Io.Threaded.mutexUnlock(&init_mutex);
-    if (threaded != null) return;
+    if (cached_io != null) return;
     threaded = .init(gpa, .{});
+    seedEnviron(&threaded.?);
     // io() captures &threaded, so the Threaded value must never move after this.
     // It lives in this module's static storage precisely so it cannot.
     cached_io = threaded.?.io();
+}
+
+/// Adopt the `Io` the process entry point was handed, instead of building one.
+///
+/// Prefer this wherever a `std.process.Init` is in hand. `std.start` has already
+/// built exactly one `Io.Threaded` for the process, so adopting it keeps the
+/// one-per-process invariant this module's header demands rather than installing
+/// a second set of SIGIO/SIGPIPE handlers - and it carries the process
+/// environment, which a self-built `Threaded` does not (see `seedEnviron`).
+pub fn adopt(process_io: std.Io) void {
+    std.Io.Threaded.mutexLock(&init_mutex);
+    defer std.Io.Threaded.mutexUnlock(&init_mutex);
+    if (cached_io != null) return;
+    cached_io = process_io;
+}
+
+/// Seed a self-built `Threaded` with the real environment block.
+///
+/// `Io.Threaded.init` starts from `Environ.empty`; only `std.start` populates
+/// `environ` (start.zig, `callMainWithArgs`). An `Io` that reports an empty
+/// environment spawns children with NO variables at all - no PATH, no HOME.
+///
+/// That is not theoretical. It is what made `wpt serve` die on
+/// `FileNotFoundError: [Errno 2] ... 'sysctl'` in every one of its server
+/// subprocesses, surfacing as `error.ServerStartTimeout`, while the byte-for-byte
+/// identical command run from a shell worked. Anything reading an env var through
+/// this `Io` would likewise have seen nothing.
+fn seedEnviron(t: *std.Io.Threaded) void {
+    // Windows takes its environment from the PEB, not from a C `envp` array.
+    if (@import("builtin").os.tag == .windows) return;
+    const c_environ = std.c.environ;
+    var n: usize = 0;
+    while (c_environ[n] != null) : (n += 1) {}
+    const block: std.process.Environ.Block = .{ .slice = c_environ[0..n :null] };
+    t.environ = .{ .process_environ = .{ .block = block } };
+    t.environ_initialized = block.isEmpty();
 }
 
 /// Release the process Io and restore the signal handlers `init` replaced.
@@ -66,8 +103,10 @@ pub fn deinit() void {
     if (threaded) |*t| {
         t.deinit();
         threaded = null;
-        cached_io = null;
     }
+    // Also clears an Io taken by `adopt`, which this module does not own and
+    // must therefore not deinit - only forget.
+    cached_io = null;
 }
 
 /// The process Io.
@@ -104,4 +143,25 @@ test "cwd is usable for a real filesystem operation" {
     // Proves the Io is wired, not merely constructed.
     var dir = try cwd().openDir(io(), ".", .{ .iterate = true });
     defer dir.close(io());
+}
+
+test "a self-built Io reports the process environment, not an empty one" {
+    // Regression guard. `Io.Threaded.init` leaves `environ` empty; only std.start
+    // fills it in. An Io with an empty environment spawns children with no PATH,
+    // which is invisible until something exec's a helper and cannot find it.
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+
+    var t: std.Io.Threaded = .init(std.testing.allocator, .{});
+    defer t.deinit();
+
+    // Before seeding, the block is empty - this is the defect being guarded.
+    try std.testing.expect(t.environ.process_environ.block.isEmpty());
+
+    seedEnviron(&t);
+
+    // PATH is the variable whose absence actually broke the WPT server, so assert
+    // on it specifically rather than merely on a non-empty block.
+    const path = t.environ.process_environ.getPosix("PATH");
+    try std.testing.expect(path != null);
+    try std.testing.expect(path.?.len > 0);
 }
