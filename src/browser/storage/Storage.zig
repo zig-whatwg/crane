@@ -426,7 +426,12 @@ pub const SessionStorage = struct {
 /// Expand ~ to home directory
 fn expandPath(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     if (path.len > 0 and path[0] == '~') {
-        const home = std.posix.getenv("HOME") orelse "/tmp";
+        // 0.16 made environment variables non-global: std.posix.getenv is gone and
+        // the replacement, Environ, must be threaded from std.process.Init. This is a
+        // leaf path helper with no environ in scope, so it reads libc directly - the
+        // same call the old std.posix.getenv made underneath.
+        const home_z = std.c.getenv("HOME");
+        const home: []const u8 = if (home_z) |h| std.mem.span(h) else "/tmp";
         return std.fs.path.join(allocator, &.{ home, path[1..] });
     }
     return allocator.dupe(u8, path);

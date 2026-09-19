@@ -108,7 +108,7 @@ pub const CurlCookieManager = struct {
     allocator: Allocator,
 
     /// Mutex for thread-safe cookie operations
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     /// Whether to persist cookies to disk
     persist_path: ?[]const u8,
@@ -155,7 +155,7 @@ pub const CurlCookieManager = struct {
             .share_handle = share,
             .cookie_handle = cookie_handle,
             .allocator = allocator,
-            .mutex = .{},
+            .mutex = .init,
             .persist_path = if (persist_path) |p| try allocator.dupe(u8, p) else null,
             .change_listeners = .empty,
         };
@@ -234,23 +234,23 @@ pub const CurlCookieManager = struct {
     /// Flush cookies to disk (if persistence enabled)
     pub fn flush(self: *CurlCookieManager) void {
         if (self.persist_path != null) {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
             _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, "FLUSH");
         }
     }
 
     /// Clear all session cookies (cookies without expiry)
     pub fn clearSessionCookies(self: *CurlCookieManager) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, "SESS");
     }
 
     /// Clear all cookies
     pub fn clearAll(self: *CurlCookieManager) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         _ = curl.easy_setopt(self.cookie_handle, curl.CURLOPT_COOKIELIST, "ALL");
     }
 
@@ -279,8 +279,8 @@ pub const CurlCookieManager = struct {
     pub fn getAll(self: *CurlCookieManager, url: ?[]const u8) ![]Cookie {
         _ = url; // TODO: Filter by URL domain/path matching
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         var cookie_list: ?*curl.curl_slist = null;
         const result = curl.easy_getinfo(self.cookie_handle, curl.CURLINFO_COOKIELIST, &cookie_list);
@@ -325,8 +325,8 @@ pub const CurlCookieManager = struct {
         const is_change = existing == null or !cookiesEqual(existing.?, cookie);
 
         {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const cookie_str = try formatSetCookieString(self.allocator, cookie);
             defer self.allocator.free(cookie_str);
@@ -353,8 +353,8 @@ pub const CurlCookieManager = struct {
         defer if (existing_mut) |*e| e.deinit();
 
         {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const delete_str = try formatDeleteCookie(
                 self.allocator,

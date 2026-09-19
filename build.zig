@@ -545,6 +545,7 @@ pub fn build(b: *std.Build) void {
     });
     codegen_mod.addImport("webidl", webidl_mod);
     codegen_mod.addImport("infra", infra_mod);
+    codegen_mod.addImport("host", host_mod);
 
     // ========================================================================
     // WEBIDL CALLBACKS MODULE
@@ -1608,6 +1609,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     intl_mod.addImport("infra", infra_mod);
+    intl_mod.addImport("host", host_mod);
 
     // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
     v8_mod.addImport("intl", intl_mod);
@@ -2582,6 +2584,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "infra", .module = infra_mod },
+                .{ .name = "host", .module = host_mod },
             },
         }),
     });
@@ -2900,6 +2903,11 @@ pub fn build(b: *std.Build) void {
                     .root_source_file = b.path(src),
                     .target = target,
                     .optimize = optimize,
+                    // host is std-only (plus libc); it keeps these modules free
+                    // of V8 and libuv while giving them the process std.Io.
+                    .imports = &.{
+                        .{ .name = "host", .module = host_mod },
+                    },
                 }),
             });
             const run_harness_tests = b.addRunArtifact(harness_tests);
@@ -3060,6 +3068,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+                .{ .name = "clock", .module = clock_mod },
             .{ .name = "fetch", .module = fetch_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "url", .module = url_mod },
@@ -3073,6 +3082,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
+                .{ .name = "clock", .module = clock_mod },
                 .{ .name = "fetch", .module = fetch_mod },
                 .{ .name = "mock_server", .module = mock_server_mod },
             },
@@ -3177,12 +3187,14 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
+                .{ .name = "clock", .module = clock_mod },
                 .{ .name = "mock_server", .module = mock_server_mod },
                 .{ .name = "http_mock_server", .module = b.createModule(.{
                     .root_source_file = b.path("tests/v8/http_mock_server.zig"),
                     .target = target,
                     .optimize = optimize,
                     .imports = &.{
+                        .{ .name = "clock", .module = clock_mod },
                         .{ .name = "mock_server", .module = mock_server_mod },
                         .{ .name = "fetch", .module = fetch_mod },
                     },

@@ -151,16 +151,18 @@ fn runTest(allocator: std.mem.Allocator, io: std.Io, repl_exe: []const u8, test_
     // the allocator moved out of the options struct and an Io is required.
     const result = try std.process.run(allocator, io, .{
         .argv = &[_][]const u8{ repl_exe, test_file },
-        .max_output_bytes = 1024 * 1024, // 1MB
+        // 0.16 split max_output_bytes into per-stream Io.Limit values.
+        .stdout_limit = .limited(1024 * 1024),
+        .stderr_limit = .limited(1024 * 1024),
     });
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
     const success = switch (result.term) {
-        .Exited => |code| code == 0,
-        .Signal => false,
-        .Stopped => false,
-        .Unknown => false,
+        .exited => |code| code == 0,
+        .signal => false,
+        .stopped => false,
+        .unknown => false,
     };
 
     // Always capture and return stdout - it contains individual assertion results

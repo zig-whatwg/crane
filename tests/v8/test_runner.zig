@@ -26,12 +26,15 @@ pub fn main(init: std.process.Init) !void {
     defer allocator.free(content);
 
     // Run REPL with test file as stdin
-    var child = std.process.Child.init(&.{repl_path}, allocator);
-    child.stdin_behavior = .Pipe;
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-
-    try child.spawn();
+    // 0.16 replaced Child.init + child.spawn() with std.process.spawn(io, options):
+    // the stdio behaviours moved into the options struct and the allocator is gone
+    // (the child no longer owns one).
+    var child = try std.process.spawn(init.io, .{
+        .argv = &.{repl_path},
+        .stdin = .pipe,
+        .stdout = .pipe,
+        .stderr = .pipe,
+    });
 
     // Write test file to stdin
     try child.stdin.?.writeStreamingAll(init.io, content);

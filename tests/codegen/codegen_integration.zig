@@ -48,7 +48,7 @@ test "generateInterface creates valid Zig code for simple interface" {
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
-    if (result.term != .Exited or result.term.Exited != 0) {
+    if (result.term != .exited or result.term.exited != 0) {
         std.debug.print("zig ast-check failed:\n{s}\n", .{result.stderr});
         return error.InvalidZigCode;
     }
