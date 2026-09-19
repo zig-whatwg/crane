@@ -483,6 +483,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     webidl_mod.addImport("infra", infra_mod);
+    // src/webidl/root.zig re-exports codegen/root.zig, so the codegen sources are
+    // part of THIS module, not just of codegen_mod - and they need host for std.Io.
+    webidl_mod.addImport("host", host_mod);
+    webidl_mod.addImport("clock", clock_mod);
     webidl_mod.addOptions("debug_options", debug_options);
 
     // Storage module (IndexedDB and Storage Standard backend)
@@ -1676,6 +1680,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/webidl/
         const webidl_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "dom", .module = dom_mod },
@@ -1694,6 +1700,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/dom/
         const dom_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "dom", .module = dom_mod },
@@ -1721,6 +1729,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/selector/
         const selector_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "dom", .module = dom_mod },
             .{ .name = "selector", .module = selector_mod },
@@ -1737,6 +1747,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/encoding/
         const encoding_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "encoding", .module = encoding_mod },
@@ -1753,6 +1765,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/url/
         const url_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "encoding", .module = encoding_mod },
@@ -1770,6 +1784,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/urlpattern/
         const urlpattern_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "urlpattern", .module = urlpattern_mod },
             .{ .name = "url", .module = url_mod },
         };
@@ -1785,6 +1801,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/console/
         const console_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "console", .module = console_mod },
@@ -1802,6 +1820,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/streams/
         const streams_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "dom", .module = dom_mod },
@@ -1831,6 +1851,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/mimesniff/
         const mimesniff_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "mimesniff", .module = mimesniff_mod },
         };
@@ -1846,6 +1868,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/quirks/
         const quirks_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "quirks", .module = quirks_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/quirks", target, &quirks_imports, false) catch |err| {
@@ -1860,6 +1884,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/css/
         const css_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "css", .module = css_mod },
             .{ .name = "quirks", .module = quirks_mod },
         };
@@ -1876,6 +1902,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/html/
         const html_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "html", .module = html_mod },
             .{ .name = "html_core", .module = html_core_mod },
             .{ .name = "infra", .module = infra_mod },
@@ -1895,6 +1923,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/file/ when they exist
         const file_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "file", .module = file_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/file", target, &file_imports, false) catch |err| {
@@ -1927,6 +1957,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/fs/ when they exist
         const fs_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "fs", .module = fs_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/fs", target, &fs_imports, false) catch |err| {
@@ -1942,6 +1974,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/trusted_types/ when they exist
         const trusted_types_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "trusted_types", .module = trusted_types_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/trusted_types", target, &trusted_types_imports, false) catch |err| {
@@ -1957,6 +1991,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/csp/ when they exist
         const csp_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "csp", .module = csp_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/csp", target, &csp_imports, false) catch |err| {
@@ -1972,6 +2008,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/permissions/ when they exist
         const permissions_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "permissions", .module = permissions_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/permissions", target, &permissions_imports, false) catch |err| {
@@ -2004,6 +2042,8 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/cookiestore/
         const cookiestore_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "cookiestore", .module = cookiestore_mod },
             .{ .name = "impls", .module = impls_mod },
             .{ .name = "interfaces", .module = interfaces_mod },
@@ -2030,6 +2070,8 @@ pub fn build(b: *std.Build) void {
     // Codegen tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
         const codegen_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "codegen", .module = codegen_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "infra", .module = infra_mod },
@@ -2063,6 +2105,8 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_platform_tests.step);
 
         const platform_imports = [_]std.Build.Module.Import{
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "platform", .module = platform_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false) catch |err| {
@@ -2906,6 +2950,7 @@ pub fn build(b: *std.Build) void {
                     // host is std-only (plus libc); it keeps these modules free
                     // of V8 and libuv while giving them the process std.Io.
                     .imports = &.{
+                        .{ .name = "clock", .module = clock_mod },
                         .{ .name = "host", .module = host_mod },
                     },
                 }),

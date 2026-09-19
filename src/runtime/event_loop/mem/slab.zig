@@ -101,7 +101,7 @@ pub const SlabAllocator = struct {
     upstream: std.mem.Allocator,
 
     /// Mutex for slab allocation (only used when growing)
-    slab_mutex: std.Thread.Mutex,
+    slab_mutex: std.Io.Mutex,
 
     /// Statistics (relaxed atomics for stats)
     stats: Stats,
@@ -121,7 +121,7 @@ pub const SlabAllocator = struct {
             .slabs = .empty,
             .free_list_head = Atomic(?*Block).init(null),
             .upstream = upstream,
-            .slab_mutex = .{},
+            .slab_mutex = .init,
             .stats = .{},
         };
 

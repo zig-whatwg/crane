@@ -18,6 +18,7 @@ const Allocator = std.mem.Allocator;
 const posix = std.posix;
 const test_parser = @import("test_parser.zig");
 const host = @import("host");
+const clock = @import("clock");
 
 /// Lockfile name stored in WPT root
 const LOCKFILE_NAME = ".wpt_serve.lock";
@@ -138,13 +139,16 @@ pub const WptServer = struct {
         const port = std.fmt.parseInt(u16, std.mem.trim(u8, port_str, &std.ascii.whitespace), 10) catch return false;
 
         // Check if process is still alive (signal 0 just checks existence)
-        if (posix.kill(pid, 0)) {
+        // Signal 0 is the POSIX existence probe. 0.16 types posix.kill's signal
+        // as a SIG enum with no zero member, so the idiom no longer fits the typed
+        // wrapper; call libc directly, which is what it did underneath anyway.
+        if (std.c.kill(pid, @enumFromInt(0)) == 0) {
             // Process exists, use it
             self.pid = pid;
             self.port = port;
             self.we_spawned = false;
             return true;
-        } else |_| {
+        } else {
             // Process doesn't exist - stale lockfile, remove it
             host.cwd().deleteFile(io, lockfile_path) catch {};
             return false;
@@ -161,14 +165,16 @@ pub const WptServer = struct {
             "config.json",
         };
 
-        var child = std.process.Child.init(&argv, self.allocator);
-        child.cwd = self.wpt_root;
-
-        // Ignore output to avoid noise
-        child.stdout_behavior = .Ignore;
-        child.stderr_behavior = .Ignore;
-
-        try child.spawn();
+        // 0.16 replaced Child.init + child.spawn() with std.process.spawn(io, options):
+        // the stdio behaviours and cwd moved into the options struct, cwd became a
+        // tagged union, and the child no longer owns an allocator.
+        const child = try std.process.spawn(host.io(), .{
+            .argv = &argv,
+            .cwd = .{ .path = self.wpt_root },
+            // Ignore output to avoid noise
+            .stdout = .ignore,
+            .stderr = .ignore,
+        });
 
         self.pid = child.id;
         self.we_spawned = true;
@@ -211,7 +217,7 @@ pub const WptServer = struct {
             if (self.isServerReady()) {
                 return;
             }
-            std.Thread.sleep(delay_ns);
+            clock.sleep(delay_ns);
         }
 
         return error.ServerStartTimeout;
@@ -235,12 +241,12 @@ pub const WptServer = struct {
             posix.kill(pid, posix.SIG.TERM) catch {};
 
             // Give it a moment to shutdown gracefully
-            std.Thread.sleep(100 * std.time.ns_per_ms);
+            clock.sleep(100 * std.time.ns_per_ms);
 
-            // Force kill if still alive
-            if (posix.kill(pid, 0)) {
+            // Force kill if still alive. Signal 0 is the existence probe; see above.
+            if (std.c.kill(pid, @enumFromInt(0)) == 0) {
                 posix.kill(pid, posix.SIG.KILL) catch {};
-            } else |_| {}
+            }
         }
 
         if (self.we_spawned) {

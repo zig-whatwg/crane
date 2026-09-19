@@ -528,8 +528,14 @@ pub const WptReport = struct {
 
     /// Write JSON to an ArrayList buffer
     fn writeJsonToArrayList(self: *WptReport, buf: *std.ArrayList(u8)) !void {
-        var writer = buf.writer(self.allocator);
-        try self.writeJsonInner(&writer);
+        // 0.16 removed ArrayList.writer(). std.Io.Writer.Allocating is the
+        // replacement: it owns its own list and exposes a real std.Io.Writer, so
+        // writeJsonInner keeps working unchanged. The bytes are moved back into
+        // `buf` afterwards so the caller's ownership is unchanged.
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        try self.writeJsonInner(&aw.writer);
+        try buf.appendSlice(self.allocator, aw.written());
     }
 
     /// Write JSON to any writer

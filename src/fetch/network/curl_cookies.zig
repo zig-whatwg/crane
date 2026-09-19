@@ -450,35 +450,35 @@ pub fn formatSetCookieString(allocator: Allocator, cookie: Cookie) ![]u8 {
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buf.deinit(allocator);
 
-    const writer = buf.writer(allocator);
+    // 0.16 removed ArrayList.writer(); print and appendSlice take the allocator.
 
-    try writer.print("Set-Cookie: {s}={s}", .{ cookie.name, cookie.value });
+    try buf.print(allocator, "Set-Cookie: {s}={s}", .{ cookie.name, cookie.value });
 
     if (cookie.domain.len > 0) {
-        try writer.print("; Domain={s}", .{cookie.domain});
+        try buf.print(allocator, "; Domain={s}", .{cookie.domain});
     }
 
     if (cookie.path.len > 0) {
-        try writer.print("; Path={s}", .{cookie.path});
+        try buf.print(allocator, "; Path={s}", .{cookie.path});
     }
 
     if (cookie.expires) |exp| {
         // Use Expires with HTTP date format
-        try writer.print("; Expires={d}", .{exp});
+        try buf.print(allocator, "; Expires={d}", .{exp});
     }
 
     if (cookie.secure) {
-        try writer.writeAll("; Secure");
+        try buf.appendSlice(allocator, "; Secure");
     }
 
     if (cookie.http_only) {
-        try writer.writeAll("; HttpOnly");
+        try buf.appendSlice(allocator, "; HttpOnly");
     }
 
     switch (cookie.same_site) {
-        .strict => try writer.writeAll("; SameSite=Strict"),
-        .lax => try writer.writeAll("; SameSite=Lax"),
-        .none => try writer.writeAll("; SameSite=None"),
+        .strict => try buf.appendSlice(allocator, "; SameSite=Strict"),
+        .lax => try buf.appendSlice(allocator, "; SameSite=Lax"),
+        .none => try buf.appendSlice(allocator, "; SameSite=None"),
     }
 
     return buf.toOwnedSlice(allocator);
@@ -492,10 +492,10 @@ pub fn formatDeleteCookie(allocator: Allocator, name: []const u8, domain: []cons
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buf.deinit(allocator);
 
-    const writer = buf.writer(allocator);
+    // 0.16 removed ArrayList.writer(); print and appendSlice take the allocator.
     const flag = if (domain.len > 0 and domain[0] == '.') "TRUE" else "FALSE";
 
-    try writer.print("{s}\t{s}\t{s}\tFALSE\t1\t{s}\t", .{ domain, flag, path, name });
+    try buf.print(allocator, "{s}\t{s}\t{s}\tFALSE\t1\t{s}\t", .{ domain, flag, path, name });
 
     return buf.toOwnedSlice(allocator);
 }

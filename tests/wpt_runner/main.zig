@@ -762,7 +762,18 @@ pub fn executeTests(
                     if (trace) |t| {
                         std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
                         std.debug.print("Error: {}\n", .{err});
-                        std.debug.dumpStackTrace(t.*);
+                        // 0.16 split the two StackTrace types: @errorReturnTrace()
+                        // yields std.builtin.StackTrace {index, instruction_addresses}
+                        // while dumpStackTrace now takes *const std.debug.StackTrace
+                        // {return_addresses, skipped}. Convert rather than cast - the
+                        // valid entries are instruction_addresses[0..index], and index
+                        // exceeding the buffer means the trace wrapped.
+                        const valid = @min(t.index, t.instruction_addresses.len);
+                        const dbg_trace: std.debug.StackTrace = .{
+                            .return_addresses = t.instruction_addresses[0..valid],
+                            .skipped = @enumFromInt(t.index - valid),
+                        };
+                        std.debug.dumpStackTrace(&dbg_trace);
                         std.debug.print("=== END ERROR ===\n\n", .{});
                     } else {
                         std.debug.print("\n=== ERROR in test: {s} ({s}) ===\n", .{ test_file.path, global_context.toString() });
@@ -1028,11 +1039,11 @@ fn flushOutput() void {
 /// of a baseline, and it is what lets a CI job go red. Returning an error from
 /// main would do it too, but it would print a stack trace, and a run that
 /// correctly detected a regression is not a crash.
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     // Neither path out of here runs deferred code: std.process.exit does not,
     // and an error return prints a trace and exits. So the flush is explicit on
     // both, or the tail of a run - including its summary - is lost.
-    const code = run() catch |err| {
+    const code = run(init) catch |err| {
         flushOutput();
         return err;
     };
@@ -1040,14 +1051,13 @@ pub fn main() !void {
     if (code != 0) std.process.exit(code);
 }
 
-fn run() !u8 {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+fn run(init: std.process.Init) !u8 {
+    // 0.16 removed std.process.argsAlloc - arguments are no longer process-global.
+    // std.process.Init carries them, along with a gpa and a process-lifetime arena,
+    // so taking Init replaces the hand-rolled allocator too.
+    const allocator = init.gpa;
 
-    // Parse command-line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     var options = try parseArgs(allocator, args[1..]);
     defer options.deinit();
@@ -1131,7 +1141,7 @@ fn run() !u8 {
     }
 
     if (options.wantsSupervisor()) {
-        return supervise(allocator, options, discovery);
+        return supervise(allocator, init.io, options, discovery);
     }
 
     // Create report
@@ -1337,6 +1347,10 @@ fn writeShardWorklist(
 /// journal to write, and the paths in that worklist so a crash can be named.
 const Shard = struct {
     allocator: std.mem.Allocator,
+    /// The process Io. Carried on the shard rather than reached for globally so
+    /// it travels with the shard into its worker thread; 0.16 needs one to spawn
+    /// and wait on the child process.
+    io: std.Io,
     options: *const Options,
     self_exe: []const u8,
     worklist_path: []const u8,
@@ -1399,11 +1413,14 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // output and misreport the order of the run.
         flushOutput();
 
-        var child = std.process.Child.init(argv.items, allocator);
-        const term = try child.spawnAndWait();
+        // 0.16: Child.init + spawnAndWait become std.process.spawn(io, options)
+        // followed by wait(io). Behaviour is unchanged - still a blocking wait for
+        // this one shard - and Term's union tags are lowercase now.
+        var child = try std.process.spawn(shard.io, .{ .argv = argv.items });
+        const term = try child.wait(shard.io);
 
         const clean = switch (term) {
-            .Exited => |code| code == 0,
+            .exited => |code| code == 0,
             else => false,
         };
         if (clean) {
@@ -1471,6 +1488,7 @@ const ShardRun = struct {
 /// is. It is not going away by making any one step cheaper, but it does divide.
 fn runShardsInParallel(
     allocator: std.mem.Allocator,
+    io: std.Io,
     options: Options,
     discovery: DiscoveryResult,
     self_exe: []const u8,
@@ -1515,6 +1533,7 @@ fn runShardsInParallel(
         runs[i] = .{
             .shard = .{
                 .allocator = allocator,
+                .io = io,
                 .options = &options,
                 .self_exe = self_exe,
                 .worklist_path = wl,
@@ -1566,6 +1585,7 @@ fn runShardsInParallel(
 /// child starts one past it, so the loop always advances.
 fn supervise(
     allocator: std.mem.Allocator,
+    io: std.Io,
     options: Options,
     discovery: DiscoveryResult,
 ) !u8 {
@@ -1623,7 +1643,7 @@ fn supervise(
     );
 
     if (shard_count > 1) {
-        try runShardsInParallel(allocator, options, discovery, self_exe, journal_path, shard_count);
+        try runShardsInParallel(allocator, io, options, discovery, self_exe, journal_path, shard_count);
     } else {
         const worklist_paths = try allocator.alloc([]const u8, total);
         defer allocator.free(worklist_paths);
@@ -1631,6 +1651,7 @@ fn supervise(
 
         try runShard(allocator, .{
             .allocator = allocator,
+            .io = io,
             .options = &options,
             .self_exe = self_exe,
             .worklist_path = worklist_path,

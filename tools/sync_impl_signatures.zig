@@ -291,7 +291,7 @@ fn mergeSignatures(
 }
 
 /// Process a single impl file
-fn processFile(allocator: Allocator, filename: []const u8, dry_run: bool, verbose: bool) !bool {
+fn processFile(allocator: Allocator, io: std.Io, filename: []const u8, dry_run: bool, verbose: bool) !bool {
     const impl_path = try std.fs.path.join(allocator, &.{ IMPLS_DIR, filename });
     defer allocator.free(impl_path);
 
@@ -299,27 +299,31 @@ fn processFile(allocator: Allocator, filename: []const u8, dry_run: bool, verbos
     defer allocator.free(stub_path);
 
     // Read stub file (must exist since we iterate over impls_tmp/)
-    const stub_file = std.fs.cwd().openFile(stub_path, .{}) catch |err| {
+    const stub_file = std.Io.Dir.cwd().openFile(io, stub_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
             return false; // No stub, nothing to do
         }
         return err;
     };
-    defer stub_file.close();
+    defer stub_file.close(io);
 
-    const stub_bytes = try stub_file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    // 0.16: File.readToEndAlloc became a Reader operation. The cap is now an
+    // Io.Limit and overrun reports error.StreamTooLong rather than error.FileTooBig.
+    var stub_reader = stub_file.reader(io, &.{});
+    const stub_bytes = try stub_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(stub_bytes);
 
     const stub_source = try allocator.dupeZ(u8, stub_bytes);
     defer allocator.free(stub_source);
 
     // Check if impl file exists
-    const impl_file_result = std.fs.cwd().openFile(impl_path, .{});
+    const impl_file_result = std.Io.Dir.cwd().openFile(io, impl_path, .{});
 
     if (impl_file_result) |impl_file| {
-        defer impl_file.close();
+        defer impl_file.close(io);
 
-        const impl_bytes = try impl_file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+        var impl_reader = impl_file.reader(io, &.{});
+        const impl_bytes = try impl_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
         defer allocator.free(impl_bytes);
 
         const impl_source = try allocator.dupeZ(u8, impl_bytes);
@@ -382,9 +386,9 @@ fn processFile(allocator: Allocator, filename: []const u8, dry_run: bool, verbos
         const merged = try mergeSignatures(allocator, impl_source, &stub_functions, &impl_functions, verbose);
         defer allocator.free(merged);
 
-        const out_file = try std.fs.cwd().createFile(impl_path, .{});
-        defer out_file.close();
-        try out_file.writeAll(merged);
+        const out_file = try std.Io.Dir.cwd().createFile(io, impl_path, .{});
+        defer out_file.close(io);
+        try out_file.writeStreamingAll(io, merged);
 
         return true;
     } else |_| {
@@ -397,21 +401,22 @@ fn processFile(allocator: Allocator, filename: []const u8, dry_run: bool, verbos
         }
 
         // Just copy the stub file to impls/
-        const out_file = try std.fs.cwd().createFile(impl_path, .{});
-        defer out_file.close();
-        try out_file.writeAll(stub_bytes);
+        const out_file = try std.Io.Dir.cwd().createFile(io, impl_path, .{});
+        defer out_file.close(io);
+        try out_file.writeStreamingAll(io, stub_bytes);
 
         return true;
     }
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsAlloc and moved the filesystem onto std.Io;
+// std.process.Init supplies the argument vector, a gpa and the process Io.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    // `toSlice` may point into the argument vector, so it gets the process arena.
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     var dry_run = false;
     var verbose = false;
@@ -453,16 +458,16 @@ pub fn main() !void {
     var files_changed: usize = 0;
 
     if (specific_file) |file| {
-        if (try processFile(allocator, file, dry_run, verbose)) {
+        if (try processFile(allocator, io, file, dry_run, verbose)) {
             files_changed += 1;
         }
     } else {
         // Process all files in impls_tmp/ (source of truth for what should exist)
-        var dir = try std.fs.cwd().openDir(IMPLS_TMP_DIR, .{ .iterate = true });
-        defer dir.close();
+        const dir = try std.Io.Dir.cwd().openDir(io, IMPLS_TMP_DIR, .{ .iterate = true });
+        defer dir.close(io);
 
         var iter = dir.iterate();
-        while (try iter.next()) |entry| {
+        while (try iter.next(io)) |entry| {
             if (entry.kind != .file) continue;
             if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
             if (std.mem.eql(u8, entry.name, "root.zig")) continue;
@@ -470,7 +475,7 @@ pub fn main() !void {
             const name_copy = try allocator.dupe(u8, entry.name);
             defer allocator.free(name_copy);
 
-            if (try processFile(allocator, name_copy, dry_run, verbose)) {
+            if (try processFile(allocator, io, name_copy, dry_run, verbose)) {
                 files_changed += 1;
             }
         }

@@ -104,7 +104,7 @@ test "parseIDLFile parses valid IDL" {
         \\};
     ;
 
-    try tmp_dir.dir.writeFile(.{ .sub_path = "test.idl", .data = idl_content });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "test.idl", .data = idl_content });
 
     const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, "test.idl", allocator);
     defer allocator.free(tmp_path);

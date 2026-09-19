@@ -314,7 +314,10 @@ pub const WptBrowser = struct {
         // synchronous subtests it starts after the work is already done, so on
         // its own it makes the most expensive files look free. Timing the two
         // phases ahead of it is what makes the per-file cost add up.
-        var phase = clock.Timer.start();
+        // 0.15's std.time.Timer.start() could fail, so this was `catch null` and the
+        // helpers below take a *?Timer. clock.Timer.start() is infallible, so the
+        // optional is now explicit rather than incidental.
+        var phase: ?clock.Timer = clock.Timer.start();
 
         // Navigate to test URL with skip_load so we can inject testharness first
         try self.browser.navigateWithOptions(test_url, context_type, .{

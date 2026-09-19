@@ -95,7 +95,7 @@ pub const ReactionQueue = struct {
 
     pub fn init(allocator: Allocator) ReactionQueue {
         return .{
-            .reactions = std.ArrayListUnmanaged(Reaction){},
+            .reactions = .empty,
             .allocator = allocator,
         };
     }
@@ -141,8 +141,8 @@ pub const ReactionsStack = struct {
 
     pub fn init(allocator: Allocator) ReactionsStack {
         return .{
-            .stack = ElementQueueStack{},
-            .backup_queue = ElementQueue{},
+            .stack = .empty,
+            .backup_queue = .empty,
             .allocator = allocator,
         };
     }
@@ -156,7 +156,7 @@ pub const ReactionsStack = struct {
     }
 
     pub fn push(self: *ReactionsStack) !void {
-        const queue = ElementQueue{};
+        const queue: ElementQueue = .empty;
         try self.stack.append(self.allocator, queue);
     }
 

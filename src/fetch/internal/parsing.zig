@@ -379,7 +379,7 @@ pub fn parseMimeType(allocator: Allocator, input: []const u8) !?MimeType {
         var param_str = trimmed[semicolon_pos.? + 1 ..];
         while (param_str.len > 0) {
             // Skip whitespace
-            param_str = std.mem.trimLeft(u8, param_str, " \t");
+            param_str = std.mem.trimStart(u8, param_str, " \t");
             if (param_str.len == 0) break;
 
             // Find the equals sign

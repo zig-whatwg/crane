@@ -85,10 +85,11 @@ pub const DownloadResult = struct {
 };
 
 /// Download a file from a URL using curl (available on most systems)
-pub fn downloadFile(allocator: Allocator, url: []const u8, output_path: []const u8) !void {
+pub fn downloadFile(allocator: Allocator, io: std.Io, url: []const u8, output_path: []const u8) !void {
     // Use curl for downloading (available on macOS, Linux, and can be installed on Windows)
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+    // 0.16: std.process.Child.run became std.process.run(gpa, io, options); the
+    // allocator moved out of the options struct.
+    const result = try std.process.run(allocator, io, .{
         .argv = &[_][]const u8{
             "curl",
             "-fsSL", // fail silently, follow redirects, show errors
@@ -100,46 +101,54 @@ pub fn downloadFile(allocator: Allocator, url: []const u8, output_path: []const 
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
-    if (result.term.Exited != 0) {
+    // 0.16 lowercased the Term tags: .Exited -> .exited.
+    if (result.term.exited != 0) {
         std.log.err("Download failed: {s}", .{result.stderr});
         return error.DownloadFailed;
     }
 }
 
 /// Verify SHA-256 checksum of a file
-pub fn verifyChecksum(allocator: Allocator, file_path: []const u8, expected_sha256: []const u8) !bool {
-    const file = try std.fs.cwd().openFile(file_path, .{});
-    defer file.close();
+pub fn verifyChecksum(allocator: Allocator, io: std.Io, file_path: []const u8, expected_sha256: []const u8) !bool {
+    const file = try std.Io.Dir.cwd().openFile(io, file_path, .{});
+    defer file.close(io);
 
     var sha256 = std.crypto.hash.sha2.Sha256.init(.{});
     var buffer: [8192]u8 = undefined;
 
     while (true) {
-        const bytes_read = try file.read(&buffer);
-        if (bytes_read == 0) break;
+        // 0.16: File.read became File.readStreaming, which takes an Io and a
+        // vector of buffers, may legitimately return 0 mid-stream, and signals
+        // end-of-stream with an error rather than a 0 return.
+        const bytes_read = file.readStreaming(io, &.{&buffer}) catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => |e| return e,
+        };
         sha256.update(buffer[0..bytes_read]);
     }
 
     var digest: [32]u8 = undefined;
     sha256.final(&digest);
 
+    // std.fmt.fmtSliceHexLower no longer exists; `{x}` on a byte slice is the
+    // lowercase-hex format specifier.
     var hex_digest: [64]u8 = undefined;
-    _ = std.fmt.bufPrint(&hex_digest, "{s}", .{std.fmt.fmtSliceHexLower(&digest)}) catch unreachable;
+    _ = std.fmt.bufPrint(&hex_digest, "{x}", .{&digest}) catch unreachable;
 
     _ = allocator;
     return std.mem.eql(u8, &hex_digest, expected_sha256);
 }
 
 /// Extract a zip file to a directory
-pub fn extractZip(allocator: Allocator, zip_path: []const u8, output_dir: []const u8) !void {
+pub fn extractZip(allocator: Allocator, io: std.Io, zip_path: []const u8, output_dir: []const u8) !void {
     // Create output directory if it doesn't exist
-    std.fs.cwd().makePath(output_dir) catch |err| {
+    // 0.16: Dir.makePath became Dir.createDirPath(io, sub_path).
+    std.Io.Dir.cwd().createDirPath(io, output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
     };
 
     // Use unzip command (available on most Unix systems)
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+    const result = try std.process.run(allocator, io, .{
         .argv = &[_][]const u8{
             "unzip",
             "-o", // overwrite without prompting
@@ -152,14 +161,14 @@ pub fn extractZip(allocator: Allocator, zip_path: []const u8, output_dir: []cons
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
-    if (result.term.Exited != 0) {
+    if (result.term.exited != 0) {
         std.log.err("Extraction failed: {s}", .{result.stderr});
         return error.ExtractionFailed;
     }
 }
 
 /// Download the full CLDR JSON package (new format since CLDR 46+)
-pub fn downloadFullPackage(state: *const DownloadState) !DownloadResult {
+pub fn downloadFullPackage(state: *const DownloadState, io: std.Io) !DownloadResult {
     const url = try state.getFullPackageUrl();
     defer state.allocator.free(url);
 
@@ -172,7 +181,7 @@ pub fn downloadFullPackage(state: *const DownloadState) !DownloadResult {
         std.log.info("Downloading {s}...", .{url});
     }
 
-    downloadFile(state.allocator, url, output_path) catch |err| {
+    downloadFile(state.allocator, io, url, output_path) catch |err| {
         return .{
             .package = package_name,
             .success = false,
@@ -182,7 +191,7 @@ pub fn downloadFullPackage(state: *const DownloadState) !DownloadResult {
     };
 
     // Get file size
-    const file = std.fs.cwd().openFile(output_path, .{}) catch |err| {
+    const file = std.Io.Dir.cwd().openFile(io, output_path, .{}) catch |err| {
         return .{
             .package = package_name,
             .success = false,
@@ -190,16 +199,16 @@ pub fn downloadFullPackage(state: *const DownloadState) !DownloadResult {
             .error_message = @errorName(err),
         };
     };
-    defer file.close();
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
 
     if (state.verbose) {
         std.log.info("Downloaded {s} ({d} bytes)", .{ package_name, stat.size });
     }
 
     // Extract the package to the output directory
-    extractZip(state.allocator, output_path, state.output_dir) catch |err| {
+    extractZip(state.allocator, io, output_path, state.output_dir) catch |err| {
         return .{
             .package = package_name,
             .success = false,
@@ -217,12 +226,13 @@ pub fn downloadFullPackage(state: *const DownloadState) !DownloadResult {
 }
 
 /// Command-line interface
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsWithAllocator and moved the filesystem and
+// child processes onto std.Io; std.process.Init supplies all three.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
 
     // Skip program name
@@ -247,13 +257,13 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, arg, "--verbose")) {
             verbose = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            printHelp();
+            printHelp(io);
             return;
         }
     }
 
     // Create output directory
-    std.fs.cwd().makePath(output_dir) catch |err| {
+    std.Io.Dir.cwd().createDirPath(io, output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
     };
 
@@ -261,7 +271,7 @@ pub fn main() !void {
 
     std.log.info("Downloading CLDR v{s} to {s}...", .{ version, output_dir });
 
-    const result = try downloadFullPackage(&state);
+    const result = try downloadFullPackage(&state, io);
 
     if (result.success) {
         std.log.info("Successfully downloaded CLDR {s} ({d} bytes)", .{
@@ -277,7 +287,7 @@ pub fn main() !void {
     }
 }
 
-fn printHelp() void {
+fn printHelp(io: std.Io) void {
     const help =
         \\CLDR JSON Data Downloader
         \\
@@ -296,8 +306,8 @@ fn printHelp() void {
         \\contains all locale data for dates, numbers, names, units, and more.
         \\
     ;
-    const stdout_file = std.fs.File.stdout();
-    stdout_file.writeAll(help) catch {};
+    const stdout_file = std.Io.File.stdout();
+    stdout_file.writeStreamingAll(io, help) catch {};
 }
 
 test "DownloadState.getFullPackageUrl" {

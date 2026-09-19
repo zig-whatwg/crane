@@ -53,7 +53,8 @@ pub const BinaryHeader = extern struct {
 pub const StringTable = struct {
     allocator: Allocator,
     strings: std.StringHashMap(u32),
-    buffer: std.ArrayList(u8) = .{},
+    // 0.16: ArrayList has no default field values; `.empty` replaces `.{}`.
+    buffer: std.ArrayList(u8) = .empty,
     next_offset: u32 = 0,
 
     pub fn init(allocator: Allocator) StringTable {
@@ -196,12 +197,13 @@ pub const EncodeState = struct {
 };
 
 /// Command-line interface
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsWithAllocator and moved the filesystem onto
+// std.Io; std.process.Init supplies both, plus a gpa.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
 
     // Skip program name
@@ -226,13 +228,14 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, arg, "--verbose")) {
             verbose = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            printHelp();
+            printHelp(io);
             return;
         }
     }
 
     // Create output directory
-    std.fs.cwd().makePath(output_dir) catch |err| {
+    // 0.16: Dir.makePath became Dir.createDirPath(io, sub_path).
+    std.Io.Dir.cwd().createDirPath(io, output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
     };
 
@@ -248,7 +251,7 @@ pub fn main() !void {
     std.log.info("Encoding complete!", .{});
 }
 
-fn printHelp() void {
+fn printHelp(io: std.Io) void {
     const help =
         \\CLDR Binary Encoder
         \\
@@ -267,8 +270,8 @@ fn printHelp() void {
         \\compact binary files for runtime loading of Tier 2 locales.
         \\
     ;
-    const stdout_file = std.fs.File.stdout();
-    stdout_file.writeAll(help) catch {};
+    const stdout_file = std.Io.File.stdout();
+    stdout_file.writeStreamingAll(io, help) catch {};
 }
 
 // ============================================================================

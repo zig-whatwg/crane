@@ -274,7 +274,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
 
     // Validate directories exist before scanning
     for (dirs_to_scan) |dir| {
-        const clean_dir = std.mem.trimRight(u8, dir, "/");
+        const clean_dir = std.mem.trimEnd(u8, dir, "/");
         const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
         defer allocator.free(full_path);
 
@@ -293,7 +293,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
     // Scan each directory
     for (dirs_to_scan) |dir| {
         // Handle both "url/" and "url" formats
-        const clean_dir = std.mem.trimRight(u8, dir, "/");
+        const clean_dir = std.mem.trimEnd(u8, dir, "/");
         const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, clean_dir });
         defer allocator.free(full_path);
 
@@ -456,7 +456,7 @@ test "a worklist is taken verbatim from start_index" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "worklist.txt",
         .data = "a/one.any.js\nb/two.html\nc/three.window.js\nd/four.html\n",
     });
@@ -488,7 +488,7 @@ test "a worklist past its end yields no work" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{ .sub_path = "worklist.txt", .data = "a/one.html\n" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "worklist.txt", .data = "a/one.html\n" });
     const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
     const worklist_path = try std.fs.path.join(allocator, &.{ dir_path, "worklist.txt" });
@@ -512,7 +512,7 @@ test "a worklist honours the limit" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "worklist.txt",
         .data = "a.html\nb.html\nc.html\nd.html\n",
     });
@@ -542,14 +542,14 @@ test "the legacy scan walks the filesystem and honours exclusions" {
     defer tmp.cleanup();
 
     try tmp.dir.createDirPath(std.testing.io, "url/resources");
-    try tmp.dir.writeFile(.{ .sub_path = "url/a.any.js", .data = "" });
-    try tmp.dir.writeFile(.{ .sub_path = "url/b.html", .data = "" });
-    try tmp.dir.writeFile(.{ .sub_path = "url/notes.md", .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/a.any.js", .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/b.html", .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/notes.md", .data = "" });
     // Named like a test but living under resources/, so only the path-based
     // exclusion can catch it. The exclusion pattern is "/resources/" with both
     // slashes, which the directory entry "url/resources" does not match - the
     // walk descends and rejects the file on its full path instead.
-    try tmp.dir.writeFile(.{ .sub_path = "url/resources/helper.any.js", .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "url/resources/helper.any.js", .data = "" });
 
     const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);

@@ -518,13 +518,17 @@ pub const TIER1_LOCALES = [_][]const u8{
 /// Extract state
 pub const ExtractState = struct {
     allocator: Allocator,
+    /// The process `std.Io`. Zig 0.16 moved the filesystem onto `Io`, so every
+    /// read and write below needs one in scope.
+    io: std.Io,
     input_dir: []const u8,
     output_dir: []const u8,
     verbose: bool,
 
-    pub fn init(allocator: Allocator, input_dir: []const u8, output_dir: []const u8, verbose: bool) ExtractState {
+    pub fn init(allocator: Allocator, io: std.Io, input_dir: []const u8, output_dir: []const u8, verbose: bool) ExtractState {
         return .{
             .allocator = allocator,
+            .io = io,
             .input_dir = input_dir,
             .output_dir = output_dir,
             .verbose = verbose,
@@ -533,10 +537,12 @@ pub const ExtractState = struct {
 
     /// Read and parse a JSON file
     pub fn readJsonFile(self: *const ExtractState, path: []const u8) !json.Parsed(json.Value) {
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(self.io, path, .{});
+        defer file.close(self.io);
 
-        const content = try file.readToEndAlloc(self.allocator, 10 * 1024 * 1024); // 10MB max
+        // 0.16: File.readToEndAlloc became a Reader operation with an Io.Limit cap.
+        var file_reader = file.reader(self.io, &.{});
+        const content = try file_reader.interface.allocRemaining(self.allocator, .limited(10 * 1024 * 1024)); // 10MB max
         defer self.allocator.free(content);
 
         return try json.parseFromSlice(json.Value, self.allocator, content, .{});
@@ -557,7 +563,7 @@ pub fn extractLocaleData(state: *const ExtractState, locale_tag: []const u8) !?E
     defer allocator.free(dates_path);
 
     // Check if locale exists
-    std.fs.cwd().access(dates_path, .{}) catch {
+    std.Io.Dir.cwd().access(state.io, dates_path, .{}) catch {
         if (state.verbose) {
             std.log.warn("Locale data not found for: {s}", .{locale_tag});
         }
@@ -661,7 +667,8 @@ pub fn extractLocaleData(state: *const ExtractState, locale_tag: []const u8) !?E
 
 /// Extract all Tier 1 locales
 pub fn extractAllTier1Locales(state: *const ExtractState) ![]ExtractedLocaleData {
-    var results: std.ArrayList(ExtractedLocaleData) = .{};
+    // 0.16: ArrayList has no default field values; `.empty` replaces `.{}`.
+    var results: std.ArrayList(ExtractedLocaleData) = .empty;
     errdefer {
         for (results.items) |*item| {
             item.deinit(state.allocator);
@@ -687,10 +694,10 @@ pub fn writeZigSource(state: *const ExtractState, locales: []const ExtractedLoca
     );
     defer state.allocator.free(output_path);
 
-    const file = try std.fs.cwd().createFile(output_path, .{});
+    const file = try std.Io.Dir.cwd().createFile(state.io, output_path, .{});
 
     var write_buffer: [8192]u8 = undefined;
-    var buffered_writer = file.writer(&write_buffer);
+    var buffered_writer = file.writer(state.io, &write_buffer);
     const writer = &buffered_writer.interface;
 
     // Write header
@@ -813,7 +820,7 @@ pub fn writeZigSource(state: *const ExtractState, locales: []const ExtractedLoca
     try writer.flush();
 
     // Close the file before logging
-    file.close();
+    file.close(state.io);
 
     std.log.info("Wrote {s} with {d} locales", .{ output_path, locales.len });
 }
@@ -908,12 +915,13 @@ fn escapeString(s: []const u8) []const u8 {
 }
 
 /// Command-line interface
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsWithAllocator and moved the filesystem onto
+// std.Io; std.process.Init supplies both, plus a gpa.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
 
     // Skip program name
@@ -938,17 +946,18 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, arg, "--verbose")) {
             verbose = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            printHelp();
+            printHelp(io);
             return;
         }
     }
 
     // Create output directory
-    std.fs.cwd().makePath(output_dir) catch |err| {
+    // 0.16: Dir.makePath became Dir.createDirPath(io, sub_path).
+    std.Io.Dir.cwd().createDirPath(io, output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
     };
 
-    const state = ExtractState.init(allocator, input_dir, output_dir, verbose);
+    const state = ExtractState.init(allocator, io, input_dir, output_dir, verbose);
 
     std.log.info("CLDR Data Extractor", .{});
     std.log.info("Input: {s}", .{input_dir});
@@ -956,7 +965,7 @@ pub fn main() !void {
     std.log.info("Tier 1 locales: {d}", .{TIER1_LOCALES.len});
 
     // Check if input directory exists
-    std.fs.cwd().access(input_dir, .{}) catch {
+    std.Io.Dir.cwd().access(io, input_dir, .{}) catch {
         std.log.err("Input directory does not exist: {s}", .{input_dir});
         std.log.err("Run 'zig build cldr-download' first to download CLDR data", .{});
         return error.InputNotFound;
@@ -982,7 +991,7 @@ pub fn main() !void {
     std.log.info("Extraction complete! Extracted {d} locales.", .{locales.len});
 }
 
-fn printHelp() void {
+fn printHelp(io: std.Io) void {
     const help =
         \\CLDR JSON Data Extractor
         \\
@@ -1004,8 +1013,8 @@ fn printHelp() void {
         \\  Run 'zig build cldr-download' first to download CLDR JSON data.
         \\
     ;
-    const stdout_file = std.fs.File.stdout();
-    stdout_file.writeAll(help) catch {};
+    const stdout_file = std.Io.File.stdout();
+    stdout_file.writeStreamingAll(io, help) catch {};
 }
 
 // ============================================================================

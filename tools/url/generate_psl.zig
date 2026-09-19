@@ -5,16 +5,19 @@
 
 const std = @import("std");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 moved the filesystem onto std.Io; std.process.Init supplies it along
+// with a gpa.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
     std.debug.print("[PSL Generator] Starting...\n", .{});
 
     // Read PSL data file
     const psl_file = "data/psl/public_suffix_list.dat";
-    const psl_data = std.fs.cwd().readFileAlloc(allocator, psl_file, 10 * 1024 * 1024) catch |err| {
+    // 0.16 reordered readFileAlloc to (io, sub_path, gpa, limit) and the cap is
+    // now an Io.Limit; overrun reports error.StreamTooLong.
+    const psl_data = std.Io.Dir.cwd().readFileAlloc(io, psl_file, allocator, .limited(10 * 1024 * 1024)) catch |err| {
         std.debug.print("Error reading {s}: {}\n", .{ psl_file, err });
         return err;
     };
@@ -23,10 +26,12 @@ pub fn main() !void {
     std.debug.print("[PSL Generator] Read {d} bytes from {s}\n", .{ psl_data.len, psl_file });
 
     // Generate Zig source code directly
-    var output = std.ArrayList(u8){};
-    defer output.deinit(allocator);
+    // 0.16 removed ArrayList.writer; std.Io.Writer.Allocating is the growable
+    // in-memory Writer.
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
 
-    const writer = output.writer(allocator);
+    const writer = &output.writer;
 
     // Header
     try writer.writeAll(
@@ -72,14 +77,14 @@ pub fn main() !void {
 
     // Write generated file
     const output_file = "src/public_suffix_data.zig";
-    try std.fs.cwd().writeFile(.{
+    try std.Io.Dir.cwd().writeFile(io, .{
         .sub_path = output_file,
-        .data = output.items,
+        .data = output.written(),
     });
 
     std.debug.print("[PSL Generator] ✓ Generated {s} ({d} bytes, {d} rules)\n", .{
         output_file,
-        output.items.len,
+        output.written().len,
         rule_count,
     });
 

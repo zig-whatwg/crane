@@ -37,7 +37,7 @@ pub const RegistrationMap = struct {
 
     /// Mutex for thread-safe access.
     /// In real implementation, this would use proper locking.
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     const Self = @This();
 
@@ -60,8 +60,8 @@ pub const RegistrationMap = struct {
 
     /// Get a registration by key.
     pub fn get(self: *Self, storage_key: []const u8, scope_url: []const u8) ?*Registration {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         const composite_key = std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{ storage_key, scope_url }) catch return null;
         defer self.allocator.free(composite_key);
@@ -71,8 +71,8 @@ pub const RegistrationMap = struct {
 
     /// Set a registration.
     pub fn set(self: *Self, storage_key: []const u8, scope_url: []const u8, registration: *Registration) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         const composite_key = try std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{ storage_key, scope_url });
         errdefer self.allocator.free(composite_key);
@@ -87,8 +87,8 @@ pub const RegistrationMap = struct {
 
     /// Remove a registration.
     pub fn remove(self: *Self, storage_key: []const u8, scope_url: []const u8) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         const composite_key = std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{ storage_key, scope_url }) catch return false;
         defer self.allocator.free(composite_key);
@@ -107,8 +107,8 @@ pub const RegistrationMap = struct {
 
     /// Get all registrations for a storage key.
     pub fn getRegistrationsForStorageKey(self: *Self, storage_key: []const u8) ![]*Registration {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         var result: std.ArrayListUnmanaged(*Registration) = .empty;
         errdefer result.deinit(self.allocator);
@@ -132,8 +132,8 @@ pub const RegistrationMap = struct {
     ///
     /// Spec: Match Service Worker Registration algorithm
     pub fn matchRegistration(self: *Self, storage_key: []const u8, url: []const u8) ?*Registration {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         const prefix = std.fmt.allocPrint(self.allocator, "{s}\x00", .{storage_key}) catch return null;
         defer self.allocator.free(prefix);
@@ -193,15 +193,15 @@ pub const RegistrationMap = struct {
 
     /// Get total number of registrations.
     pub fn count(self: *Self) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.map.count();
     }
 
     /// Clear all registrations.
     pub fn clear(self: *Self) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         var iter = self.map.iterator();
         while (iter.next()) |entry| {

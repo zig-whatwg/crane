@@ -96,11 +96,11 @@ test "findIDLFiles discovers only idl files" {
     defer tmp_dir.cleanup();
 
     // Create some test files
-    try tmp_dir.dir.writeFile(.{ .sub_path = "dom.json", .data = "{}" });
-    try tmp_dir.dir.writeFile(.{ .sub_path = "fetch.idl", .data = "interface Foo {};" });
-    try tmp_dir.dir.writeFile(.{ .sub_path = "readme.txt", .data = "test" });
-    try tmp_dir.dir.writeFile(.{ .sub_path = "html.xml", .data = "{}" });
-    try tmp_dir.dir.writeFile(.{ .sub_path = "console.idl", .data = "interface Bar {};" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "dom.json", .data = "{}" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "fetch.idl", .data = "interface Foo {};" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "readme.txt", .data = "test" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "html.xml", .data = "{}" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "console.idl", .data = "interface Bar {};" });
 
     // Find IDL files
     const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
@@ -142,9 +142,9 @@ test "findIDLFiles handles directory with no idl files" {
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    try tmp_dir.dir.writeFile(.{ .sub_path = "readme.txt", .data = "test" });
-    try tmp_dir.dir.writeFile(.{ .sub_path = "data.xml", .data = "<test/>" });
-    try tmp_dir.dir.writeFile(.{ .sub_path = "spec.json", .data = "{}" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "readme.txt", .data = "test" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "data.xml", .data = "<test/>" });
+    try tmp_dir.dir.writeFile(host.io(), .{ .sub_path = "spec.json", .data = "{}" });
 
     const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);

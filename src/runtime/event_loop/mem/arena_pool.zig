@@ -97,7 +97,7 @@ pub const ArenaPool = struct {
     config: Config,
 
     /// Thread safety
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     /// Statistics
     stats: Stats,
@@ -113,7 +113,7 @@ pub const ArenaPool = struct {
             .available = .empty,
             .upstream = upstream,
             .config = config,
-            .mutex = .{},
+            .mutex = .init,
             .stats = .{},
         };
 
@@ -150,8 +150,8 @@ pub const ArenaPool = struct {
     /// Returns an available arena or creates a new one if pool is empty.
     /// Thread-safe.
     pub fn acquire(self: *Self) !*std.heap.ArenaAllocator {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         self.stats.acquire_count += 1;
 
@@ -180,8 +180,8 @@ pub const ArenaPool = struct {
             _ = arena.reset(.free_all);
         }
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         self.stats.release_count += 1;
         self.stats.in_use -= 1;
@@ -216,22 +216,22 @@ pub const ArenaPool = struct {
 
     /// Get current statistics
     pub fn getStats(self: *Self) Stats {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.stats;
     }
 
     /// Get number of available arenas
     pub fn availableCount(self: *Self) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.stats.available;
     }
 
     /// Get number of arenas in use
     pub fn inUseCount(self: *Self) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.stats.in_use;
     }
 

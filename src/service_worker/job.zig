@@ -268,7 +268,7 @@ pub const ScopeToJobQueueMap = struct {
     map: std.StringHashMapUnmanaged(*JobQueue),
 
     /// Mutex for thread-safe access.
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     const Self = @This();
 
@@ -291,8 +291,8 @@ pub const ScopeToJobQueueMap = struct {
 
     /// Get or create a job queue for a scope.
     pub fn getOrCreateQueue(self: *Self, scope_url: []const u8) !*JobQueue {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.map.get(scope_url)) |queue| {
             return queue;
@@ -311,15 +311,15 @@ pub const ScopeToJobQueueMap = struct {
 
     /// Get a job queue for a scope (returns null if doesn't exist).
     pub fn getQueue(self: *Self, scope_url: []const u8) ?*JobQueue {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.map.get(scope_url);
     }
 
     /// Remove an empty queue.
     pub fn removeEmptyQueue(self: *Self, scope_url: []const u8) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.map.get(scope_url)) |queue| {
             if (queue.isEmpty()) {

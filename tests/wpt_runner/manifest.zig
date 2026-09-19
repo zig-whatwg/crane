@@ -247,7 +247,7 @@ fn addSourceUrls(
     source_path: []const u8,
     url_entries: []const std.json.Value,
 ) !void {
-    var url_list: UrlList = .{};
+    var url_list: UrlList = .empty;
     errdefer {
         for (url_list.items) |url| allocator.free(url);
         url_list.deinit(allocator);

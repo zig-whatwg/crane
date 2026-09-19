@@ -22,7 +22,12 @@
 
 const std = @import("std");
 const clock = @import("clock");
-const net = std.net;
+const host = @import("host");
+/// Zig 0.16 moved networking onto `std.Io`: `std.net` became `std.Io.net` and
+/// every socket operation now takes an `Io`. The alias is kept so the rest of
+/// this file still reads `net.Stream` / `net.Server`.
+const net = std.Io.net;
+const Io = std.Io;
 const Thread = std.Thread;
 const Allocator = std.mem.Allocator;
 const base64 = std.base64;
@@ -30,6 +35,10 @@ const Sha1 = std.crypto.hash.Sha1;
 
 pub const TestServer = struct {
     allocator: Allocator,
+    /// Zig 0.16 needs an `Io` for every socket operation. It is 16 bytes and
+    /// copyable; holding it here keeps `start(allocator)` unchanged for callers
+    /// while the handlers below take it as an ordinary parameter.
+    io: Io,
     server: net.Server,
     thread: ?Thread = null,
     should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
@@ -39,12 +48,22 @@ pub const TestServer = struct {
         const self = try allocator.create(TestServer);
         errdefer allocator.destroy(self);
 
+        // The process `Io`. Exactly one `Io.Threaded` may exist per process
+        // (its init installs SIGIO/SIGPIPE handlers), so borrow the shared one
+        // rather than constructing another.
+        const io = host.io();
+
         // Bind to localhost on a random available port
-        const address = net.Address.initIp4(.{ 127, 0, 0, 1 }, 0);
+        const address: net.IpAddress = .{ .ip4 = net.Ip4Address.loopback(0) };
+        const server = try address.listen(io, .{ .reuse_address = true });
+
+        // 0.16 `Server` has no `listen_address`; `listen` runs getsockname and
+        // hands the kernel-assigned ephemeral port back on the socket's address.
         self.* = .{
             .allocator = allocator,
-            .server = try address.listen(.{ .reuse_address = true }),
-            .port = self.server.listen_address.getPort(),
+            .io = io,
+            .server = server,
+            .port = server.socket.address.getPort(),
         };
 
         // Start server thread
@@ -56,7 +75,7 @@ pub const TestServer = struct {
     pub fn stop(self: *TestServer) void {
         self.should_stop.store(true, .release);
         // Close server socket to unblock accept()
-        self.server.deinit();
+        self.server.deinit(self.io);
         if (self.thread) |thread| {
             thread.join();
         }
@@ -72,27 +91,76 @@ pub const TestServer = struct {
     }
 
     fn serverLoop(self: *TestServer) void {
+        const io = self.io;
         while (!self.should_stop.load(.acquire)) {
-            const conn = self.server.accept() catch |err| {
+            // 0.16 `accept` hands back a `Stream` directly; `Server.Connection`
+            // no longer exists, so there is no `.stream` to reach through.
+            const stream = self.server.accept(io) catch |err| {
                 if (err == error.SocketNotListening) break;
                 continue;
             };
 
             // Handle connection in the same thread for simplicity
             // (for production, spawn a thread per connection)
-            handleConnection(self.allocator, conn.stream, &self.should_stop) catch |err| {
+            handleConnection(self.allocator, io, stream, &self.should_stop) catch |err| {
                 std.debug.print("Test server error: {}\n", .{err});
             };
-            conn.stream.close();
+            stream.close(io);
         }
     }
 
-    fn handleConnection(allocator: Allocator, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
-        var buf: [4096]u8 = undefined;
-        const bytes_read = try stream.read(&buf);
-        if (bytes_read == 0) return;
+    /// Write every byte of `bytes` to `stream`.
+    ///
+    /// `std.Io.net.Stream` has no `write`/`writeAll` in 0.16; it vends a buffered
+    /// `Io.Writer`. A zero-length buffer makes `writeAll` drain straight through
+    /// to the socket on every call. The buffered writer reports failure as the
+    /// opaque `error.WriteFailed` and stashes the real socket error on the
+    /// adapter, so unwrap it here to keep the errors callers used to see.
+    fn writeAllToStream(io: Io, stream: net.Stream, bytes: []const u8) net.Stream.Writer.Error!void {
+        var buffer: [0]u8 = .{};
+        var stream_writer = stream.writer(io, &buffer);
+        stream_writer.interface.writeAll(bytes) catch |err| switch (err) {
+            error.WriteFailed => return stream_writer.err.?,
+        };
+        // No-op while `buffer` is empty; kept so enlarging it cannot lose bytes.
+        stream_writer.interface.flush() catch |err| switch (err) {
+            error.WriteFailed => return stream_writer.err.?,
+        };
+    }
 
-        const request = buf[0..bytes_read];
+    /// Read up to `buf.len` bytes, returning a short count only at end of stream.
+    ///
+    /// The WebSocket frame reader asks for exact, known byte counts - a 2-byte
+    /// header, a 2- or 8-byte extended length, a 4-byte mask, then the payload -
+    /// so looping until `buf` is full never over-blocks: the peer always sends
+    /// exactly those bytes. At end of stream `readSliceShort` returns the short
+    /// count instead of erroring, which is what 0.15's `read` did by returning
+    /// zero, so the existing `< n` checks keep working unchanged. The opaque
+    /// `error.ReadFailed` is unwrapped into the real socket error.
+    fn readShort(stream_reader: *net.Stream.Reader, buf: []u8) net.Stream.Reader.Error!usize {
+        const n = stream_reader.interface.readSliceShort(buf) catch |err| switch (err) {
+            error.ReadFailed => return stream_reader.err.?,
+        };
+        return n;
+    }
+
+    fn handleConnection(allocator: Allocator, io: Io, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
+        // 0.16 reads through a buffered `Io.Reader` whose buffer the caller owns.
+        // `fillMore` performs exactly one underlying read - the true analogue of
+        // 0.15's `read(&buf)` - and reports a closed peer as `error.EndOfStream`
+        // where 0.15 returned zero bytes. `readSliceShort` would be wrong here:
+        // it loops until the 4 KiB buffer is full, so any smaller request would
+        // block until the client sent more or hung up.
+        var buf: [4096]u8 = undefined;
+        var stream_reader = stream.reader(io, &buf);
+        const reader = &stream_reader.interface;
+        reader.fillMore() catch |err| switch (err) {
+            error.EndOfStream => return,
+            error.ReadFailed => return stream_reader.err.?,
+        };
+
+        const request = reader.buffered();
+        if (request.len == 0) return;
 
         // Parse request line
         var lines = std.mem.splitScalar(u8, request, '\n');
@@ -103,18 +171,18 @@ pub const TestServer = struct {
 
         // Check for WebSocket upgrade
         if (isWebSocketUpgrade(request)) {
-            try handleWebSocketUpgrade(allocator, stream, request, path, should_stop);
+            try handleWebSocketUpgrade(allocator, io, stream, request, path, should_stop);
             return;
         }
 
         // Route to HTTP handler
         const response = routeRequest(allocator, method, path) catch |err| {
             std.debug.print("Route error: {}\n", .{err});
-            return sendResponse(stream, 500, "Internal Server Error", "text/plain", "Internal Server Error");
+            return sendResponse(io, stream, 500, "Internal Server Error", "text/plain", "Internal Server Error");
         };
         defer if (response.body_allocated) allocator.free(response.body);
 
-        try sendResponse(stream, response.status, response.status_text, response.content_type, response.body);
+        try sendResponse(io, stream, response.status, response.status_text, response.content_type, response.body);
     }
 
     fn isWebSocketUpgrade(request: []const u8) bool {
@@ -131,7 +199,7 @@ pub const TestServer = struct {
         return false;
     }
 
-    fn handleWebSocketUpgrade(allocator: Allocator, stream: net.Stream, request: []const u8, path: []const u8, should_stop: *std.atomic.Value(bool)) !void {
+    fn handleWebSocketUpgrade(allocator: Allocator, io: Io, stream: net.Stream, request: []const u8, path: []const u8, should_stop: *std.atomic.Value(bool)) !void {
         // Extract Sec-WebSocket-Key
         const ws_key = extractHeader(request, "Sec-WebSocket-Key") orelse return error.MissingWebSocketKey;
 
@@ -142,22 +210,22 @@ pub const TestServer = struct {
         var response_buf: [512]u8 = undefined;
         const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {s}\r\n\r\n", .{accept_key}) catch return error.ResponseTooLarge;
 
-        _ = try stream.write(response);
+        try writeAllToStream(io, stream, response);
 
         // Handle WebSocket frames based on path
         if (std.mem.startsWith(u8, path, "/ws/echo")) {
-            try handleWebSocketEcho(stream, should_stop);
+            try handleWebSocketEcho(io, stream, should_stop);
         } else if (std.mem.startsWith(u8, path, "/ws/close/")) {
             const code_str = path["/ws/close/".len..];
             const code = std.fmt.parseInt(u16, code_str, 10) catch 1000;
-            try sendWebSocketClose(stream, code, "Server closing");
+            try sendWebSocketClose(io, stream, code, "Server closing");
         } else if (std.mem.eql(u8, path, "/ws/close")) {
-            try sendWebSocketClose(stream, 1000, "Normal closure");
+            try sendWebSocketClose(io, stream, 1000, "Normal closure");
         } else if (std.mem.eql(u8, path, "/ws/binary")) {
-            try handleWebSocketBinaryEcho(allocator, stream, should_stop);
+            try handleWebSocketBinaryEcho(allocator, io, stream, should_stop);
         } else {
             // Default: echo
-            try handleWebSocketEcho(stream, should_stop);
+            try handleWebSocketEcho(io, stream, should_stop);
         }
     }
 
@@ -185,13 +253,23 @@ pub const TestServer = struct {
         return encoded;
     }
 
-    fn handleWebSocketEcho(stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
+    fn handleWebSocketEcho(io: Io, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
         var frame_buf: [4096]u8 = undefined;
+
+        // One reader for the whole connection. The reads below are sequential
+        // consumption of a single byte stream, so the reader's own buffer only
+        // adds read-ahead: bytes pulled in past the current frame stay buffered
+        // and are handed to the next read rather than being lost, which is what
+        // 0.15's unbuffered `read` relied on the kernel socket buffer for.
+        var read_buf: [4096]u8 = undefined;
+        var stream_reader = stream.reader(io, &read_buf);
 
         while (!should_stop.load(.acquire)) {
             // Read frame header (at least 2 bytes)
-            const header_bytes = stream.read(frame_buf[0..2]) catch |err| {
-                if (err == error.ConnectionResetByPeer or err == error.BrokenPipe) break;
+            const header_bytes = readShort(&stream_reader, frame_buf[0..2]) catch |err| {
+                // `Stream.Reader.Error` no longer carries `BrokenPipe`; a peer
+                // that vanished surfaces as a short read or ConnectionResetByPeer.
+                if (err == error.ConnectionResetByPeer) break;
                 return err;
             };
             if (header_bytes < 2) break;
@@ -204,12 +282,12 @@ pub const TestServer = struct {
             // Handle extended payload length
             var header_offset: usize = 2;
             if (payload_len == 126) {
-                const ext_bytes = try stream.read(frame_buf[2..4]);
+                const ext_bytes = try readShort(&stream_reader, frame_buf[2..4]);
                 if (ext_bytes < 2) break;
                 payload_len = std.mem.readInt(u16, frame_buf[2..4], .big);
                 header_offset = 4;
             } else if (payload_len == 127) {
-                const ext_bytes = try stream.read(frame_buf[2..10]);
+                const ext_bytes = try readShort(&stream_reader, frame_buf[2..10]);
                 if (ext_bytes < 8) break;
                 payload_len = std.mem.readInt(u64, frame_buf[2..10], .big);
                 header_offset = 10;
@@ -218,7 +296,7 @@ pub const TestServer = struct {
             // Read mask key if present
             var mask_key: [4]u8 = undefined;
             if (masked) {
-                const mask_bytes = try stream.read(frame_buf[header_offset .. header_offset + 4]);
+                const mask_bytes = try readShort(&stream_reader, frame_buf[header_offset .. header_offset + 4]);
                 if (mask_bytes < 4) break;
                 @memcpy(&mask_key, frame_buf[header_offset .. header_offset + 4]);
                 header_offset += 4;
@@ -231,7 +309,7 @@ pub const TestServer = struct {
             }
             const payload_end = header_offset + @as(usize, @intCast(payload_len));
             if (payload_len > 0) {
-                const payload_bytes = try stream.read(frame_buf[header_offset..payload_end]);
+                const payload_bytes = try readShort(&stream_reader, frame_buf[header_offset..payload_end]);
                 if (payload_bytes < payload_len) break;
             }
 
@@ -248,16 +326,16 @@ pub const TestServer = struct {
             switch (opcode) {
                 0x1, 0x2 => { // Text or Binary frame
                     // Echo back (unmasked, server-to-client)
-                    try sendWebSocketFrame(stream, opcode, fin, payload);
+                    try sendWebSocketFrame(io, stream, opcode, fin, payload);
                 },
                 0x8 => { // Close frame
                     // Echo close frame and exit
-                    try sendWebSocketFrame(stream, 0x8, true, payload);
+                    try sendWebSocketFrame(io, stream, 0x8, true, payload);
                     break;
                 },
                 0x9 => { // Ping
                     // Respond with Pong
-                    try sendWebSocketFrame(stream, 0xA, true, payload);
+                    try sendWebSocketFrame(io, stream, 0xA, true, payload);
                 },
                 0xA => { // Pong
                     // Ignore
@@ -272,13 +350,13 @@ pub const TestServer = struct {
         }
     }
 
-    fn handleWebSocketBinaryEcho(allocator: Allocator, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
+    fn handleWebSocketBinaryEcho(allocator: Allocator, io: Io, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
         // Same as echo but explicitly for binary frames
         _ = allocator;
-        try handleWebSocketEcho(stream, should_stop);
+        try handleWebSocketEcho(io, stream, should_stop);
     }
 
-    fn sendWebSocketFrame(stream: net.Stream, opcode: u8, fin: bool, payload: []const u8) !void {
+    fn sendWebSocketFrame(io: Io, stream: net.Stream, opcode: u8, fin: bool, payload: []const u8) !void {
         var frame_buf: [4096 + 10]u8 = undefined;
         var offset: usize = 0;
 
@@ -301,20 +379,20 @@ pub const TestServer = struct {
         }
 
         // Write header
-        _ = try stream.write(frame_buf[0..offset]);
+        try writeAllToStream(io, stream, frame_buf[0..offset]);
 
         // Write payload
         if (payload.len > 0) {
-            _ = try stream.write(payload);
+            try writeAllToStream(io, stream, payload);
         }
     }
 
-    fn sendWebSocketClose(stream: net.Stream, code: u16, reason: []const u8) !void {
+    fn sendWebSocketClose(io: Io, stream: net.Stream, code: u16, reason: []const u8) !void {
         var payload: [125]u8 = undefined;
         std.mem.writeInt(u16, payload[0..2], code, .big);
         const reason_len = @min(reason.len, 123);
         @memcpy(payload[2 .. 2 + reason_len], reason[0..reason_len]);
-        try sendWebSocketFrame(stream, 0x8, true, payload[0 .. 2 + reason_len]);
+        try sendWebSocketFrame(io, stream, 0x8, true, payload[0 .. 2 + reason_len]);
     }
 
     const RouteResponse = struct {
@@ -474,11 +552,11 @@ pub const TestServer = struct {
         };
     }
 
-    fn sendResponse(stream: net.Stream, status: u16, status_text: []const u8, content_type: []const u8, body: []const u8) !void {
+    fn sendResponse(io: Io, stream: net.Stream, status: u16, status_text: []const u8, content_type: []const u8, body: []const u8) !void {
         var response_buf: [8192]u8 = undefined;
         const response = std.fmt.bufPrint(&response_buf, "HTTP/1.1 {d} {s}\r\nContent-Type: {s}\r\nContent-Length: {d}\r\nConnection: close\r\nX-Test-Header: test-value\r\n\r\n{s}", .{ status, status_text, content_type, body.len, body }) catch return error.ResponseTooLarge;
 
-        _ = try stream.write(response);
+        try writeAllToStream(io, stream, response);
     }
 };
 

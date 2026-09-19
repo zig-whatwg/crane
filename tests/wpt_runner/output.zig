@@ -57,7 +57,7 @@ const std = @import("std");
 /// capacity is appropriate and pass a pointer to its interface.
 pub const Sink = struct {
     w: *std.Io.Writer,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     /// Formats and buffers one write.
     ///
@@ -66,15 +66,15 @@ pub const Sink = struct {
     /// could act on it, so a write error is dropped. Anything that must survive
     /// goes through `journal.zig` instead.
     pub fn print(self: *Sink, comptime fmt: []const u8, args: anytype) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.w.print(fmt, args) catch {};
     }
 
     /// Pushes everything buffered so far to the underlying sink.
     pub fn flush(self: *Sink) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.w.flush() catch {};
     }
 };
@@ -171,7 +171,7 @@ test "buffered output preserves every byte and its order" {
 
     for (0..500) |i| {
         sink.print("  |-- {d} {s}\n", .{ i, "cjk U+4E00" });
-        try expected.writer(allocator).print("  |-- {d} {s}\n", .{ i, "cjk U+4E00" });
+        try expected.print(allocator, "  |-- {d} {s}\n", .{ i, "cjk U+4E00" });
     }
     sink.flush();
 

@@ -149,7 +149,7 @@ test "generateFromFile parses and generates from JSON" {
         \\}
     ;
 
-    try tmp_dir.dir.writeFile(.{ .sub_path = "test.json", .data = json_content });
+    try tmp_dir.dir.writeFile(std.testing.io, .{ .sub_path = "test.json", .data = json_content });
 
     const input_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.json" });
     defer allocator.free(input_path);
@@ -202,7 +202,7 @@ test "generateFromFile handles multiple interfaces" {
         \\}
     ;
 
-    try tmp_dir.dir.writeFile(.{ .sub_path = "dom.json", .data = json_content });
+    try tmp_dir.dir.writeFile(std.testing.io, .{ .sub_path = "dom.json", .data = json_content });
 
     const input_path = try std.fs.path.join(allocator, &.{ tmp_path, "dom.json" });
     defer allocator.free(input_path);

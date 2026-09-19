@@ -98,7 +98,7 @@ pub fn parseSetCookieHeader(
         if (attrs[0] == ';') {
             attrs = attrs[1..];
         }
-        attrs = std.mem.trimLeft(u8, attrs, " \t");
+        attrs = std.mem.trimStart(u8, attrs, " \t");
         if (attrs.len == 0) break;
 
         // Find next semicolon or end

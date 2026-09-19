@@ -155,7 +155,7 @@ pub const Options = struct {
 
         // Check if path starts with any filter
         for (self.filters.items) |filter| {
-            const clean_filter = std.mem.trimRight(u8, filter, "/");
+            const clean_filter = std.mem.trimEnd(u8, filter, "/");
             if (std.mem.startsWith(u8, test_path, clean_filter)) {
                 // Make sure it's a proper prefix (followed by / or end of string)
                 if (test_path.len == clean_filter.len) return true;

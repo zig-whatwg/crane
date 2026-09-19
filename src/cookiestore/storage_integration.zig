@@ -68,69 +68,70 @@ pub const CookieStorageArea = struct {
         var list: std.ArrayListUnmanaged(u8) = .empty;
         errdefer list.deinit(allocator);
 
-        const writer = list.writer(allocator);
+        // 0.16 removed ArrayList.writer(); print and appendSlice take the
+        // allocator explicitly instead.
 
-        try writer.writeAll("{");
+        try list.appendSlice(allocator, "{");
 
         // Name
-        try writer.writeAll("\"name\":\"");
-        try writeJsonEscaped(writer, cookie.name);
-        try writer.writeAll("\",");
+        try list.appendSlice(allocator, "\"name\":\"");
+        try writeJsonEscaped(&list, allocator, cookie.name);
+        try list.appendSlice(allocator, "\",");
 
         // Value
-        try writer.writeAll("\"value\":\"");
-        try writeJsonEscaped(writer, cookie.value);
-        try writer.writeAll("\",");
+        try list.appendSlice(allocator, "\"value\":\"");
+        try writeJsonEscaped(&list, allocator, cookie.value);
+        try list.appendSlice(allocator, "\",");
 
         // Domain
-        try writer.writeAll("\"domain\":");
+        try list.appendSlice(allocator, "\"domain\":");
         if (cookie.domain) |d| {
-            try writer.writeAll("\"");
-            try writeJsonEscaped(writer, d);
-            try writer.writeAll("\"");
+            try list.appendSlice(allocator, "\"");
+            try writeJsonEscaped(&list, allocator, d);
+            try list.appendSlice(allocator, "\"");
         } else {
-            try writer.writeAll("null");
+            try list.appendSlice(allocator, "null");
         }
-        try writer.writeAll(",");
+        try list.appendSlice(allocator, ",");
 
         // Path
-        try writer.writeAll("\"path\":\"");
-        try writeJsonEscaped(writer, cookie.path);
-        try writer.writeAll("\",");
+        try list.appendSlice(allocator, "\"path\":\"");
+        try writeJsonEscaped(&list, allocator, cookie.path);
+        try list.appendSlice(allocator, "\",");
 
         // Expiry
-        try writer.writeAll("\"expiry_time\":");
+        try list.appendSlice(allocator, "\"expiry_time\":");
         if (cookie.expiry_time) |exp| {
-            try writer.print("{d}", .{exp});
+            try list.print(allocator, "{d}", .{exp});
         } else {
-            try writer.writeAll("null");
+            try list.appendSlice(allocator, "null");
         }
-        try writer.writeAll(",");
+        try list.appendSlice(allocator, ",");
 
         // Creation time
-        try writer.print("\"creation_time\":{d},", .{cookie.creation_time});
+        try list.print(allocator, "\"creation_time\":{d},", .{cookie.creation_time});
 
         // Last access time
-        try writer.print("\"last_access_time\":{d},", .{cookie.last_access_time});
+        try list.print(allocator, "\"last_access_time\":{d},", .{cookie.last_access_time});
 
         // Boolean flags
-        try writer.print("\"secure\":{},", .{cookie.secure});
-        try writer.print("\"http_only\":{},", .{cookie.http_only});
-        try writer.print("\"host_only\":{},", .{cookie.host_only});
+        try list.print(allocator, "\"secure\":{},", .{cookie.secure});
+        try list.print(allocator, "\"http_only\":{},", .{cookie.http_only});
+        try list.print(allocator, "\"host_only\":{},", .{cookie.host_only});
 
         // SameSite
-        try writer.writeAll("\"same_site\":\"");
-        try writer.writeAll(cookie.same_site.toString());
-        try writer.writeAll("\"");
+        try list.appendSlice(allocator, "\"same_site\":\"");
+        try list.appendSlice(allocator, cookie.same_site.toString());
+        try list.appendSlice(allocator, "\"");
 
         // Partition key (optional)
         if (cookie.partition_key) |pk| {
-            try writer.writeAll(",\"partition_key\":\"");
-            try writeJsonEscaped(writer, pk.top_level_site);
-            try writer.writeAll("\"");
+            try list.appendSlice(allocator, ",\"partition_key\":\"");
+            try writeJsonEscaped(&list, allocator, pk.top_level_site);
+            try list.appendSlice(allocator, "\"");
         }
 
-        try writer.writeAll("}");
+        try list.appendSlice(allocator, "}");
 
         return list.toOwnedSlice(allocator);
     }
@@ -239,19 +240,19 @@ pub const CookieStorageArea = struct {
 };
 
 /// Write a JSON-escaped string
-fn writeJsonEscaped(writer: anytype, s: []const u8) !void {
+fn writeJsonEscaped(list: *std.ArrayListUnmanaged(u8), allocator: std.mem.Allocator, s: []const u8) !void {
     for (s) |c| {
         switch (c) {
-            '"' => try writer.writeAll("\\\""),
-            '\\' => try writer.writeAll("\\\\"),
-            '\n' => try writer.writeAll("\\n"),
-            '\r' => try writer.writeAll("\\r"),
-            '\t' => try writer.writeAll("\\t"),
+            '"' => try list.appendSlice(allocator, "\\\""),
+            '\\' => try list.appendSlice(allocator, "\\\\"),
+            '\n' => try list.appendSlice(allocator, "\\n"),
+            '\r' => try list.appendSlice(allocator, "\\r"),
+            '\t' => try list.appendSlice(allocator, "\\t"),
             else => {
                 if (c < 0x20) {
-                    try writer.print("\\u{x:0>4}", .{c});
+                    try list.print(allocator, "\\u{x:0>4}", .{c});
                 } else {
-                    try writer.writeByte(c);
+                    try list.append(allocator, c);
                 }
             },
         }
