@@ -219,9 +219,12 @@ pub const WptServer = struct {
 
     /// Check if server is ready by attempting TCP connect
     fn isServerReady(self: *WptServer) bool {
-        const address = std.net.Address.parseIp4("127.0.0.1", self.port) catch return false;
-        const stream = std.net.tcpConnectToAddress(address) catch return false;
-        stream.close();
+        // 0.16: std.net is gone. IpAddress.parse takes no Io; connect and close do,
+        // and ConnectOptions.mode has no default.
+        const io = host.io();
+        const address = std.Io.net.IpAddress.parseIp4("127.0.0.1", self.port) catch return false;
+        const stream = address.connect(io, .{ .mode = .stream }) catch return false;
+        stream.close(io);
         return true;
     }
 

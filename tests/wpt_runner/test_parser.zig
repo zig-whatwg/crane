@@ -755,16 +755,16 @@ pub const ScriptLoader = struct {
 
     /// Load all scripts for a parsed test
     pub fn loadAll(self: *ScriptLoader, parsed_test: *const ParsedTest) !std.ArrayList(LoadedScript) {
-        var scripts = std.ArrayList(LoadedScript).init(self.allocator);
+        var scripts: std.ArrayList(LoadedScript) = .empty;
         errdefer {
             for (scripts.items) |*s| s.deinit(self.allocator);
-            scripts.deinit();
+            scripts.deinit(self.allocator);
         }
 
         for (parsed_test.metadata.scripts.items) |script_ref| {
             if (script_ref.inline_script) {
                 // Inline script - content is already available
-                try scripts.append(LoadedScript{
+                try scripts.append(self.allocator, LoadedScript{
                     .path = try self.allocator.dupe(u8, "inline"),
                     .content = try self.allocator.dupe(u8, script_ref.path),
                     .inline_script = true,
@@ -776,7 +776,7 @@ pub const ScriptLoader = struct {
                 defer self.allocator.free(resolved);
 
                 const content = try self.load(resolved);
-                try scripts.append(LoadedScript{
+                try scripts.append(self.allocator, LoadedScript{
                     .path = try self.allocator.dupe(u8, resolved),
                     .content = try self.allocator.dupe(u8, content),
                     .inline_script = false,
