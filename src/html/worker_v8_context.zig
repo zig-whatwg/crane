@@ -150,9 +150,11 @@ fn cleanupWorkerTimerContexts() void {
         var iter = map.iterator();
         while (iter.next()) |entry| {
             const ctx = entry.value_ptr.*;
-            // Cancel the timer at the libuv level
+            // Cancel the timer at the libuv level.
+            // Result discarded: this is teardown, so everything must be freed here
+            // or leak - there is no later callback to hand ownership to.
             if (WorkerV8Context.getTimerInterface()) |timer| {
-                timer.clearTimeout(ctx.current_timer_id);
+                _ = timer.clearTimeout(ctx.current_timer_id);
             }
             // Dispose the V8 Global handle
             v8.ffi.v8_Global_Dispose(ctx.callback_global);
@@ -175,9 +177,16 @@ fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
     if (worker_timer_contexts) |*map| {
         if (map.get(timer_id)) |ctx| {
             ctx.cancelled = true;
-            // Cancel the timer at the libuv level
+            // Cancel the timer at the libuv level.
+            //
+            // Result deliberately discarded, unlike the window path in Context.zig.
+            // Deferring the free to the callback on an unconfirmed cancel was tried
+            // here and regressed the worker timer tests: nothing else frees the
+            // context, and a queued message dispatch then ran against a worker that
+            // was already gone. The worker teardown path needs its own audit before
+            // this can follow the same rule.
             if (WorkerV8Context.getTimerInterface()) |timer| {
-                timer.clearTimeout(timer_id);
+                _ = timer.clearTimeout(timer_id);
             }
         }
         if (map.fetchRemove(timer_id)) |kv| {

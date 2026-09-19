@@ -147,9 +147,14 @@ pub fn clearTimerInterface() void {
         while (iter.next()) |entry| {
             const wrapper = entry.value_ptr.*;
             // Cancel the timer at the libuv level to prevent callback from firing
-            // and to properly clean up the libuv timer handle
+            // and to properly clean up the libuv timer handle.
+            //
+            // The result is deliberately discarded: this is context teardown, so the
+            // timer manager is going away with us and every wrapper must be freed
+            // here or leak. Unlike unregisterTimerContext there is no later callback
+            // to hand ownership to.
             if (current_timer_interface) |timer| {
-                timer.clearTimeout(wrapper.getData().current_timer_id);
+                _ = timer.clearTimeout(wrapper.getData().current_timer_id);
             }
             wrapper.destroy();
         }
@@ -200,14 +205,32 @@ fn unregisterTimerContext(timer_id: TimerId) void {
     if (timer_contexts) |*map| {
         if (map.fetchRemove(timer_id)) |kv| {
             const wrapper = kv.value;
-            // Mark as cancelled so interval callbacks know to stop rescheduling
+            // Mark as cancelled so interval callbacks know to stop rescheduling.
+            // This must happen before anything else: it is the only signal that
+            // reaches a callback we could not cancel.
             wrapper.getData().cancelled = true;
-            // Cancel the timer at the libuv level to prevent callback from firing
-            if (current_timer_interface) |timer| {
-                timer.clearTimeout(timer_id);
-            }
-            // Destroy the wrapper immediately - the timer won't fire anymore
-            wrapper.destroy();
+
+            // Cancel at the libuv level so the callback cannot fire.
+            //
+            // The thread-local TimerInterface belongs to the realm calling
+            // clearTimeout, which is NOT necessarily the realm that scheduled the
+            // timer. Cross-realm, the id is unknown to this manager and nothing is
+            // cancelled - clearTimeout used to return void, so that silent miss was
+            // invisible and the wrapper was freed anyway. The armed timer then fired
+            // on freed memory and destroyed it a second time: a double free, and a
+            // 0xaa-poisoned segfault in destroyChildContext just after.
+            //
+            // So the wrapper is only freed when cancellation is CONFIRMED. Otherwise
+            // ownership passes to the callback, which sees `cancelled` and destroys
+            // it when it fires.
+            const cancelled = if (current_timer_interface) |timer|
+                timer.clearTimeout(timer_id)
+            else
+                false;
+
+            // Never free a wrapper whose callback is on the stack - that handler
+            // still reads `data` after the callback returns and frees it itself.
+            if (cancelled and !wrapper.getData().executing) wrapper.destroy();
         }
     }
 }
@@ -244,6 +267,18 @@ const V8TimerContextData = struct {
     /// callback runs, `timer_nesting_level` is set to this, so timers created inside
     /// nest one deeper and eventually trip the 4ms clamp.
     nesting_level: u32 = 0,
+    /// True while this timer's callback is on the stack.
+    ///
+    /// A callback may cancel ITSELF - `clearInterval(id)` from inside the interval
+    /// is ordinary JS, and testharness cleanups do it routinely. The handler is
+    /// still executing on this wrapper at that moment, and destroys it again when
+    /// the callback returns, so an unconditional free in unregisterTimerContext is
+    /// a double free (and the freed wrapper's context pointer then surfaced as a
+    /// 0xaa-poisoned segfault in destroyChildContext).
+    ///
+    /// While this is set, the running handler owns the wrapper and is the only
+    /// thing allowed to free it.
+    executing: bool = false,
 };
 
 /// Type-safe timer callback wrapper for V8 timer contexts.
@@ -307,6 +342,11 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
         // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
         v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
 
+        // This handler owns the wrapper for the duration of the callback, so a
+        // clearTimeout/clearInterval from inside it defers the free to us.
+        data.executing = true;
+        defer data.executing = false;
+
         // Invoke the V8 function (stored directly, not via persistent handle)
         var empty_args: [1]*v8.ffi.Value = undefined;
         _ = v8.ffi.v8_Function_Call(data.callback_fn, context, @ptrCast(global), 0, &empty_args);
@@ -328,6 +368,11 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
         if (timer_contexts) |*map| {
             _ = map.remove(data.current_timer_id);
         }
+        // unregisterTimerContext could not confirm cancellation (cross-realm), so it
+        // left the wrapper alive and handed ownership here. Free it now - this is the
+        // last time the timer system will reference it.
+        const wrapper: *V8TimerCallback = @fieldParentPtr("data", data);
+        wrapper.destroy();
         return;
     }
 
@@ -354,6 +399,11 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
 
         // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
         v8.ffi.v8_Isolate_EnqueueMicrotask(isolate, &resetNestingMicrotask, null);
+
+        // This handler owns the wrapper for the duration of the callback, so a
+        // clearTimeout/clearInterval from inside it defers the free to us.
+        data.executing = true;
+        defer data.executing = false;
 
         // Invoke the V8 function
         var empty_args: [1]*v8.ffi.Value = undefined;
@@ -1936,9 +1986,12 @@ fn clearTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) v
     }
     const timer_id: TimerId = @intFromFloat(timer_id_f64);
 
-    // Get timer interface and cancel the timer
+    // Get timer interface and cancel the timer.
+    //
+    // Result discarded here on purpose: unregisterTimerContext below performs the
+    // authoritative cancel-and-free, and only frees when cancellation is confirmed.
     if (getTimerInterface()) |timer| {
-        timer.clearTimeout(timer_id);
+        _ = timer.clearTimeout(timer_id);
     }
 
     // Clean up interval context if this was an interval timer

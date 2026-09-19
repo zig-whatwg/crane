@@ -212,11 +212,16 @@ pub const LibuvTimerManager = struct {
     }
 
     /// Cancel a pending timer.
-    pub fn clearTimeout(self: *Self, id: TimerId) void {
-        if (id == 0) return; // Invalid ID
+    pub fn clearTimeout(self: *Self, id: TimerId) bool {
+        if (id == 0) return false; // Invalid ID
 
-        const ctx = self.timers.get(id) orelse return;
-        if (ctx.cancelled or ctx.closing) return;
+        // Unknown to this manager - typically a timer owned by another realm.
+        // Report failure so the caller does not free data the timer still holds.
+        const ctx = self.timers.get(id) orelse return false;
+
+        // Already cancelled or closing: nothing more to do, but the timer is
+        // genuinely not going to invoke the callback, so this counts as cancelled.
+        if (ctx.cancelled or ctx.closing) return true;
 
         ctx.cancelled = true;
         ctx.closing = true;
@@ -224,6 +229,7 @@ pub const LibuvTimerManager = struct {
         // Stop and close the timer
         _ = libuv.timerStop(&ctx.handle) catch {};
         libuv.close(libuv.timerToHandle(&ctx.handle), closeCallback);
+        return true;
     }
 
     /// Run the event loop once (non-blocking).
@@ -406,9 +412,9 @@ pub const LibuvTimerManager = struct {
         return self.setTimeout(ms, callback, user_data);
     }
 
-    fn clearTimeoutVTable(ctx: *anyopaque, id: TimerId) void {
+    fn clearTimeoutVTable(ctx: *anyopaque, id: TimerId) bool {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        self.clearTimeout(id);
+        return self.clearTimeout(id);
     }
 };
 
