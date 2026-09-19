@@ -19,15 +19,16 @@ name: Test Suite
 # ubuntu-latest and windows-latest matrix legs cannot succeed even once V8 is
 # provisioned.
 #
-# And `zig build test` is red even on a machine that DOES have the archives.
-# Measured on main: 257/262 steps succeeded; 3 failed; 3757/3763 tests passed;
-# 2 failed; 2 leaked.
+# On a machine that DOES have the archives, the suite is GREEN as of the Zig
+# 0.16 migration: 260/260 steps succeeded; 3768/3772 tests passed (4 skipped).
+# So a failure here is either the missing-V8 provisioning above, or a real
+# regression - it is no longer expected noise.
 #
-# These jobs are deliberately left enabled and failing. A red job that names its
-# cause is worth more than a green one that hides it. Do NOT paper this over
-# with continue-on-error, `|| true`, or a fallback build that produces a
-# different artifact than the one under test. Fix the provisioning (vendor or
-# download the V8 archives, unhardcode the libuv path) or fix the tests.
+# These jobs are deliberately left enabled. A red job that names its cause is
+# worth more than a green one that hides it. Do NOT paper this over with
+# continue-on-error, `|| true`, or a fallback build that produces a different
+# artifact than the one under test. Fix the provisioning (vendor or download the
+# V8 archives, unhardcode the libuv path).
 
 on:
   push:
@@ -51,10 +52,10 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          # The project's toolchain is 0.15.2 (README badge, .github/workflows/wpt.yml,
-          # and the 0.15.2-specific workarounds in src/js_bindings/registry.zig).
-          # build.zig.zon's minimum_zig_version = "0.15.1" is a floor, not the pin.
-          version: 0.15.2
+          # 0.16.0. The tree does not compile on 0.15.x: std.fs, std.time, std.net and
+          # std.Thread's sync primitives were all removed or moved onto std.Io.
+          # build.zig.zon's minimum_zig_version is 0.16.0 to match.
+          version: 0.16.0
 
       # Advisory only - deliberately does NOT exit non-zero.
       #
@@ -83,7 +84,7 @@ jobs:
             fi
           done
 
-      - name: Run tests (V8-linked groups will fail without jsengines/; also red on main - see file header)
+      - name: Run tests (V8-linked groups will fail without jsengines/ - see file header)
         run: zig build test --summary all
 
   # Fetch network tests - run separately with network access
@@ -99,7 +100,7 @@ jobs:
         uses: goto-bus-stop/setup-zig@v2
         with:
           # See the version note in the `test` job above.
-          version: 0.15.2
+          version: 0.16.0
 
       - name: Preflight - V8 archives must be present to link (see file header)
         shell: bash
@@ -124,12 +125,12 @@ jobs:
 
       # No continue-on-error here on purpose. It used to carry the note "Allow
       # network test failures as httpbin.org may be unavailable", but this step
-      # runs the ENTIRE suite (3,763 tests) with WHATWG_NETWORK_TESTS=1 set, not
+      # runs the ENTIRE suite (3,772 tests) with WHATWG_NETWORK_TESTS=1 set, not
       # only the network ones, so continue-on-error swallowed every unrelated
       # regression and leak alongside any httpbin outage. If httpbin flakiness
       # needs tolerating, scope the tolerance to the network tests in build.zig
       # or point them at a hermetic server - do not blanket-ignore the suite.
-      - name: Run fetch network integration tests (whole suite; red on main)
+      - name: Run fetch network integration tests (whole suite)
         run: zig build test --summary all
         env:
           # Enable network tests

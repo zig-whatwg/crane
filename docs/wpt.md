@@ -60,7 +60,7 @@ Crane runs WPT tests for all implemented WHATWG specifications:
    apt install libuv1-dev
    ```
 
-3. **Zig 0.15.1+**
+3. **Zig 0.16.0+**
    ```bash
    # Download from https://ziglang.org/download/
    ```
