@@ -99,15 +99,8 @@ pub const Token = struct {
     line: usize,
     column: usize,
 
-    pub fn format(
-        self: Token,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("{s}('{s}') at {}:{}", .{
+    pub fn format(self: Token, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{s}('{s}') at {d}:{d}", .{
             @tagName(self.type),
             self.lexeme,
             self.line,

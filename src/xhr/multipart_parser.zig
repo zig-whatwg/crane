@@ -178,7 +178,7 @@ pub fn parseMultipartFormData(
     body: []const u8,
     boundary: []const u8,
 ) ![]FormDataEntry {
-    var entries = std.ArrayListUnmanaged(FormDataEntry){};
+    var entries: std.ArrayListUnmanaged(FormDataEntry) = .empty;
     errdefer {
         for (entries.items) |*entry| {
             entry.deinit(allocator);

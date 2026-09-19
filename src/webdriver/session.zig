@@ -10,6 +10,7 @@ const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
 const v8 = @import("v8");
+const clock = @import("clock");
 
 /// WebDriver Session
 ///
@@ -186,10 +187,10 @@ pub const Session = struct {
 
     /// Run event loop until page load completes
     fn runUntilPageLoad(self: *Session, timeout_ms: u64) !void {
-        const start = std.time.milliTimestamp();
+        const start = clock.monotonicMillis();
         const deadline = start + @as(i64, @intCast(timeout_ms));
 
-        while (std.time.milliTimestamp() < deadline) {
+        while (clock.monotonicMillis() < deadline) {
             // Process event loop
             if (self.browser.event_loop) |event_loop| {
                 _ = event_loop.eventLoop().runOnce();
@@ -210,10 +211,10 @@ pub const Session = struct {
 
     /// Run event loop until async script completes
     fn runUntilAsyncComplete(self: *Session, timeout_ms: u64) !void {
-        const start = std.time.milliTimestamp();
+        const start = clock.monotonicMillis();
         const deadline = start + @as(i64, @intCast(timeout_ms));
 
-        while (std.time.milliTimestamp() < deadline) {
+        while (clock.monotonicMillis() < deadline) {
             // Process event loop
             if (self.browser.event_loop) |event_loop| {
                 _ = event_loop.eventLoop().runOnce();

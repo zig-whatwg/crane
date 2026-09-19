@@ -768,7 +768,7 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
             const allocator = instance.ctx.allocator;
 
             // Returns concatenation of descendant text content
-            var result = std.ArrayListUnmanaged(u8){};
+            var result = std.ArrayListUnmanaged(u8).empty;
             errdefer result.deinit(allocator);
 
             // Recursively collect text from all descendants

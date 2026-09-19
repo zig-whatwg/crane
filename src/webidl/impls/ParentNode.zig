@@ -659,7 +659,7 @@ fn matchesPseudoClass(
         // Negation and matching pseudo-classes
         .Not => |sel_list| !elementMatchesSelectorList(element, sel_list),
         .Is, .Where => |sel_list| elementMatchesSelectorList(element, sel_list),
-        .Has => |_| false, // :has() requires complex relative selector matching
+        .Has => false, // :has() requires complex relative selector matching
 
         // State-based pseudo-classes (require runtime state - return false for now)
         .AnyLink,

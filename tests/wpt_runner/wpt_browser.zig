@@ -51,6 +51,7 @@ const test_parser = @import("test_parser.zig");
 const config = @import("config.zig");
 const wpt_server = @import("wpt_server.zig");
 const fetch = @import("fetch");
+const clock = @import("clock");
 
 const log = std.log.scoped(.wpt_browser);
 
@@ -311,7 +312,7 @@ pub const WptBrowser = struct {
         // synchronous subtests it starts after the work is already done, so on
         // its own it makes the most expensive files look free. Timing the two
         // phases ahead of it is what makes the per-file cost add up.
-        var phase = std.time.Timer.start() catch null;
+        var phase = clock.Timer.start();
 
         // Navigate to test URL with skip_load so we can inject testharness first
         try self.browser.navigateWithOptions(test_url, context_type, .{
@@ -365,7 +366,7 @@ pub const WptBrowser = struct {
     ///
     /// Null timers report zero rather than failing the run: losing a phase
     /// breakdown is not worth losing a test result over.
-    fn lapMs(timer: *?std.time.Timer) u64 {
+    fn lapMs(timer: *?clock.Timer) u64 {
         // Capture by pointer: `timer.* orelse ...` would lap a copy and the
         // next phase would be measured from the wrong origin.
         if (timer.*) |*t| return t.lap() / std.time.ns_per_ms;
@@ -615,7 +616,7 @@ pub const WptBrowser = struct {
     /// @param test_path Test path for error reporting
     /// @return TestResult with test results or timeout status
     fn waitForCompletion(self: *WptBrowser, ctx: *Context, timeout_ms: u64, test_path: []const u8) !test_harness.TestResult {
-        const start_time = std.time.milliTimestamp();
+        const start_time = clock.monotonicMillis();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
 
         // Polling interval for completion check
@@ -624,7 +625,7 @@ pub const WptBrowser = struct {
         const check_interval_ms: u64 = 50;
 
         while (true) {
-            const now = std.time.milliTimestamp();
+            const now = clock.monotonicMillis();
             if (now >= deadline) {
                 break;
             }
@@ -649,7 +650,7 @@ pub const WptBrowser = struct {
         }
 
         // Timeout
-        const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
+        const duration = @as(u64, @intCast(clock.monotonicMillis() - start_time));
         var result = try test_harness.TestResult.init(self.allocator, test_path);
         result.status = .timeout;
         result.message = try std.fmt.allocPrint(self.allocator, "Test timed out after {}ms", .{timeout_ms});
@@ -672,7 +673,7 @@ pub const WptBrowser = struct {
 
     /// Collect test results from window.__wpt_results
     fn collectResults(self: *WptBrowser, ctx: *Context, start_time: i64, test_path: []const u8) !test_harness.TestResult {
-        const duration = @as(u64, @intCast(std.time.milliTimestamp() - start_time));
+        const duration = @as(u64, @intCast(clock.monotonicMillis() - start_time));
 
         // Get results JSON
         const json_script =
@@ -779,7 +780,7 @@ pub const WptBrowser = struct {
 
         // Get subtests (Zig 0.15 ArrayList is unmanaged by default)
         // Note: We don't defer deinit here because ownership transfers to result
-        var subtests: std.ArrayList(test_harness.SubtestResult) = .{};
+        var subtests: std.ArrayList(test_harness.SubtestResult) = .empty;
         errdefer subtests.deinit(self.allocator);
 
         if (root.object.get("tests")) |tests| {

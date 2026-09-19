@@ -18,12 +18,13 @@
 //! ## Implementation Notes
 //!
 //! - All times are in nanoseconds internally for maximum precision
-//! - Zig's std.time.nanoTimestamp() provides monotonic time
+//! - src/platform/clock.zig provides the monotonic and wall clocks over libc
 //! - For wall clock, we use platform-specific realtime clocks
 //! - Times are converted to milliseconds (f64) for DOMHighResTimeStamp
 
 const std = @import("std");
 const builtin = @import("builtin");
+const platform_clock = @import("clock");
 
 /// Nanoseconds type for internal time representation
 pub const Nanoseconds = i128;
@@ -46,7 +47,11 @@ pub const MonotonicClock = struct {
     /// Per spec: This is an "unsafe moment" that should be coarsened
     /// before being exposed to JavaScript.
     pub fn unsafeCurrentTime() Nanoseconds {
-        return std.time.nanoTimestamp();
+        // Genuinely monotonic. This previously returned std.time.nanoTimestamp(),
+        // which is the WALL clock despite the file header claiming otherwise - so
+        // performance.now() could go backwards across an NTP step, violating the
+        // monotonicity the HR-Time spec requires of the monotonic clock.
+        return platform_clock.monotonicNanos();
     }
 };
 
@@ -91,48 +96,20 @@ fn getRealtimeNanoseconds() Nanoseconds {
             return getRealtimeWindows();
         },
         else => {
-            // Fallback: use monotonic time (less accurate for wall clock)
-            // This is acceptable for testing but not ideal for production
-            return std.time.nanoTimestamp();
+            return platform_clock.wallNanos();
         },
     }
 }
 
 /// Get realtime on POSIX systems using clock_gettime(CLOCK_REALTIME)
 fn getRealtimePosix() Nanoseconds {
-    const c = @cImport({
-        @cInclude("time.h");
-    });
-
-    var ts: c.struct_timespec = undefined;
-    const result = c.clock_gettime(c.CLOCK_REALTIME, &ts);
-    if (result != 0) {
-        // Fallback to monotonic if realtime fails
-        return std.time.nanoTimestamp();
-    }
-
-    const seconds: i128 = @intCast(ts.tv_sec);
-    const nanoseconds: i128 = @intCast(ts.tv_nsec);
-    return seconds * std.time.ns_per_s + nanoseconds;
+    return platform_clock.wallNanos();
 }
 
 /// Get realtime on Darwin (macOS/iOS) using clock_gettime(CLOCK_REALTIME)
 /// macOS 10.12+ supports clock_gettime
 fn getRealtimeDarwin() Nanoseconds {
-    const c = @cImport({
-        @cInclude("time.h");
-    });
-
-    var ts: c.struct_timespec = undefined;
-    const result = c.clock_gettime(c.CLOCK_REALTIME, &ts);
-    if (result != 0) {
-        // Fallback to monotonic if realtime fails
-        return std.time.nanoTimestamp();
-    }
-
-    const seconds: i128 = @intCast(ts.tv_sec);
-    const nanoseconds: i128 = @intCast(ts.tv_nsec);
-    return seconds * std.time.ns_per_s + nanoseconds;
+    return platform_clock.wallNanos();
 }
 
 /// Get realtime on Windows using GetSystemTimePreciseAsFileTime

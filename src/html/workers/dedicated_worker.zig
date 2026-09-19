@@ -489,7 +489,7 @@ pub const DedicatedWorker = struct {
         port: *message_channel.WorkerPort,
         msg: *message_channel.QueuedMessage,
     };
-    threadlocal var pending_messages: std.ArrayListUnmanaged(PendingMessage) = .{};
+    threadlocal var pending_messages: std.ArrayListUnmanaged(PendingMessage) = .empty;
 
     /// Post a message from worker back to owner (called from inside the worker).
     ///
@@ -573,7 +573,7 @@ pub const DedicatedWorker = struct {
     /// Flush pending messages and return the unique ports that received messages.
     /// This allows callers to process messages on all affected ports.
     pub fn flushPendingMessagesAndGetPorts(allocator: std.mem.Allocator) !std.ArrayListUnmanaged(*message_channel.WorkerPort) {
-        var ports = std.ArrayListUnmanaged(*message_channel.WorkerPort){};
+        var ports: std.ArrayListUnmanaged(*message_channel.WorkerPort) = .empty;
         errdefer ports.deinit(allocator);
 
         for (pending_messages.items) |pending| {

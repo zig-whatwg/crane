@@ -44,6 +44,7 @@ const std = @import("std");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const intl_binding = @import("intl_binding.zig");
+const clock = @import("clock");
 
 /// Tracked snapshot data for cleanup
 /// V8 requires snapshot data to remain valid for the isolate's lifetime,
@@ -126,12 +127,12 @@ pub const SnapshotError = error{
 ///
 /// The caller is responsible for disposing the isolate and context.
 pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitResult {
-    const start_time = std.time.milliTimestamp();
+    const start_time = clock.monotonicMillis();
 
     // Try embedded snapshot first
     if (options.embedded_snapshot) |snapshot_data| {
         if (try initFromSnapshotData(snapshot_data, options.log_performance)) |result| {
-            const elapsed = std.time.milliTimestamp() - start_time;
+            const elapsed = clock.monotonicMillis() - start_time;
             return .{
                 .isolate = result.isolate,
                 .context = result.context,
@@ -144,7 +145,7 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
     // Try loading from file
     if (options.snapshot_path) |path| {
         if (try initFromSnapshotFile(allocator, path, options.log_performance)) |result| {
-            const elapsed = std.time.milliTimestamp() - start_time;
+            const elapsed = clock.monotonicMillis() - start_time;
             return .{
                 .isolate = result.isolate,
                 .context = result.context,
@@ -167,7 +168,7 @@ pub fn initializeV8(allocator: std.mem.Allocator, options: InitOptions) !InitRes
         return error.ContextCreationFailed;
     };
 
-    const elapsed = std.time.milliTimestamp() - start_time;
+    const elapsed = clock.monotonicMillis() - start_time;
 
     return .{
         .isolate = isolate,

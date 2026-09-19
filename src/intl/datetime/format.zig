@@ -364,7 +364,7 @@ pub const DateTimeFormat = struct {
         allocator: Allocator,
         locales: []const []const u8,
     ) ![][]const u8 {
-        var result: std.ArrayList([]const u8) = .{};
+        var result: std.ArrayList([]const u8) = .empty;
         errdefer {
             for (result.items) |item| allocator.free(item);
             result.deinit(allocator);

@@ -28,6 +28,7 @@ const fetch_params = @import("../internal/fetch_params.zig");
 const FetchParams = fetch_params.FetchParams;
 const scheme_fetch = @import("scheme_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
+const clock = @import("clock");
 
 /// Bad ports that should be blocked per Fetch spec.
 /// These are ports commonly associated with protocols that shouldn't
@@ -349,8 +350,8 @@ fn isNetworkError(response: *InternalResponse) bool {
 
 /// Get current time in milliseconds (DOMHighResTimeStamp format).
 fn getCurrentTimeMs() f64 {
-    // std.time.timestamp() returns seconds, convert to milliseconds
-    return @as(f64, @floatFromInt(std.time.timestamp())) * 1000.0;
+    // clock.wallSeconds() returns seconds, convert to milliseconds
+    return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
 }
 
 // =============================================================================

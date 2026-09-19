@@ -160,7 +160,7 @@ pub const FileSystemWritableFileStream = struct {
         file_entry: *FileEntry,
         keep_existing_data: bool,
     ) !Self {
-        var buffer = std.ArrayListUnmanaged(u8){};
+        var buffer: std.ArrayListUnmanaged(u8) = .empty;
         errdefer buffer.deinit(allocator);
 
         // If keeping existing data, copy it to the buffer

@@ -114,7 +114,7 @@ pub const IDBObjectStore = struct {
             .compound_key_path = null,
             .auto_increment = false,
             .indexes = std.StringHashMap(*IDBIndex).init(allocator),
-            .records = .{},
+            .records = .empty,
             .key_generator = 1,
         };
     }

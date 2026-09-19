@@ -87,7 +87,7 @@ pub const Job = struct {
             .job_type = job_type,
             .storage_key = storage_key_copy,
             .scope_url = scope_url_copy,
-            .equivalent_jobs = .{},
+            .equivalent_jobs = .empty,
         };
         next_id += 1;
 
@@ -214,7 +214,7 @@ pub const JobQueue = struct {
         self.* = .{
             .allocator = allocator,
             .scope_url = try allocator.dupe(u8, scope_url),
-            .jobs = .{},
+            .jobs = .empty,
         };
 
         return self;

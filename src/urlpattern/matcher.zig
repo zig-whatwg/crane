@@ -64,7 +64,7 @@ pub const URLPatternComponentResult = struct {
             .groups = .{},
             ._allocator = allocator,
             ._owned_input = null,
-            ._owned_group_values = .{},
+            ._owned_group_values = .empty,
         };
     }
 
@@ -352,7 +352,7 @@ fn parseURLComponents(url: []const u8) URLParts {
         .search = "",
         .hash = "",
         ._allocator = null,
-        ._owned_slices = .{},
+        ._owned_slices = .empty,
     };
 
     var remaining = url;
@@ -470,7 +470,7 @@ fn parseInput(
                 .search = parsed.search,
                 .hash = parsed.hash,
                 ._allocator = null,
-                ._owned_slices = .{},
+                ._owned_slices = .empty,
             };
         },
         .init => |init| {
@@ -498,7 +498,7 @@ fn parseInput(
                     .search = init.search orelse base_parsed.search,
                     .hash = init.hash orelse base_parsed.hash,
                     ._allocator = null,
-                    ._owned_slices = .{},
+                    ._owned_slices = .empty,
                 };
             }
 
@@ -516,7 +516,7 @@ fn parseInput(
                 .search = init.search orelse "",
                 .hash = init.hash orelse "",
                 ._allocator = null,
-                ._owned_slices = .{},
+                ._owned_slices = .empty,
             };
         },
     }

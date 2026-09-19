@@ -392,7 +392,7 @@ pub const WritableStreamHandle = struct {
     /// Allocator for operations
     allocator: std.mem.Allocator,
     /// Buffer for writes (temp file simulation)
-    write_buffer: std.ArrayListUnmanaged(u8) = .{},
+    write_buffer: std.ArrayListUnmanaged(u8) = .empty,
     /// Current cursor position
     cursor_position: u64 = 0,
     /// Whether the stream has been closed
@@ -560,7 +560,7 @@ pub const SyncAccessHandle = struct {
         const position = options.at orelse self.cursor_position;
 
         // Get current data
-        var current_data = std.ArrayListUnmanaged(u8){};
+        var current_data: std.ArrayListUnmanaged(u8) = .empty;
         defer current_data.deinit(self.allocator);
         try current_data.appendSlice(self.allocator, self.file_entry.data());
 
@@ -600,7 +600,7 @@ pub const SyncAccessHandle = struct {
             try self.file_entry.setData(current_data[0..size]);
         } else if (size > current_data.len) {
             // Grow with zeros
-            var new_data = std.ArrayListUnmanaged(u8){};
+            var new_data: std.ArrayListUnmanaged(u8) = .empty;
             defer new_data.deinit(self.allocator);
             try new_data.appendSlice(self.allocator, current_data);
             try new_data.appendNTimes(self.allocator, 0, size - current_data.len);

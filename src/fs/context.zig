@@ -51,7 +51,7 @@ pub const FileSystemQueue = struct {
     /// Create a new file system queue
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .tasks = .{},
+            .tasks = .empty,
             .mutex = .{},
             .allocator = allocator,
         };

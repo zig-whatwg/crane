@@ -150,7 +150,7 @@ pub const PermissionStorage = struct {
         defer self.allocator.free(origin_str);
 
         // Remove matching entries from cache
-        var to_remove: std.ArrayListUnmanaged(PermissionKey) = .{};
+        var to_remove: std.ArrayListUnmanaged(PermissionKey) = .empty;
         defer to_remove.deinit(self.allocator);
 
         var iter = self.cache.iterator();

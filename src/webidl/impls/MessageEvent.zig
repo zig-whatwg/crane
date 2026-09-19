@@ -24,6 +24,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const clock = @import("clock");
 const MessageEvent = interfaces.MessageEvent;
 
 pub const State = MessageEvent.State;
@@ -122,7 +123,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     // Initialize base Event attributes (Event fields in state.base.own)
     state.base.own.type = try @"type".clone(ctx.allocator);
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = false;
     state.base.own.target = null;
     state.base.own.srcElement = null;
@@ -308,7 +309,7 @@ pub fn createTextMessageEvent(
 
     // Set event type to "message" (Event fields in state.base.own)
     state.base.own.type = try allocator.dupe(u8, "message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true;
     state.base.own.target = null;
     state.base.own.srcElement = null;
@@ -354,7 +355,7 @@ pub fn createBinaryMessageEvent(
 
     // Set event type to "message" (Event fields in state.base.own)
     state.base.own.type = try allocator.dupe(u8, "message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true;
     state.base.own.target = null;
     state.base.own.srcElement = null;
@@ -408,7 +409,7 @@ pub fn createPostMessageEvent(
 
     // Set event type to "message" (Event fields in state.base.own)
     state.base.own.type = runtime.DOMString.initInterned("message");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true; // Browser-initiated
     state.base.own.target = null;
     state.base.own.srcElement = null;

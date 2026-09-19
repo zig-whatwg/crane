@@ -33,6 +33,7 @@
 
 const std = @import("std");
 const browser_mod = @import("browser");
+const clock = @import("clock");
 const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
 
@@ -91,7 +92,7 @@ test "context creation benchmark: Browser.init() time" {
     var max_ns: u64 = 0;
 
     for (0..iterations) |_| {
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
 
         var browser = Browser.init(allocator, .{
             .persist_storage = false, // Use memory-only storage
@@ -104,7 +105,7 @@ test "context creation benchmark: Browser.init() time" {
             return err;
         };
 
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
         browser.deinit();
 
         const elapsed: u64 = @intCast(end - start);
@@ -164,12 +165,12 @@ test "context creation benchmark: Context.init() time (per-navigation)" {
         // Note: Always use about:blank as it's the only "about:" scheme fully supported
         const url = "about:blank";
 
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
         browser.navigate(url, .window) catch |err| {
             std.debug.print("Navigation failed: {}\n", .{err});
             return err;
         };
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
 
         const elapsed: u64 = @intCast(end - start);
         total_ns += elapsed;
@@ -234,7 +235,7 @@ test "context creation benchmark: Rapid context switching" {
     var max_ns: u64 = 0;
 
     for (0..iterations) |_| {
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
 
         // Navigate (create new context, destroy old one)
         browser.navigate("about:blank", .window) catch |err| {
@@ -245,7 +246,7 @@ test "context creation benchmark: Rapid context switching" {
         // Simulate minimal test execution
         _ = browser.evaluateScript("1 + 1") catch {};
 
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
 
         const elapsed: u64 = @intCast(end - start);
         total_ns += elapsed;
@@ -290,7 +291,7 @@ test "context creation benchmark: Snapshot performance comparison" {
     std.debug.print("\n\nComparing performance with and without snapshots...\n", .{});
 
     // Test WITHOUT snapshot (consistent baseline)
-    const no_snapshot_start = std.time.nanoTimestamp();
+    const no_snapshot_start = clock.monotonicNanos();
     var browser_no_snap = Browser.init(allocator, .{
         .persist_storage = false,
         .snapshot_path = "", // Explicitly disable
@@ -301,12 +302,12 @@ test "context creation benchmark: Snapshot performance comparison" {
         }
         return err;
     };
-    const no_snapshot_end = std.time.nanoTimestamp();
+    const no_snapshot_end = clock.monotonicNanos();
     const no_snapshot_time = @as(f64, @floatFromInt(no_snapshot_end - no_snapshot_start)) / 1_000_000.0;
     browser_no_snap.deinit();
 
     // Test WITH snapshot (if available)
-    const with_snapshot_start = std.time.nanoTimestamp();
+    const with_snapshot_start = clock.monotonicNanos();
     var browser_with_snap = Browser.init(allocator, .{
         .persist_storage = false,
         .snapshot_path = null, // Auto-detect snapshot
@@ -316,7 +317,7 @@ test "context creation benchmark: Snapshot performance comparison" {
         }
         return err;
     };
-    const with_snapshot_end = std.time.nanoTimestamp();
+    const with_snapshot_end = clock.monotonicNanos();
     const with_snapshot_time = @as(f64, @floatFromInt(with_snapshot_end - with_snapshot_start)) / 1_000_000.0;
     const used_snapshot = browser_with_snap.isUsingSnapshot();
     browser_with_snap.deinit();

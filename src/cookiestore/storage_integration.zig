@@ -65,7 +65,7 @@ pub const CookieStorageArea = struct {
 
     /// Serialize a cookie to JSON
     pub fn serializeCookie(allocator: std.mem.Allocator, cookie: Cookie) ![]u8 {
-        var list = std.ArrayListUnmanaged(u8){};
+        var list: std.ArrayListUnmanaged(u8) = .empty;
         errdefer list.deinit(allocator);
 
         const writer = list.writer(allocator);

@@ -15,6 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const cookiestore = @import("cookiestore");
+const clock = @import("clock");
 const ExtendableCookieChangeEvent = interfaces.ExtendableCookieChangeEvent;
 const CookieListItem = cookiestore.CookieListItem;
 
@@ -41,8 +42,8 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) !*InternalState {
         const internal = try allocator.create(InternalState);
         internal.* = InternalState{
-            .changed = .{},
-            .deleted = .{},
+            .changed = .empty,
+            .deleted = .empty,
             .allocator = allocator,
         };
         return internal;
@@ -132,7 +133,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     event_state.returnValue = true;
     event_state.defaultPrevented = false;
     event_state.isTrusted = false;
-    event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Process eventInitDict if provided
     if (eventInitDict.was_passed) {
@@ -216,7 +217,7 @@ pub fn createFromChanges(
     event_state.bubbles = false;
     event_state.cancelable = false;
     event_state.isTrusted = true;
-    event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    event_state.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Separate changed and deleted
     for (changed) |change| {

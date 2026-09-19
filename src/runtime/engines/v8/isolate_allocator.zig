@@ -54,7 +54,7 @@ const AllocatorData = struct {
     arena: std.heap.ArenaAllocator,
 
     /// General purpose allocator for long-lived objects
-    gpa: std.heap.GeneralPurposeAllocator(.{}),
+    gpa: std.heap.DebugAllocator(.{}),
 
     /// Whether this uses an arena or GPA
     use_arena: bool,
@@ -101,7 +101,7 @@ pub fn initIsolateAllocator(
             .allocator = undefined, // Set below
             .parent = parent,
             .arena = undefined,
-            .gpa = std.heap.GeneralPurposeAllocator(.{}){},
+            .gpa = .init,
             .use_arena = false,
         };
         data.allocator = data.gpa.allocator();

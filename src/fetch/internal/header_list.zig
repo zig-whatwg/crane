@@ -55,7 +55,7 @@ pub const HeaderList = struct {
     pub fn init(allocator: Allocator) HeaderList {
         return .{
             .allocator = allocator,
-            .entries = .{},
+            .entries = .empty,
         };
     }
 
@@ -89,7 +89,7 @@ pub const HeaderList = struct {
     /// Returns null if no header with name exists.
     /// Caller owns returned memory.
     pub fn get(self: *const HeaderList, allocator: Allocator, name: []const u8) !?[]const u8 {
-        var values = std.ArrayListUnmanaged([]const u8){};
+        var values: std.ArrayListUnmanaged([]const u8) = .empty;
         defer values.deinit(allocator);
 
         for (self.entries.items) |header| {
@@ -126,7 +126,7 @@ pub const HeaderList = struct {
     /// Returns a list of all Set-Cookie values.
     /// Caller owns returned memory.
     pub fn getSetCookie(self: *const HeaderList, allocator: Allocator) ![]const []const u8 {
-        var values = std.ArrayListUnmanaged([]const u8){};
+        var values: std.ArrayListUnmanaged([]const u8) = .empty;
         errdefer {
             for (values.items) |v| allocator.free(v);
             values.deinit(allocator);
@@ -163,7 +163,7 @@ pub const HeaderList = struct {
         // (In Zig, bytes are already the "decoded" representation)
         const input = value;
 
-        var values = std.ArrayListUnmanaged([]const u8){};
+        var values: std.ArrayListUnmanaged([]const u8) = .empty;
         errdefer {
             for (values.items) |v| allocator.free(v);
             values.deinit(allocator);
@@ -173,7 +173,7 @@ pub const HeaderList = struct {
         var position: usize = 0;
 
         // Step 4: Let `temporaryValue` be the empty string
-        var temporary_value = std.ArrayListUnmanaged(u8){};
+        var temporary_value: std.ArrayListUnmanaged(u8) = .empty;
         defer temporary_value.deinit(allocator);
 
         // Step 5: While true
@@ -331,7 +331,7 @@ pub const HeaderList = struct {
         var names_set = std.StringHashMap(void).init(allocator);
         defer names_set.deinit();
 
-        var lowercase_names = std.ArrayListUnmanaged([]const u8){};
+        var lowercase_names: std.ArrayListUnmanaged([]const u8) = .empty;
         defer {
             for (lowercase_names.items) |n| allocator.free(n);
             lowercase_names.deinit(allocator);
@@ -413,7 +413,7 @@ pub const HeaderList = struct {
     /// Collect an HTTP quoted string from input starting at position.
     /// Spec: https://fetch.spec.whatwg.org/#collect-an-http-quoted-string
     fn collectHttpQuotedString(allocator: Allocator, input: []const u8, position: *usize) ![]const u8 {
-        var result = std.ArrayListUnmanaged(u8){};
+        var result: std.ArrayListUnmanaged(u8) = .empty;
         errdefer result.deinit(allocator);
 
         // Step 1: Assert position is at "

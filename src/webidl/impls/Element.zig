@@ -319,7 +319,7 @@ pub const InternalState = struct {
 
         // Spill to heap
         if (self.heap_attrs == null) {
-            self.heap_attrs = std.ArrayList(AttributeEntry){};
+            self.heap_attrs = std.ArrayList(AttributeEntry).empty;
         }
         try self.heap_attrs.?.append(self.allocator, entry);
     }

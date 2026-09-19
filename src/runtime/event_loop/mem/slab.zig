@@ -118,7 +118,7 @@ pub const SlabAllocator = struct {
     pub fn init(upstream: std.mem.Allocator, config: Config) !Self {
         var allocator = Self{
             .config = config,
-            .slabs = .{},
+            .slabs = .empty,
             .free_list_head = Atomic(?*Block).init(null),
             .upstream = upstream,
             .slab_mutex = .{},

@@ -40,6 +40,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const test_harness = @import("test_harness.zig");
 const config = @import("config.zig");
+const clock = @import("clock");
 
 // =============================================================================
 // Lone Surrogate Sanitization
@@ -62,7 +63,7 @@ pub fn sanitizeLoneSurrogates(allocator: std.mem.Allocator, input: []const u8) !
         return try allocator.dupe(u8, input);
     }
 
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -417,8 +418,8 @@ pub const WptReport = struct {
         return WptReport{
             .allocator = allocator,
             .run_info = RunInfo.getDefault(),
-            .time_start = std.time.milliTimestamp(),
-            .results = .{},
+            .time_start = clock.wallMillis(),
+            .results = .empty,
         };
     }
 
@@ -431,7 +432,7 @@ pub const WptReport = struct {
 
     /// Mark the end of the test run
     pub fn finish(self: *WptReport) void {
-        self.time_end = std.time.milliTimestamp();
+        self.time_end = clock.wallMillis();
     }
 
     /// Add a test result from the harness collector
@@ -463,7 +464,7 @@ pub const WptReport = struct {
             .message = if (harness_result.message) |m| try self.allocator.dupe(u8, m) else null,
             .expected = test_expected,
             .duration = harness_result.duration_ms,
-            .subtests = .{},
+            .subtests = .empty,
         };
 
         for (harness_result.subtests.items) |sub| {
@@ -510,7 +511,7 @@ pub const WptReport = struct {
         }
 
         // Build JSON string first, then write to file
-        var json_buf: std.ArrayList(u8) = .{};
+        var json_buf: std.ArrayList(u8) = .empty;
         defer json_buf.deinit(self.allocator);
 
         try self.writeJsonToArrayList(&json_buf);

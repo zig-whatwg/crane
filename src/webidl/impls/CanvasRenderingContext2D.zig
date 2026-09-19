@@ -736,7 +736,7 @@ fn iterateToF64Array(
     const value_str = v8.ffi.v8_String_NewFromUtf8(isolate, "value", 5) orelse return error.TypeError;
 
     // Collect values by iterating
-    var values: std.ArrayList(f64) = .{};
+    var values: std.ArrayList(f64) = .empty;
     defer values.deinit(allocator);
 
     const max_iterations: usize = 10000; // Safety limit

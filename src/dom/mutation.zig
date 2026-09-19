@@ -490,7 +490,7 @@ fn createNodeListFromBases(
     nodes: []const *NodeBase,
 ) !*runtime.Instance {
     // Collect instances from the NodeBase array
-    var instances: std.ArrayList(*runtime.Instance) = .{};
+    var instances: std.ArrayList(*runtime.Instance) = .empty;
     defer instances.deinit(allocator);
 
     for (nodes) |node_base_ptr| {

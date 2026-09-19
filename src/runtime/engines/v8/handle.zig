@@ -75,11 +75,13 @@ pub const V8Handle = struct {
 
         /// Decrement reference count, dispose if zero
         pub fn unref(self: *Inner) void {
-            // fetchSub returns the OLD value, so check if it was 1
-            if (self.ref_count.fetchSub(1, .release) == 1) {
-                // Ensure all writes are visible before cleanup
-                std.atomic.fence(.acquire);
-
+            // fetchSub returns the OLD value, so check if it was 1.
+            //
+            // Zig 0.16 removed `std.atomic.fence` (and `@fence` before it), so the
+            // standard release-decrement + acquire-fence-before-destroy pair is folded
+            // into a single `.acq_rel` RMW. The acquire half makes every other owner's
+            // writes visible to this thread before we dispose and free.
+            if (self.ref_count.fetchSub(1, .acq_rel) == 1) {
                 // Dispose the V8 Global handle
                 self.dispose();
 

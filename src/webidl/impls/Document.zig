@@ -335,8 +335,8 @@ pub const InternalState = struct {
             .ready_state = ._loading_,
             .document_element = null,
             .doctype = null,
-            .ranges = .{},
-            .node_iterators = .{},
+            .ranges = .empty,
+            .node_iterators = .empty,
             // HTML properties
             .title = runtime.DOMString.initEmpty(),
             .dir = runtime.DOMString.initEmpty(),
@@ -370,9 +370,9 @@ pub const InternalState = struct {
             .cookies = std.StringHashMap([]const u8).init(allocator),
             // Script execution state
             .pending_parsing_blocking_script = null,
-            .scripts_to_execute_asap = .{},
-            .scripts_to_execute_in_order_asap = .{},
-            .scripts_to_execute_when_parsing_finished = .{},
+            .scripts_to_execute_asap = .empty,
+            .scripts_to_execute_in_order_asap = .empty,
+            .scripts_to_execute_when_parsing_finished = .empty,
             .current_script = null,
             .ignore_destructive_writes_counter = 0,
             .throw_on_dynamic_markup_insertion_counter = 0,
@@ -380,7 +380,7 @@ pub const InternalState = struct {
             .insertion_point = null,
             .is_script_created_parser = false,
             .active_parser_was_aborted = false,
-            .write_buffer = .{},
+            .write_buffer = .empty,
             .input_stream_manager = null,
             .scripting_enabled = true, // Default to true for browser environments
             // Module map and import map
@@ -1090,7 +1090,7 @@ fn stripAndCollapseWhitespace(allocator: std.mem.Allocator, input: []const u8) !
         return try allocator.dupe(u8, "");
     }
 
-    var result = std.ArrayListUnmanaged(u8){};
+    var result = std.ArrayListUnmanaged(u8).empty;
     errdefer result.deinit(allocator);
 
     var in_whitespace = true; // Skip leading whitespace

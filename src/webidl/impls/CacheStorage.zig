@@ -122,7 +122,7 @@ pub fn call_keys(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Note: StringHashMapUnmanaged doesn't preserve insertion order, but the spec
     // requires keys to be returned in creation order. For a full implementation,
     // we would need to maintain an ordered list of cache names.
-    var names = std.ArrayListUnmanaged([]const u8){};
+    var names = std.ArrayListUnmanaged([]const u8).empty;
     defer names.deinit(internal.allocator);
 
     var iter = internal.caches.keyIterator();

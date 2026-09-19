@@ -50,8 +50,8 @@ const TestDocument = struct {
                 .owner_document = null,
                 .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
             },
-            .children = .{},
-            .elements = .{},
+            .children = .empty,
+            .elements = .empty,
         };
     }
 
@@ -131,7 +131,7 @@ const TestDocument = struct {
 
     /// Get elements by tag name (tree traversal)
     pub fn getElementsByTagName(self: *TestDocument, tag_name: []const u8) !std.ArrayListUnmanaged(*ElementWithBase) {
-        var results = std.ArrayListUnmanaged(*ElementWithBase){};
+        var results: std.ArrayListUnmanaged(*ElementWithBase) = .empty;
         errdefer results.deinit(self.allocator);
 
         // Traverse all children of root
@@ -145,7 +145,7 @@ const TestDocument = struct {
 
     /// Get elements by multiple tag names
     pub fn getElementsByTagNames(self: *TestDocument, tag_names: []const []const u8) !std.ArrayListUnmanaged(*ElementWithBase) {
-        var results = std.ArrayListUnmanaged(*ElementWithBase){};
+        var results: std.ArrayListUnmanaged(*ElementWithBase) = .empty;
         errdefer results.deinit(self.allocator);
 
         // Traverse all children of root

@@ -370,7 +370,7 @@ pub const TransactionQueue = struct {
 
     pub fn init(allocator: std.mem.Allocator, transaction_id: u64) Self {
         return Self{
-            .requests = .{},
+            .requests = .empty,
             .transaction_id = transaction_id,
             .allocator = allocator,
             .next_request_id = 1,

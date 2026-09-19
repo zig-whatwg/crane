@@ -24,6 +24,12 @@
 //! Cross-origin access is blocked by URL resolution.
 
 const std = @import("std");
+const clock = @import("clock");
+/// getentropy(2). POSIX-ish: Linux 3.17+/glibc 2.25+, macOS 10.12+, the BSDs.
+/// Returns 0 on success. Declared here because Zig 0.16's std.c does not expose it
+/// and std.Io.random requires an Io value that is not available at these call sites.
+extern "c" fn getentropy(buf: [*]u8, len: usize) c_int;
+
 const BlobData = @import("blob_internals.zig").BlobData;
 
 /// Entry in the blob URL store.
@@ -57,9 +63,14 @@ pub const BlobURLStore = struct {
     pub fn init(allocator: std.mem.Allocator) BlobURLStore {
         var prng = std.Random.DefaultPrng.init(blk: {
             var seed: u64 = undefined;
-            std.posix.getrandom(std.mem.asBytes(&seed)) catch {
-                seed = @intCast(std.time.milliTimestamp());
-            };
+            // std.posix.getrandom was removed in Zig 0.16; the replacement is
+            // std.Io.random, which needs an Io value this call site does not have.
+            // getentropy(2) is the libc primitive underneath both and needs none.
+            // Blob URLs must not be guessable, so the clock fallback below is a
+            // last resort, not the normal path.
+            if (getentropy(std.mem.asBytes(&seed).ptr, @sizeOf(u64)) != 0) {
+                seed = @intCast(clock.wallMillis());
+            }
             break :blk seed;
         });
 

@@ -11,6 +11,7 @@ const Allocator = std.mem.Allocator;
 const cache_key = @import("cache_key.zig");
 const CacheKey = cache_key.CacheKey;
 const cache_entry = @import("cache_entry.zig");
+const clock = @import("clock");
 const CacheEntry = cache_entry.CacheEntry;
 
 /// HTTP cache backend interface.
@@ -134,7 +135,7 @@ test "CacheBackend - interface through MemoryCacheBackend" {
 
     const backend = memoryCacheAsBackend(&memory);
 
-    const now = std.time.timestamp();
+    const now = clock.wallSeconds();
 
     // Create a key
     const key = try CacheKey.init(allocator, "https://example.com/api", "GET", null);

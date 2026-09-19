@@ -534,7 +534,7 @@ pub fn getOrCreateWithExternalEventLoop(
         .event_loop = null, // We don't own the external event loop
         .realm = null,
         .parent_entry = null,
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
     };
 
@@ -727,7 +727,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
         .event_loop = event_loop_ptr,
         .realm = realm,
         .parent_entry = null,
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
     };
 
@@ -882,7 +882,7 @@ pub fn createContext(
         .event_loop = null, // Will be set up separately if needed
         .realm = realm_instance,
         .parent_entry = parent,
-        .children = .{},
+        .children = .empty,
         .allocator = state.allocator,
     };
 
@@ -930,7 +930,7 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
         .event_loop = null, // Registered contexts don't have event loop
         .realm = null,
         .parent_entry = null,
-        .children = .{},
+        .children = .empty,
         .allocator = state.allocator,
     };
 
@@ -1862,7 +1862,7 @@ fn createWindowForExistingBrowsingContext(
         .event_loop = null,
         .realm = realm,
         .parent_entry = parent_entry,
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
         .window_instance = window_instance,
     };
@@ -2547,7 +2547,7 @@ pub fn createChildContext(
         .event_loop = null, // Child doesn't own event loop (inherits from parent or none)
         .realm = realm,
         .parent_entry = parent_entry, // Can set directly now - parent_entry is stable
-        .children = .{},
+        .children = .empty,
         .allocator = allocator,
         .window_instance = window_instance,
     };
@@ -2628,7 +2628,7 @@ pub fn destroyChildContext(entry: *ContextEntry, allocator: std.mem.Allocator) v
 
     // 1. Recursively destroy all children first
     // Make a copy of items since we're modifying while iterating
-    var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .{};
+    var children_copy: std.ArrayListUnmanaged(*ContextEntry) = .empty;
     children_copy.appendSlice(allocator, entry.children.items) catch {};
 
     for (children_copy.items) |child| {

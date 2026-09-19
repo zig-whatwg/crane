@@ -411,11 +411,11 @@ pub fn writeOverloadedOperationSignature(
     const allocator = std.heap.page_allocator;
 
     // Generate Args union type name: "StartArgs", "ItemArgs", etc.
-    var capitalized_name = std.ArrayList(u8).init(allocator);
-    defer capitalized_name.deinit();
-    try capitalized_name.append(std.ascii.toUpper(op_name[0]));
-    try capitalized_name.appendSlice(op_name[1..]);
-    try capitalized_name.appendSlice("Args");
+    var capitalized_name: std.ArrayList(u8) = .empty;
+    defer capitalized_name.deinit(allocator);
+    try capitalized_name.append(allocator, std.ascii.toUpper(op_name[0]));
+    try capitalized_name.appendSlice(allocator, op_name[1..]);
+    try capitalized_name.appendSlice(allocator, "Args");
 
     try writer.print("pub fn call_{s}(instance: *runtime.Instance, args: interfaces.{s}.{s}) ", .{
         op_name,

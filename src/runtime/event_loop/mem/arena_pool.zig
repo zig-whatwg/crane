@@ -109,8 +109,8 @@ pub const ArenaPool = struct {
     /// Pre-allocates `config.initial_capacity` arenas for immediate use.
     pub fn init(upstream: std.mem.Allocator, config: Config) !Self {
         var pool = Self{
-            .arenas = .{},
-            .available = .{},
+            .arenas = .empty,
+            .available = .empty,
             .upstream = upstream,
             .config = config,
             .mutex = .{},

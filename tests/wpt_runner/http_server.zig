@@ -99,7 +99,7 @@ pub const HttpResponse = struct {
     }
 
     pub fn serialize(self: *HttpResponse, allocator: Allocator) ![]u8 {
-        var result = std.ArrayListUnmanaged(u8){};
+        var result: std.ArrayListUnmanaged(u8) = .empty;
         errdefer result.deinit(allocator);
 
         // Status line
@@ -445,7 +445,7 @@ pub const HttpServer = struct {
         const js_url = try std.mem.concat(self.allocator, u8, &.{ "/", js_relative_path });
         defer self.allocator.free(js_url);
 
-        var html = std.ArrayListUnmanaged(u8){};
+        var html: std.ArrayListUnmanaged(u8) = .empty;
         errdefer html.deinit(self.allocator);
 
         try html.appendSlice(self.allocator, "<!DOCTYPE html>\n<html>\n<head>\n");
@@ -505,7 +505,7 @@ pub const HttpServer = struct {
         std.fs.cwd().access(full_path, .{}) catch return false;
 
         // Generate worker wrapper script
-        var script = std.ArrayListUnmanaged(u8){};
+        var script: std.ArrayListUnmanaged(u8) = .empty;
         errdefer script.deinit(self.allocator);
 
         // Set up GLOBAL object for WPT worker context
@@ -656,7 +656,7 @@ pub const HttpServer = struct {
     /// Perform WPT server-side substitutions on content
     /// Replaces {{var}} patterns with actual values
     fn performSubstitutions(self: *Self, content: []const u8) ![]u8 {
-        var result: std.ArrayListUnmanaged(u8) = .{};
+        var result: std.ArrayListUnmanaged(u8) = .empty;
         errdefer result.deinit(self.allocator);
 
         var i: usize = 0;

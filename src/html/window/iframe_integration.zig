@@ -29,6 +29,7 @@ const WindowProxy = @import("window_proxy.zig").WindowProxy;
 const Origin = @import("window_proxy.zig").Origin;
 const encoding_mod = @import("encoding");
 const html_parser = @import("../parser/root.zig");
+const clock = @import("clock");
 
 /// Error types for iframe integration
 pub const IFrameError = error{
@@ -623,7 +624,7 @@ pub const IFrameIntegration = struct {
     /// parent document's parsing (which normalizes to UTF-8).
     fn navigateToSrcdoc(self: *IFrameIntegration, content: []const u8) IFrameError!void {
         // Debug: trace what content is being parsed
-        const time_ns = std.time.nanoTimestamp();
+        const time_ns = clock.wallNanos();
         const preview_len = @min(150, content.len);
         log.debug("[navigateToSrcdoc] time={d}ns content_len={d} content={s}...\n", .{ time_ns, content.len, content[0..preview_len] });
 

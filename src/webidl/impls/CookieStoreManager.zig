@@ -101,7 +101,7 @@ pub const InternalState = struct {
         errdefer if (scope_copy) |s| allocator.free(s);
 
         internal.* = InternalState{
-            .subscriptions = .{},
+            .subscriptions = .empty,
             .scope_url = scope_copy,
             .is_secure_context = is_secure_context,
             .allocator = allocator,

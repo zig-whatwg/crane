@@ -30,6 +30,7 @@
 
 const std = @import("std");
 const standard = @import("standard.zig");
+const clock = @import("clock");
 
 /// Persistence mode for storage buckets
 /// Re-exported from standard for convenience
@@ -182,7 +183,7 @@ pub const PersistenceManager = struct {
             return .never;
         }
 
-        const now = std.time.milliTimestamp();
+        const now = clock.wallMillis();
         const idle_time = now - last_access;
 
         // Critical: not accessed in over 30 days
@@ -385,7 +386,7 @@ test "PersistenceManager - calculateEvictionPriority persistent" {
     const allocator = std.testing.allocator;
 
     var manager = PersistenceManager.init(allocator);
-    const priority = manager.calculateEvictionPriority(1024, std.time.milliTimestamp(), true);
+    const priority = manager.calculateEvictionPriority(1024, clock.wallMillis(), true);
 
     try std.testing.expectEqual(EvictionPriority.never, priority);
 }
@@ -394,7 +395,7 @@ test "PersistenceManager - calculateEvictionPriority recently used" {
     const allocator = std.testing.allocator;
 
     var manager = PersistenceManager.init(allocator);
-    const priority = manager.calculateEvictionPriority(1024, std.time.milliTimestamp(), false);
+    const priority = manager.calculateEvictionPriority(1024, clock.wallMillis(), false);
 
     try std.testing.expectEqual(EvictionPriority.never, priority);
 }
@@ -404,7 +405,7 @@ test "PersistenceManager - calculateEvictionPriority idle" {
 
     var manager = PersistenceManager.init(allocator);
     // 8 days ago
-    const old_time = std.time.milliTimestamp() - (8 * 24 * 60 * 60 * 1000);
+    const old_time = clock.wallMillis() - (8 * 24 * 60 * 60 * 1000);
     const priority = manager.calculateEvictionPriority(1024, old_time, false);
 
     try std.testing.expectEqual(EvictionPriority.high, priority);

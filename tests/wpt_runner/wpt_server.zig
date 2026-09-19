@@ -263,14 +263,25 @@ pub const WptServer = struct {
             std.fmt.allocPrint(allocator, "http://{s}:{d}", .{ WPT_HOST, self.port });
     }
 
-    /// Build a test URL from a test path and context type
+    /// Build a test URL from a test path, context type and variant.
     ///
     /// For .any.js tests, the WPT server generates different HTML wrappers:
     /// - Window context: test.any.html (runs test directly in window)
     /// - Worker context: test.any.worker.html (uses fetch_tests_from_worker)
     ///
     /// A `.https.` test is routed to the TLS listener; see `isHttpsTest`.
-    pub fn buildTestUrl(self: *WptServer, allocator: Allocator, test_path: []const u8, context: test_parser.GlobalType) ![]u8 {
+    ///
+    /// `variant` is one of the file's `<meta name="variant">` values, appended
+    /// verbatim after the wrapper suffix because it already carries its own `?`
+    /// or `#`. Empty means the file declares no variants, which is the common
+    /// case and leaves the URL exactly as it was before variants existed.
+    pub fn buildTestUrl(
+        self: *WptServer,
+        allocator: Allocator,
+        test_path: []const u8,
+        context: test_parser.GlobalType,
+        variant: []const u8,
+    ) ![]u8 {
         var url_path = test_path;
         var suffix: []const u8 = "";
 
@@ -292,12 +303,13 @@ pub const WptServer = struct {
         }
 
         const https = isHttpsTest(test_path);
-        return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}", .{
+        return std.fmt.allocPrint(allocator, "{s}://{s}:{d}/{s}{s}{s}", .{
             if (https) "https" else "http",
             WPT_HOST,
             if (https) self.https_port else self.port,
             url_path,
             suffix,
+            variant,
         });
     }
 };
@@ -383,31 +395,135 @@ test "WptServer.buildTestUrl" {
 
     // Window context (default for .any.js)
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.html", url);
     }
 
     // Worker context generates .any.worker.html
     {
-        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker);
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/url/url-constructor.any.worker.html", url);
     }
 
     // Window context for another .any.js test
     {
-        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "encoding/api-basics.any.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/encoding/api-basics.any.html", url);
     }
 
     // HTML files ignore context (always use raw path)
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8000/dom/nodes/Element-matches.html", url);
     }
+}
+
+test "buildTestUrl appends a variant verbatim" {
+    // A variant carries its own leading `?` or `#` - WPT writes them as
+    // `<meta name="variant" content="?include=file">` - so it is concatenated
+    // rather than joined. Anything that normalised it here would build a URL
+    // that is not the one MANIFEST.json lists.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    {
+        const url = try server.buildTestUrl(allocator, "encoding/single-byte-decoder.html", .window, "?windows-1252");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/encoding/single-byte-decoder.html?windows-1252",
+            url,
+        );
+    }
+
+    // A fragment variant is passed through untouched, not turned into a query.
+    {
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window, "#target");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/dom/nodes/Element-matches.html#target",
+            url,
+        );
+    }
+}
+
+test "buildTestUrl puts the variant after the generated wrapper suffix" {
+    // The path `wpt serve` routes on is the wrapper - `x.any.worker.html` - and
+    // the query is what the test reads back out of `location.search`. Appending
+    // the variant before the suffix would ask for `x.any?q=1.worker.html` and
+    // 404 every variant of every .any.js in the corpus.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .window, "?include=file");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/url/url-constructor.any.html?include=file",
+            url,
+        );
+    }
+    {
+        const url = try server.buildTestUrl(allocator, "url/url-constructor.any.js", .worker, "?include=file");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "http://web-platform.test:8000/url/url-constructor.any.worker.html?include=file",
+            url,
+        );
+    }
+    {
+        const url = try server.buildTestUrl(allocator, "html/dom/idlharness.https.window.js", .window, "?exclude=Node");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings(
+            "https://web-platform.test:8443/html/dom/idlharness.https.window.html?exclude=Node",
+            url,
+        );
+    }
+}
+
+test "buildTestUrl with an empty variant is byte-identical to no variant" {
+    // Two thirds of the corpus declares no variant and is modelled as declaring
+    // one empty one, so this is the path almost every test takes. It has to
+    // produce exactly the URL it produced before variants existed.
+    const allocator = std.testing.allocator;
+
+    const server = try WptServer.init(allocator, "tests/wpt");
+    defer server.deinit();
+
+    for ([_][]const u8{
+        "dom/nodes/Element-matches.html",
+        "url/url-constructor.any.js",
+        "fetch/api/basic/keepalive.https.any.js",
+    }) |path| {
+        for ([_]test_parser.GlobalType{ .window, .worker }) |ctx| {
+            const url = try server.buildTestUrl(allocator, path, ctx, "");
+            defer allocator.free(url);
+            try std.testing.expect(std.mem.indexOfScalar(u8, url, '?') == null);
+            try std.testing.expect(std.mem.endsWith(u8, url, ".html"));
+        }
+    }
+}
+
+test "a variant does not leak into the document origin" {
+    // Same-origin checks compare against `originFor`, which is derived from the
+    // path alone. If the query ever reached the origin string, every variant of
+    // every test would look cross-origin to its own blob URLs and workers.
+    const allocator = std.testing.allocator;
+
+    var server = WptServer{ .allocator = allocator, .wpt_root = "tests/wpt" };
+
+    const url = try server.buildTestUrl(allocator, "url/a-element.html", .window, "?include=file");
+    defer allocator.free(url);
+    const origin = try server.originFor(allocator, "url/a-element.html");
+    defer allocator.free(origin);
+    try std.testing.expectEqualStrings(origin, originOfUrl(url).?);
 }
 
 test "isHttpsTest keys off the filename, not the directory" {
@@ -435,7 +551,7 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
     defer server.deinit();
 
     {
-        const url = try server.buildTestUrl(allocator, "cookiestore/cookieStore_get_arguments.https.html", .window);
+        const url = try server.buildTestUrl(allocator, "cookiestore/cookieStore_get_arguments.https.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings(
             "https://web-platform.test:8443/cookiestore/cookieStore_get_arguments.https.html",
@@ -445,7 +561,7 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
 
     // The suffix rewrite for generated wrappers still applies under TLS.
     {
-        const url = try server.buildTestUrl(allocator, "fetch/api/basic/keepalive.https.any.js", .window);
+        const url = try server.buildTestUrl(allocator, "fetch/api/basic/keepalive.https.any.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings(
             "https://web-platform.test:8443/fetch/api/basic/keepalive.https.any.html",
@@ -453,7 +569,7 @@ test "a .https. test is fetched over TLS on the HTTPS port" {
         );
     }
     {
-        const url = try server.buildTestUrl(allocator, "html/dom/idlharness.https.window.js", .window);
+        const url = try server.buildTestUrl(allocator, "html/dom/idlharness.https.window.js", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings(
             "https://web-platform.test:8443/html/dom/idlharness.https.window.html",
@@ -494,12 +610,12 @@ test "a non-default port pair is carried into both schemes" {
     server.https_port = 8444;
 
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window);
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("http://web-platform.test:8001/dom/nodes/Element-matches.html", url);
     }
     {
-        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.https.html", .window);
+        const url = try server.buildTestUrl(allocator, "dom/nodes/Element-matches.https.html", .window, "");
         defer allocator.free(url);
         try std.testing.expectEqualStrings("https://web-platform.test:8444/dom/nodes/Element-matches.https.html", url);
     }
@@ -541,13 +657,13 @@ test "the origin of a built test URL is the origin the test will report" {
 
     var server = WptServer{ .allocator = allocator, .wpt_root = "tests/wpt" };
 
-    const plain = try server.buildTestUrl(allocator, "url/a-element.html", .window);
+    const plain = try server.buildTestUrl(allocator, "url/a-element.html", .window, "");
     defer allocator.free(plain);
     const plain_origin = try server.originFor(allocator, "url/a-element.html");
     defer allocator.free(plain_origin);
     try std.testing.expectEqualStrings(plain_origin, originOfUrl(plain).?);
 
-    const tls = try server.buildTestUrl(allocator, "fetch/api/basic/x.https.html", .window);
+    const tls = try server.buildTestUrl(allocator, "fetch/api/basic/x.https.html", .window, "");
     defer allocator.free(tls);
     const tls_origin = try server.originFor(allocator, "fetch/api/basic/x.https.html");
     defer allocator.free(tls_origin);

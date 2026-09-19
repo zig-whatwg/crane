@@ -128,7 +128,7 @@ pub const ConsoleState = struct {
         return .{
             .count_map = std.StringHashMap(u32).init(allocator),
             .timer_table = std.StringHashMap(i64).init(allocator),
-            .group_stack = .{}, // ArrayList has default empty initialization
+            .group_stack = .empty,
             .allocator = allocator,
         };
     }

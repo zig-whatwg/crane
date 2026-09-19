@@ -279,7 +279,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         .worker_instance = instance,
         .ctx = ctx,
         .isolate = current_isolate,
-        .pending_outgoing_messages = .{},
+        .pending_outgoing_messages = .empty,
     };
 
     // Store internal state in instance

@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const cache_control = @import("cache_control.zig");
+const clock = @import("clock");
 const CacheControl = cache_control.CacheControl;
 
 /// Represents timestamps for cache entry freshness calculations.
@@ -34,7 +35,7 @@ pub const CacheTiming = struct {
 
     /// Current time for age calculations
     pub fn now() i64 {
-        return std.time.timestamp();
+        return clock.wallSeconds();
     }
 };
 

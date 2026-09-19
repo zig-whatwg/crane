@@ -31,6 +31,7 @@ const std = @import("std");
 
 // Storage Standard types
 const standard = @import("../standard.zig");
+const clock = @import("clock");
 const StorageShed = standard.StorageShed;
 const StorageShelf = standard.StorageShelf;
 const StorageBucket = standard.StorageBucket;
@@ -70,11 +71,11 @@ pub const DatabaseMetadata = struct {
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8, version: u64) !Self {
         const name_copy = try allocator.dupe(u8, name);
-        const now = std.time.milliTimestamp();
+        const now = clock.wallMillis();
         return Self{
             .name = name_copy,
             .version = version,
-            .connections = .{},
+            .connections = .empty,
             .created_at = now,
             .modified_at = now,
             .allocator = allocator,
@@ -106,7 +107,7 @@ pub const DatabaseMetadata = struct {
 
     pub fn updateVersion(self: *Self, new_version: u64) void {
         self.version = new_version;
-        self.modified_at = std.time.milliTimestamp();
+        self.modified_at = clock.wallMillis();
     }
 };
 
@@ -283,7 +284,7 @@ pub const StorageIntegrationManager = struct {
         if (self.storage_areas.get(origin)) |area| {
             // Delete all databases
             var iter = area.databases.iterator();
-            var names_to_delete: std.ArrayListUnmanaged([]const u8) = .{};
+            var names_to_delete: std.ArrayListUnmanaged([]const u8) = .empty;
             defer names_to_delete.deinit(self.allocator);
 
             while (iter.next()) |entry| {

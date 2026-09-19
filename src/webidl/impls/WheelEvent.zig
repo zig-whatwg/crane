@@ -13,6 +13,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const WheelEvent = interfaces.WheelEvent;
 const EventImpl = @import("Event.zig");
+const clock = @import("clock");
 
 pub const State = WheelEvent.State;
 
@@ -96,7 +97,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.base.base.own.returnValue = true;
     state.base.base.base.own.defaultPrevented = false;
     state.base.base.base.own.isTrusted = false;
-    state.base.base.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.base.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Initialize UIEvent attributes (in state.base.base.own)
     state.base.base.own.view = ui_init.view;

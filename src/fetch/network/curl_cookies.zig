@@ -157,7 +157,7 @@ pub const CurlCookieManager = struct {
             .allocator = allocator,
             .mutex = .{},
             .persist_path = if (persist_path) |p| try allocator.dupe(u8, p) else null,
-            .change_listeners = .{},
+            .change_listeners = .empty,
         };
 
         return self;
@@ -447,7 +447,7 @@ pub fn parseNetscapeCookie(allocator: Allocator, line: []const u8) !Cookie {
 
 /// Format a Cookie as Set-Cookie header string for CURLOPT_COOKIELIST
 pub fn formatSetCookieString(allocator: Allocator, cookie: Cookie) ![]u8 {
-    var buf = std.ArrayListUnmanaged(u8){};
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buf.deinit(allocator);
 
     const writer = buf.writer(allocator);
@@ -489,7 +489,7 @@ pub fn formatSetCookieString(allocator: Allocator, cookie: Cookie) ![]u8 {
 pub fn formatDeleteCookie(allocator: Allocator, name: []const u8, domain: []const u8, path: []const u8) ![]u8 {
     // Netscape format: domain\tflag\tpath\tsecure\texpiry\tname\tvalue
     // Setting expiry to 1 (past) effectively deletes it
-    var buf = std.ArrayListUnmanaged(u8){};
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buf.deinit(allocator);
 
     const writer = buf.writer(allocator);

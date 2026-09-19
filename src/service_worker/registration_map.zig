@@ -110,7 +110,7 @@ pub const RegistrationMap = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        var result = std.ArrayListUnmanaged(*Registration){};
+        var result: std.ArrayListUnmanaged(*Registration) = .empty;
         errdefer result.deinit(self.allocator);
 
         const prefix = std.fmt.allocPrint(self.allocator, "{s}\x00", .{storage_key}) catch return &[_]*Registration{};

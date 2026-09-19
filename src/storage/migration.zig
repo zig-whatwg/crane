@@ -33,6 +33,7 @@
 
 const std = @import("std");
 const backend = @import("backend.zig");
+const clock = @import("clock");
 
 const StorageBackend = backend.StorageBackend;
 const BackendError = backend.BackendError;
@@ -149,7 +150,7 @@ pub fn migrate(
     options: MigrationOptions,
 ) MigrationError!MigrationStats {
     var stats = MigrationStats{};
-    const start_time = std.time.milliTimestamp();
+    const start_time = clock.monotonicMillis();
 
     // Verify backends are open
     if (!source.isOpen()) {
@@ -221,7 +222,7 @@ pub fn migrate(
         }
     }
 
-    stats.duration_ms = std.time.milliTimestamp() - start_time;
+    stats.duration_ms = clock.monotonicMillis() - start_time;
 
     // Final progress callback
     if (options.progress_callback) |callback| {
@@ -377,7 +378,7 @@ pub fn exportToBuffer(
         return MigrationError.SourceNotOpen;
     }
 
-    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    var buffer: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buffer.deinit(allocator);
 
     const txn = try source.beginTransaction(.readonly);

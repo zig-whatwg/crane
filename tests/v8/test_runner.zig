@@ -1,12 +1,13 @@
 const std = @import("std");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// Zig 0.16 removed std.process.argsAlloc; command-line arguments are no longer
+// process-global. They arrive through std.process.Init, which also supplies the
+// gpa, a process-lifetime arena and an Io - so taking Init replaces the hand-rolled
+// allocator setup as well.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 3) {
         std.debug.print("Usage: test_runner <repl_path> <test_file>\n", .{});

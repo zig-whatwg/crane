@@ -559,7 +559,7 @@ fn hasRegexpGroups(parts: []const Part) bool {
 
 /// Generate a pattern string from parts
 fn generatePatternString(allocator: Allocator, parts: []const Part) ![]u8 {
-    var result: std.ArrayListUnmanaged(u8) = .{};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (parts) |part| {

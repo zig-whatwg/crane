@@ -251,7 +251,7 @@ pub fn getAllResponseHeaders(
     );
 
     // Step 4: Build output string
-    var output = std.ArrayListUnmanaged(u8){};
+    var output: std.ArrayListUnmanaged(u8) = .empty;
     errdefer output.deinit(allocator);
 
     for (sorted_headers.entries.items) |header| {

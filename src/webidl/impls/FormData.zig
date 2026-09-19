@@ -278,7 +278,7 @@ pub fn call_getAll(instance: *runtime.Instance, name: runtime.USVString) anyerro
     const values = try internal.form_data.getAll(internal.allocator, name);
 
     // Convert FormDataEntryValue to strings
-    var string_values: std.ArrayListUnmanaged([]const u8) = .{};
+    var string_values: std.ArrayListUnmanaged([]const u8) = .empty;
     defer string_values.deinit(internal.allocator);
 
     for (values) |entry_value| {

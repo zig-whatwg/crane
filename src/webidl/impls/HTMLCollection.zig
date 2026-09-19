@@ -208,7 +208,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     const Element = interfaces.Element;
 
     // Use ArrayList to collect unique names
-    var names: std.ArrayListUnmanaged(runtime.DOMString) = .{};
+    var names: std.ArrayListUnmanaged(runtime.DOMString) = .empty;
     errdefer {
         for (names.items) |*n| n.deinit(allocator);
         names.deinit(allocator);

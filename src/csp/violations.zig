@@ -11,6 +11,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const fallback = @import("fallback.zig");
+const clock = @import("clock");
 
 // ============================================================================
 // Violation Creation
@@ -261,7 +262,7 @@ pub const RateLimiter = struct {
     /// Check if a report to the given endpoint should be allowed.
     /// Returns true if allowed, false if rate limited.
     pub fn shouldAllowReport(self: *Self, endpoint: []const u8) bool {
-        const now = std.time.timestamp();
+        const now = clock.wallSeconds();
 
         if (self.report_counts.getPtr(endpoint)) |entry| {
             // Check if we're in a new window
@@ -405,7 +406,7 @@ pub fn reportViolation(
 ///
 /// The legacy format wraps the report in: {"csp-report": <report>}
 fn createLegacyReportWrapper(allocator: std.mem.Allocator, report_body: []const u8) ![]const u8 {
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buffer.deinit(allocator);
 
     try buffer.appendSlice(allocator, "{\"csp-report\":");
@@ -439,7 +440,7 @@ pub fn createViolationReport(
     allocator: std.mem.Allocator,
     violation: *const types.Violation,
 ) ![]const u8 {
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buffer.deinit(allocator);
 
     try buffer.appendSlice(allocator, "{");
@@ -543,7 +544,7 @@ fn serializePolicy(
     allocator: std.mem.Allocator,
     policy: *const types.Policy,
 ) ![]const u8 {
-    var result = std.ArrayListUnmanaged(u8){};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var first = true;
@@ -783,7 +784,7 @@ test "createViolationReport - JSON format" {
 test "appendJsonEscaped - special characters" {
     const allocator = std.testing.allocator;
 
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer: std.ArrayListUnmanaged(u8) = .empty;
     defer buffer.deinit(allocator);
 
     try appendJsonEscaped(allocator, &buffer, "hello\"world\\test\nnewline");

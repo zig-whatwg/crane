@@ -28,7 +28,7 @@ pub const InternalState = struct {
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
-            .rects = .{},
+            .rects = .empty,
             .allocator = allocator,
         };
     }

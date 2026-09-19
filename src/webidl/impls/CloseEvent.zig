@@ -15,6 +15,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const clock = @import("clock");
 const CloseEvent = interfaces.CloseEvent;
 
 pub const State = CloseEvent.State;
@@ -65,7 +66,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     // Initialize base Event attributes (Event fields are in state.base.own)
     state.base.own.type = try @"type".clone(ctx.allocator);
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = false;
     state.base.own.target = null;
     state.base.own.srcElement = null;
@@ -161,7 +162,7 @@ pub fn createCloseEvent(
 
     // Set event type to "close" (Event fields in state.base.own)
     state.base.own.type = try allocator.dupe(u8, "close");
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
     state.base.own.isTrusted = true; // Internally created events are trusted
     state.base.own.target = null;
     state.base.own.srcElement = null;

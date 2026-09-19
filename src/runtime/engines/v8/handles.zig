@@ -785,12 +785,12 @@ pub const HandleBag = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .values = std.ArrayList(*ffi.Value).init(allocator),
-            .objects = std.ArrayList(*ffi.Object).init(allocator),
-            .strings = std.ArrayList(*ffi.String).init(allocator),
-            .arrays = std.ArrayList(*ffi.Array).init(allocator),
-            .functions = std.ArrayList(*ffi.Function).init(allocator),
-            .promises = std.ArrayList(*ffi.Promise).init(allocator),
+            .values = .empty,
+            .objects = .empty,
+            .strings = .empty,
+            .arrays = .empty,
+            .functions = .empty,
+            .promises = .empty,
         };
     }
 
@@ -803,47 +803,47 @@ pub const HandleBag = struct {
         for (self.functions.items) |f| ffi.v8_Function_Dispose(f);
         for (self.promises.items) |p| ffi.v8_Promise_Dispose(p);
 
-        self.values.deinit();
-        self.objects.deinit();
-        self.strings.deinit();
-        self.arrays.deinit();
-        self.functions.deinit();
-        self.promises.deinit();
+        self.values.deinit(self.allocator);
+        self.objects.deinit(self.allocator);
+        self.strings.deinit(self.allocator);
+        self.arrays.deinit(self.allocator);
+        self.functions.deinit(self.allocator);
+        self.promises.deinit(self.allocator);
     }
 
     /// Track a value handle
     pub fn trackValue(self: *Self, value: *ffi.Value) !*ffi.Value {
-        try self.values.append(value);
+        try self.values.append(self.allocator, value);
         return value;
     }
 
     /// Track an object handle
     pub fn trackObject(self: *Self, object: *ffi.Object) !*ffi.Object {
-        try self.objects.append(object);
+        try self.objects.append(self.allocator, object);
         return object;
     }
 
     /// Track a string handle
     pub fn trackString(self: *Self, string: *ffi.String) !*ffi.String {
-        try self.strings.append(string);
+        try self.strings.append(self.allocator, string);
         return string;
     }
 
     /// Track an array handle
     pub fn trackArray(self: *Self, array: *ffi.Array) !*ffi.Array {
-        try self.arrays.append(array);
+        try self.arrays.append(self.allocator, array);
         return array;
     }
 
     /// Track a function handle
     pub fn trackFunction(self: *Self, func: *ffi.Function) !*ffi.Function {
-        try self.functions.append(func);
+        try self.functions.append(self.allocator, func);
         return func;
     }
 
     /// Track a promise handle
     pub fn trackPromise(self: *Self, promise: *ffi.Promise) !*ffi.Promise {
-        try self.promises.append(promise);
+        try self.promises.append(self.allocator, promise);
         return promise;
     }
 

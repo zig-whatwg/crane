@@ -7,6 +7,7 @@
 //! used throughout the CookieStore API implementation.
 
 const std = @import("std");
+const clock = @import("clock");
 
 /// SameSite attribute values per CookieSameSite enum
 /// https://cookiestore.spec.whatwg.org/#enumdef-cookiesamesite
@@ -137,7 +138,7 @@ pub const Cookie = struct {
         name: []const u8,
         value: []const u8,
     ) !Self {
-        const now = std.time.milliTimestamp();
+        const now = clock.wallMillis();
         return Self{
             .name = try allocator.dupe(u8, name),
             .value = try allocator.dupe(u8, value),
@@ -229,7 +230,7 @@ pub const Cookie = struct {
     /// Check if the cookie has expired
     pub fn isExpired(self: Self) bool {
         if (self.expiry_time) |expiry| {
-            return std.time.milliTimestamp() > expiry;
+            return clock.wallMillis() > expiry;
         }
         return false; // Session cookies never expire based on time
     }
@@ -246,7 +247,7 @@ pub const Cookie = struct {
 
     /// Update the last access time to now
     pub fn touch(self: *Self) void {
-        self.last_access_time = std.time.milliTimestamp();
+        self.last_access_time = clock.wallMillis();
     }
 
     /// Check if two cookies have the same identity (name, domain, path, partition key)
@@ -416,12 +417,12 @@ test "Cookie - expiration" {
     try std.testing.expect(!cookie.isExpired());
 
     // Set expiry in the past
-    cookie.expiry_time = std.time.milliTimestamp() - 1000;
+    cookie.expiry_time = clock.wallMillis() - 1000;
     try std.testing.expect(!cookie.isSession());
     try std.testing.expect(cookie.isExpired());
 
     // Set expiry in the future
-    cookie.expiry_time = std.time.milliTimestamp() + 60000;
+    cookie.expiry_time = clock.wallMillis() + 60000;
     try std.testing.expect(!cookie.isExpired());
 }
 

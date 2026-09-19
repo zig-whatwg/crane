@@ -96,7 +96,7 @@ pub const ExtendableEvent = struct {
             .event_type = type_copy,
             .bubbles = options.bubbles,
             .cancelable = options.cancelable,
-            .extend_lifetime_promises = .{},
+            .extend_lifetime_promises = .empty,
         };
 
         return self;

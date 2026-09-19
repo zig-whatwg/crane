@@ -596,7 +596,7 @@ pub fn collectToJSONAttributes(
     interface_name: []const u8,
     ir: *const IR,
 ) ![]ToJSONAttribute {
-    var attrs: std.ArrayList(ToJSONAttribute) = .{};
+    var attrs: std.ArrayList(ToJSONAttribute) = .empty;
     errdefer attrs.deinit(allocator);
 
     // Track seen attribute names to handle overrides

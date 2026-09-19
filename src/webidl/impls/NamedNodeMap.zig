@@ -310,7 +310,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
         const attrs = internal.attrs.toSlice();
         if (attrs.len == 0) return &[_]runtime.DOMString{};
 
-        var names: std.ArrayList(runtime.DOMString) = .{};
+        var names: std.ArrayList(runtime.DOMString) = .empty;
         for (attrs) |attr| {
             const name = interfaces.Attr.get_name(attr) catch continue;
             try names.append(allocator, name);
@@ -323,7 +323,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     const attr_count = element_internal.getAttributeCount();
     if (attr_count == 0) return &[_]runtime.DOMString{};
 
-    var names: std.ArrayList(runtime.DOMString) = .{};
+    var names: std.ArrayList(runtime.DOMString) = .empty;
 
     // Iterate element's attributes to get qualified names
     var iter = element_internal.attributeIterator();

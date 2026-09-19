@@ -121,7 +121,7 @@ pub const AsyncOperationQueue = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
-            .operations = .{},
+            .operations = .empty,
             .processing = false,
         };
     }
@@ -324,7 +324,7 @@ pub const DatabaseTaskQueue = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
-            .tasks = .{},
+            .tasks = .empty,
         };
     }
 

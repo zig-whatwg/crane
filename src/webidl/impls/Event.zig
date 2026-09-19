@@ -13,6 +13,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
 const v8_engine = @import("v8");
+const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const Event = interfaces.Event;
 
@@ -160,7 +161,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.returnValue = true; // !canceled_flag
     state.own.defaultPrevented = false;
     state.own.isTrusted = false;
-    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     return instance;
 }

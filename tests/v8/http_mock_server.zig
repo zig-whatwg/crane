@@ -48,7 +48,7 @@ pub const HttpMockServer = struct {
             .server = server,
             .should_stop = std.atomic.Value(bool).init(false),
             .large_content = null,
-            .allocated_paths = .{},
+            .allocated_paths = .empty,
         };
 
         // Setup default routes for fetch tests
@@ -390,7 +390,7 @@ pub const HttpMockServer = struct {
     fn handleEchoRequest(self: *HttpMockServer, parsed: ParsedRequest) !EchoResult {
         if (std.mem.eql(u8, parsed.path, "/echo/headers")) {
             // Echo headers as JSON
-            var json: std.ArrayList(u8) = .{};
+            var json: std.ArrayList(u8) = .empty;
             defer json.deinit(self.allocator);
 
             try json.appendSlice(self.allocator, "{");
@@ -625,7 +625,7 @@ pub const HttpMockServer = struct {
         defer self.allocator.free(accept_value);
 
         // Send upgrade response
-        var response_buf: std.ArrayList(u8) = .{};
+        var response_buf: std.ArrayList(u8) = .empty;
         defer response_buf.deinit(self.allocator);
 
         const writer = response_buf.writer(self.allocator);
@@ -788,7 +788,7 @@ pub const HttpMockServer = struct {
     }
 
     fn sendHttpResponse(self: *HttpMockServer, stream: std.net.Stream, response: MockResponse) !void {
-        var response_buf: std.ArrayList(u8) = .{};
+        var response_buf: std.ArrayList(u8) = .empty;
         defer response_buf.deinit(self.allocator);
 
         const writer = response_buf.writer(self.allocator);
@@ -852,7 +852,7 @@ fn parseHttpRequest(allocator: std.mem.Allocator, data: []const u8) !ParsedReque
     errdefer allocator.free(path);
 
     // Parse headers
-    var headers: std.ArrayList([2][]const u8) = .{};
+    var headers: std.ArrayList([2][]const u8) = .empty;
     errdefer {
         for (headers.items) |h| {
             allocator.free(h[0]);
@@ -890,7 +890,7 @@ fn parseHttpRequest(allocator: std.mem.Allocator, data: []const u8) !ParsedReque
 
 // Standalone server for manual testing
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

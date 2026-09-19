@@ -281,7 +281,7 @@ pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init
         .boolean => |b| if (b) "true" else "false",
         .null => "null",
         .undefined => "undefined",
-        .number => |_| "0", // TODO: proper number serialization
+        .number => "0", // TODO: proper number serialization
         else => "{}",
     };
 

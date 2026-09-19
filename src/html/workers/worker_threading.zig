@@ -45,6 +45,7 @@ const WorkerOptions = types.WorkerOptions;
 
 // Message channel types for serialized messages
 const message_channel = @import("message_channel.zig");
+const clock = @import("clock");
 const SerializedValue = message_channel.SerializedValue;
 const JSValue = message_channel.JSValue;
 
@@ -470,7 +471,7 @@ pub const WorkerThreadRunner = struct {
 
             // Small sleep to avoid busy-waiting
             // In a production system, this would use proper event notification
-            std.time.sleep(1_000_000); // 1ms
+            clock.sleep(1_000_000); // 1ms
         }
     }
 

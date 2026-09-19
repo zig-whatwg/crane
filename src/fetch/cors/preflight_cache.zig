@@ -7,6 +7,7 @@
 //! Access-Control-Max-Age header.
 
 const std = @import("std");
+const clock = @import("clock");
 const Allocator = std.mem.Allocator;
 
 /// Cache key identifying a unique preflight entry.
@@ -73,7 +74,7 @@ pub const CacheEntry = struct {
 
     /// Check if this entry has expired.
     pub fn isExpired(self: *const Self) bool {
-        return self.expiry_time < std.time.timestamp();
+        return self.expiry_time < clock.wallSeconds();
     }
 
     /// Check if a method is allowed by this cache entry.
@@ -129,7 +130,7 @@ pub const PreflightCache = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
-            .entries = .{},
+            .entries = .empty,
         };
     }
 
@@ -189,7 +190,7 @@ pub const PreflightCache = struct {
         // Remove existing entry for this key first
         self.clear(origin, url, network_partition_key);
 
-        const now = std.time.timestamp();
+        const now = clock.wallSeconds();
         const capped_max_age = @min(max_age, self.max_max_age);
         const effective_max_age = if (capped_max_age == 0) self.default_max_age else capped_max_age;
 
@@ -254,7 +255,7 @@ pub const PreflightCache = struct {
 
     /// Remove all expired entries.
     pub fn removeExpired(self: *Self) void {
-        const now = std.time.timestamp();
+        const now = clock.wallSeconds();
         var i: usize = 0;
         while (i < self.entries.items.len) {
             if (self.entries.items[i].expiry_time < now) {
@@ -573,7 +574,7 @@ test "PreflightCache max age capping" {
     ).?;
 
     // Expiry should be roughly now + 100 seconds, not now + 1000
-    const now = std.time.timestamp();
+    const now = clock.wallSeconds();
     try std.testing.expect(entry.expiry_time <= now + 101);
 }
 

@@ -4,6 +4,7 @@
 //! Based on W3C WebDriver specification.
 
 const std = @import("std");
+const clock = @import("clock");
 const Allocator = std.mem.Allocator;
 
 /// WebDriver error codes per W3C spec
@@ -256,7 +257,7 @@ pub const SessionInfo = struct {
 /// Generate a random session ID (UUID v4 format)
 pub fn generateSessionId(allocator: Allocator) ![]const u8 {
     var buf: [36]u8 = undefined;
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    var prng = std.Random.DefaultPrng.init(@intCast(clock.wallMillis()));
     const random = prng.random();
 
     // Generate random bytes

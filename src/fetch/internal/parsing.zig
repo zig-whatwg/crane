@@ -89,7 +89,7 @@ pub fn collectHttpQuotedString(
     position: *usize,
     extract_value: bool,
 ) ![]const u8 {
-    var result = std.ArrayListUnmanaged(u8){};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     // Step 1: Assert position is at "
@@ -288,7 +288,7 @@ pub fn extractHeaderListValues(
     // For now, return a single-item slice with the combined value
     // TODO: Add header-specific parsing for headers that need it
 
-    var result = std.ArrayListUnmanaged([]const u8){};
+    var result: std.ArrayListUnmanaged([]const u8) = .empty;
     errdefer {
         for (result.items) |v| allocator.free(v);
         result.deinit(allocator);

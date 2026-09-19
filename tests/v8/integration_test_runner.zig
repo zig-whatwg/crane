@@ -14,16 +14,15 @@ const HttpMockServer = @import("http_mock_server").HttpMockServer;
 
 /// Shared server instance for communication between main and server thread
 var shared_server: ?*HttpMockServer = null;
-var server_ready: std.Thread.ResetEvent = .{};
+// std.Thread.ResetEvent was removed in 0.16; std.Io.Event replaces it.
+var server_ready: std.Io.Event = .unset;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+// See test_runner.zig: 0.16 delivers args (and gpa/arena/io) via std.process.Init.
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     // Parse command line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 3) {
         std.debug.print("Usage: {s} <repl-exe> <test-file-1> [test-file-2] ...\n", .{args[0]});
@@ -36,10 +35,10 @@ pub fn main() !void {
     std.debug.print("Starting integration test runner with {d} test(s)\n", .{test_files.len});
 
     // Start mock server in background thread
-    const server_thread = try std.Thread.spawn(.{}, runMockServer, .{allocator});
+    const server_thread = try std.Thread.spawn(.{}, runMockServer, .{ allocator, init.io });
 
     // Wait for server to be ready
-    try waitForServer(allocator);
+    try waitForServer(allocator, init.io);
 
     std.debug.print("\nMock server is ready. Running tests...\n\n", .{});
 
@@ -93,7 +92,7 @@ pub fn main() !void {
     }
 }
 
-fn runMockServer(allocator: std.mem.Allocator) void {
+fn runMockServer(allocator: std.mem.Allocator, io: std.Io) void {
     const server = HttpMockServer.init(allocator) catch |err| {
         std.debug.print("Failed to initialize mock server: {}\n", .{err});
         return;
@@ -104,16 +103,16 @@ fn runMockServer(allocator: std.mem.Allocator) void {
     shared_server = server;
 
     // Signal that server is ready
-    server_ready.set();
+    server_ready.set(io);
 
     server.start() catch |err| {
         std.debug.print("Mock server error: {}\n", .{err});
     };
 }
 
-fn waitForServer(_: std.mem.Allocator) !void {
+fn waitForServer(_: std.mem.Allocator, io: std.Io) !void {
     // Wait for the server thread to signal it's ready
-    server_ready.wait();
+    try server_ready.wait(io);
 
     // Also verify we can connect
     const max_attempts = 50;

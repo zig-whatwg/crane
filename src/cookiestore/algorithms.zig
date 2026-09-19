@@ -80,7 +80,7 @@ pub fn queryCookies(
     url_path: []const u8,
     name: ?[]const u8,
 ) !std.ArrayListUnmanaged(CookieListItem) {
-    var result = std.ArrayListUnmanaged(CookieListItem){};
+    var result: std.ArrayListUnmanaged(CookieListItem) = .empty;
     errdefer {
         for (result.items) |*item| item.deinit();
         result.deinit(allocator);

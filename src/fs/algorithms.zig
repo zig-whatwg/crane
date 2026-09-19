@@ -51,7 +51,7 @@ pub fn isValidPath(path: []const []const u8) bool {
 /// Normalize a path by removing empty components and resolving . and ..
 /// Returns null if the path would escape the root.
 pub fn normalizePath(allocator: std.mem.Allocator, components: []const []const u8) !?[][]const u8 {
-    var result = std.ArrayListUnmanaged([]const u8){};
+    var result: std.ArrayListUnmanaged([]const u8) = .empty;
     errdefer {
         for (result.items) |item| {
             allocator.free(item);

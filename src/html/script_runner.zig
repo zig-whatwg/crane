@@ -84,9 +84,9 @@ pub const ScriptRunner = struct {
             .allocator = allocator,
             .document = document,
             .pending_parsing_blocking_script = null,
-            .deferred_scripts = .{},
-            .async_scripts = .{},
-            .in_order_async_scripts = .{},
+            .deferred_scripts = .empty,
+            .async_scripts = .empty,
+            .in_order_async_scripts = .empty,
             .parser_finished = false,
             .is_executing = false,
         };

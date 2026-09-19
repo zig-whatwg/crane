@@ -193,7 +193,7 @@ pub const Router = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
-            .rules = .{},
+            .rules = .empty,
         };
     }
 

@@ -12,6 +12,7 @@ const types = @import("types.zig");
 const UpdateViaCacheMode = types.UpdateViaCacheMode;
 const NavigationPreloadState = types.NavigationPreloadState;
 const service_worker_mod = @import("service_worker.zig");
+const clock = @import("clock");
 const ServiceWorker = service_worker_mod.ServiceWorker;
 
 /// Internal service worker registration structure.
@@ -173,7 +174,7 @@ pub const Registration = struct {
     /// Spec: https://w3c.github.io/ServiceWorker/#dfn-stale
     pub fn isStale(self: *const Self) bool {
         if (self.last_update_check_time) |check_time| {
-            const now = std.time.timestamp();
+            const now = clock.wallSeconds();
             return (now - check_time) > STALE_THRESHOLD_SECONDS;
         }
         return false;
@@ -181,7 +182,7 @@ pub const Registration = struct {
 
     /// Mark as checked (update last_update_check_time).
     pub fn markChecked(self: *Self) void {
-        self.last_update_check_time = std.time.timestamp();
+        self.last_update_check_time = clock.wallSeconds();
     }
 
     // === Navigation Preload ===
@@ -308,7 +309,7 @@ test "Registration.isStale" {
     try std.testing.expect(!reg.isStale());
 
     // Simulate old check time (more than 24 hours ago)
-    reg.last_update_check_time = std.time.timestamp() - (Registration.STALE_THRESHOLD_SECONDS + 1);
+    reg.last_update_check_time = clock.wallSeconds() - (Registration.STALE_THRESHOLD_SECONDS + 1);
     try std.testing.expect(reg.isStale());
 }
 

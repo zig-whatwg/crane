@@ -93,6 +93,7 @@
 
 const std = @import("std");
 const backend = @import("../backend.zig");
+const clock = @import("clock");
 
 const StorageBackend = backend.StorageBackend;
 const BackendError = backend.BackendError;
@@ -684,7 +685,7 @@ pub const SQLiteBackend = struct {
         }
 
         // Get or create database record
-        const timestamp = std.time.timestamp();
+        const timestamp = clock.wallSeconds();
 
         // Try to find existing database
         const select_db_sql = "SELECT id FROM database_info WHERE name = ?";

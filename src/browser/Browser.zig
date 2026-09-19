@@ -56,6 +56,7 @@ const namespaces = @import("namespaces");
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
 const storage_mod = @import("storage/Storage.zig");
+const clock = @import("clock");
 const Storage = storage_mod.Storage;
 
 /// Default snapshot file paths to check (in order of priority)
@@ -482,12 +483,12 @@ pub const Browser = struct {
         const event_loop = self.event_loop orelse return error.NotInitialized;
         // DEBUG: Log event loop pointer and task count
         log.debug("[Browser.runEventLoopBlocking] event_loop={*}, tasks.len={d}", .{ event_loop, event_loop.tasks.items.len });
-        const start_time = std.time.milliTimestamp();
+        const start_time = clock.monotonicMillis();
         const deadline = start_time + @as(i64, @intCast(timeout_ms));
         var did_work = false;
 
         while (true) {
-            const now = std.time.milliTimestamp();
+            const now = clock.monotonicMillis();
             if (now >= deadline) {
                 break;
             }

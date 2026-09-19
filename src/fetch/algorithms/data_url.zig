@@ -147,7 +147,7 @@ pub fn processDataUrl(allocator: Allocator, url_str: []const u8) DataUrlError!?D
 /// Percent-decode a string.
 /// Converts %XX sequences to their byte values.
 fn percentDecode(allocator: Allocator, input: []const u8) ![]const u8 {
-    var result = std.ArrayListUnmanaged(u8){};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;

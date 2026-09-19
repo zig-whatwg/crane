@@ -5,6 +5,7 @@
 //! Spec: https://w3c.github.io/ServiceWorker/#service-worker-timing-info
 
 const std = @import("std");
+const clock = @import("clock");
 
 /// Service worker timing information.
 ///
@@ -73,7 +74,7 @@ pub const ServiceWorkerTiming = struct {
 
 /// Get current time in milliseconds (DOMHighResTimeStamp format).
 fn getCurrentTimeMs() f64 {
-    return @as(f64, @floatFromInt(std.time.timestamp())) * 1000.0;
+    return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
 }
 
 // =============================================================================

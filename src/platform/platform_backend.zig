@@ -307,7 +307,7 @@ pub const PlatformBackend = extern struct {
 
     /// Get list of available capabilities.
     pub fn getAvailableCapabilities(self: *const PlatformBackend, allocator: Allocator) ![]Capability {
-        var list = std.ArrayListUnmanaged(Capability){};
+        var list: std.ArrayListUnmanaged(Capability) = .empty;
         errdefer list.deinit(allocator);
 
         inline for (std.meta.fields(Capability)) |field| {

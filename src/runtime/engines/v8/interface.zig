@@ -2673,8 +2673,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (union_info.tag_type) |_| {
                     // Tagged union - we can switch on it
                     switch (arg) {
-                        inline else => |val, tag| {
-                            const FieldType = std.meta.TagPayloadByName(T, @tagName(tag));
+                        inline else => |val| {
+                            // Zig 0.16 removed std.meta.TagPayloadByName; inside an
+                            // `inline else` prong the capture already has the payload type.
+                            const FieldType = @TypeOf(val);
                             if (comptime needsArgCleanup(FieldType)) {
                                 freeConvertedArg(FieldType, allocator, val);
                             }
@@ -5137,7 +5139,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // constraints where indices MUST come before names, we include both here
                 // in the prescribed order. V8 will merge/deduplicate with the indexed
                 // enumerator results.
-                var keys: std.ArrayListUnmanaged(*v8.Value) = .{};
+                var keys: std.ArrayListUnmanaged(*v8.Value) = .empty;
                 defer keys.deinit(std.heap.c_allocator);
 
                 // 1. Add indexed properties (ascending) if interface supports them

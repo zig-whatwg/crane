@@ -155,7 +155,7 @@ pub const FetchTimingInfo = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
-            .server_timing_headers = .{},
+            .server_timing_headers = .empty,
         };
     }
 

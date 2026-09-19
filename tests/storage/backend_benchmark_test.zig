@@ -30,6 +30,7 @@
 
 const std = @import("std");
 const storage = @import("storage");
+const clock = @import("clock");
 
 const StorageBackend = storage.StorageBackend;
 const BackendType = storage.BackendType;
@@ -92,9 +93,9 @@ fn runBenchmark(
 
     // Benchmark
     for (0..iterations) |_| {
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
         benchFn(context);
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
 
         const elapsed: u64 = @intCast(end - start);
         total_ns += elapsed;
@@ -241,13 +242,13 @@ test "benchmark: Memory backend transaction overhead" {
     const iterations: u64 = 100;
 
     for (0..iterations) |_| {
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
 
         const txn = try backend.beginTransaction(.readwrite);
         try backend.write(txn, "key", "value");
         try backend.commit(txn);
 
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
         total_ns += @intCast(end - start);
     }
 
@@ -282,7 +283,7 @@ test "benchmark: Memory backend batch write" {
     }
     const value = "batch_value_with_some_reasonable_length";
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.monotonicNanos();
 
     const txn = try backend.beginTransaction(.readwrite);
     for (0..batch_size) |i| {
@@ -290,7 +291,7 @@ test "benchmark: Memory backend batch write" {
     }
     try backend.commit(txn);
 
-    const end = std.time.nanoTimestamp();
+    const end = clock.monotonicNanos();
     const total_ns: u64 = @intCast(end - start);
     const per_write_ns = total_ns / batch_size;
 
@@ -335,7 +336,7 @@ test "benchmark: Memory backend cursor scan" {
         const txn = try backend.beginTransaction(.readonly);
         defer backend.rollback(txn);
 
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
 
         const cursor = try backend.cursorOpen(txn, KeyRange{}, .next);
         defer backend.cursorClose(cursor);
@@ -347,7 +348,7 @@ test "benchmark: Memory backend cursor scan" {
             count += 1;
         }
 
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
         total_ns += @intCast(end - start);
     }
 

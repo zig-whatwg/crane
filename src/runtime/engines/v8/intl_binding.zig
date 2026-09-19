@@ -29,6 +29,7 @@ const conv = @import("conversions.zig");
 
 // Import CLDR data via intl module
 const intl = @import("intl");
+const clock = @import("clock");
 const cldr = intl.cldr;
 const cldr_embedded = cldr.embedded;
 
@@ -319,10 +320,10 @@ const DateTimeFormatRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .{},
-    free_list: std.ArrayList(usize) = .{},
+    entries: std.ArrayList(?Entry) = .empty,
+    free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     fn init(allocator: std.mem.Allocator) DateTimeFormatRegistry {
         return .{
@@ -341,8 +342,8 @@ const DateTimeFormatRegistry = struct {
     }
 
     fn register(self: *DateTimeFormatRegistry, entry: Entry) !usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
@@ -356,8 +357,8 @@ const DateTimeFormatRegistry = struct {
     }
 
     fn get(self: *DateTimeFormatRegistry, idx: usize) ?*Entry {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
         if (self.entries.items[idx]) |*entry| {
@@ -367,8 +368,8 @@ const DateTimeFormatRegistry = struct {
     }
 
     fn remove(self: *DateTimeFormatRegistry, idx: usize) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
         if (self.entries.items[idx]) |*entry| {
@@ -859,7 +860,7 @@ fn dateTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.
     };
 
     // Get timestamp from argument (can be number or Date object)
-    var timestamp_ms: i64 = std.time.milliTimestamp();
+    var timestamp_ms: i64 = clock.wallMillis();
     if (info.length() > 0) {
         const date_arg = info.get(0);
         // Use v8_Value_NumberValue which handles both numbers and Date objects
@@ -1033,7 +1034,7 @@ fn dateTimeFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(
     };
 
     // Get timestamp from argument (can be number or Date object)
-    var timestamp_ms: i64 = std.time.milliTimestamp();
+    var timestamp_ms: i64 = clock.wallMillis();
     if (info.length() > 0) {
         const date_arg = info.get(0);
         if (!v8.v8_Value_IsNullOrUndefined(date_arg)) {
@@ -1229,10 +1230,10 @@ const NumberFormatRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .{},
-    free_list: std.ArrayList(usize) = .{},
+    entries: std.ArrayList(?Entry) = .empty,
+    free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     fn init(allocator: std.mem.Allocator) NumberFormatRegistry {
         return .{
@@ -1251,8 +1252,8 @@ const NumberFormatRegistry = struct {
     }
 
     fn register(self: *NumberFormatRegistry, entry: Entry) !usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
@@ -1266,8 +1267,8 @@ const NumberFormatRegistry = struct {
     }
 
     fn get(self: *NumberFormatRegistry, idx: usize) ?*Entry {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
         if (self.entries.items[idx]) |*entry| {
@@ -1277,8 +1278,8 @@ const NumberFormatRegistry = struct {
     }
 
     fn remove(self: *NumberFormatRegistry, idx: usize) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
         if (self.entries.items[idx]) |*entry| {
@@ -1972,10 +1973,10 @@ const CollatorRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .{},
-    free_list: std.ArrayList(usize) = .{},
+    entries: std.ArrayList(?Entry) = .empty,
+    free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     fn init(allocator: std.mem.Allocator) CollatorRegistry {
         return .{
@@ -1994,8 +1995,8 @@ const CollatorRegistry = struct {
     }
 
     fn register(self: *CollatorRegistry, entry: Entry) !usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
@@ -2009,8 +2010,8 @@ const CollatorRegistry = struct {
     }
 
     fn get(self: *CollatorRegistry, idx: usize) ?*Entry {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
         if (self.entries.items[idx]) |*entry| {
@@ -2020,8 +2021,8 @@ const CollatorRegistry = struct {
     }
 
     fn remove(self: *CollatorRegistry, idx: usize) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
         if (self.entries.items[idx]) |*entry| {
@@ -4371,10 +4372,10 @@ const SegmenterRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .{},
-    free_list: std.ArrayList(usize) = .{},
+    entries: std.ArrayList(?Entry) = .empty,
+    free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     fn init(allocator: std.mem.Allocator) SegmenterRegistry {
         return .{
@@ -4393,8 +4394,8 @@ const SegmenterRegistry = struct {
     }
 
     fn register(self: *SegmenterRegistry, entry: Entry) !usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
@@ -4408,8 +4409,8 @@ const SegmenterRegistry = struct {
     }
 
     fn get(self: *SegmenterRegistry, idx: usize) ?*Entry {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
         if (self.entries.items[idx]) |*entry| {
@@ -4419,8 +4420,8 @@ const SegmenterRegistry = struct {
     }
 
     fn remove(self: *SegmenterRegistry, idx: usize) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
         if (self.entries.items[idx]) |*entry| {
@@ -4928,7 +4929,7 @@ const LocaleRegistry = struct {
     entries: std.AutoHashMap(usize, Entry),
     next_id: usize = 0,
     allocator: std.mem.Allocator,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     fn init(allocator: std.mem.Allocator) LocaleRegistry {
         return .{
@@ -4947,8 +4948,8 @@ const LocaleRegistry = struct {
     }
 
     fn register(self: *LocaleRegistry, entry: Entry) !usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         const id = self.next_id;
         self.next_id += 1;
@@ -4957,15 +4958,15 @@ const LocaleRegistry = struct {
     }
 
     fn get(self: *LocaleRegistry, id: usize) ?*Entry {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         return self.entries.getPtr(id);
     }
 
     fn remove(self: *LocaleRegistry, id: usize) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.entries.getPtr(id)) |entry| {
             entry.deinit();

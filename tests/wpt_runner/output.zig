@@ -89,7 +89,7 @@ pub const Sink = struct {
 const Counting = struct {
     interface: std.Io.Writer,
     drains: usize = 0,
-    seen: std.ArrayList(u8) = .{},
+    seen: std.ArrayList(u8) = .empty,
     allocator: std.mem.Allocator,
 
     const vtable: std.Io.Writer.VTable = .{ .drain = drain };
@@ -166,7 +166,7 @@ test "buffered output preserves every byte and its order" {
 
     var sink = Sink{ .w = &counting.interface };
 
-    var expected: std.ArrayList(u8) = .{};
+    var expected: std.ArrayList(u8) = .empty;
     defer expected.deinit(allocator);
 
     for (0..500) |i| {

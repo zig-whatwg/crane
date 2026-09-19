@@ -38,6 +38,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const v8 = @import("ffi.zig");
+const clock = @import("clock");
 const V8EventLoop = @import("event_loop.zig").V8EventLoop;
 
 /// Captured timer state for freeze/thaw
@@ -79,7 +80,7 @@ pub const FrozenContext = struct {
     allocator: Allocator,
 
     pub fn deinit(self: *FrozenContext) void {
-        self.frozen_timers.deinit();
+        self.frozen_timers.deinit(self.allocator);
         if (self.url.len > 0) {
             self.allocator.free(self.url);
         }
@@ -174,7 +175,7 @@ pub const FrozenContextManager = struct {
         event_loop: ?*V8EventLoop,
         url: []const u8,
     ) !void {
-        const start_time = std.time.milliTimestamp();
+        const start_time = clock.monotonicMillis();
 
         // Check if already frozen
         if (self.frozen_contexts.contains(navigation_id)) {
@@ -196,8 +197,8 @@ pub const FrozenContextManager = struct {
             .v8_ctx = v8_ctx,
             .isolate = isolate,
             .event_loop = event_loop,
-            .frozen_timers = std.ArrayList(FrozenTimer).init(self.allocator),
-            .frozen_at = std.time.milliTimestamp(),
+            .frozen_timers = .empty,
+            .frozen_at = clock.monotonicMillis(),
             .url = if (url.len > 0) try self.allocator.dupe(u8, url) else &[_]u8{},
             .allocator = self.allocator,
         };
@@ -215,7 +216,7 @@ pub const FrozenContextManager = struct {
 
         // Update statistics
         self.stats.total_freezes += 1;
-        const freeze_time = std.time.milliTimestamp() - start_time;
+        const freeze_time = clock.monotonicMillis() - start_time;
         self.stats.avg_freeze_time_ms = (self.stats.avg_freeze_time_ms + @as(u64, @intCast(freeze_time))) / 2;
     }
 
@@ -239,13 +240,13 @@ pub const FrozenContextManager = struct {
     /// - Context has expired
     /// - Event loop thaw fails
     pub fn thaw(self: *Self, navigation_id: u64) !*v8.Context {
-        const start_time = std.time.milliTimestamp();
+        const start_time = clock.monotonicMillis();
 
         const frozen = self.frozen_contexts.get(navigation_id) orelse
             return error.NotFrozen;
 
         // Check if expired
-        const now = std.time.milliTimestamp();
+        const now = clock.monotonicMillis();
         const age = now - frozen.frozen_at;
         if (age >= self.max_freeze_duration_ms) {
             // Remove expired context
@@ -274,7 +275,7 @@ pub const FrozenContextManager = struct {
         _ = self.frozen_contexts.remove(navigation_id);
 
         // Clean up frozen state (but NOT the context/event loop - those are restored)
-        frozen.frozen_timers.deinit();
+        frozen.frozen_timers.deinit(self.allocator);
         if (frozen.url.len > 0) {
             self.allocator.free(frozen.url);
         }
@@ -282,7 +283,7 @@ pub const FrozenContextManager = struct {
 
         // Update statistics
         self.stats.total_thaws += 1;
-        const thaw_time = std.time.milliTimestamp() - start_time;
+        const thaw_time = clock.monotonicMillis() - start_time;
         self.stats.avg_thaw_time_ms = (self.stats.avg_thaw_time_ms + @as(u64, @intCast(thaw_time))) / 2;
 
         return v8_ctx;
@@ -295,7 +296,7 @@ pub const FrozenContextManager = struct {
     /// - The frozen context has not expired
     pub fn canRestore(self: *Self, navigation_id: u64) bool {
         if (self.frozen_contexts.get(navigation_id)) |frozen| {
-            const now = std.time.milliTimestamp();
+            const now = clock.monotonicMillis();
             const age = now - frozen.frozen_at;
             return age < self.max_freeze_duration_ms;
         }
@@ -322,15 +323,15 @@ pub const FrozenContextManager = struct {
     /// This should be called periodically to clean up expired contexts
     /// that haven't been accessed.
     pub fn evictExpired(self: *Self) void {
-        const now = std.time.milliTimestamp();
-        var to_remove = std.ArrayList(u64).init(self.allocator);
-        defer to_remove.deinit();
+        const now = clock.monotonicMillis();
+        var to_remove: std.ArrayList(u64) = .empty;
+        defer to_remove.deinit(self.allocator);
 
         var iter = self.frozen_contexts.iterator();
         while (iter.next()) |entry| {
             const age = now - entry.value_ptr.*.frozen_at;
             if (age >= self.max_freeze_duration_ms) {
-                to_remove.append(entry.key_ptr.*) catch continue;
+                to_remove.append(self.allocator, entry.key_ptr.*) catch continue;
             }
         }
 
@@ -477,7 +478,7 @@ test "FrozenContextManager - expiration" {
     try mgr.freeze(1, v8_ctx, null, null, "");
 
     // Wait for expiration
-    std.time.sleep(2 * std.time.ns_per_ms);
+    clock.sleep(2 * std.time.ns_per_ms);
 
     try testing.expect(!mgr.canRestore(1));
 

@@ -3152,7 +3152,7 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
     } else null;
 
     // Get current time (use std.time for now)
-    const current_time = std.time.milliTimestamp();
+    const current_time = clock.monotonicMillis();
 
     // Register the idle callback
     // Note: The callback is stored but invocation requires event loop integration.
@@ -3578,6 +3578,7 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
 // Import Element and Node impls for internal state access
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
+const clock = @import("clock");
 
 /// Element types that participate in named access via the "name" attribute.
 /// Per HTML spec §7.4 "Named access on the Window object":
@@ -3845,7 +3846,7 @@ pub fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) anyerror![]runtime.DOMString {
     const internal = getInternal(instance) orelse return &[_]runtime.DOMString{};
 
-    var names: std.ArrayList(runtime.DOMString) = .{};
+    var names: std.ArrayList(runtime.DOMString) = .empty;
     errdefer {
         for (names.items) |*n| n.deinit(allocator);
         names.deinit(allocator);

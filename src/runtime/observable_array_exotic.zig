@@ -47,7 +47,7 @@ pub const ObservableArrayState = struct {
     pub fn init(allocator: std.mem.Allocator, target: *v8.Array) ObservableArrayState {
         return .{
             .allocator = allocator,
-            .backing_list = .{}, // Zig 0.15: ArrayList default empty init
+            .backing_list = .empty,
             .target = target,
         };
     }

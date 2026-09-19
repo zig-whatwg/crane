@@ -12,6 +12,7 @@ const history = @import("history.zig");
 const formatting = @import("formatting.zig");
 const structure = @import("structure.zig");
 const selection_ops = @import("selection_ops.zig");
+const clock = @import("clock");
 
 /// Opaque document handle - actual runtime.Instance integration handled at call site
 pub const DocumentHandle = *anyopaque;
@@ -507,7 +508,7 @@ pub fn recordStructureOperation(
         .redo_data = .{
             .position = position,
         },
-        .timestamp = std.time.timestamp(),
+        .timestamp = clock.wallSeconds(),
     };
 
     // Copy HTML strings
@@ -542,7 +543,7 @@ pub fn recordLinkOperation(
         .redo_data = .{
             .position = position,
         },
-        .timestamp = std.time.timestamp(),
+        .timestamp = clock.wallSeconds(),
     };
 
     // Copy HTML strings
@@ -576,7 +577,7 @@ pub fn recordContentInsertion(
         .redo_data = .{
             .position = position,
         },
-        .timestamp = std.time.timestamp(),
+        .timestamp = clock.wallSeconds(),
     };
 
     entry.redo_data.html = try allocator.dupe(u8, inserted_html);

@@ -225,7 +225,7 @@ test "full_wildcard_regexp value" {
 
 test "generateRegexAndNameList - empty parts" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     var result = try generateRegexAndNameList(allocator, parts.items, default_options);
@@ -237,7 +237,7 @@ test "generateRegexAndNameList - empty parts" {
 
 test "generateRegexAndNameList - simple fixed text" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = Part.init(.fixed_text, "hello", .none);
@@ -252,7 +252,7 @@ test "generateRegexAndNameList - simple fixed text" {
 
 test "generateRegexAndNameList - fixed text with special chars" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = Part.init(.fixed_text, "hello.world", .none);
@@ -266,7 +266,7 @@ test "generateRegexAndNameList - fixed text with special chars" {
 
 test "generateRegexAndNameList - fixed text with modifier" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = Part.init(.fixed_text, "foo", .optional);
@@ -284,7 +284,7 @@ test "generateRegexAndNameList - fixed text with modifier" {
 
 test "generateRegexAndNameList - segment wildcard" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makeNamedPart(.segment_wildcard, "", .none, "foo");
@@ -301,7 +301,7 @@ test "generateRegexAndNameList - segment wildcard" {
 
 test "generateRegexAndNameList - segment wildcard pathname" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makeNamedPart(.segment_wildcard, "", .none, "path");
@@ -316,7 +316,7 @@ test "generateRegexAndNameList - segment wildcard pathname" {
 
 test "generateRegexAndNameList - multiple named groups" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part1 = makeNamedPart(.segment_wildcard, "", .none, "foo");
@@ -341,7 +341,7 @@ test "generateRegexAndNameList - multiple named groups" {
 
 test "generateRegexAndNameList - regexp part" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makeNamedPart(.regexp, "\\d+", .none, "id");
@@ -360,7 +360,7 @@ test "generateRegexAndNameList - regexp part" {
 
 test "generateRegexAndNameList - full wildcard" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makeNamedPart(.full_wildcard, "", .none, "0");
@@ -380,7 +380,7 @@ test "generateRegexAndNameList - full wildcard" {
 
 test "generateRegexAndNameList - optional modifier" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makeNamedPart(.segment_wildcard, "", .optional, "id");
@@ -395,7 +395,7 @@ test "generateRegexAndNameList - optional modifier" {
 
 test "generateRegexAndNameList - zero or more modifier no prefix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makeNamedPart(.segment_wildcard, "", .zero_or_more, "path");
@@ -410,7 +410,7 @@ test "generateRegexAndNameList - zero or more modifier no prefix" {
 
 test "generateRegexAndNameList - one or more modifier no prefix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makeNamedPart(.segment_wildcard, "", .one_or_more, "path");
@@ -429,7 +429,7 @@ test "generateRegexAndNameList - one or more modifier no prefix" {
 
 test "generateRegexAndNameList - with prefix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makePrefixSuffixPart(.segment_wildcard, "", .none, "id", "/", "");
@@ -444,7 +444,7 @@ test "generateRegexAndNameList - with prefix" {
 
 test "generateRegexAndNameList - with suffix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makePrefixSuffixPart(.segment_wildcard, "", .none, "file", "", ".json");
@@ -459,7 +459,7 @@ test "generateRegexAndNameList - with suffix" {
 
 test "generateRegexAndNameList - with prefix and suffix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makePrefixSuffixPart(.segment_wildcard, "", .none, "name", "/", ".html");
@@ -474,7 +474,7 @@ test "generateRegexAndNameList - with prefix and suffix" {
 
 test "generateRegexAndNameList - optional with prefix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makePrefixSuffixPart(.segment_wildcard, "", .optional, "id", "/", "");
@@ -493,7 +493,7 @@ test "generateRegexAndNameList - optional with prefix" {
 
 test "generateRegexAndNameList - has start anchor" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = Part.init(.fixed_text, "test", .none);
@@ -507,7 +507,7 @@ test "generateRegexAndNameList - has start anchor" {
 
 test "generateRegexAndNameList - has end anchor" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = Part.init(.fixed_text, "test", .none);
@@ -525,7 +525,7 @@ test "generateRegexAndNameList - has end anchor" {
 
 test "generateRegexAndNameList - name list order matches parts order" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part1 = makeNamedPart(.segment_wildcard, "", .none, "first");
@@ -548,7 +548,7 @@ test "generateRegexAndNameList - name list order matches parts order" {
 
 test "generateRegexAndNameList - fixed text not in name list" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part1 = Part.init(.fixed_text, "prefix", .none);
@@ -571,7 +571,7 @@ test "generateRegexAndNameList - fixed text not in name list" {
 
 test "generateRegexAndNameList - api route pattern" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     // /api/v
@@ -606,7 +606,7 @@ test "generateRegexAndNameList - api route pattern" {
 
 test "generateRegexAndNameList - catch-all route" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     // /static
@@ -630,7 +630,7 @@ test "generateRegexAndNameList - catch-all route" {
 
 test "generateRegexAndNameList - zero or more with prefix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makePrefixSuffixPart(.segment_wildcard, "", .zero_or_more, "segments", "/", "");
@@ -646,7 +646,7 @@ test "generateRegexAndNameList - zero or more with prefix" {
 
 test "generateRegexAndNameList - one or more with prefix and suffix" {
     const allocator = testing.allocator;
-    var parts: std.ArrayListUnmanaged(Part) = .{};
+    var parts: std.ArrayListUnmanaged(Part) = .empty;
     defer parts.deinit(allocator);
 
     const part = makePrefixSuffixPart(.segment_wildcard, "", .one_or_more, "files", "/", ".txt");

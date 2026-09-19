@@ -26,6 +26,7 @@ const FetchTimingInfo = fetch_timing.FetchTimingInfo;
 const main_fetch = @import("main_fetch.zig");
 const scheme_fetch = @import("scheme_fetch.zig");
 const http_fetch = @import("http_fetch.zig");
+const clock = @import("clock");
 
 /// Error types for fetch.
 pub const FetchError = error{
@@ -198,7 +199,7 @@ fn extractScheme(url_str: []const u8) []const u8 {
 
 /// Get current time in milliseconds.
 fn getCurrentTimeMs() f64 {
-    return @as(f64, @floatFromInt(std.time.timestamp())) * 1000.0;
+    return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
 }
 
 // =============================================================================

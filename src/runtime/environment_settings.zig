@@ -16,6 +16,7 @@
 //! - HTML §7.5: Origin - https://html.spec.whatwg.org/multipage/browsers.html#concept-origin
 
 const std = @import("std");
+const clock = @import("clock");
 const Allocator = std.mem.Allocator;
 
 /// Origin representation for security checks
@@ -266,7 +267,7 @@ pub const EnvironmentSettingsObject = struct {
 
         // Get current time for time_origin if not provided
         const time_origin = options.time_origin orelse blk: {
-            const now = std.time.milliTimestamp();
+            const now = clock.wallMillis();
             break :blk now;
         };
 
@@ -532,12 +533,12 @@ test "EnvironmentSettingsObject - API base URL" {
 test "EnvironmentSettingsObject - time origin is set" {
     const allocator = std.testing.allocator;
 
-    const before = std.time.milliTimestamp();
+    const before = clock.wallMillis();
 
     const settings = try EnvironmentSettingsObject.init(allocator, .{});
     defer settings.deinit();
 
-    const after = std.time.milliTimestamp();
+    const after = clock.wallMillis();
 
     try std.testing.expect(settings.time_origin >= before);
     try std.testing.expect(settings.time_origin <= after);

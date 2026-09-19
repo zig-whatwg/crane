@@ -250,7 +250,7 @@ pub const TerminationCleanup = struct {
     /// Initialize cleanup manager
     pub fn init(allocator: Allocator) TerminationCleanup {
         return .{
-            .resources = .{},
+            .resources = .empty,
             .allocator = allocator,
         };
     }

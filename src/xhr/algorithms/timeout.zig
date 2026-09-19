@@ -18,6 +18,7 @@ const xhr_root = @import("../root.zig");
 const XMLHttpRequestState = xhr_root.state_machine.XMLHttpRequestState;
 const ReadyState = xhr_root.state_machine.ReadyState;
 const event_support = @import("../internal/event_support.zig");
+const clock = @import("clock");
 
 /// Error types for timeout operations
 pub const TimeoutError = error{
@@ -108,7 +109,7 @@ pub const TimeoutTimer = struct {
     /// Create a new timeout timer
     pub fn init(timeout_ms: u64) TimeoutTimer {
         return .{
-            .start_time = std.time.milliTimestamp(),
+            .start_time = clock.monotonicMillis(),
             .timeout_ms = timeout_ms,
         };
     }
@@ -119,7 +120,7 @@ pub const TimeoutTimer = struct {
             return false; // No timeout
         }
 
-        const now = std.time.milliTimestamp();
+        const now = clock.monotonicMillis();
         const elapsed = now - self.start_time;
 
         return elapsed >= @as(i64, @intCast(self.timeout_ms));
@@ -127,7 +128,7 @@ pub const TimeoutTimer = struct {
 
     /// Get elapsed time in milliseconds
     pub fn getElapsedMs(self: *const TimeoutTimer) u64 {
-        const now = std.time.milliTimestamp();
+        const now = clock.monotonicMillis();
         const elapsed = now - self.start_time;
 
         if (elapsed < 0) return 0;
@@ -136,7 +137,7 @@ pub const TimeoutTimer = struct {
 
     /// Reset the timer
     pub fn reset(self: *TimeoutTimer) void {
-        self.start_time = std.time.milliTimestamp();
+        self.start_time = clock.monotonicMillis();
     }
 };
 

@@ -32,6 +32,7 @@ const OpaquePtr = vtables.OpaquePtr;
 
 // Import from fetch module (must be added as dependency in build.zig)
 const fetch = @import("fetch");
+const clock = @import("clock");
 const network_backend = fetch.network.backend;
 const NetworkBackend = network_backend.NetworkBackend;
 const OldNetworkRequest = network_backend.NetworkRequest;
@@ -167,7 +168,7 @@ pub const NetworkBackendAdapter = struct {
         while (!ctx.completed) {
             // In a real implementation, this would yield to an event loop
             // For now, we assume the callback is called synchronously or very quickly
-            std.time.sleep(1_000_000); // 1ms
+            clock.sleep(1_000_000); // 1ms
         }
 
         // Return result

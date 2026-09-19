@@ -433,7 +433,7 @@ fn expandPath(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
 
 /// Escape origin for use as directory name
 fn escapeOrigin(allocator: std.mem.Allocator, origin: []const u8) ![]const u8 {
-    var result: std.ArrayListUnmanaged(u8) = .{};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (origin) |c| {

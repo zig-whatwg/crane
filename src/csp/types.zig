@@ -144,7 +144,7 @@ pub const SourceList = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .expressions = .{},
+            .expressions = .empty,
             .allocator = allocator,
         };
     }
@@ -223,14 +223,14 @@ pub const Directive = struct {
 /// Spec: CSP Level 3 § 2.2
 pub const DirectiveSet = struct {
     /// Map from directive name to directive
-    items: std.StringArrayHashMap(Directive),
+    items: std.StringArrayHashMapUnmanaged(Directive),
     allocator: std.mem.Allocator,
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .items = std.StringArrayHashMap(Directive).init(allocator),
+            .items = .empty,
             .allocator = allocator,
         };
     }
@@ -249,7 +249,7 @@ pub const DirectiveSet = struct {
     /// Spec: CSP Level 3 § 2.2.1 step 3.e
     pub fn append(self: *Self, directive: Directive) !void {
         if (!self.items.contains(directive.name)) {
-            try self.items.put(directive.name, directive);
+            try self.items.put(self.allocator, directive.name, directive);
         }
     }
 
@@ -274,7 +274,7 @@ pub const DirectiveSet = struct {
             var directive = entry.value_ptr;
             directive.deinit();
         }
-        self.items.deinit();
+        self.items.deinit(self.allocator);
     }
 };
 
@@ -398,7 +398,7 @@ pub const CSPList = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .policies = .{},
+            .policies = .empty,
             .allocator = allocator,
             .contains_header_policy = false,
         };

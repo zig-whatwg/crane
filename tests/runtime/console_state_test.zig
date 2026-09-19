@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const clock = @import("clock");
 const testing = std.testing;
 
 test "ConsoleState - init and deinit" {
@@ -48,7 +49,7 @@ test "ConsoleState - timer_table operations" {
     defer state.deinit(testing.allocator);
 
     const label = try testing.allocator.dupe(u8, "timer");
-    const now = std.time.milliTimestamp();
+    const now = clock.wallMillis();
 
     try state.timer_table.put(label, now);
     try testing.expect(state.timer_table.contains("timer"));
@@ -90,7 +91,7 @@ test "ContextData - console_state deinit cleans up" {
     try ctx_data.console_state.count_map.put(label1, 42);
 
     const label2 = try testing.allocator.dupe(u8, "timer_label");
-    try ctx_data.console_state.timer_table.put(label2, std.time.milliTimestamp());
+    try ctx_data.console_state.timer_table.put(label2, clock.wallMillis());
 
     try ctx_data.console_state.group_stack.append(testing.allocator, 1);
 

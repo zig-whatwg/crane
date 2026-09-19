@@ -35,6 +35,7 @@
 //! - Transaction lifetime: https://w3c.github.io/IndexedDB/#transaction-lifetime
 
 const std = @import("std");
+const clock = @import("clock");
 
 // ============================================================================
 // Work Item Types
@@ -237,7 +238,7 @@ pub const WorkQueue = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .items = .{},
+            .items = .empty,
             .mutex = .{},
             .condition = .{},
             .shutdown = std.atomic.Value(bool).init(false),
@@ -354,7 +355,7 @@ pub const ConnectionPool = struct {
 
         try self.connections.put(self.allocator, id, ConnectionInfo{
             .path = path_copy,
-            .opened_at = std.time.milliTimestamp(),
+            .opened_at = clock.wallMillis(),
             .is_open = true,
         });
 
@@ -533,13 +534,13 @@ pub const WorkerPool = struct {
     fn workerMain(self: *Self) void {
         while (self.running.load(.acquire)) {
             if (self.queue.pop()) |item| {
-                const start_time = std.time.nanoTimestamp();
+                const start_time = clock.monotonicNanos();
 
                 // Process the work item
                 const result = processWorkItem(item);
 
                 // Update statistics
-                const elapsed: u64 = @intCast(std.time.nanoTimestamp() - start_time);
+                const elapsed: u64 = @intCast(clock.monotonicNanos() - start_time);
                 _ = self.stats.total_process_time_ns.fetchAdd(elapsed, .monotonic);
 
                 if (result.success) {
@@ -680,7 +681,7 @@ pub const BatchOperation = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .items = .{},
+            .items = .empty,
             .allocator = allocator,
         };
     }

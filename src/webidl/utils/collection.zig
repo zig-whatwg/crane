@@ -327,7 +327,7 @@ pub const StringCollectionMixin = struct {
 // =============================================================================
 
 test "CollectionMixin - getLength with ArrayList" {
-    var list = std.ArrayListUnmanaged(u32){};
+    var list = std.ArrayListUnmanaged(u32).empty;
     defer list.deinit(std.testing.allocator);
 
     try list.append(std.testing.allocator, 1);
@@ -345,7 +345,7 @@ test "CollectionMixin - getLength with slice" {
 }
 
 test "CollectionMixin - getItem with ArrayList" {
-    var list = std.ArrayListUnmanaged(u32){};
+    var list = std.ArrayListUnmanaged(u32).empty;
     defer list.deinit(std.testing.allocator);
 
     try list.append(std.testing.allocator, 10);
@@ -361,7 +361,7 @@ test "CollectionMixin - getItem with ArrayList" {
 }
 
 test "CollectionMixin - contains" {
-    var list = std.ArrayListUnmanaged(u32){};
+    var list = std.ArrayListUnmanaged(u32).empty;
     defer list.deinit(std.testing.allocator);
 
     try list.append(std.testing.allocator, 5);
@@ -374,7 +374,7 @@ test "CollectionMixin - contains" {
 }
 
 test "StringCollectionMixin - containsString" {
-    var list = std.ArrayListUnmanaged([]const u8){};
+    var list = std.ArrayListUnmanaged([]const u8).empty;
     defer list.deinit(std.testing.allocator);
 
     try list.append(std.testing.allocator, "hello");

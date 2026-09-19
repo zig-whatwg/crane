@@ -30,6 +30,7 @@ const NetworkError = network.NetworkError;
 const LibcurlBackend = network.LibcurlBackend;
 const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const cors = @import("../cors/root.zig");
+const clock = @import("clock");
 const PreflightCache = cors.PreflightCache;
 
 /// Error types for HTTP fetch.
@@ -457,7 +458,7 @@ fn isNetworkError(response: *InternalResponse) bool {
 
 /// Get current time in milliseconds (DOMHighResTimeStamp format).
 fn getCurrentTimeMs() f64 {
-    return @as(f64, @floatFromInt(std.time.timestamp())) * 1000.0;
+    return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
 }
 
 // =============================================================================
@@ -507,8 +508,8 @@ fn performCorsPreflight(
                     return .{
                         .success = .{
                             .allocator = allocator,
-                            .methods = .{},
-                            .headers = .{},
+                            .methods = .empty,
+                            .headers = .empty,
                             .methods_wildcard = entry.methods_wildcard,
                             .headers_wildcard = entry.headers_wildcard,
                             .expiry_time = entry.expiry_time,
@@ -658,7 +659,7 @@ fn performCorsPreflight(
                     origin,
                     url,
                     origin, // network partition key
-                    @as(u64, @intCast(@max(0, entry.expiry_time - std.time.timestamp()))),
+                    @as(u64, @intCast(@max(0, entry.expiry_time - clock.wallSeconds()))),
                     methods_list.items,
                     entry.methods_wildcard,
                     headers_list.items,

@@ -833,7 +833,7 @@ fn setUpWritableStreamDefaultController(
         .isolate = isolate,
         .v8_context = stream_instance.ctx.engine_ctx,
         .started = false,
-        .queue = .{},
+        .queue = .empty,
         .queue_total_size = 0.0,
         .abort_controller = abort_controller,
         .allocator = allocator,

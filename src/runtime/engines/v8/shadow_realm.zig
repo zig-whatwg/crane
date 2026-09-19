@@ -23,6 +23,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const context_manager = @import("context_manager.zig");
+const clock = @import("clock");
 
 /// Tracked ShadowRealm context entry
 const ShadowRealmEntry = struct {
@@ -167,7 +168,7 @@ fn shadowRealmContextCallback(
         const entry = ShadowRealmEntry{
             .context_handle = global_context,
             .initiator_context_raw_addr = initiator_raw_addr,
-            .created_at = std.time.timestamp(),
+            .created_at = clock.wallSeconds(),
         };
         data.tracked_realms.put(@intFromPtr(global_context), entry) catch {
             std.log.warn("[ShadowRealm] Failed to track ShadowRealm context", .{});
@@ -263,7 +264,7 @@ pub fn disposeByInitiator(initiator_raw_addr: ?*anyopaque) void {
     if (initiator_raw_addr == null) return;
 
     if (g_callback_data) |data| {
-        var to_remove: std.ArrayListUnmanaged(usize) = .{};
+        var to_remove: std.ArrayListUnmanaged(usize) = .empty;
         defer to_remove.deinit(data.allocator);
 
         // Find all ShadowRealms created by this initiator (compare raw addresses)

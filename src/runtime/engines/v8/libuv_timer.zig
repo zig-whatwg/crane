@@ -52,6 +52,7 @@ const libuv = @import("libuv.zig");
 // Import timer types from the runtime module
 // v8 module imports runtime, so we access timer through it
 const runtime = @import("runtime");
+const clock = @import("clock");
 
 pub const TimerId = runtime.TimerId;
 pub const TimerCallback = runtime.TimerCallback;
@@ -532,7 +533,7 @@ test "LibuvTimerManager - timer fires" {
     var iterations: usize = 0;
     while (!called and iterations < 100) : (iterations += 1) {
         _ = manager.poll();
-        std.time.sleep(1 * std.time.ns_per_ms);
+        clock.sleep(1 * std.time.ns_per_ms);
     }
 
     try std.testing.expect(called);

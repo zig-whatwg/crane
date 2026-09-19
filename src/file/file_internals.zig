@@ -18,6 +18,7 @@
 //! - Name should not include path information
 
 const std = @import("std");
+const clock = @import("clock");
 const BlobData = @import("blob_internals.zig").BlobData;
 
 /// Internal data storage for a File object.
@@ -107,7 +108,7 @@ pub const FileData = struct {
 
     /// Get current time in milliseconds since Unix epoch.
     fn getCurrentTimeMs() i64 {
-        const ns = std.time.nanoTimestamp();
+        const ns = clock.wallNanos();
         return @intCast(@divTrunc(ns, std.time.ns_per_ms));
     }
 };

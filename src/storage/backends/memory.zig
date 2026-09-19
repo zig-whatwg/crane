@@ -31,6 +31,7 @@
 //!
 
 const std = @import("std");
+const clock = @import("clock");
 
 // Import backend types - use relative import for standalone testing or parent for module
 const backend = if (@hasDecl(@This(), "__is_test"))
@@ -98,8 +99,8 @@ pub const MemoryBackend = struct {
             self.* = .{
                 .name = name_copy,
                 .version = 1,
-                .created_at = std.time.milliTimestamp(),
-                .modified_at = std.time.milliTimestamp(),
+                .created_at = clock.wallMillis(),
+                .modified_at = clock.wallMillis(),
                 .allocator = allocator,
                 .object_stores = std.StringHashMap(*ObjectStore).init(allocator),
             };
@@ -300,7 +301,7 @@ pub const MemoryBackend = struct {
                 .id = id,
                 .transaction_id = txn_id,
                 .allocator = allocator,
-                .keys = .{},
+                .keys = .empty,
                 .position = 0,
                 .direction = direction,
                 .range = range,
@@ -480,7 +481,7 @@ pub const MemoryBackend = struct {
         }
 
         // Update modified timestamp
-        state.modified_at = std.time.milliTimestamp();
+        state.modified_at = clock.wallMillis();
 
         // Remove and cleanup transaction
         _ = self.transactions.remove(handle.id);
@@ -605,7 +606,7 @@ pub const MemoryBackend = struct {
         errdefer cursor.deinit();
 
         // Collect keys in range
-        var keys: std.ArrayListUnmanaged([]const u8) = .{};
+        var keys: std.ArrayListUnmanaged([]const u8) = .empty;
         defer keys.deinit(self.allocator);
 
         var it = store.data.keyIterator();
@@ -744,7 +745,7 @@ pub const MemoryBackend = struct {
         const state = self.state orelse return BackendError.Closed;
 
         // Collect object store names
-        var names: std.ArrayListUnmanaged([]const u8) = .{};
+        var names: std.ArrayListUnmanaged([]const u8) = .empty;
         defer names.deinit(allocator);
 
         var it = state.object_stores.keyIterator();
@@ -1026,7 +1027,7 @@ test "MemoryBackend - cursor with range" {
     const cursor = try backend_inst.cursorOpen(txn2, KeyRange.bound("b", "c", false, false), .next);
     defer backend_inst.cursorClose(cursor);
 
-    var keys: std.ArrayListUnmanaged([]const u8) = .{};
+    var keys: std.ArrayListUnmanaged([]const u8) = .empty;
     defer {
         for (keys.items) |k| std.testing.allocator.free(k);
         keys.deinit(std.testing.allocator);

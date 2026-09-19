@@ -102,7 +102,7 @@ pub fn init(
     const internal = state.own._internal.?;
     internal.allocator = allocator;
     internal.stream = null;
-    internal.read_into_requests = .{};
+    internal.read_into_requests = .empty;
     internal.read_into_requests.clearRetainingCapacity();
     internal.loop_instance = loop;
 

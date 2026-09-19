@@ -103,7 +103,7 @@ pub const IDBDatabase = struct {
             .version = version,
             .object_stores = std.StringHashMap(ObjectStoreMetadata).init(allocator),
             .closed = false,
-            .transactions = .{},
+            .transactions = .empty,
             .version_change_transaction = null,
             .onabort = null,
             .onclose = null,
@@ -234,7 +234,7 @@ pub const IDBDatabase = struct {
             .key_path = key_path_copy,
             .auto_increment = options.auto_increment,
             .key_generator = 1, // Start at 1 per spec
-            .index_names = .{},
+            .index_names = .empty,
         };
 
         try self.object_stores.put(name_copy, metadata);

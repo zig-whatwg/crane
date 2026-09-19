@@ -14,6 +14,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const clock = @import("clock");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const ErrorEvent = interfaces.ErrorEvent;
 
@@ -145,7 +146,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
     state.base.own.isTrusted = false;
-    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(std.time.milliTimestamp()));
+    state.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
     // Initialize ErrorEvent-specific attributes from eventInitDict
     if (eventInitDict.was_passed) {

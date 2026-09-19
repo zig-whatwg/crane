@@ -125,8 +125,10 @@ pub const Manifest = struct {
     ///
     /// This is the authoritative denominator for a compliance score: WPT's
     /// manifest is what classifies a file as a testharness test in the first
-    /// place, and it already expands `.any.js` sources into their per-global
-    /// variants (`.any.html`, `.any.worker.html`, ...).
+    /// place, and it already expands each source along both axes it can fan out
+    /// along - per-global (`.any.html`, `.any.worker.html`, ...) and per
+    /// `<meta name="variant">` (`foo.html?windows-1252`, `foo.html?ibm866`).
+    /// The runner has to execute each of those to report in the same unit.
     pub fn urlCount(self: *const Manifest) usize {
         return self.url_to_source.count();
     }
@@ -352,6 +354,42 @@ test "parseManifestBytes expands .any.js into per-global variants" {
     try std.testing.expectEqual(@as(usize, 2), urls.len);
     try std.testing.expectEqual(@as(usize, 2), manifest.urlCountUnder("dom"));
     try std.testing.expectEqual(@as(usize, 0), manifest.urlCountUnder("url"));
+}
+
+test "parseManifestBytes expands query-string variants into separate URLs" {
+    const allocator = std.testing.allocator;
+
+    // What `<meta name="variant" content="?windows-1252">` looks like once the
+    // manifest has been generated: one entry per variant, all sharing the source
+    // path, differing only in the query. `encoding/` alone has 149 such sources
+    // covering 1,427 URLs.
+    const json =
+        \\{"items":{"testharness":{
+        \\ "encoding":{"single-byte-decoder.html":["h",
+        \\   ["encoding/single-byte-decoder.html?windows-1252",{}],
+        \\   ["encoding/single-byte-decoder.html?ibm866",{}],
+        \\   ["encoding/single-byte-decoder.html?koi8-r",{}]]}
+        \\}}}
+    ;
+
+    var manifest = try parseManifestBytes(allocator, json);
+    defer manifest.deinit();
+
+    // Three URLs, one source. This is the unit mismatch the runner has to
+    // close: it executes sources, the scoreboard's denominator counts URLs, so
+    // a source run once reports a third of what it was asked for.
+    try std.testing.expectEqual(@as(usize, 3), manifest.urlCount());
+    const urls = manifest.getUrlsForSource("encoding/single-byte-decoder.html").?;
+    try std.testing.expectEqual(@as(usize, 3), urls.len);
+
+    // Every variant resolves back to the one source, so selection and the
+    // baseline both key off a path that exists on disk.
+    for (urls) |url| {
+        try std.testing.expectEqualStrings(
+            "encoding/single-byte-decoder.html",
+            manifest.resolveUrlToSource(url).?,
+        );
+    }
 }
 
 test "parseManifestBytes treats a null URL as the source path" {

@@ -71,10 +71,10 @@ pub const DiscoveryResult = struct {
     pub fn init(allocator: std.mem.Allocator) DiscoveryResult {
         return DiscoveryResult{
             .allocator = allocator,
-            .test_files = .{},
+            .test_files = .empty,
             .by_type = std.AutoHashMap(config.FileType, usize).init(allocator),
             .by_category = std.StringHashMap(usize).init(allocator),
-            .skipped = .{},
+            .skipped = .empty,
         };
     }
 
@@ -257,7 +257,7 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
 
     // Determine which directories to scan
     var owns_dirs = false;
-    var default_dirs: std.ArrayList([]const u8) = .{};
+    var default_dirs: std.ArrayList([]const u8) = .empty;
     defer if (owns_dirs) default_dirs.deinit(allocator);
 
     const dirs_to_scan = if (options.filters.items.len > 0)

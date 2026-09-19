@@ -71,8 +71,8 @@ pub const InternalState = struct {
             .allocator = undefined,
             .callback = null,
             .isolate = null,
-            .node_list = .{},
-            .record_queue = .{},
+            .node_list = .empty,
+            .record_queue = .empty,
         };
     }
 
@@ -81,8 +81,8 @@ pub const InternalState = struct {
             .allocator = allocator,
             .callback = null,
             .isolate = null,
-            .node_list = .{},
-            .record_queue = .{},
+            .node_list = .empty,
+            .record_queue = .empty,
         };
     }
 

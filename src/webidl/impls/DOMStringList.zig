@@ -40,7 +40,7 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
-            .strings = std.ArrayList([]const u8).init(allocator),
+            .strings = .empty,
         };
     }
 
@@ -106,7 +106,7 @@ pub fn createFromSlice(allocator: std.mem.Allocator, ctx: runtime.Context, strin
     for (strings) |str| {
         const owned = try allocator.dupe(u8, str);
         errdefer allocator.free(owned);
-        try internal.strings.append(owned);
+        try internal.strings.append(internal.allocator, owned);
     }
 
     return instance;
@@ -175,7 +175,7 @@ pub fn appendString(instance: *runtime.Instance, str: []const u8) !void {
     const owned = try internal.allocator.dupe(u8, str);
     errdefer internal.allocator.free(owned);
 
-    try internal.strings.append(owned);
+    try internal.strings.append(internal.allocator, owned);
 }
 
 /// Get the string at an index (non-throwing helper)

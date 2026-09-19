@@ -17,6 +17,7 @@ const webidl = @import("webidl");
 const v8_engine = @import("v8");
 const IntersectionObserver = interfaces.IntersectionObserver;
 const IntersectionObserverEntryImpl = @import("IntersectionObserverEntry.zig");
+const clock = @import("clock");
 
 pub const State = IntersectionObserver.State;
 
@@ -80,9 +81,9 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
-            .observations = .{},
-            .queued_entries = .{},
-            .thresholds = .{},
+            .observations = .empty,
+            .queued_entries = .empty,
+            .thresholds = .empty,
         };
     }
 
@@ -450,7 +451,7 @@ fn scheduleIntersectionUpdate(internal: *InternalState) !void {
 /// Compute intersections for all observed targets
 fn computeIntersections(internal: *InternalState) !void {
     std.log.debug("[IntersectionObserver] computeIntersections: {} observations", .{internal.observations.items.len});
-    const time: typedefs.DOMHighResTimeStamp = @as(f64, @floatFromInt(std.time.milliTimestamp()));
+    const time: typedefs.DOMHighResTimeStamp = @as(f64, @floatFromInt(clock.monotonicMillis()));
 
     for (internal.observations.items, 0..) |*obs, idx| {
         std.log.debug("[IntersectionObserver] Processing observation {}", .{idx});

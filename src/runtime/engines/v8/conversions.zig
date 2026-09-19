@@ -1238,13 +1238,22 @@ pub fn fromV8Value(
             // 2. Consumers must untag before using
             // 3. The underlying GlobalHandle maintains proper alignment
             //
-            // We use a packed struct to bypass Zig's alignment checks completely.
-            // This is necessary because tagged pointers have intentionally misaligned
-            // addresses (low bits used for the tag).
+            // Zig 0.16: `packed struct { ptr: T }` is rejected ("pointers cannot be
+            // directly bitpacked"), so the old @bitCast pun is gone. The replacements
+            // that look obvious do NOT work here:
+            //   - @ptrFromInt(tagged_addr) asserts the address is aligned for T and
+            //     panics ("incorrect alignment") in Debug/ReleaseSafe, which is exactly
+            //     the invariant a tagged pointer deliberately breaks.
+            //   - extern struct / extern union reject `*const fn` fields that do not
+            //     specify a C calling convention, and T here is usually a plain Zig
+            //     callback type (e.g. EventHandler), so they fail to compile.
+            // Copying the raw address bytes into an undefined T is the one pun that is
+            // layout-guaranteed, alignment-check-free, and generic over any pointer T.
             const tagged_addr: usize = @intFromPtr(tagged_ptr);
-            const PackedPtr = packed struct { ptr: T };
-            const packed_val: PackedPtr = @bitCast(tagged_addr);
-            return packed_val.ptr;
+            comptime std.debug.assert(@sizeOf(T) == @sizeOf(usize));
+            var punned_ptr: T = undefined;
+            @memcpy(std.mem.asBytes(&punned_ptr), std.mem.asBytes(&tagged_addr));
+            return punned_ptr;
         }
     }
 
@@ -3310,7 +3319,7 @@ pub fn iterateAsSequencePairs(
     const next_fn: *v8.Function = @ptrCast(next_method);
 
     // Collect pairs by iterating
-    var pairs: std.ArrayList(SequencePair) = .{};
+    var pairs: std.ArrayList(SequencePair) = .empty;
     errdefer {
         for (pairs.items) |pair| {
             if (pair.name.len > 0) allocator.free(pair.name);
@@ -3488,7 +3497,7 @@ pub fn iterateAsRecordPairs(
         return &[_]SequencePair{};
     }
 
-    var pairs: std.ArrayList(SequencePair) = .{};
+    var pairs: std.ArrayList(SequencePair) = .empty;
     errdefer {
         for (pairs.items) |pair| {
             if (pair.name.len > 0) allocator.free(pair.name);

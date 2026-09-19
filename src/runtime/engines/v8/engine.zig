@@ -355,7 +355,7 @@ fn v8ParseJson(
     // Build: JSON.parse('...escaped json...')
 
     // Escape the JSON for JavaScript string literal (escape backslashes and quotes)
-    var escaped: std.ArrayListUnmanaged(u8) = .{};
+    var escaped: std.ArrayListUnmanaged(u8) = .empty;
     defer escaped.deinit(std.heap.c_allocator);
 
     // Start with JSON.parse('

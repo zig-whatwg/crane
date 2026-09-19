@@ -485,7 +485,7 @@ pub const TypeRegistry = struct {
 
     /// Resolve a union type to information about its members
     pub fn resolveUnion(self: *const TypeRegistry, union_types: []const []const u8) UnionInfo {
-        var members = std.ArrayList(UnionMember).init(self.allocator);
+        var members: std.ArrayList(UnionMember) = .empty;
 
         var has_primitives = false;
         var has_interfaces = false;
@@ -542,7 +542,7 @@ pub const TypeRegistry = struct {
 
     /// Resolve a union type from IDLType union members
     pub fn resolveUnionFromIDLTypes(self: *const TypeRegistry, union_types: []const types.IDLType) UnionInfo {
-        var type_names = std.ArrayList([]const u8).init(self.allocator);
+        var type_names: std.ArrayList([]const u8) = .empty;
         defer type_names.deinit(self.allocator);
 
         for (union_types) |ut| {

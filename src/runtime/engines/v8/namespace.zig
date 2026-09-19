@@ -36,12 +36,12 @@ const runtime = @import("runtime");
 /// Global runtime context for V8 namespace operations
 /// TODO: This should be stored per-isolate, not globally
 var global_context: ?*runtime.ContextData = null;
-var global_context_mutex = std.Thread.Mutex{};
+var global_context_mutex: std.Io.Mutex = .init;
 
 /// Get the global runtime context (may return null if not yet initialized)
 pub fn getGlobalContext() ?runtime.Context {
-    global_context_mutex.lock();
-    defer global_context_mutex.unlock();
+    std.Io.Threaded.mutexLock(&global_context_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_context_mutex);
     return global_context;
 }
 
@@ -53,8 +53,8 @@ pub fn getGlobalContext() ?runtime.Context {
 ///
 /// Called by template_registry.clear() as part of isolate cleanup.
 pub fn clearGlobalContext() void {
-    global_context_mutex.lock();
-    defer global_context_mutex.unlock();
+    std.Io.Threaded.mutexLock(&global_context_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_context_mutex);
     if (global_context) |ctx| {
         // Deinit the context data to free resources
         ctx.deinit();
@@ -298,8 +298,8 @@ pub fn V8Namespace(comptime Namespace: type) type {
                         // Handle special case: runtime.Context
                         if (ParamType == runtime.Context) {
                             // Get or create the global context
-                            global_context_mutex.lock();
-                            defer global_context_mutex.unlock();
+                            std.Io.Threaded.mutexLock(&global_context_mutex);
+                            defer std.Io.Threaded.mutexUnlock(&global_context_mutex);
 
                             if (global_context == null) {
                                 // Initialize global context with colored logger

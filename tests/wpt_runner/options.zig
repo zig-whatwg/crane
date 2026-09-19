@@ -62,8 +62,8 @@ pub const Options = struct {
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
-            .filters = .{},
-            .specific_files = .{},
+            .filters = .empty,
+            .specific_files = .empty,
             .allocator = allocator,
         };
     }

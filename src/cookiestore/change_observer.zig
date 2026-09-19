@@ -105,8 +105,8 @@ pub const CookieChangeObserver = struct {
     /// Create a new observer
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
-            .listeners = .{},
-            .pending_changes = .{},
+            .listeners = .empty,
+            .pending_changes = .empty,
             .allocator = allocator,
         };
     }
@@ -179,7 +179,7 @@ pub const CookieChangeObserver = struct {
         // Dispatch to each listener
         for (self.listeners.items) |listener| {
             // Filter changes for this listener
-            var filtered = std.ArrayListUnmanaged(CookieChange){};
+            var filtered: std.ArrayListUnmanaged(CookieChange) = .empty;
             defer filtered.deinit(self.allocator);
 
             for (self.pending_changes.items) |change| {
@@ -209,7 +209,7 @@ pub const CookieChangeObserver = struct {
         url_host: []const u8,
         url_path: []const u8,
     ) !std.ArrayListUnmanaged(CookieChange) {
-        var result = std.ArrayListUnmanaged(CookieChange){};
+        var result: std.ArrayListUnmanaged(CookieChange) = .empty;
         errdefer {
             for (result.items) |*c| c.deinit();
             result.deinit(allocator);
@@ -280,13 +280,13 @@ pub const CookieChangeObserver = struct {
     ) !struct { changed: std.ArrayListUnmanaged(CookieListItem), deleted: std.ArrayListUnmanaged(CookieListItem) } {
         _ = self;
 
-        var changed = std.ArrayListUnmanaged(CookieListItem){};
+        var changed: std.ArrayListUnmanaged(CookieListItem) = .empty;
         errdefer {
             for (changed.items) |*item| item.deinit();
             changed.deinit(allocator);
         }
 
-        var deleted = std.ArrayListUnmanaged(CookieListItem){};
+        var deleted: std.ArrayListUnmanaged(CookieListItem) = .empty;
         errdefer {
             for (deleted.items) |*item| item.deinit();
             deleted.deinit(allocator);

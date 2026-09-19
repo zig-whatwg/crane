@@ -31,6 +31,7 @@
 
 const std = @import("std");
 const intl = @import("intl");
+const clock = @import("clock");
 const cldr = intl.cldr;
 const cldr_embedded = cldr.embedded;
 
@@ -74,9 +75,9 @@ fn runBenchmark(
 
     // Benchmark
     for (0..iterations) |_| {
-        const start = std.time.nanoTimestamp();
+        const start = clock.monotonicNanos();
         benchFn(context);
-        const end = std.time.nanoTimestamp();
+        const end = clock.monotonicNanos();
 
         const elapsed: u64 = @intCast(end - start);
         total_ns += elapsed;
