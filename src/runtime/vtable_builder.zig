@@ -15,7 +15,7 @@
 //!       .call_appendChild = &Node.call_appendChild,
 //!       .get_nodeType = &Node.get_nodeType,
 //!   };
-//!   const vtable = buildVTable(&delegates);
+//!   const vtable = buildVTable(&delegates, "Node");
 
 const std = @import("std");
 const Method = @import("instance.zig").Method;
@@ -35,12 +35,12 @@ const VTable = @import("instance.zig").VTable;
 ///       .get_nodeType = &impl.getNodeType,
 ///       .set_textContent = &impl.setTextContent,
 ///   };
-///   const vtable = buildVTable(&delegates);
+///   const vtable = buildVTable(&delegates, "Node");
 ///
 /// The delegates must be const and have a stable address (global or static).
 /// The deinit function is called when the GC collects the JS wrapper object.
 /// If delegates doesn't have .deinit, defaults to null (no cleanup).
-pub fn buildVTable(comptime delegates_ptr: anytype) VTable {
+pub fn buildVTable(comptime delegates_ptr: anytype, comptime name: []const u8) VTable {
     @setEvalBranchQuota(20000);
 
     const PtrInfo = @typeInfo(@TypeOf(delegates_ptr));
@@ -62,6 +62,7 @@ pub fn buildVTable(comptime delegates_ptr: anytype) VTable {
         null;
 
     return VTable{
+        .name = name,
         .deinit = deinit_fn,
         .methods_ptr = @ptrCast(delegates_ptr),
     };
@@ -72,7 +73,7 @@ pub fn buildVTable(comptime delegates_ptr: anytype) VTable {
 /// NOTE: Prefer using buildVTable() with .deinit in delegates struct instead.
 /// This function is kept for backward compatibility but is no longer needed
 /// since buildVTable() now auto-extracts .deinit from the delegates.
-pub fn buildVTableWithDeinit(comptime delegates_ptr: anytype, comptime deinit_fn: ?*const fn (*Instance) void) VTable {
+pub fn buildVTableWithDeinit(comptime delegates_ptr: anytype, comptime deinit_fn: ?*const fn (*Instance) void, comptime name: []const u8) VTable {
     @setEvalBranchQuota(20000);
 
     const PtrInfo = @typeInfo(@TypeOf(delegates_ptr));
@@ -88,6 +89,7 @@ pub fn buildVTableWithDeinit(comptime delegates_ptr: anytype, comptime deinit_fn
     }
 
     return VTable{
+        .name = name,
         .deinit = deinit_fn,
         .methods_ptr = @ptrCast(delegates_ptr),
     };

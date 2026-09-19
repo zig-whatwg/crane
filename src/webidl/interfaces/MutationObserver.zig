@@ -79,7 +79,7 @@ pub const MutationObserver = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -111,6 +111,7 @@ pub const MutationObserver = struct {
     }
 
     pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, options: webidl.Opt(MutationObserverInit)) anyerror!void {
+        
         return try MutationObserverImpl.call_observe(instance, target, options);
     }
 

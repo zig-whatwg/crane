@@ -2086,7 +2086,7 @@ pub fn writeVTable(
 
     try writer.writeAll("    };\n");
     // buildVTable auto-extracts .deinit from delegates struct
-    try writer.writeAll("    pub const vtable = runtime.buildVTable(&delegates);\n\n");
+    try writer.writeAll("    pub const vtable = runtime.buildVTable(&delegates, Meta.name);\n\n");
 }
 
 /// VTable entry for sorting
@@ -3968,7 +3968,7 @@ test "writeVTable generates vtable constant" {
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "const delegates = .{") != null);
     try testing.expect(std.mem.indexOf(u8, output, ".deinit = &deinit,") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTable(&delegates);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const vtable = runtime.buildVTable(&delegates, Meta.name);") != null);
 }
 
 test "writeLifecycleFunctions generates init and deinit" {

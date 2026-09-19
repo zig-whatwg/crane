@@ -634,6 +634,7 @@ test "element reaction queue management" {
     // For testing, we create a minimal struct that can be used as a key
     var mock_state: u8 = 0;
     const mock_vtable = runtime.VTable{
+        .name = "<mock-element>",
         .deinit = null,
         .methods_ptr = &.{},
     };

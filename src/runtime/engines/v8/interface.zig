@@ -7267,6 +7267,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Create a template instance to carry context to the static method
                     // This instance is just a vehicle for passing allocator/context
                     const template_instance = runtime.Instance.init(allocator, struct {}, &runtime.VTable{
+                        // Not a real interface - a vehicle for handing the static
+                        // method an allocator and context. Named so that if it ever
+                        // does reach getInstanceInterfaceName the answer is honest
+                        // rather than a plausible-looking lie.
+                        .name = "<static-call-vehicle>",
                         .deinit = null,
                         .methods_ptr = &.{},
                     }, runtime_ctx) catch {

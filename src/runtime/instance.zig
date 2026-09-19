@@ -130,6 +130,17 @@ pub const Instance = struct {
 /// - deinit: Cleanup function called by GC (points to interface's deinit function)
 /// - fns: Map from Method enum to function pointers
 pub const VTable = struct {
+    /// The interface's WebIDL name, e.g. "Performance", "HTMLDivElement".
+    ///
+    /// Carried here so an instance can name its own interface in O(1). The V8
+    /// binding layer previously recovered this by comparing the vtable address
+    /// against a hand-maintained chain of `if (vt == &interfaces.X.vtable)`
+    /// branches, which covered 139 of 1,263 interfaces and silently answered
+    /// "Element" for the other 1,124 - so `window.performance` was an Element
+    /// with no `now()`. A name the interface already knows should not be
+    /// re-derived by a lookup table that can fall out of date.
+    name: []const u8,
+
     /// Cleanup function (called by GC finalizer)
     /// Points directly to the interface's deinit function
     /// Signature: fn(instance: *Instance) void

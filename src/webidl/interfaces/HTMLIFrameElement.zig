@@ -366,7 +366,7 @@ pub const HTMLIFrameElement = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {
@@ -435,7 +435,7 @@ pub const HTMLIFrameElement = struct {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
-
+        
         try HTMLIFrameElementImpl.set_name(instance, value);
     }
 
