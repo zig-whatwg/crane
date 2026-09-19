@@ -58,6 +58,55 @@ threadlocal var current_timer_interface: ?TimerInterface = null;
 threadlocal var current_allocator: ?std.mem.Allocator = null;
 threadlocal var timer_contexts: ?std.AutoHashMap(TimerId, *V8TimerCallback) = null;
 
+// ============================================================================
+// HTML timer initialisation steps (HTML Standard s8.6)
+// ============================================================================
+//
+// setTimeout/setInterval do NOT schedule the delay the author asked for. The spec
+// runs "timer initialisation steps" first:
+//
+//   3. If timeout is less than 0, then set timeout to 0.
+//   5. If nesting level is greater than 5, and timeout is less than 4, then set
+//      timeout to 4.
+//
+// and the timer being scheduled records `nesting level + 1`, so a chain of
+// self-rescheduling timers is throttled to 4ms once it is more than five deep.
+//
+// Crane already had a correct implementation of this in
+// src/html/event_loop/timers.zig (MIN_NESTED_DELAY_MS, NESTING_LEVEL_THRESHOLD,
+// setTimerInternal). It is DEAD CODE - nothing references its TimerManager. The live
+// path is this file -> the thread-local TimerInterface -> V8EventLoop -> libuv_timer,
+// which applied no clamping whatsoever. So the clamp is implemented here, at the
+// setTimeout boundary, which is where the spec puts it: initialisation runs before
+// the timer is handed to any scheduler.
+//
+// Thread-local because the nesting level belongs to the agent, and one agent is one
+// thread with one isolate.
+
+/// Minimum delay once nested deeper than `nesting_threshold`. HTML s8.6 step 5.
+const nested_min_delay_ms: i64 = 4;
+
+/// Nesting depth beyond which `nested_min_delay_ms` applies. HTML s8.6 step 5.
+const nesting_threshold: u32 = 5;
+
+/// The "current timer nesting level". Zero on the event loop's own turn; while a
+/// timer callback runs it is that timer's recorded nesting level, so timers created
+/// inside the callback nest one deeper.
+threadlocal var timer_nesting_level: u32 = 0;
+
+/// Apply the clamping half of the timer initialisation steps.
+///
+/// Returns the delay actually to be scheduled. Separated from the nesting bookkeeping
+/// so it can be unit-tested without a V8 isolate.
+fn clampTimeout(requested_ms: i64, nesting: u32) i64 {
+    var timeout = requested_ms;
+    if (timeout < 0) timeout = 0;
+    if (nesting > nesting_threshold and timeout < nested_min_delay_ms) {
+        timeout = nested_min_delay_ms;
+    }
+    return timeout;
+}
+
 /// Set the current timer interface for V8 callbacks
 pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
     current_timer_interface = timer;
@@ -175,6 +224,10 @@ const V8TimerContextData = struct {
     current_timer_id: TimerId = 0,
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
+    /// This timer's nesting level, per the timer initialisation steps. While its
+    /// callback runs, `timer_nesting_level` is set to this, so timers created inside
+    /// nest one deeper and eventually trip the 4ms clamp.
+    nesting_level: u32 = 0,
 };
 
 /// Type-safe timer callback wrapper for V8 timer contexts.
@@ -215,6 +268,13 @@ fn v8TimerHandler(data: *V8TimerContextData) void {
     const isolate = data.isolate;
     const context = data.v8_context;
 
+    // For the duration of this callback the "current timer nesting level" is this
+    // timer's own level, so any setTimeout it calls nests one deeper. Restored after,
+    // because the event loop's own turn is level 0.
+    const saved_nesting = timer_nesting_level;
+    timer_nesting_level = data.nesting_level;
+    defer timer_nesting_level = saved_nesting;
+
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
     v8.ffi.v8_Context_Enter(context);
@@ -249,6 +309,13 @@ fn v8IntervalHandler(data: *V8TimerContextData) void {
 
     const isolate = data.isolate;
     const context = data.v8_context;
+
+    // For the duration of this callback the "current timer nesting level" is this
+    // timer's own level, so any setTimeout it calls nests one deeper. Restored after,
+    // because the event loop's own turn is level 0.
+    const saved_nesting = timer_nesting_level;
+    timer_nesting_level = data.nesting_level;
+    defer timer_nesting_level = saved_nesting;
 
     // Enter the V8 context before invoking the callback
     // Timer callbacks fire from the event loop when no context is active
@@ -1765,8 +1832,14 @@ fn setTimeoutCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) voi
         return;
     };
 
+    // Timer initialisation steps (HTML s8.6): clamp before scheduling, and record
+    // this timer's nesting level so its own callback nests one deeper.
+    const nesting = timer_nesting_level + 1;
+    const clamped_ms = clampTimeout(delay_ms, timer_nesting_level);
+    timer_wrapper.getData().nesting_level = nesting;
+
     // Schedule the timer using TimerInterface with typed callback trampoline
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    const delay_u64: u64 = @intCast(clamped_ms);
     const timer_id = timer.setTimeout(
         delay_u64,
         V8TimerCallback.getTrampolineCallback(),
@@ -1908,9 +1981,14 @@ fn setIntervalCallback(info: *const v8.ffi.FunctionCallbackInfo) callconv(.c) vo
         return;
     };
 
-    // Store the interval delay in the context for re-scheduling
-    const delay_u64: u64 = if (delay_ms >= 0) @intCast(delay_ms) else 0;
+    // Timer initialisation steps (HTML s8.6), same as setTimeout. The stored delay is
+    // the CLAMPED one, so every repeat in v8IntervalHandler inherits it rather than
+    // re-deriving an unclamped value.
+    const nesting = timer_nesting_level + 1;
+    const clamped_ms = clampTimeout(delay_ms, timer_nesting_level);
+    const delay_u64: u64 = @intCast(clamped_ms);
     timer_wrapper.getData().interval_delay_ms = delay_u64;
+    timer_wrapper.getData().nesting_level = nesting;
 
     // Schedule the first timeout (intervals reschedule themselves in v8IntervalHandler)
     const timer_id = timer.setTimeout(
