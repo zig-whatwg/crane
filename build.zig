@@ -417,7 +417,6 @@ pub fn build(b: *std.Build) void {
             "permissions",
             "html",
             "intl",
-            "benchmarks",
         };
         var is_valid = false;
         for (valid_specs) |valid_spec| {
@@ -428,7 +427,7 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html, intl, benchmarks\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, urlpattern, console, streams, mimesniff, quirks, css, storage, runtime, codegen, v8, file, fs, fetch, trusted_types, csp, permissions, html, intl\n", .{});
             std.process.exit(1);
         }
     }
@@ -1642,7 +1641,13 @@ pub fn build(b: *std.Build) void {
             .{ .name = "impls", .module = impls_mod },
             .{ .name = "enums", .module = enums_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/dom", target, &dom_imports, false) catch |err| {
+        // link_v8 = true: tests/dom/mutation_test.zig calls dom.mutation.insert
+        // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
+        // NodeIterator and interfaces.NodeList.vtable - i.e. the V8 FFI layer,
+        // which also drags in libuv's event loop. With `false` this was the only
+        // one of 262 build steps that failed to link, with 246 undefined symbols
+        // (236 _v8_* + 10 _uv_*).
+        addTestFilesFromDir(b, test_step, "tests/dom", target, &dom_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add dom test files: {}\n", .{err});
         };
     }
@@ -2007,13 +2012,29 @@ pub fn build(b: *std.Build) void {
     }
 
     // Benchmark tests (requires V8 + browser)
-    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "benchmarks")) {
+    //
+    // Wired to a dedicated `bench` step and deliberately kept OUT of
+    // `zig build test`. These are wall-clock measurements, not correctness
+    // tests: a timing threshold in the correctness suite goes red on machine
+    // load rather than on a defect, and a gate that fails for reasons unrelated
+    // to the change trains people to ignore red.
+    //
+    // This was not hypothetical. `context_creation_bench_test.zig:262` asserted
+    // navigate+eval < 15ms while its strictly cheaper navigate-only sibling was
+    // measured at ~24ms and had its own threshold raised to 30ms three hours
+    // later (f34d490341, then 69cd1a159 on 2025-12-23). It was unsatisfiable on
+    // any machine from that moment and stayed red for nine months.
+    //
+    // Run deliberately, on an idle machine: `zig build bench`.
+    // Mirrors the existing `intl-bench` step.
+    const bench_step = b.step("bench", "Run browser performance benchmarks (wall-clock; run on an idle machine)");
+    {
         const benchmark_imports = [_]std.Build.Module.Import{
             .{ .name = "browser", .module = browser_mod },
             .{ .name = "v8", .module = v8_mod },
             .{ .name = "runtime", .module = runtime_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/benchmarks", target, &benchmark_imports, true) catch |err| {
+        addTestFilesFromDir(b, bench_step, "tests/benchmarks", target, &benchmark_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add benchmark test files: {}\n", .{err});
         };
     }
