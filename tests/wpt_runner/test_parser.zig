@@ -35,6 +35,7 @@
 
 const std = @import("std");
 const config = @import("config.zig");
+const host = @import("host");
 
 /// Error types for test parsing
 pub const ParseError = error{
@@ -734,12 +735,14 @@ pub const ScriptLoader = struct {
         }
 
         // Load from file
-        const file = std.fs.cwd().openFile(resolved_path, .{}) catch |err| {
+        const io = host.io();
+        const file = host.cwd().openFile(io, resolved_path, .{}) catch |err| {
             return err;
         };
-        defer file.close();
+        defer file.close(io);
 
-        const content = file.readToEndAlloc(self.allocator, 10 * 1024 * 1024) catch |err| {
+        var file_reader = file.reader(io, &.{});
+        const content = file_reader.interface.allocRemaining(self.allocator, .limited(10 * 1024 * 1024)) catch |err| {
             return err;
         };
 

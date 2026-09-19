@@ -18,19 +18,20 @@ test "snapshot validation - valid snapshot" {
 
     // Check if snapshot file exists
     const snapshot_path = "whatwg_snapshot.bin";
-    std.fs.cwd().access(snapshot_path, .{}) catch |err| {
+    const io = std.testing.io;
+    std.Io.Dir.cwd().access(io, snapshot_path, .{}) catch |err| {
         std.log.warn("Skipping snapshot test - file not found: {}", .{err});
         return;
     };
 
     // Load snapshot file
-    const file = try std.fs.cwd().openFile(snapshot_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     const snapshot_data = try allocator.alloc(u8, stat.size);
     defer allocator.free(snapshot_data);
-    _ = try file.readAll(snapshot_data);
+    _ = try file.readPositionalAll(io, snapshot_data, 0);
 
     // Validate using the new validation function
     const validation = v8.snapshot_loader.validateSnapshotData(snapshot_data);
@@ -116,7 +117,8 @@ test "snapshot validation - invalid data" {
 //
 //     // Check if snapshot file exists
 //     const snapshot_path = "whatwg_snapshot.bin";
-//     std.fs.cwd().access(snapshot_path, .{}) catch |err| {
+//     const io = std.testing.io;
+//     std.Io.Dir.cwd().access(io, snapshot_path, .{}) catch |err| {
 //         std.log.warn("Skipping snapshot test - file not found: {}", .{err});
 //         return;
 //     };
@@ -133,13 +135,13 @@ test "snapshot validation - invalid data" {
 //     v8.snapshot_loader.registerExternalReferences();
 //
 //     // Load snapshot file
-//     const file = try std.fs.cwd().openFile(snapshot_path, .{});
-//     defer file.close();
+//     const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
+//     defer file.close(io);
 //
-//     const stat = try file.stat();
+//     const stat = try file.stat(io);
 //     const snapshot_data = try allocator.alloc(u8, stat.size);
 //     defer allocator.free(snapshot_data);
-//     _ = try file.readAll(snapshot_data);
+//     _ = try file.readPositionalAll(io, snapshot_data, 0);
 //
 //     // Create isolate from snapshot
 //     const refs_ptr = v8.external_references.getRuntimeExternalReferencesPtr();

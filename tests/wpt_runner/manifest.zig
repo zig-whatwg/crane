@@ -41,6 +41,7 @@
 //!    testharness corpus uses the null form.
 
 const std = @import("std");
+const host = @import("host");
 const Allocator = std.mem.Allocator;
 
 const log = std.log.scoped(.wpt_manifest);
@@ -157,19 +158,20 @@ pub fn loadManifest(allocator: Allocator, wpt_root: []const u8) !Manifest {
     defer allocator.free(manifest_path);
 
     // Read the manifest file
-    const file = std.fs.cwd().openFile(manifest_path, .{}) catch |err| {
+    const io = host.io();
+    const file = host.cwd().openFile(io, manifest_path, .{}) catch |err| {
         log.warn("Could not open MANIFEST.json: {}", .{err});
         log.warn("  Path: {s}", .{manifest_path});
         log.warn("  Run 'wpt manifest' to generate it.", .{});
         return Manifest.init(allocator); // Return empty manifest
     };
-    defer file.close();
+    defer file.close(io);
 
     // Read file contents
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     const contents = try allocator.alloc(u8, stat.size);
     defer allocator.free(contents);
-    _ = try file.readAll(contents);
+    _ = try file.readPositionalAll(io, contents, 0);
 
     return parseManifestBytes(allocator, contents);
 }
@@ -448,7 +450,7 @@ test "real MANIFEST.json is enumerated at full depth" {
     const allocator = std.testing.allocator;
 
     // Only meaningful when run from the repo root with the WPT checkout present.
-    std.fs.cwd().access("tests/wpt/MANIFEST.json", .{}) catch return error.SkipZigTest;
+    std.Io.Dir.cwd().access(std.testing.io, "tests/wpt/MANIFEST.json", .{}) catch return error.SkipZigTest;
 
     var manifest = try loadManifest(allocator, "tests/wpt");
     defer manifest.deinit();

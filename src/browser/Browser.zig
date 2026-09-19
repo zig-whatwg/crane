@@ -57,6 +57,7 @@ const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
 const storage_mod = @import("storage/Storage.zig");
 const clock = @import("clock");
+const host = @import("host");
 const Storage = storage_mod.Storage;
 
 /// Default snapshot file paths to check (in order of priority)
@@ -250,7 +251,7 @@ pub const Browser = struct {
             // Empty string means explicitly disabled
             if (path.len == 0) return null;
             // Check if the file exists
-            if (std.fs.cwd().access(path, .{})) |_| {
+            if (host.cwd().access(host.io(), path, .{})) |_| {
                 return path;
             } else |_| {
                 return null;
@@ -259,7 +260,7 @@ pub const Browser = struct {
 
         // Auto-detect: check default paths
         for (DEFAULT_SNAPSHOT_PATHS) |path| {
-            if (std.fs.cwd().access(path, .{})) |_| {
+            if (host.cwd().access(host.io(), path, .{})) |_| {
                 return path;
             } else |_| {
                 continue;

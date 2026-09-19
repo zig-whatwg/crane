@@ -48,6 +48,7 @@ const workers = html.workers;
 
 const test_harness = @import("test_harness.zig");
 const test_parser = @import("test_parser.zig");
+const host = @import("host");
 const config = @import("config.zig");
 const wpt_server = @import("wpt_server.zig");
 const fetch = @import("fetch");
@@ -166,7 +167,7 @@ pub const WptBrowser = struct {
         const ca = try std.fs.path.join(self.allocator, &.{ self.wpt_root, "tools/certs/cacert.pem" });
         errdefer self.allocator.free(ca);
 
-        std.fs.cwd().access(ca, .{}) catch |err| {
+        host.cwd().access(host.io(), ca, .{}) catch |err| {
             // Not fatal: a run that touches no `.https.` test never needs it.
             log.warn("no WPT certificate authority at {s} ({}); .https. tests will fail to connect", .{ ca, err });
             self.allocator.free(ca);
@@ -207,17 +208,18 @@ pub const WptBrowser = struct {
         defer self.allocator.free(full_path);
 
         // Use cwd-relative open since wpt_root may not be absolute
-        const script_file = std.fs.cwd().openFile(full_path, .{}) catch |err| {
+        const io = host.io();
+        const script_file = host.cwd().openFile(io, full_path, .{}) catch |err| {
             log.warn("failed to open WPT script {s}: {}", .{ full_path, err });
             return err;
         };
-        defer script_file.close();
+        defer script_file.close(io);
 
-        const stat = try script_file.stat();
+        const stat = try script_file.stat(io);
         const content = try self.allocator.alloc(u8, stat.size);
         errdefer self.allocator.free(content);
 
-        const bytes_read = try script_file.readAll(content);
+        const bytes_read = try script_file.readPositionalAll(io, content, 0);
         if (bytes_read != stat.size) {
             return error.IncompleteRead;
         }

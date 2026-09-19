@@ -18,10 +18,11 @@ pub fn main(init: std.process.Init) !void {
     const test_file = args[2];
 
     // Read test file
-    const file = try std.fs.cwd().openFile(test_file, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(init.io, test_file, .{});
+    defer file.close(init.io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var file_reader = file.reader(init.io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(content);
 
     // Run REPL with test file as stdin
@@ -33,18 +34,20 @@ pub fn main(init: std.process.Init) !void {
     try child.spawn();
 
     // Write test file to stdin
-    try child.stdin.?.writeAll(content);
-    child.stdin.?.close();
+    try child.stdin.?.writeStreamingAll(init.io, content);
+    child.stdin.?.close(init.io);
     child.stdin = null;
 
     // Read output
-    const stdout = try child.stdout.?.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var stdout_reader = child.stdout.?.readerStreaming(init.io, &.{});
+    const stdout = try stdout_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(stdout);
 
-    const stderr = try child.stderr.?.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var stderr_reader = child.stderr.?.readerStreaming(init.io, &.{});
+    const stderr = try stderr_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(stderr);
 
-    _ = try child.wait();
+    _ = try child.wait(init.io);
 
     // Count results
     var total: usize = 0;

@@ -43,6 +43,7 @@
 const std = @import("std");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
+const host = @import("host");
 const intl_binding = @import("intl_binding.zig");
 const clock = @import("clock");
 
@@ -283,13 +284,14 @@ fn initFromSnapshotData(data: []const u8, log_performance: bool) !?SnapshotResul
 fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool) !?SnapshotResult {
 
     // Try to open and read the snapshot file
-    const file = std.fs.cwd().openFile(path, .{}) catch {
+    const io = host.io();
+    const file = host.cwd().openFile(io, path, .{}) catch {
         return null;
     };
-    defer file.close();
+    defer file.close(io);
 
     // Get file size and read data
-    const stat = file.stat() catch {
+    const stat = file.stat(io) catch {
         return null;
     };
 
@@ -303,7 +305,7 @@ fn initFromSnapshotFile(allocator: std.mem.Allocator, path: []const u8, _: bool)
     tracked_snapshot_data = snapshot_data;
     tracked_snapshot_allocator = allocator;
 
-    const bytes_read = file.readAll(snapshot_data) catch {
+    const bytes_read = file.readPositionalAll(io, snapshot_data, 0) catch {
         return null;
     };
 
@@ -378,16 +380,17 @@ pub fn validateSnapshotData(data: []const u8) SnapshotValidation {
 
 /// Check if a valid snapshot file exists at the given path
 pub fn hasValidSnapshot(allocator: std.mem.Allocator, path: []const u8) bool {
-    const file = std.fs.cwd().openFile(path, .{}) catch return false;
-    defer file.close();
+    const io = host.io();
+    const file = host.cwd().openFile(io, path, .{}) catch return false;
+    defer file.close(io);
 
-    const stat = file.stat() catch return false;
+    const stat = file.stat(io) catch return false;
     if (stat.size < 8) return false; // Too small to be valid
 
     const data = allocator.alloc(u8, stat.size) catch return false;
     defer allocator.free(data);
 
-    const bytes_read = file.readAll(data) catch return false;
+    const bytes_read = file.readPositionalAll(io, data, 0) catch return false;
     if (bytes_read != stat.size) return false;
 
     return ffi.v8_Snapshot_IsValid(data.ptr, @intCast(data.len));

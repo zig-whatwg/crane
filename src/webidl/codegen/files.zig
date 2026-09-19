@@ -3,6 +3,7 @@
 //! This module provides functions for discovering and processing WebIDL (.idl) files.
 
 const std = @import("std");
+const host = @import("host");
 
 /// Find all WebIDL (.idl) files in a directory
 ///
@@ -18,8 +19,9 @@ const std = @import("std");
 /// }
 /// ```
 pub fn findIDLFiles(allocator: std.mem.Allocator, dir_path: []const u8) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-    defer dir.close();
+    const io = host.io();
+    var dir = try host.cwd().openDir(io, dir_path, .{ .iterate = true });
+    defer dir.close(io);
 
     var files: std.ArrayList([]const u8) = .empty;
     errdefer {
@@ -28,7 +30,7 @@ pub fn findIDLFiles(allocator: std.mem.Allocator, dir_path: []const u8) ![][]con
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
 
         // Only accept .idl files
@@ -101,7 +103,7 @@ test "findIDLFiles discovers only idl files" {
     try tmp_dir.dir.writeFile(.{ .sub_path = "console.idl", .data = "interface Bar {};" });
 
     // Find IDL files
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const files = try findIDLFiles(allocator, tmp_path);
@@ -125,7 +127,7 @@ test "findIDLFiles handles empty directory" {
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const files = try findIDLFiles(allocator, tmp_path);
@@ -144,7 +146,7 @@ test "findIDLFiles handles directory with no idl files" {
     try tmp_dir.dir.writeFile(.{ .sub_path = "data.xml", .data = "<test/>" });
     try tmp_dir.dir.writeFile(.{ .sub_path = "spec.json", .data = "{}" });
 
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const files = try findIDLFiles(allocator, tmp_path);

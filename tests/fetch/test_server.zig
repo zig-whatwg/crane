@@ -21,6 +21,7 @@
 //!   /ws/binary             - Echo binary messages back
 
 const std = @import("std");
+const clock = @import("clock");
 const net = std.net;
 const Thread = std.Thread;
 const Allocator = std.mem.Allocator;
@@ -404,7 +405,7 @@ pub const TestServer = struct {
             const delay_secs = std.fmt.parseInt(u64, delay_str, 10) catch 0;
             // Cap delay at 30 seconds for safety
             const capped_delay: u64 = @min(delay_secs, 30);
-            std.Thread.sleep(capped_delay * @as(u64, std.time.ns_per_s));
+            clock.sleep(capped_delay * @as(u64, std.time.ns_per_s));
             return .{
                 .status = 200,
                 .status_text = "OK",

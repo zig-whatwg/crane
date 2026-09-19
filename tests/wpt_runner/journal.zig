@@ -15,6 +15,7 @@
 //! test that crashed depends on the record *before* it having reached the disk.
 
 const std = @import("std");
+const host = @import("host");
 const Allocator = std.mem.Allocator;
 
 /// Outcome of running one test file in one global context.
@@ -156,12 +157,12 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
 /// Append-only writer over a journal file.
 pub const Journal = struct {
     allocator: Allocator,
-    file: std.fs.File,
+    file: std.Io.File,
     line: std.Io.Writer.Allocating,
 
     /// Start a fresh journal, discarding any previous run at this path.
     pub fn create(allocator: Allocator, path: []const u8) !Journal {
-        const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+        const file = try host.cwd().createFile(host.io(), path, .{ .truncate = true });
         return .{
             .allocator = allocator,
             .file = file,
@@ -171,11 +172,16 @@ pub const Journal = struct {
 
     /// Continue an existing journal, or start one if it is absent.
     pub fn append(allocator: Allocator, path: []const u8) !Journal {
-        const file = std.fs.cwd().openFile(path, .{ .mode = .write_only }) catch |err| switch (err) {
+        const io = host.io();
+        const file = host.cwd().openFile(io, path, .{ .mode = .write_only }) catch |err| switch (err) {
             error.FileNotFound => return create(allocator, path),
             else => return err,
         };
-        try file.seekFromEnd(0);
+        // 0.16 has no `File.seekFromEnd`; seeking now goes through a File.Writer.
+        // A throwaway streaming writer moves the shared fd offset, which is what
+        // the later `writeStreamingAll` calls append from.
+        var seeker = file.writerStreaming(io, &.{});
+        try seeker.seekToUnbuffered(try file.length(io));
         return .{
             .allocator = allocator,
             .file = file,
@@ -185,7 +191,7 @@ pub const Journal = struct {
 
     pub fn deinit(self: *Journal) void {
         self.line.deinit();
-        self.file.close();
+        self.file.close(host.io());
     }
 
     /// Append one record and get it onto the file descriptor before returning.
@@ -197,7 +203,7 @@ pub const Journal = struct {
     pub fn record(self: *Journal, rec: Record) !void {
         self.line.clearRetainingCapacity();
         try writeRecord(&self.line.writer, rec);
-        try self.file.writeAll(self.line.written());
+        try self.file.writeStreamingAll(host.io(), self.line.written());
     }
 };
 
@@ -345,7 +351,7 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
 /// Read a journal from disk. An absent file is an empty journal, not an error -
 /// that is the state of the very first attempt at a run.
 pub fn read(allocator: Allocator, path: []const u8) !Log {
-    const bytes = std.fs.cwd().readFileAlloc(allocator, path, 512 * 1024 * 1024) catch |err| switch (err) {
+    const bytes = host.cwd().readFileAlloc(host.io(), path, allocator, .limited(512 * 1024 * 1024)) catch |err| switch (err) {
         error.FileNotFound => return .{ .allocator = allocator, .records = &.{} },
         else => return err,
     };
@@ -593,7 +599,7 @@ test "a reopened journal appends rather than truncating" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
     const path = try std.fs.path.join(allocator, &.{ dir_path, "run.jsonl" });
     defer allocator.free(path);
@@ -625,7 +631,7 @@ test "create truncates an existing journal" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
     const path = try std.fs.path.join(allocator, &.{ dir_path, "run.jsonl" });
     defer allocator.free(path);

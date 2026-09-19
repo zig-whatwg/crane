@@ -24,6 +24,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const journal = @import("journal.zig");
+const host = @import("host");
 
 /// What one test file is expected to do.
 pub const Expectation = struct {
@@ -197,16 +198,17 @@ pub fn write(w: *std.Io.Writer, set: Set) !void {
 }
 
 pub fn writeToFile(path: []const u8, set: Set) !void {
+    const io = host.io();
     if (std.fs.path.dirname(path)) |dir| {
-        std.fs.cwd().makePath(dir) catch |err| switch (err) {
+        host.cwd().createDirPath(io, dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
     }
-    var file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    var file = try host.cwd().createFile(io, path, .{});
+    defer file.close(io);
     var buf: [64 * 1024]u8 = undefined;
-    var fw = file.writer(&buf);
+    var fw = file.writer(io, &buf);
     try write(&fw.interface, set);
     try fw.interface.flush();
 }
@@ -269,7 +271,7 @@ pub fn parse(allocator: Allocator, bytes: []const u8) !Set {
 /// missing one, and treating it as empty would let a comparison pass by
 /// accident.
 pub fn read(allocator: Allocator, path: []const u8) !Set {
-    const bytes = try std.fs.cwd().readFileAlloc(allocator, path, 512 * 1024 * 1024);
+    const bytes = try host.cwd().readFileAlloc(host.io(), path, allocator, .limited(512 * 1024 * 1024));
     defer allocator.free(bytes);
     return parse(allocator, bytes);
 }
@@ -777,7 +779,7 @@ test "a baseline written to disk reads back identically" {
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    const dir = try tmp.dir.realpathAlloc(allocator, ".");
+    const dir = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir);
     const path = try std.fs.path.join(allocator, &.{ dir, "nested", "baseline.jsonl" });
     defer allocator.free(path);

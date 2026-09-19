@@ -1362,9 +1362,9 @@ test "SQLiteBackend - open, write, read, close" {
     defer {
         backend_inst.close();
         // Clean up test file
-        std.fs.cwd().deleteFile("test_sqlite_backend.sqlite3") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_backend.sqlite3-wal") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_backend.sqlite3-shm") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_backend.sqlite3") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_backend.sqlite3-wal") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_backend.sqlite3-shm") catch {};
     }
 
     try std.testing.expect(backend_inst.isOpen());
@@ -1407,9 +1407,9 @@ test "SQLiteBackend - exists and delete" {
     try backend_inst.open("test_sqlite_exists", .{ .create_if_missing = true });
     defer {
         backend_inst.close();
-        std.fs.cwd().deleteFile("test_sqlite_exists.sqlite3") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_exists.sqlite3-wal") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_exists.sqlite3-shm") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_exists.sqlite3") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_exists.sqlite3-wal") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_exists.sqlite3-shm") catch {};
     }
 
     const txn = try backend_inst.beginTransaction(.readwrite);
@@ -1436,9 +1436,9 @@ test "SQLiteBackend - cursor iteration" {
     try backend_inst.open("test_sqlite_cursor", .{ .create_if_missing = true });
     defer {
         backend_inst.close();
-        std.fs.cwd().deleteFile("test_sqlite_cursor.sqlite3") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_cursor.sqlite3-wal") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_cursor.sqlite3-shm") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_cursor.sqlite3") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_cursor.sqlite3-wal") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_cursor.sqlite3-shm") catch {};
     }
 
     // Write some data
@@ -1473,9 +1473,9 @@ test "SQLiteBackend - prepared statement cache reuse" {
     try backend_inst.open("test_sqlite_stmt_cache", .{ .create_if_missing = true });
     defer {
         backend_inst.close();
-        std.fs.cwd().deleteFile("test_sqlite_stmt_cache.sqlite3") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_stmt_cache.sqlite3-wal") catch {};
-        std.fs.cwd().deleteFile("test_sqlite_stmt_cache.sqlite3-shm") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_stmt_cache.sqlite3") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_stmt_cache.sqlite3-wal") catch {};
+        std.Io.Dir.cwd().deleteFile(std.testing.io, "test_sqlite_stmt_cache.sqlite3-shm") catch {};
     }
 
     // Verify statement cache was initialized

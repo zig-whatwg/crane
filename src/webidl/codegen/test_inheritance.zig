@@ -21,16 +21,16 @@ test "single level inheritance - HTMLElement : Element" {
 
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     // Parse and generate
     const idl_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.idl" });
     defer allocator.free(idl_path);
 
-    const file = try std.fs.cwd().createFile(idl_path, .{});
-    try file.writeAll(idl);
-    file.close();
+    const file = try std.Io.Dir.cwd().createFile(testing.io, idl_path, .{});
+    try file.writeStreamingAll(testing.io, idl);
+    file.close(testing.io);
 
     try generator.generateFromFile(allocator, idl_path, tmp_path);
 
@@ -38,10 +38,11 @@ test "single level inheritance - HTMLElement : Element" {
     const html_elem_path = try std.fs.path.join(allocator, &.{ tmp_path, "HTMLElement.zig" });
     defer allocator.free(html_elem_path);
 
-    const html_elem_file = try std.fs.cwd().openFile(html_elem_path, .{});
-    defer html_elem_file.close();
+    const html_elem_file = try std.Io.Dir.cwd().openFile(testing.io, html_elem_path, .{});
+    defer html_elem_file.close(testing.io);
 
-    const content = try html_elem_file.readToEndAlloc(allocator, 1024 * 1024);
+    var html_elem_file_reader = html_elem_file.reader(testing.io, &.{});
+    const content = try html_elem_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(content);
 
     // Verify BaseType is Element
@@ -76,24 +77,25 @@ test "multi level inheritance - HTMLDivElement : HTMLElement : Element" {
 
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const idl_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.idl" });
     defer allocator.free(idl_path);
 
-    const file = try std.fs.cwd().createFile(idl_path, .{});
-    try file.writeAll(idl);
-    file.close();
+    const file = try std.Io.Dir.cwd().createFile(testing.io, idl_path, .{});
+    try file.writeStreamingAll(testing.io, idl);
+    file.close(testing.io);
 
     try generator.generateFromFile(allocator, idl_path, tmp_path);
 
     // Verify HTMLElement : Element
     const html_elem_path = try std.fs.path.join(allocator, &.{ tmp_path, "HTMLElement.zig" });
     defer allocator.free(html_elem_path);
-    const html_elem = try std.fs.cwd().openFile(html_elem_path, .{});
-    defer html_elem.close();
-    const html_content = try html_elem.readToEndAlloc(allocator, 1024 * 1024);
+    const html_elem = try std.Io.Dir.cwd().openFile(testing.io, html_elem_path, .{});
+    defer html_elem.close(testing.io);
+    var html_elem_reader = html_elem.reader(testing.io, &.{});
+    const html_content = try html_elem_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(html_content);
 
     try testing.expect(std.mem.indexOf(u8, html_content, "pub const BaseType = *Element;") != null);
@@ -101,9 +103,10 @@ test "multi level inheritance - HTMLDivElement : HTMLElement : Element" {
     // Verify HTMLDivElement : HTMLElement
     const div_path = try std.fs.path.join(allocator, &.{ tmp_path, "HTMLDivElement.zig" });
     defer allocator.free(div_path);
-    const div_file = try std.fs.cwd().openFile(div_path, .{});
-    defer div_file.close();
-    const div_content = try div_file.readToEndAlloc(allocator, 1024 * 1024);
+    const div_file = try std.Io.Dir.cwd().openFile(testing.io, div_path, .{});
+    defer div_file.close(testing.io);
+    var div_file_reader = div_file.reader(testing.io, &.{});
+    const div_content = try div_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(div_content);
 
     try testing.expect(std.mem.indexOf(u8, div_content, "pub const BaseType = *HTMLElement;") != null);
@@ -128,23 +131,24 @@ test "single mixin - Element includes GlobalEventHandlers" {
 
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const idl_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.idl" });
     defer allocator.free(idl_path);
 
-    const file = try std.fs.cwd().createFile(idl_path, .{});
-    try file.writeAll(idl);
-    file.close();
+    const file = try std.Io.Dir.cwd().createFile(testing.io, idl_path, .{});
+    try file.writeStreamingAll(testing.io, idl);
+    file.close(testing.io);
 
     try generator.generateFromFile(allocator, idl_path, tmp_path);
 
     const elem_path = try std.fs.path.join(allocator, &.{ tmp_path, "Element.zig" });
     defer allocator.free(elem_path);
-    const elem_file = try std.fs.cwd().openFile(elem_path, .{});
-    defer elem_file.close();
-    const content = try elem_file.readToEndAlloc(allocator, 1024 * 1024);
+    const elem_file = try std.Io.Dir.cwd().openFile(testing.io, elem_path, .{});
+    defer elem_file.close(testing.io);
+    var elem_file_reader = elem_file.reader(testing.io, &.{});
+    const content = try elem_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(content);
 
     // Verify mixin is listed
@@ -183,23 +187,24 @@ test "multiple mixins - HTMLElement includes two mixins" {
 
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const idl_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.idl" });
     defer allocator.free(idl_path);
 
-    const file = try std.fs.cwd().createFile(idl_path, .{});
-    try file.writeAll(idl);
-    file.close();
+    const file = try std.Io.Dir.cwd().createFile(testing.io, idl_path, .{});
+    try file.writeStreamingAll(testing.io, idl);
+    file.close(testing.io);
 
     try generator.generateFromFile(allocator, idl_path, tmp_path);
 
     const html_path = try std.fs.path.join(allocator, &.{ tmp_path, "HTMLElement.zig" });
     defer allocator.free(html_path);
-    const html_file = try std.fs.cwd().openFile(html_path, .{});
-    defer html_file.close();
-    const content = try html_file.readToEndAlloc(allocator, 1024 * 1024);
+    const html_file = try std.Io.Dir.cwd().openFile(testing.io, html_path, .{});
+    defer html_file.close(testing.io);
+    var html_file_reader = html_file.reader(testing.io, &.{});
+    const content = try html_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(content);
 
     // Verify inheritance
@@ -230,24 +235,25 @@ test "static methods inheritance" {
 
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const idl_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.idl" });
     defer allocator.free(idl_path);
 
-    const file = try std.fs.cwd().createFile(idl_path, .{});
-    try file.writeAll(idl);
-    file.close();
+    const file = try std.Io.Dir.cwd().createFile(testing.io, idl_path, .{});
+    try file.writeStreamingAll(testing.io, idl);
+    file.close(testing.io);
 
     try generator.generateFromFile(allocator, idl_path, tmp_path);
 
     // Check Element has static method
     const elem_path = try std.fs.path.join(allocator, &.{ tmp_path, "Element.zig" });
     defer allocator.free(elem_path);
-    const elem_file = try std.fs.cwd().openFile(elem_path, .{});
-    defer elem_file.close();
-    const elem_content = try elem_file.readToEndAlloc(allocator, 1024 * 1024);
+    const elem_file = try std.Io.Dir.cwd().openFile(testing.io, elem_path, .{});
+    defer elem_file.close(testing.io);
+    var elem_file_reader = elem_file.reader(testing.io, &.{});
+    const elem_content = try elem_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(elem_content);
 
     try testing.expect(std.mem.indexOf(u8, elem_content, "call_createElement") != null);
@@ -255,9 +261,10 @@ test "static methods inheritance" {
     // HTMLElement should have BaseType pointing to Element
     const html_path = try std.fs.path.join(allocator, &.{ tmp_path, "HTMLElement.zig" });
     defer allocator.free(html_path);
-    const html_file = try std.fs.cwd().openFile(html_path, .{});
-    defer html_file.close();
-    const html_content = try html_file.readToEndAlloc(allocator, 1024 * 1024);
+    const html_file = try std.Io.Dir.cwd().openFile(testing.io, html_path, .{});
+    defer html_file.close(testing.io);
+    var html_file_reader = html_file.reader(testing.io, &.{});
+    const html_content = try html_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(html_content);
 
     try testing.expect(std.mem.indexOf(u8, html_content, "pub const BaseType = *Element;") != null);
@@ -281,23 +288,24 @@ test "attribute types inheritance" {
 
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const idl_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.idl" });
     defer allocator.free(idl_path);
 
-    const file = try std.fs.cwd().createFile(idl_path, .{});
-    try file.writeAll(idl);
-    file.close();
+    const file = try std.Io.Dir.cwd().createFile(testing.io, idl_path, .{});
+    try file.writeStreamingAll(testing.io, idl);
+    file.close(testing.io);
 
     try generator.generateFromFile(allocator, idl_path, tmp_path);
 
     const elem_path = try std.fs.path.join(allocator, &.{ tmp_path, "Element.zig" });
     defer allocator.free(elem_path);
-    const elem_file = try std.fs.cwd().openFile(elem_path, .{});
-    defer elem_file.close();
-    const elem_content = try elem_file.readToEndAlloc(allocator, 1024 * 1024);
+    const elem_file = try std.Io.Dir.cwd().openFile(testing.io, elem_path, .{});
+    defer elem_file.close(testing.io);
+    var elem_file_reader = elem_file.reader(testing.io, &.{});
+    const elem_content = try elem_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(elem_content);
 
     // Readonly: only getter
@@ -310,9 +318,10 @@ test "attribute types inheritance" {
 
     const html_path = try std.fs.path.join(allocator, &.{ tmp_path, "HTMLElement.zig" });
     defer allocator.free(html_path);
-    const html_file = try std.fs.cwd().openFile(html_path, .{});
-    defer html_file.close();
-    const html_content = try html_file.readToEndAlloc(allocator, 1024 * 1024);
+    const html_file = try std.Io.Dir.cwd().openFile(testing.io, html_path, .{});
+    defer html_file.close(testing.io);
+    var html_file_reader = html_file.reader(testing.io, &.{});
+    const html_content = try html_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(html_content);
 
     try testing.expect(std.mem.indexOf(u8, html_content, "pub const BaseType = *Element;") != null);
@@ -341,23 +350,24 @@ test "partial interface merging with inheritance" {
 
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const idl_path = try std.fs.path.join(allocator, &.{ tmp_path, "test.idl" });
     defer allocator.free(idl_path);
 
-    const file = try std.fs.cwd().createFile(idl_path, .{});
-    try file.writeAll(idl);
-    file.close();
+    const file = try std.Io.Dir.cwd().createFile(testing.io, idl_path, .{});
+    try file.writeStreamingAll(testing.io, idl);
+    file.close(testing.io);
 
     try generator.generateFromFile(allocator, idl_path, tmp_path);
 
     const html_path = try std.fs.path.join(allocator, &.{ tmp_path, "HTMLElement.zig" });
     defer allocator.free(html_path);
-    const html_file = try std.fs.cwd().openFile(html_path, .{});
-    defer html_file.close();
-    const content = try html_file.readToEndAlloc(allocator, 1024 * 1024);
+    const html_file = try std.Io.Dir.cwd().openFile(testing.io, html_path, .{});
+    defer html_file.close(testing.io);
+    var html_file_reader = html_file.reader(testing.io, &.{});
+    const content = try html_file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(content);
 
     // Verify inheritance is preserved

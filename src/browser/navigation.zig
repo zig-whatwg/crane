@@ -24,6 +24,7 @@ const v8 = @import("v8");
 const runtime = @import("runtime");
 
 const html_parser = @import("html").parser;
+const host = @import("host");
 
 /// Navigation result containing parsed content info
 pub const NavigationResult = struct {
@@ -228,20 +229,21 @@ fn fetchFileUrl(allocator: Allocator, url: []const u8) NavigationError!Navigatio
     defer allocator.free(decoded_path);
 
     // Read file
-    const file = std.fs.openFileAbsolute(decoded_path, .{}) catch |err| {
+    const io = host.io();
+    const file = std.Io.Dir.openFileAbsolute(io, decoded_path, .{}) catch |err| {
         return switch (err) {
             error.FileNotFound => NavigationError.FileNotFound,
             error.AccessDenied => NavigationError.AccessDenied,
             else => NavigationError.NetworkError,
         };
     };
-    defer file.close();
+    defer file.close(io);
 
-    const stat = file.stat() catch return NavigationError.NetworkError;
+    const stat = file.stat(io) catch return NavigationError.NetworkError;
     const body = allocator.alloc(u8, stat.size) catch return NavigationError.OutOfMemory;
     errdefer allocator.free(body);
 
-    const bytes_read = file.readAll(body) catch return NavigationError.NetworkError;
+    const bytes_read = file.readPositionalAll(io, body, 0) catch return NavigationError.NetworkError;
     if (bytes_read != stat.size) {
         allocator.free(body);
         return NavigationError.NetworkError;

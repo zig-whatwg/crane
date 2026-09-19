@@ -2,6 +2,7 @@ const std = @import("std");
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 const serializer = @import("serializer.zig");
+const host = @import("host");
 
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
@@ -19,7 +20,7 @@ pub fn main() !void {
     const input_path = args[1];
     const output_path = args[2];
 
-    const input_stat = std.fs.cwd().statFile(input_path) catch |err| {
+    const input_stat = host.cwd().statFile(host.io(), input_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
             std.debug.print("Error: Input path '{s}' not found\n", .{input_path});
             return err;
@@ -37,7 +38,7 @@ pub fn main() !void {
 fn processFile(allocator: std.mem.Allocator, input_path: []const u8, output_path: []const u8) !void {
     std.debug.print("Parsing {s}...\n", .{input_path});
 
-    const source = try std.fs.cwd().readFileAlloc(allocator, input_path, 10 * 1024 * 1024);
+    const source = try host.cwd().readFileAlloc(host.io(), input_path, allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(source);
 
     var lexer = Lexer.init(allocator, source);
@@ -56,18 +57,19 @@ fn processFile(allocator: std.mem.Allocator, input_path: []const u8, output_path
 fn processDirectory(allocator: std.mem.Allocator, input_dir: []const u8, output_dir: []const u8) !void {
     std.debug.print("Processing directory {s}...\n", .{input_dir});
 
-    std.fs.cwd().makeDir(output_dir) catch |err| {
+    const io = host.io();
+    host.cwd().createDir(io, output_dir, .default_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
     };
 
-    var dir = try std.fs.cwd().openDir(input_dir, .{ .iterate = true });
-    defer dir.close();
+    var dir = try host.cwd().openDir(io, input_dir, .{ .iterate = true });
+    defer dir.close(io);
 
     var iter = dir.iterate();
     var processed: usize = 0;
     var failed: usize = 0;
 
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
 
         if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;

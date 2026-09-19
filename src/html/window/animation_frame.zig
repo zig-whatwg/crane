@@ -470,7 +470,7 @@ test "StubFrameTimingBackend - basic operations" {
     var timing = StubFrameTimingBackend.init();
 
     const t1 = timing.backend().now();
-    std.Thread.sleep(1_000_000); // 1ms
+    clock.sleep(1_000_000); // 1ms
     const t2 = timing.backend().now();
 
     try std.testing.expect(t2 >= t1);

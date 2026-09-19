@@ -5,6 +5,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const idl_parser = @import("idl_parser.zig");
+const host = @import("host");
 
 /// Wrapper type for parsed IDL
 pub const ParsedIDL = struct {
@@ -41,7 +42,7 @@ pub fn parseIDLFile(allocator: std.mem.Allocator, file_path: []const u8) !Parsed
         return error.UnsupportedFileType;
     }
 
-    const file_contents = try std.fs.cwd().readFileAlloc(allocator, file_path, 10 * 1024 * 1024);
+    const file_contents = try host.cwd().readFileAlloc(host.io(), file_path, allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(file_contents);
 
     // Use arena allocator for parsing - automatically cleans up on error
@@ -105,7 +106,7 @@ test "parseIDLFile parses valid IDL" {
 
     try tmp_dir.dir.writeFile(.{ .sub_path = "test.idl", .data = idl_content });
 
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, "test.idl");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, "test.idl", allocator);
     defer allocator.free(tmp_path);
 
     const parsed = try parseIDLFile(allocator, tmp_path);

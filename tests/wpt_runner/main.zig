@@ -65,6 +65,7 @@ const discovery_mod = @import("discovery.zig");
 const output = @import("output.zig");
 const wpt_options = @import("wpt_options");
 const clock = @import("clock");
+const host = @import("host");
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -968,7 +969,7 @@ fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: Te
     const full_path = try std.fs.path.join(allocator, &.{ options.wpt_root, test_file.path });
     defer allocator.free(full_path);
 
-    return try std.fs.cwd().readFileAlloc(allocator, full_path, 10 * 1024 * 1024);
+    return try host.cwd().readFileAlloc(host.io(), full_path, allocator, .limited(10 * 1024 * 1024));
 }
 
 /// Buffer behind `print`. Sized to hold a heavy test file's worth of subtest
@@ -976,17 +977,34 @@ fn loadTestContent(allocator: std.mem.Allocator, options: Options, test_file: Te
 /// emits about 11,000 - so a whole file usually drains in a handful of writes
 /// rather than one per line. See output.zig for the measurements.
 var stderr_buffer: [256 * 1024]u8 = undefined;
-var stderr_writer: std.fs.File.Writer = undefined;
+var stderr_writer: std.Io.File.Writer = undefined;
 var stderr_sink: output.Sink = undefined;
-var stderr_once = std.once(initStderrSink);
+
+/// One-shot initialisation of `stderr_sink`.
+///
+/// Zig 0.16 removed `std.once`, so this open-codes the same contract: the
+/// winner of the compare-and-swap runs `initStderrSink`, and every other caller
+/// blocks until it is `done` rather than reading a half-built sink. A plain
+/// bool would not do - `print` is reached from V8's worker threads as well as
+/// the runner's main loop. `std.Io.Mutex` would not do either, because this can
+/// run before the process `Io` is up.
+const OnceState = enum(u8) { uninitialized, initializing, done };
+var stderr_state: std.atomic.Value(OnceState) = .init(.uninitialized);
 
 fn initStderrSink() void {
-    stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+    stderr_writer = std.Io.File.stderr().writer(host.io(), &stderr_buffer);
     stderr_sink = .{ .w = &stderr_writer.interface };
 }
 
 fn sink() *output.Sink {
-    stderr_once.call();
+    if (stderr_state.load(.acquire) != .done) {
+        if (stderr_state.cmpxchgStrong(.uninitialized, .initializing, .acq_rel, .acquire) == null) {
+            initStderrSink();
+            stderr_state.store(.done, .release);
+        } else {
+            while (stderr_state.load(.acquire) != .done) std.atomic.spinLoopHint();
+        }
+    }
     return &stderr_sink;
 }
 
@@ -1041,7 +1059,7 @@ fn run() !u8 {
     const harness_path = try std.fs.path.join(allocator, &.{ options.wpt_root, "resources", "testharness.js" });
     defer allocator.free(harness_path);
 
-    std.fs.cwd().access(harness_path, .{}) catch {
+    host.cwd().access(host.io(), harness_path, .{}) catch {
         print("Error: WPT submodule not found.\n", .{});
         print("Please initialize the submodule with:\n", .{});
         print("  git submodule update --init tests/wpt\n", .{});
@@ -1263,8 +1281,9 @@ fn writeWorklistFile(
     path: []const u8,
     discovery: DiscoveryResult,
 ) !void {
+    const io = host.io();
     if (std.fs.path.dirname(path)) |dir| {
-        std.fs.cwd().makePath(dir) catch |err| switch (err) {
+        host.cwd().createDirPath(io, dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
@@ -1274,10 +1293,10 @@ fn writeWorklistFile(
     defer allocator.free(paths);
     for (discovery.test_files.items, 0..) |tf, i| paths[i] = tf.path;
 
-    var file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    var file = try host.cwd().createFile(io, path, .{});
+    defer file.close(io);
     var buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&buf);
+    var file_writer = file.writer(io, &buf);
     try selection.writeWorklist(&file_writer.interface, paths);
     try file_writer.interface.flush();
 }
@@ -1294,8 +1313,9 @@ fn writeShardWorklist(
     discovery: DiscoveryResult,
     indices: []const usize,
 ) !void {
+    const io = host.io();
     if (std.fs.path.dirname(path)) |dir| {
-        std.fs.cwd().makePath(dir) catch |err| switch (err) {
+        host.cwd().createDirPath(io, dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
@@ -1305,10 +1325,10 @@ fn writeShardWorklist(
     defer allocator.free(paths);
     for (indices, 0..) |global, local| paths[local] = discovery.test_files.items[global].path;
 
-    var file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    var file = try host.cwd().createFile(io, path, .{});
+    defer file.close(io);
     var buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&buf);
+    var file_writer = file.writer(io, &buf);
     try selection.writeWorklist(&file_writer.interface, paths);
     try file_writer.interface.flush();
 }
@@ -1552,7 +1572,7 @@ fn supervise(
     const total = discovery.test_files.items.len;
     if (total == 0) return 0;
 
-    std.fs.cwd().makePath(options.output_dir) catch |err| switch (err) {
+    host.cwd().createDirPath(host.io(), options.output_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
     };
@@ -1574,7 +1594,7 @@ fn supervise(
         fresh.deinit();
     }
 
-    const self_exe = try std.fs.selfExePathAlloc(allocator);
+    const self_exe = try std.process.executablePathAlloc(host.io(), allocator);
     defer allocator.free(self_exe);
 
     // The supervisor owns the server for the whole run; children adopt it

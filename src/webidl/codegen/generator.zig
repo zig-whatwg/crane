@@ -12,6 +12,7 @@ const refs = @import("refs.zig");
 const ir_mod = @import("ir.zig");
 const config_mod = @import("config.zig");
 const overload = @import("overload.zig");
+const host = @import("host");
 const CodegenConfig = config_mod.CodegenConfig;
 
 /// Escape a name if it's a Zig keyword (e.g., "type" -> "@\"type\"")
@@ -274,11 +275,12 @@ pub fn generateInterfacesRoot(
     const root_path = try std.fs.path.join(allocator, &.{ interfaces_path, "root.zig" });
     defer allocator.free(root_path);
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const io = host.io();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header
@@ -314,11 +316,12 @@ pub fn generateImplsRoot(
     const root_path = try std.fs.path.join(allocator, &.{ impls_path, "root.zig" });
     defer allocator.free(root_path);
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const io = host.io();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header
@@ -345,7 +348,7 @@ pub fn generateImplsRoot(
         const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
         defer allocator.free(impl_path);
 
-        std.fs.cwd().access(impl_path, .{}) catch {
+        host.cwd().access(io, impl_path, .{}) catch {
             // File doesn't exist - export a stub that will fail at compile time
             try w.print("pub const {s} = @compileError(\"Implementation for {s} not found. Create {s}/{s}.zig\");\n", .{ name, name, impls_path, name });
             continue;
@@ -371,7 +374,7 @@ pub fn generateImplsRoot(
         const impl_path = try std.fs.path.join(allocator, &.{ impls_path, impl_filename });
         defer allocator.free(impl_path);
 
-        std.fs.cwd().access(impl_path, .{}) catch {
+        host.cwd().access(io, impl_path, .{}) catch {
             // File doesn't exist - skip it
             continue;
         };
@@ -392,11 +395,12 @@ pub fn generateTypedefsRoot(
     const root_path = try std.fs.path.join(allocator, &.{ typedefs_path, "root.zig" });
     defer allocator.free(root_path);
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const io = host.io();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     try w.writeAll("//! Auto-generated\n");
@@ -425,11 +429,12 @@ pub fn generateDictionariesRoot(
     const root_path = try std.fs.path.join(allocator, &.{ dictionaries_path, "root.zig" });
     defer allocator.free(root_path);
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const io = host.io();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     try w.writeAll("//! Auto-generated\n");
@@ -458,11 +463,12 @@ pub fn generateEnumsRoot(
     const root_path = try std.fs.path.join(allocator, &.{ enums_path, "root.zig" });
     defer allocator.free(root_path);
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const io = host.io();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     try w.writeAll("//! Auto-generated\n");
@@ -491,11 +497,12 @@ pub fn generateCallbacksRoot(
     const root_path = try std.fs.path.join(allocator, &.{ callbacks_path, "root.zig" });
     defer allocator.free(root_path);
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const io = host.io();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     try w.writeAll("//! Auto-generated\n");
@@ -524,11 +531,12 @@ pub fn generateNamespacesRoot(
     const root_path = try std.fs.path.join(allocator, &.{ namespaces_path, "root.zig" });
     defer allocator.free(root_path);
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const io = host.io();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     try w.writeAll("//! Auto-generated\n");
@@ -558,16 +566,17 @@ pub fn generateMixinsRoot(
     defer allocator.free(root_path);
 
     // Ensure the mixins directory exists
-    std.fs.cwd().makePath(mixins_path) catch |err| switch (err) {
+    const io = host.io();
+    host.cwd().createDirPath(io, mixins_path) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
     };
 
-    const root_file = try std.fs.cwd().createFile(root_path, .{});
-    defer root_file.close();
+    const root_file = try host.cwd().createFile(io, root_path, .{});
+    defer root_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = root_file.writer(&buffer);
+    var file_writer = root_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     try w.writeAll("//! Auto-generated root file for all WebIDL mixins\n\n");
@@ -600,16 +609,17 @@ pub fn generateMixin(
     defer allocator.free(file_path);
 
     // Ensure the mixins directory exists
-    std.fs.cwd().makePath(mixins_path) catch |err| switch (err) {
+    const io = host.io();
+    host.cwd().createDirPath(io, mixins_path) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
     };
 
-    const file = try std.fs.cwd().createFile(file_path, .{});
-    defer file.close();
+    const file = try host.cwd().createFile(io, file_path, .{});
+    defer file.close(io);
 
     var buffer: [16384]u8 = undefined;
-    var file_writer = file.writer(&buffer);
+    var file_writer = file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Header
@@ -1209,7 +1219,8 @@ fn generateImplFile(
     ir: ?*ir_mod.IR,
 ) !void {
     // Create impls_tmp directory
-    try std.fs.cwd().makePath(impls_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, impls_path);
 
     // Create implementation stub file
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{interface.name});
@@ -1220,11 +1231,11 @@ fn generateImplFile(
 
     // Always generate to impls_tmp/ (overwrite existing stubs)
     // Custom implementations live in impls/ and are never overwritten
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Get type registry for proper type mapping
@@ -1578,7 +1589,8 @@ fn generateInterfaceFile(
     ir: ?*ir_mod.IR,
 ) !void {
     // Create interfaces directory
-    try std.fs.cwd().makePath(interfaces_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, interfaces_path);
 
     // Create output file in interfaces directory
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{interface.name});
@@ -1587,11 +1599,11 @@ fn generateInterfaceFile(
     const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, output_filename });
     defer allocator.free(output_path);
 
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // First, collect interface references from own members
@@ -2157,7 +2169,7 @@ test "generateInterface creates output file" {
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     // Simple test interface
@@ -2178,11 +2190,12 @@ test "generateInterface creates output file" {
     const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, "TestInterface.zig" });
     defer allocator.free(output_path);
 
-    const file = try std.fs.cwd().openFile(output_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(std.testing.io, output_path, .{});
+    defer file.close(std.testing.io);
 
     // Read and verify content
-    const content = try file.readToEndAlloc(allocator, 10 * 1024);
+    var file_reader = file.reader(std.testing.io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024));
     defer allocator.free(content);
 
     // Should contain struct declaration
@@ -2197,7 +2210,7 @@ test "generateInterface includes base type in imports" {
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const test_interface: types.Interface = .{
@@ -2216,10 +2229,11 @@ test "generateInterface includes base type in imports" {
     const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, "Node.zig" });
     defer allocator.free(output_path);
 
-    const file = try std.fs.cwd().openFile(output_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(std.testing.io, output_path, .{});
+    defer file.close(std.testing.io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024);
+    var file_reader = file.reader(std.testing.io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024));
     defer allocator.free(content);
 
     // Should import base type from "interfaces" module
@@ -2232,7 +2246,7 @@ test "generateInterface includes lifecycle functions" {
     var tmp_dir = testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    const tmp_path = try tmp_dir.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp_dir.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
 
     const test_interface: types.Interface = .{
@@ -2250,10 +2264,11 @@ test "generateInterface includes lifecycle functions" {
     const output_path = try std.fs.path.join(allocator, &.{ interfaces_path, "TestInterface.zig" });
     defer allocator.free(output_path);
 
-    const file = try std.fs.cwd().openFile(output_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(std.testing.io, output_path, .{});
+    defer file.close(std.testing.io);
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024);
+    var file_reader = file.reader(std.testing.io, &.{});
+    const content = try file_reader.interface.allocRemaining(allocator, .limited(10 * 1024));
     defer allocator.free(content);
 
     // Should have init and deinit
@@ -2721,7 +2736,8 @@ pub fn generateTypedef(
     ir: *const ir_mod.IR,
 ) !void {
     // Create typedefs directory
-    try std.fs.cwd().makePath(typedefs_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, typedefs_path);
 
     // Create typedef file
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{typedef.name});
@@ -2730,11 +2746,11 @@ pub fn generateTypedef(
     const output_path = try std.fs.path.join(allocator, &.{ typedefs_path, output_filename });
     defer allocator.free(output_path);
 
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header
@@ -2897,7 +2913,8 @@ pub fn generateDictionary(
     ir: *const ir_mod.IR,
 ) !void {
     // Create dictionaries directory
-    try std.fs.cwd().makePath(dictionaries_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, dictionaries_path);
 
     // Create dictionary file
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{dictionary.name});
@@ -2906,11 +2923,11 @@ pub fn generateDictionary(
     const output_path = try std.fs.path.join(allocator, &.{ dictionaries_path, output_filename });
     defer allocator.free(output_path);
 
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header
@@ -3017,7 +3034,8 @@ pub fn generateEnum(
     enums_path: []const u8,
 ) !void {
     // Create enums directory
-    try std.fs.cwd().makePath(enums_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, enums_path);
 
     // Create enum file
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{enum_type.name});
@@ -3026,11 +3044,11 @@ pub fn generateEnum(
     const output_path = try std.fs.path.join(allocator, &.{ enums_path, output_filename });
     defer allocator.free(output_path);
 
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header
@@ -3078,7 +3096,8 @@ pub fn generateCallback(
     type_registry: *const ir_mod.TypeRegistry,
 ) !void {
     // Create callbacks directory
-    try std.fs.cwd().makePath(callbacks_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, callbacks_path);
 
     // Create callback file
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{callback.name});
@@ -3087,11 +3106,11 @@ pub fn generateCallback(
     const output_path = try std.fs.path.join(allocator, &.{ callbacks_path, output_filename });
     defer allocator.free(output_path);
 
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header
@@ -3273,7 +3292,8 @@ pub fn generateNamespace(
     namespaces_path: []const u8,
 ) !void {
     // Create namespaces directory
-    try std.fs.cwd().makePath(namespaces_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, namespaces_path);
 
     // Create namespace file
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{namespace.name});
@@ -3282,11 +3302,11 @@ pub fn generateNamespace(
     const output_path = try std.fs.path.join(allocator, &.{ namespaces_path, output_filename });
     defer allocator.free(output_path);
 
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header
@@ -3460,7 +3480,8 @@ pub fn generateNamespaceImpl(
     impls_path: []const u8,
 ) !void {
     // Create impls directory
-    try std.fs.cwd().makePath(impls_path);
+    const io = host.io();
+    try host.cwd().createDirPath(io, impls_path);
 
     // Create impl file (use same naming as interfaces: {name}.zig)
     const output_filename = try std.fmt.allocPrint(allocator, "{s}.zig", .{namespace.name});
@@ -3469,11 +3490,11 @@ pub fn generateNamespaceImpl(
     const output_path = try std.fs.path.join(allocator, &.{ impls_path, output_filename });
     defer allocator.free(output_path);
 
-    const output_file = try std.fs.cwd().createFile(output_path, .{});
-    defer output_file.close();
+    const output_file = try host.cwd().createFile(io, output_path, .{});
+    defer output_file.close(io);
 
     var buffer: [4096]u8 = undefined;
-    var file_writer = output_file.writer(&buffer);
+    var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
     // Write header

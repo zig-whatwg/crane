@@ -33,6 +33,7 @@
 //! - WPT Server: https://web-platform-tests.org/running-tests/from-local-system.html
 
 const std = @import("std");
+const host = @import("host");
 const Allocator = std.mem.Allocator;
 const net = std.net;
 
@@ -439,7 +440,7 @@ pub const HttpServer = struct {
         const full_path = try std.fs.path.join(self.allocator, &.{ self.config.wpt_root, js_relative_path });
         defer self.allocator.free(full_path);
 
-        std.fs.cwd().access(full_path, .{}) catch return false;
+        host.cwd().access(host.io(), full_path, .{}) catch return false;
 
         // Generate HTML wrapper
         const js_url = try std.mem.concat(self.allocator, u8, &.{ "/", js_relative_path });
@@ -502,7 +503,7 @@ pub const HttpServer = struct {
         const full_path = try std.fs.path.join(self.allocator, &.{ self.config.wpt_root, file_path });
         defer self.allocator.free(full_path);
 
-        std.fs.cwd().access(full_path, .{}) catch return false;
+        host.cwd().access(host.io(), full_path, .{}) catch return false;
 
         // Generate worker wrapper script
         var script: std.ArrayListUnmanaged(u8) = .empty;
@@ -628,14 +629,15 @@ pub const HttpServer = struct {
             defer self.allocator.free(full_path);
 
             // Read the file
-            const file = std.fs.cwd().openFile(full_path, .{}) catch return false;
-            defer file.close();
+            const io = host.io();
+            const file = host.cwd().openFile(io, full_path, .{}) catch return false;
+            defer file.close(io);
 
-            const stat = try file.stat();
+            const stat = try file.stat(io);
             const content = try self.allocator.alloc(u8, stat.size);
             defer self.allocator.free(content);
 
-            const bytes_read = try file.readAll(content);
+            const bytes_read = try file.readPositionalAll(io, content, 0);
             if (bytes_read != stat.size) {
                 return false;
             }
@@ -820,14 +822,15 @@ pub const HttpServer = struct {
 
     /// Serve a specific file
     fn serveFile(self: *Self, path: []const u8, content_type: []const u8, response: *HttpResponse) !bool {
-        const file = std.fs.cwd().openFile(path, .{}) catch return false;
-        defer file.close();
+        const io = host.io();
+        const file = host.cwd().openFile(io, path, .{}) catch return false;
+        defer file.close(io);
 
-        const stat = try file.stat();
+        const stat = try file.stat(io);
         const content = try self.allocator.alloc(u8, stat.size);
         errdefer self.allocator.free(content);
 
-        const bytes_read = try file.readAll(content);
+        const bytes_read = try file.readPositionalAll(io, content, 0);
         if (bytes_read != stat.size) {
             self.allocator.free(content);
             return false;
@@ -851,8 +854,8 @@ pub const HttpServer = struct {
         const headers_path = try std.mem.concat(self.allocator, u8, &.{ path, ".headers" });
         defer self.allocator.free(headers_path);
 
-        const hdr_file = std.fs.cwd().openFile(headers_path, .{}) catch return;
-        defer hdr_file.close();
+        const hdr_file = host.cwd().openFile(host.io(), headers_path, .{}) catch return;
+        defer hdr_file.close(host.io());
 
         var buf: [4096]u8 = undefined;
 

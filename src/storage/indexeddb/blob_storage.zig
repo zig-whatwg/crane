@@ -36,6 +36,7 @@
 //! - IndexedDB Structured Clone: https://html.spec.whatwg.org/multipage/structured-data.html
 
 const std = @import("std");
+const host = @import("host");
 
 // ============================================================================
 // Blob Reference
@@ -317,14 +318,15 @@ pub const BlobStorageManager = struct {
         const dir_path = try self.getBlobDir(self.allocator, database_id, store_id);
         defer self.allocator.free(dir_path);
 
-        std.fs.cwd().makePath(dir_path) catch |err| {
+        const io = host.io();
+        host.cwd().createDirPath(io, dir_path) catch |err| {
             if (err != error.PathAlreadyExists) return err;
         };
 
         // Write blob file
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        try file.writeAll(data);
+        const file = try host.cwd().createFile(io, path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, data);
 
         // Create reference
         var ref = BlobReference.initOwned(self.allocator, blob_id, data.len);
@@ -345,13 +347,14 @@ pub const BlobStorageManager = struct {
         const path = try self.getBlobPath(allocator, database_id, store_id, ref.id);
         defer allocator.free(path);
 
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+        const io = host.io();
+        const file = try host.cwd().openFile(io, path, .{});
+        defer file.close(io);
 
         const data = try allocator.alloc(u8, ref.size);
         errdefer allocator.free(data);
 
-        const bytes_read = try file.readAll(data);
+        const bytes_read = try file.readPositionalAll(io, data, 0);
         if (bytes_read != ref.size) {
             return error.BlobSizeMismatch;
         }
@@ -369,7 +372,7 @@ pub const BlobStorageManager = struct {
         const path = try self.getBlobPath(self.allocator, database_id, store_id, blob_id);
         defer self.allocator.free(path);
 
-        std.fs.cwd().deleteFile(path) catch |err| {
+        host.cwd().deleteFile(host.io(), path) catch |err| {
             if (err != error.FileNotFound) return err;
         };
     }
@@ -383,7 +386,7 @@ pub const BlobStorageManager = struct {
         const dir_path = try self.getBlobDir(self.allocator, database_id, store_id);
         defer self.allocator.free(dir_path);
 
-        std.fs.cwd().deleteTree(dir_path) catch |err| {
+        host.cwd().deleteTree(host.io(), dir_path) catch |err| {
             if (err != error.FileNotFound) return err;
         };
     }
@@ -400,7 +403,7 @@ pub const BlobStorageManager = struct {
         );
         defer self.allocator.free(dir_path);
 
-        std.fs.cwd().deleteTree(dir_path) catch |err| {
+        host.cwd().deleteTree(host.io(), dir_path) catch |err| {
             if (err != error.FileNotFound) return err;
         };
     }
@@ -416,18 +419,19 @@ pub const BlobStorageManager = struct {
 
         var total_size: u64 = 0;
 
-        var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+        const io = host.io();
+        var dir = host.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| {
             if (err == error.FileNotFound) return 0;
             return err;
         };
-        defer dir.close();
+        defer dir.close(io);
 
         var walker = dir.walk(self.allocator) catch return 0;
         defer walker.deinit();
 
-        while (walker.next() catch null) |entry| {
+        while (walker.next(io) catch null) |entry| {
             if (entry.kind == .file) {
-                const stat = entry.dir.statFile(entry.basename) catch continue;
+                const stat = entry.dir.statFile(io, entry.basename, .{}) catch continue;
                 total_size += stat.size;
             }
         }

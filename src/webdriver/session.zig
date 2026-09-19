@@ -202,7 +202,7 @@ pub const Session = struct {
             }
 
             // Small yield to prevent CPU spin
-            std.Thread.sleep(1 * std.time.ns_per_ms);
+            clock.sleep(1 * std.time.ns_per_ms);
         }
 
         // Timeout is not an error for page load - we continue anyway
@@ -226,7 +226,7 @@ pub const Session = struct {
             }
 
             // Small yield
-            std.Thread.sleep(1 * std.time.ns_per_ms);
+            clock.sleep(1 * std.time.ns_per_ms);
         }
 
         return error.ScriptTimeout;

@@ -52,6 +52,7 @@ const ElementImpl = impls.Element;
 
 // HTML parser types
 const html_core = @import("html_core");
+const host = @import("host");
 const TreeNode = html_core.parser.TreeNode;
 
 /// Script execution type based on script attributes
@@ -251,10 +252,12 @@ pub const ExternalScriptLoader = struct {
         }
 
         // Default: read from file system
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+        const io = host.io();
+        const file = try host.cwd().openFile(io, path, .{});
+        defer file.close(io);
 
-        return try file.readToEndAlloc(self.allocator, MAX_SCRIPT_SIZE);
+        var file_reader = file.reader(io, &.{});
+        return try file_reader.interface.allocRemaining(self.allocator, .limited(MAX_SCRIPT_SIZE));
     }
 
     /// Check if a script has already been loaded

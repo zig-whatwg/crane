@@ -306,7 +306,7 @@ pub const RealTimerBackend = struct {
         }
 
         if (sleep_time > 0) {
-            std.Thread.sleep(@intCast(sleep_time * 1_000_000));
+            clock.sleep(@intCast(sleep_time * 1_000_000));
         }
 
         return clock.monotonicMillis() - start_time;

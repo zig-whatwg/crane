@@ -41,6 +41,7 @@ const builtin = @import("builtin");
 const test_harness = @import("test_harness.zig");
 const config = @import("config.zig");
 const clock = @import("clock");
+const host = @import("host");
 
 // =============================================================================
 // Lone Surrogate Sanitization
@@ -306,10 +307,12 @@ pub fn loadExpectedResults(allocator: std.mem.Allocator, wpt_root: []const u8, t
         const ini_path = try std.fmt.allocPrint(allocator, "{s}/{s}{s}.ini", .{ wpt_root, prefix, test_path });
         defer allocator.free(ini_path);
 
-        const file = std.fs.cwd().openFile(ini_path, .{}) catch continue;
-        defer file.close();
+        const io = host.io();
+        const file = host.cwd().openFile(io, ini_path, .{}) catch continue;
+        defer file.close(io);
 
-        const content = file.readToEndAlloc(allocator, 1024 * 1024) catch continue;
+        var file_reader = file.reader(io, &.{});
+        const content = file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024)) catch continue;
         defer allocator.free(content);
 
         return try parseIniMetadata(allocator, content);
@@ -503,9 +506,10 @@ pub const WptReport = struct {
     /// Convert to JSON and write to file
     pub fn writeToFile(self: *WptReport, path: []const u8) !void {
         // Ensure output directory exists
+        const io = host.io();
         const dir_path = std.fs.path.dirname(path);
         if (dir_path) |dir| {
-            std.fs.cwd().makePath(dir) catch |err| {
+            host.cwd().createDirPath(io, dir) catch |err| {
                 if (err != error.PathAlreadyExists) return err;
             };
         }
@@ -516,10 +520,10 @@ pub const WptReport = struct {
 
         try self.writeJsonToArrayList(&json_buf);
 
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try host.cwd().createFile(io, path, .{});
+        defer file.close(io);
 
-        _ = try file.writeAll(json_buf.items);
+        _ = try file.writeStreamingAll(io, json_buf.items);
     }
 
     /// Write JSON to an ArrayList buffer

@@ -15,6 +15,7 @@ const Allocator = std.mem.Allocator;
 
 const config = @import("config.zig");
 const wpt_manifest = @import("manifest.zig");
+const host = @import("host");
 
 /// The set of tests a run intends to execute.
 pub const Selection = struct {
@@ -160,7 +161,7 @@ pub fn parseWorklist(allocator: Allocator, bytes: []const u8) !Worklist {
 
 /// Read a worklist from disk.
 pub fn readWorklist(allocator: Allocator, path: []const u8) !Worklist {
-    const bytes = try std.fs.cwd().readFileAlloc(allocator, path, 64 * 1024 * 1024);
+    const bytes = try host.cwd().readFileAlloc(host.io(), path, allocator, .limited(64 * 1024 * 1024));
     defer allocator.free(bytes);
     return parseWorklist(allocator, bytes);
 }
@@ -353,7 +354,7 @@ test "selectInScope returns an empty selection when nothing matches" {
 test "selectInScope over the real manifest reports a plausible denominator" {
     const allocator = std.testing.allocator;
 
-    std.fs.cwd().access("tests/wpt/MANIFEST.json", .{}) catch return error.SkipZigTest;
+    std.Io.Dir.cwd().access(std.testing.io, "tests/wpt/MANIFEST.json", .{}) catch return error.SkipZigTest;
 
     var manifest = try wpt_manifest.loadManifest(allocator, "tests/wpt");
     defer manifest.deinit();
@@ -439,16 +440,16 @@ test "a selection round-trips through a worklist file" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
     const path = try std.fs.path.join(allocator, &.{ dir_path, "worklist.txt" });
     defer allocator.free(path);
 
     {
-        var file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        var file = try std.Io.Dir.cwd().createFile(std.testing.io, path, .{});
+        defer file.close(std.testing.io);
         var buf: [4096]u8 = undefined;
-        var file_writer = file.writer(&buf);
+        var file_writer = file.writer(std.testing.io, &buf);
         try writeWorklist(&file_writer.interface, sel.sources);
         try file_writer.interface.flush();
     }

@@ -17,6 +17,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const posix = std.posix;
 const test_parser = @import("test_parser.zig");
+const host = @import("host");
 
 /// Lockfile name stored in WPT root
 const LOCKFILE_NAME = ".wpt_serve.lock";
@@ -116,15 +117,16 @@ pub const WptServer = struct {
         const lockfile_path = try self.getLockfilePath();
         defer self.allocator.free(lockfile_path);
 
-        const file = std.fs.cwd().openFile(lockfile_path, .{}) catch |err| {
+        const io = host.io();
+        const file = host.cwd().openFile(io, lockfile_path, .{}) catch |err| {
             if (err == error.FileNotFound) return false;
             return err;
         };
-        defer file.close();
+        defer file.close(io);
 
         // Read lockfile: "pid:port"
         var buf: [64]u8 = undefined;
-        const bytes_read = try file.readAll(&buf);
+        const bytes_read = try file.readPositionalAll(io, &buf, 0);
         const content = buf[0..bytes_read];
 
         // Parse PID and port
@@ -144,7 +146,7 @@ pub const WptServer = struct {
             return true;
         } else |_| {
             // Process doesn't exist - stale lockfile, remove it
-            std.fs.cwd().deleteFile(lockfile_path) catch {};
+            host.cwd().deleteFile(io, lockfile_path) catch {};
             return false;
         }
     }
@@ -183,19 +185,20 @@ pub const WptServer = struct {
         const lockfile_path = try self.getLockfilePath();
         defer self.allocator.free(lockfile_path);
 
-        const file = try std.fs.cwd().createFile(lockfile_path, .{});
-        defer file.close();
+        const io = host.io();
+        const file = try host.cwd().createFile(io, lockfile_path, .{});
+        defer file.close(io);
 
         const content = try std.fmt.allocPrint(self.allocator, "{d}:{d}\n", .{ self.pid.?, self.port });
         defer self.allocator.free(content);
-        try file.writeAll(content);
+        try file.writeStreamingAll(io, content);
     }
 
     /// Remove the lockfile
     fn removeLockfile(self: *WptServer) void {
         const lockfile_path = self.getLockfilePath() catch return;
         defer self.allocator.free(lockfile_path);
-        std.fs.cwd().deleteFile(lockfile_path) catch {};
+        host.cwd().deleteFile(host.io(), lockfile_path) catch {};
     }
 
     /// Wait for server to become ready
@@ -315,11 +318,11 @@ pub const WptServer = struct {
 };
 
 /// Write a lockfile naming `pid` into a scratch WPT root.
-fn writeTestLockfile(dir: std.fs.Dir, pid: posix.pid_t) !void {
-    var file = try dir.createFile(LOCKFILE_NAME, .{});
-    defer file.close();
+fn writeTestLockfile(io: std.Io, dir: std.Io.Dir, pid: posix.pid_t) !void {
+    var file = try dir.createFile(io, LOCKFILE_NAME, .{});
+    defer file.close(io);
     var buf: [64]u8 = undefined;
-    try file.writeAll(try std.fmt.bufPrint(&buf, "{d}:8000\n", .{pid}));
+    try file.writeStreamingAll(io, try std.fmt.bufPrint(&buf, "{d}:8000\n", .{pid}));
 }
 
 test "a live lockfile is adopted, not owned" {
@@ -331,10 +334,10 @@ test "a live lockfile is adopted, not owned" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
-    try writeTestLockfile(tmp.dir, std.c.getpid());
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid());
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
@@ -345,7 +348,7 @@ test "a live lockfile is adopted, not owned" {
     try std.testing.expect(!server.we_spawned);
 
     // Still there: adopting must not consume the lockfile the owner wrote.
-    try tmp.dir.access(LOCKFILE_NAME, .{});
+    try tmp.dir.access(std.testing.io, LOCKFILE_NAME, .{});
 }
 
 test "a lockfile naming a dead process is cleared" {
@@ -357,18 +360,18 @@ test "a lockfile naming a dead process is cleared" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
     // Above any pid_max, so kill() cannot find it and cannot ever be reused.
-    try writeTestLockfile(tmp.dir, 2147483646);
+    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646);
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
 
     try std.testing.expect(!try server.checkExistingServer());
     try std.testing.expect(server.pid == null);
-    try std.testing.expectError(error.FileNotFound, tmp.dir.access(LOCKFILE_NAME, .{}));
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(std.testing.io, LOCKFILE_NAME, .{}));
 }
 
 test "no lockfile means no server to adopt" {
@@ -377,7 +380,7 @@ test "no lockfile means no server to adopt" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
     const server = try WptServer.init(allocator, root);

@@ -37,6 +37,7 @@
 //! ```
 
 const std = @import("std");
+const host = @import("host");
 
 /// Default storage root directory
 const DEFAULT_STORAGE_ROOT = "~/.whatwg/";
@@ -94,7 +95,7 @@ pub const Storage = struct {
         if (self.initialized) return;
 
         // Create root directory
-        std.fs.cwd().makePath(self.root_path) catch |err| {
+        host.cwd().createDirPath(host.io(), self.root_path) catch |err| {
             if (err != error.PathAlreadyExists) return err;
         };
 
@@ -110,7 +111,7 @@ pub const Storage = struct {
             const path = try std.fs.path.join(self.allocator, &.{ self.root_path, subdir });
             defer self.allocator.free(path);
 
-            std.fs.cwd().makePath(path) catch |err| {
+            host.cwd().createDirPath(host.io(), path) catch |err| {
                 if (err != error.PathAlreadyExists) return err;
             };
         }

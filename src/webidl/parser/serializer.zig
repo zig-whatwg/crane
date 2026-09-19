@@ -2,6 +2,7 @@ const std = @import("std");
 const infra = @import("infra");
 const ast = @import("ast.zig");
 const ast_to_infra = @import("ast_to_infra.zig");
+const host = @import("host");
 
 const AST = ast.AST;
 
@@ -20,9 +21,10 @@ pub fn writeToFile(ast_val: AST, filepath: []const u8) !void {
     const json_bytes = try infra.json.serializeInfraValuePretty(allocator, infra_value.*);
     defer allocator.free(json_bytes);
 
-    const file = try std.fs.cwd().createFile(filepath, .{});
-    defer file.close();
-    try file.writeAll(json_bytes);
+    const io = host.io();
+    const file = try host.cwd().createFile(io, filepath, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, json_bytes);
 }
 
 pub fn serializeToWriter(ast_val: AST, writer: anytype) !void {

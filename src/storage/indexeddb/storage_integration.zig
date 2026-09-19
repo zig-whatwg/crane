@@ -430,7 +430,7 @@ test "DatabaseMetadata - update version" {
     defer metadata.deinit(allocator);
 
     const old_modified = metadata.modified_at;
-    std.Thread.sleep(1_000_000); // 1ms
+    clock.sleep(1_000_000); // 1ms
     metadata.updateVersion(2);
 
     try std.testing.expectEqual(@as(u64, 2), metadata.version);

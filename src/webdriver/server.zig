@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const net = std.net;
 const protocol = @import("protocol.zig");
 const commands = @import("commands.zig");
+const clock = @import("clock");
 const SessionManager = @import("session.zig").SessionManager;
 
 /// WebDriver Server Configuration
@@ -61,7 +62,7 @@ pub const Server = struct {
             // Accept connection with timeout
             const conn = self.server.?.accept() catch |err| {
                 if (err == error.WouldBlock) {
-                    std.Thread.sleep(10 * std.time.ns_per_ms);
+                    clock.sleep(10 * std.time.ns_per_ms);
                     continue;
                 }
                 std.log.err("Accept error: {}", .{err});

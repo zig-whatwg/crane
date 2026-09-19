@@ -53,6 +53,7 @@ const fetch = @import("fetch");
 const iface_bindings_mod = @import("interface_bindings.zig");
 const helpers = @import("webidl").helpers;
 const shadow_realm = @import("shadow_realm.zig");
+const host = @import("host");
 
 /// Context mapping entry
 pub const ContextEntry = struct {
@@ -1237,13 +1238,15 @@ fn handleDynamicImport(
         }
 
         // Read the file
-        const file = std.fs.cwd().openFile(file_path, .{}) catch {
+        const io = host.io();
+        const file = host.cwd().openFile(io, file_path, .{}) catch {
             resolver.reject("Failed to open module file");
             return;
         };
-        defer file.close();
+        defer file.close(io);
 
-        source = file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch { // 10MB max
+        var file_reader = file.reader(io, &.{});
+        source = file_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch { // 10MB max
             resolver.reject("Failed to read module file");
             return;
         };

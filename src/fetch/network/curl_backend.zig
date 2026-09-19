@@ -25,6 +25,7 @@ const NetworkError = backend.NetworkError;
 const HttpVersion = backend.HttpVersion;
 const curl = @import("curl_ffi.zig");
 const curl_error = @import("curl_error.zig");
+const clock = @import("clock");
 const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
 
 // =============================================================================
@@ -422,7 +423,7 @@ pub const LibcurlBackend = struct {
             if (result == curl.CURLE_COULDNT_CONNECT) {
                 log.debug("[CURL REQUEST #{}] Connection failed, will retry after backoff\n", .{req_num});
                 // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
-                std.Thread.sleep(100_000_000 * std.math.pow(u64, 2, retry_count));
+                clock.sleep(100_000_000 * std.math.pow(u64, 2, retry_count));
                 continue;
             }
             log.debug("[CURL REQUEST #{}] Non-retriable error, breaking loop\n", .{req_num});

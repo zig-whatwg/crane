@@ -22,13 +22,14 @@
 //! const typed_callback = @import("typed_callback.zig");
 //!
 //! const NativeResource = struct {
-//!     file_handle: std.fs.File,
+//!     file_handle: std.Io.File,
+//!     io: std.Io,
 //!     buffer: []u8,
 //!     allocator: std.mem.Allocator,
 //! };
 //!
 //! fn cleanupResource(resource: *NativeResource) void {
-//!     resource.file_handle.close();
+//!     resource.file_handle.close(resource.io);
 //!     resource.allocator.free(resource.buffer);
 //! }
 //!

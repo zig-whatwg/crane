@@ -193,8 +193,8 @@ pub const StubUIBackend = struct {
 /// Useful for CLI applications
 pub const ConsoleUIBackend = struct {
     allocator: Allocator,
-    stdout: std.fs.File.Writer,
-    stdin: std.fs.File.Reader,
+    stdout: std.Io.File.Writer,
+    stdin: std.Io.File.Reader,
 
     /// Initialize with stdio
     pub fn init(allocator: Allocator) ConsoleUIBackend {

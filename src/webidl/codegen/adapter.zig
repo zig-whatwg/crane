@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const types = @import("types.zig");
+const host = @import("host");
 
 /// Parse a WHATWG WebIDL JSON file format
 ///
@@ -13,7 +14,7 @@ pub fn parseWHATWGFormat(
     allocator: std.mem.Allocator,
     file_path: []const u8,
 ) !std.json.Parsed(types.IDLFile) {
-    const content = try std.fs.cwd().readFileAlloc(allocator, file_path, 10 * 1024 * 1024);
+    const content = try host.cwd().readFileAlloc(host.io(), file_path, allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(content);
 
     // Parse as generic JSON first
