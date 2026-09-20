@@ -2126,6 +2126,24 @@ pub fn build(b: *std.Build) void {
         };
     }
 
+    // V8 engine tests.
+    //
+    // Its own directory because it is the only one that needs the `v8` module
+    // itself. Test blocks living inside `src/runtime/engines/v8/*.zig` are NEVER
+    // run - `addTestFilesFromDir` only collects `tests/**/ *_test.zig` - so a test
+    // written next to the code it covers is a test that does not exist.
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
+        const v8_test_imports = [_]std.Build.Module.Import{
+            .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "v8", .module = v8_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true) catch |err| {
+            std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
+        };
+    }
+
     // Codegen tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
         const codegen_imports = [_]std.Build.Module.Import{

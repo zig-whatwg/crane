@@ -191,6 +191,30 @@ pub fn clear() void {
     // Don't reset initialized - the registry can be reused
 }
 
+/// How many (interface, isolate) entries are currently registered.
+///
+/// Exposed for tests and diagnostics: the count is what distinguishes a genuine
+/// re-registration (updates in place) from an append, and unbounded growth here is
+/// how the registry would silently fill and start dropping templates.
+pub fn registeredCount() usize {
+    return template_count;
+}
+
+/// Capacity, so a test can assert two full interface sets fit rather than
+/// hard-coding a number that drifts.
+pub const capacity = MAX_TEMPLATES;
+
+/// Remove every entry WITHOUT disposing any V8 handle.
+///
+/// `clear()` calls `v8_FunctionTemplate_Dispose` on each entry, which is correct
+/// for real templates and fatal for a test using synthetic pointers. This exists
+/// so a test can borrow the registry and put it back.
+pub fn resetForTest() void {
+    for (&templates) |*entry| entry.* = null;
+    template_count = 0;
+    cache_generation +%= 1;
+}
+
 /// Register a FunctionTemplate for an interface
 ///
 /// Called by V8Interface.registerGlobal after creating the template.
