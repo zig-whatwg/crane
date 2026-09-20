@@ -1481,6 +1481,30 @@ pub fn writeStateStruct(
 ///     },
 /// );
 /// ```
+/// Does this interface's impl own its event handlers, rather than storing them in
+/// the generated State?
+///
+/// HTMLElement keeps handlers in `event_handlers: StringHashMap(*anyopaque)` on its
+/// InternalState - deliberately, because V8 GlobalHandle pointers carry tag bits in
+/// the low 2 bits that a function-pointer type would strip (impls/HTMLElement.zig:83).
+/// So its 105 generated EventHandler slots are written by nobody and read by nobody:
+/// verified all 105 have zero accesses from the impl AND from the generated interface,
+/// whose accessors delegate straight to the impl.
+///
+/// At 8 bytes each that is 840 dead bytes in EVERY HTML element's state.
+///
+/// This is an allow-list on purpose. 71 `own.on*` accesses elsewhere are REAL -
+/// SharedWorker, WorkerGlobalScope, DedicatedWorkerGlobalScope, WebSocket and
+/// XMLHttpRequestUpload genuinely store handlers in State - so a blanket rule would
+/// silently break them. Add an interface here only after checking its impl.
+fn implOwnsEventHandlers(impl_name: []const u8) bool {
+    const owners = [_][]const u8{"HTMLElementImpl"};
+    for (owners) |o| {
+        if (std.mem.eql(u8, impl_name, o)) return true;
+    }
+    return false;
+}
+
 pub fn writeGeneratedState(
     writer: anytype,
     attributes: []const types.Attribute,
@@ -1513,6 +1537,10 @@ pub fn writeGeneratedState(
         for (attributes) |attr| {
             // Skip static attributes - they're not stored in instance state
             if (attr.static) continue;
+
+            // Skip event-handler slots the impl owns; see implOwnsEventHandlers.
+            if (implOwnsEventHandlers(impl_name) and
+                std.mem.eql(u8, attr.idlType.type, "EventHandler")) continue;
 
             // Check if type name ends with '?' (parser includes it in type string)
             var type_name = attr.idlType.type;
