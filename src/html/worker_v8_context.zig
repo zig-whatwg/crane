@@ -130,6 +130,13 @@ const WorkerTimerContext = struct {
     allocator: Allocator,
     /// Whether this timer has been cancelled
     cancelled: bool,
+    /// True while this timer's callback is on the stack.
+    ///
+    /// A callback may cancel ITSELF - clearTimeout(id) from inside the timer is
+    /// ordinary JS. While this is set the running trampoline owns the context and is
+    /// the only thing allowed to free it; freeing underneath it disposes the V8
+    /// Global the callback is still using.
+    executing: bool = false,
     /// Pointer to the WorkerV8Context for setting current_worker_context
     worker_v8_context: *WorkerV8Context,
 };
@@ -175,24 +182,36 @@ fn registerWorkerTimerContext(timer_id: runtime.TimerId, ctx: *WorkerTimerContex
 /// Unregister a timer context (marks as cancelled, cleanup happens in callback)
 fn unregisterWorkerTimerContext(timer_id: runtime.TimerId) void {
     if (worker_timer_contexts) |*map| {
+        // Free ONLY when the timer is confirmed dead and no callback is running.
+        //
+        // This used to fetchRemove, dispose the Global and destroy the ctx
+        // unconditionally. If the libuv timer was still armed it then fired into
+        // workerTimerTrampoline, which read ctx.cancelled from freed memory and went
+        // on to use a disposed Global - surfacing as UBSan trapping inside
+        // v8_Global_Dispose (v8_wrapper.cpp:8434, `Reset()` on a non-null dangling
+        // pointer). In ReleaseSafe that is a bare SIGTRAP with no message.
+        //
+        // Ownership rule, matching the window path in src/browser/Context.zig:
+        //   confirmed cancel + not executing -> free here
+        //   otherwise                        -> leave it registered and marked
+        //                                       cancelled; the trampoline frees it.
+        // The trampoline's cancelled branch MUST free, or this leaks - that omission
+        // is why the first attempt at this was reverted.
+        var confirmed = false;
+        var executing = false;
         if (map.get(timer_id)) |ctx| {
             ctx.cancelled = true;
-            // Cancel the timer at the libuv level.
-            //
-            // Result deliberately discarded, unlike the window path in Context.zig.
-            // Deferring the free to the callback on an unconfirmed cancel was tried
-            // here and regressed the worker timer tests: nothing else frees the
-            // context, and a queued message dispatch then ran against a worker that
-            // was already gone. The worker teardown path needs its own audit before
-            // this can follow the same rule.
+            executing = ctx.executing;
             if (WorkerV8Context.getTimerInterface()) |timer| {
-                _ = timer.clearTimeout(timer_id);
+                confirmed = timer.clearTimeout(timer_id);
             }
         }
-        if (map.fetchRemove(timer_id)) |kv| {
-            const ctx = kv.value;
-            v8.ffi.v8_Global_Dispose(ctx.callback_global);
-            ctx.allocator.destroy(ctx);
+        if (confirmed and !executing) {
+            if (map.fetchRemove(timer_id)) |kv| {
+                const ctx = kv.value;
+                v8.ffi.v8_Global_Dispose(ctx.callback_global);
+                ctx.allocator.destroy(ctx);
+            }
         }
     }
 }
@@ -303,8 +322,23 @@ fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
 fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     const ctx: *WorkerTimerContext = @ptrCast(@alignCast(context_ptr orelse return));
 
-    // Check if the timer was cancelled
-    if (ctx.cancelled) return;
+    // Cancelled while armed: unregisterWorkerTimerContext could not confirm the
+    // cancellation, so it left ownership to us. Free here - this is the last time the
+    // timer system will reference this context.
+    if (ctx.cancelled) {
+        if (worker_timer_contexts) |*map| {
+            _ = map.remove(ctx.current_timer_id);
+        }
+        v8.ffi.v8_Global_Dispose(ctx.callback_global);
+        ctx.allocator.destroy(ctx);
+        return;
+    }
+
+    // This trampoline owns the context for the duration of the callback, so a
+    // clearTimeout from inside it defers the free to us rather than pulling the
+    // Global out from under the running callback.
+    ctx.executing = true;
+    defer ctx.executing = false;
 
     // CRITICAL: Set current_worker_context so that callbacks like postMessage
     // can access the correct worker context. Save and restore the previous context.
@@ -375,6 +409,12 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
                 ctx.current_timer_id = new_timer_id;
                 // Re-register with the new timer ID
                 registerWorkerTimerContext(new_timer_id, ctx);
+            } else {
+                // Reschedule failed. The ctx was just removed from the map above, so
+                // without this it is neither tracked nor freed - a leak of both the
+                // context and its V8 Global.
+                v8.ffi.v8_Global_Dispose(ctx.callback_global);
+                ctx.allocator.destroy(ctx);
             }
         }
     } else {
