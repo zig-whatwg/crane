@@ -26,11 +26,14 @@
 //! plateau too, which is why the absolute figure is printed alongside.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const v8 = @import("v8");
 const memory = @import("memory");
 const Browser = @import("browser").Browser;
 const runtime = @import("runtime");
 const instance_bridge = @import("dom").instance_bridge;
+const context_manager = v8.context_manager;
+const WrapperCache = v8.wrapper_cache_mod.WrapperCache;
 
 const log = std.log.scoped(.gc_bench);
 
@@ -39,6 +42,135 @@ pub const std_options: std.Options = .{
     // must stay readable. Warnings and errors still come through.
     .log_level = .warn,
 };
+
+/// Wraps an allocator and tracks bytes currently outstanding.
+///
+/// The arena and the slab report themselves; the general-purpose allocator does
+/// not, and after the control run that is where the unexplained majority has to
+/// be. Counting it turns "3,373 bytes unaccounted" into a number that can be
+/// attributed.
+///
+/// Outstanding, not cumulative: the question is what is still held, and a
+/// cumulative figure would climb identically whether or not anything was freed.
+const CountingAllocator = struct {
+    child: std.mem.Allocator,
+    outstanding: usize = 0,
+    peak: usize = 0,
+
+    /// Optional per-allocation bookkeeping, enabled by `--profile`.
+    ///
+    /// Totals say how much is outstanding; they cannot say WHERE it was allocated,
+    /// and a leak-checking allocator is no help here because everything is freed in
+    /// bulk at process exit - the memory is retained during the run, not lost. This
+    /// records the return address of each live allocation so the sites holding the
+    /// most bytes MID-RUN can be named.
+    profile: bool = false,
+    /// pointer -> {len, return address}
+    live: ?std.AutoHashMapUnmanaged(usize, Live) = null,
+    tracking_allocator: std.mem.Allocator = undefined,
+
+    const Live = struct { len: usize, ra: usize };
+
+    /// Bytes and count outstanding per return address.
+    const SiteTotal = struct { ra: usize, bytes: usize, count: usize };
+
+    fn track(self: *CountingAllocator, ptr: [*]u8, len: usize, ra: usize) void {
+        if (!self.profile) return;
+        const map = &(self.live orelse return);
+        // Bookkeeping failure must not perturb the measurement it is measuring, so
+        // an OOM here drops the record rather than propagating.
+        map.put(self.tracking_allocator, @intFromPtr(ptr), .{ .len = len, .ra = ra }) catch {};
+    }
+
+    fn untrack(self: *CountingAllocator, ptr: [*]u8) void {
+        if (!self.profile) return;
+        const map = &(self.live orelse return);
+        _ = map.remove(@intFromPtr(ptr));
+    }
+
+    /// The sites holding the most outstanding bytes, largest first.
+    fn topSites(self: *CountingAllocator, gpa: std.mem.Allocator, limit: usize) ![]SiteTotal {
+        const map = &(self.live orelse return &.{});
+
+        var by_site: std.AutoHashMapUnmanaged(usize, SiteTotal) = .empty;
+        defer by_site.deinit(gpa);
+
+        var it = map.valueIterator();
+        while (it.next()) |v| {
+            const gop = try by_site.getOrPut(gpa, v.ra);
+            if (!gop.found_existing) gop.value_ptr.* = .{ .ra = v.ra, .bytes = 0, .count = 0 };
+            gop.value_ptr.bytes += v.len;
+            gop.value_ptr.count += 1;
+        }
+
+        var all: std.ArrayListUnmanaged(SiteTotal) = .empty;
+        defer all.deinit(gpa);
+        var sit = by_site.valueIterator();
+        while (sit.next()) |v| try all.append(gpa, v.*);
+
+        std.mem.sort(SiteTotal, all.items, {}, struct {
+            fn lt(_: void, a: SiteTotal, b: SiteTotal) bool {
+                return a.bytes > b.bytes;
+            }
+        }.lt);
+
+        return gpa.dupe(SiteTotal, all.items[0..@min(limit, all.items.len)]);
+    }
+
+    fn allocator(self: *CountingAllocator) std.mem.Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .alloc = alloc,
+                .resize = resize,
+                .remap = remap,
+                .free = free,
+            },
+        };
+    }
+
+    fn note(self: *CountingAllocator, delta: isize) void {
+        if (delta >= 0) {
+            self.outstanding +|= @intCast(delta);
+            if (self.outstanding > self.peak) self.peak = self.outstanding;
+        } else {
+            self.outstanding -|= @intCast(-delta);
+        }
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const p = self.child.rawAlloc(len, alignment, ra) orelse return null;
+        self.note(@intCast(len));
+        self.track(p, len, ra);
+        return p;
+    }
+
+    fn resize(ctx: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) bool {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        if (!self.child.rawResize(buf, alignment, new_len, ra)) return false;
+        self.note(@as(isize, @intCast(new_len)) - @as(isize, @intCast(buf.len)));
+        return true;
+    }
+
+    fn remap(ctx: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const p = self.child.rawRemap(buf, alignment, new_len, ra) orelse return null;
+        self.note(@as(isize, @intCast(new_len)) - @as(isize, @intCast(buf.len)));
+        self.untrack(buf.ptr);
+        self.track(p, new_len, ra);
+        return p;
+    }
+
+    fn free(ctx: *anyopaque, buf: []u8, alignment: std.mem.Alignment, ra: usize) void {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        self.child.rawFree(buf, alignment, ra);
+        self.note(-@as(isize, @intCast(buf.len)));
+        self.untrack(buf.ptr);
+    }
+};
+
+var counting: CountingAllocator = undefined;
 
 /// One reading at a known cycle count.
 ///
@@ -59,7 +191,30 @@ const Sample = struct {
     /// Entries in the instance -> NodeBase map. Keyed on a recycled address, so
     /// this rising is both a leak and a type-confusion hazard (M13).
     bridge_entries: usize,
+    /// Bytes outstanding in the general-purpose allocator - everything that is
+    /// neither arena state nor a slab slot.
+    gpa_outstanding: usize,
+    /// Entries in the V8 wrapper cache. Each holds a CacheEntry plus a
+    /// Global<Object>, and its weak callback is what frees the instance - so if
+    /// this is not shrinking, nothing downstream of it can.
+    wrapper_entries: usize,
 };
+
+/// How far this image was slid by ASLR, so a recorded return address can be turned
+/// into the static address `atos` understands.
+///
+/// Without this the addresses printed below resolve to whatever symbol happens to
+/// sit at that offset in an unslid image - which is not an approximation, it is a
+/// different function entirely, and it produced two confidently wrong attributions
+/// before this was added.
+extern fn _dyld_get_image_vmaddr_slide(image_index: u32) usize;
+
+fn imageSlide() usize {
+    return if (builtin.os.tag == .macos) _dyld_get_image_vmaddr_slide(0) else 0;
+}
+
+/// The wrapper cache lives on the runtime Context, not globally.
+var wrapper_cache_ref: ?*WrapperCache = null;
 
 fn takeSample(cycle: usize) Sample {
     const arena = runtime.ArenaAllocator.tryGet() catch null;
@@ -71,6 +226,8 @@ fn takeSample(cycle: usize) Sample {
         .arena_allocations = if (arena) |a| a.stats().total_allocations else 0,
         .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
         .bridge_entries = instance_bridge.entryCount(),
+        .gpa_outstanding = counting.outstanding,
+        .wrapper_entries = if (wrapper_cache_ref) |wc| wc.size() else 0,
     };
 }
 
@@ -78,8 +235,6 @@ fn takeSample(cycle: usize) Sample {
 /// they arrive on `std.process.Init`, which also carries the gpa and a
 /// process-lifetime arena.
 pub fn main(init: std.process.Init) !void {
-    const allocator = init.gpa;
-
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     const cycles: usize = if (args.len > 1)
@@ -103,10 +258,30 @@ pub fn main(init: std.process.Init) !void {
     // behaviour and not a leak? Whatever the control retains is the floor, and only
     // the excess above it is Crane's to fix.
     var control = false;
+    // `--profile` names the allocation sites holding the most bytes MID-RUN. A
+    // leak-checking allocator cannot do this: everything here is freed in bulk at
+    // process exit, so nothing is lost - it is retained, which no leak checker
+    // reports.
+    var profile = false;
     for (args[1..]) |a| {
         if (std.mem.eql(u8, a, "--gc")) force_gc = true;
         if (std.mem.eql(u8, a, "--control")) control = true;
+        if (std.mem.eql(u8, a, "--profile")) profile = true;
     }
+
+    var debug_gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = debug_gpa.deinit();
+
+    counting = .{ .child = debug_gpa.allocator() };
+    if (profile) {
+        counting.profile = true;
+        counting.live = .empty;
+        // Bookkeeping uses the RAW allocator, never the counted one: recording an
+        // allocation must not itself register as an allocation.
+        counting.tracking_allocator = debug_gpa.allocator();
+    }
+    defer if (counting.live) |*m| m.deinit(counting.tracking_allocator);
+    const allocator = counting.allocator();
 
     if (memory.residentBytes() == null) {
         std.debug.print("resident memory is not available on this platform; nothing to measure\n", .{});
@@ -123,6 +298,12 @@ pub fn main(init: std.process.Init) !void {
     const isolate = browser.isolate orelse return error.NoIsolate;
     const context = (browser.current_context orelse return error.NoContext).v8_context orelse
         return error.NoV8Context;
+
+    if (context_manager.get(context)) |runtime_ctx| {
+        if (runtime_ctx.getV8WrapperCacheStorage()) |storage| {
+            wrapper_cache_ref = @ptrCast(@alignCast(storage));
+        }
+    }
 
     var samples: std.ArrayListUnmanaged(Sample) = .empty;
     defer samples.deinit(allocator);
@@ -173,6 +354,23 @@ pub fn main(init: std.process.Init) !void {
     }
 
     report(samples.items, force_gc, control);
+
+    if (profile) {
+        const sites = try counting.topSites(allocator, 12);
+        defer allocator.free(sites);
+        std.debug.print("\nOutstanding bytes by allocation site (top {d}):\n", .{sites.len});
+        for (sites) |site| {
+            std.debug.print("  {d:>10} bytes  {d:>7} live  at 0x{x}\n", .{
+                site.bytes,
+                site.count,
+                site.ra -| imageSlide(),
+            });
+        }
+        std.debug.print(
+            "\nResolve with:  atos -o zig-out/bin/gc_bench <address>\n",
+            .{},
+        );
+    }
 }
 
 fn runScript(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, source: []const u8) !void {
@@ -200,7 +398,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
-        "B/cycle", "arena MB",    "live inst",
+        "B/cycle", "arena MB",    "gpa MB",
     });
 
     const first = samples[0].resident;
@@ -231,8 +429,9 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                 }
             }
             const arena_mb = @as(f64, @floatFromInt(s.arena_bytes)) / (1024.0 * 1024.0);
-            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10}\n", .{
-                s.cycle, mb, growth, slope, arena_mb, s.live_instances,
+            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}\n", .{
+                s.cycle, mb,       growth,
+                slope,   arena_mb, @as(f64, @floatFromInt(s.gpa_outstanding)) / (1024.0 * 1024.0),
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });
@@ -256,12 +455,37 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
         const arena_delta = @as(i128, @intCast(last.arena_bytes)) - @as(i128, @intCast(samples[0].arena_bytes));
         const arena_per = @divTrunc(arena_delta, @as(i128, @intCast(last.cycle)));
         std.debug.print(
-            "  of which state arena: {d:.1} MB, {d} bytes per element ({d}% of RSS growth)\n",
+            "  state arena requested: {d:.1} MB, {d} bytes per element ({d}% of RSS growth)\n",
             .{
                 @as(f64, @floatFromInt(arena_delta)) / (1024.0 * 1024.0),
                 arena_per,
                 if (total > 0) @divTrunc(arena_delta * 100, total) else 0,
             },
+        );
+        // NOT additive with the arena line above. The arena takes its chunks FROM
+        // the general allocator, so its bytes are counted in both - profiling showed
+        // the largest outstanding site is the arena's own doubling chunk list
+        // (~30 MB of chunks holding the 21 MB the arena reports as requested).
+        // Reporting these as two shares summed to more than the total.
+        const gpa_delta = @as(i128, @intCast(last.gpa_outstanding)) - @as(i128, @intCast(samples[0].gpa_outstanding));
+        std.debug.print(
+            "  general allocator, INCLUDING the arena's chunks: {d:.1} MB, {d} bytes per element\n",
+            .{
+                @as(f64, @floatFromInt(gpa_delta)) / (1024.0 * 1024.0),
+                @divTrunc(gpa_delta, @as(i128, @intCast(last.cycle))),
+            },
+        );
+        std.debug.print(
+            "  so {d:.1} MB of the {d:.1} MB is Zig-side; the rest is V8 heap and overhead\n",
+            .{
+                @as(f64, @floatFromInt(gpa_delta)) / (1024.0 * 1024.0),
+                @as(f64, @floatFromInt(total)) / (1024.0 * 1024.0),
+            },
+        );
+        std.debug.print(
+            "  wrapper cache entries: {d} (each is a CacheEntry plus a Global<Object>,\n" ++
+                "    and its weak callback is what frees the instance)\n",
+            .{last.wrapper_entries},
         );
         std.debug.print(
             "  instances still live: {d} (slab recycles, so a rising count means\n" ++
