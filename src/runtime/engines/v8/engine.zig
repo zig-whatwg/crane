@@ -344,13 +344,6 @@ fn v8ParseJson(
     const isolate = ffi.v8_Isolate_GetCurrent() orelse
         return EngineError.OperationFailed;
 
-    // Create V8 string from JSON
-    const v8_str = ffi.v8_String_NewFromUtf8(
-        isolate,
-        json_str.ptr,
-        @intCast(json_str.len),
-    ) orelse return EngineError.OperationFailed;
-
     // JSON.parse needs the string as a JavaScript string literal
     // Build: JSON.parse('...escaped json...')
 
@@ -374,8 +367,6 @@ fn v8ParseJson(
 
     // End with ')
     escaped.appendSlice(std.heap.c_allocator, "')") catch return EngineError.OutOfMemory;
-
-    _ = v8_str; // Not used - we build the script directly
 
     const parse_str = ffi.v8_String_NewFromUtf8(
         isolate,

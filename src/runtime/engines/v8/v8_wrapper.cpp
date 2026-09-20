@@ -2002,6 +2002,12 @@ Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int
 
 void v8_String_Dispose(Global<String>* str) {
     if (str) {
+        // See v8_ObjectTemplate_Dispose. Without this the handle is deleted here
+        // AND again by v8_Snapshot_ClearGlobalHandles, which walks
+        // g_snapshot_handles. tools/minimal_snapshot_test.zig:330 disposes a string
+        // created inside snapshot mode and then clears the handles - a live
+        // use-after-free that this guard fixes, independent of any new disposal.
+        if (g_snapshot_mode) return;
         g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
         str->Reset();
         delete str;

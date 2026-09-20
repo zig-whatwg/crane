@@ -1790,6 +1790,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     } else {
                         // Instance getter - extract instance from 'this' and call
                         const this_obj = info.getThis();
+                        defer v8.v8_Object_Dispose(this_obj);
 
                         // Derive property name from getter_name (strip "get_" prefix)
                         const prop_name = comptime blk: {
@@ -2357,6 +2358,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get 'this' object and extract the Zig instance
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
 
                     // For [Global] interfaces (like Window), we need special handling:
                     // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
@@ -3361,6 +3363,14 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             // Get 'this' object (the newly created instance)
+            //
+            // NOT disposed, unlike every other getThis() in this file. `cache.set`
+            // below stores this exact pointer as `entry.wrapper` and arms
+            // `v8_Global_SetWeak` on it, so the wrapper cache owns it from that
+            // point and frees it via `disposeEntryWrapper`. Disposing here is a
+            // double free plus a weak callback pointing at freed memory. The store
+            // is conditional on the cache existing, so a conditional dispose is not
+            // a fix either.
             const this_obj = info.getThis();
 
             // ========================================
@@ -3754,6 +3764,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' value - this should be the HTMLAllCollection instance
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const instance = getInstance(runtime.Instance, this_obj) orelse {
                 // If not a valid instance, return undefined
                 info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
@@ -3983,6 +3994,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // (the entered context), not the object's creation context.
                     // This ensures the caller's try/catch can catch the exception.
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
                     const creation_ctx = v8.v8_Object_GetPrototypeCreationContext(this_obj) orelse v8.v8_Isolate_GetCurrentContext(isolate).?;
                     const error_context = if (err == error.SecurityError)
                         v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate) orelse
@@ -4370,6 +4382,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object (the interface instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4469,6 +4482,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object (the interface instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4524,6 +4538,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4577,6 +4592,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4695,6 +4711,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -4758,6 +4775,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -5127,6 +5145,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -5333,6 +5352,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -5835,6 +5855,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Determine default iterator kind based on iterable type:
             // - Pair iterables (key_type is a string, not null): default to entries per WebIDL spec
@@ -5871,6 +5892,7 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .entries);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
@@ -5888,6 +5910,7 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .keys);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
@@ -5905,6 +5928,7 @@ pub fn V8Interface(comptime Interface: type) type {
             };
 
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .values);
             if (iterator_obj) |obj| {
                 info.setReturnValue(@ptrCast(obj));
@@ -5923,6 +5947,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object (the Headers/URLSearchParams/etc instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Get callback argument (required)
             if (info.length() < 1) {
@@ -6032,6 +6057,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Get the Zig instance from internal field
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -6185,6 +6211,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate = info.getIsolate();
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Check if this is null/undefined (happens with .call(null) or .call(undefined))
             // Per WebIDL, calling iterator.next() with invalid this throws TypeError
@@ -6270,6 +6297,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Callback for [Symbol.iterator] on iterator objects - returns this
         fn iteratorSelfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             info.setReturnValue(@ptrCast(this_obj));
         }
 
@@ -6668,6 +6696,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get 'this' object (the instance)
             const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
 
             // Try type-safe unwrapping first
             const wrapper_type_info_registry_iter = @import("wrapper_type_info_registry.zig");
@@ -6815,6 +6844,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
 
                     // Derive property name from setter_name_param (strip "set_" prefix)
                     const prop_name = comptime blk: {
@@ -7101,6 +7131,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     const new_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
                     // Get 'this' object
                     const this_obj = info.getThis();
+                    defer v8.v8_Object_Dispose(this_obj);
 
                     // Step 1: Use JavaScript [[Get]] to get the attribute's value
                     // This MUST respect user-defined getters on the object

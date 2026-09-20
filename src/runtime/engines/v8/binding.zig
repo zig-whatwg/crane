@@ -157,11 +157,6 @@ fn v8RegisterInterface(
         const methods_slice = methods[0..descriptor.methods_len];
         for (methods_slice, 0..) |method, i| {
             if (method.name) |method_name| {
-                const method_name_v8 = ffi.v8_String_NewFromUtf8(
-                    isolate,
-                    method_name,
-                    @intCast(std.mem.span(method_name).len),
-                ) orelse continue;
 
                 // Get the native method callback if provided
                 if (config.methods) |methods_arr| {
@@ -173,7 +168,6 @@ fn v8RegisterInterface(
                     }
                 }
 
-                _ = method_name_v8;
                 _ = prototype_template;
             }
         }
@@ -183,13 +177,6 @@ fn v8RegisterInterface(
     if (descriptor.properties) |properties| {
         const props_slice = properties[0..descriptor.properties_len];
         for (props_slice, 0..) |prop, i| {
-            const prop_name = ffi.v8_String_NewFromUtf8(
-                isolate,
-                prop.name,
-                @intCast(std.mem.span(prop.name).len),
-            ) orelse continue;
-
-            _ = prop_name;
             _ = i;
             // TODO: Set property accessors via FFI
             // if (config.getters) |getters| {
