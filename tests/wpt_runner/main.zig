@@ -66,6 +66,10 @@ const output = @import("output.zig");
 const wpt_options = @import("wpt_options");
 const clock = @import("clock");
 const host = @import("host");
+/// Phase 5 measuring instrument. The runner both reports its process-wide totals
+/// at the end and writes per-file deltas into the journal, so a sharded run can
+/// be added back up by the supervisor.
+const isolate_ownership = @import("v8").isolate_ownership;
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
@@ -550,16 +554,13 @@ pub const ProgressTracker = struct {
         // violations alone: 0 violations out of 0 checks means the instrument never
         // ran, which is NOT the same as the invariant holding, and the two are
         // indistinguishable if only violations are shown.
-        {
-            const ownership = @import("v8").isolate_ownership;
-            if (ownership.mode != .off) {
-                const v = ownership.violations();
-                const c = ownership.checks();
-                if (c == 0) {
-                    print("  🔒 Isolate ownership: not measured (0 checks ran)\n", .{});
-                } else {
-                    print("  🔒 Isolate ownership: {d} violation(s) in {d} checks\n", .{ v, c });
-                }
+        if (isolate_ownership.mode != .off) {
+            const v = isolate_ownership.violations();
+            const c = isolate_ownership.checks();
+            if (c == 0) {
+                print("  🔒 Isolate ownership: not measured (0 checks ran)\n", .{});
+            } else {
+                print("  🔒 Isolate ownership: {d} violation(s) in {d} checks\n", .{ v, c });
             }
         }
 
@@ -882,8 +883,22 @@ const FileTally = struct {
     /// begins - so the most expensive files in the corpus score near zero on it.
     timer: ?clock.Timer = null,
 
+    /// Phase 5 isolate-ownership counters as they stood BEFORE this file ran.
+    ///
+    /// The instrument's counters are process-global and monotonic, so the number
+    /// belonging to one file is a delta. Snapshotting here rather than resetting
+    /// keeps the running total intact for `printSummary`, which reports the whole
+    /// process - both readings come from the same source and cannot disagree.
+    ownership_checks_at_start: usize = 0,
+    ownership_violations_at_start: usize = 0,
+
     fn start() FileTally {
-        return .{ .index = 0, .timer = clock.Timer.start() };
+        return .{
+            .index = 0,
+            .timer = clock.Timer.start(),
+            .ownership_checks_at_start = isolate_ownership.checks(),
+            .ownership_violations_at_start = isolate_ownership.violations(),
+        };
     }
 
     fn wallMs(self: *const FileTally) u64 {
@@ -929,6 +944,8 @@ const FileTally = struct {
             .nav_ms = self.nav_ms,
             .load_ms = self.load_ms,
             .wall_ms = self.wallMs(),
+            .ownership_checks = isolate_ownership.checks() -| self.ownership_checks_at_start,
+            .ownership_violations = isolate_ownership.violations() -| self.ownership_violations_at_start,
         });
     }
 };
@@ -1700,6 +1717,20 @@ fn supervise(
         s.subtests_timed_out,
         s.subtests_notrun,
     });
+
+    // Phase 5. The supervisor's own counters are meaningless - it runs no tests -
+    // so this is summed out of the journal, which is the only place the children's
+    // numbers survive their exit. Printed as a pair because `0 violations` from an
+    // instrument that never executed is indistinguishable from a clean run.
+    if (s.ownership_checks == 0) {
+        print("Isolate ownership: not measured (0 checks across {d} records)\n", .{log.records.len});
+    } else {
+        print("Isolate ownership: {d} violation(s) in {d} checks\n", .{
+            s.ownership_violations,
+            s.ownership_checks,
+        });
+    }
+
     print("\nJournal: {s}\n", .{journal_path});
 
     const selected = try selectedPaths(allocator, discovery);

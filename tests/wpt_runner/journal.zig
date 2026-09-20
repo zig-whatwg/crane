@@ -104,6 +104,22 @@ pub const Record = struct {
     ///
     /// Zero in journals written before this field existed.
     wall_ms: u64 = 0,
+
+    /// Isolate-ownership checking (Phase 5), carried per record so a SHARDED run
+    /// can be aggregated.
+    ///
+    /// The supervisor spawns a child process per shard and the counters live in
+    /// the child, so without carrying them here a directory run reports nothing -
+    /// and directory runs are how the worker variants (the paths most likely to
+    /// break confinement) actually get exercised.
+    ///
+    /// BOTH are needed. Violations alone cannot distinguish "measured clean" from
+    /// "never ran": 0/0 means the instrument did not execute, 0/40 means the
+    /// invariant held. Zero in journals written before these fields existed, which
+    /// reads correctly as "not measured".
+    ownership_checks: usize = 0,
+    ownership_violations: usize = 0,
+
     message: ?[]const u8 = null,
 };
 
@@ -141,10 +157,12 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
     try writeJsonString(w, rec.status.toString());
     try w.print(
         ",\"passed\":{d},\"failed\":{d},\"timed_out\":{d},\"notrun\":{d}" ++
-            ",\"duration_ms\":{d},\"nav_ms\":{d},\"load_ms\":{d},\"wall_ms\":{d}",
+            ",\"duration_ms\":{d},\"nav_ms\":{d},\"load_ms\":{d},\"wall_ms\":{d}" ++
+            ",\"ownership_checks\":{d},\"ownership_violations\":{d}",
         .{
-            rec.passed,      rec.failed, rec.timed_out, rec.notrun,
-            rec.duration_ms, rec.nav_ms, rec.load_ms,   rec.wall_ms,
+            rec.passed,           rec.failed,               rec.timed_out, rec.notrun,
+            rec.duration_ms,      rec.nav_ms,               rec.load_ms,   rec.wall_ms,
+            rec.ownership_checks, rec.ownership_violations,
         },
     );
     if (rec.message) |msg| {
@@ -217,6 +235,13 @@ pub const Summary = struct {
     subtests_failed: usize = 0,
     subtests_timed_out: usize = 0,
     subtests_notrun: usize = 0,
+
+    /// Phase 5 isolate-ownership totals across the whole run, shards included.
+    ///
+    /// Read them as a PAIR: `0/0` is "the instrument never ran", `0/N` is
+    /// "N checks, invariant held". Collapsing to violations alone loses that.
+    ownership_checks: usize = 0,
+    ownership_violations: usize = 0,
 };
 
 /// A parsed journal.
@@ -260,6 +285,8 @@ pub const Log = struct {
             s.subtests_failed += rec.failed;
             s.subtests_timed_out += rec.timed_out;
             s.subtests_notrun += rec.notrun;
+            s.ownership_checks += rec.ownership_checks;
+            s.ownership_violations += rec.ownership_violations;
         }
         return s;
     }
@@ -338,6 +365,8 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
             .nav_ms = jsonUint(obj, "nav_ms"),
             .load_ms = jsonUint(obj, "load_ms"),
             .wall_ms = jsonUint(obj, "wall_ms"),
+            .ownership_checks = jsonUint(obj, "ownership_checks"),
+            .ownership_violations = jsonUint(obj, "ownership_violations"),
             .message = message,
         });
     }
@@ -652,6 +681,82 @@ test "create truncates an existing journal" {
 
     try std.testing.expectEqual(@as(usize, 1), log.records.len);
     try std.testing.expectEqualStrings("fresh.html", log.records[0].path);
+}
+
+test "ownership counters survive a round trip" {
+    try expectRoundTrip(.{
+        .index = 3,
+        .path = "html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html",
+        .status = .ok,
+        .passed = 4,
+        .ownership_checks = 37,
+        .ownership_violations = 0,
+    });
+}
+
+test "summarize adds up ownership across shards" {
+    // The reason these fields exist. A directory run is executed by child
+    // processes, one per shard, and the counters live in the child's memory -
+    // so the supervisor can only report a whole-corpus number by adding up what
+    // each child wrote here.
+    const allocator = std.testing.allocator;
+
+    const bytes =
+        \\{"index":0,"path":"a.html","status":"OK","ownership_checks":37,"ownership_violations":0}
+        \\{"index":1,"path":"b.html","status":"OK","ownership_checks":5,"ownership_violations":2}
+        \\{"index":2,"path":"c.html","status":"OK","ownership_checks":1,"ownership_violations":0}
+        \\
+    ;
+
+    var log = try parseLines(allocator, bytes);
+    defer log.deinit();
+
+    const s = log.summarize();
+    try std.testing.expectEqual(@as(usize, 43), s.ownership_checks);
+    try std.testing.expectEqual(@as(usize, 2), s.ownership_violations);
+}
+
+test "a run that never checked is distinguishable from one that checked clean" {
+    // 0 violations is ambiguous alone, and twice in this project's history a
+    // zero was read as "the invariant holds" when it actually meant "the
+    // instrument never executed". The pair removes the ambiguity: the checks
+    // column is what separates the two.
+    const allocator = std.testing.allocator;
+
+    const never =
+        \\{"index":0,"path":"a.html","status":"OK","ownership_checks":0,"ownership_violations":0}
+        \\
+    ;
+    var never_log = try parseLines(allocator, never);
+    defer never_log.deinit();
+    const never_sum = never_log.summarize();
+    try std.testing.expectEqual(@as(usize, 0), never_sum.ownership_checks);
+
+    const clean =
+        \\{"index":0,"path":"a.html","status":"OK","ownership_checks":40,"ownership_violations":0}
+        \\
+    ;
+    var clean_log = try parseLines(allocator, clean);
+    defer clean_log.deinit();
+    const clean_sum = clean_log.summarize();
+    try std.testing.expectEqual(@as(usize, 0), clean_sum.ownership_violations);
+    try std.testing.expect(clean_sum.ownership_checks > 0);
+}
+
+test "a journal written before ownership existed reads as not measured" {
+    // Must not be mistaken for a clean measurement: absent fields parse to 0/0,
+    // and 0 checks is exactly how "not measured" is spelled.
+    const allocator = std.testing.allocator;
+
+    const line =
+        \\{"index":0,"path":"a.html","status":"OK","passed":3}
+        \\
+    ;
+    var log = try parseLines(allocator, line);
+    defer log.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), log.records[0].ownership_checks);
+    try std.testing.expectEqual(@as(usize, 0), log.records[0].ownership_violations);
 }
 
 test "summarize counts records by status" {
