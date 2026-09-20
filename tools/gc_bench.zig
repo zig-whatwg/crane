@@ -29,6 +29,8 @@ const std = @import("std");
 const v8 = @import("v8");
 const memory = @import("memory");
 const Browser = @import("browser").Browser;
+const runtime = @import("runtime");
+const instance_bridge = @import("dom").instance_bridge;
 
 const log = std.log.scoped(.gc_bench);
 
@@ -38,11 +40,39 @@ pub const std_options: std.Options = .{
     .log_level = .warn,
 };
 
-/// One resident-memory reading at a known cycle count.
+/// One reading at a known cycle count.
+///
+/// Resident bytes alone say how much is retained; the allocator counters say WHERE.
+/// Without the split, "5,893 bytes per element" cannot be acted on - it does not
+/// distinguish DOM state in the arena from V8's heap from registry entries.
 const Sample = struct {
     cycle: usize,
     resident: ?usize,
+    /// Cumulative bytes handed out by the state arena. Cumulative is the right
+    /// figure precisely because the arena never resets: allocated == retained.
+    arena_bytes: usize,
+    arena_allocations: usize,
+    /// Instance handles that were allocated and never returned. The slab recycles,
+    /// so this rising means instances are not being deinit'd at all - a different
+    /// bug from "state is not freed".
+    live_instances: usize,
+    /// Entries in the instance -> NodeBase map. Keyed on a recycled address, so
+    /// this rising is both a leak and a type-confusion hazard (M13).
+    bridge_entries: usize,
 };
+
+fn takeSample(cycle: usize) Sample {
+    const arena = runtime.ArenaAllocator.tryGet() catch null;
+    const slab = runtime.SlabAllocator.tryGet() catch null;
+    return .{
+        .cycle = cycle,
+        .resident = memory.residentBytes(),
+        .arena_bytes = if (arena) |a| a.stats().total_bytes_allocated else 0,
+        .arena_allocations = if (arena) |a| a.stats().total_allocations else 0,
+        .live_instances = if (slab) |sl| sl.stats().currently_allocated else 0,
+        .bridge_entries = instance_bridge.entryCount(),
+    };
+}
 
 /// 0.16 removed `std.process.argsAlloc` - arguments are no longer process-global,
 /// they arrive on `std.process.Init`, which also carries the gpa and a
@@ -60,6 +90,16 @@ pub fn main(init: std.process.Init) !void {
         std.fmt.parseInt(usize, args[2], 10) catch 1_000
     else
         1_000;
+
+    // `--gc` forces a full V8 collection before each reading. This is the
+    // decomposition experiment, not a mode of the benchmark: if RSS still climbs
+    // with V8 collecting, the retained bytes are Zig-side - the arena that never
+    // resets, and the registries keyed on recycled addresses - and no amount of JS
+    // heap work will reach them. If it flattens, the retention is V8's.
+    var force_gc = false;
+    for (args[1..]) |a| {
+        if (std.mem.eql(u8, a, "--gc")) force_gc = true;
+    }
 
     if (memory.residentBytes() == null) {
         std.debug.print("resident memory is not available on this platform; nothing to measure\n", .{});
@@ -83,7 +123,7 @@ pub fn main(init: std.process.Init) !void {
     // Baseline AFTER browser startup: the snapshot, the templates and V8's own heap
     // are a fixed cost, and counting them as cycle-zero growth would hide a real
     // leak behind a large constant.
-    try samples.append(allocator, .{ .cycle = 0, .resident = memory.residentBytes() });
+    try samples.append(allocator, takeSample(0));
 
     var done: usize = 0;
     while (done < cycles) {
@@ -105,11 +145,20 @@ pub fn main(init: std.process.Init) !void {
 
         try runScript(isolate, context, source);
 
+        if (force_gc) {
+            // Twice: one pass can leave objects that only become unreachable once
+            // the first pass has cleared what referenced them, and a single
+            // collection would under-report what V8 can actually reclaim.
+            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+            v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+            v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);
+        }
+
         done += batch;
-        try samples.append(allocator, .{ .cycle = done, .resident = memory.residentBytes() });
+        try samples.append(allocator, takeSample(done));
     }
 
-    report(samples.items);
+    report(samples.items, force_gc);
 }
 
 fn runScript(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, source: []const u8) !void {
@@ -130,9 +179,14 @@ fn runScript(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, source: []const
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 }
 
-fn report(samples: []const Sample) void {
-    std.debug.print("\n=== Phase 6: createElement + discard ===\n\n", .{});
-    std.debug.print("{s:>10}  {s:>12}  {s:>14}  {s:>14}\n", .{ "cycle", "resident MB", "since start MB", "bytes/cycle" });
+fn report(samples: []const Sample, gc_was_forced: bool) void {
+    std.debug.print("\n=== Phase 6: createElement + discard{s} ===\n\n", .{
+        if (gc_was_forced) " (V8 GC forced)" else "",
+    });
+    std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
+        "cycle",   "resident MB", "since start",
+        "B/cycle", "arena MB",    "live inst",
+    });
 
     const first = samples[0].resident;
 
@@ -161,9 +215,12 @@ fn report(samples: []const Sample) void {
                     }
                 }
             }
-            std.debug.print("{d:>10}  {d:>12.1}  {d:>14.1}  {d:>14.1}\n", .{ s.cycle, mb, growth, slope });
+            const arena_mb = @as(f64, @floatFromInt(s.arena_bytes)) / (1024.0 * 1024.0);
+            std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10}\n", .{
+                s.cycle, mb, growth, slope, arena_mb, s.live_instances,
+            });
         } else {
-            std.debug.print("{d:>10}  {d:>12.1}\n", .{ s.cycle, mb });
+            std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });
         }
 
         prev = s;
@@ -176,6 +233,30 @@ fn report(samples: []const Sample) void {
         std.debug.print(
             "\n{d} cycles: {d:.1} MB total, {d} bytes per element\n",
             .{ last.cycle, @as(f64, @floatFromInt(total)) / (1024.0 * 1024.0), per },
+        );
+        // The decomposition. Arena growth is the part a state GC can reclaim; the
+        // remainder is V8 heap, registries and allocator overhead, and needs a
+        // different fix. Reporting only the total invites attributing all of it to
+        // whichever cause is currently being worked on.
+        const arena_delta = @as(i128, @intCast(last.arena_bytes)) - @as(i128, @intCast(samples[0].arena_bytes));
+        const arena_per = @divTrunc(arena_delta, @as(i128, @intCast(last.cycle)));
+        std.debug.print(
+            "  of which state arena: {d:.1} MB, {d} bytes per element ({d}% of RSS growth)\n",
+            .{
+                @as(f64, @floatFromInt(arena_delta)) / (1024.0 * 1024.0),
+                arena_per,
+                if (total > 0) @divTrunc(arena_delta * 100, total) else 0,
+            },
+        );
+        std.debug.print(
+            "  instances still live: {d} (slab recycles, so a rising count means\n" ++
+                "    instances are never deinit'd - a different bug from state retention)\n",
+            .{last.live_instances},
+        );
+        std.debug.print(
+            "  instance->NodeBase entries: {d} (keyed on a RECYCLED address, so a\n" ++
+                "    stale entry is inherited by the next object there - M13)\n",
+            .{last.bridge_entries},
         );
         std.debug.print(
             "\nPhase 6 exit wants this flat. Non-zero bytes/element means discarded\n" ++

@@ -44,6 +44,17 @@ pub const BridgeContext = struct {
 var instance_to_nodebase: std.AutoHashMap(*anyopaque, *NodeBase) = undefined;
 var initialized: bool = false;
 
+/// How many (instance -> NodeBase) entries are live.
+///
+/// Exposed for the Phase 6 memory benchmark. This map is keyed on the instance
+/// ADDRESS and the slab recycles addresses, so an entry that outlives its instance
+/// is not merely a leak - it is silently inherited by the next object at that
+/// address. A count that rises with created-and-discarded nodes is the symptom.
+pub fn entryCount() usize {
+    if (!initialized) return 0;
+    return instance_to_nodebase.count();
+}
+
 /// Initialize the bridge registry
 /// Called once at startup
 pub fn init() void {
