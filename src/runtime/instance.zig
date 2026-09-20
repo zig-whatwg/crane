@@ -28,6 +28,30 @@ pub const Instance = struct {
         return @ptrCast(@alignCast(self.state));
     }
 
+    /// Offset-corrected, brand-checked replacement for `getState`.
+    ///
+    /// `getState` is a bare cast: it assumes `T` begins at byte 0 of this instance's
+    /// state. That holds only when `T` IS the instance's own state type, or when every
+    /// `base` in the chain happens to sit at offset 0 - which auto layout does not
+    /// promise. `stateAs` finds `T` in the vtable's ancestry and adds its real offset.
+    ///
+    /// Returns null when `T` is not in this instance's chain at all. That is the brand
+    /// check: today such a call silently returns garbage typed as `*T`.
+    ///
+    /// Null is also returned when the ancestry table is empty, i.e. before codegen has
+    /// emitted one for this interface. Callers must treat null as "cannot answer", never
+    /// fall back to the pun.
+    pub inline fn stateAs(self: *const Instance, comptime T: type) ?*T {
+        const want = typeId(T);
+        for (self.vtable.ancestors) |a| {
+            if (a.id == want) {
+                const bytes: [*]u8 = @ptrCast(self.state);
+                return @ptrCast(@alignCast(bytes + a.offset));
+            }
+        }
+        return null;
+    }
+
     /// Initialize a new instance with consolidated lifecycle management
     ///
     /// This function consolidates all instance allocation logic:
@@ -123,6 +147,56 @@ pub const Instance = struct {
     }
 };
 
+/// A runtime-comparable identity for a comptime type.
+///
+/// `type` cannot cross the runtime boundary, so each state type gets a unique address:
+/// one zero-sized static per instantiation of `TypeIdHolder`. Pointer comparison is
+/// exact, unlike comparing `@typeName` strings.
+pub const TypeId = *const anyopaque;
+
+fn TypeIdHolder(comptime T: type) type {
+    return struct {
+        const marker: u8 = 0;
+        comptime {
+            _ = T;
+        }
+    };
+}
+
+pub fn typeId(comptime T: type) TypeId {
+    return @ptrCast(&TypeIdHolder(T).marker);
+}
+
+/// One level of an interface's ancestry: an ancestor's state type, and where that
+/// ancestor's state begins inside THIS interface's state.
+pub const Ancestor = struct {
+    id: TypeId,
+    offset: usize,
+};
+
+/// Walk `State` and every `base` beneath it, accumulating byte offsets.
+///
+/// Entry 0 is the type itself at offset 0; each further entry adds the
+/// `@offsetOf(.., "base")` of the level above. This is what retires the
+/// derived-to-base pun: `getState` assumed every one of these offsets was 0, which
+/// auto layout does not guarantee (see tests/dom/state_layout_test.zig).
+pub fn ancestorsOf(comptime State: type) []const Ancestor {
+    comptime {
+        var list: []const Ancestor = &.{};
+        var Cur: type = State;
+        var off: usize = 0;
+        while (true) {
+            list = list ++ [_]Ancestor{.{ .id = typeId(Cur), .offset = off }};
+            if (!@hasField(Cur, "base")) break;
+            const Base = @FieldType(Cur, "base");
+            if (Base == void) break;
+            off += @offsetOf(Cur, "base");
+            Cur = Base;
+        }
+        return list;
+    }
+}
+
 /// VTable with function pointers for method dispatch
 ///
 /// Each WebIDL interface has its own VTable populated at comptime.
@@ -140,6 +214,10 @@ pub const VTable = struct {
     /// with no `now()`. A name the interface already knows should not be
     /// re-derived by a lookup table that can fall out of date.
     name: []const u8,
+
+    /// This interface's state ancestry, innermost first. Empty until codegen emits
+    /// it, which is why `stateAs` reports "unknown" rather than guessing.
+    ancestors: []const Ancestor = &.{},
 
     /// Cleanup function (called by GC finalizer)
     /// Points directly to the interface's deinit function
