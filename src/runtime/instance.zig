@@ -7,6 +7,8 @@
 //! - MethodMap: Type-safe mapping from Method to function pointers
 
 const std = @import("std");
+
+const brand_log = std.log.scoped(.state_brand);
 const Context = @import("context.zig").Context;
 
 /// Type-erased instance handle (24 bytes)
@@ -24,7 +26,34 @@ pub const Instance = struct {
     ctx: Context,
 
     /// Get the state as a typed pointer (unsafe - caller must ensure correct type)
+    /// Access this instance's state as `T`.
+    ///
+    /// Routes through the vtable's ancestry table, so when an ancestor's impl runs
+    /// against a DERIVED instance - EventTarget's listener code on an Element - it
+    /// reads the ancestor's state at its real byte offset instead of assuming 0.
+    /// That assumption is what `@ptrCast` alone encoded, and auto layout does not
+    /// guarantee it (tests/dom/state_layout_test.zig).
+    ///
+    /// Three cases, deliberately distinguished:
+    ///
+    ///   found        - offset-corrected access. The fix.
+    ///   empty table  - a hand-written vtable with no generated ancestry (test mocks,
+    ///                  the static-call vehicle). Falls back to the old cast so those
+    ///                  keep working; there is nothing better to do without a table.
+    ///   not found    - a genuine brand violation: T is not in this instance's chain
+    ///                  at all. Logged, then falls back, because today these already
+    ///                  silently return garbage and promoting them to a panic would
+    ///                  turn latent bugs into crashes across 1,562 call sites. Fix
+    ///                  the reported sites, THEN tighten this to unreachable.
     pub inline fn getState(self: *const Instance, comptime T: type) *T {
+        if (self.vtable.ancestors.len != 0) {
+            if (self.stateAs(T)) |typed| return typed;
+            brand_log.debug(
+                "brand violation: {s} has no {s} in its state ancestry - " ++
+                    "falling back to an unchecked cast, which reads the wrong bytes",
+                .{ self.vtable.name, @typeName(T) },
+            );
+        }
         return @ptrCast(@alignCast(self.state));
     }
 
