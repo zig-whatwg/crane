@@ -262,6 +262,16 @@ fn addTestFilesFromDir(
 
         // Link V8 libraries if requested (for V8 tests)
         if (link_v8) {
+            // Same target-aware selection as `build()` below; this helper is a
+            // separate scope, so it recomputes rather than sharing the binding.
+            const v8_dir = switch (target.result.os.tag) {
+                .ios => "jsengines/v8/out/ios-arm64",
+                else => "jsengines/v8/out/static",
+            };
+            const v8_monolith_path = builder.fmt("{s}/obj/libv8_monolith.a", .{v8_dir});
+            const v8_libplatform_path = builder.fmt("{s}/obj/libv8_libplatform_fat.a", .{v8_dir});
+            const v8_libbase_path = builder.fmt("{s}/obj/libv8_libbase_fat.a", .{v8_dir});
+
             // Add V8 C++ wrapper
             test_exe.root_module.addCSourceFile(.{
                 .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
@@ -276,9 +286,9 @@ fn addTestFilesFromDir(
 
             // Add custom-built V8 static libraries
             test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-            test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-            test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-            test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+            test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+            test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+            test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
             // Add libuv
             test_exe.root_module.link_libcpp = true; //
@@ -289,22 +299,25 @@ fn addTestFilesFromDir(
     }
 }
 
-/// Add libuv's include and library paths, if a prefix containing them can be found.
-///
-/// These were nine unconditional `/opt/homebrew/opt/libuv/...` pairs. That path
-/// exists only under Homebrew on Apple Silicon, so the ubuntu-latest and
-/// windows-latest CI legs could never link even once V8 was provisioned - a gap
-/// .github/workflows/test.yml documents in its header.
-///
-/// Resolution order:
-///   1. -Dlibuv-prefix=PATH, for a non-standard install or a cross-compile sysroot.
-///   2. the usual Homebrew prefixes, Apple Silicon then Intel, but only if present.
-///   3. nothing - which is CORRECT on Linux and on MSYS/vcpkg, where libuv sits on
-///      the compiler's default search paths. Adding a non-existent path is not
-///      merely useless; it is what made the failure platform-specific and silent.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    // Where this target's V8 archives live.
+    //
+    // Every consumer used to hardcode `out/static`, which is the macOS arm64 build -
+    // `lipo` says arm64 and the Mach-O load command says PLATFORM_MACOS. Linking
+    // those into an aarch64-ios image fails the platform check, so an iOS build
+    // could never work however much Zig-side work was done. Selecting by target OS
+    // is the other half of that fix; the archives themselves come from a
+    // `target_os="ios"` GN build in `out/ios-arm64`.
+    const v8_out_dir = switch (target.result.os.tag) {
+        .ios => "jsengines/v8/out/ios-arm64",
+        else => "jsengines/v8/out/static",
+    };
+    const v8_monolith_path = b.fmt("{s}/obj/libv8_monolith.a", .{v8_out_dir});
+    const v8_libplatform_path = b.fmt("{s}/obj/libv8_libplatform_fat.a", .{v8_out_dir});
+    const v8_libbase_path = b.fmt("{s}/obj/libv8_libbase_fat.a", .{v8_out_dir});
 
     // ========================================================================
     // BUILD OPTIONS
@@ -419,8 +432,10 @@ pub fn build(b: *std.Build) void {
     //
     // Empty (the default) means "every interface", i.e. exactly today's behaviour.
     // A non-empty comma-separated list restricts the binding and external-reference
-    // loops to those names plus their ancestors, so a mobile build can drop the
-    // interfaces it will never touch. The loops that consult this are the only thing
+    // loops to those names plus their ancestors - `interfaceAllowed` walks
+    // `Meta.ParentInterface` upwards, so listing HTMLDivElement also admits
+    // HTMLElement, Element, Node and EventTarget. Without that a gated build would
+    // expose a constructor whose prototype chain is missing every link above it. The loops that consult this are the only thing
     // forcing all 1,263 interfaces to be analysed - `pub const X = @import(..)` in
     // interfaces/root.zig does NOT, because Zig only analyses referenced decls.
     const interface_allowlist = b.option(
@@ -2272,9 +2287,9 @@ pub fn build(b: *std.Build) void {
         },
     });
     browser_test.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
     browser_test.root_module.link_libcpp = true; //
 
     const run_browser_test = b.addRunArtifact(browser_test);
@@ -2406,11 +2421,9 @@ pub fn build(b: *std.Build) void {
     full_static_lib.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-
-    // Link libuv for timer support
+    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
     // Link C++ standard library
     full_static_lib.root_module.link_libcpp = true; //
@@ -2604,8 +2617,6 @@ pub fn build(b: *std.Build) void {
     crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
     crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
-    // Link libuv
-
     // Link C++ standard library
     crane_lib.root_module.link_libcpp = true; //
 
@@ -2657,8 +2668,6 @@ pub fn build(b: *std.Build) void {
     crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_monolith.a" });
     crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libplatform_fat.a" });
     crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
-
-    // Link libuv
 
     // Configure storage backends for executable
     configureStorageBackends(crane_exe.root_module, target);
@@ -2806,7 +2815,13 @@ pub fn build(b: *std.Build) void {
         .name = "snapshot_generator",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/snapshot_generator.zig"),
-            .target = target,
+            // Build-time tool: must run on the HOST. It is executed via
+            // `b.addRunArtifact` below, so building it for `target` means
+            // `zig build -Dtarget=aarch64-ios` produces a phone binary and then
+            // tries to run it here. The same fix landed for codegen, the IDL
+            // scanner and the three cldr tools; this one was missed, and it would
+            // have been the next failure after the V8 blocker is lifted.
+            .target = b.graph.host,
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
@@ -2833,11 +2848,9 @@ pub fn build(b: *std.Build) void {
     snapshot_gen_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-
-    // Link libuv for timer support
+    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
     // Link C++ standard library
     snapshot_gen_exe.root_module.link_libcpp = true; //
@@ -2919,11 +2932,9 @@ pub fn build(b: *std.Build) void {
     repl_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-
-    // Link libuv for timer support
+    repl_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    repl_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    repl_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
     // Link C++ standard library
     repl_exe.root_module.link_libcpp = true; //
@@ -2986,9 +2997,9 @@ pub fn build(b: *std.Build) void {
         },
     });
     gc_bench_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
+    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
     gc_bench_exe.root_module.link_libcpp = true;
     gc_bench_exe.step.dependOn(&gen_snapshot.step);
 
@@ -3033,11 +3044,9 @@ pub fn build(b: *std.Build) void {
     minimal_snapshot_test_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-
-    // Link libuv for timer support
+    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
     // Link C++ standard library
     minimal_snapshot_test_exe.root_module.link_libcpp = true; //
@@ -3155,11 +3164,9 @@ pub fn build(b: *std.Build) void {
     wpt_runner_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
-    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
-    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
-    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-
-    // Link libuv for timer support
+    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
+    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
+    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
     // Link C++ standard library
     wpt_runner_exe.root_module.link_libcpp = true; //

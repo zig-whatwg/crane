@@ -115,12 +115,14 @@ pub const Browser = struct {
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
 
-        // Initialize V8 platform with proper flags for snapshot support.
-        // This MUST use initializePlatformForSnapshots() to ensure flags are set
-        // BEFORE platform initialization, which is critical for snapshot loading.
-        // The flags (--hash-seed=0, --predictable) ensure deterministic behavior
-        // between snapshot creation and loading.
-        v8.initializePlatformForSnapshots();
+        // Initialize the V8 platform. Flags MUST be set before platform init.
+        //
+        // The RUNTIME set, not the snapshot set: `--predictable` and `--hash-seed=0`
+        // are generation-time determinism knobs, and applying them here turned off
+        // V8's own parallelism, pinned Math.random() to a fixed sequence and removed
+        // hash-flooding protection in every browser this code has ever started.
+        // Loading does not need them - the snapshot reports itself rehashable.
+        v8.initializePlatformForRuntime();
 
         // Determine snapshot path to use
         const snapshot_path = resolveSnapshotPath(config.snapshot_path);

@@ -118,6 +118,55 @@ pub fn interfaceAllowed(comptime name: []const u8) bool {
             const entry = std.mem.trim(u8, raw, " \t");
             if (entry.len == 0) continue;
             if (std.mem.eql(u8, entry, name)) break :blk true;
+            // An entry also admits everything it INHERITS FROM. Listing
+            // "HTMLDivElement" without HTMLElement, Element, Node and EventTarget
+            // would expose a constructor whose prototype chain is missing every
+            // link above it - `div.addEventListener` would not exist. build.zig has
+            // always documented the allow-list as covering "those names plus their
+            // ancestors"; until now it did not, and the difference only showed up
+            // at runtime as absent methods.
+            if (isAncestorOf(name, entry)) break :blk true;
+        }
+        break :blk false;
+    };
+}
+
+/// Is `name` an ancestor of the interface called `descendant_name`?
+///
+/// Walks `Meta.ParentInterface` from the descendant upwards. Returns false when the
+/// descendant is not a known interface, which is the right answer for a typo in the
+/// allow-list: an unknown entry admits nothing rather than everything.
+fn isAncestorOf(comptime name: []const u8, comptime descendant_name: []const u8) bool {
+    return comptime blk: {
+        @setEvalBranchQuota(2_000_000);
+        if (!@hasDecl(interfaces, descendant_name)) break :blk false;
+
+        const Start = @field(interfaces, descendant_name);
+        // `interfaces` also exposes non-container decls; `@hasDecl` on one is a
+        // compile error, not a false, so the shape has to be checked first.
+        if (@TypeOf(Start) != type) break :blk false;
+        switch (@typeInfo(Start)) {
+            .@"struct", .@"union", .@"enum", .@"opaque" => {},
+            else => break :blk false,
+        }
+
+        var Cur = Start;
+        // Bounded rather than `while (true)`: a cycle in generated Meta would
+        // otherwise hang the compiler with no diagnostic. No real chain is close
+        // to this deep.
+        var depth: usize = 0;
+        while (depth < 32) : (depth += 1) {
+            if (!@hasDecl(Cur, "Meta")) break;
+            if (!@hasDecl(Cur.Meta, "ParentInterface")) break;
+            const Parent = Cur.Meta.ParentInterface;
+            if (@TypeOf(Parent) != type) break;
+            switch (@typeInfo(Parent)) {
+                .@"struct", .@"union", .@"enum", .@"opaque" => {},
+                else => break,
+            }
+            if (!@hasDecl(Parent, "Meta") or !@hasDecl(Parent.Meta, "name")) break;
+            if (std.mem.eql(u8, Parent.Meta.name, name)) break :blk true;
+            Cur = Parent;
         }
         break :blk false;
     };

@@ -219,14 +219,17 @@ pub export fn whatwg_browser_evaluate(
 // C ABI Exports - Runtime Initialization
 // ============================================================================
 
-/// Initialize the V8 platform with proper flags for snapshot support (call once at program start).
+/// Initialize the V8 platform (call once at program start).
 ///
-/// This sets the required V8 flags (--hash-seed=0, --predictable, --no-random-gc)
-/// BEFORE platform initialization, which is critical for snapshot loading to work.
-/// This must be called before creating any browser instances.
+/// Sets V8's flags BEFORE platform initialization, which is required, then starts
+/// the platform. Must be called before creating any browser instances.
+///
+/// Uses the RUNTIME flag set. `--predictable` and `--hash-seed=0` belong to
+/// snapshot generation: applying them to an embedding application would disable
+/// V8's parallelism, make `Math.random()` deterministic and drop hash-flooding
+/// protection, none of which a host app is asking for by linking this library.
 pub export fn whatwg_runtime_init() callconv(.c) void {
-    // Use the snapshot_loader's initialization to ensure flags are set correctly
-    v8.snapshot_loader.initializePlatformForSnapshots();
+    v8.snapshot_loader.initializePlatformForRuntime();
 }
 
 /// Shutdown the V8 platform (call once at program end).

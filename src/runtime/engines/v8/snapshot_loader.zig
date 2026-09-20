@@ -69,9 +69,36 @@ var tracked_snapshot_allocator: ?std.mem.Allocator = null;
 /// third-party apps no W^X exception, so V8 generating code there gets the process
 /// killed; interpreter-only is the only way to run at all. It is a build-time
 /// decision rather than runtime because it must be set before V8 initializes.
-pub const SNAPSHOT_V8_FLAGS = base_v8_flags ++ if (build_options.jitless) " --jitless" else "";
+pub const SNAPSHOT_V8_FLAGS = snapshot_only_flags ++ " " ++ RUNTIME_V8_FLAGS;
 
-const base_v8_flags = "--hash-seed=0 --predictable --harmony-shadow-realm";
+/// Flags that belong to snapshot GENERATION only.
+///
+/// `--predictable` is the important one. In this V8 checkout
+/// (`flag-definitions.h:3866-3881`) it implies `single_threaded_gc` and negates
+/// `concurrent_recompilation`, `lazy_compile_dispatcher`,
+/// `parallel_compile_tasks_for_{eager_toplevel,lazy}`,
+/// `maglev_{deopt_data,build_code}_on_background`, `concurrent_sparkplug` and
+/// `memory_reducer`, and pins `random_seed` to 12347. Applying it at RUNTIME, as
+/// this code did, has three costs: V8's own parallelism is off, so every
+/// "single-threaded Crane" measurement was against a hobbled engine; `Math.random()`
+/// is deterministic across runs, which is observable to content; and `--hash-seed=0`
+/// removes hash-flooding protection.
+///
+/// Both are still needed while BUILDING the snapshot, where determinism is the
+/// point. They are not needed to load one: `v8_Snapshot_CanBeRehashed` reports
+/// true for the snapshot this build produces, which is precisely V8 saying the
+/// blob tolerates a different hash seed at load time.
+const snapshot_only_flags = "--hash-seed=0 --predictable";
+
+/// Flags that apply wherever V8 runs, snapshot generation included.
+///
+/// `--harmony-shadow-realm` enables the TC39 Stage 3 ShadowRealm proposal.
+///
+/// `--jitless` is appended when built for a target that cannot JIT. iOS gives
+/// third-party apps no W^X exception, so V8 generating code there gets the process
+/// killed; interpreter-only is the only way to run at all. It is a build-time
+/// decision rather than runtime because it must be set before V8 initializes.
+pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++ if (build_options.jitless) " --jitless" else "";
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.
@@ -87,6 +114,20 @@ pub fn initializePlatformForSnapshots() void {
     ffi.v8_SetFlagsFromString(SNAPSHOT_V8_FLAGS);
 
     // Now initialize the platform
+    ffi.v8_Platform_Initialize();
+}
+
+/// Initialize the V8 platform for RUNNING, including loading a snapshot.
+///
+/// Differs from `initializePlatformForSnapshots` by leaving out `--predictable`
+/// and `--hash-seed=0`, which are generation-time determinism knobs. See
+/// `snapshot_only_flags` for what applying them at runtime costs.
+///
+/// If a snapshot ever turns out NOT to be rehashable, loading fails loudly with
+/// V8's rehashability assertion rather than misbehaving quietly - which is why
+/// this is safe to change: the failure mode is immediate and named.
+pub fn initializePlatformForRuntime() void {
+    ffi.v8_SetFlagsFromString(RUNTIME_V8_FLAGS);
     ffi.v8_Platform_Initialize();
 }
 
