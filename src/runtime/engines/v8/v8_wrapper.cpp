@@ -57,7 +57,13 @@ static void resetGlobalHandle(void* ptr) {
 
 // Track a handle for snapshot cleanup
 //
-// Every `Global<T>` this wrapper hands to Zig, created minus destroyed.
+// Every `Global<T>` this wrapper hands to Zig, CUMULATIVE creations.
+//
+// Not a live count: there are 54 separate `delete` sites and no choke point, and
+// adding a decrement to each for a diagnostic risks a real bug for a nicer number.
+// The creation RATE is what identifies the leak anyway - on a create-and-discard
+// loop, a site creating N handles per element is creating N too many. Pair it with
+// `mstats()` for what is actually still held.
 //
 // 139 of the 158 `new Global<...>` sites funnel through here, so one counter
 // covers nearly all of them. Each is a C++ heap allocation AND a slot in V8's
@@ -67,7 +73,7 @@ std::atomic<int64_t> g_live_globals{0};
 
 // extern "C" explicitly: this sits above the file's main extern "C" block, so
 // without it the symbol is C++-mangled and Zig cannot find it.
-extern "C" int64_t v8_Debug_LiveGlobals() {
+extern "C" int64_t v8_Debug_CreatedGlobals() {
     return g_live_globals.load(std::memory_order_relaxed);
 }
 

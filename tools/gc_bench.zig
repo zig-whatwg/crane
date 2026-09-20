@@ -205,8 +205,8 @@ const Sample = struct {
     /// climbs) from V8 simply not handing pages back (`used` flat while RSS climbs).
     v8_used: usize,
     v8_total: usize,
-    /// Live Global<String> handles. Each pins a V8 global-handle slot that
-    /// `used_heap_size` does not count.
+    /// Cumulative Global<T> creations. Each is a C++ allocation plus a slot in
+    /// V8's global handle table, which `used_heap_size` does not count.
     live_strings: i64,
     /// Bytes held by malloc - the C++ heap. Distinguishes a missing `delete` from
     /// V8's page allocator not returning memory.
@@ -254,7 +254,7 @@ fn takeSample(cycle: usize) Sample {
             v8.ffi.v8_Isolate_GetHeapUsage(iso, &used, null, null);
             break :blk used;
         },
-        .live_strings = v8.ffi.v8_Debug_LiveGlobals(),
+        .live_strings = v8.ffi.v8_Debug_CreatedGlobals(),
         .malloc_in_use = memory.mallocInUseBytes() orelse 0,
         .v8_total = blk: {
             const iso = heap_isolate orelse break :blk 0;
@@ -463,7 +463,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
-        "B/cycle", "malloc MB",   "live Global<T>",
+        "B/cycle", "malloc MB",   "Global<T> made",
     });
 
     const first = samples[0].resident;

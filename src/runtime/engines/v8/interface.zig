@@ -771,8 +771,8 @@ pub fn V8Interface(comptime Interface: type) type {
                                             );
                                             if (method_name) |m_name| {
                                                 // Per WebIDL § 3.7.5, iterable methods (entries, keys, values, forEach)
-                                            // are enumerable properties on the prototype
-                                            _ = v8.v8_Object_DefineProperty(
+                                                // are enumerable properties on the prototype
+                                                _ = v8.v8_Object_DefineProperty(
                                                     @ptrCast(proto),
                                                     context,
                                                     @ptrCast(m_name),
@@ -1761,7 +1761,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.throwError(isolate_inner, "No current context");
                         return;
                     };
-                    const getter_context = info.getFunctionCreationContext() orelse caller_context;
+                    // Owned: this returns a fresh Global<Context> per call, which nothing was
+                    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                    // one only; the `orelse` fallback is borrowed and freeing it would be a
+                    // double free.
+                    const getter_context_owned = info.getFunctionCreationContext();
+                    defer if (getter_context_owned) |c| v8.v8_Context_Dispose(c);
+                    const getter_context = getter_context_owned orelse caller_context;
 
                     // Check return type
                     const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
@@ -2329,8 +2335,13 @@ pub fn V8Interface(comptime Interface: type) type {
                     // the target function being called, then returns its creation context. This gives
                     // us the context where the function was instantiated (e.g., iframe context for
                     // other.DOMRectReadOnly.prototype.toJSON).
-                    const method_context = info.getFunctionCreationContext() orelse
-                        current_context;
+                    // Owned: this returns a fresh Global<Context> per call, which nothing was
+                    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                    // one only; the `orelse` fallback is borrowed and freeing it would be a
+                    // double free.
+                    const method_context_owned = info.getFunctionCreationContext();
+                    defer if (method_context_owned) |c| v8.v8_Context_Dispose(c);
+                    const method_context = method_context_owned orelse current_context;
 
                     // Use current_context for argument parsing (input comes from caller's realm)
                     // Use method_context for return value conversion (output goes to method's realm)
@@ -3294,10 +3305,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // If called as a function (without 'new'), 'this' may be the global object
             // which has 0 internal fields, causing "Internal field out of bounds" crash.
             if (!info.isConstructCall()) {
+                // Owned handle; the null branch has none to release.
                 const function_ctx = info.getFunctionCreationContext() orelse {
                     conv.throwTypeError(isolate, interface_name ++ " constructor: 'new' is required");
                     return;
                 };
+                defer v8.v8_Context_Dispose(function_ctx);
                 conv.throwTypeErrorFromContext(isolate, function_ctx, interface_name ++ " constructor: 'new' is required");
                 return;
             }
@@ -3317,7 +3330,10 @@ pub fn V8Interface(comptime Interface: type) type {
             // This ensures we correctly handle cross-realm construction, bound functions, and proxies.
             // Using the constructor function's realm (F.[[Realm]]) per WebIDL spec.
             const constructor_v8_fn = info.getFunction();
+            // Owned in BOTH branches - `getFunctionRealm` returns a fresh Global too -
+            // so one defer covers them; `current_context` is borrowed and is not.
             const constructor_v8_context = if (constructor_v8_fn) |f| getFunctionRealm(@ptrCast(f), isolate) else info.getFunctionCreationContext();
+            defer if (constructor_v8_context) |c| v8.v8_Context_Dispose(c);
             const constructor_context = constructor_v8_context orelse current_context;
 
             // Get or create isolate allocator (uses page_allocator as fallback)
@@ -3368,7 +3384,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
                 // Throw appropriate error type based on error name
                 // Use throwWebIDLError which properly creates DOMException for WebIDL errors
-                const function_ctx = info.getFunctionCreationContext() orelse current_context;
+                // Owned: this returns a fresh Global<Context> per call, which nothing was
+                // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                // one only; the `orelse` fallback is borrowed and freeing it would be a
+                // double free.
+                const function_ctx_owned = info.getFunctionCreationContext();
+                defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+                const function_ctx = function_ctx_owned orelse current_context;
                 conv.throwWebIDLErrorFromContext(isolate, function_ctx, @errorName(err));
                 return;
             };
@@ -3687,10 +3709,12 @@ pub fn V8Interface(comptime Interface: type) type {
         /// - Must throw TypeError, NOT a generic Error
         fn nonConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
+            // Owned handle; the null branch has none to release.
             const function_ctx = info.getFunctionCreationContext() orelse {
                 conv.throwTypeError(isolate, "Illegal constructor: " ++ name ++ " is not constructible");
                 return;
             };
+            defer v8.v8_Context_Dispose(function_ctx);
             conv.throwTypeErrorFromContext(isolate, function_ctx, "Illegal constructor: " ++ name ++ " is not constructible");
         }
 
@@ -6768,7 +6792,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Get function's creation context for cross-realm error throwing
                     // Per WebIDL spec: "Throw a TypeError using the function's realm."
-                    const setter_context = info.getFunctionCreationContext() orelse context;
+                    // Owned: this returns a fresh Global<Context> per call, which nothing was
+                    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                    // one only; the `orelse` fallback is borrowed and freeing it would be a
+                    // double free.
+                    const setter_context_owned = info.getFunctionCreationContext();
+                    defer if (setter_context_owned) |c| v8.v8_Context_Dispose(c);
+                    const setter_context = setter_context_owned orelse context;
 
                     // Get the new value from info[0] - handle missing arguments as undefined
                     // Per WebIDL spec, missing arguments should be treated as undefined
@@ -7090,13 +7120,25 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Step 2: Check if the target is an object (not null/undefined)
                     // Per WebIDL spec: "if the result is not an object, throw a TypeError"
                     if (v8.v8_Value_IsNull(target_value) or v8.v8_Value_IsUndefined(target_value)) {
-                        const function_ctx = info.getFunctionCreationContext() orelse context;
+                        // Owned: this returns a fresh Global<Context> per call, which nothing was
+                        // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                        // one only; the `orelse` fallback is borrowed and freeing it would be a
+                        // double free.
+                        const function_ctx_owned = info.getFunctionCreationContext();
+                        defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+                        const function_ctx = function_ctx_owned orelse context;
                         conv.throwTypeErrorFromContext(isolate_inner, function_ctx, "Cannot set property on null or undefined");
                         return;
                     }
 
                     if (!v8.v8_Value_IsObject(target_value)) {
-                        const function_ctx = info.getFunctionCreationContext() orelse context;
+                        // Owned: this returns a fresh Global<Context> per call, which nothing was
+                        // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
+                        // one only; the `orelse` fallback is borrowed and freeing it would be a
+                        // double free.
+                        const function_ctx_owned = info.getFunctionCreationContext();
+                        defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+                        const function_ctx = function_ctx_owned orelse context;
                         conv.throwTypeErrorFromContext(isolate_inner, function_ctx, "Cannot set property on non-object");
                         return;
                     }

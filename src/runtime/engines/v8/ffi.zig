@@ -665,9 +665,11 @@ pub extern fn v8_Isolate_GetCurrent() ?*Isolate;
 /// `GetHeapStatistics` and plainly visible in RSS.
 pub extern fn v8_Debug_LiveStringGlobals() i64;
 
-/// Every `Global<T>` handed to Zig, created minus destroyed. 139 of the 158
-/// allocation sites funnel through `trackHandle`, so this covers nearly all.
-pub extern fn v8_Debug_LiveGlobals() i64;
+/// Every `Global<T>` handed to Zig, CUMULATIVE creations - not a live count.
+/// 139 of the 158 allocation sites funnel through `trackHandle`, so this covers
+/// nearly all of them. Read it as a rate: N per element on a create-and-discard
+/// loop is N leaked per element.
+pub extern fn v8_Debug_CreatedGlobals() i64;
 
 /// Read slot `index` of the Global-creation site histogram. Returns false past the
 /// end. Keyed on the caller's return address; resolve with `atos`.
