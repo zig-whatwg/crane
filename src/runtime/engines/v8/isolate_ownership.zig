@@ -45,6 +45,29 @@
 //! Phase 5 ultimately wants, and it says nothing about paths this workload does
 //! not exercise.
 //!
+//! ## DO NOT instrument `V8Handle.Inner.dispose` (handle.zig)
+//!
+//! Adding `assertOwned` there turned a clean directory run into 2 crashes out of
+//! 3 (`html/webappapis/timers/`, `--parallel=3`, SIGABRT with no diagnostic).
+//! The instrument was not at fault, and the reason is worth keeping:
+//!
+//!   * the check never reported a violation, so nothing it observed was wrong;
+//!   * replacing it with a probe that calls NOTHING - `probe_count +%= 1` plus two
+//!     `doNotOptimizeAway` - reproduced the crashes anyway (0, 1 and 2 across
+//!     three runs).
+//!
+//! So `Inner.dispose` is fragile to ANY added work, not to talking to V8. That is
+//! a latent race on the refcounted-handle teardown path, matching the long-standing
+//! note that worker teardown "only crashes under extra logging". Instrumenting it
+//! measures the observer, not the invariant.
+//!
+//! It also needs multiple files in ONE process: the crashing file
+//! (negative-setinterval.any.js) passes 3/3 when run alone, and 3/3 as the only
+//! file under the supervisor. Baseline for the comparison was 0 crashes in 3 runs.
+//!
+//! Before re-instrumenting a disposal path, fix that race. Until then a check
+//! there produces crash reports and no ownership data.
+//!
 //! ## Why V8's own notion of "current" is the right oracle
 //!
 //! `Isolate::GetCurrent()` is thread-local: it returns the isolate entered on the

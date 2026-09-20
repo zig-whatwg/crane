@@ -49,6 +49,7 @@
 //! Nested scopes are safe - V8 handles them correctly.
 
 const ffi = @import("ffi.zig");
+const ownership = @import("isolate_ownership.zig");
 
 /// RAII scope guard for V8 operations.
 ///
@@ -108,6 +109,12 @@ pub const JsScope = struct {
     ///
     /// Use this when you have an isolate but need to get the current context.
     pub fn initFromIsolate(isolate: *ffi.Isolate) ?JsScope {
+        // The caller supplies the isolate here, unlike `initFromV8Context` which
+        // takes whatever `GetCurrent()` returns and so cannot be wrong. A scope
+        // opened on an isolate other than the entered one puts every Local created
+        // inside it on the wrong heap.
+        ownership.assertOwned(isolate, "JsScope.initFromIsolate");
+
         // Get current context from isolate
         const v8_context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
 

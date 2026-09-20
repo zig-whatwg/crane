@@ -45,6 +45,7 @@
 
 const std = @import("std");
 const ffi = @import("ffi.zig");
+const ownership = @import("isolate_ownership.zig");
 
 /// A type-safe wrapper for V8 Global<Value> handles.
 ///
@@ -147,6 +148,12 @@ pub const GlobalHandle = struct {
     /// Returns:
     ///   A local value pointer for use in V8 API calls, or null if the global is empty
     pub fn get(self: GlobalHandle, isolate: *ffi.Isolate) ?*ffi.Value {
+        // The deferred-use site this whole handle type exists for: the Global was
+        // created under one isolate during a constructor, and is materialised back
+        // into a Local somewhere else entirely - a timer callback, a stream pull, a
+        // teardown path. Nothing but this check relates the two, and passing the
+        // wrong isolate reads another heap.
+        ownership.assertOwned(isolate, "GlobalHandle.get");
         const local_ptr = ffi.v8_Global_Get(isolate, self.ptr);
         if (local_ptr) |ptr| {
             return @ptrCast(@alignCast(ptr));
@@ -158,6 +165,7 @@ pub const GlobalHandle = struct {
     ///
     /// Some V8 FFI functions expect *anyopaque for the value parameter.
     pub fn asAnyopaque(self: GlobalHandle, isolate: *ffi.Isolate) ?*anyopaque {
+        ownership.assertOwned(isolate, "GlobalHandle.asAnyopaque");
         return ffi.v8_Global_Get(isolate, self.ptr);
     }
 

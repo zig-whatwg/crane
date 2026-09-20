@@ -37,6 +37,7 @@ const runtime = @import("runtime");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const instance_bridge = @import("dom").instance_bridge;
+const ownership = @import("isolate_ownership.zig");
 
 const log = std.log.scoped(.template_registry);
 
@@ -117,6 +118,12 @@ fn ensureInitialized() void {
 /// down while another isolate is still running would break it. Full teardown
 /// still goes through clear().
 pub fn clearForIsolate(isolate: *v8.Isolate) void {
+    // Teardown, which is where confinement is most likely to be broken: the
+    // departing isolate's FunctionTemplates are disposed from whatever thread is
+    // running the teardown, and `v8_FunctionTemplate_Dispose` needs that isolate
+    // entered. This is the same code path a worker exercises when it ends.
+    ownership.assertOwned(isolate, "template_registry.clearForIsolate");
+
     var write: usize = 0;
     for (templates[0..template_count]) |maybe_entry| {
         if (maybe_entry) |e| {
@@ -300,6 +307,11 @@ pub fn wrapInstanceAsV8Object(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !*v8.Object {
+    // Reached both from inside V8 callbacks (where the isolate is current by
+    // construction) and from Crane's own code creating wrappers eagerly, which is
+    // the half worth checking.
+    ownership.assertOwned(isolate, "template_registry.wrapInstanceAsV8Object");
+
     // ========================================
     // SPECIAL CASE: Window instances with bound V8 global
     // ========================================
