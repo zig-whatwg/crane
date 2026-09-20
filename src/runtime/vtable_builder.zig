@@ -15,7 +15,7 @@
 //!       .call_appendChild = &Node.call_appendChild,
 //!       .get_nodeType = &Node.get_nodeType,
 //!   };
-//!   const vtable = buildVTable(&delegates, "Node");
+//!   const vtable = buildVTable(&delegates, "Node", NodeState);
 
 const std = @import("std");
 const Method = @import("instance.zig").Method;
@@ -35,12 +35,12 @@ const VTable = @import("instance.zig").VTable;
 ///       .get_nodeType = &impl.getNodeType,
 ///       .set_textContent = &impl.setTextContent,
 ///   };
-///   const vtable = buildVTable(&delegates, "Node");
+///   const vtable = buildVTable(&delegates, "Node", NodeState);
 ///
 /// The delegates must be const and have a stable address (global or static).
 /// The deinit function is called when the GC collects the JS wrapper object.
 /// If delegates doesn't have .deinit, defaults to null (no cleanup).
-pub fn buildVTable(comptime delegates_ptr: anytype, comptime name: []const u8) VTable {
+pub fn buildVTable(comptime delegates_ptr: anytype, comptime name: []const u8, comptime State: type) VTable {
     @setEvalBranchQuota(20000);
 
     const PtrInfo = @typeInfo(@TypeOf(delegates_ptr));
@@ -63,6 +63,9 @@ pub fn buildVTable(comptime delegates_ptr: anytype, comptime name: []const u8) V
 
     return VTable{
         .name = name,
+        // Ancestry table: retires the assumption that every `base` sits at offset 0.
+        // See Instance.stateAs and tests/runtime/state_brand_test.zig.
+        .ancestors = @import("instance.zig").ancestorsOf(State),
         .deinit = deinit_fn,
         .methods_ptr = @ptrCast(delegates_ptr),
     };

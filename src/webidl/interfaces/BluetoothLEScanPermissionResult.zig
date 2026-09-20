@@ -89,7 +89,7 @@ pub const BluetoothLEScanPermissionResult = struct {
 
         .deinit = &deinit,
     };
-    pub const vtable = runtime.buildVTable(&delegates, Meta.name);
+    pub const vtable = runtime.buildVTable(&delegates, Meta.name, State);
 
     /// Initialize a new instance
     pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {

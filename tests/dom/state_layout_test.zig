@@ -34,6 +34,7 @@
 
 const std = @import("std");
 const interfaces = @import("interfaces");
+const runtime = @import("runtime");
 
 /// Byte offset of `base` within `T`, or null if `T` has no base.
 fn baseOffset(comptime T: type) ?usize {
@@ -47,17 +48,17 @@ fn baseOffset(comptime T: type) ?usize {
 /// code runs against an Element instance.
 const checked_interfaces = [_][]const u8{
     // DOM core: the deepest and hottest chain in the engine.
-    "EventTarget", "Node",           "Element",      "CharacterData",
-    "Text",        "Comment",        "Document",     "DocumentFragment",
-    "ShadowRoot",  "DocumentType",   "Attr",         "Range",
+    "EventTarget",      "Node",              "Element",           "CharacterData",
+    "Text",             "Comment",           "Document",          "DocumentFragment",
+    "ShadowRoot",       "DocumentType",      "Attr",              "Range",
     // HTML: Element -> HTMLElement -> HTMLxxxElement, the longest chains generated.
-    "HTMLElement", "HTMLDivElement", "HTMLScriptElement", "HTMLIFrameElement",
-    "HTMLInputElement", "HTMLAnchorElement", "HTMLFormElement", "HTMLImageElement",
+    "HTMLElement",      "HTMLDivElement",    "HTMLScriptElement", "HTMLIFrameElement",
+    "HTMLInputElement", "HTMLAnchorElement", "HTMLFormElement",   "HTMLImageElement",
     // Events: another multi-level chain with real subclassing.
-    "Event",       "MouseEvent",     "PointerEvent", "MessageEvent",
-    "CloseEvent",  "ProgressEvent",  "ErrorEvent",   "CustomEvent",
+    "Event",            "MouseEvent",        "PointerEvent",      "MessageEvent",
+    "CloseEvent",       "ProgressEvent",     "ErrorEvent",        "CustomEvent",
     // Misc types with bases that carry state.
-    "AbortSignal", "Window",         "Performance",  "XMLHttpRequest",
+    "AbortSignal",      "Window",            "Performance",       "XMLHttpRequest",
 };
 
 test "base state sits at offset 0 in every hot inheritance chain" {
@@ -114,4 +115,75 @@ test "the offset-0 assumption is a coincidence, not a guarantee" {
     // If this ever becomes 0, Zig's layout rules changed and the guard above is
     // weaker than it looks - worth knowing.
     try std.testing.expect(@offsetOf(DerivedState, "base") != 0);
+}
+
+test "generated interfaces carry a correct ancestry table" {
+    @setEvalBranchQuota(200_000);
+
+    // The ancestry table is what replaces the offset-0 assumption this file guards.
+    // Verify codegen actually emitted one, that its depth matches the real `base`
+    // chain, and that each recorded offset is the true byte offset - on the deep
+    // generated chains, not the synthetic types the mechanism was proven on.
+    var checked: usize = 0;
+
+    inline for (checked_interfaces) |name| {
+        if (@hasDecl(interfaces, name)) {
+            const Iface = @field(interfaces, name);
+            if (@hasDecl(Iface, "State") and @hasDecl(Iface, "vtable")) {
+                const table = Iface.vtable.ancestors;
+
+                // Every interface has at least itself, at offset 0.
+                try std.testing.expect(table.len >= 1);
+                try std.testing.expectEqual(@as(usize, 0), table[0].offset);
+
+                // Depth must equal the actual chain length, walked independently.
+                comptime var depth: usize = 1;
+                comptime {
+                    var Cur: type = Iface.State;
+                    while (@hasField(Cur, "base") and @FieldType(Cur, "base") != void) {
+                        depth += 1;
+                        Cur = @FieldType(Cur, "base");
+                    }
+                }
+                try std.testing.expectEqual(depth, table.len);
+
+                // And each offset must be the real one, accumulated down the chain.
+                comptime var expected: usize = 0;
+                comptime var Walk: type = Iface.State;
+                inline for (0..depth) |i| {
+                    try std.testing.expectEqual(expected, table[i].offset);
+                    if (comptime @hasField(Walk, "base") and @FieldType(Walk, "base") != void) {
+                        expected += @offsetOf(Walk, "base");
+                        Walk = @FieldType(Walk, "base");
+                    }
+                }
+                checked += 1;
+            }
+        }
+    }
+
+    // Do not let this pass vacuously if the names drift.
+    try std.testing.expect(checked >= 20);
+}
+
+test "a deep generated chain resolves an ancestor's state, not just its own" {
+    // HTMLDivElement -> HTMLElement -> Element -> Node -> EventTarget is the longest
+    // chain the engine actually dispatches through, and the one where an ancestor's
+    // impl most often runs against a derived instance.
+    const Div = interfaces.HTMLDivElement;
+    const table = Div.vtable.ancestors;
+    try std.testing.expect(table.len >= 4);
+
+    // EventTarget's state type must be findable in the table by its type id - this is
+    // precisely the lookup stateAs performs, and what getState assumed was offset 0.
+    const want = runtime.typeId(interfaces.EventTarget.State);
+    var found = false;
+    for (table) |a| {
+        if (a.id == want) {
+            found = true;
+            // Whatever the offset is, it must land inside the derived state.
+            try std.testing.expect(a.offset < @sizeOf(Div.State));
+        }
+    }
+    try std.testing.expect(found);
 }
