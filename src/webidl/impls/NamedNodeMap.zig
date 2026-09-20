@@ -91,6 +91,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // and wrapper_cache cleanup) would try to deinit already-freed memory,
         // causing integer overflow crashes when ArrayList tries to free its
         // heap storage with corrupted slice.len.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing

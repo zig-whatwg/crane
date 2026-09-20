@@ -111,6 +111,12 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator
+        // Return the block itself, not just what it points to. `internal.deinit()`
+        // releases what the state OWNS; the state struct was staying allocated for
+        // the life of the process.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }

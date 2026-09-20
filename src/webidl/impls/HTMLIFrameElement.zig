@@ -243,8 +243,14 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Clean up integration
+        // Clean up integration, then return ITS block too - `init` takes a second
+        // arena allocation for it, and releasing only what it points to left the
+        // struct held for the life of the process.
         self.integration.deinit();
+        {
+            const Arena = runtime.ArenaAllocator;
+            if (Arena.tryGet() catch null) |arena| arena.destroy(IFrameIntegration, self.integration);
+        }
 
         // NOTE: Do NOT call DOMTokenList.deinit() on sandbox_token_list here.
         // The [SameObject] DOMTokenList instances are managed by the V8 wrapper cache.

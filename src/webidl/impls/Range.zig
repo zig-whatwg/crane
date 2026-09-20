@@ -107,7 +107,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         // TODO: Unregister from document's range list
         // internal.owner_document.?.unregisterRange(instance);
-        _ = internal;
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }

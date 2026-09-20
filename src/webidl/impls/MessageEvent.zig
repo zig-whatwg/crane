@@ -109,6 +109,14 @@ pub fn deinit(instance: *runtime.Instance) void {
         }
     }
 
+    // Release MessageEvent's OWN internal block. The parent releases the Event-level
+    // one, which on a MessageEvent instance is a different allocation.
+    if (state.own._internal) |internal| {
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
+    }
+
     // Call parent Event deinit to clean up base class resources (including state.base.own.type)
     interfaces.Event.deinit(instance);
 }

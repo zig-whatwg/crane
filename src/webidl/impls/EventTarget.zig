@@ -261,7 +261,13 @@ fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) 
 
 fn removeFromRegistry(instance: *runtime.Instance) void {
     const registry = ensureRegistry();
-    _ = registry.remove(@intFromPtr(instance));
+    // Return the block, not just the map entry. EventTarget keeps its own registry
+    // rather than using InstanceRegistry, so it needs its own release - and it is on
+    // every DOM node, so leaving it out keeps the leak on the hottest path there is.
+    if (registry.fetchRemove(@intFromPtr(instance))) |kv| {
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
+    }
 }
 
 /// DOM §2.7 - default passive value

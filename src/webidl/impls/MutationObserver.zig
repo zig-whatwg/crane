@@ -138,6 +138,12 @@ pub fn deinit(instance: *runtime.Instance) void {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator - do NOT destroy
+        // Return the block itself, not just what it points to. The comment this
+        // replaces said the arena manages it; the arena had no way to, so the
+        // struct stayed allocated for the life of the process.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }

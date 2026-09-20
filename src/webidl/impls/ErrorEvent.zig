@@ -98,6 +98,12 @@ pub fn deinit(instance: *runtime.Instance) void {
             internal.allocator.free(internal.filename);
         }
         internal.deinit();
+        // Return the block itself, not just what it points to. `internal.deinit()`
+        // releases what the state OWNS; the state struct was staying allocated for
+        // the life of the process.
+        const Arena = @import("runtime").ArenaAllocator;
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        state.own._internal = null;
     }
 
     // Call parent Event deinit to clean up base class resources (including state.base.own.type)
