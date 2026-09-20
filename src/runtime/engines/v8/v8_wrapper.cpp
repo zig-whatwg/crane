@@ -1672,6 +1672,21 @@ Isolate* v8_Isolate_GetCurrent() {
     return Isolate::GetCurrent();
 }
 
+// V8's own accounting of its heap, for telling a LEAK apart from a RESERVATION.
+//
+// Resident memory alone cannot: a JS engine that collects everything correctly
+// still holds on to the pages it has already taken. `used` falling while RSS stays
+// put means the heap is fine and V8 is simply not returning memory; `used` rising
+// with RSS means objects really are being retained.
+void v8_Isolate_GetHeapUsage(Isolate* isolate, size_t* used, size_t* total,
+                             size_t* external) {
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    if (used) *used = stats.used_heap_size();
+    if (total) *total = stats.total_heap_size();
+    if (external) *external = stats.external_memory();
+}
+
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
 void* v8_Context_GetRawAddress(Global<Context>* context_handle) {

@@ -201,7 +201,14 @@ const Sample = struct {
     /// Global<Object>, and its weak callback is what frees the instance - so if
     /// this is not shrinking, nothing downstream of it can.
     wrapper_entries: usize,
+    /// V8's own heap accounting. Distinguishes objects genuinely retained (`used`
+    /// climbs) from V8 simply not handing pages back (`used` flat while RSS climbs).
+    v8_used: usize,
+    v8_total: usize,
 };
+
+/// The isolate to ask for heap statistics, set once the browser exists.
+var heap_isolate: ?*v8.ffi.Isolate = null;
 
 /// How far this image was slid by ASLR, so a recorded return address can be turned
 /// into the static address `atos` understands.
@@ -235,6 +242,18 @@ fn takeSample(cycle: usize) Sample {
         .bridge_entries = instance_bridge.entryCount(),
         .gpa_outstanding = counting.outstanding,
         .wrapper_entries = if (wrapper_cache_ref) |wc| wc.size() else 0,
+        .v8_used = blk: {
+            const iso = heap_isolate orelse break :blk 0;
+            var used: usize = 0;
+            v8.ffi.v8_Isolate_GetHeapUsage(iso, &used, null, null);
+            break :blk used;
+        },
+        .v8_total = blk: {
+            const iso = heap_isolate orelse break :blk 0;
+            var total: usize = 0;
+            v8.ffi.v8_Isolate_GetHeapUsage(iso, null, &total, null);
+            break :blk total;
+        },
     };
 }
 
@@ -305,6 +324,8 @@ pub fn main(init: std.process.Init) !void {
     const isolate = browser.isolate orelse return error.NoIsolate;
     const context = (browser.current_context orelse return error.NoContext).v8_context orelse
         return error.NoV8Context;
+
+    heap_isolate = isolate;
 
     if (context_manager.get(context)) |runtime_ctx| {
         if (runtime_ctx.getV8WrapperCacheStorage()) |storage| {
@@ -405,7 +426,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
-        "B/cycle", "arena MB",    "gpa MB",
+        "B/cycle", "v8 used MB",  "v8 total MB",
     });
 
     const first = samples[0].resident;
@@ -435,10 +456,13 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                     }
                 }
             }
-            const arena_mb = @as(f64, @floatFromInt(s.arena_bytes)) / (1024.0 * 1024.0);
             std.debug.print("{d:>8}  {d:>11.1}  {d:>13.1}  {d:>12.1}  {d:>11.1}  {d:>10.1}\n", .{
-                s.cycle, mb,       growth,
-                slope,   arena_mb, @as(f64, @floatFromInt(s.gpa_outstanding)) / (1024.0 * 1024.0),
+                s.cycle,
+                mb,
+                growth,
+                slope,
+                @as(f64, @floatFromInt(s.v8_used)) / (1024.0 * 1024.0),
+                @as(f64, @floatFromInt(s.v8_total)) / (1024.0 * 1024.0),
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });

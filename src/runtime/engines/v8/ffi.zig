@@ -655,6 +655,15 @@ pub extern fn v8_Isolate_Exit(isolate: *Isolate) void;
 pub extern fn v8_Isolate_GetCurrentContext(isolate: *Isolate) ?*Context;
 pub extern fn v8_Isolate_GetEnteredOrMicrotaskContext(isolate: *Isolate) ?*Context;
 pub extern fn v8_Isolate_GetCurrent() ?*Isolate;
+
+/// V8's own heap accounting, for telling a leak apart from an unreturned
+/// reservation. See the C++ side for why resident memory alone cannot.
+pub extern fn v8_Isolate_GetHeapUsage(
+    isolate: *Isolate,
+    used: ?*usize,
+    total: ?*usize,
+    external: ?*usize,
+) void;
 pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
 
 // Isolate embedder data (for storing per-isolate state)
