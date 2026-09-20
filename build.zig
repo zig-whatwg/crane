@@ -281,8 +281,7 @@ fn addTestFilesFromDir(
             test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
             // Add libuv
-            test_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-            test_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+            addLibuvPaths(builder, test_exe.root_module);
             test_exe.root_module.linkSystemLibrary("uv", .{});
             test_exe.root_module.link_libcpp = true; //
         }
@@ -290,6 +289,64 @@ fn addTestFilesFromDir(
         const run_test = builder.addRunArtifact(test_exe);
         step.dependOn(&run_test.step);
     }
+}
+
+/// Add libuv's include and library paths, if a prefix containing them can be found.
+///
+/// These were nine unconditional `/opt/homebrew/opt/libuv/...` pairs. That path
+/// exists only under Homebrew on Apple Silicon, so the ubuntu-latest and
+/// windows-latest CI legs could never link even once V8 was provisioned - a gap
+/// .github/workflows/test.yml documents in its header.
+///
+/// Resolution order:
+///   1. -Dlibuv-prefix=PATH, for a non-standard install or a cross-compile sysroot.
+///   2. the usual Homebrew prefixes, Apple Silicon then Intel, but only if present.
+///   3. nothing - which is CORRECT on Linux and on MSYS/vcpkg, where libuv sits on
+///      the compiler's default search paths. Adding a non-existent path is not
+///      merely useless; it is what made the failure platform-specific and silent.
+/// Declared-once cache for -Dlibuv-prefix.
+///
+/// `b.option` REGISTERS an option; calling it twice with the same name panics with
+/// "Option 'libuv-prefix' declared twice". addLibuvPaths runs at nine call sites, so
+/// the lookup has to happen exactly once and be remembered - including the case where
+/// the user did not pass it, hence the separate `queried` flag rather than a null
+/// check on the value.
+var libuv_prefix_queried: bool = false;
+var libuv_prefix_value: ?[]const u8 = null;
+
+fn libuvPrefixOption(b: *std.Build) ?[]const u8 {
+    if (!libuv_prefix_queried) {
+        libuv_prefix_queried = true;
+        libuv_prefix_value = b.option(
+            []const u8,
+            "libuv-prefix",
+            "Prefix containing libuv's lib/ and include/ (for non-standard installs or cross-compiles)",
+        );
+    }
+    return libuv_prefix_value;
+}
+
+fn addLibuvPaths(b: *std.Build, module: *std.Build.Module) void {
+    if (libuvPrefixOption(b)) |prefix| {
+        module.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ prefix, "lib" }) });
+        module.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ prefix, "include" }) });
+        return;
+    }
+
+    const candidates = [_][]const u8{
+        "/opt/homebrew/opt/libuv", // Homebrew, Apple Silicon
+        "/usr/local/opt/libuv", // Homebrew, Intel
+    };
+
+    const io = b.graph.io;
+    for (candidates) |prefix| {
+        const inc = b.pathJoin(&.{ prefix, "include" });
+        std.Io.Dir.cwd().access(io, inc, .{}) catch continue;
+        module.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ prefix, "lib" }) });
+        module.addIncludePath(.{ .cwd_relative = inc });
+        return;
+    }
+    // Fall through: rely on the default search paths.
 }
 
 pub fn build(b: *std.Build) void {
@@ -2207,8 +2264,7 @@ pub fn build(b: *std.Build) void {
     browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
     browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
     browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-    browser_test.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    browser_test.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, browser_test.root_module);
     browser_test.root_module.linkSystemLibrary("uv", .{});
     browser_test.root_module.link_libcpp = true; //
 
@@ -2346,8 +2402,7 @@ pub fn build(b: *std.Build) void {
     full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    full_static_lib.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    full_static_lib.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, full_static_lib.root_module);
     full_static_lib.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
@@ -2543,8 +2598,7 @@ pub fn build(b: *std.Build) void {
     crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
-    crane_lib.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    crane_lib.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, crane_lib.root_module);
     crane_lib.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
@@ -2600,8 +2654,7 @@ pub fn build(b: *std.Build) void {
     crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
-    crane_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    crane_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, crane_exe.root_module);
     crane_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Configure storage backends for executable
@@ -2776,8 +2829,7 @@ pub fn build(b: *std.Build) void {
     snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    snapshot_gen_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    snapshot_gen_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, snapshot_gen_exe.root_module);
     snapshot_gen_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
@@ -2865,8 +2917,7 @@ pub fn build(b: *std.Build) void {
     repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    repl_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    repl_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, repl_exe.root_module);
     repl_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
@@ -2923,8 +2974,7 @@ pub fn build(b: *std.Build) void {
     minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    minimal_snapshot_test_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    minimal_snapshot_test_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, minimal_snapshot_test_exe.root_module);
     minimal_snapshot_test_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
@@ -3044,8 +3094,7 @@ pub fn build(b: *std.Build) void {
     wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    wpt_runner_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/lib" });
-    wpt_runner_exe.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/libuv/include" });
+    addLibuvPaths(b, wpt_runner_exe.root_module);
     wpt_runner_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
@@ -3131,7 +3180,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-                .{ .name = "clock", .module = clock_mod },
+            .{ .name = "clock", .module = clock_mod },
             .{ .name = "fetch", .module = fetch_mod },
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "url", .module = url_mod },
