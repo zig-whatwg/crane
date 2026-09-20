@@ -758,6 +758,21 @@ pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
     return null;
 }
 
+/// Is a context with this raw address still registered?
+///
+/// Takes the ADDRESS, not the Global<Context>*, on purpose. `get()` above has to
+/// call v8_Context_GetRawAddress to derive the key, which dereferences the handle -
+/// so it cannot be used to ask "is this handle still valid?", because doing so is
+/// the very use-after-free being tested for.
+///
+/// Callers that need to outlive a context (a queued microtask, say) must capture
+/// `v8_Context_GetRawAddress` while the context is still alive and pass that key
+/// here later.
+pub fn isContextAddressAlive(raw_addr: usize) bool {
+    const state = &(manager_state orelse return false);
+    return state.contexts.contains(raw_addr);
+}
+
 /// Hydrate a V8 context restored from snapshot with the appropriate interfaces for the given scope
 ///
 /// This function installs only the interfaces that are exposed in the given scope,
