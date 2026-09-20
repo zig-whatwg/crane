@@ -105,7 +105,10 @@ pub const BlobURLStore = struct {
     /// 4. Return the URL
     ///
     /// Returns the full blob URL string (caller owns memory).
-    pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, origin: []const u8) ![]const u8 {
+    /// Returns `[]u8`: the caller OWNS the returned URL and must free it. The store
+    /// keeps `uuid` and `owned_origin`, not this string. The mutable slice says so in
+    /// the type, which is what lets `DOMString.initOwned` accept it.
+    pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, origin: []const u8) ![]u8 {
         // Generate UUID
         const uuid = try self.generateUUID();
         errdefer self.allocator.free(uuid);

@@ -1797,9 +1797,14 @@ pub fn toV8Record(
         const key_str = if (K == runtime.DOMString)
             toV8String(isolate, entry.key)
         else
-            // For ByteString/USVString, convert to string
+            // For ByteString/USVString, convert to string.
+            //
+            // `interned`, not `owned`: entry.key is borrowed from rec.entries and
+            // outlives nothing here. Claiming ownership of it made this DOMString
+            // responsible for freeing the record's own key - the exact confusion
+            // that `owned: []const u8` used to permit silently.
             // TODO: Proper conversion for different string types
-            toV8String(isolate, runtime.DOMString.initOwned(entry.key));
+            toV8String(isolate, runtime.DOMString.initInterned(entry.key));
 
         const value_v8 = try toV8Value(V, isolate, context, entry.value);
         _ = v8.v8_Object_Set(object, context, @ptrCast(key_str), value_v8);

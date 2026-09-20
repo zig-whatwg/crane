@@ -585,12 +585,13 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
     const buffer = allocator.alloc(u8, encoded_len) catch return error.OutOfMemory;
     errdefer allocator.free(buffer);
 
-    // Encode - returns a slice into buffer
+    // Encode - returns a const slice INTO buffer, so hand initOwned the mutable
+    // buffer itself. The bytes are the same; only `buffer` carries the ownership
+    // that DOMString.deinit will act on.
     const encoded = std.base64.standard.Encoder.encode(buffer, input);
 
-    // DOMString.initOwned takes just the slice, allocator is tracked elsewhere
     // NOTE: The caller is responsible for freeing via DOMString.deinit(allocator)
-    return runtime.DOMString.initOwned(encoded);
+    return runtime.DOMString.initOwned(buffer[0..encoded.len]);
 }
 
 /// Operation: setInterval
