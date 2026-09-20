@@ -81,12 +81,30 @@ pub const mode: Mode = switch (builtin.mode) {
 /// mixed, and a precise count is not what the number is for.
 var violation_count: usize = 0;
 
+/// How many checks RAN.
+///
+/// This exists because "0 violations" is worthless on its own: a zero from an
+/// instrument that never executed looks exactly like a zero that means the
+/// invariant holds. That mistake was made twice in one session - once by
+/// validating against a test that never reached the instrumented code, once by
+/// placing an assertion before the Enter it was meant to check.
+///
+/// Reporting checks alongside violations makes the distinction visible without
+/// anyone having to remember to inject a self-test: `0/0` is "measured nothing",
+/// `0/5183` is "measured clean".
+var check_count: usize = 0;
+
 pub fn violations() usize {
     return violation_count;
 }
 
+pub fn checks() usize {
+    return check_count;
+}
+
 pub fn resetViolations() void {
     violation_count = 0;
+    check_count = 0;
 }
 
 /// Assert that `isolate` is the one entered on this thread.
@@ -95,6 +113,8 @@ pub fn resetViolations() void {
 /// call site broke the invariant.
 pub inline fn assertOwned(isolate: *ffi.Isolate, comptime site: []const u8) void {
     if (comptime mode == .off) return;
+
+    check_count += 1;
 
     const current = ffi.v8_Isolate_GetCurrent();
     if (current == isolate) return;
@@ -127,9 +147,13 @@ test "mode is diagnostic in safe builds and absent from fast ones" {
     }
 }
 
-test "the counter starts clean and resets" {
+test "both counters start clean and reset together" {
     resetViolations();
     try testing.expectEqual(@as(usize, 0), violations());
+    // checks() must reset too: a stale check count would make a fresh run look
+    // measured when it was not, which is the exact failure this counter exists
+    // to prevent.
+    try testing.expectEqual(@as(usize, 0), checks());
 }
 
 test "default mode reports rather than panics" {

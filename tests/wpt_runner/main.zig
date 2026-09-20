@@ -546,6 +546,23 @@ pub const ProgressTracker = struct {
         // Duration
         print("  ⏱️  Duration: {s}\n", .{elapsed});
 
+        // Isolate ownership (Phase 5). Reported as violations/checks rather than
+        // violations alone: 0 violations out of 0 checks means the instrument never
+        // ran, which is NOT the same as the invariant holding, and the two are
+        // indistinguishable if only violations are shown.
+        {
+            const ownership = @import("v8").isolate_ownership;
+            if (ownership.mode != .off) {
+                const v = ownership.violations();
+                const c = ownership.checks();
+                if (c == 0) {
+                    print("  🔒 Isolate ownership: not measured (0 checks ran)\n", .{});
+                } else {
+                    print("  🔒 Isolate ownership: {d} violation(s) in {d} checks\n", .{ v, c });
+                }
+            }
+        }
+
         // Top failing categories
         if (self.failures_by_category.count() > 0) {
             print("\n  📉 Top Failing Categories\n", .{});
