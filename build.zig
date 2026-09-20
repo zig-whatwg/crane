@@ -281,8 +281,6 @@ fn addTestFilesFromDir(
             test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
             // Add libuv
-            addLibuvPaths(builder, test_exe.root_module);
-            test_exe.root_module.linkSystemLibrary("uv", .{});
             test_exe.root_module.link_libcpp = true; //
         }
 
@@ -304,51 +302,6 @@ fn addTestFilesFromDir(
 ///   3. nothing - which is CORRECT on Linux and on MSYS/vcpkg, where libuv sits on
 ///      the compiler's default search paths. Adding a non-existent path is not
 ///      merely useless; it is what made the failure platform-specific and silent.
-/// Declared-once cache for -Dlibuv-prefix.
-///
-/// `b.option` REGISTERS an option; calling it twice with the same name panics with
-/// "Option 'libuv-prefix' declared twice". addLibuvPaths runs at nine call sites, so
-/// the lookup has to happen exactly once and be remembered - including the case where
-/// the user did not pass it, hence the separate `queried` flag rather than a null
-/// check on the value.
-var libuv_prefix_queried: bool = false;
-var libuv_prefix_value: ?[]const u8 = null;
-
-fn libuvPrefixOption(b: *std.Build) ?[]const u8 {
-    if (!libuv_prefix_queried) {
-        libuv_prefix_queried = true;
-        libuv_prefix_value = b.option(
-            []const u8,
-            "libuv-prefix",
-            "Prefix containing libuv's lib/ and include/ (for non-standard installs or cross-compiles)",
-        );
-    }
-    return libuv_prefix_value;
-}
-
-fn addLibuvPaths(b: *std.Build, module: *std.Build.Module) void {
-    if (libuvPrefixOption(b)) |prefix| {
-        module.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ prefix, "lib" }) });
-        module.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ prefix, "include" }) });
-        return;
-    }
-
-    const candidates = [_][]const u8{
-        "/opt/homebrew/opt/libuv", // Homebrew, Apple Silicon
-        "/usr/local/opt/libuv", // Homebrew, Intel
-    };
-
-    const io = b.graph.io;
-    for (candidates) |prefix| {
-        const inc = b.pathJoin(&.{ prefix, "include" });
-        std.Io.Dir.cwd().access(io, inc, .{}) catch continue;
-        module.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ prefix, "lib" }) });
-        module.addIncludePath(.{ .cwd_relative = inc });
-        return;
-    }
-    // Fall through: rely on the default search paths.
-}
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -490,23 +443,6 @@ pub fn build(b: *std.Build) void {
         "Run V8 without JIT (required on iOS; large JS slowdown elsewhere)",
     ) orelse jitless_default;
     build_options.addOption(bool, "jitless", jitless);
-
-    // Phase 7: select the timer backend.
-    //
-    // libuv is linked for exactly one purpose - timers ("Link libuv for timer
-    // support") - and a timer queue needs only a monotonic clock. Removing it is a
-    // PRECONDITION for cross-compiling (plan M11): the nine hardcoded
-    // /opt/homebrew/opt/libuv paths cannot satisfy an aarch64-ios or Android sysroot.
-    //
-    // Defaults to the native backend: measured equivalent to libuv across the WPT
-    // timer suite (14 runs, 18 PASS / 1 FAIL / 1 NOTRUN on both). -Dnative-timers=false
-    // restores libuv while anything still depends on it.
-    const native_timers = b.option(
-        bool,
-        "native-timers",
-        "Use the libuv-free timer backend (Phase 7; required for cross-compiling)",
-    ) orelse true;
-    build_options.addOption(bool, "native_timers", native_timers);
 
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
@@ -2312,8 +2248,6 @@ pub fn build(b: *std.Build) void {
     browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_monolith.a" });
     browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libplatform_fat.a" });
     browser_test.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
-    addLibuvPaths(b, browser_test.root_module);
-    browser_test.root_module.linkSystemLibrary("uv", .{});
     browser_test.root_module.link_libcpp = true; //
 
     const run_browser_test = b.addRunArtifact(browser_test);
@@ -2450,8 +2384,6 @@ pub fn build(b: *std.Build) void {
     full_static_lib.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    addLibuvPaths(b, full_static_lib.root_module);
-    full_static_lib.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
     full_static_lib.root_module.link_libcpp = true; //
@@ -2646,8 +2578,6 @@ pub fn build(b: *std.Build) void {
     crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
-    addLibuvPaths(b, crane_lib.root_module);
-    crane_lib.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
     crane_lib.root_module.link_libcpp = true; //
@@ -2702,8 +2632,6 @@ pub fn build(b: *std.Build) void {
     crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_dir ++ "/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv
-    addLibuvPaths(b, crane_exe.root_module);
-    crane_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Configure storage backends for executable
     configureStorageBackends(crane_exe.root_module, target);
@@ -2877,8 +2805,6 @@ pub fn build(b: *std.Build) void {
     snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    addLibuvPaths(b, snapshot_gen_exe.root_module);
-    snapshot_gen_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
     snapshot_gen_exe.root_module.link_libcpp = true; //
@@ -2965,8 +2891,6 @@ pub fn build(b: *std.Build) void {
     repl_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    addLibuvPaths(b, repl_exe.root_module);
-    repl_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
     repl_exe.root_module.link_libcpp = true; //
@@ -3022,8 +2946,6 @@ pub fn build(b: *std.Build) void {
     minimal_snapshot_test_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    addLibuvPaths(b, minimal_snapshot_test_exe.root_module);
-    minimal_snapshot_test_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
     minimal_snapshot_test_exe.root_module.link_libcpp = true; //
@@ -3142,8 +3064,6 @@ pub fn build(b: *std.Build) void {
     wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = "jsengines/v8/out/static/obj/libv8_libbase_fat.a" });
 
     // Link libuv for timer support
-    addLibuvPaths(b, wpt_runner_exe.root_module);
-    wpt_runner_exe.root_module.linkSystemLibrary("uv", .{});
 
     // Link C++ standard library
     wpt_runner_exe.root_module.link_libcpp = true; //

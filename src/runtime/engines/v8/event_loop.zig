@@ -93,16 +93,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const v8_ffi = @import("ffi.zig");
-const build_options = @import("build_options");
-
-// Phase 7: the timer backend is selected at comptime. Both expose the same API;
-// see native_timer.zig for why libuv is being removed (cross-compilation).
-const libuv_timer = @import("libuv_timer.zig");
+// Phase 7: libuv is gone. The timer backend is native - see native_timer.zig.
 const native_timer = @import("native_timer.zig");
-const TimerManagerImpl = if (build_options.native_timers)
-    native_timer.NativeTimerManager
-else
-    libuv_timer.LibuvTimerManager;
+const TimerManagerImpl = native_timer.NativeTimerManager;
 const runtime = @import("runtime");
 
 // Import the EventLoop interface from streams
