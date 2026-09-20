@@ -3094,6 +3094,9 @@ pub fn build(b: *std.Build) void {
             "-fno-rtti",
             "-DV8_COMPRESS_POINTERS",
             "-DV8_ENABLE_SANDBOX",
+            // Only this binary pays for Global<T> accounting. It runs on every
+            // handle creation, so a browser should not carry it.
+            "-DCRANE_TRACK_GLOBALS=1",
         },
     });
     gc_bench_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });

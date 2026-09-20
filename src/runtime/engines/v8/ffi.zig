@@ -658,6 +658,21 @@ pub extern fn v8_Isolate_GetCurrent() ?*Isolate;
 
 /// V8's own heap accounting, for telling a leak apart from an unreturned
 /// reservation. See the C++ side for why resident memory alone cannot.
+/// Live `Global<String>` handles: created minus disposed.
+///
+/// Each is a C++ heap allocation plus a slot in V8's global handle table, which
+/// sits OUTSIDE `used_heap_size` - so leaking them is invisible to
+/// `GetHeapStatistics` and plainly visible in RSS.
+pub extern fn v8_Debug_LiveStringGlobals() i64;
+
+/// Every `Global<T>` handed to Zig, created minus destroyed. 139 of the 158
+/// allocation sites funnel through `trackHandle`, so this covers nearly all.
+pub extern fn v8_Debug_LiveGlobals() i64;
+
+/// Read slot `index` of the Global-creation site histogram. Returns false past the
+/// end. Keyed on the caller's return address; resolve with `atos`.
+pub extern fn v8_Debug_GlobalSite(index: c_int, pc: ?*usize, count: ?*i64) bool;
+
 pub extern fn v8_Isolate_GetHeapUsage(
     isolate: *Isolate,
     used: ?*usize,

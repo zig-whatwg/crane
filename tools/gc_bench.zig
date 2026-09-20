@@ -205,6 +205,12 @@ const Sample = struct {
     /// climbs) from V8 simply not handing pages back (`used` flat while RSS climbs).
     v8_used: usize,
     v8_total: usize,
+    /// Live Global<String> handles. Each pins a V8 global-handle slot that
+    /// `used_heap_size` does not count.
+    live_strings: i64,
+    /// Bytes held by malloc - the C++ heap. Distinguishes a missing `delete` from
+    /// V8's page allocator not returning memory.
+    malloc_in_use: usize,
 };
 
 /// The isolate to ask for heap statistics, set once the browser exists.
@@ -248,6 +254,8 @@ fn takeSample(cycle: usize) Sample {
             v8.ffi.v8_Isolate_GetHeapUsage(iso, &used, null, null);
             break :blk used;
         },
+        .live_strings = v8.ffi.v8_Debug_LiveGlobals(),
+        .malloc_in_use = memory.mallocInUseBytes() orelse 0,
         .v8_total = blk: {
             const iso = heap_isolate orelse break :blk 0;
             var total: usize = 0;
@@ -383,6 +391,35 @@ pub fn main(init: std.process.Init) !void {
 
     report(samples.items, force_gc, control);
 
+    {
+        // Where the leaked Global<T> handles are created. Counts are cumulative
+        // creations, not live ones, but on a create-and-discard loop the site that
+        // dominates creation is where the leak is.
+        const Site = struct { pc: usize, count: i64 };
+        var sites: std.ArrayListUnmanaged(Site) = .empty;
+        defer sites.deinit(allocator);
+
+        var i: c_int = 0;
+        while (i < 512) : (i += 1) {
+            var pc: usize = 0;
+            var count: i64 = 0;
+            if (!v8.ffi.v8_Debug_GlobalSite(i, &pc, &count)) break;
+            if (pc != 0 and count > 0) try sites.append(allocator, .{ .pc = pc, .count = count });
+        }
+        std.mem.sort(Site, sites.items, {}, struct {
+            fn lt(_: void, a: Site, b: Site) bool {
+                return a.count > b.count;
+            }
+        }.lt);
+
+        const shown = @min(sites.items.len, 10);
+        std.debug.print("\nGlobal<T> creations by site (top {d} of {d}):\n", .{ shown, sites.items.len });
+        for (sites.items[0..shown]) |site| {
+            std.debug.print("  {d:>12} creations  at 0x{x}\n", .{ site.count, site.pc -| imageSlide() });
+        }
+        std.debug.print("\nResolve with:  atos -o zig-out/bin/gc_bench <address>\n", .{});
+    }
+
     if (profile) {
         const sites = try counting.topSites(allocator, 12);
         defer allocator.free(sites);
@@ -426,7 +463,7 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
-        "B/cycle", "v8 used MB",  "v8 total MB",
+        "B/cycle", "malloc MB",   "live Global<T>",
     });
 
     const first = samples[0].resident;
@@ -461,8 +498,8 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void 
                 mb,
                 growth,
                 slope,
-                @as(f64, @floatFromInt(s.v8_used)) / (1024.0 * 1024.0),
-                @as(f64, @floatFromInt(s.v8_total)) / (1024.0 * 1024.0),
+                @as(f64, @floatFromInt(s.malloc_in_use)) / (1024.0 * 1024.0),
+                @as(f64, @floatFromInt(s.live_strings)),
             });
         } else {
             std.debug.print("{d:>8}  {d:>11.1}\n", .{ s.cycle, mb });

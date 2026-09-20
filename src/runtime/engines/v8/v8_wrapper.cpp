@@ -8,6 +8,7 @@
 // - REPL (persistent handles for context, isolate, etc.)
 // - Namespace bindings (callbacks convert Local→Global→Local)
 
+#include <atomic>
 #include <v8.h>
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
@@ -55,8 +56,78 @@ static void resetGlobalHandle(void* ptr) {
 }
 
 // Track a handle for snapshot cleanup
-template<typename T>
+//
+// Every `Global<T>` this wrapper hands to Zig, created minus destroyed.
+//
+// 139 of the 158 `new Global<...>` sites funnel through here, so one counter
+// covers nearly all of them. Each is a C++ heap allocation AND a slot in V8's
+// global handle table - and the table is not part of `used_heap_size`, which is
+// why a leak here reads as flat V8 heap and climbing RSS.
+std::atomic<int64_t> g_live_globals{0};
+
+// extern "C" explicitly: this sits above the file's main extern "C" block, so
+// without it the symbol is C++-mangled and Zig cannot find it.
+extern "C" int64_t v8_Debug_LiveGlobals() {
+    return g_live_globals.load(std::memory_order_relaxed);
+}
+
+// Where the live handles were created, so the leak can be named rather than
+// counted. Keyed on the caller's return address; a fixed table because this runs
+// on every handle creation and must not allocate.
+static constexpr int kGlobalSiteSlots = 512;
+static std::atomic<uintptr_t> g_site_pc[kGlobalSiteSlots];
+static std::atomic<int64_t> g_site_count[kGlobalSiteSlots];
+
+// OFF unless -DCRANE_TRACK_GLOBALS=1. This runs on EVERY handle creation, and an
+// atomic increment plus a hash probe on that path is a real cost to pay in a
+// browser for a number only the memory benchmark reads.
+#ifndef CRANE_TRACK_GLOBALS
+#define CRANE_TRACK_GLOBALS 0
+#endif
+
+static void recordGlobalSite(uintptr_t pc) {
+#if !CRANE_TRACK_GLOBALS
+    (void)pc;
+    return;
+#else
+    size_t h = (pc >> 4) % kGlobalSiteSlots;
+    for (int probe = 0; probe < 16; ++probe) {
+        size_t i = (h + probe) % kGlobalSiteSlots;
+        uintptr_t cur = g_site_pc[i].load(std::memory_order_relaxed);
+        if (cur == pc) { g_site_count[i].fetch_add(1, std::memory_order_relaxed); return; }
+        if (cur == 0) {
+            uintptr_t expected = 0;
+            if (g_site_pc[i].compare_exchange_strong(expected, pc)) {
+                g_site_count[i].fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+            if (g_site_pc[i].load(std::memory_order_relaxed) == pc) {
+                g_site_count[i].fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+        }
+    }
+    // Table full or heavily contended: drop the sample rather than block.
+#endif
+}
+
+/// Read back the Nth busiest creation site. Returns false when `rank` is past the
+/// end. Sorting happens on the caller's side; this just exposes the raw table.
+extern "C" bool v8_Debug_GlobalSite(int index, uintptr_t* pc, int64_t* count) {
+    if (index < 0 || index >= kGlobalSiteSlots) return false;
+    if (pc) *pc = g_site_pc[index].load(std::memory_order_relaxed);
+    if (count) *count = g_site_count[index].load(std::memory_order_relaxed);
+    return true;
+}
+
+template <typename T>
 static Global<T>* trackHandle(Global<T>* handle) {
+    if (handle) {
+#if CRANE_TRACK_GLOBALS
+        g_live_globals.fetch_add(1, std::memory_order_relaxed);
+        recordGlobalSite(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
+#endif
+    }
     if (g_snapshot_mode && handle) {
         g_snapshot_handles.push_back({handle, resetGlobalHandle<T>});
     }
@@ -157,7 +228,6 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 #include <unordered_map>
 #include <unordered_set>
 #include <mutex>
-#include <atomic>
 
 class CallbackManager {
 public:
@@ -1895,6 +1965,19 @@ void v8_Context_AllowCodeGenerationFromStrings(Global<Context>* context, bool al
 // String Functions
 // ============================================================================
 
+// Live Global<String> handles: created minus disposed.
+//
+// Every one of these is a C++ heap allocation AND a slot in V8's global handle
+// table, which lives outside `used_heap_size` - so a leak here is invisible to
+// GetHeapStatistics while being perfectly visible in RSS. That is exactly the
+// shape the Phase 6 measurements show: V8's heap flat at 7.0 MB across 20,000
+// cycles while resident memory climbs 78 MB.
+static std::atomic<int64_t> g_live_string_globals{0};
+
+int64_t v8_Debug_LiveStringGlobals() {
+    return g_live_string_globals.load(std::memory_order_relaxed);
+}
+
 Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int length) {
     HandleScope handle_scope(isolate);
     MaybeLocal<String> maybe_str = String::NewFromUtf8(
@@ -1907,11 +1990,13 @@ Global<String>* v8_String_NewFromUtf8(Isolate* isolate, const uint8_t* data, int
         return nullptr;
     }
     Local<String> str = maybe_str.ToLocalChecked();
+    g_live_string_globals.fetch_add(1, std::memory_order_relaxed);
     return trackHandle(new Global<String>(isolate, str));
 }
 
 void v8_String_Dispose(Global<String>* str) {
     if (str) {
+        g_live_string_globals.fetch_sub(1, std::memory_order_relaxed);
         str->Reset();
         delete str;
     }

@@ -73,6 +73,29 @@ fn linuxResident() ?usize {
     return pages *| std.heap.pageSize();
 }
 
+/// Bytes currently held by malloc, or null where unavailable.
+///
+/// Separates "the C++ heap is growing" from "V8's own page allocator is growing".
+/// Both show up identically in RSS, and they need completely different fixes: the
+/// first is a missing `delete`, the second is V8 not returning pages. Without this
+/// the two are indistinguishable and the search goes nowhere.
+pub fn mallocInUseBytes() ?usize {
+    if (builtin.os.tag != .macos) return null;
+    const stats = mstats();
+    return stats.bytes_used;
+}
+
+/// macOS `struct mstats` from <malloc/malloc.h>.
+const MStats = extern struct {
+    bytes_total: usize,
+    chunks_used: usize,
+    bytes_used: usize,
+    chunks_free: usize,
+    bytes_free: usize,
+};
+
+extern "c" fn mstats() MStats;
+
 /// A before/after resident-memory reading.
 ///
 /// Holds both samples rather than only the delta so a caller can report "not
