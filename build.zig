@@ -185,6 +185,12 @@ fn configureStaticLibcurl(
     // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
     const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return;
 
+    // The module doing the `@cImport` needs the SDK's headers too. translate-c
+    // resolves `#include <sys/types.h>` against the IMPORTING module's include
+    // paths, not the library's, so curl_ffi.zig fails on its own even after every
+    // C artifact is pointed at the SDK.
+    if (target.result.os.tag == .ios) addIosSdkPaths(module, iosSdkPath(b));
+
     // Turn Zig's C UBSan OFF for libcurl's own sources.
     //
     // curl 8.18.0 reads `static bool init_ssl` in Curl_ssl_cleanup (lib/vtls/vtls.c
@@ -202,6 +208,15 @@ fn configureStaticLibcurl(
     // This disables the sanitizer for libcurl ONLY. Every Zig module in Crane keeps its
     // full safety checks. Revisit when a curl release fixes it upstream.
     libcurl.root_module.sanitize_c = .off;
+
+    // iOS: the SDK paths have to reach the DEPENDENCY's modules too, not just ours.
+    // zlib and mbedtls are compiled inside the curl package's own artifacts, so
+    // pointing only the top-level module at the SDK left them failing on <stdio.h>
+    // and <string.h> - 15 errors and 107 respectively, which read like broken
+    // dependencies rather than an unresolved SDK.
+    if (target.result.os.tag == .ios) {
+        applyIosSdkRecursively(b, &libcurl.step, iosSdkPath(b));
+    }
 
     // Link the static library to the module
     module.linkLibrary(libcurl);
@@ -299,6 +314,77 @@ fn addTestFilesFromDir(
     }
 }
 
+/// The iPhoneOS SDK root, or null if `xcrun` cannot name one.
+///
+/// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
+/// path fails as missing libc headers rather than as a missing SDK.
+fn iosSdkPath(b: *std.Build) ?[]const u8 {
+    var code: u8 = 0;
+    const out = b.runAllowFail(
+        &.{ "xcrun", "--sdk", "iphoneos", "--show-sdk-path" },
+        &code,
+        .ignore,
+    ) catch return null;
+    const path = std.mem.trim(u8, out, " \n\r\t");
+    if (path.len == 0) return null;
+    return b.dupe(path);
+}
+
+/// Apply the iOS SDK paths to every Compile step reachable from `root`.
+///
+/// zlib and mbedtls are TRANSITIVE dependencies of the curl package - curl depends
+/// on them, and each is its own artifact with its own module. Touching only
+/// libcurl's module left them failing on <stdio.h> and <string.h>, so the whole
+/// reachable graph gets the paths.
+///
+/// Depth-bounded rather than visited-tracked: the build graph is a DAG, revisiting
+/// a module is idempotent here, and a bound needs no allocation. Real dependency
+/// chains are nowhere near this deep.
+fn applyIosSdkRecursively(b: *std.Build, root: *std.Build.Step, sdk: ?[]const u8) void {
+    if (sdk == null) return;
+    applyIosSdkStep(b, root, sdk, 0);
+}
+
+fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?[]const u8, depth: u32) void {
+    if (depth > 24) return;
+    if (step.cast(std.Build.Step.Compile)) |compile| {
+        addIosSdkPaths(compile.root_module, sdk);
+        // Linked artifacts are recorded as `link_objects` entries on the MODULE, not
+        // as step dependencies, so walking `step.dependencies` alone never reaches
+        // zlib or mbedtls - they are libraries curl links, not steps it waits on.
+        for (compile.root_module.link_objects.items) |obj| {
+            switch (obj) {
+                .other_step => |other| applyIosSdkStep(b, &other.step, sdk, depth + 1),
+                else => {},
+            }
+        }
+    }
+    for (step.dependencies.items) |dep| applyIosSdkStep(b, dep, sdk, depth + 1);
+}
+
+/// Point a module at the iOS SDK's headers, libraries and frameworks.
+///
+/// No-op off iOS. Called for every module that compiles or links C, since Zig will
+/// not find them on its own for this target.
+fn addIosSdkPaths(module: *std.Build.Module, sdk: ?[]const u8) void {
+    const root = sdk orelse return;
+    module.addSystemIncludePath(.{ .cwd_relative = std.fmt.allocPrint(
+        module.owner.allocator,
+        "{s}/usr/include",
+        .{root},
+    ) catch @panic("OOM") });
+    module.addLibraryPath(.{ .cwd_relative = std.fmt.allocPrint(
+        module.owner.allocator,
+        "{s}/usr/lib",
+        .{root},
+    ) catch @panic("OOM") });
+    module.addFrameworkPath(.{ .cwd_relative = std.fmt.allocPrint(
+        module.owner.allocator,
+        "{s}/System/Library/Frameworks",
+        .{root},
+    ) catch @panic("OOM") });
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -315,6 +401,17 @@ pub fn build(b: *std.Build) void {
         .ios => "jsengines/v8/out/ios-arm64",
         else => "jsengines/v8/out/static",
     };
+    // Zig 0.16 resolves the macOS SDK for Darwin targets, but NOT the iOS one: a
+    // trivial `#include <stdio.h>` for aarch64-ios fails with 'stdio.h' file not
+    // found, with or without --sysroot. That surfaces far from the cause, as 15
+    // errors in vendored zlib and 107 in mbedtls, which reads like a dependency
+    // problem rather than a missing SDK.
+    //
+    // Point the compiler and linker at the iPhoneOS SDK explicitly. Queried through
+    // `xcrun --sdk iphoneos` rather than hardcoded, because the SDK version moves
+    // with Xcode.
+    const ios_sdk: ?[]const u8 = if (target.result.os.tag == .ios) iosSdkPath(b) else null;
+
     const v8_monolith_path = b.fmt("{s}/obj/libv8_monolith.a", .{v8_out_dir});
     const v8_libplatform_path = b.fmt("{s}/obj/libv8_libplatform_fat.a", .{v8_out_dir});
     const v8_libbase_path = b.fmt("{s}/obj/libv8_libbase_fat.a", .{v8_out_dir});
@@ -2418,6 +2515,9 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
+    // Zig does not resolve the iOS SDK itself; without this the C sources below
+    // fail on <stdio.h> and the link fails on libSystem.
+    addIosSdkPaths(full_static_lib.root_module, ios_sdk);
     full_static_lib.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
 
     // Link V8 libraries (custom-built static libraries)
