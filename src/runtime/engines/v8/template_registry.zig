@@ -99,6 +99,43 @@ fn ensureInitialized() void {
     }
 }
 
+/// Dispose and remove only the templates belonging to `isolate`.
+///
+/// `clear()` below wipes EVERY entry. That was harmless while the registry could
+/// only ever hold one isolate's templates, but register() is now per-(interface,
+/// isolate) - so disposing one isolate with clear() would dispose a still-live
+/// worker isolate's FunctionTemplates too, and the next use of those would be a
+/// use-after-free.
+///
+/// The cache generation is still bumped: per-interface caches in V8Interface(T)
+/// compare against a cached isolate pointer, and V8 may hand the same address to a
+/// new isolate, so they must be invalidated whenever any isolate goes away.
+///
+/// The process-wide C++ caches that clear() also resets - async iterator
+/// templates, module resolve/dynamic-import callbacks, the namespace context -
+/// are deliberately NOT touched here. They are not per-isolate, and tearing them
+/// down while another isolate is still running would break it. Full teardown
+/// still goes through clear().
+pub fn clearForIsolate(isolate: *v8.Isolate) void {
+    var write: usize = 0;
+    for (templates[0..template_count]) |maybe_entry| {
+        if (maybe_entry) |e| {
+            if (e.isolate == isolate) {
+                v8.v8_FunctionTemplate_Dispose(e.template);
+                continue; // drop it
+            }
+            templates[write] = e;
+            write += 1;
+        }
+    }
+    // Null out the vacated tail so stale entries cannot be read back.
+    var i = write;
+    while (i < template_count) : (i += 1) templates[i] = null;
+    template_count = write;
+
+    cache_generation +%= 1;
+}
+
 /// Clear all registered templates
 ///
 /// MUST be called before disposing an isolate and creating a new one.
