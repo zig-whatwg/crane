@@ -462,6 +462,21 @@ pub fn build(b: *std.Build) void {
     debug_options.addOption([]const u8, "debug_scope", debug_scope);
 
     // Engine configuration options (for conditional compilation)
+    // Phase 8 (DCE): an optional allow-list of WebIDL interfaces to expose.
+    //
+    // Empty (the default) means "every interface", i.e. exactly today's behaviour.
+    // A non-empty comma-separated list restricts the binding and external-reference
+    // loops to those names plus their ancestors, so a mobile build can drop the
+    // interfaces it will never touch. The loops that consult this are the only thing
+    // forcing all 1,263 interfaces to be analysed - `pub const X = @import(..)` in
+    // interfaces/root.zig does NOT, because Zig only analyses referenced decls.
+    const interface_allowlist = b.option(
+        []const u8,
+        "interfaces",
+        "Comma-separated WebIDL interfaces to expose (default: all). Shrinks mobile binaries.",
+    ) orelse "";
+    build_options.addOption([]const u8, "interface_allowlist", interface_allowlist);
+
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
     build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
@@ -604,6 +619,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/runtime/engines/v8/root.zig"),
         .target = target,
     });
+    // Phase 8 (DCE): interface_bindings consults build_options.interface_allowlist.
+    v8_mod.addOptions("build_options", build_options);
     v8_mod.addImport("clock", clock_mod);
     v8_mod.addImport("host", host_mod);
     v8_mod.addImport("runtime", runtime_mod);

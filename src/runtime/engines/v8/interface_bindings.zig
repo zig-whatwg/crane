@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const build_options = @import("build_options");
 const log = std.log.scoped(.v8_bindings);
 const v8 = @import("ffi.zig");
 const V8Interface = @import("interface.zig").V8Interface;
@@ -85,6 +86,38 @@ pub fn shouldSkipInterface(comptime name: []const u8) bool {
     return comptime blk: {
         for (interface_skip_list) |skip| {
             if (std.mem.eql(u8, name, skip)) break :blk true;
+        }
+        if (!interfaceAllowed(name)) break :blk true;
+        break :blk false;
+    };
+}
+
+/// Is `name` in the -Dinterfaces allow-list?
+///
+/// An empty allow-list means "everything", which is the default and is exactly the
+/// behaviour that existed before this hook - so an ordinary build is unaffected.
+///
+/// This is where dead-code elimination actually bites. The `inline for` loops over
+/// `@typeInfo(interfaces).decls` reference every interface, which is what forces all
+/// 1,263 of them to be analysed and emitted; `interfaces/root.zig`'s unconditional
+/// imports do not, because Zig analyses only referenced declarations. Narrowing the
+/// loops is therefore the lever, and this is the single place they all consult.
+pub fn interfaceAllowed(comptime name: []const u8) bool {
+    return comptime blk: {
+        const list = build_options.interface_allowlist;
+        if (list.len == 0) break :blk true;
+
+        // This runs once per interface, and there are 1,263 of them, each splitting
+        // and comparing the list. The default 1,000-branch budget is nowhere near
+        // enough - without this the build dies in std.mem with "evaluation exceeded
+        // 200000 backwards branches", pointing at the stdlib rather than here.
+        @setEvalBranchQuota(2_000_000);
+
+        var it = std.mem.splitScalar(u8, list, ',');
+        while (it.next()) |raw| {
+            const entry = std.mem.trim(u8, raw, " \t");
+            if (entry.len == 0) continue;
+            if (std.mem.eql(u8, entry, name)) break :blk true;
         }
         break :blk false;
     };
