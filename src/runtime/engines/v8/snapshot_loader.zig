@@ -41,6 +41,7 @@
 //! external_references.zig module to provide these references.
 
 const std = @import("std");
+const build_options = @import("build_options");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const host = @import("host");
@@ -62,7 +63,15 @@ var tracked_snapshot_allocator: ?std.mem.Allocator = null;
 ///
 /// --harmony-shadow-realm enables the TC39 Stage 3 ShadowRealm proposal which provides
 /// isolated JavaScript execution environments with their own global objects.
-pub const SNAPSHOT_V8_FLAGS = "--hash-seed=0 --predictable --harmony-shadow-realm";
+/// V8 flags applied before platform init.
+///
+/// `--jitless` is appended when built for a target that cannot JIT. iOS gives
+/// third-party apps no W^X exception, so V8 generating code there gets the process
+/// killed; interpreter-only is the only way to run at all. It is a build-time
+/// decision rather than runtime because it must be set before V8 initializes.
+pub const SNAPSHOT_V8_FLAGS = base_v8_flags ++ if (build_options.jitless) " --jitless" else "";
+
+const base_v8_flags = "--hash-seed=0 --predictable --harmony-shadow-realm";
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

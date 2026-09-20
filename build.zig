@@ -477,6 +477,20 @@ pub fn build(b: *std.Build) void {
     ) orelse "";
     build_options.addOption([]const u8, "interface_allowlist", interface_allowlist);
 
+    // Phase 8 (mobile): iOS forbids JIT outright - no W^X exception for third-party
+    // apps - so V8 must run in its interpreter-only mode there or the process is
+    // killed on first code generation. Defaults ON for iOS targets and OFF everywhere
+    // else, because --jitless costs a large amount of JS throughput and nothing but
+    // the platform restriction justifies paying it.
+    const target_os = target.result.os.tag;
+    const jitless_default = target_os == .ios;
+    const jitless = b.option(
+        bool,
+        "jitless",
+        "Run V8 without JIT (required on iOS; large JS slowdown elsewhere)",
+    ) orelse jitless_default;
+    build_options.addOption(bool, "jitless", jitless);
+
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
     build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
