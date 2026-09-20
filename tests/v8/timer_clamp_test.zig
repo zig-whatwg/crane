@@ -93,6 +93,33 @@ test "the nesting level is thread-local" {
     try std.testing.expectEqual(@as(u32, 9), timer.nesting_level);
 }
 
+test "a zero-delay interval reaches the clamp by its sixth repeat" {
+    // The repeat case, which is where an unclamped timer actually hurts:
+    // `setInterval(f, 0)` reschedules itself, so without the level rising per
+    // repeat it stays at 0ms forever and spins the loop as fast as it can
+    // schedule. The spec increments the nesting level on each repeat, so it
+    // settles at 4ms.
+    var level: u32 = 0;
+    var delay: i64 = 0;
+
+    // Five repeats at or below the threshold stay unclamped.
+    var repeat: usize = 0;
+    while (repeat < timer.nesting_threshold) : (repeat += 1) {
+        level +|= 1;
+        delay = timer.clampTimeout(delay, level);
+        try std.testing.expectEqual(@as(i64, 0), delay);
+    }
+
+    // The next one crosses it and sticks.
+    level +|= 1;
+    delay = timer.clampTimeout(delay, level);
+    try std.testing.expectEqual(timer.nested_min_delay_ms, delay);
+
+    level +|= 1;
+    delay = timer.clampTimeout(delay, level);
+    try std.testing.expectEqual(timer.nested_min_delay_ms, delay);
+}
+
 test "saturating increment cannot wrap the level back to shallow" {
     // Both bindings record `nesting_level +| 1`. A wrapping `+` would take a
     // pathologically deep chain from u32 max back to 0 and silently switch the

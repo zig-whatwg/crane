@@ -424,6 +424,17 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
                 _ = map.remove(ctx.current_timer_id);
             }
 
+            // HTML §8.6: each repeat nests one deeper, and the clamp is re-applied.
+            // Without this a `setInterval(f, 0)` stays at 0ms forever and spins the
+            // loop as fast as it can reschedule - the spec's answer is that by the
+            // sixth repeat it is clamped to 4ms, exactly like nested setTimeout.
+            ctx.nesting_level +|= 1;
+            const repeat_ms = native_timer.clampTimeout(
+                @intCast(@min(ctx.interval_delay_ms, @as(u64, std.math.maxInt(i32)))),
+                ctx.nesting_level,
+            );
+            ctx.interval_delay_ms = if (repeat_ms >= 0) @intCast(repeat_ms) else 0;
+
             // Schedule the next interval
             const new_timer_id = timer.setTimeout(ctx.interval_delay_ms, workerTimerTrampoline, ctx);
             if (new_timer_id != 0) {
