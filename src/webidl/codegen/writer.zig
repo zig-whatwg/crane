@@ -1497,6 +1497,27 @@ pub fn writeStateStruct(
 /// SharedWorker, WorkerGlobalScope, DedicatedWorkerGlobalScope, WebSocket and
 /// XMLHttpRequestUpload genuinely store handlers in State - so a blanket rule would
 /// silently break them. Add an interface here only after checking its impl.
+/// Does this interface's impl own its DOMString attribute storage too?
+///
+/// Element is the case that matters: 52 of its 90 own-fields are DOMString IDL
+/// attributes (~1,248 bytes), and NOTHING reads them. impls/Element.zig contains no
+/// `own.<attr>` access at all, and the generated accessors delegate straight to the
+/// impl (get_tagName -> ElementImpl.get_tagName), which keeps the real values in its
+/// InternalState. Every HTML element inherits all of it.
+///
+/// The generated `cached_*` fields are NOT affected: they are codegen-added caches
+/// rather than IDL attributes, so they never enter the attribute loop this filters.
+/// interfaces/Element.zig does use those four.
+///
+/// Verified per field before listing an interface here, same as the handler list.
+fn implOwnsStringAttributes(impl_name: []const u8) bool {
+    const owners = [_][]const u8{"ElementImpl"};
+    for (owners) |o| {
+        if (std.mem.eql(u8, impl_name, o)) return true;
+    }
+    return false;
+}
+
 fn implOwnsEventHandlers(impl_name: []const u8) bool {
     // Each verified the same way as HTMLElement: zero `own.on*` accesses in the
     // impl AND in the generated interface (whose accessors delegate to the impl).
@@ -1553,6 +1574,13 @@ pub fn writeGeneratedState(
             // Skip event-handler slots the impl owns; see implOwnsEventHandlers.
             if (implOwnsEventHandlers(impl_name) and
                 std.mem.eql(u8, attr.idlType.type, "EventHandler")) continue;
+
+            // Skip DOMString attribute storage the impl owns; see
+            // implOwnsStringAttributes. Union-typed attributes are left alone - they
+            // are a different shape and were not part of the audit.
+            if (implOwnsStringAttributes(impl_name) and
+                attr.idlType.unionTypes == null and
+                std.mem.eql(u8, attr.idlType.type, "DOMString")) continue;
 
             // Check if type name ends with '?' (parser includes it in type string)
             var type_name = attr.idlType.type;
