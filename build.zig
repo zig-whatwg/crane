@@ -528,6 +528,15 @@ pub fn build(b: *std.Build) void {
     });
     host_mod.link_libc = true;
 
+    // Current resident memory, for measuring whether memory is actually reclaimed.
+    // Zero dependencies for the same reason as clock_mod and host_mod: it is read
+    // from measurement loops in leaf code, and a leaf module cannot form a cycle.
+    const memory_mod = b.addModule("memory", .{
+        .root_source_file = b.path("src/platform/memory.zig"),
+        .target = target,
+    });
+    memory_mod.link_libc = true;
+
     const infra_mod = b.addModule("infra", .{
         .root_source_file = b.path("src/infra/root.zig"),
         .target = target,
@@ -2996,6 +3005,10 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/config.zig",
             "tests/wpt_runner/selection.zig",
             "tests/wpt_runner/journal.zig",
+            // Not part of the WPT runner, but the same shape - std-only, and its
+            // test blocks would otherwise never run, since the build collects
+            // tests/**/*_test.zig and nothing else.
+            "src/platform/memory.zig",
             "tests/wpt_runner/options.zig",
             "tests/wpt_runner/discovery.zig",
             "tests/wpt_runner/wpt_server.zig",
