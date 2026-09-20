@@ -678,7 +678,24 @@ pub const WorkerV8Context = struct {
             self.allocator.destroy(ctx_data);
         }
 
-        // Free Zig allocations only
+        // NOTE: the object itself is deliberately NOT freed here - see destroy().
+    }
+
+    /// Release the WorkerV8Context's own storage. Call exactly once, and only
+    /// after every teardown path that might still call deinit() has run.
+    ///
+    /// deinit() used to end in `allocator.destroy(self)`. That made its
+    /// `is_deinitialized` guard useless, because the guard lives INSIDE the object
+    /// it protects: the second of the two documented teardown paths
+    /// (Worker.deinit, and WorkerContext.deinit -> disposeContextCallback) read the
+    /// flag out of freed memory and destroyed the object again. Clearing each
+    /// owner's pointer could not fix it either - the two owners are independent and
+    /// both hold the same context.
+    ///
+    /// Splitting the two makes deinit genuinely idempotent (the flag is read from
+    /// live memory no matter how many paths call it) and gives the free a single
+    /// caller.
+    pub fn destroy(self: *Self) void {
         self.allocator.free(self.script_url);
         self.allocator.destroy(self);
     }

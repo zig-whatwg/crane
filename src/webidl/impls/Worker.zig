@@ -165,19 +165,23 @@ pub const InternalState = struct {
         // Borrowed, not owned - see set_onerror. Clearing, not disposing.
         self.onmessageerror_handle = null;
 
-        // Clean up V8 context first (it uses the dedicated_worker's WorkerContext)
-        if (self.v8_context) |v8_ctx| {
+        // Clean up V8 context first (it uses the dedicated_worker's WorkerContext).
+        //
+        // deinit() releases V8 resources and is idempotent; it does NOT free the
+        // context. The worker chain below reaches WorkerContext.deinit ->
+        // disposeContextCallback -> deinit() a second time, which now early-returns
+        // on a flag in LIVE memory. Only after that chain has finished is it safe to
+        // release the storage, and this is the single place that does it.
+        const v8_ctx_owned = self.v8_context;
+        if (v8_ctx_owned) |v8_ctx| {
             v8_ctx.deinit();
-            // MUST clear. WorkerV8Context.deinit ends in allocator.destroy(self), and
-            // its is_deinitialized guard lives INSIDE the object it protects - so the
-            // second teardown path (WorkerContext.deinit -> disposeContextCallback)
-            // reads that flag out of freed memory. A flag cannot guard its own
-            // storage; the owner clearing its pointer is what actually prevents the
-            // double destroy.
             self.v8_context = null;
         }
         if (self.dedicated_worker) |worker| {
             worker.deinit();
+        }
+        if (v8_ctx_owned) |v8_ctx| {
+            v8_ctx.destroy();
         }
         self.allocator.free(self.script_url);
         if (self.name.len > 0) {
