@@ -41,7 +41,11 @@ const instance_bridge = @import("dom").instance_bridge;
 const log = std.log.scoped(.template_registry);
 
 /// Maximum number of interface templates that can be registered
-const MAX_TEMPLATES = 2048; // Need to support all WebIDL interfaces (~1100)
+// Capacity is per-PROCESS, not per-isolate, and every isolate registers its own
+// entry for every interface it uses. With ~1,263 generated interfaces a single
+// isolate already approaches 2048; a worker would have exhausted it and silently
+// dropped registrations, because the add below is a bounds check with no error.
+const MAX_TEMPLATES = 8192;
 
 /// Entry in the template registry
 const TemplateEntry = struct {
@@ -162,13 +166,23 @@ pub fn register(
 
     ensureInitialized();
 
-    // Check if already registered (avoid duplicates on re-registration)
-    for (&templates) |*entry| {
+    // Check if already registered (avoid duplicates on re-registration).
+    //
+    // Match on name AND isolate. Matching on name alone made this registry
+    // single-isolate by construction: a second isolate registering "Element"
+    // reassigned the FIRST isolate's entry to itself, and since lookup requires
+    // both name and isolate to match (getTemplateForIsolate), the first isolate
+    // then found NO template for an interface it had already registered.
+    //
+    // V8 Global<FunctionTemplate> handles are isolate-scoped and cannot be shared,
+    // so one entry per (interface, isolate) is the only correct shape. This is the
+    // structural half of Phase 5's exit criterion: two isolates each holding a full
+    // interface template set at the same time.
+    for (templates[0..template_count]) |*entry| {
         if (entry.*) |*e| {
-            if (std.mem.eql(u8, e.name, interface_name)) {
-                // Update existing entry
+            if (std.mem.eql(u8, e.name, interface_name) and e.isolate == isolate) {
+                // Same interface, same isolate: genuine re-registration.
                 e.template = template;
-                e.isolate = isolate;
                 return;
             }
         }
@@ -182,6 +196,14 @@ pub fn register(
             .isolate = isolate,
         };
         template_count += 1;
+    } else {
+        // Previously a silent no-op. A dropped template does not fail here - it
+        // fails much later, as a lookup miss that looks like a missing interface.
+        log.err(
+            "template registry full ({d} entries): dropping '{s}'. Raise MAX_TEMPLATES - " ++
+                "capacity is per-process and every isolate registers its own entries.",
+            .{ MAX_TEMPLATES, interface_name },
+        );
     }
 }
 
