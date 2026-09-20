@@ -6,12 +6,13 @@
 //! Usage:
 //! ```zig
 //! const debug = @import("debug.zig");
-//! debug.print("Interface: {s}\n", .{name});
+//! debug.print("Interface: {s}", .{name});
 //! ```
 //!
 //! Enable with: `zig build -Ddebug=true -Ddebug-scope=webidl`
 
 const std = @import("std");
+const log = std.log.scoped(.webidl);
 const debug_options = @import("debug_options");
 
 /// Check if WebIDL debug output is enabled at compile time
@@ -30,13 +31,13 @@ pub const enabled: bool = blk: {
 /// Print debug message if WebIDL scope is enabled
 pub fn print(comptime fmt: []const u8, args: anytype) void {
     if (comptime enabled) {
-        std.debug.print("[webidl] " ++ fmt, args);
+        log.debug("[webidl] " ++ fmt, args);
     }
 }
 
 /// Print without prefix
 pub fn printRaw(comptime fmt: []const u8, args: anytype) void {
     if (comptime enabled) {
-        std.debug.print(fmt, args);
+        log.debug(fmt, args);
     }
 }

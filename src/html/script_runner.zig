@@ -43,6 +43,8 @@ const Document = interfaces.Document;
 const html_core = @import("html_core");
 const EventLoop = html_core.EventLoop;
 
+const log = std.log.scoped(.script_runner);
+
 // Note: script_execution.zig is imported lazily inside executeScript()
 // to avoid pulling in V8 FFI symbols at compile time. This allows tests
 // to use ScriptRunner for queue management without needing V8 linked.
@@ -289,7 +291,7 @@ pub const ScriptRunner = struct {
         // Use lazy import to avoid pulling in V8 symbols at compile time
         const script_execution = @import("script_execution.zig");
         script_execution.executeScriptElement(self.allocator, script) catch |err| {
-            std.debug.print("Script execution error: {}\n", .{err});
+            log.err("Script execution error: {}", .{err});
             // Errors are handled internally, don't propagate
         };
     }
@@ -305,15 +307,15 @@ pub const ScriptRunner = struct {
 
         // Step 3: Execute deferred scripts
         self.executeDeferredScripts() catch |err| {
-            std.debug.print("Deferred script execution error: {}\n", .{err});
+            log.err("Deferred script execution error: {}", .{err});
         };
 
         // Also try to execute any pending async scripts
         self.executeAsyncScripts() catch |err| {
-            std.debug.print("Async script execution error: {}\n", .{err});
+            log.err("Async script execution error: {}", .{err});
         };
         self.executeInOrderAsyncScripts() catch |err| {
-            std.debug.print("In-order async script execution error: {}\n", .{err});
+            log.err("In-order async script execution error: {}", .{err});
         };
     }
 

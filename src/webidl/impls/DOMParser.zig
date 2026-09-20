@@ -15,6 +15,7 @@
 //! ```
 
 const std = @import("std");
+const log = std.log.scoped(.dom_parser);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -147,7 +148,7 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMStri
 
         // Get the document's URL (returns allocated []const u8)
         const url = interfaces.Document.get_URL(doc) catch break :blk "about:blank";
-        std.debug.print("DOMParser: inherited realm URL: {s}\n", .{url});
+        log.debug("DOMParser: inherited realm URL: {s}", .{url});
         allocated_url = url; // Track for cleanup
         break :blk url;
     };

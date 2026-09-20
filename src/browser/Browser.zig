@@ -193,7 +193,7 @@ pub const Browser = struct {
 
         // Register V8 lifecycle cleanup handlers
         v8.registerBuiltinHandlers() catch |err| {
-            std.debug.print("Warning: Failed to register lifecycle handlers: {}\n", .{err});
+            log.warn("Failed to register lifecycle handlers: {}", .{err});
         };
 
         // Initialize isolate-scoped allocator for template caching
@@ -201,7 +201,7 @@ pub const Browser = struct {
         v8.isolate_allocator.initIsolateAllocator(isolate, allocator, false) catch |err| {
             // Already initialized is OK (e.g., from snapshot loading)
             if (err != error.AllocatorAlreadyInitialized) {
-                std.debug.print("Warning: Failed to init isolate allocator: {}\n", .{err});
+                log.warn("Failed to init isolate allocator: {}", .{err});
             }
         };
 
@@ -209,7 +209,7 @@ pub const Browser = struct {
         // This registers the HostCreateShadowRealmContextCallback with V8 so that
         // JavaScript `new ShadowRealm()` creates properly isolated execution contexts.
         v8.initializeShadowRealmSupport(isolate, allocator) catch |err| {
-            std.debug.print("Warning: Failed to initialize ShadowRealm support: {}\n", .{err});
+            log.warn("Failed to initialize ShadowRealm support: {}", .{err});
         };
 
         // Create storage subsystem

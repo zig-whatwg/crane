@@ -23,6 +23,8 @@ const Allocator = std.mem.Allocator;
 const types = @import("types.zig");
 const WorkerError = types.WorkerError;
 
+const log = std.log.scoped(.worker_error);
+
 // ============================================================================
 // Error Event Data
 // ============================================================================
@@ -196,8 +198,8 @@ pub const WorkerErrorHandler = struct {
 pub fn reportErrorToConsole(event: *const WorkerErrorEvent) void {
     // In a real implementation, this would call console.error
     // For now, we just log to stderr
-    std.debug.print(
-        "Uncaught Error in worker {s}:{d}:{d}: {s}\n",
+    log.err(
+        "Uncaught Error in worker {s}:{d}:{d}: {s}",
         .{ event.filename, event.lineno, event.colno, event.message },
     );
 }

@@ -21,6 +21,8 @@ const InternalResponse = internal_response.InternalResponse;
 const ResponseType = internal_response.ResponseType;
 const Body = @import("../internal/body.zig").Body;
 
+const log = std.log.scoped(.scheme_fetch);
+
 /// Result of scheme fetch operation.
 pub const SchemeFetchResult = union(enum) {
     /// Successful response
@@ -212,7 +214,7 @@ test "schemeFetch - about:blank" {
             try std.testing.expectEqual(@as(u16, 200), response.status);
         },
         .network_error => |err| {
-            std.debug.print("Unexpected error: {?s}\n", .{err});
+            log.err("Unexpected error: {?s}", .{err});
             try std.testing.expect(false);
         },
     }
@@ -245,7 +247,7 @@ test "schemeFetch - data URL" {
             try std.testing.expectEqual(@as(u16, 200), response.status);
         },
         .network_error => |err| {
-            std.debug.print("Unexpected error: {?s}\n", .{err});
+            log.err("Unexpected error: {?s}", .{err});
             try std.testing.expect(false);
         },
     }

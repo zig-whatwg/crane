@@ -10,6 +10,8 @@ const check = @import("check.zig");
 const clock = @import("clock");
 const CredentialsMode = check.CredentialsMode;
 
+const log = std.log.scoped(.preflight);
+
 /// Preflight request information.
 ///
 /// Contains all the data needed to perform a CORS preflight request.
@@ -528,7 +530,7 @@ test "validatePreflightResponse success" {
             try std.testing.expect(cache.methods.items.len >= 1);
         },
         .failure => |err| {
-            std.debug.print("Unexpected failure: {}\n", .{err});
+            log.err("Unexpected failure: {}", .{err});
             return error.TestFailed;
         },
     }

@@ -35,6 +35,7 @@
 //! - ❌ DO NOT use for primitive types (use existing JSValue variants)
 
 const std = @import("std");
+const log = std.log.scoped(.webidl_interfaces);
 const primitives = @import("primitives.zig");
 
 /// Wrapper for WebIDL interface objects
@@ -118,8 +119,8 @@ pub fn unwrapInterface(comptime T: type, value: primitives.JSValue) !*T {
     const expected_name = @typeName(T);
     if (!std.mem.eql(u8, wrapper.type_name, expected_name)) {
         if (std.debug.runtime_safety) {
-            std.debug.print(
-                "Type mismatch: expected {s}, got {s}\n",
+            log.err(
+                "Type mismatch: expected {s}, got {s}",
                 .{ expected_name, wrapper.type_name },
             );
         }

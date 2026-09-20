@@ -16,6 +16,7 @@
 //! but may use impls for internal initialization (setNodeType, etc.).
 
 const std = @import("std");
+const log = std.log.scoped(.document_impl);
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -3494,7 +3495,7 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
         value_slice,
     ) catch |err| {
         if (@import("builtin").mode == .Debug) {
-            std.debug.print("execCommand error: {any}\n", .{err});
+            log.err("execCommand error: {any}", .{err});
         }
         return false;
     };
@@ -3524,7 +3525,7 @@ fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, 
     // Step 5: Surround the selection with the element
     RangeImpl.call_surroundContents(range, element) catch |err| {
         if (@import("builtin").mode == .Debug) {
-            std.debug.print("surroundContents failed: {any}\n", .{err});
+            log.err("surroundContents failed: {any}", .{err});
         }
         // surroundContents can fail if range partially contains non-text nodes
         return false;
@@ -4830,7 +4831,7 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     // Create new Selection for this document
     const selection = SelectionImpl.createSelection(internal.allocator, instance.ctx, instance) catch |err| {
         if (@import("builtin").mode == .Debug) {
-            std.debug.print("Failed to create Selection: {any}\n", .{err});
+            log.err("Failed to create Selection: {any}", .{err});
         }
         return null;
     };

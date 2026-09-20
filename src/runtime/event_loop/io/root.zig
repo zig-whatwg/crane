@@ -11,6 +11,12 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+// Relative path, not @import("clock"): nothing in build.zig roots this directory,
+// so a module-style import could not resolve from here. See the DEAD CODE note at
+// the top of this file.
+const clock = @import("../../../platform/clock.zig");
+
+const log = std.log.scoped(.event_loop_io);
 
 /// Unified poller interface
 pub const poller = @import("poller.zig");
@@ -86,13 +92,13 @@ test "integration - timeout fires correctly" {
     const timeout_ns: u64 = 10_000_000; // 10ms
     try native_poller.submit(.{ .Timeout = .{ .timeout_ns = timeout_ns } }, 1);
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.monotonicNanos();
 
     // Poll with 1 second max wait
     var completions: [16]Completion = undefined;
     const count = try native_poller.poll(&completions, 1_000_000_000);
 
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = clock.monotonicNanos() - start;
 
     try std.testing.expectEqual(@as(usize, 1), count);
     try std.testing.expectEqual(@as(u64, 1), completions[0].user_data);
@@ -177,7 +183,7 @@ test "integration - pipe read/write" {
             try std.testing.expectEqualStrings(message, read_buffer[0..bytes_read]);
         },
         .Error => |err| {
-            std.debug.print("Read failed: {}\n", .{err});
+            log.err("read failed: {t}", .{err});
             return error.TestUnexpectedResult;
         },
         .Cancelled => return error.TestUnexpectedResult,
@@ -240,13 +246,13 @@ test "integration - poll with zero timeout returns immediately" {
     var native_poller = try Native.init(std.testing.allocator, .{});
     defer native_poller.deinit();
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.monotonicNanos();
 
     // Poll with zero timeout (non-blocking)
     var completions: [16]Completion = undefined;
     const count = try native_poller.poll(&completions, 0);
 
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = clock.monotonicNanos() - start;
 
     // Should return immediately with 0 completions
     try std.testing.expectEqual(@as(usize, 0), count);
