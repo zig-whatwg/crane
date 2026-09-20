@@ -18,22 +18,32 @@
 //! down. Once the reports come back empty for a workload, `mode` can be flipped to
 //! `.panic` and the same calls become the assertion Phase 5 actually wants.
 //!
-//! ## STATUS: the mechanism is in, the MEASUREMENT IS NOT YET WORKING
+//! ## STATUS: validated, and the invariant HOLDS at the instrumented sites
 //!
-//! Running html/webappapis/timers/ with three sites instrumented produced zero
-//! reports - but that number is meaningless, because a deliberately bogus isolate
-//! injected at one of those sites produced zero reports too. The log line never
-//! reaches the captured output under tests/wpt_runner, even though the format
-//! strings are demonstrably compiled into the binary and the instrumented code
-//! runs. The runner installs its own std_options.logFn and its own stderr writer
-//! (main.zig:75 and the stderr_writer setup), and the warning is being lost
-//! somewhere in there.
+//! Result: zero violations across html/webappapis/timers/ - 20 runs, worker
+//! variants included - at both timer handlers and the microtask callback.
 //!
-//! So do NOT read "no violations" as "the invariant holds". Before trusting any
-//! result from this, make the self-test visible first: inject
-//! `assertOwned(@ptrFromInt(0x1000), "SELFTEST")` at an instrumented site and
-//! confirm it appears. Surfacing `violations()` through the runner's own summary,
-//! rather than through the log, is probably the more reliable route.
+//! That zero is only worth reading because the instrument was PROVEN to report
+//! first. An earlier identical-looking zero was worthless: a deliberately bogus
+//! isolate injected at the same site also produced nothing, because the test used
+//! (negative-settimeout.any.js) never reaches v8TimerHandler at all. Nothing fired
+//! because nothing ran.
+//!
+//! Validation procedure, which any future measurement here MUST repeat:
+//!   1. inject `assertOwned(@ptrFromInt(0x1000), "SELFTEST")` beside a real call,
+//!   2. run a test KNOWN to execute that code path - for the timer handlers,
+//!      timer-nesting-not-inherited-in-microtask.html, since the Phase 6 clamp
+//!      work demonstrably changed its result,
+//!   3. confirm SELFTEST appears at the level you intend to use. It was confirmed
+//!      separately at `err` and at `warn`; do not assume one implies the other,
+//!   4. only then remove the self-test and trust the number.
+//!
+//! What the result does and does not license. It is evidence that these three
+//! callback entry points - the places most likely to break confinement, since
+//! they enter V8 from the event loop rather than from JS - run with the right
+//! isolate entered. It is NOT coverage of the 69 isolate-taking ffi.zig functions
+//! Phase 5 ultimately wants, and it says nothing about paths this workload does
+//! not exercise.
 //!
 //! ## Why V8's own notion of "current" is the right oracle
 //!
@@ -98,11 +108,7 @@ pub inline fn assertOwned(isolate: *ffi.Isolate, comptime site: []const u8) void
         );
     }
 
-    log.warn(
-        "ownership violation at {s}: using isolate {*}, but {?*} is entered on this thread" ++
-            " (null means NO isolate is entered here)",
-        .{ site, isolate, current },
-    );
+    log.warn("unowned isolate at {s}", .{site});
 }
 
 // ============================================================================
