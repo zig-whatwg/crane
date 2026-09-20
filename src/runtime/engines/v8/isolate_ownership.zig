@@ -20,8 +20,15 @@
 //!
 //! ## STATUS: validated, and the invariant HOLDS at the instrumented sites
 //!
-//! Result: zero violations across html/webappapis/timers/ - 20 runs, worker
-//! variants included - at both timer handlers and the microtask callback.
+//! Nine sites, covering both halves of the problem: the callback entry points,
+//! where V8 hands over the isolate, and the deferred-use sites, which store one and
+//! hand it back to V8 later - `GlobalHandle.get`/`asAnyopaque`,
+//! `JsScope.initFromIsolate`, `template_registry.wrapInstanceAsV8Object`.
+//!
+//! Zero violations across `html/webappapis/timers/` at `--parallel=3`, worker
+//! variants included, ~1,500-2,400 checks per run and 0 crashes in 8 runs, which
+//! matches the uninstrumented baseline exactly. The hot-path measurement below adds
+//! 0 violations in 61,801 checks on top of that.
 //!
 //! That zero is only worth reading because the instrument was PROVEN to report
 //! first. An earlier identical-looking zero was worthless: a deliberately bogus
@@ -45,28 +52,54 @@
 //! Phase 5 ultimately wants, and it says nothing about paths this workload does
 //! not exercise.
 //!
-//! ## DO NOT instrument `V8Handle.Inner.dispose` (handle.zig)
+//! ## DO NOT instrument teardown paths
 //!
-//! Adding `assertOwned` there turned a clean directory run into 2 crashes out of
-//! 3 (`html/webappapis/timers/`, `--parallel=3`, SIGABRT with no diagnostic).
-//! The instrument was not at fault, and the reason is worth keeping:
+//! Three were tried; all three destabilised the suite, and none ever reported a
+//! violation. Measured on `html/webappapis/timers/ --parallel=3`:
 //!
-//!   * the check never reported a violation, so nothing it observed was wrong;
-//!   * replacing it with a probe that calls NOTHING - `probe_count +%= 1` plus two
-//!     `doNotOptimizeAway` - reproduced the crashes anyway (0, 1 and 2 across
-//!     three runs).
+//! | site | crashes |
+//! |---|---|
+//! | baseline, no instrumentation | 0 / 8 |
+//! | `V8Handle.Inner.dispose` + `WeakV8Handle.deinit` | 2 / 3 |
+//! | `template_registry.clearForIsolate` | 1 / 8 |
+//! | the nine sites that remain | 0 / 8 |
 //!
-//! So `Inner.dispose` is fragile to ANY added work, not to talking to V8. That is
-//! a latent race on the refcounted-handle teardown path, matching the long-standing
-//! note that worker teardown "only crashes under extra logging". Instrumenting it
-//! measures the observer, not the invariant.
+//! The instrument is not at fault. Replacing the dispose check with a probe that
+//! calls NOTHING - `probe_count +%= 1` plus two `doNotOptimizeAway` - reproduced
+//! the crashes anyway (0, 1 and 2 across three runs). These paths are fragile to
+//! ANY added work, which is a latent race, matching the long-standing note that
+//! worker teardown "only crashes under extra logging". Instrumenting them measures
+//! the observer.
 //!
-//! It also needs multiple files in ONE process: the crashing file
-//! (negative-setinterval.any.js) passes 3/3 when run alone, and 3/3 as the only
-//! file under the supervisor. Baseline for the comparison was 0 crashes in 3 runs.
+//! Reproducing needs several files in ONE process: the usual casualty,
+//! negative-setinterval.any.js, passes 3/3 alone and 3/3 as the only file under
+//! the supervisor.
 //!
-//! Before re-instrumenting a disposal path, fix that race. Until then a check
-//! there produces crash reports and no ownership data.
+//! Before instrumenting any disposal or teardown path, fix that race. Until then a
+//! check there produces crash reports and no ownership data.
+//!
+//! ## The hot paths measure the observer too: event loop and CallbackWrapper
+//!
+//! `V8EventLoop.runOnce` / `runMicrotasks` and `CallbackWrapper.callN` are genuine
+//! deferred-use sites - each drains or invokes JS with an isolate it has carried
+//! since construction, from Crane's own code. They were instrumented, measured, and
+//! then removed:
+//!
+//! | instrumentation | checks per run | crashes |
+//! |---|---|---|
+//! | none | - | 0 / 5 |
+//! | unsampled | ~61,000 | 2 / 6 |
+//! | sampled 1-in-256 | ~1,700 | 2 / 4 |
+//!
+//! **0 violations at every level**, including 61,801 / 60,904 / 60,979 checks across
+//! three full runs of `html/webappapis/timers/`. That measurement stands; it is the
+//! strongest evidence collected that the invariant holds on the hot paths.
+//!
+//! What does not stand is keeping the checks. Sampling cut the volume 36x and the
+//! crash rate did not move, so it is the added work on the path - not its amount -
+//! that destabilises the run, the same result the disposal-path probe gave. A check
+//! that must be removed to keep the suite green is not a check; it is a
+//! perturbation experiment, and it has already returned its answer.
 //!
 //! ## Why V8's own notion of "current" is the right oracle
 //!

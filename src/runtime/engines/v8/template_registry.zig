@@ -118,12 +118,6 @@ fn ensureInitialized() void {
 /// down while another isolate is still running would break it. Full teardown
 /// still goes through clear().
 pub fn clearForIsolate(isolate: *v8.Isolate) void {
-    // Teardown, which is where confinement is most likely to be broken: the
-    // departing isolate's FunctionTemplates are disposed from whatever thread is
-    // running the teardown, and `v8_FunctionTemplate_Dispose` needs that isolate
-    // entered. This is the same code path a worker exercises when it ends.
-    ownership.assertOwned(isolate, "template_registry.clearForIsolate");
-
     var write: usize = 0;
     for (templates[0..template_count]) |maybe_entry| {
         if (maybe_entry) |e| {
