@@ -97,8 +97,15 @@ pub fn main(init: std.process.Init) !void {
     // resets, and the registries keyed on recycled addresses - and no amount of JS
     // heap work will reach them. If it flattens, the retention is V8's.
     var force_gc = false;
+    // `--control` allocates a plain JS object instead of an Element, with everything
+    // else identical. It answers the question any RSS growth figure has to survive:
+    // how much of it is V8's heap simply not returning pages, which is normal engine
+    // behaviour and not a leak? Whatever the control retains is the floor, and only
+    // the excess above it is Crane's to fix.
+    var control = false;
     for (args[1..]) |a| {
         if (std.mem.eql(u8, a, "--gc")) force_gc = true;
+        if (std.mem.eql(u8, a, "--control")) control = true;
     }
 
     if (memory.residentBytes() == null) {
@@ -136,10 +143,17 @@ pub fn main(init: std.process.Init) !void {
         // A fresh script per batch rather than one long-running script: a single
         // 10,000-iteration script keeps one JS stack frame alive throughout, which
         // is itself a root, and would confound "did the state come back".
+        const body = if (control)
+            // Shaped to cost V8 about what a wrapper does - an object with a couple
+            // of properties - while touching no DOM state at all.
+            "void ({ a: i, b: 'x' });"
+        else
+            "void document.createElement('div');";
+
         const source = try std.fmt.allocPrint(
             allocator,
-            "for (let i = 0; i < {d}; i++) {{ void document.createElement('div'); }}",
-            .{batch},
+            "for (let i = 0; i < {d}; i++) {{ {s} }}",
+            .{ batch, body },
         );
         defer allocator.free(source);
 
@@ -158,7 +172,7 @@ pub fn main(init: std.process.Init) !void {
         try samples.append(allocator, takeSample(done));
     }
 
-    report(samples.items, force_gc);
+    report(samples.items, force_gc, control);
 }
 
 fn runScript(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, source: []const u8) !void {
@@ -179,9 +193,10 @@ fn runScript(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context, source: []const
     v8.ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
 }
 
-fn report(samples: []const Sample, gc_was_forced: bool) void {
-    std.debug.print("\n=== Phase 6: createElement + discard{s} ===\n\n", .{
-        if (gc_was_forced) " (V8 GC forced)" else "",
+fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool) void {
+    std.debug.print("\n=== Phase 6: {s}{s} ===\n\n", .{
+        if (was_control) "plain JS object (CONTROL)" else "createElement + discard",
+        if (gc_was_forced) ", V8 GC forced" else "",
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
